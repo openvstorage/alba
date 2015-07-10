@@ -1,2 +1,4 @@
-# alba
-Open vStorage alternate backend creates a replicated or flexible network raid’ed  object storage backend out of Seagate Kinetic drives and local dis supporting compression, encryption.
+# ALBA
+ALBA (Alternate Backend) is a highly optimized storage backend for Open vStorage. It converts a set of ASDs (Alternate Storage Daemon) or ethernet drives (Seagate Kinetic) into a pool of storage you can use as storage backend within Open vStorage.  ALBA has support for partial object retrieval, compression, encryption, replication and network raid.
+
+ALBA is written in OCaml.
