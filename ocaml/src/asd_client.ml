@@ -20,7 +20,7 @@ open Slice
 open Asd_protocol
 open Protocol
 
-class client (ic, oc) =
+class client (ic, oc) id =
   let read_response deserializer =
     Llio.input_string ic >>= fun res_s ->
     let res_buf = Llio.make_buffer res_s 0 in
@@ -30,7 +30,7 @@ class client (ic, oc) =
     | err ->
       let open Error in
       let err' = deserialize' err res_buf in
-      Lwt_log.debug_f "Exception in asd_client: %s" (show err') >>= fun () ->
+      Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
       lwt_fail err'
   in
   object(self)
@@ -38,8 +38,8 @@ class client (ic, oc) =
       fun command req ->
         let descr = code_to_description (command_to_code (Wrap_query command)) in
         Lwt_log.debug_f
-          "asd_client: %s"
-          descr >>= fun () ->
+          "asd_client %s: %s"
+          id descr >>= fun () ->
         Alba_statistics.Statistics.with_timing_lwt
           (fun () ->
              let buf = Buffer.create 20 in
@@ -47,15 +47,15 @@ class client (ic, oc) =
              query_request_serializer command buf req;
              Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
              read_response (query_response_deserializer command)) >>= fun (t, r) ->
-        Lwt_log.debug_f "asd_client: %s took %f" descr t >>= fun () ->
+        Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
         Lwt.return r
 
     method private update : type req res. (req, res) update -> req -> res Lwt.t =
       fun command req ->
         let descr = code_to_description (command_to_code (Wrap_update command)) in
         Lwt_log.debug_f
-          "asd_client: %s"
-          descr >>= fun () ->
+          "asd_client %s: %s"
+          id descr >>= fun () ->
         Alba_statistics.Statistics.with_timing_lwt
           (fun () ->
              let buf = Buffer.create 20 in
@@ -63,7 +63,7 @@ class client (ic, oc) =
              update_request_serializer command buf req;
              Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
              read_response (update_response_deserializer command)) >>= fun (t, r) ->
-        Lwt_log.debug_f "asd_client: %s took %f" descr t >>= fun () ->
+        Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
         Lwt.return r
 
     method multi_get keys =
@@ -159,7 +159,7 @@ let _prologue_response ic lido =
          match lido with
          | Some asd_id when asd_id <> asd_id' ->
             Lwt.fail (BadLongId (asd_id, asd_id'))
-         | _ -> Lwt.return ()
+         | _ -> Lwt.return asd_id'
        end
     | err -> Error.from_stream (Int32.to_int err) ic
 
@@ -174,8 +174,8 @@ let make_client ips port (lido:string option) =
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
        Lwt_io.write oc prologue_bytes >>= fun () ->
-       _prologue_response ic lido >>= fun () ->
-       let client = new client conn in
+       _prologue_response ic lido >>= fun long_id ->
+       let client = new client conn long_id in
        Lwt.return (client, closer)
     )
     (fun exn ->
@@ -224,7 +224,6 @@ class asd_osd (asd_id : string) (asd : client) =
   method range_entries = asd # range_entries
 
   method apply_sequence asserts (upds: Update.t list) =
-    Lwt_log.debug "asd_client: apply_sequence" >>= fun () ->
     Lwt.catch
       (fun () ->
          asd # apply_sequence asserts upds >>= fun () ->
