@@ -17,12 +17,47 @@ limitations under the License.
 open Prelude
 open Slice
 open Checksum
-
 open Asd_statistics
 
 type key = Slice.t
 let show_key = Slice.show_limited_escaped
 let pp_key = Slice.pp_limited_escaped
+
+module Value = struct
+  type blob =
+    | Direct of Slice.t
+    | Later of int
+  [@@deriving show]
+  type t = blob * Checksum.t
+  [@@deriving show]
+
+  let blob_to_buffer buf = function
+    | Direct value ->
+       Llio.int8_to buf 1;
+       Slice.to_buffer buf value
+    | Later size ->
+       Llio.int8_to buf 2;
+       Llio.int_to buf size
+
+  let blob_from_buffer buf =
+    match Llio.int8_from buf with
+    | 1 ->
+       let value = Slice.from_buffer buf in
+       Direct value
+    | 2 ->
+       let size = Llio.int_from buf in
+       Later size
+    | k -> Prelude.raise_bad_tag "Asd_server.Value.blob" k
+
+  let to_buffer buf (blob, cs) =
+    blob_to_buffer buf blob;
+    Checksum.output buf cs
+
+  let from_buffer buf =
+    let blob = blob_from_buffer buf in
+    let cs = Checksum.input buf in
+    (blob, cs)
+end
 
 type value = Slice.t
 let show_value = Slice.show_limited_escaped
@@ -270,6 +305,7 @@ module Protocol = struct
                        query
     | Statistics: (bool, AsdStatistics.t) query
     | GetVersion: (unit, (int * int * int *string)) query
+    | MultiGet2 : (key list, Value.t option list) query
 
   [@deriving show]
 
@@ -287,7 +323,8 @@ module Protocol = struct
                       Wrap_query RangeEntries, 4, "RangeEntries";
                       Wrap_query Statistics, 5, "Statistics";
                       Wrap_update SetFull, 6, "SetFull";
-                      Wrap_query GetVersion, 7, "GetVersion"
+                      Wrap_query GetVersion, 7, "GetVersion";
+                      Wrap_query MultiGet2, 8, "MultiGet2";
                     ]
 
   let wrap_unknown_operation f =
@@ -314,6 +351,7 @@ module Protocol = struct
       | Range -> rr_to
       | RangeEntries -> rr_to
       | MultiGet -> Llio.list_to Slice.to_buffer
+      | MultiGet2 -> Llio.list_to Slice.to_buffer
       | Statistics -> Llio.bool_to
       | GetVersion -> Llio.unit_to
 
@@ -322,6 +360,7 @@ module Protocol = struct
       | Range -> rr_from
       | RangeEntries -> rr_from
       | MultiGet -> Llio.list_from Slice.from_buffer
+      | MultiGet2 -> Llio.list_from Slice.from_buffer
       | Statistics -> Llio.bool_from
       | GetVersion -> Llio.unit_from
 
@@ -341,6 +380,8 @@ module Protocol = struct
                             Checksum.output
                          )
                       )
+      | MultiGet2 ->
+        Llio.list_to (Llio.option_to Value.to_buffer)
       | Statistics -> AsdStatistics.to_buffer
       | GetVersion ->
          (Llio.tuple4_to
@@ -365,6 +406,8 @@ module Protocol = struct
                             Checksum.input
                          )
                       )
+      | MultiGet2 ->
+        Llio.list_from (Llio.option_from Value.from_buffer)
       | Statistics -> AsdStatistics.from_buffer
       | GetVersion -> (Llio.tuple4_from
                          Llio.int_from

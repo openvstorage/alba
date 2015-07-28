@@ -245,7 +245,7 @@ let get_kind ips port =
     Lwt_log.debug_f "%s %i is a kinetic?" (List.hd_exn ips) port >>= fun () ->
     Lwt.catch
       (fun () ->
-       Networking2.first_connection ips port >>= fun conn ->
+       Networking2.first_connection ips port >>= fun (_, conn) ->
        Lwt.finalize
            (fun () ->
             Lwt_unix.with_timeout

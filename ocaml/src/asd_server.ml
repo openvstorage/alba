@@ -283,9 +283,13 @@ let execute_query : type req res.
   Rocks_key_value_store.t ->
                          DirectoryInfo.t ->
                          AsdStatistics.t ->
-                         (req, res) Protocol.query -> req -> res Lwt.t
+                         (req, res) Protocol.query ->
+                         req ->
+                         (res * (Lwt_unix.file_descr ->
+                                 unit Lwt.t)) Lwt.t
   = fun kv dir_info stats ->
     let open Protocol in
+    let return x = Lwt.return (x, fun _ -> Lwt.return_unit) in
     function
     | Range -> fun { first; finc; last; reverse; max; } ->
       begin
@@ -306,7 +310,7 @@ let execute_query : type req res.
             )
         in
         AsdStatistics.new_range stats delta;
-        Lwt.return res
+        return res
       end
     | RangeEntries -> fun { first; finc; last; reverse; max; } ->
       begin
@@ -339,10 +343,9 @@ let execute_query : type req res.
         )
         >>= fun(d,res) ->
         AsdStatistics.new_range_entries stats d;
-        Lwt.return res
+        return res
       end
     | MultiGet -> fun keys ->
-      begin
       AsdStatistics.with_timing_lwt
         (fun () ->
          Lwt_log.ign_debug_f "MultiGet for %s" ([%show: Slice.t list] keys);
@@ -360,8 +363,37 @@ let execute_query : type req res.
         )
       >>= fun (d,res) ->
       AsdStatistics.new_multi_get stats d;
-      Lwt.return res
-      end
+      return res
+    | MultiGet2 -> fun keys ->
+      let laters = ref [] in
+      AsdStatistics.with_timing_lwt
+        (fun () ->
+         Lwt_log.ign_debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys);
+         (* first determine atomically which are the relevant Value.t's *)
+         List.map
+           (fun k ->
+            get_value_option kv k
+            |> Option.map
+                 (fun (cs, blob) ->
+                  let b = match blob with
+                    | Value.Direct s -> Asd_protocol.Value.Direct s
+                    | Value.OnFs (fnr, size) ->
+                       laters := (fnr, size) :: !laters;
+                       Asd_protocol.Value.Later size in
+                  b, cs))
+           keys
+         |> Lwt.return)
+      >>= fun (d,res) ->
+      (* AsdStatistics.new_multi_get stats d; *)
+      Lwt.return
+        (res,
+         fun fd ->
+         Lwt_list.iter_s
+           (fun (fnr, size) ->
+            (* TODO use splice call here *)
+            DirectoryInfo.get_blob dir_info fnr size >>= fun blob ->
+            Lwt_extra2.write_all fd blob 0 size)
+           (List.rev !laters))
     | Statistics -> fun clear ->
       begin
         let stopped = AsdStatistics.clone stats in
@@ -372,9 +404,9 @@ let execute_query : type req res.
                                (AsdStatistics.show stopped);
             AsdStatistics.clear stats
           end;
-        Lwt.return stopped
+        return stopped
       end
-    | GetVersion -> fun () -> Lwt.return Alba_version.summary
+    | GetVersion -> fun () -> return Alba_version.summary
 
 
 exception ConcurrentModification
@@ -783,11 +815,13 @@ let asd_protocol
        begin match Protocol.code_to_command code with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
-                execute_query kv dir_info stats q req >>= fun res ->
+                execute_query kv dir_info stats q req >>= fun (res, write_extra) ->
                 let res_buf = Buffer.create 20 in
                 Llio.int_to res_buf 0;
                 Protocol.query_response_serializer q res_buf res;
-                Lwt.return (Buffer.contents res_buf)
+                Lwt_extra2.llio_output_and_flush oc (Buffer.contents res_buf) >>= fun () ->
+                Lwt_io.flush oc >>= fun () ->
+                write_extra fd
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update
@@ -802,11 +836,8 @@ let asd_protocol
                 let res_buf = Buffer.create 20 in
                 Llio.int_to res_buf 0;
                 Protocol.update_response_serializer u res_buf res;
-                Lwt.return (Buffer.contents res_buf)
-       end >>= fun res_s ->
-       (* Lwt_log.debug "returning rc=0" >>= fun () -> *)
-       Lwt_extra2.llio_output_and_flush oc res_s
-      )
+                Lwt_extra2.llio_output_and_flush oc (Buffer.contents res_buf)
+       end)
       (function
         | End_of_file  as e -> Lwt.fail e
         | Protocol.Error.Exn err ->

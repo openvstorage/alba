@@ -20,7 +20,7 @@ open Slice
 open Asd_protocol
 open Protocol
 
-class client (ic, oc) id =
+class client fd (ic, oc) id =
   let read_response deserializer =
     Llio.input_string ic >>= fun res_s ->
     let res_buf = Llio.make_buffer res_s 0 in
@@ -67,7 +67,35 @@ class client (ic, oc) id =
         Lwt.return r
 
     method multi_get keys =
-      self # query MultiGet keys
+    (* self # query MultiGet keys *)
+      self # multi_get2 keys
+
+    method multi_get2 keys =
+      self # query MultiGet2 keys >>= fun res ->
+      Lwt_list.map_s
+        (let open Value in
+         function
+          | None -> Lwt.return_none
+          | Some (blob, cs) ->
+             match blob with
+             | Direct s -> Lwt.return (Some (s, cs))
+             | Later size ->
+                let target = Bytes.create size in
+
+                let buffered = Lwt_io.buffered ic in
+                (if buffered > 0
+                 then Lwt_io.read_into ic target 0 buffered
+                 else Lwt.return 0) >>= fun read ->
+                assert (read = buffered);
+                assert (0 = Lwt_io.buffered ic);
+
+                Lwt_extra2.read_all
+                  fd target
+                  read (size - read)
+                >>= fun read' ->
+                assert (read + read' = size);
+                Lwt.return (Some (Slice.wrap_bytes target, cs)))
+        res
 
     method multi_get_string keys =
       self # multi_get (List.map Slice.wrap_string keys) >>= fun res ->
@@ -166,7 +194,7 @@ let _prologue_response ic lido =
 
 
 let make_client ips port (lido:string option) =
-  Networking2.first_connection ~buffer_size:(768*1024) ips port >>= fun conn ->
+  Networking2.first_connection ~buffer_size:(768*1024) ips port >>= fun (fd, conn) ->
   let closer = Networking2.closer conn in
   Lwt.catch
     (fun () ->
@@ -175,7 +203,7 @@ let make_client ips port (lido:string option) =
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
        Lwt_io.write oc prologue_bytes >>= fun () ->
        _prologue_response ic lido >>= fun long_id ->
-       let client = new client conn long_id in
+       let client = new client fd conn long_id in
        Lwt.return (client, closer)
     )
     (fun exn ->

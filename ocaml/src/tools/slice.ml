@@ -17,14 +17,17 @@ limitations under the License.
 open Prelude
 
 module Slice = struct
-  type t = { buf : string;
+  type t = { buf : Bytes.t;
              offset : int;
              length : int; }
 
   let make buf offset length =
     { buf; offset; length }
+  let create length =
+    make (Bytes.create length) 0 length
   let wrap_string buf =
     make buf 0 (String.length buf)
+  let wrap_bytes = wrap_string
 
   let get_string t = String.sub t.buf t.offset t.length
 

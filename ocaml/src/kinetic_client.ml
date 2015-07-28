@@ -329,7 +329,8 @@ let make_client ips port (kinetic_id:string) =
                            port
   in
   let () = incr _client_id in
-  Networking2.first_connection ~buffer_size:(768* 1024) ips port >>= fun conn ->
+  Networking2.first_connection ~buffer_size:(768* 1024) ips port
+  >>= fun (fd, conn) ->
   let closer = Networking2.closer conn in
   Lwt.catch
     (fun () ->

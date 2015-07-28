@@ -29,7 +29,12 @@ let string_of_address = function
 
 let create_connection ?(buffer_size=8192) ip port =
   let address = make_address ip port in
-  Lwt_io.open_connection ~buffer_size address
+  let fd =
+    Lwt_unix.socket
+      (Unix.domain_of_sockaddr address)
+      Unix.SOCK_STREAM 0 in
+  Lwt_io.open_connection ~fd ~buffer_size address >>= fun conn ->
+  Lwt.return (fd, conn)
 
 
 let closer (ic,oc) () =
@@ -49,12 +54,12 @@ let first_connection ?buffer_size ips port =
   let f' ip =
     Lwt.catch
       (fun () ->
-         create_connection ?buffer_size ip port >>= fun conn ->
+         create_connection ?buffer_size ip port >>= fun (fd, conn) ->
          if Lwt_mutex.is_locked l
          then closer conn ()
          else begin
            Lwt_mutex.lock l >>= fun () ->
-           Lwt_mvar.put res (`Success conn)
+           Lwt_mvar.put res (`Success (fd, conn))
          end)
       (fun exn ->
          Lwt.protected (
