@@ -217,7 +217,7 @@ let splice ~release_runtime_lock =
 
 let splice_all ~fd_in ~fd_out len =
   let open Lwt.Infix in
-  let rec inner = function
+  let rec splice_all fd_in fd_out = function
     | 0 -> Lwt.return ()
     | n ->
        Lwt_preemptive.detach
@@ -227,6 +227,24 @@ let splice_all ~fd_in ~fd_out len =
             ~fd_out)
          n
       >>= fun spliced ->
-      inner (n - spliced)
+      splice_all fd_in fd_out (n - spliced)
+  in
+  let pr, pw = Lwt_unix.pipe () in
+  let rec inner = function
+    | 0 -> Lwt.return ()
+    | n ->
+       Lwt_preemptive.detach
+         (splice
+            ~release_runtime_lock:true
+            ~fd_in
+            ~fd_out:(lwt_unix_fd_to_fd pw))
+         n
+       >>= fun spliced ->
+       splice_all
+         (lwt_unix_fd_to_fd pr)
+         fd_out
+         spliced
+       >>= fun () ->
+       inner (n - spliced)
   in
   inner len
