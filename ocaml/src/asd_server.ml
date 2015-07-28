@@ -122,13 +122,18 @@ module DirectoryInfo = struct
     let _, _, path = get_file_dir_name_path t fnr in
     path
 
-  let get_blob t fnr size =
-    Lwt_log.debug_f "getting blob %Li with size %i" fnr size >>= fun () ->
-    let bs = Bytes.create size in
+  let with_blob_fd t fnr f =
     Lwt_extra2.with_fd
       (get_file_path t fnr)
       ~flags:Lwt_unix.([O_RDONLY;])
       ~perm:0600
+      f
+
+  let get_blob t fnr size =
+    Lwt_log.debug_f "getting blob %Li with size %i" fnr size >>= fun () ->
+    let bs = Bytes.create size in
+    with_blob_fd
+      t fnr
       (fun fd ->
          Lwt_extra2.read_all fd bs 0 size >>= fun got ->
          assert (got = size);
@@ -390,9 +395,13 @@ let execute_query : type req res.
          fun fd ->
          Lwt_list.iter_s
            (fun (fnr, size) ->
-            (* TODO use splice call here *)
-            DirectoryInfo.get_blob dir_info fnr size >>= fun blob ->
-            Lwt_extra2.write_all fd blob 0 size)
+            DirectoryInfo.with_blob_fd
+              dir_info fnr
+              (fun blob_fd ->
+               Fsutil.splice_all
+                 ~fd_in:(Fsutil.lwt_unix_fd_to_fd blob_fd)
+                 ~fd_out:(Fsutil.lwt_unix_fd_to_fd fd)
+                 size))
            (List.rev !laters))
     | Statistics -> fun clear ->
       begin

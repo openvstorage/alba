@@ -180,3 +180,53 @@ let disk_usage home =
 
 let lwt_disk_usage home =
   Lwt_preemptive.detach disk_usage home
+
+let lwt_unix_fd_to_fd
+      (fd : Lwt_unix.file_descr) : int =
+  Obj.magic (Obj.field (Obj.repr fd) 0)
+
+let lwt_unix_fd_to_unix_fd
+      (fd : Lwt_unix.file_descr) : Unix.file_descr =
+  Obj.magic (Obj.field (Obj.repr fd) 0)
+
+let unix_fd_to_fd (fd : Unix.file_descr) : int =
+  Obj.magic fd
+
+let splice ~release_runtime_lock =
+  let inner =
+    (* ssize_t splice(int fd_in, loff_t *off_in, int fd_out, *)
+    (*                loff_t *off_out, size_t len, unsigned int flags); *)
+    foreign
+      "splice"
+      ~check_errno:true
+      ~release_runtime_lock
+      (int @-> ptr void
+       @-> int @-> ptr void
+       @-> size_t @-> int
+       @-> returning size_t)
+  in
+  fun ~fd_in ~fd_out len ->
+  let res =
+    inner
+      fd_in null
+      fd_out null
+      (Unsigned.Size_t.of_int len)
+      0
+  in
+  Unsigned.Size_t.to_int res
+
+let splice_all ~fd_in ~fd_out len =
+  let open Lwt.Infix in
+  let rec inner = function
+    | 0 -> Lwt.return ()
+    | n ->
+       Lwt_preemptive.detach
+         (splice
+            ~release_runtime_lock:true
+            ~fd_in
+            ~fd_out)
+         n
+      >>= fun spliced ->
+      inner (n - spliced)
+  in
+  inner len
