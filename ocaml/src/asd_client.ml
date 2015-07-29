@@ -66,9 +66,26 @@ class client fd (ic, oc) id =
         Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
         Lwt.return r
 
+    val mutable supports_multiget2 = None
     method multi_get keys =
-    (* self # query MultiGet keys *)
-      self # multi_get2 keys
+      match supports_multiget2 with
+      | None ->
+         (* try multiget2, if it succeeds the asd supports it *)
+         Lwt.catch
+           (fun () ->
+            self # multi_get2 keys >>= fun res ->
+            supports_multiget2 <- Some true;
+            Lwt.return res)
+           (function
+             | Error.Exn Error.Unknown_operation ->
+                supports_multiget2 <- Some false;
+                self # query MultiGet keys
+             | exn ->
+                Lwt.fail exn)
+      | Some true ->
+         self # multi_get2 keys
+      | Some false ->
+         self # query MultiGet keys
 
     method multi_get2 keys =
       self # query MultiGet2 keys >>= fun res ->
