@@ -285,7 +285,7 @@ let get_value_option kv key =
 
 
 let execute_query : type req res.
-  Rocks_key_value_store.t ->
+                         Rocks_key_value_store.t ->
                          DirectoryInfo.t ->
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
@@ -297,99 +297,76 @@ let execute_query : type req res.
     let return x = Lwt.return (x, fun _ -> Lwt.return_unit) in
     function
     | Range -> fun { first; finc; last; reverse; max; } ->
-      begin
-        let delta, res =
-          AsdStatistics.with_timing
-            (fun () ->
-             let (count, keys), have_more =
-               Rocks_key_value_store.range
-                 kv
-                 ~first:(Keys.key_with_public_prefix first) ~finc
-                 ~last:(match last with
-                        | None -> Keys.public_key_next_prefix
-                        | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
-                 ~reverse
-                 ~max:(cap_max ~max ())
-             in
-             ((count, List.map Keys.string_chop_prefix keys), have_more)
-            )
-        in
-        AsdStatistics.new_range stats delta;
-        return res
-      end
+      let (count, keys), have_more =
+        Rocks_key_value_store.range
+          kv
+          ~first:(Keys.key_with_public_prefix first) ~finc
+          ~last:(match last with
+                 | None -> Keys.public_key_next_prefix
+                 | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
+          ~reverse
+          ~max:(cap_max ~max ())
+      in
+      return
+        ((count, List.map Keys.string_chop_prefix keys),
+         have_more)
     | RangeEntries -> fun { first; finc; last; reverse; max; } ->
-      begin
-        AsdStatistics.with_timing_lwt
-        (fun () ->
-         let (cnt, is), has_more =
-           Rocks_key_value_store.map_range
-             kv
-             ~first:(Keys.key_with_public_prefix first) ~finc
-             ~last:(match last with
-                    | None -> Keys.public_key_next_prefix
-                    | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
-             ~reverse
-             ~max:(cap_max ~max ())
-             (fun cur key ->
-              Keys.string_chop_prefix key,
-              deserialize Value.from_buffer (Rocks_key_value_store.cur_get_value cur)
-             )
-         in
+      let (cnt, is), has_more =
+        Rocks_key_value_store.map_range
+          kv
+          ~first:(Keys.key_with_public_prefix first) ~finc
+          ~last:(match last with
+                 | None -> Keys.public_key_next_prefix
+                 | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
+          ~reverse
+          ~max:(cap_max ~max ())
+          (fun cur key ->
+           Keys.string_chop_prefix key,
+           deserialize Value.from_buffer (Rocks_key_value_store.cur_get_value cur)
+          )
+      in
 
-         Lwt_list.map_p
-           (fun (k, vt) ->
-            Value.get_blob_from_value dir_info vt >>= fun blob ->
-            Lwt.return (k, blob, fst vt))
-           is >>= fun blobs ->
+      Lwt_list.map_p
+        (fun (k, vt) ->
+         Value.get_blob_from_value dir_info vt >>= fun blob ->
+         Lwt.return (k, blob, fst vt))
+        is >>= fun blobs ->
 
-         Lwt.return ((cnt,
-                      blobs),
-                     has_more)
-        )
-        >>= fun(d,res) ->
-        AsdStatistics.new_range_entries stats d;
-        return res
-      end
+      return ((cnt, blobs),
+              has_more)
     | MultiGet -> fun keys ->
-      AsdStatistics.with_timing_lwt
-        (fun () ->
-         Lwt_log.ign_debug_f "MultiGet for %s" ([%show: Slice.t list] keys);
-         (* first determine atomically which are the relevant Value.t's *)
-         List.map
-           (fun k -> get_value_option kv k)
-           keys |>
-           (* then get all the blobs from the file system concurrently *)
-           Lwt_list.map_p
-             (function
-               | None -> Lwt.return None
-               | Some v ->
-                  Value.get_blob_from_value dir_info v >>= fun b ->
-                  Lwt.return (Some (b, Value.get_cs v)))
-        )
-      >>= fun (d,res) ->
-      AsdStatistics.new_multi_get stats d;
+      Lwt_log.ign_debug_f "MultiGet for %s" ([%show: Slice.t list] keys);
+      (* first determine atomically which are the relevant Value.t's *)
+      List.map
+        (fun k -> get_value_option kv k)
+        keys |>
+        (* then get all the blobs from the file system concurrently *)
+        Lwt_list.map_p
+          (function
+            | None -> Lwt.return None
+            | Some v ->
+               Value.get_blob_from_value dir_info v >>= fun b ->
+               Lwt.return (Some (b, Value.get_cs v))) >>= fun res ->
       return res
     | MultiGet2 -> fun keys ->
-      let laters = ref [] in
-      AsdStatistics.with_timing_lwt
-        (fun () ->
-         Lwt_log.ign_debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys);
-         (* first determine atomically which are the relevant Value.t's *)
-         List.map
-           (fun k ->
-            get_value_option kv k
-            |> Option.map
-                 (fun (cs, blob) ->
-                  let b = match blob with
-                    | Value.Direct s -> Asd_protocol.Value.Direct s
-                    | Value.OnFs (fnr, size) ->
-                       laters := (fnr, size) :: !laters;
-                       Asd_protocol.Value.Later size in
-                  b, cs))
-           keys
-         |> Lwt.return)
-      >>= fun (d,res) ->
-      (* AsdStatistics.new_multi_get stats d; *)
+      Lwt_log.ign_debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys);
+      (* first determine atomically which are the relevant Value.t's *)
+      let write_laters = ref [] in
+      let res =
+        List.map
+          (fun k ->
+           get_value_option kv k
+           |> Option.map
+                (fun (cs, blob) ->
+                 let b = match blob with
+                   | Value.Direct s -> Asd_protocol.Value.Direct s
+                   | Value.OnFs (fnr, size) ->
+                      write_laters := (fnr, size) :: !write_laters;
+                      Asd_protocol.Value.Later size in
+                 b, cs))
+          keys
+      in
+
       Lwt.return
         (res,
          fun fd ->
@@ -402,7 +379,7 @@ let execute_query : type req res.
                  ~fd_in:(Fsutil.lwt_unix_fd_to_fd blob_fd)
                  ~fd_out:(Fsutil.lwt_unix_fd_to_fd fd)
                  size))
-           (List.rev !laters))
+           (List.rev !write_laters))
     | Statistics -> fun clear ->
       begin
         let stopped = AsdStatistics.clone stats in
@@ -471,19 +448,16 @@ let execute_update : type req res.
   release_fnr : (int64 -> unit) ->
   syncfs_batched : (unit -> unit Lwt.t) ->
   DirectoryInfo.t ->
-  AsdStatistics.t ->
   mgmt: AsdMgmt.t ->
   get_next_fnr : (unit -> int64) ->
   (req, res) Protocol.update ->
   req ->
   res Lwt.t
-  = fun kv ~release_fnr ~syncfs_batched dir_info stats
+  = fun kv ~release_fnr ~syncfs_batched dir_info
         ~mgmt ~get_next_fnr ->
     let open Protocol in
     function
     | Apply -> fun (asserts, upds) ->
-      AsdStatistics.with_timing_lwt
-      (fun () ->
       begin
         Lwt_log.debug_f
           "Apply with asserts = %s & upds = %s"
@@ -767,10 +741,7 @@ let execute_update : type req res.
                    inner (attempt + 1)
            in
            inner 0)
-      end)
-      >>= fun (d,res) ->
-      AsdStatistics.new_apply stats d;
-      Lwt.return res
+      end
     | SetFull -> fun full ->
       Lwt_log.warning_f "SetFull %b" full >>= fun () ->
       AsdMgmt.set_full mgmt full;
@@ -804,6 +775,25 @@ let check_asd_id kv asd_id =
     then asd_id
     else failwith (Printf.sprintf "asd id mismatch: %s <> %s" asd_id asd_id')
 
+let update_statistics =
+  let ignore2 _ _ = () in
+  function
+  | Protocol.Wrap_query q ->
+    begin
+      match q with
+      | Protocol.Range -> AsdStatistics.new_range
+      | Protocol.RangeEntries -> AsdStatistics.new_range_entries
+      | Protocol.MultiGet -> AsdStatistics.new_multi_get
+      | Protocol.MultiGet2 -> AsdStatistics.new_multi_get
+      | Protocol.Statistics -> ignore2
+      | Protocol.GetVersion -> ignore2
+    end
+  | Protocol.Wrap_update u ->
+    begin
+      match u with
+      | Protocol.Apply -> AsdStatistics.new_apply
+      | Protocol.SetFull -> ignore2
+    end
 
 
 let asd_protocol
@@ -813,7 +803,7 @@ let asd_protocol
   =
   let ic,oc = Networking2.to_connection ~buffer_size:(786 * 1024) fd in
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
-  let handle_request buf code =
+  let handle_request buf command =
     (*
      Lwt_log.debug_f "Got request %s" (Protocol.code_to_description code)
   >>= fun () ->
@@ -821,7 +811,7 @@ let asd_protocol
 
     Lwt.catch
       (fun () ->
-       begin match Protocol.code_to_command code with
+       begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
                 execute_query kv dir_info stats q req >>= fun (res, write_extra) ->
@@ -836,7 +826,6 @@ let asd_protocol
                   ~release_fnr
                   ~syncfs_batched
                   dir_info
-                  stats
                   ~mgmt
                   ~get_next_fnr
                   u req >>= fun res ->
@@ -873,9 +862,11 @@ let asd_protocol
     Llio.input_string ic >>= fun req_s ->
     let buf = Llio.make_buffer req_s 0 in
     let code = Llio.int_from buf in
+    let command = Protocol.code_to_command code in
     Statistics.with_timing_lwt
-      (fun () -> handle_request buf code)
+      (fun () -> handle_request buf command)
     >>= fun (time_inner, ()) ->
+    update_statistics command stats time_inner;
 
     (if slow
      then
