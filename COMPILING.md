@@ -21,7 +21,7 @@
 # Alba Installation
 
 > Clone the alba repo.
->> - git clone https://path-to-alba-repo
+>> - git clone https://github.com/openvstorage/alba
 
 > Install the dependencies.
 >> - sudo apt-get install libprotoc-dev protobuf-compiler libjerasure-dev yasm
