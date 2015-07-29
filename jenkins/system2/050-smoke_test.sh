@@ -1,0 +1,1 @@
+../050-smoke_test.sh

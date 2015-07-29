@@ -1,0 +1,51 @@
+Alba slightly prefers emptier OSDs for fragments on new writes, and thus tries
+to achieve a good balance. This is not enough. For example, after replacing
+a defect drive in a well filled Alba, the new drive will be empty and
+way below the average fill rate. So the maintenance agents actively rebalance the drives.
+
+Currently the strategy is this. The drives are categorized to be in one of three buckets:
+/low/, /ok/, /high/.
+
+
+#+BEGIN_LATEX
+\begin{equation*}
+ \begin{aligned}
+  \text{low}  &= \{ \text{osd} | \text{fr}_{osd} <  \overline{fr} - \alpha \} \\
+  \text{high} &= \{ \text{osd} | \text{fr}_{osd} \leqslant \overline{fr} + \alpha \} \\
+  \text{ok}   &= \{ \text{osd} | \overline{fr} -\alpha \leqslant \text{fr}_{osd}
+                    < \overline{fr} + \alpha \} \\
+              & \text{where} \\
+  \alpha &= \sigma_{fr} + 0.01
+\end{aligned}
+\end{equation*}
+#+END_LATEX
+
+
+#+BEGIN_LATEX
+\newcommand{\move}[2] {
+  \(
+     \{ \text{#1} \rightsquigarrow \text{#2} \}
+  \)
+}
+#+END_LATEX
+
+Then, a batch of random manifests are fetched.
+For each of the manifests, the rebalancer tries to find a move of the
+fragments on /osd/ in
+/high/ towards an /osd/ from /low/
+(notation:
+  \move{high}{ok} ).
+In absence of such a move, a less ambitious move
+ \move{high}{ok} or \move{ok}{low}
+is proposed for that manifest.
+The batch is sorted according to the possible moves,
+and only a small fraction of moves (the very best ones) is actually executed.
+Then the process is repeated until the fill rates are acceptable. Essentially,
+until \( \text{low} = \text{high} = \emptyset \) .
+
+The reasoning behind it is that it is rather cheap to fetch manifests
+and do some calculations, but it is expensive to move fragments
+and update the manifests accordingly. We really want a move to count.
+Also we want to avoid a combination of
+  \move{high}{ok} and \move{ok}{low}  where a single
+  \move{high}{low} would have been possible.

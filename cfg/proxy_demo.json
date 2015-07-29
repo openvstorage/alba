@@ -1,0 +1,12 @@
+{
+    "ips" : ["::1"], // optional
+    "log_level": "debug",
+    "port": 10000,
+    "albamgr_cfg_file": "./cfg/test.ini",
+    "manifest_cache_size" : 100000, // optional, default 100_000
+    "fragment_cache_dir" : "/tmp/proxy_fragment_cache",
+    "fragment_cache_size" : 100000000, // optional, default 100_000_000
+    "albamgr_connection_pool_size" : 10, // optional, default 10
+    "nsm_host_connection_pool_size" : 10, // optional, default 10
+    "osd_connection_pool_size" : 10 // optional, default 10
+}

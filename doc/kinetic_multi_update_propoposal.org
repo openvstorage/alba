@@ -1,0 +1,212 @@
+Atomic Multi-update feature request clarification
+
+* The original request
+See : [[https://github.com/Seagate/kinetic-protocol/issues/17][Github]]
+The original feature request was done via a python client code sample:
+
+#+BEGIN_EXAMPLE
+    client = kinetic.Client(...)
+    mu = client.makeMultiUpdate()
+
+    mu.addAssert(key = key0, value=value0) # or assert on version
+    mu.addPut(key1,value1)
+    mu.addPut(key2,value2)
+    mu.addDelete(key3)
+    ...
+
+    success = client.perform(mu)
+    if success:
+        ...
+#+END_EXAMPLE
+
+We also explained that a batch at most contains 1 large value.
+All other operations in the batch pertain small key value pairs:
+counters, timestamps, reverse mappings (where the values are keys)
+
+The real world example we're using would be written something like this in Python:
+
+#+BEGIN_EXAMPLE
+    mu = client.makeMultiupdate()
+
+    # assert the namespace exists and is properly initialized on the device
+    mu.addAssert(key = namespace_presence(namespace_id), value = status_ok)
+
+    # the fragment of user data
+    mu.addPut(key = fragment_key(namespace_id,
+                                 object_id,
+                                 chunk_id,
+                                 fragment_id),
+              value = fragment_data)
+    # mark the fragment to be part of the current gc_epoch
+    mu.addPut(key = gc_tag(namespace_id,
+                           object_id,
+                           chunk_id,
+                           fragment_id),
+              value = gc_epoch)
+
+    success = client.perform(mu)
+    ...
+#+END_EXAMPLE
+
+You can see the batches are small in number of operations,
+and limited in total size. The whole atomic multi-update feature request
+is not about performance, it's about consistency, and the fact we don't
+want to start thinking about partial failures on this level.
+
+* Seagate's current strategy in the simulator
+
+#+BEGIN_EXAMPLE
+    client.startBatch();
+    client.putAsync(...);
+    client.deleteAsync(...);
+    client.endBatch();
+#+END_EXAMPLE
+
+This is a complex API with a number of problems:
+- This allows arbitrary long (both in time and in size) batches which burdens
+  the Kinetic drive with the administration and buffering of everything until the
+  *endBatch* message arrives.
+- Every message has a corresponding response message, which burdens the client with
+  the installation of handlers for every message and corresponding timeouts.
+- On an API level, it allows interwoven batches (even from the same client).
+- On an API level, it allows for nested/stacked/reentrant batches:
+    #+BEGIN_EXAMPLE
+    client.startBatch();
+    client.putAsync(...);
+    client.startBatch();
+    ...
+    client.endBatch();
+    ...
+    client.endBatch();
+    #+END_EXAMPLE
+
+   Even if you don't want this, you will have to do validation
+   (both on client and on server side).
+
+We already mentioned all of this in September 2014,
+before Seagate started to implement this in the Java Simulator.
+
+* A simpler batching strategy
+
+Given that the Seagate Kinetic protocol always exchanges
+1 protocol buffer message with optional value data,
+the simplest way to implement the feature could be this:
+redefine the semantics for the optional data part to
+be able to handle multiple values in there.
+So on the wire, everything would remain the same:
+
+|   Offset | Type     | Length(B) | Semantics                         |
+|----------+----------+-----------+-----------------------------------|
+|        / | <        | <         | <                                 |
+|        0 | Byte     | 1         | 'F' magic                         |
+|----------+----------+-----------+-----------------------------------|
+|        1 | Quad     | 4         | Big endian size (in bytes) of the |
+|          |          |           | protocol buffer message  = msize  |
+|----------+----------+-----------+-----------------------------------|
+|        5 | Quad     | 4         | Big endian size (in bytes) of the |
+|          |          |           | payload = psize                   |
+|----------+----------+-----------+-----------------------------------|
+|        9 | protobuf | msize     | just as normal, but indicate it's |
+|          |          |           | a batch.                          |
+|----------+----------+-----------+-----------------------------------|
+| 9+ msize | payload  | psize     | payload.                          |
+|----------+----------+-----------+-----------------------------------|
+
+
+The payload could put on the wire in a very simple way:
+
+| Offset | Type      | Length(B) | Semantics                         |
+|--------+-----------+-----------+-----------------------------------|
+| /      | <         | <         | <                                 |
+| 0      | Quad      | 4         | number of operations in the batch |
+|        |           |           | = n                               |
+|--------+-----------+-----------+-----------------------------------|
+| 4      | operation |           | operation_0                       |
+|--------+-----------+-----------+-----------------------------------|
+| ...    |           | ...       |                                   |
+|--------+-----------+-----------+-----------------------------------|
+|        | operation |           | operation_(n-1)                   |
+|--------+-----------+-----------+-----------------------------------|
+
+** The operations
+The operations we need are:
+ + AssertVersion
+ + Put
+ + Delete
+
+*** AssertVersion (key, version = version0)
+
+which would be serialized like this:
+
+| Offset     | Type   | Length(B) | Semantics                    |
+|------------+--------+-----------+------------------------------|
+| /          | <      | <         | <                            |
+| 0          | Quad   | 4         | 0x01 (it's an AssertVersion) |
+|------------+--------+-----------+------------------------------|
+| 4          | Quad   | 4         | size of key = ksize          |
+|------------+--------+-----------+------------------------------|
+| 8          | binary | ksize     | the key                      |
+|------------+--------+-----------+------------------------------|
+| 8 + ksize  | Quad   | 4         | size of the version =vsize   |
+|------------+--------+-----------+------------------------------|
+| 12 + ksize | binary | vsize     | the version                  |
+|------------+--------+-----------+------------------------------|
+
+
+*** Put(key, value)
+which would be serialized like this:
+
+| Offset    | Type   | Length(B) | Semantics                 |
+|-----------+--------+-----------+---------------------------|
+| /         | <      | <         | <                         |
+| 0         | Quad   | 4         | 0x02 (it's a Put)         |
+|-----------+--------+-----------+---------------------------|
+| 4         | Quad   | 4         | size of the key = ksize   |
+|-----------+--------+-----------+---------------------------|
+| 8         | binary | ksize     | the key                   |
+| 8 + ksize | Quad   | 4         | size of the value = vsize |
+| 12+ ksize | binary | vsize     |                           |
+|-----------+--------+-----------+---------------------------|
+
+
+*** Delete(key)
+which would be serialized like this:
+
+| Offset | Type   | Length(B) | Semantics               |
+|--------+--------+-----------+-------------------------|
+|      / | <      | <         | <                       |
+|      0 | Quad   | 4         | 0x03 (it's a Delete)    |
+|--------+--------+-----------+-------------------------|
+|      4 | Quad   | 4         | size of the key = ksize |
+|--------+--------+-----------+-------------------------|
+|      8 | binary | ksize     | the key                 |
+|--------+--------+-----------+-------------------------|
+
+
+** Remarks:
+
++ The normal constraints you have on the size of the payload don't have to
+  be changed. So the total size of the batch must be < 1 MB.
++ The whole batch processing is the same as a simple message process.
+    send 1 message + payload to server, get 1 message (+ payload back)
++ Even though the batch is atomic, it's acceptable (even preferable)
+  to process the operations in a batch in order.
+  There is small incentive to put the asserts first.
++ For clients, it's easy to create and deliver a batch, and
+   it's equally simple to process its result.
++ It's acceptable to block batches with "TooManyConcurrentBatches"
+  and severly limit the number of batches that can be concurrently delivered
+  (from different clients) to the device.  (fe < 10)
++ All binary things are preceded by their size.
++ It's not really necessary to use 4 bytes for the lengths,
+  you can save some byte using varints, golomb coding, ...
++ We do want to have the possibility to assert the version
+   of key value pairs we are not going to change in that batch.
++ There's room to add more operations
++ Another feature request would be an _atomic multiget_,
+  which can be implemented in a similar way.
++ We're not trying to impose an API, we're just trying to show
+  that you don't need a lot of effort to implement what we need.
++ If you want to limit the number of iops needed to process the batch,
+  you might want to move more of the information (like the number of operations)
+  into the message

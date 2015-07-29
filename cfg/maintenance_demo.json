@@ -1,0 +1,7 @@
+{
+    "log_level": "debug", 
+    "albamgr_cfg_file": "./cfg/test.ini",
+    "albamgr_connection_pool_size" : 10, // optional, default 10
+    "nsm_host_connection_pool_size" : 10, // optional, default 10
+    "osd_connection_pool_size" : 10 // optional, default 10
+}

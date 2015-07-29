@@ -1,0 +1,499 @@
+(*
+Copyright 2015 Open vStorage NV
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*)
+
+open Lwt
+open Prelude
+open Proxy_protocol
+open Alba_statistics
+
+let ini_hash_to_string tbl =
+  let buf = Buffer.create 20 in
+  Hashtbl.iter
+    (fun k v ->
+       Buffer.add_string buf "[";
+       Buffer.add_string buf k;
+       Buffer.add_string buf "]\n";
+       (Hashtbl.iter
+          (fun k v ->
+             Buffer.add_string buf k;
+             Buffer.add_string buf " = ";
+             Buffer.add_string buf v;
+             Buffer.add_string buf "\n") v);
+       Buffer.add_string buf "\n")
+    tbl;
+  Buffer.contents buf
+
+let albamgr_cfg_to_ini_string (cluster_id, nodes) =
+  let transform_node_cfg
+      { Albamgr_protocol.Protocol.Arakoon_config.ips;
+        port; } =
+    Hashtbl.from_assoc_list
+      [ ("ip", String.concat ", " ips);
+        ("client_port", string_of_int port); ]
+  in
+
+  let h = Hashtbl.create 3 in
+  let node_names =
+    Hashtbl.fold
+      (fun node_name node_cfg acc ->
+         Hashtbl.add h node_name (transform_node_cfg node_cfg);
+         node_name :: acc)
+      nodes
+      []
+  in
+
+  let global = [ ("cluster", String.concat ", " node_names);
+                 ("cluster_id", cluster_id); ] in
+  Hashtbl.add h "global" (Hashtbl.from_assoc_list global);
+
+  ini_hash_to_string h
+
+let write_albamgr_cfg albamgr_cfg destination =
+  let s = albamgr_cfg_to_ini_string albamgr_cfg in
+  let tmp = destination ^ ".tmp" in
+  Lwt_extra2.unlink ~may_not_exist:true tmp >>= fun () ->
+  Lwt_extra2.with_fd
+    tmp
+    ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
+    ~perm:0o664
+    (fun fd ->
+       Lwt_extra2.write_all
+         fd
+         s 0 (String.length s) >>= fun () ->
+       Lwt_unix.fsync fd) >>= fun () ->
+  Lwt_unix.rename tmp destination
+
+let output_err_response oc err msg =
+  let res_s =
+    serialize
+      (Llio.pair_to Llio.int_to Llio.string_to)
+      (Protocol.Error.err2int err, msg)
+  in
+  Lwt_extra2.llio_output_and_flush oc res_s
+
+let proxy_protocol (alba_client : Alba_client.alba_client)
+                   (stats: ProxyStatistics.t)
+                   fd =
+  let (ic,oc) = Networking2.to_connection ~buffer_size:8192 fd in
+  let write_ok_response serializer res =
+    let res_s =
+      serialize
+        (Llio.pair_to
+           Llio.int_to
+           serializer)
+        (0, res) in
+    Lwt_extra2.llio_output_and_flush oc res_s
+  in
+  let write_err_response err =
+    let res_s =
+      serialize
+        (Llio.pair_to
+           Llio.int_to
+           Llio.string_to)
+        (Protocol.Error.err2int err,
+         Protocol.Error.show err) in
+    Lwt_extra2.llio_output_and_flush oc res_s
+  in
+
+  let execute_request : type i o. (i, o) Protocol.request ->
+                             ProxyStatistics.t ->
+                             i -> o Lwt.t
+                          =
+    let open Protocol in
+    let read_objects_slices namespace objects_slices ~consistent_read =
+      begin
+        let total_length, objects_slices =
+          List.fold_left
+            (fun (offset, acc) (object_name, object_slices) ->
+             let offset' =
+               List.fold_left
+                 (fun offset (_, slice_length) -> offset + slice_length)
+                 offset
+                 object_slices
+             in
+             offset', (offset, object_name, object_slices) :: acc)
+            (0, [])
+            objects_slices
+        in
+
+        let res = Bytes.create total_length in
+
+        Lwt_list.iter_p
+          (fun (offset, object_name, object_slices) ->
+           alba_client # download_object_slices
+                       ~namespace
+                       ~object_name
+                       ~object_slices
+                       ~consistent_read
+                       (fun dest_off src off len ->
+                        Lwt_bytes.blit_to_bytes src off res (offset + dest_off) len;
+                        Lwt.return ()) >>= function
+           | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
+           | Some _ -> Lwt.return ())
+          objects_slices >>= fun () ->
+
+        Lwt.return res
+      end
+    in
+    function
+    | ListNamespaces -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
+      (* TODO only return namespaces which are active? hmm, maybe creating too... *)
+      alba_client # mgr_access # list_namespaces
+        ~first ~finc ~last
+        ~max ~reverse >>= fun ((cnt, namespaces), has_more) ->
+      Lwt.return ((cnt, List.map fst namespaces), has_more)
+    | NamespaceExists -> fun stats namespace ->
+      (* TODO keep namespace state in mind? *)
+      alba_client # mgr_access # get_namespace ~namespace >>= fun r ->
+      Lwt.return (r <> None)
+    | CreateNamespace -> fun stats (namespace, preset_name) ->
+      alba_client # create_namespace ~preset_name ~namespace () >>= fun namespace_id ->
+      Lwt.return ()
+    | DeleteNamespace -> fun stats namespace ->
+      alba_client # delete_namespace ~namespace
+    | ListObjects -> fun stats (namespace,
+                          { RangeQueryArgs.first; finc;
+                            last; max; reverse }) ->
+      alba_client # list_objects ~namespace ~first ~finc ~last ~max ~reverse
+    | ReadObjectFs ->
+       fun stats (namespace,
+                  object_name,
+                  output_file,
+                  consistent_read,
+                  should_cache) ->
+       begin
+         alba_client # download_object_to_file
+                     ~namespace
+                     ~object_name
+                     ~output_file
+                     ~consistent_read ~should_cache
+         >>= function
+         | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
+         | Some (mf,download_stats) ->
+            let open Alba_statistics.Statistics in
+            let (_mf_duration, mf_hm) = download_stats.get_manifest_dh in
+            let fg_hm = summed_fragment_hit_misses download_stats in
+            ProxyStatistics.new_download
+              stats namespace
+              download_stats.total
+              mf_hm
+              fg_hm;
+            Lwt.return ()
+       end
+    | WriteObjectFs -> fun stats (namespace,
+                                  object_name,
+                                  input_file,
+                                  allow_overwrite,
+                                  checksum_o) ->
+      let open Nsm_model in
+      Lwt.catch
+        (fun () ->
+           alba_client # upload_object_from_file
+             ~namespace
+             ~object_name ~input_file
+             ~checksum_o
+             ~allow_overwrite:(if allow_overwrite
+                               then Unconditionally
+                               else NoPrevious)
+           >>= fun (_mf , upload_stats) ->
+           let open Alba_statistics.Statistics in
+           ProxyStatistics.new_upload stats namespace upload_stats.total;
+           Lwt.return ()
+        )
+        (let open Alba_client_errors.Error in
+          function
+          | Err.Nsm_exn (Err.Overwrite_not_allowed, _) ->
+            Protocol.Error.failwith Protocol.Error.OverwriteNotAllowed
+          | Exn FileNotFound ->
+             Protocol.Error.failwith Protocol.Error.FileNotFound
+          | exn -> Lwt.fail exn)
+    | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
+      Lwt.catch
+        (fun () ->
+           alba_client # delete_object ~namespace ~object_name ~may_not_exist)
+        (function
+          | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Overwrite_not_allowed, _) ->
+            Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
+          | exn -> Lwt.fail exn)
+    | GetObjectInfo ->
+       fun stats (namespace, object_name, consistent_read, should_cache) ->
+       begin
+         alba_client # get_object_manifest
+           ~namespace ~object_name
+           ~consistent_read ~should_cache
+         >>= fun (_hit_or_miss, r) ->
+         match r with
+         | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
+         | Some manifest ->
+           let open Nsm_model.Manifest in
+           Lwt.return (manifest.size, manifest.checksum)
+       end
+    | ReadObjectsSlices -> fun stats (namespace, objects_slices, consistent_read) ->
+      read_objects_slices namespace objects_slices ~consistent_read
+    | InvalidateCache ->
+      fun stats namespace -> alba_client # invalidate_cache namespace
+    | DropCache ->
+      fun stats namespace -> alba_client # drop_cache namespace
+    | ProxyStatistics ->
+       fun stats clear ->
+       begin
+         let stopped = ProxyStatistics.clone stats in
+         let () = ProxyStatistics.stop stopped in
+         if clear then ProxyStatistics.clear stats;
+         Lwt.return stopped
+       end
+    | GetVersion -> fun stats () -> Lwt.return Alba_version.summary
+  in
+  let handle_request buf code =
+    Lwt.catch
+      (fun () ->
+         match Protocol.code_to_command code with
+         | Protocol.Wrap r ->
+           let req = Deser.from_buffer (Protocol.deser_request_i r) buf in
+           execute_request r stats req >>= fun res ->
+           write_ok_response
+             (Deser.to_buffer (Protocol.deser_request_o r))
+             res)
+      (function
+        | End_of_file as e ->
+          Lwt.fail e
+        | Protocol.Error.Exn err ->
+          Lwt_log.debug_f "Returning %s error to client"
+                          (Protocol.Error.show err) >>= fun () ->
+          write_err_response err
+        | Asd_protocol.Protocol.Error.Exn err ->
+          Lwt_log.debug_f
+            "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
+            (Asd_protocol.Protocol.Error.show err) >>= fun () ->
+          write_err_response Protocol.Error.Unknown
+        | Nsm_model.Err.Nsm_exn (err, _) ->
+          begin
+            let open Nsm_model.Err in
+            match err with
+            | Object_not_found ->
+              write_err_response Protocol.Error.ObjectDoesNotExist
+            | Namespace_id_not_found
+            | Unknown
+            | Invalid_gc_epoch
+            | Non_unique_object_id
+            | Not_master
+            | Inconsistent_read
+            | InvalidVersionId
+            | Old_plugin_version
+            | Old_timestamp
+            | Invalid_fragment_spread
+            | Inactive_osd
+            | Too_many_disks_per_node
+            | Insufficient_fragments
+            | Unknown_operation ->
+              Lwt_log.info_f
+                "Unexpected Nsm_model.Err exception in proxy while handling request: %s"
+                (Nsm_model.Err.show err) >>= fun () ->
+              write_err_response Protocol.Error.Unknown
+            | Overwrite_not_allowed ->
+              Lwt_log.info_f
+                "Received Nsm_model.Err Overwrite_not_allowed exception in proxy while that should've already been handled earlier..." >>= fun () ->
+              write_err_response Protocol.Error.Unknown
+          end
+        | Albamgr_protocol.Protocol.Error.Albamgr_exn (err, _) ->
+          begin
+            let open Albamgr_protocol.Protocol.Error in
+            match err with
+            | Namespace_already_exists ->
+              write_err_response Protocol.Error.NamespaceAlreadyExists
+            | Namespace_does_not_exist ->
+              write_err_response Protocol.Error.NamespaceDoesNotExist
+            | Preset_does_not_exist ->
+              write_err_response Protocol.Error.PresetDoesNotExist
+            | Unknown
+            | Osd_already_exists
+            | Nsm_host_already_exists
+            | Nsm_host_unknown
+            | Nsm_host_not_lost
+            | Osd_already_linked_to_namespace
+            | Not_master
+            | Inconsistent_read
+            | Old_plugin_version
+            | Preset_already_exists
+            | Preset_cant_delete_default
+            | Preset_cant_delete_in_use
+            | Invalid_preset
+            | Osd_already_claimed
+            | Osd_unknown
+            | Osd_info_mismatch
+            | Osd_already_decommissioned
+            | Unknown_operation ->
+              Lwt_log.info_f
+                "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"
+                (Albamgr_protocol.Protocol.Error.show err) >>= fun () ->
+              write_err_response Protocol.Error.Unknown
+          end
+        | Alba_client_errors.Error.Exn err ->
+          begin
+            let open Alba_client_errors.Error in
+            Lwt_log.debug_f "Got error from alba client: %s" (show err) >>= fun () ->
+            write_err_response
+              (let open Protocol in
+               match err with
+               | ChecksumMismatch -> Error.ChecksumMismatch
+               | ChecksumAlgoNotAllowed -> Error.ChecksumAlgoNotAllowed
+               | BadSliceLength -> Error.BadSliceLength
+               | OverlappingSlices -> Error.OverlappingSlices
+               | SliceOutsideObject -> Error.SliceOutsideObject
+               | FileNotFound -> Error.FileNotFound
+               | NoSatisfiablePolicy -> Error.NoSatisfiablePolicy
+               | NamespaceDoesNotExist -> Error.NamespaceDoesNotExist
+               | NotEnoughFragments -> Error.Unknown
+              )
+          end
+        | exn ->
+          Lwt_log.debug_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
+          write_err_response Protocol.Error.Unknown)
+  in
+  let rec inner () =
+    Llio.input_string ic >>= fun req_s ->
+    let buf = Llio.make_buffer req_s 0 in
+    let code = Llio.int_from buf in
+    Statistics.with_timing_lwt
+      (fun () -> handle_request buf code)
+    >>= fun (time_inner, ()) ->
+    (if time_inner > 0.5
+     then Lwt_log.info_f
+     else Lwt_log.debug_f) "Request %s took %f" (Protocol.code_to_txt code) time_inner >>= fun () ->
+    inner ()
+  in
+  Llio.input_int32 ic >>= fun magic ->
+  if magic = Protocol.magic
+  then
+    begin
+      Llio.input_int32 ic >>= fun version ->
+      if version = Protocol.version
+      then inner ()
+      else
+        let err = Protocol.Error.ProtocolVersionMismatch
+        and msg = Printf.sprintf
+                    "protocol version: (server) %li <> %li (client)"
+                    Protocol.version version
+        in
+        output_err_response oc err msg
+    end
+  else Lwt.return ()
+
+let refresh_albamgr_cfg
+    ~loop
+    albamgr_client_cfg
+    (alba_client : Alba_client.alba_client)
+    destination =
+  let rec inner () =
+    Lwt.catch
+      (fun () ->
+         alba_client # mgr_access # get_client_config
+         >>= fun ccfg ->
+         Lwt.return (`Res ccfg))
+      (fun exn ->
+         let open Client_helper.MasterLookupResult in
+         match exn with
+         | Error (Unknown_node (master, (node, cfg))) ->
+           Client_helper.with_client'
+             (* TODO *)
+             ~tls:None
+             cfg (fst !albamgr_client_cfg)
+             (fun conn ->
+                Lwt.return ()) >>= fun () ->
+           Lwt.return `Retry
+         | _ ->
+           Lwt.return `Retry
+      ) >>= function
+    | `Retry ->
+      Lwt_extra2.sleep_approx 60. >>= fun () ->
+      inner ()
+    | `Res ccfg ->
+      albamgr_client_cfg := ccfg;
+      write_albamgr_cfg ccfg destination >>= fun () ->
+      Lwt_extra2.sleep_approx 60. >>= fun () ->
+      if loop
+      then inner ()
+      else Lwt.return ()
+  in
+  inner ()
+
+let reporting_t () =
+  let rec loop () =
+    Lwt_unix.sleep 60.0 >>= fun () ->
+    Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
+    Lwt_log.info_f "maxrss:%i KB" maxrss >>= fun () ->
+    (* maybe log stats too ? *)
+    loop ()
+  in
+  loop ()
+let run_server hosts port
+               cache_dir albamgr_client_cfg
+               ~manifest_cache_size
+               ~fragment_cache_size
+               ~albamgr_connection_pool_size
+               ~nsm_host_connection_pool_size
+               ~osd_connection_pool_size
+               ~albamgr_cfg_file
+  =
+  Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
+  >>= fun () ->
+  let stats = ProxyStatistics.make () in
+
+  Lwt.catch
+    (fun () ->
+       let bad_fragment_callback
+           (alba_client : Alba_client.alba_client)
+           ~namespace_id
+           ~object_id ~object_name
+           ~chunk_id ~fragment_id ~version_id =
+         Lwt.ignore_result
+           (Lwt_extra2.ignore_errors
+              (fun () ->
+                 alba_client # mgr_access # add_work_repair_fragment
+                   ~namespace_id ~object_id
+                   ~object_name
+                   ~chunk_id
+                   ~fragment_id
+                   ~version_id)) in
+       Alba_client.with_client
+         albamgr_client_cfg
+         ~cache_dir
+         ~fragment_cache_size
+         ~manifest_cache_size
+         ~bad_fragment_callback
+         ~albamgr_connection_pool_size
+         ~nsm_host_connection_pool_size
+         ~osd_connection_pool_size
+         (fun alba_client ->
+          Lwt.pick
+            [ (alba_client # discover_osds_check_claimed ());
+              (refresh_albamgr_cfg
+                 ~loop:true
+                 albamgr_client_cfg
+                 alba_client
+                 albamgr_cfg_file
+              );
+              (Networking2.make_server hosts port
+                                       (proxy_protocol alba_client stats));
+              (Lwt_extra2.make_fuse_thread ());
+              reporting_t ();
+            ])
+    )
+    (fun exn ->
+       Lwt_log.warning_f
+         ~exn
+         "Going down after unexpected exception in proxy process" >>= fun () ->
+       Lwt.fail exn)

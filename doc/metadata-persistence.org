@@ -1,0 +1,210 @@
+Short summary: solution could be:
+- replicated WAL + rocksdb without WAL and backup the SSTables to immutable erasure coded backend
+
+for each namespace + 1 for global alba instance
+
+* Metadata
+  The client (volumedriver) needs to store metadata about a namespace, to allow
+  efficiently looking up where objects are located.
+
+** what should be tracked
+   Life would be easy if we can have a pieces of metadata available in
+   the cluster in a reliable manner. These are described in architecture.tex.
+
+** can all be stored in a key value store
+   A leveldb (rocksdb) database might be a good fit here.
+   It stores data in a WAL + (immutable) SSTables + manifest
+
+   The immutable SSTables can be stored in the erasure coded backend.
+   The write ahead log should be stored in a replicated manner too, so we can't
+   lose the metadata too easily. The kinetic drives could be used for this
+   purpose directly.
+
+** Is it ok to lose the metadata?
+   Preferably not, but nonetheless we should still be able to handle this.
+   Do note that the chance of this happening is just as small as losing regular
+   data. Losing the metadata however causes more severe data loss, so a bit
+   of extra recovery possibility is desirable.
+
+   We could, for example, asynchronously store the metadata next to the real data.
+
+   namespace_objectmanifests_objectid_manifestversion, manifest
+   (this might be only a part of the manifest, erasure coded.
+    that way you can only recover metadata for objects which can be recovered.)
+
+   with this info it is possible to rebuild the metadatabase
+   (except for topology? but this probably is not a problem)
+   about all objects (that is the mapping name -> coords + disk -> names)
+
+** multiple clients for each namespace
+   - Volume drives process
+   - Scrubber
+   - Garbage collector
+   - (Dead disk) Healer
+
+   So if multiple of these are running we need some form coordination or
+   consensus about which order updates should be applied in.
+   This means we need to build up a transaction log. We need this
+   transaction log to be resilient against drive failures, so distributed,
+   yet remain consistent. Thus a consensus algorithm.
+
+   Given kinetic drives which support sequences and asserts we can
+   translate the raft protocol and its invariants to work on these drives.
+   The details of this translation follow below.
+
+   Of course we don't want the multiple clients fighting over who
+   should be the leader of the log, there we'll also want different
+   clients to be able to discover each other.
+   This can be done by also storing the needed info on the same
+   drives.
+
+** building the DWAL
+
+To keep things simple in the DWAL (distributed write ahead log) we work in multiple phases.
+
+The first phase is about claiming ownership of a certain term.
+This allows a process to be the only one to push updates within that term.
+Next, the term is used to build the actual DWAL.
+The term can also be used to update a last write wins register.
+This register can be for example be used to store data about the latest snapshot of the state.
+
+*** Invariants
+
+    - (Keys.latest_term namespace) contains the latest term added in
+      (Keys.vote namespace){term}
+    - terms only go up
+    - only entries which are guaranteed not to be committed
+      may be deleted from the WAL
+    - no gaps are allowed in the tlog
+    - no entries for the same index in another term
+    - most manipulations to the WAL are done while owning the latest term
+      (syncing data from another node is a notable exception)
+
+*** Term Ownership
+
+A node can client ownership of a term by applying the following protocol.
+
+**** 1) determine latest used term by querying a quorum
+     Get "termprefix_latest"
+**** 2) gather votes from a quorum for the next term
+     [ Assert "termprefix_latest" previous_term_for_drive;
+       Set    "termprefix_latest" next_term;
+       Set    "termprefix_term_{next_term}" self; ]
+
+**** 3) if this succeeds the node is now the owner of this term, for those drives.
+   this is sufficient to start building up the DWAL;
+   - asynchronously all old "termprefix_term_{old_term}" votes from the
+     nodes should be removed, such that no garbage is left behind
+   - there will still be some remaining drives who haven't voted.
+     When they can be reached, they will be in one of the following states:
+     - highest voted term is lower
+        get a vote from this drive with sequence described above;
+        when this succeeds the node now also owns this drive for the specified term
+     - highest voted term is equal, for the same or another node
+        the vote of this node can be considered as a vote for the real owner
+        of the term. the vote should be updated to reflect this.
+     - highest voted term is higher. the node still owns the lower term, but in
+       practice this lower term has become useless; as another node owns (or will
+       soon own) a higher term, thus making any further use of this term useless.
+       depending on whether this is the garbage collector or the namespace manager
+       the node will now either
+       - try to own a higher term OR
+       - backoff, try to connect to the namespace manager
+
+All drives owned by a certain node for a certain term can now be used to coordinate
+updates to the DWAL.
+
+
+*** Building a mutable register
+
+This could be used for the (incremental snapshots) of the key-value store that
+will be built up with the DWAL.
+
+**** determine latest version of register by polling a quorum
+   Get "registerprefix_latest" >>= fun (term, i)
+**** get all nodes in sync
+   if node does not yet have the latest version
+   Assert "termprefix_latest" myterm
+   Set "registerprefix_latest" (term, i)
+   Set "registerprefix_{term}_{i}" latest_value
+
+   clean up previous values
+   Delete "registerprefix_{previous_term}_{previous_i} // or with deleterange
+**** write next version to quorum, when you want to update
+   Assert "termprefix_latest" myterm
+   Set "registerprefix_latest" (term, i)
+   Set "registerprefix_{term}_{i+1}" latest_value
+**** clean up previous value(s) (old version of the register)
+   RangeDelete first:"registerprefix_" finc:true "registerprefix_{term}" linc:false
+
+
+*** Building the DWAL
+
+**** sync a quorum of nodes
+
+   determine latest update in the logs.
+   the latest update is the last update in the last term
+ let latest = Range ~reverse:true ~first:"walprefix_log_" last:(next_prefix "walprefix_log_") ~max:1
+
+(* should also handle case when there is not yet a latest *)
+
+   use latest from a quorum of nodes to determine point until where there might
+   be consensus already.
+
+   at least a quorum of nodes should be synced before we can go to the next phase.
+   we now explain the sync (and maybe cleanup of some entries on which there will
+   never be consensus) process in more detail
+
+   for each node which is not yet in sync, we have to determine the last common
+   ancestor with the node which we know is in sync.
+
+   on the node which is in sync we should determine in which terms it has entries
+   and from which index to which index they go.
+
+   on the node to be synced we check the same and compute the difference.
+   this will result in entries to be deleted and some to be added.
+   first delete any superfluous entries, while still asserting the current term.
+   next replicate any missing entries using the peer to peer protocol.
+   do this in order.
+
+
+**** start appending to the wal
+
+   the node can now start pushing updates on all drives that are in sync
+   for as long as the drive has not voted for a higher term
+
+   the first update should look like:
+   [ Assert       "walprefix_term_latest"           my_term;
+     // this is the (optional) entry determined in step 3
+     AssertExists "walprefix_log_{last_consensus_point}";
+     Set          "walprefix_log_{my_term}_{index}" update ]
+   the next updates should all look as follows:
+   [ Assert       "walprefix_term_latest"           my_term;
+     AssertExists "walprefix_log_{my_term}_{index-1}";
+     Set          "walprefix_log_{my_term}_{index}" update ]
+
+   Note that the AssertExists there ensures no gaps can be created in the log.
+
+   when these updates succeed on a quorum there is consensus that this update
+   will always be learned.
+
+   in the background it can sync the remaining nodes. once they are in sync
+   it is safe to start pushing updates to them too.
+
+   in our case the point of the write ahead log is applying the updates that
+   are contained within it against a leveldb/rocksdb database.
+   we also want to snapshot this database incrementally. that is another
+   problem to be solved too.
+   for now once a node is the command leader it can query all updates
+   with the following range query
+
+   Range ~first:"walprefix_log_" ~last:(next_prefix "walprefix_log_") ~max:unlimited
+
+   This data can then be used to build up the latest version of the state.
+
+** Snapshotting
+   A snapshot of the database built up by the DWAL can be stored on
+   the kinetic drives from time to time, to allow removing part of the DWAL.
+   If we use leveldb/rocksdb this snapshot can be made in an incremental manner.
+   The latest snapshot can be stored in a mutable register as described in
+   the section above.

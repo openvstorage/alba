@@ -1,0 +1,14 @@
+Source: alba
+Maintainer: Cloudfounders <alba@cloudfounders.com>
+Section: misc
+Priority: optional
+Standards-version: 3.9.2
+Build-Depends: debhelper (>=9)
+
+
+Package: alba
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: the ALternative BAckend
+ The ALternative backend for OpenVStorage.
+  

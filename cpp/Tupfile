@@ -1,0 +1,66 @@
+WARNINGS  = -Wall -Wextra -Wno-unknown-pragmas
+WARNINGS += -Wctor-dtor-privacy -Wsign-promo
+WARNINGS += -Woverloaded-virtual -Wnon-virtual-dtor
+
+flags = $(WARNINGS) -std=c++11 -ggdb3 -gdwarf-3 -O3 -fPIC -DBOOST_LOG_DYN_LINK
+
+includes = -I./include
+
+link_blurb = -L/usr/local/lib
+link_blurb += -L/usr/lib/x86_64_linux-gnu -L/usr/lib
+#
+link_blurb += -L@(ROOT)/alba/lib
+link_blurb += -lboost_system -lboost_thread
+link_blurb += -lboost_log -lpthread
+link_blurb += -lboost_program_options
+
+tests = src/tests/llio_test.cc
+tests += src/tests/proxy_client_test.cc
+
+: foreach src/lib/*.cc |> \
+  @(COMPILER) $(flags) $(includes) \
+  -c %f -o %o \
+  |> src/lib/%B.o {obj0}
+
+# shared_lib
+: {obj0} |> \
+  @(COMPILER) -shared -Wl,-soname,libalba.so.1 \
+  -o lib/libalba.so.1.0.1 %f $(link_blurb) \
+  |> lib/libalba.so.1.0.1 {shared_lib}
+
+: {shared_lib} |> \
+  cd lib && ln -s libalba.so.1.0.1 libalba.so.1 \
+  |> lib/libalba.so.1 {alias1}
+
+
+: {alias1} |> cd lib && ln -s libalba.so.1 libalba.so |> lib/libalba.so {alias}
+
+#unit tests
+
+:foreach $(tests) | {alias} |> \
+  @(COMPILER) $(flags) \
+      $(includes) \
+      -I/usr/include/gtest \
+      -I./src/lib \
+      -c %f -o %o \
+  |> src/tests/%B.o {test_obj}
+
+: {test_obj} | {alias} {shared_lib} {alias1} |> \
+  @(COMPILER) $(flags) ./src/tests/main.cc \
+  $(includes) \
+  -I/usr/include/gtest \
+  -L./lib -lalba \
+  /usr/lib/libgtest.a \
+  %f   $(link_blurb) \
+   -o bin/unit_tests.out \
+  |> bin/unit_tests.out
+
+# examples:
+examples = src/examples/test_client.cc
+
+:foreach $(examples) | {shared_lib} {alias} {alias1} |> \
+  @(COMPILER) $(flags) $(includes) \
+    -L./lib -lalba\
+    $(link_blurb) \
+    %f -o %o \
+  |> bin/%B.out

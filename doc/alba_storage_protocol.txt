@@ -1,0 +1,57 @@
+Alba stores objects, grouped per namespace
+
+Objects are divided into chunks which are encoded into fragments.
+
+The fragments are stored onto osds, under some key.
+
+A manifest for the object is stored in the corresponding namespace manager.
+The manifest contains (amongst other things) the locations of all fragments
+that compose this object.
+
+
+Clients can start uploads / repair objects without coordination with the namespace manager.
+
+Goals:
+- all fragments linked from the manifest should exist
+  - they should exist when updating the manifest
+  - they should not be deleted before being unlinked from the manifest
+
+From the above it follows that:
+- all fragments that may at some future point be referenced from the manifest
+  should not be deleted
+- all fragments that will never (again) be referenced from the manifest should
+  eventually be deleted
+
+
+To ensure the above (in an efficient manner) we have introduced 2 concepts:
+- garbage collection (gc) epoch
+- object version
+
+
+The garbage collection epoch is used to separate newly uploaded fragments,
+which the client probably still intends to use in some manifest, from fragments
+uploaded longer ago, which a client probably wouldn't use anymore because it
+timed out or the upload failed for some other reason.
+The gc epoch is checked when adding fragments to a (new or existing) manifest.
+Because of this check we know that fragments in an old gc epoch can no longer
+be used and thus cleaned up by the garbage collector.
+The way we structure the keys for fragments and the gc epoch tag means we can
+efficiently detect fragments in old gc epochs.
+
+
+Fragments from an object can be replaced with an equivalent fragment on another
+osd, this could be useful when e.g. repairing an object (because an osd is
+currently not available) or when rebalancing.
+When a fragment has been replaced the old fragments which is no longer
+referenced should eventually be deleted.
+To achieve this goal we track the keys to be deleted during the update of the manifest.
+Some time later the maintenance process will notice there some garbage to
+cleaned up and issue a delete to the osd.
+However, when deleting fragments we want to ensure we are not deleting fragments
+which may at a later point be referenced in the manifest. For this purpose we
+have introduced the object version, which is also part of the fragment key on
+the osds. The object version is checked whenever fragments of a manifest are
+replaced with equivalent fragments. This ensures the object version only goes up.
+Because the object version is part of the fragment key we will only issue deletes
+for fragments with which have an old object version, which can never again be
+included in the this manifest.

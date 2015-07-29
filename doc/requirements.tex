@@ -1,0 +1,165 @@
+\section{Requirements}
+\subsection{Functional requirements}
+\paragraph{store an object} that resides in memory,
+or on disk at the client's site, using a simple API.
+It should work it's way around fluctuating availability of disks.
+
+\paragraph{retrieve an object} into a buffer or file,
+even when there are failures (within operating range).
+
+\paragraph{partial retrieval} of only a part of the object, in an efficient way.
+An API that allows to specify the retrieval of several parts of an object.
+
+\paragraph{delete an object} so that users cannot retrieve the object anymore,
+and that the resources used by the object will \emph{eventually} become available again.
+A deleted object should not show up in subsequent object listings.
+
+\paragraph{namespaces} The ability to group objects together,
+and decide storage policy on the group level iso the individual level.
+So you want to specify desired reduncancy, compressor, encryption options, aso per
+namespace iso per object.
+
+\paragraph{list objects} that are in the same \emph{namespace}.
+The listing should be authoritative, so
+if the object's information can be retrieved via the listing API,
+the object should be retrievable. It is fine if the object
+is still retrievable for someone having the metadata for a short while
+after the object has been declared \emph{deleted}.
+For the listing itself, a paging based api is required.
+
+\paragraph{list meta objects} like namespaces and policies.
+\paragraph{retrieve run time statistics of components} like proxies,
+storage devices namespace hosts,\ldots.
+
+\paragraph{snapshot*} of a namespace.
+Cheap marking of the current state of a namespace
+so we can revisit this state later.\todo{not needed: as there is no other object store offering this, so the volume driver needs to be able to
+do the administration anyway.}
+
+\paragraph{data safety} for objects.
+Typically expressed in the number of disks can fail
+before the integrity of the data is compromised.
+Objects should be dispersed with over disks with
+a certain number ($k$) data fragments, a certain number ($m$) of parity fragments,
+and a limit ($x$) on the number of disks from the same node that can be used for a specific object. This means, $(k,m,x)$ describes the desired safety.
+The metadata should have the same safety, and not a replication based number.
+We need to know which objects are at risk (safety lower than the desired number).
+
+\paragraph{optional compression} for objects.
+For some types of objects, compression helps a lot.
+So we should be able to enable a specific compressor for these objects.
+
+\paragraph{optional encryption} for some namespaces,
+We need plausible deniability of content knowledge.
+This means that what needs to be stored needs to have been encrypted
+\emph{on the client side}.
+
+\paragraph{optional privacy of communication} between client and storage
+system components. Typically \emph{ssl}.
+\todo{ we'll do this in a later phase}
+
+\paragraph{total privacy}
+Some customers have the requirement that their data does
+\emph{not reside on shared disks}.
+They have their own pre-allocated set of disks.
+This means a mapping from namespace to OSD.
+
+\subsection{Efficiency}
+For the type of objects we care about,
+we \emph{need} to be better suited than Swift, Ceph, or DSS.
+In concreto, we want
+\begin{itemize}
+  \item{lower storage cost:}
+    erasure coding of data.
+    we don't want data replication.
+  \item{lower read latency:} No access point proxy.
+  \item{higher read efficiency:} ie partial reads, and a light codec,
+  that allows these partial reads without processing the full object.
+\end{itemize}
+
+\paragraph{to proxy or not to proxy?}
+A proxy that functions as an access point is comfortable, but adds latency.
+However the proxy's proximity to the client has tremendous impact.
+\begin{figure}[!ht]
+  \begin{tikzpicture}
+        \node (client) {client};
+        \node (proxy1) [above right=of client] {proxy1};
+        \node (proxy2) [below right=of client] {proxy2};
+        \node (osd0)   [below right=of proxy1]  {osds};
+
+        \path [draw, <->]
+        (client.east) to node [above, sloped] { $0.2$ } (proxy1.west)
+        ;
+        \path [draw, <->]
+        (client.east) to node [above, sloped]{ 1 } (proxy2.west)
+        ;
+        \path [draw, <->]
+        (proxy1.east) to node [above, sloped]{ 1 } (osd0.west)
+        ;
+        \path [draw, <->]
+        (proxy2.east) to node [above, sloped] { 1 } (osd0.west)
+        ;
+
+  \end{tikzpicture}
+  \caption{latency for proxies}\label{fig:proxy}
+\end{figure}
+Suppose, latency is 0.2 hops communication on localhost (rough estimate).
+For the first proxy in figure \ref{fig:proxy} we have a total latency of $2.4$ hops.
+while for the second proxy, we incur a latency of $4$ hops. The ideal would be of course $2$ hops.
+This simple example shows that \emph{hop count}
+dwarfs most other things in a distributed system,
+but that the latency of the hops matters too.
+If we really need to have a proxy, it better be on the same tier as the client.
+
+\paragraph{partial read}
+Hop counts come close to the truth but you also want to be able only to read what you want. Partial reads allow you to do this.
+\subsection{Reliability} of the system.
+This means it's self maintaining (up to a point).
+Automatically
+\begin{itemize}
+  \item{work around a failing disk}.
+  \item{heal damaged objects}
+  \item{know what to do when a disk is added}.
+  \item{adapt to changed policies*}
+    (do we want this? for example, change number of parity disks $m$
+    and apply this to already existing objects?)
+\end{itemize}
+
+\subsection{Scalability}
+We aim to build a storage product for $[12, 100)$ HDDs.
+Within this range, it should scale rather smoothly.
+It's acceptable if the minimal number of disks that can be added at a time is somewhat larger than 1.
+Above and below this size the system's performance may degrade.
+\footnote{We currently envision a fully connected architecture, with all proxies connected to all OSDs. That may not be scalable to bigger environments}
+If it doesn't then it's a fortunate accident.
+
+\paragraph{Hardware}
+We design for little boxes of $4$ HDDs that are deployed as a single unit.
+The core idea is that we can work with a crippled unit
+when 1 of the disks is dead, but that we decommission the unit when 2 disks die.
+This also impacts the data safety policies we want to use. Perhaps surprisingly, small deployments are a big challenge. Consider 12 disks in 3 boxes of 4.
+This means a policy of something like $(4,2,2)$ with a rather disappointing performance, and ditto redundancy.
+
+We should also be able to adapt a situation,
+where we can run on /emph{Seagate's Kinetic drives}\footnote{eventually}.
+
+\subsection{Code Evolution}
+We cannot hope to hit on the perfect design immediately so
+we must be able to adapt.
+\emph{New cryptors} will become fashionable (or necessary) as will \emph{new compressors} or encoding schemes.
+We will change our minds about suitable \emph{data formats} etc.
+We must be able to change our preferences for new objects without having to
+rewrite existing data.
+
+\subsection{Deployment Comfort}
+We want minimal configuration and simple upgrades.
+We have learned that a single configuration file that needs to be
+manually maintained across multiple hosts is already a challenge for operations.
+We desire boot-strappable configuration of clients from 1 working access point.
+It would be really nice if our own hardware boxes can be shipped with everything installed and can be used without any on site installation.
+
+\subsection{Dashboard}
+Most storage systems are notoriously bad when it comes to the ability
+to inspect the current state.
+We need some relevant pseudo-live statistics, and presentation thereof
+(preferably in Open Stack's Horizon).

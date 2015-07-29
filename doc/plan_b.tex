@@ -1,0 +1,136 @@
+\documentclass{article}
+\usepackage{hyperref}
+\usepackage{listings}
+\title{A Remote Key Value Store for Alba}
+\begin{document}
+\maketitle
+\section{High Level Overview}
+We need an alternative for \href{https://developers.seagate.com/display/KV/Kinetic+Open+Storage+Documentation+Wiki}{Seagate's Kinetic drives}.
+Basically, we need a tcp/ip socket server in front of a local key value store.
+But we also need some pieces of functionality that are currently absent
+in these Kinetic drives.
+The server manages a local database and accepts incoming connections from clients.
+Clients can send requests that can be queries or updates.
+For each client, the requests are handled in order,
+and requests can be \emph{pipelined}: a client can send multiple request messages,
+one after another before it starts reading responses.
+There is no ordering between concurrent requests of different clients.
+There are however some 'calls' to perform \emph{atomic multi-updates}.
+You know that \emph{keys} are strings of maximum 4KB,
+and \emph{values} are limited to 1MB,
+just like with the original Kinetic drives.
+
+\section{API}
+The api is described from a client perspective.
+\subsection{non-pipelined}
+In the basic use case client opens a connection,
+sends a message and reads a response, and repeats.
+\begin{lstlisting}
+  request = ...
+  send(connection, request);
+  response = receive(connection);
+  # or shorter, which does the same as above
+  #response = rpc(connection, request)
+  # some way of getting the useful data out of the response
+  ...
+\end{lstlisting}
+\subsection{pipelined}
+\begin{lstlisting}
+  request1 = ....
+  send(connection,request1)
+  request2 = ...
+  send(connection,request2)
+  ...
+  response1 = receive(connection)
+  response2 = receive(connection)
+  ...
+\end{lstlisting}
+\subsection{Services}
+\subsubsection{MultiGet}
+  \begin{lstlisting}
+    request = [key1,key2,key3] # list of strings
+    response = rpc(connection, request)
+  \end{lstlisting}
+
+In the example, the response is a list of 3 string options:\texttt{[v1,v2,v3]}.
+The value option \texttt{v1} is associated with \texttt{key1}.
+It's actually a string pointer.
+If there is no value for the corresponding key,
+the value is a \texttt{NULL} pointer.
+\subsubsection{Sequences}
+  \begin{lstlisting}
+    request = Sequence()
+    request.add(Assert(key1, value))
+    request.add(Assert(key2, None))
+    request.add(Set(key3, value2))
+    request.add(Set(key4, None))
+    response = rpc(connection, request)
+  \end{lstlisting}
+  The sequence is applied within a transaction on server side.
+  This means either all updates within the sequence succeed, or none at all.
+  The asserts offer a simple way to bail out in case the situation in the database is not what was anticipated.
+A \texttt{Set} to \texttt{None} means: delete the value if it existed.
+Setting a non-existent key to None is a \emph{noop}.
+\subsubsection{Range Queries}
+  \begin{lstlisting}
+    request = Range(first_key,first_included,
+                    last_key, last_included, reverse, max_keys)
+    response = rpc(connection, request)
+  \end{lstlisting}
+  The server side will return a list of keys, all within the range.
+  If \texttt{first\_included} is \texttt{false} then the first key will not be
+  in the response.
+  The server can decide to return less than the \emph{max\_keys},
+basically to pretect itself against superabundant queries,
+but there needs to be a flag to find out the difference between
+the following 2 cases:
+\begin{itemize}
+  \item{}you received all you asked for,
+    but there are only this many keys in the range.
+  \item{}you received less than you asked for,
+    and if you need more, you'll have send a new query.
+\end{itemize}
+  If \texttt{reverse} is true,
+  the keys are searched for and returned in a reverse order.
+  For instance if the search is
+  \begin{lstlisting}
+  Range(first_key="j", last_key="k", reverse=true, max_keys=2)
+  \end{lstlisting}
+  and the keys "k0", "k1", "k2" exist,
+  the system will return "k2" and "k1" in that order.
+
+\subsubsection{Peer2Peer}
+
+  \begin{lstlisting}
+    request = Peer2PeerPush(target_ip, target_port,[key1,key2,key3])
+    response = rpc(connection, request)
+  \end{lstlisting}
+Instructs the server to perform an atomic multi-set of key value pairs
+to another server. It should fail if any one of these keys has no value.
+\begin{lstlisting}
+  request = Peer2PeerPushRange(target_ip, target_port,
+                               first_key, first_key_included,
+                               last_key  , last_key_included)
+  response = rpc(connection, request)
+
+\end{lstlisting}
+  On the server, the range query is performed and the resulting
+  list of key value pairs is sent to the target server as an atomic multi-set.
+  The server could opt not to push all key value pairs in a range.
+So the response needs to contain how many were pushed,
+if they all were pushed, and if needed the continuation (first) key to push
+the next part.
+\section{Implementation Details}
+
+\subsection{rpc protocol}
+We need something that can be used from clients developed in multiple languages,
+so therefore we need something that's fairly standard.
+We want you to use \href{http://kentonv.github.io/capnproto/}{cap'n proto}.
+\subsection{local key value store}
+We don't want you to write a local key value store from scratch.
+In fact \href{http://rocksdb.org/}{rocksdb} has everything you need.
+In a second phase, we can look for doing something else (for example if \emph{rocksdb} can't handle a 4TB database).
+
+\subsection{Also important}
+Make sure you contact us before you start implementing something.
+\end{document}

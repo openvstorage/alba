@@ -1,0 +1,88 @@
+                     Open vStorage
+          Copyright 2013-2014 Open vStorage NV
+
+        This product includes software developed at
+      Open vStorage NV (https://www.openvstorage.com/).
+
+
+This product includes and/or uses software developed by third parties. This
+software is listed below in no particular order, together with their licenses.
+The full license text of each license is included below this list.
+
+INCLUDED AND/OR USED SOFTWARE
+
+    Software                    License         Remarks
+
+boost                           boost license
+
+Jerasure                        BSD
+Copyright (c) 2013, James S. Plank and Kevin Greenan
+
+rocksdb                         BSD
+  Copyright (c) 2014, Facebook, Inc.
+  All rights reserved.
+  Copyright (c) 2011 The LevelDB Authors. All rights reserved.
+
+bz2                             BSD-like
+  Copyright © 1996 - 2015  julian@bzip.org
+
+snappy                          new BSD
+  Copyright 2011, Google Inc.
+  All rights reserved.
+
+zlib                            zlib http://www.zlib.net/zlib_license.html
+  Copyright (C) 1995-2013 Jean-loup Gailly and Mark Adler
+
+lwt                             LGPL
+  Copyright (C) 2010 Jérémie Dimino
+                2010 Pierre Chambart
+
+oUnit                           MIT
+  Copyright (c) 2002, 2003 by Maas-Maarten Zeeman
+  Copyright (c) 2010 by OCamlCore SARL
+  Copyright (C) 2013 Sylvain Le Gall
+
+arakoon_client                  Apache 2.0
+  Copyright (2010-2014) INCUBAID BVBA
+
+ppx_deriving                    MIT
+  Copyright (c) 2014 Peter Zotov <whitequark@whitequark.org>
+
+ppx_deriving_yojson             MIT
+  Copyright (c) 2014 Peter Zotov <whitequark@whitequark.org>
+
+ctypes                          MIT
+  Copyright (c) 2013 Jeremy Yallop
+
+orocksdb                        MIT
+  Copyright (c) 2015 Jan Doms
+
+ocp-libendian                   LGPL 2.1
+
+cmdliner                        BSD3
+  Copyright (c) 2011 Daniel C. Bünzli. All rights reserved.
+
+libgcrypt                       LGPL 2.1
+
+tiny_json                       MIT
+  Copyright (c) 2011 Yoshihiro Imai
+
+yojson                          MIT
+  Copyright (c) 2010-2011 Martin Jambon
+  All rights reserved.
+
+uuidm                           BSD3
+  Copyright (c) 2008 Daniel C. Bünzli. All rights reserved.
+
+statvfs                         BSD
+  Copyright (c) 2013, Mike McClurg
+
+isa-l                           BSD
+  Copyright(c) 2011-2015 Intel Corporation All rights reserved.
+
+kinetic-ocaml-client            LGPL
+
+ocaml-ssl                       LGPL
+
+OpenSSL                         BSD-style
+  Copyright (c) 1998-2011 The OpenSSL Project.  All rights reserved.

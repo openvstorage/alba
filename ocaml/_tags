@@ -1,0 +1,28 @@
+true: debug
+true: annot
+true: thread
+true: package(str)
+true: package(lwt)
+true: package(lwt.unix)
+true: package(lwt.ssl)
+true: package(lwt.preemptive)
+true: package(oUnit)
+true: package(arakoon_client)
+true: package(ppx_deriving.show)
+true: package(ppx_deriving.enum)
+true: package(ppx_deriving_yojson)
+true: package(ctypes)
+true: package(ctypes.foreign)
+true: package(rocks)
+true: package(cmdliner)
+true: package(snappy)
+true: package(tiny_json)
+true: package(uuidm)
+true: use_rocks
+true: package(kinetic-client)
+"src/alba.native" : use_Jerasure, use_gcrypt, use_isal
+"src/disk_failure_tests.native": use_Jerasure, use_gcrypt, use_isal
+"src/kinetic_client_test.native": use_Jerasure, use_gcrypt, use_isal
+"src":include
+"src/experiments":include
+"src/tools":include
