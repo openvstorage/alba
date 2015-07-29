@@ -398,7 +398,7 @@ let execute_query : type req res.
             DirectoryInfo.with_blob_fd
               dir_info fnr
               (fun blob_fd ->
-               Fsutil.splice_all
+               Fsutil.sendfile_all
                  ~fd_in:(Fsutil.lwt_unix_fd_to_fd blob_fd)
                  ~fd_out:(Fsutil.lwt_unix_fd_to_fd fd)
                  size))
@@ -828,9 +828,7 @@ let asd_protocol
                 let res_buf = Buffer.create 20 in
                 Llio.int_to res_buf 0;
                 Protocol.query_response_serializer q res_buf res;
-                Lwt_extra2.llio_output_and_flush oc (Buffer.contents res_buf) >>= fun () ->
-                Lwt_io.flush oc >>= fun () ->
-                write_extra fd
+                Lwt.return (Buffer.contents res_buf, write_extra)
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update
@@ -845,16 +843,19 @@ let asd_protocol
                 let res_buf = Buffer.create 20 in
                 Llio.int_to res_buf 0;
                 Protocol.update_response_serializer u res_buf res;
-                Lwt_extra2.llio_output_and_flush oc (Buffer.contents res_buf)
+                Lwt.return (Buffer.contents res_buf,
+                            fun _ -> Lwt.return_unit)
        end)
       (function
-        | End_of_file  as e -> Lwt.fail e
+        | End_of_file as e ->
+           Lwt.fail e
         | Protocol.Error.Exn err ->
            let res_buf = Buffer.create 20 in
            Protocol.Error.serialize res_buf err;
            Lwt_log.info_f "returning error %s" (Protocol.Error.show err)
            >>= fun () ->
-           Lwt_extra2.llio_output_and_flush oc (Buffer.contents res_buf)
+           Lwt.return (Buffer.contents res_buf,
+                       fun _ -> Lwt.return_unit)
         | exn ->
            Lwt_log.info_f ~exn "error during client request: %s"
                           (Printexc.to_string exn)
@@ -862,8 +863,11 @@ let asd_protocol
            let res_buf = Buffer.create 20 in
            Protocol.Error.serialize
              res_buf (Protocol.Error.Unknown_error (1, "Unknown error occured"));
-           Lwt_extra2.llio_output_and_flush oc (Buffer.contents res_buf)
-      )
+           Lwt.return (Buffer.contents res_buf,
+                       fun _ -> Lwt.return_unit)
+      ) >>= fun (res, write_extra) ->
+    Lwt_extra2.llio_output_and_flush oc res >>= fun () ->
+    write_extra fd
   in
   let rec inner () =
     Llio.input_string ic >>= fun req_s ->

@@ -22,6 +22,7 @@ module Slice = struct
              length : int; }
 
   let make buf offset length =
+    assert (offset + length <= Bytes.length buf);
     { buf; offset; length }
   let create length =
     make (Bytes.create length) 0 length
@@ -81,7 +82,6 @@ module Slice = struct
     end
 
   let sub t offset length =
-    assert (offset + length <= t.length);
     make t.buf (t.offset + offset) length
 
   let length t = t.length
