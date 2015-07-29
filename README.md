@@ -6,7 +6,7 @@ Alba is highly optimised for Open vStorage and aggregates a set of OSDs like Alb
 [Seagate's Kinetic Drives](http://www.seagate.com/gb/en/products/enterprise-servers-storage/nearline-storage/kinetic-hdd/) into a pool of storage that you can use as a storage backend
 for Open vStorage.
 
-Alba supports the usual set of features, like:
+Alba supports the following high-end set of features:
 
 * erasure coding
 * replication
@@ -22,8 +22,8 @@ Alba supports the usual set of features, like:
 Unlike most alternatives, Alba is a consistent store.
 Since it is optimised for the types of objects Open vStorage's volume driver needs to store and retrieve, Alba has become the default object storage backend for Open vStorage.
 
-This also means Alba is not a general purpose object store (yet).
-Currently, you will have problems storing gigabyte size objects.
+This also means Alba is not a general purpose object store.
+Currently, you might have problems storing gigabyte size objects.
 
 
 License
