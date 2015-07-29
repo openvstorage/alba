@@ -28,7 +28,7 @@ Currently, you will have problems storing gigabyte size objects.
 
 License
 -------
-[Apache 2.0](./LICENSE)
+ALBA is licensed under the [Apache 2.0 license](http://www.apache.org/licenses/LICENSE-2.0).
 
 Building Alba
 -------------
