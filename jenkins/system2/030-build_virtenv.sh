@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
+set -v
 
 virt="./_virt"
 

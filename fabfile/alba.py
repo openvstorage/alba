@@ -415,15 +415,28 @@ def demo_setup(kind = default_kind, multicast = True):
 def smoke_test():
     m = arakoon_who_master()
     print "master:", m
+    fuser = "fuser"
+    centos = False
+    with open('/etc/os-release','r') as f:
+        data = f.read()
+        print data
+        if data.find('centos') > 0:
+            centos = True
+
+    if centos:
+        fuser = "sudo fuser"
+
     def how_many_osds():
-        cmd = "fuser -n tcp "
+        cmd = "%s -n tcp " % fuser
         for i in range(N):
             cmd += " %i" % (8000 + i)
-        cmd += " | wc"
-
-        r = local( cmd , capture=True )
-        counts = r.split()
-        n = int(counts[-2])
+        n = 0
+        with warn_only():
+            r = local( cmd , capture=True )
+            print "r='%s'" % r
+            processes = r.split()
+            print processes
+            n = len(processes)
         return n
 
     n = how_many_osds()
@@ -432,7 +445,7 @@ def smoke_test():
     if (n < N):
         raise Exception("only %i OSD running, need %i" % (n, N))
     def proxy_running():
-        cmd = "fuser -n tcp %i | wc" % 10000
+        cmd = "%s -n tcp %i | wc" % (fuser,10000)
         r = int(local(cmd, capture = True).split()[-2])
         return r
     if not proxy_running():
