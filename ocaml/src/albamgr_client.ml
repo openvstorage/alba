@@ -400,7 +400,8 @@ let make_client (ccfg:Arakoon_client_config.t) =
   find_master' ~tls:None ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->
      let open Arakoon_client_config in
-     Networking2.first_connection ncfg.ips ncfg.port >>= fun conn ->
+     Networking2.first_connection ncfg.ips ncfg.port
+     >>= fun (_, conn) ->
      let closer = Networking2.closer conn in
      Lwt.catch
        (fun () ->

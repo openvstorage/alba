@@ -180,3 +180,40 @@ let disk_usage home =
 
 let lwt_disk_usage home =
   Lwt_preemptive.detach disk_usage home
+
+let lwt_unix_fd_to_fd
+      (fd : Lwt_unix.file_descr) : int =
+  Obj.magic (Obj.field (Obj.repr fd) 0)
+
+let lwt_unix_fd_to_unix_fd
+      (fd : Lwt_unix.file_descr) : Unix.file_descr =
+  Obj.magic (Obj.field (Obj.repr fd) 0)
+
+let unix_fd_to_fd (fd : Unix.file_descr) : int =
+  Obj.magic fd
+
+let sendfile ~release_runtime_lock =
+  let inner =
+    (* ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count); *)
+    foreign
+      "sendfile"
+      ~check_errno:true
+      ~release_runtime_lock
+      (int @-> int @-> ptr void @-> size_t @-> returning size_t)
+  in
+  fun ~fd_in ~fd_out len ->
+  let res = inner fd_out fd_in null (Unsigned.Size_t.of_int len) in
+  Unsigned.Size_t.to_int res
+
+let rec sendfile_all ~fd_in ~fd_out = function
+  | 0 -> Lwt.return ()
+  | n ->
+     let open Lwt.Infix in
+     Lwt_preemptive.detach
+       (sendfile
+          ~release_runtime_lock:true
+          ~fd_in ~fd_out)
+       n >>= fun sent ->
+     sendfile_all
+       ~fd_in ~fd_out
+       (n - sent)
