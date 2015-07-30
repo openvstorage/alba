@@ -100,17 +100,29 @@ class client fd (ic, oc) id =
                 let target = Bytes.create size in
 
                 let buffered = Lwt_io.buffered ic in
-                (if buffered > 0
-                 then Lwt_io.read_into ic target 0 buffered
-                 else Lwt.return 0) >>= fun read ->
-                assert (read = buffered);
-                assert (0 = Lwt_io.buffered ic);
+                (if size <= buffered
+                 then
+                   begin
+                     Lwt_io.read_into ic target 0 size >>= fun read ->
+                     assert (read = size);
+                     Lwt.return ()
+                   end
+                 else
+                   begin
+                     (if buffered > 0
+                      then Lwt_io.read_into ic target 0 buffered
+                      else Lwt.return 0) >>= fun read ->
+                     assert (read = buffered);
+                     assert (0 = Lwt_io.buffered ic);
 
-                Lwt_extra2.read_all
-                  fd target
-                  read (size - read)
-                >>= fun read' ->
-                assert (read + read' = size);
+                     Lwt_extra2.read_all
+                       fd target
+                       read (size - read)
+                     >>= fun read' ->
+                     assert (read + read' = size);
+                     Lwt.return ()
+                   end) >>= fun () ->
+
                 Lwt.return (Some (Slice.wrap_bytes target, cs)))
         res
 
