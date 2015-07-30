@@ -1,4 +1,5 @@
-#!/bin/bash
+##!/usr/bin/env bash
+
 set -e
 set -v
 . ./_virt/bin/activate
