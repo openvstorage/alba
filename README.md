@@ -1,5 +1,6 @@
 Alba
 ====
+[![Build Status](https://travis-ci.org/openvstorage/alba.svg?branch=master)](https://travis-ci.org/openvstorage/alba)
 
 Alba (ALternative BAckend) is a distributed object store, like Swift, Ceph and Amplistor.
 Alba is highly optimised for Open vStorage and aggregates a set of OSDs like Alba's ASDs or
