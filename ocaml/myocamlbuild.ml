@@ -84,6 +84,7 @@ let make_version _ _ =
   and id = fun x -> x in
   let fields = [ "git_revision", run_cmd "git describe --all --long --always --dirty", stringify
                ; "compile_time", time, stringify
+               ; "git_repo",run_cmd "git config --get remote.origin.url", stringify
                ; "machine", run_cmd "uname -mnrpio", stringify
                ; "compiler_version", run_cmd "ocamlopt -version", stringify
                ; "(major, minor, patch)", major_minor_patch, id
