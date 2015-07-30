@@ -154,13 +154,9 @@ let alba_maintenance cfg_file modulo remainder flavour =
                 in
 
                 let reporting_t =
-                  let rec loop () =
-                    Lwt_unix.sleep 60.0 >>= fun () ->
-                    Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
-                    Lwt_log.info_f "maxrss:%i KB" maxrss >>= fun () ->
-                    loop ()
-                  in
-                  loop ()
+                  Mem_stats.reporting_t
+                    ~section:Lwt_log.Section.main
+                    ()
                 in
 
                 let maintenance_threads =

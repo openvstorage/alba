@@ -430,15 +430,6 @@ let refresh_albamgr_cfg
   in
   inner ()
 
-let reporting_t () =
-  let rec loop () =
-    Lwt_unix.sleep 60.0 >>= fun () ->
-    Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
-    Lwt_log.info_f "maxrss:%i KB" maxrss >>= fun () ->
-    (* maybe log stats too ? *)
-    loop ()
-  in
-  loop ()
 let run_server hosts port
                cache_dir albamgr_client_cfg
                ~manifest_cache_size
@@ -489,7 +480,7 @@ let run_server hosts port
               (Networking2.make_server hosts port
                                        (proxy_protocol alba_client stats));
               (Lwt_extra2.make_fuse_thread ());
-              reporting_t ();
+              Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
             ])
     )
     (fun exn ->
