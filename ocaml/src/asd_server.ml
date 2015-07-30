@@ -1160,20 +1160,13 @@ let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
     Networking2.make_server hosts port protocol
   in
 
-
-  let reporting_period = 60.0 in
-
   let reporting_t =
     let section = AsdStatistics.section in
-    let rec loop () =
-      Lwt_unix.sleep reporting_period >>= fun () ->
-      Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
-      Lwt_log.info_f ~section "maxrss:%i KB" maxrss >>= fun () ->
-      Lwt_log.info_f ~section "%s" (AsdStatistics.show stats)
-      >>= fun () ->
-      loop ()
-    in
-    loop ()
+    Mem_stats.reporting_t
+      ~section
+      ~f:(fun () ->
+          Lwt_log.info_f ~section "%s" (AsdStatistics.show stats))
+      ()
   in
   let threads = [
       server_t;
