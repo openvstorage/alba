@@ -686,13 +686,15 @@ let () =
     let open Alba_version in
     Printf.printf "%i.%i.%i\n" major minor patch;
     if not terse
-    then begin
-      Printf.printf "git_revision: %S\n" git_revision;
-      Printf.printf "compile_time: %S\n" compile_time;
-      Printf.printf "machine: %S\n" machine;
-      Printf.printf "compiler_version: %S\n" compiler_version;
-      Printf.printf "dependencies:\n%s\n" dependencies
-    end
+    then
+      begin
+        Printf.printf "git_revision: %S\n" git_revision;
+        Printf.printf "git_repo: %S\n" git_repo;
+        Printf.printf "compile_time: %S\n" compile_time;
+        Printf.printf "machine: %S\n" machine;
+        Printf.printf "compiler_version: %S\n" compiler_version;
+        Printf.printf "dependencies:\n%s\n" dependencies
+      end
   in
   let help_cmd =
     let unit_arg = Arg.(value &
