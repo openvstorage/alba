@@ -50,6 +50,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
           ~node_id:"bla"
           ~slow:false
           ~fsync:false
+          ~buffer_size:8192
           ~limit:90L
           ~multicast:(Some 10.0);
         begin
@@ -239,6 +240,7 @@ let test_protocol_version port () =
           ~node_id:"node"
           ~slow:false
           ~fsync:false
+          ~buffer_size:8192
           ~limit:90L
           ~multicast:(Some 10.0);
         Lwt_unix.with_timeout

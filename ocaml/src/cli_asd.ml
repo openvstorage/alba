@@ -28,9 +28,10 @@ module Config = struct
     node_id : string;
     home : string;
     log_level : string;
-    asd_id : string option [@default None];
-    __sync_dont_use : bool [@default true];
-    limit : int64          [@default 99L];
+    asd_id : string option  [@default None];
+    __sync_dont_use : bool  [@default true];
+    limit : int64           [@default 99L];
+    buffer_size : int       [@default 8192];
     multicast: float option [@default (Some 10.0)];
   } [@@deriving yojson, show]
 end
@@ -56,7 +57,7 @@ let asd_start cfg_file slow =
     | `Ok cfg ->
 
       let ips, port, home, node_id, log_level, asd_id,
-          fsync,limit, multicast
+          fsync, limit, multicast, buffer_size
         =
         let open Config in
         cfg.ips, cfg.port,
@@ -66,7 +67,8 @@ let asd_start cfg_file slow =
         cfg.asd_id,
         cfg.__sync_dont_use,
         cfg.limit,
-        cfg.multicast
+        cfg.multicast,
+        cfg.buffer_size
       in
 
       (if not fsync
@@ -92,7 +94,7 @@ let asd_start cfg_file slow =
             Lwt.ignore_result (Lwt_extra2.ignore_errors handle)) in
 
       Asd_server.run_server ips port home ~asd_id ~node_id ~slow
-                            ~fsync ~limit ~multicast
+                            ~fsync ~limit ~multicast ~buffer_size
   in
 
   lwt_server t

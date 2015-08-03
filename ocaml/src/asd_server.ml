@@ -799,9 +799,10 @@ let update_statistics =
 let asd_protocol
       kv ~release_fnr ~slow ~syncfs_batched
       dir_info stats ~mgmt
-      ~get_next_fnr asd_id fd
+      ~get_next_fnr asd_id
+      (ic, oc)
+      fd
   =
-  let ic,oc = Networking2.to_connection ~buffer_size:(786 * 1024) fd in
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
   let handle_request buf command =
     (*
@@ -953,7 +954,7 @@ class check_garbage_from_advancer check_garbage_from kv =
   end
 
 let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
-               ~limit ~multicast =
+               ~limit ~multicast ~buffer_size =
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision
   >>= fun () ->
   let db_path = path ^ "/db" in
@@ -1181,6 +1182,7 @@ let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
   let mgmt = AsdMgmt.make latest_disk_usage limit in
   let server_t =
     let protocol fd =
+      let conn = Networking2.to_connection ~buffer_size fd in
       asd_protocol
          kv
          ~release_fnr:(fun fnr -> advancer # release fnr)
@@ -1190,7 +1192,7 @@ let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
          stats
          ~mgmt
          ~get_next_fnr
-         asd_id fd
+         asd_id conn fd
     in
     Networking2.make_server hosts port protocol
   in
