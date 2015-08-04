@@ -1755,7 +1755,7 @@ class alba_base_client
           Error.failwith Error.NotEnoughFragments
       in
       let fragment_size =
-        let _, (bs, _) = Hashtbl.choose fragments in
+        let _, (bs, _) = Hashtbl.choose fragments |> Option.get_some in
         Lwt_bytes.length bs
       in
 

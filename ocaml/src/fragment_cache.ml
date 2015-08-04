@@ -592,18 +592,20 @@ class blob_cache root (max_size:int64) =
           else if Hashtbl.length _dropping = 0
           then acc
           else
-            let bid, () = Hashtbl.choose _dropping in
-            let victims', n_victims', delta' = get_bid_victims bid victims_size in
+            match Hashtbl.choose _dropping with
+            | None -> acc
+            | Some (bid, ()) ->
+               let victims', n_victims', delta' = get_bid_victims bid victims_size in
 
-            (* stop dropping items from this bucket if the
+               (* stop dropping items from this bucket if the
                bucket did not result in additional victims *)
-            if n_victims' = n_victims
-            then Hashtbl.remove _dropping bid;
+               if n_victims' = n_victims
+               then Hashtbl.remove _dropping bid;
 
-            inner
-              (List.rev_append victims' victims)
-              (n_victims + n_victims')
-              (delta + delta')
+               inner
+                 (List.rev_append victims' victims)
+                 (n_victims + n_victims')
+                 (delta + delta')
         in
         inner [] 0 0
       in

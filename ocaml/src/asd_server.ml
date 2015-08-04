@@ -159,8 +159,13 @@ module DirectoryInfo = struct
              ~sync:false
              (Filename.concat t.files_path dir))
         (function
-          | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
-          | exn -> Lwt.fail exn) >>= fun () ->
+          | Unix.Unix_error (Unix.EEXIST, _, _) ->
+            Lwt.return ()
+          | exn ->
+            Hashtbl.remove t.directory_cache dir;
+            (* need to wake up the waiter here so it doesn't wait forever *)
+            Lwt.wakeup awake ();
+            Lwt.fail exn) >>= fun () ->
 
       Hashtbl.replace t.directory_cache dir Exists;
       Lwt.wakeup awake ();
