@@ -5,6 +5,8 @@ which opam > /dev/null || { echo 'opam not found!'; exit 1; }
 opam switch 4.02.1
 eval `opam config env`
 
+opam update
+
 # do this in 1 step, otherwise, you might not get what you want
 opam install -y ssl.0.5.0 \
      camlbz2.0.6.0 \
