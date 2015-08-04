@@ -164,7 +164,7 @@ module DirectoryInfo = struct
           | exn ->
             Hashtbl.remove t.directory_cache dir;
             (* need to wake up the waiter here so it doesn't wait forever *)
-            Lwt.wakeup awake ();
+            Lwt.wakeup_exn awake exn;
             Lwt.fail exn) >>= fun () ->
 
       Hashtbl.replace t.directory_cache dir Exists;
