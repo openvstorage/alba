@@ -471,25 +471,6 @@ module Hashtbl = struct
       []
 end
 
-module WeakHashSet(H : Hashtbl.HashedType) = struct
-  module I = Weak.Make(H)
-  include I
-
-  exception Break
-
-  let choose h =
-    let res = ref None in
-    let () =
-      try iter (fun v -> res := Some v; raise Break) h
-      with Break -> () in
-    !res
-
-  let pop h =
-    let res = choose h in
-    Option.iter (fun v -> remove h v) res;
-    res
-end
-
 module IntSet = Set.Make(struct type t = int let compare = compare end)
 module Int32Set = Set.Make(Int32)
 module Int64Set = Set.Make(Int64)

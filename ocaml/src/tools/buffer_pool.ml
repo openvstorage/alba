@@ -1,20 +1,8 @@
-open Prelude
-
-module Buffers = WeakHashSet(struct
-                                type t = Lwt_bytes.t
-                                let hash = Hashtbl.hash
-                                let equal = ( == )
-                              end)
-
-type t = { bs : Buffers.t;
-           buffer_size : int; }
+type t = Lwt_bytes.t Weak_pool.t
 
 let create ~buffer_size =
-  { bs = Buffers.create 3;
-    buffer_size; }
+  Weak_pool.create (fun () -> Lwt_bytes.create buffer_size)
 
-let get_buffer t = match Buffers.pop t.bs with
-  | Some b -> b
-  | None -> Lwt_bytes.create t.buffer_size
+let get_buffer = Weak_pool.take
 
-let return_buffer t b = Buffers.add t.bs b
+let return_buffer = Weak_pool.return

@@ -33,4 +33,5 @@ let suite = "all" >:::[
     Gcrypt_test.suite;
     Maintenance_test.suite;
     Erasure_test.suite;
+    Buffer_pool_test.suite;
   ]
