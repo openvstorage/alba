@@ -72,7 +72,10 @@ let proxy_start cfg_file =
         cfg.albamgr_cfg_file,
         cfg.fragment_cache_dir,
         cfg.manifest_cache_size,
-        cfg.fragment_cache_size,
+        (* the fragment cache size is currently a rather soft limit which we'll
+           surely exceed. this can lead to disk full conditions. by taking a
+           safety margin of 10% we turn the soft limit into a hard one... *)
+        cfg.fragment_cache_size / 10 * 9,
         cfg.albamgr_connection_pool_size,
         cfg.nsm_host_connection_pool_size,
         cfg.osd_connection_pool_size,
