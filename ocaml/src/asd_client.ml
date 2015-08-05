@@ -223,7 +223,8 @@ let _prologue_response ic lido =
 
 
 let make_client ips port (lido:string option) =
-  Networking2.first_connection ~buffer_size:(768*1024) ips port >>= fun (fd, conn) ->
+  Networking2.first_connection ~buffer_size:(768*1024) ips port
+  >>= fun (fd, conn) ->
   let closer = Networking2.closer conn in
   Lwt.catch
     (fun () ->

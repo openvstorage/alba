@@ -27,13 +27,14 @@ let string_of_address = function
        (Unix.string_of_inet_addr addr) port
   | Unix.ADDR_UNIX s -> Printf.sprintf "ADDR_UNIX %s" s
 
-let create_connection ?(buffer_size=8192) ip port =
+let create_connection ?in_buffer ?out_buffer ip port =
   let address = make_address ip port in
   let fd =
     Lwt_unix.socket
       (Unix.domain_of_sockaddr address)
       Unix.SOCK_STREAM 0 in
-  Lwt_io.open_connection ~fd ~buffer_size address >>= fun conn ->
+  Lwt_io.open_connection ~fd ?in_buffer ?out_buffer address
+  >>= fun conn ->
   Lwt.return (fd, conn)
 
 
@@ -45,7 +46,9 @@ let closer (ic,oc) () =
 
 exception No_connection
 
-let first_connection ?buffer_size ips port =
+let first_connection
+      ?(buffer_size=Lwt_io.default_buffer_size ())
+      ips port =
   let count = List.length ips in
   let res = Lwt_mvar.create_empty () in
   let err = Lwt_mvar.create None in
@@ -54,7 +57,11 @@ let first_connection ?buffer_size ips port =
   let f' ip =
     Lwt.catch
       (fun () ->
-         create_connection ?buffer_size ip port >>= fun (fd, conn) ->
+         create_connection
+           ~in_buffer:(Lwt_bytes.create buffer_size)
+           ~out_buffer:(Lwt_bytes.create buffer_size)
+           ip port
+         >>= fun (fd, conn) ->
          if Lwt_mutex.is_locked l
          then closer conn ()
          else begin
@@ -95,9 +102,9 @@ let first_connection ?buffer_size ips port =
          ts)
 
 
-let to_connection ~buffer_size fd =
-  let ic = Lwt_io.of_fd ~buffer_size ~mode:Lwt_io.input fd
-  and oc = Lwt_io.of_fd ~buffer_size ~mode:Lwt_io.output fd in
+let to_connection ~in_buffer ~out_buffer fd =
+  let ic = Lwt_io.of_fd ~buffer:in_buffer ~mode:Lwt_io.input fd
+  and oc = Lwt_io.of_fd ~buffer:out_buffer ~mode:Lwt_io.output fd in
   (ic,oc)
 
 let make_server hosts port protocol =

@@ -29,7 +29,8 @@ let run_with_fragment_cache size test test_name =
   let t =
     Lwt.catch
       (fun () ->
-       safe_create dir size >>= fun cache ->
+       safe_create dir ~max_size:size ~rocksdb_max_open_files:256
+       >>= fun cache ->
        test cache >>= fun () ->
        Lwt.catch
          (fun () -> cache # close ())

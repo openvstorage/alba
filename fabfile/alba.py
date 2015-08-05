@@ -395,6 +395,11 @@ def start_osds(kind, n, slow, multicast=True):
 
 @task
 def demo_setup(kind = default_kind, multicast = True):
+    cmd = [ env['arakoon_bin'], '--version' ]
+    local(' '.join(cmd))
+    cmd = [ env['alba_bin'], 'version' ]
+    local(' '.join(cmd))
+
     arakoon_start()
     wait_for_master()
 

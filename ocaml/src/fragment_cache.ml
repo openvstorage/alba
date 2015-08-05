@@ -99,7 +99,7 @@ let rm_tree ~silent dir =
 type boid = int32 * string [@@deriving show]
 
 
-class blob_cache root (max_size:int64) =
+class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
   let _TOTAL_COUNT = "*total_count"
   and _TOTAL_SIZE = "*total_size"
   and _BLOBS  = "/blobs/"
@@ -235,7 +235,10 @@ class blob_cache root (max_size:int64) =
 
   object(self :# cache)
     val dirs = Asd_server.DirectoryInfo.make root
-    val mutable db = KV.create' ~db_path
+    val mutable db =
+      KV.create'
+        ~db_path
+        ~max_open_files:rocksdb_max_open_files ()
 
     val t0 = let ts = Unix.gettimeofday () in
              let tu = ts *. 100000.0 in
@@ -276,7 +279,9 @@ class blob_cache root (max_size:int64) =
                 | exn -> Lwt.fail exn
               )
             >>= fun () ->
-            db <- KV.create' ~db_path;
+            db <- KV.create'
+                    ~db_path
+                    ~max_open_files:rocksdb_max_open_files ();
             Lwt.return ())
            (fun exn ->
             Lwt_log.warning_f ~exn "clear_all failed..." >>= fun () ->
@@ -592,18 +597,20 @@ class blob_cache root (max_size:int64) =
           else if Hashtbl.length _dropping = 0
           then acc
           else
-            let bid, () = Hashtbl.choose _dropping in
-            let victims', n_victims', delta' = get_bid_victims bid victims_size in
+            match Hashtbl.choose _dropping with
+            | None -> acc
+            | Some (bid, ()) ->
+               let victims', n_victims', delta' = get_bid_victims bid victims_size in
 
-            (* stop dropping items from this bucket if the
+               (* stop dropping items from this bucket if the
                bucket did not result in additional victims *)
-            if n_victims' = n_victims
-            then Hashtbl.remove _dropping bid;
+               if n_victims' = n_victims
+               then Hashtbl.remove _dropping bid;
 
-            inner
-              (List.rev_append victims' victims)
-              (n_victims + n_victims')
-              (delta + delta')
+               inner
+                 (List.rev_append victims' victims)
+                 (n_victims + n_victims')
+                 (delta + delta')
         in
         inner [] 0 0
       in
@@ -878,7 +885,7 @@ class blob_cache root (max_size:int64) =
       )
 end
 
-let safe_create root max_size =
+let safe_create root ~max_size ~rocksdb_max_open_files =
   let fn = marker_name root in
   Lwt.catch
     (fun () ->
@@ -890,5 +897,5 @@ let safe_create root max_size =
      rm_tree ~silent:false (root ^ "/*" )
     )
   >>= fun () ->
-  let cache = new blob_cache root max_size in
+  let cache = new blob_cache root ~max_size ~rocksdb_max_open_files in
   Lwt.return cache

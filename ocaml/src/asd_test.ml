@@ -50,6 +50,8 @@ let with_asd_client ?(is_restart=false) test_name port f =
           ~node_id:"bla"
           ~slow:false
           ~fsync:false
+          ~buffer_size:(768*1024)
+          ~rocksdb_max_open_files:256
           ~limit:90L
           ~multicast:(Some 10.0);
         begin
@@ -239,6 +241,8 @@ let test_protocol_version port () =
           ~node_id:"node"
           ~slow:false
           ~fsync:false
+          ~buffer_size:(768*1024)
+          ~rocksdb_max_open_files:256
           ~limit:90L
           ~multicast:(Some 10.0);
         Lwt_unix.with_timeout

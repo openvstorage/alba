@@ -455,7 +455,7 @@ module Hashtbl = struct
              res := Some (k, v);
              raise Break) t
       with Break -> () in
-    Option.get_some !res
+    !res
 
   let from_assoc_list l =
     let h = Hashtbl.create 3 in

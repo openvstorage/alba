@@ -159,8 +159,13 @@ module DirectoryInfo = struct
              ~sync:false
              (Filename.concat t.files_path dir))
         (function
-          | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
-          | exn -> Lwt.fail exn) >>= fun () ->
+          | Unix.Unix_error (Unix.EEXIST, _, _) ->
+            Lwt.return ()
+          | exn ->
+            Hashtbl.remove t.directory_cache dir;
+            (* need to wake up the waiter here so it doesn't wait forever *)
+            Lwt.wakeup_exn awake exn;
+            Lwt.fail exn) >>= fun () ->
 
       Hashtbl.replace t.directory_cache dir Exists;
       Lwt.wakeup awake ();
@@ -799,9 +804,10 @@ let update_statistics =
 let asd_protocol
       kv ~release_fnr ~slow ~syncfs_batched
       dir_info stats ~mgmt
-      ~get_next_fnr asd_id fd
+      ~get_next_fnr asd_id
+      (ic, oc)
+      fd
   =
-  let ic,oc = Networking2.to_connection ~buffer_size:(786 * 1024) fd in
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
   let handle_request buf command =
     (*
@@ -952,12 +958,21 @@ class check_garbage_from_advancer check_garbage_from kv =
       end
   end
 
-let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
-               ~limit ~multicast =
+let run_server
+      hosts port path
+      ~asd_id ~node_id
+      ~fsync ~slow
+      ~buffer_size
+      ~rocksdb_max_open_files
+      ~limit ~multicast =
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision
   >>= fun () ->
   let db_path = path ^ "/db" in
-  let kv = Rocks_key_value_store.create' ~db_path in
+  let kv =
+    Rocks_key_value_store.create'
+      ~max_open_files:rocksdb_max_open_files
+      ~db_path ()
+  in
 
   let endgame () =
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
@@ -1179,18 +1194,34 @@ let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
     Lwt.return r
   in
   let mgmt = AsdMgmt.make latest_disk_usage limit in
+
+  let buffers = Buffer_pool.create ~buffer_size in
+  let get_buffer () = Buffer_pool.get_buffer buffers in
+  let return_buffer = Buffer_pool.return_buffer buffers in
+
   let server_t =
     let protocol fd =
-      asd_protocol
-         kv
-         ~release_fnr:(fun fnr -> advancer # release fnr)
-         ~slow
-         ~syncfs_batched
-         dir_info
-         stats
-         ~mgmt
-         ~get_next_fnr
-         asd_id fd
+      let in_buffer = get_buffer () in
+      let out_buffer = get_buffer () in
+      Lwt.finalize
+        (fun () ->
+         let conn =
+           Networking2.to_connection
+             ~in_buffer ~out_buffer fd in
+         asd_protocol
+           kv
+           ~release_fnr:(fun fnr -> advancer # release fnr)
+           ~slow
+           ~syncfs_batched
+           dir_info
+           stats
+           ~mgmt
+           ~get_next_fnr
+           asd_id conn fd)
+        (fun () ->
+         return_buffer in_buffer;
+         return_buffer out_buffer;
+         Lwt.return ())
     in
     Networking2.make_server hosts port protocol
   in

@@ -319,6 +319,7 @@ let with_client albamgr_client_cfg
                 ?cache_dir
                 ?(manifest_cache_size=100_000)
                 ?(fragment_cache_size=100_000_000)
+                ?(rocksdb_max_open_files=256)
                 ?(bad_fragment_callback = fun
                     alba_client
                     ~namespace_id ~object_id ~object_name
@@ -332,7 +333,8 @@ let with_client albamgr_client_cfg
     match cache_dir with
     | Some cd ->
        let max_size = Int64.of_int fragment_cache_size in
-       safe_create cd max_size >>= fun cache ->
+       safe_create cd ~max_size ~rocksdb_max_open_files
+       >>= fun cache ->
        Lwt.return (cache :> cache)
     | None ->
        let cache = new no_cache in

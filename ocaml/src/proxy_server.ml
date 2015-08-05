@@ -86,8 +86,7 @@ let output_err_response oc err msg =
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (stats: ProxyStatistics.t)
-                   fd =
-  let (ic,oc) = Networking2.to_connection ~buffer_size:8192 fd in
+                   fd (ic, oc) =
   let write_ok_response serializer res =
     let res_s =
       serialize
@@ -443,6 +442,11 @@ let run_server hosts port
   >>= fun () ->
   let stats = ProxyStatistics.make () in
 
+  let buffer_size = 8192 in
+  let buffers = Buffer_pool.create ~buffer_size in
+  let get_buffer () = Buffer_pool.get_buffer buffers in
+  let return_buffer = Buffer_pool.return_buffer buffers in
+
   Lwt.catch
     (fun () ->
        let bad_fragment_callback
@@ -477,8 +481,23 @@ let run_server hosts port
                  alba_client
                  albamgr_cfg_file
               );
-              (Networking2.make_server hosts port
-                                       (proxy_protocol alba_client stats));
+              (Networking2.make_server
+                 hosts port
+                 (fun fd ->
+                  let in_buffer = get_buffer () in
+                  let out_buffer = get_buffer () in
+                  Lwt.finalize
+                    (fun () ->
+                     let conn =
+                       Networking2.to_connection
+                         ~in_buffer
+                         ~out_buffer
+                         fd in
+                     proxy_protocol alba_client stats fd conn)
+                    (fun () ->
+                     return_buffer in_buffer;
+                     return_buffer out_buffer;
+                     Lwt.return ())));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
             ])

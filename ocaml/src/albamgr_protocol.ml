@@ -449,7 +449,9 @@ module Protocol = struct
         t.policies <> [] &&
         List.for_all
           (fun (k, m, fragment_count, _) ->
-           (k <= fragment_count) && (fragment_count <= k + m)
+           (k > 0)
+           && (k <= fragment_count)
+           && (fragment_count <= k + m)
           )
           t.policies
       in
