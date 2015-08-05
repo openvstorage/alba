@@ -432,7 +432,7 @@ let nsm_recovery_agent
     total_workers
     worker_id =
 
-  let kv = R.create' ~db_path:home in
+  let kv = R.create' ~db_path:home () in
 
   let open Albamgr_protocol.Protocol in
 

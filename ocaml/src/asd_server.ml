@@ -958,12 +958,21 @@ class check_garbage_from_advancer check_garbage_from kv =
       end
   end
 
-let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
-               ~limit ~multicast ~buffer_size =
+let run_server
+      hosts port path
+      ~asd_id ~node_id
+      ~fsync ~slow
+      ~buffer_size
+      ~rocksdb_max_open_files
+      ~limit ~multicast =
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision
   >>= fun () ->
   let db_path = path ^ "/db" in
-  let kv = Rocks_key_value_store.create' ~db_path in
+  let kv =
+    Rocks_key_value_store.create'
+      ~max_open_files:rocksdb_max_open_files
+      ~db_path ()
+  in
 
   let endgame () =
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->

@@ -95,6 +95,7 @@ let asd_start cfg_file slow =
 
       Asd_server.run_server ips port home ~asd_id ~node_id ~slow
                             ~fsync ~limit ~multicast ~buffer_size
+                            ~rocksdb_max_open_files:256
   in
 
   lwt_server t
