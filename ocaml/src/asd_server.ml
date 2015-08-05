@@ -1187,7 +1187,11 @@ let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
   let mgmt = AsdMgmt.make latest_disk_usage limit in
   let server_t =
     let protocol fd =
-      let conn = Networking2.to_connection ~buffer_size fd in
+      let conn =
+        Networking2.to_connection
+          ~in_buffer:(Lwt_bytes.create buffer_size)
+          ~out_buffer:(Lwt_bytes.create buffer_size)
+          fd in
       asd_protocol
          kv
          ~release_fnr:(fun fnr -> advancer # release fnr)

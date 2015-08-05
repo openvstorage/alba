@@ -87,7 +87,12 @@ let output_err_response oc err msg =
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (stats: ProxyStatistics.t)
                    fd =
-  let (ic,oc) = Networking2.to_connection ~buffer_size:8192 fd in
+  let buffer_size = 8192 in
+  let (ic,oc) =
+    Networking2.to_connection
+      ~in_buffer:(Lwt_bytes.create buffer_size)
+      ~out_buffer:(Lwt_bytes.create buffer_size)
+      fd in
   let write_ok_response serializer res =
     let res_s =
       serialize
