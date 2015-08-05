@@ -1185,23 +1185,34 @@ let run_server hosts port path ~asd_id ~node_id ~fsync ~slow
     Lwt.return r
   in
   let mgmt = AsdMgmt.make latest_disk_usage limit in
+
+  let buffers = Buffer_pool.create ~buffer_size in
+  let get_buffer () = Buffer_pool.get_buffer buffers in
+  let return_buffer = Buffer_pool.return_buffer buffers in
+
   let server_t =
     let protocol fd =
-      let conn =
-        Networking2.to_connection
-          ~in_buffer:(Lwt_bytes.create buffer_size)
-          ~out_buffer:(Lwt_bytes.create buffer_size)
-          fd in
-      asd_protocol
-         kv
-         ~release_fnr:(fun fnr -> advancer # release fnr)
-         ~slow
-         ~syncfs_batched
-         dir_info
-         stats
-         ~mgmt
-         ~get_next_fnr
-         asd_id conn fd
+      let in_buffer = get_buffer () in
+      let out_buffer = get_buffer () in
+      Lwt.finalize
+        (fun () ->
+         let conn =
+           Networking2.to_connection
+             ~in_buffer ~out_buffer fd in
+         asd_protocol
+           kv
+           ~release_fnr:(fun fnr -> advancer # release fnr)
+           ~slow
+           ~syncfs_batched
+           dir_info
+           stats
+           ~mgmt
+           ~get_next_fnr
+           asd_id conn fd)
+        (fun () ->
+         return_buffer in_buffer;
+         return_buffer out_buffer;
+         Lwt.return ())
     in
     Networking2.make_server hosts port protocol
   in

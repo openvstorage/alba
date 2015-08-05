@@ -31,7 +31,7 @@ module Config = struct
     asd_id : string option  [@default None];
     __sync_dont_use : bool  [@default true];
     limit : int64           [@default 99L];
-    buffer_size : int       [@default 8192];
+    buffer_size : int       [@default (768*1024)];
     multicast: float option [@default (Some 10.0)];
   } [@@deriving yojson, show]
 end
