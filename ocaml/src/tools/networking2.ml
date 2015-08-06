@@ -33,7 +33,9 @@ let create_connection ?in_buffer ?out_buffer ip port =
     Lwt_unix.socket
       (Unix.domain_of_sockaddr address)
       Unix.SOCK_STREAM 0 in
-  Lwt_io.open_connection ~fd ?in_buffer ?out_buffer address
+  Lwt.catch
+    (fun () -> Lwt_io.open_connection ~fd ?in_buffer ?out_buffer address)
+    (fun exn -> Lwt_unix.close fd >>= fun () -> Lwt.fail exn)
   >>= fun conn ->
   Lwt.return (fd, conn)
 

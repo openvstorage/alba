@@ -431,11 +431,6 @@ let run_server hosts port
   >>= fun () ->
   let stats = ProxyStatistics.make () in
 
-  let buffer_size = 8192 in
-  let buffers = Buffer_pool.create ~buffer_size in
-  let get_buffer () = Buffer_pool.get_buffer buffers in
-  let return_buffer = Buffer_pool.return_buffer buffers in
-
   Lwt.catch
     (fun () ->
        let bad_fragment_callback
@@ -470,17 +465,16 @@ let run_server hosts port
                  alba_client
                  albamgr_cfg_file
               );
-              (Networking2.make_server
+              (let buffer_size = 8192 in
+               let buffer_pool = Buffer_pool.create ~buffer_size in
+               Networking2.make_server
                  hosts port
                  (fun fd ->
-                  let in_buffer = get_buffer () in
-                  Lwt.finalize
-                    (fun () ->
-                     let ic = Lwt_io.of_fd ~buffer:in_buffer ~mode:Lwt_io.input fd in
-                     proxy_protocol alba_client stats fd ic)
-                    (fun () ->
-                     return_buffer in_buffer;
-                     Lwt.return ())));
+                  Buffer_pool.with_buffer
+                    buffer_pool
+                    (fun buffer ->
+                     let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
+                     proxy_protocol alba_client stats fd ic)));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
             ])

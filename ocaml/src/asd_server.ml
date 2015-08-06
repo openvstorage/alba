@@ -1206,16 +1206,13 @@ let run_server
   in
   let mgmt = AsdMgmt.make latest_disk_usage limit in
 
-  let buffers = Buffer_pool.create ~buffer_size in
-  let get_buffer () = Buffer_pool.get_buffer buffers in
-  let return_buffer = Buffer_pool.return_buffer buffers in
-
   let server_t =
+    let buffer_pool = Buffer_pool.create ~buffer_size in
     let protocol fd =
-      let in_buffer = get_buffer () in
-      Lwt.finalize
-        (fun () ->
-         let ic = Lwt_io.of_fd ~buffer:in_buffer ~mode:Lwt_io.input fd in
+      Buffer_pool.with_buffer
+        buffer_pool
+        (fun buffer ->
+         let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
          asd_protocol
            kv
            ~release_fnr:(fun fnr -> advancer # release fnr)
@@ -1226,9 +1223,6 @@ let run_server
            ~mgmt
            ~get_next_fnr
            asd_id fd ic)
-        (fun () ->
-         return_buffer in_buffer;
-         Lwt.return ())
     in
     Networking2.make_server hosts port protocol
   in
