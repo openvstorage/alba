@@ -19,13 +19,15 @@ open Remotes
 open Lwt.Infix
 
 class basic_mgr_pooled
-    ~albamgr_connection_pool_size
-    ~albamgr_client_cfg =
+        buffer_pool
+        ~albamgr_connection_pool_size
+        ~albamgr_client_cfg =
 
   let albamgr_pool =
     Pool.Albamgr.make
       ~size:albamgr_connection_pool_size
       albamgr_client_cfg
+      buffer_pool
   in
   let with_basic_albamgr_from_pool f =
     Pool.Albamgr.use_mgr
@@ -117,7 +119,9 @@ let gc_grace_period = 120.
 
 class nsm_host_access
     (mgr : Albamgr_client.client)
-    nsm_host_connection_pool_size =
+    nsm_host_connection_pool_size
+    buffer_pool
+  =
 
   let nsm_hosts_info_cache = Hashtbl.create 3 in
 
@@ -137,7 +141,9 @@ class nsm_host_access
   let nsm_hosts_pool =
     Pool.Nsm_host.make
       ~size:nsm_host_connection_pool_size
-      (fun nsm_host_id -> get_nsm_host_info ~nsm_host_id) in
+      (fun nsm_host_id -> get_nsm_host_info ~nsm_host_id)
+      buffer_pool
+  in
 
   let namespace_to_id_cache = Hashtbl.create 3 in
   let namespace_id_to_info_cache = Hashtbl.create 3 in

@@ -27,30 +27,23 @@ let string_of_address = function
        (Unix.string_of_inet_addr addr) port
   | Unix.ADDR_UNIX s -> Printf.sprintf "ADDR_UNIX %s" s
 
-let create_connection ?in_buffer ?out_buffer ip port =
+let connect_with ip port =
   let address = make_address ip port in
   let fd =
     Lwt_unix.socket
       (Unix.domain_of_sockaddr address)
       Unix.SOCK_STREAM 0 in
   Lwt.catch
-    (fun () -> Lwt_io.open_connection ~fd ?in_buffer ?out_buffer address)
-    (fun exn -> Lwt_unix.close fd >>= fun () -> Lwt.fail exn)
-  >>= fun conn ->
-  Lwt.return (fd, conn)
-
-
-let closer (ic,oc) () =
-  Lwt_extra2.ignore_errors
     (fun () ->
-       Lwt_io.close ic >>= fun () ->
-       Lwt_io.close oc)
+     Lwt_unix.connect fd address >>= fun () ->
+     Lwt.return (fd, fun () -> Lwt_unix.close fd))
+    (fun exn ->
+     Lwt_unix.close fd >>= fun () ->
+     Lwt.fail exn)
 
 exception No_connection
 
-let first_connection
-      ?(buffer_size=Lwt_io.default_buffer_size ())
-      ips port =
+let first_connection ips port =
   let count = List.length ips in
   let res = Lwt_mvar.create_empty () in
   let err = Lwt_mvar.create None in
@@ -59,16 +52,12 @@ let first_connection
   let f' ip =
     Lwt.catch
       (fun () ->
-         create_connection
-           ~in_buffer:(Lwt_bytes.create buffer_size)
-           ~out_buffer:(Lwt_bytes.create buffer_size)
-           ip port
-         >>= fun (fd, conn) ->
+         connect_with ip port >>= fun (fd, closer) ->
          if Lwt_mutex.is_locked l
-         then closer conn ()
+         then closer ()
          else begin
            Lwt_mutex.lock l >>= fun () ->
-           Lwt_mvar.put res (`Success (fd, conn))
+           Lwt_mvar.put res (`Success (fd, closer))
          end)
       (fun exn ->
          Lwt.protected (
@@ -103,6 +92,25 @@ let first_connection
            Lwt.return ())
          ts)
 
+let to_connection ~in_buffer ~out_buffer fd =
+  let ic = Lwt_io.of_fd ~buffer:in_buffer ~mode:Lwt_io.input fd
+  and oc = Lwt_io.of_fd ~buffer:out_buffer ~mode:Lwt_io.output fd in
+  (ic,oc)
+
+let first_connection' ?close_msg buffer_pool ips port =
+  first_connection ips port >>= fun (fd, closer) ->
+  let in_buffer = Buffer_pool.get_buffer buffer_pool in
+  let out_buffer = Buffer_pool.get_buffer buffer_pool in
+  let conn = to_connection fd ~in_buffer ~out_buffer in
+  let closer () =
+    (match close_msg with
+     | None -> Lwt.return ()
+     | Some msg -> Lwt_log.debug msg) >>= fun () ->
+    Buffer_pool.return_buffer buffer_pool in_buffer;
+    Buffer_pool.return_buffer buffer_pool out_buffer;
+    closer ()
+  in
+  Lwt.return (fd, conn, closer)
 
 let make_server hosts port protocol =
   let server_loop socket_address =

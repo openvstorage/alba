@@ -240,12 +240,12 @@ let multicast
   in
   outer ()
 
-let get_kind ips port =
+let get_kind buffer_pool ips port =
   let maybe_kinetic ips port =
     Lwt_log.debug_f "%s %i is a kinetic?" (List.hd_exn ips) port >>= fun () ->
     Lwt.catch
       (fun () ->
-       Networking2.first_connection ips port >>= fun (_, conn) ->
+       Networking2.first_connection' buffer_pool ips port >>= fun (fd, conn, closer) ->
        Lwt.finalize
            (fun () ->
             Lwt_unix.with_timeout
@@ -264,11 +264,7 @@ let get_kind ips port =
                let r = Some kind in
                Lwt.return r)
            )
-           (fun () ->
-            let (ic,oc) = conn in
-            Lwt_io.close ic >>= fun () ->
-            Lwt_io.close oc
-           )
+           closer
       )
       (fun exn ->
        Lwt_log.debug_f ~exn "probably not a kinetic..." >>= fun () ->
@@ -280,7 +276,7 @@ let get_kind ips port =
     >>= fun () ->
     Lwt.catch
       (fun () ->
-       Asd_client.make_client ips port (Some "xxx")
+       Asd_client.make_client buffer_pool ips port (Some "xxx")
        >>= fun (client, closer) ->
        Lwt.finalize
          (fun () -> Lwt.return None)

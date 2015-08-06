@@ -23,11 +23,11 @@ module Pool = struct
     type t = (Albamgr_client.single_connection_client *
               (unit -> unit Lwt.t)) Lwt_pool2.t
 
-    let make ~size cfg =
+    let make ~size cfg buffer_pool =
       let factory () =
         let ccfg = Arakoon_config.to_arakoon_client_cfg !cfg in
         Lwt.catch
-          (fun () -> Albamgr_client.make_client ccfg)
+          (fun () -> Albamgr_client.make_client buffer_pool ccfg)
           (let open Client_helper in
            let open MasterLookupResult in
            function
@@ -42,6 +42,7 @@ module Pool = struct
                    cfg := cfg';
                    Lwt.return ()) >>= fun () ->
               Albamgr_client.make_client
+                buffer_pool
                 (Arakoon_config.to_arakoon_client_cfg !cfg)
             | exn ->
               Lwt.fail exn)
@@ -75,12 +76,14 @@ module Pool = struct
       get_nsm_host_config : Nsm_host.id -> Nsm_host.t Lwt.t;
       pools : (Nsm_host.id, nsm_pool) Hashtbl.t;
       pool_size : int;
+      buffer_pool : Buffer_pool.t;
     }
 
-    let make ~size get_nsm_host_config =
+    let make ~size get_nsm_host_config buffer_pool =
       let pools = Hashtbl.create 0 in
       { get_nsm_host_config;
         pools;
+        buffer_pool;
         pool_size = size;
       }
 
@@ -99,8 +102,9 @@ module Pool = struct
                  >>= fun nsm ->
                  match nsm.Nsm_host.kind with
                  | Nsm_host.Arakoon cfg ->
-                   Nsm_host_client.make_client
-                     (Arakoon_config.to_arakoon_client_cfg cfg))
+                    Nsm_host_client.make_client
+                      t.buffer_pool
+                      (Arakoon_config.to_arakoon_client_cfg cfg))
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools nsm_host_id p;
@@ -135,25 +139,27 @@ module Pool = struct
       pools : (Osd.id, osd_pool) Hashtbl.t;
       get_osd_kind : Osd.id -> Osd.kind Lwt.t;
       pool_size : int;
+      buffer_pool : Buffer_pool.t;
     }
 
-    let make ~size get_osd_kind =
+    let make ~size get_osd_kind buffer_pool =
       let pools = Hashtbl.create 0 in
       { pools;
         get_osd_kind;
         pool_size = size;
+        buffer_pool;
       }
 
-    let factory =
+    let factory buffer_pool =
       let open Osd in
       function
       | Asd (ips, port, asd_id) ->
-        Asd_client.make_client ips port (Some asd_id)
+        Asd_client.make_client buffer_pool ips port (Some asd_id)
         >>= fun (asd, closer) ->
         let osd = new Asd_client.asd_osd asd_id asd in
         Lwt.return (osd, closer)
       | Kinetic (ips, port, kinetic_id) ->
-        Kinetic_client.make_client ips port kinetic_id
+        Kinetic_client.make_client buffer_pool ips port kinetic_id
         >>= fun (kin, closer) ->
         Lwt.return (kin, closer)
 
@@ -167,7 +173,7 @@ module Pool = struct
               ~check:(fun _ exn ->
                   (* TODO some exns shouldn't invalidate the connection *)
                   false)
-              ~factory:(fun () -> t.get_osd_kind osd_id >>= factory)
+              ~factory:(fun () -> t.get_osd_kind osd_id >>= factory t.buffer_pool)
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools osd_id p;

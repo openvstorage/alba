@@ -13,3 +13,6 @@ let with_buffer t f =
     (fun () -> f buffer)
     (fun () -> return_buffer t buffer;
                Lwt.return ())
+
+let default_buffer_pool = create ~buffer_size:4096
+let osd_buffer_pool = create ~buffer_size:(768*1024)

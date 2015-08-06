@@ -17,10 +17,13 @@ limitations under the License.
 open Lwt.Infix
 open Prelude
 
+let buffer_pool = Buffer_pool.osd_buffer_pool
+
 let rec wait_asd_connection port asd_id () =
   Lwt.catch
     (fun () ->
      Asd_client.with_client
+       buffer_pool
        [ "::1" ] port asd_id
        (fun client -> Lwt.return `Continue))
     (function
@@ -59,6 +62,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
             5.
             (wait_asd_connection port asd_id)>>= fun () ->
           Asd_client.with_client
+            buffer_pool
             [ "::1" ] port (Some test_name)
             f
         end; ]
@@ -214,14 +218,17 @@ let test_protocol_version port () =
   let protocol_test port =
     Lwt.catch
       (fun () ->
-       Networking2.first_connection ["::1"] port
-       >>= fun (_, (ic,oc)) ->
-       let prologue_bytes = Asd_client.make_prologue
-                              Asd_protocol._MAGIC 666l None in
-       Lwt_io.write oc prologue_bytes >>= fun () ->
-       Asd_client._prologue_response ic None >>= fun _ ->
-       OUnit.assert_bool "should have failed" false;
-       Lwt.return ()
+       Networking2.first_connection' buffer_pool ["::1"] port
+       >>= fun (_, (ic,oc), closer) ->
+       Lwt.finalize
+         (fun () ->
+          let prologue_bytes = Asd_client.make_prologue
+                                 Asd_protocol._MAGIC 666l None in
+          Lwt_io.write oc prologue_bytes >>= fun () ->
+          Asd_client._prologue_response ic None >>= fun _ ->
+          OUnit.assert_bool "should have failed" false;
+          Lwt.return ())
+         closer
       )
       ( let open Asd_protocol in
         function

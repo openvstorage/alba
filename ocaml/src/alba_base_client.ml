@@ -98,6 +98,9 @@ let maintenance_for_all_x task_name list_x maintenance_f get_x_id show_x =
     sync_x_threads
     60.
 
+let default_buffer_pool = Buffer_pool.default_buffer_pool
+let osd_buffer_pool = Buffer_pool.osd_buffer_pool
+
 class alba_base_client
     (fragment_cache : cache)
     ~(mgr_access : Albamgr_client.client)
@@ -107,7 +110,12 @@ class alba_base_client
     ~osd_connection_pool_size
   =
 
-  let nsm_host_access = new nsm_host_access mgr_access nsm_host_connection_pool_size in
+  let nsm_host_access =
+    new nsm_host_access
+        mgr_access
+        nsm_host_connection_pool_size
+        default_buffer_pool
+  in
 
   let osds_info_cache =
     let open Albamgr_protocol.Protocol in
@@ -139,7 +147,9 @@ class alba_base_client
       (fun osd_id ->
          get_osd_info ~osd_id >>= fun (osd_info, _) ->
          let open Albamgr_protocol.Protocol in
-         Lwt.return osd_info.Osd.kind) in
+         Lwt.return osd_info.Osd.kind)
+      osd_buffer_pool
+  in
   let rec with_osd_from_pool
     : type a.
       osd_id:Albamgr_protocol.Protocol.Osd.id ->
@@ -545,7 +555,7 @@ class alba_base_client
                 let rec inner () =
                   Lwt.catch
                     (fun () ->
-                       Pool.Osd.factory kind >>= fun (osd, closer) ->
+                       Pool.Osd.factory osd_buffer_pool kind >>= fun (osd, closer) ->
                        Lwt.finalize
                          (fun () ->
                             osd # get_option
@@ -759,7 +769,7 @@ class alba_base_client
       (* TODO check claim_info first (eventhough it's not strictly needed) *)
 
       let update_osd () =
-        Pool.Osd.factory osd_info.Albamgr_protocol.Protocol.Osd.kind
+        Pool.Osd.factory osd_buffer_pool osd_info.Albamgr_protocol.Protocol.Osd.kind
         >>= fun (osd, closer) ->
         Lwt.finalize
           (fun () ->

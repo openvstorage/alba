@@ -322,16 +322,18 @@ class kinetic_client cid session conn =
 
 let _client_id = ref 0
 
-let make_client ips port (kinetic_id:string) =
+let make_client buffer_pool ips port (kinetic_id:string) =
   let cid = Printf.sprintf "(%03i, [%s], %i)"
                            !_client_id
                            (String.concat ";" ips)
                            port
   in
   let () = incr _client_id in
-  Networking2.first_connection ~buffer_size:(768* 1024) ips port
-  >>= fun (fd, conn) ->
-  let closer = Networking2.closer conn in
+  Networking2.first_connection'
+    buffer_pool
+    ips port
+    ~close_msg:"closing kinetic client"
+  >>= fun (fd, conn, closer) ->
   Lwt.catch
     (fun () ->
        let secret = "asdfasdf" in
@@ -344,8 +346,8 @@ let make_client ips port (kinetic_id:string) =
        closer () >>= fun () ->
        Lwt.fail exn)
 
-let with_client ips port kinetic_id f =
-  make_client ips port kinetic_id
+let with_client buffer_pool ips port kinetic_id f =
+  make_client buffer_pool ips port kinetic_id
   >>= fun (c,closer) ->
   Lwt.finalize
     (fun () -> f c)
