@@ -102,11 +102,6 @@ let first_connection
          ts)
 
 
-let to_connection ~in_buffer ~out_buffer fd =
-  let ic = Lwt_io.of_fd ~buffer:in_buffer ~mode:Lwt_io.input fd
-  and oc = Lwt_io.of_fd ~buffer:out_buffer ~mode:Lwt_io.output fd in
-  (ic,oc)
-
 let make_server hosts port protocol =
   let server_loop socket_address =
     let domain = Unix.domain_of_sockaddr socket_address in

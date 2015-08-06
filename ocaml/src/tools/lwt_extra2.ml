@@ -168,6 +168,9 @@ let write_all_lwt_bytes fd source offset length =
 let write_all fd source offset length =
   _write_all (Lwt_unix.write fd source) offset length
 
+let write_all' fd source =
+  write_all fd source 0 (Bytes.length source)
+
 let llio_output_and_flush oc s =
   Llio.output_string oc s >>= fun () ->
   Lwt_io.flush oc

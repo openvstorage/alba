@@ -76,37 +76,9 @@ let write_albamgr_cfg albamgr_cfg destination =
        Lwt_unix.fsync fd) >>= fun () ->
   Lwt_unix.rename tmp destination
 
-let output_err_response oc err msg =
-  let res_s =
-    serialize
-      (Llio.pair_to Llio.int_to Llio.string_to)
-      (Protocol.Error.err2int err, msg)
-  in
-  Lwt_extra2.llio_output_and_flush oc res_s
-
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (stats: ProxyStatistics.t)
-                   fd (ic, oc) =
-  let write_ok_response serializer res =
-    let res_s =
-      serialize
-        (Llio.pair_to
-           Llio.int_to
-           serializer)
-        (0, res) in
-    Lwt_extra2.llio_output_and_flush oc res_s
-  in
-  let write_err_response err =
-    let res_s =
-      serialize
-        (Llio.pair_to
-           Llio.int_to
-           Llio.string_to)
-        (Protocol.Error.err2int err,
-         Protocol.Error.show err) in
-    Lwt_extra2.llio_output_and_flush oc res_s
-  in
-
+                   fd ic =
   let execute_request : type i o. (i, o) Protocol.request ->
                              ProxyStatistics.t ->
                              i -> o Lwt.t
@@ -256,6 +228,18 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        end
     | GetVersion -> fun stats () -> Lwt.return Alba_version.summary
   in
+  let return_err_response ?msg err =
+    let res_s =
+      serialize_with_length
+        (Llio.pair_to
+           Llio.int_to
+           Llio.string_to)
+        (Protocol.Error.err2int err,
+         (match msg with
+          | None -> Protocol.Error.show err
+          | Some msg -> msg)) in
+    Lwt.return res_s
+  in
   let handle_request buf code =
     Lwt.catch
       (fun () ->
@@ -263,27 +247,29 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          | Protocol.Wrap r ->
            let req = Deser.from_buffer (Protocol.deser_request_i r) buf in
            execute_request r stats req >>= fun res ->
-           write_ok_response
-             (Deser.to_buffer (Protocol.deser_request_o r))
-             res)
+           Lwt.return (serialize_with_length
+                         (Llio.pair_to
+                            Llio.int_to
+                            (Deser.to_buffer (Protocol.deser_request_o r)))
+                         (0, res)))
       (function
         | End_of_file as e ->
           Lwt.fail e
         | Protocol.Error.Exn err ->
           Lwt_log.debug_f "Returning %s error to client"
                           (Protocol.Error.show err) >>= fun () ->
-          write_err_response err
+          return_err_response err
         | Asd_protocol.Protocol.Error.Exn err ->
           Lwt_log.debug_f
             "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
             (Asd_protocol.Protocol.Error.show err) >>= fun () ->
-          write_err_response Protocol.Error.Unknown
+          return_err_response Protocol.Error.Unknown
         | Nsm_model.Err.Nsm_exn (err, _) ->
           begin
             let open Nsm_model.Err in
             match err with
             | Object_not_found ->
-              write_err_response Protocol.Error.ObjectDoesNotExist
+              return_err_response Protocol.Error.ObjectDoesNotExist
             | Namespace_id_not_found
             | Unknown
             | Invalid_gc_epoch
@@ -301,22 +287,22 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
               Lwt_log.info_f
                 "Unexpected Nsm_model.Err exception in proxy while handling request: %s"
                 (Nsm_model.Err.show err) >>= fun () ->
-              write_err_response Protocol.Error.Unknown
+              return_err_response Protocol.Error.Unknown
             | Overwrite_not_allowed ->
               Lwt_log.info_f
                 "Received Nsm_model.Err Overwrite_not_allowed exception in proxy while that should've already been handled earlier..." >>= fun () ->
-              write_err_response Protocol.Error.Unknown
+              return_err_response Protocol.Error.Unknown
           end
         | Albamgr_protocol.Protocol.Error.Albamgr_exn (err, _) ->
           begin
             let open Albamgr_protocol.Protocol.Error in
             match err with
             | Namespace_already_exists ->
-              write_err_response Protocol.Error.NamespaceAlreadyExists
+              return_err_response Protocol.Error.NamespaceAlreadyExists
             | Namespace_does_not_exist ->
-              write_err_response Protocol.Error.NamespaceDoesNotExist
+              return_err_response Protocol.Error.NamespaceDoesNotExist
             | Preset_does_not_exist ->
-              write_err_response Protocol.Error.PresetDoesNotExist
+              return_err_response Protocol.Error.PresetDoesNotExist
             | Unknown
             | Osd_already_exists
             | Nsm_host_already_exists
@@ -338,13 +324,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
               Lwt_log.info_f
                 "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"
                 (Albamgr_protocol.Protocol.Error.show err) >>= fun () ->
-              write_err_response Protocol.Error.Unknown
+              return_err_response Protocol.Error.Unknown
           end
         | Alba_client_errors.Error.Exn err ->
           begin
             let open Alba_client_errors.Error in
             Lwt_log.debug_f "Got error from alba client: %s" (show err) >>= fun () ->
-            write_err_response
+            return_err_response
               (let open Protocol in
                match err with
                | ChecksumMismatch -> Error.ChecksumMismatch
@@ -360,7 +346,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           end
         | exn ->
           Lwt_log.debug_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
-          write_err_response Protocol.Error.Unknown)
+          return_err_response Protocol.Error.Unknown)
+    >>= fun res ->
+    Lwt_extra2.write_all' fd res
   in
   let rec inner () =
     Llio.input_string ic >>= fun req_s ->
@@ -387,7 +375,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     "protocol version: (server) %li <> %li (client)"
                     Protocol.version version
         in
-        output_err_response oc err msg
+        return_err_response ~msg err >>= fun res ->
+        Lwt_extra2.write_all' fd res
     end
   else Lwt.return ()
 
@@ -485,18 +474,12 @@ let run_server hosts port
                  hosts port
                  (fun fd ->
                   let in_buffer = get_buffer () in
-                  let out_buffer = get_buffer () in
                   Lwt.finalize
                     (fun () ->
-                     let conn =
-                       Networking2.to_connection
-                         ~in_buffer
-                         ~out_buffer
-                         fd in
-                     proxy_protocol alba_client stats fd conn)
+                     let ic = Lwt_io.of_fd ~buffer:in_buffer ~mode:Lwt_io.input fd in
+                     proxy_protocol alba_client stats fd ic)
                     (fun () ->
                      return_buffer in_buffer;
-                     return_buffer out_buffer;
                      Lwt.return ())));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
