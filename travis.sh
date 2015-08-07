@@ -103,6 +103,7 @@ script () {
             ;;
         system2)
             fab dev.run_tests_ocaml | tail -n256
+            expr $PIPESTATUS && false
             fab alba.smoke_test
             ;;
         disk_failures)
