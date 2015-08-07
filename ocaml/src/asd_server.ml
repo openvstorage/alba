@@ -148,13 +148,20 @@ module DirectoryInfo = struct
     | Creating wait -> wait
     | exception Not_found ->
       let sleep, awake = Lwt.wait () in
-      Hashtbl.add t.directory_cache dir (Creating sleep);
-
-      let parent_dir = Filename.dirname dir in
-      ensure_dir_exists t parent_dir >>= fun () ->
+      (* the sleeper should be woken up under all
+         circumstances, hence the exception handling
+         below.
+         (otherwise this could e.g.
+          block the fragment cache...)
+       *)
 
       Lwt.catch
         (fun () ->
+           Hashtbl.add t.directory_cache dir (Creating sleep);
+
+           let parent_dir = Filename.dirname dir in
+           ensure_dir_exists t parent_dir >>= fun () ->
+
            Lwt_extra2.create_dir
              ~sync:false
              (Filename.concat t.files_path dir))
