@@ -108,14 +108,16 @@ let wrap_around (client:Arakoon_client.client) =
     >>= fun ()->
     Lwt.fail_with "the nsm host user function could not be found"
 
-let make_client cfg =
+let make_client buffer_pool cfg =
   let open Client_helper in
   find_master' ~tls:None cfg >>= function
   | MasterLookupResult.Found (m, ncfg) ->
     let open Arakoon_client_config in
-    Networking2.first_connection ncfg.ips ncfg.port
-    >>= fun (fd, conn) ->
-    let closer = Networking2.closer conn in
+    Networking2.first_connection'
+      buffer_pool
+      ncfg.ips ncfg.port
+      ~close_msg:"closing nsm_host"
+    >>= fun (fd, conn, closer) ->
     Lwt.catch
       (fun () ->
          Arakoon_remote_client.make_remote_client cfg.cluster_id conn >>= fun client ->

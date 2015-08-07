@@ -28,6 +28,8 @@ build-nsm-plugin: build-cmxs
 	_build/src/consistency.cmx \
 	_build/src/policy.cmx \
 	_build/src/encryption.cmx \
+	_build/src/tools/weak_pool.cmx \
+	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/networking2.cmx \
 	_build/src/tools/checksum.cmx \
@@ -52,6 +54,8 @@ build-mgr-plugin: build-alba
 	_build/src/consistency.cmx \
 	_build/src/policy.cmx \
 	_build/src/encryption.cmx \
+	_build/src/tools/weak_pool.cmx \
+	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/networking2.cmx \
 	_build/src/tools/checksum.cmx \

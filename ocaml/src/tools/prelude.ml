@@ -434,12 +434,32 @@ let raise_bad_tag hint k =
   raise exn
 
 
+external set32_prim : string -> int -> int32 -> unit = "%caml_string_set32"
+external get32_prim : string -> int -> int32 = "%caml_string_get32"
+
+external set32_prim' : Lwt_bytes.t -> int -> int32 -> unit = "%caml_bigstring_set32"
+external get32_prim' : Lwt_bytes.t -> int -> int32 = "%caml_bigstring_get32"
+
+
 let deserialize ?(offset=0) deserializer s =
   deserializer (Llio.make_buffer s offset)
 let serialize ?(buf_size=20) serializer a =
   let buf = Buffer.create buf_size in
   serializer buf a;
   Buffer.contents buf
+
+let serialize_with_length ?buf_size serializer a =
+  let res =
+    serialize
+      ?buf_size
+      (Llio.pair_to Llio.int_to serializer)
+      (0,              (* temporarily put in length 0 *)
+       a)
+  in
+  (* fill length in the first 4 bytes *)
+  let len = String.length res - 4 in
+  set32_prim res 0 (Int32.of_int len);
+  res
 
 module Hashtbl = struct
   include Hashtbl
@@ -535,12 +555,6 @@ let list_all_x ~first get_first harvest =
     else Lwt.return (cnt'', List.rev acc')
   in
   inner 0 [] first true
-
-external set32_prim : string -> int -> int32 -> unit = "%caml_string_set32"
-external get32_prim : string -> int -> int32 = "%caml_string_get32"
-
-external set32_prim' : Lwt_bytes.t -> int -> int32 -> unit = "%caml_bigstring_set32"
-external get32_prim' : Lwt_bytes.t -> int -> int32 = "%caml_bigstring_get32"
 
 type timestamp = float
 

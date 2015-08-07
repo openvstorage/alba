@@ -805,8 +805,7 @@ let asd_protocol
       kv ~release_fnr ~slow ~syncfs_batched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
-      (ic, oc)
-      fd
+      fd ic
   =
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
   let handle_request buf command =
@@ -815,16 +814,35 @@ let asd_protocol
   >>= fun () ->
      *)
 
+    let return_result
+          ?(write_extra=fun _ -> Lwt.return ())
+          serializer res =
+      let res_s =
+        serialize_with_length
+          (Llio.pair_to
+             Llio.int_to
+             serializer)
+          (0, res)
+      in
+      Lwt.return (res_s, write_extra)
+    in
+    let return_error error =
+      let res =
+        serialize_with_length
+          Protocol.Error.serialize
+          error
+      in
+      Lwt.return (res, fun _ -> Lwt.return ())
+    in
     Lwt.catch
       (fun () ->
        begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
                 execute_query kv dir_info stats q req >>= fun (res, write_extra) ->
-                let res_buf = Buffer.create 20 in
-                Llio.int_to res_buf 0;
-                Protocol.query_response_serializer q res_buf res;
-                Lwt.return (Buffer.contents res_buf, write_extra)
+                return_result
+                  ~write_extra
+                  (Protocol.query_response_serializer q) res
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update
@@ -835,33 +853,21 @@ let asd_protocol
                   ~mgmt
                   ~get_next_fnr
                   u req >>= fun res ->
-                let res_buf = Buffer.create 20 in
-                Llio.int_to res_buf 0;
-                Protocol.update_response_serializer u res_buf res;
-                Lwt.return (Buffer.contents res_buf,
-                            fun _ -> Lwt.return_unit)
+                return_result (Protocol.update_response_serializer u) res
        end)
       (function
         | End_of_file as e ->
            Lwt.fail e
         | Protocol.Error.Exn err ->
-           let res_buf = Buffer.create 20 in
-           Protocol.Error.serialize res_buf err;
-           Lwt_log.info_f "returning error %s" (Protocol.Error.show err)
-           >>= fun () ->
-           Lwt.return (Buffer.contents res_buf,
-                       fun _ -> Lwt.return_unit)
+           Lwt_log.info_f "returning error %s" (Protocol.Error.show err) >>= fun () ->
+           return_error err
         | exn ->
            Lwt_log.info_f ~exn "error during client request: %s"
                           (Printexc.to_string exn)
            >>= fun () ->
-           let res_buf = Buffer.create 20 in
-           Protocol.Error.serialize
-             res_buf (Protocol.Error.Unknown_error (1, "Unknown error occured"));
-           Lwt.return (Buffer.contents res_buf,
-                       fun _ -> Lwt.return_unit)
+           return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    Lwt_extra2.llio_output_and_flush oc res >>= fun () ->
+    Lwt_extra2.write_all' fd res >>= fun () ->
     write_extra fd
   in
   let rec inner () =
@@ -912,13 +918,18 @@ let asd_protocol
           Error.serialize rbuf err;
           Lwt_log.debug msg >>= fun () ->
           let bytes_back = Buffer.contents rbuf  in
-          Lwt_io.write oc bytes_back >>= fun () ->
-          Lwt_io.flush oc
+          Lwt_extra2.write_all' fd bytes_back
         else
           begin
             Llio.input_string_option ic >>= fun lido ->
-            Llio.output_int32 oc 0l >>= fun () ->
-            Lwt_extra2.llio_output_and_flush oc asd_id >>= fun () ->
+            Lwt_extra2.write_all'
+              fd
+              (serialize
+                 (Llio.pair_to
+                    Llio.int32_to
+                    Llio.string_to)
+                 (0l, asd_id))
+            >>= fun () ->
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()
             | _ -> inner ()
@@ -1195,19 +1206,13 @@ let run_server
   in
   let mgmt = AsdMgmt.make latest_disk_usage limit in
 
-  let buffers = Buffer_pool.create ~buffer_size in
-  let get_buffer () = Buffer_pool.get_buffer buffers in
-  let return_buffer = Buffer_pool.return_buffer buffers in
-
   let server_t =
+    let buffer_pool = Buffer_pool.create ~buffer_size in
     let protocol fd =
-      let in_buffer = get_buffer () in
-      let out_buffer = get_buffer () in
-      Lwt.finalize
-        (fun () ->
-         let conn =
-           Networking2.to_connection
-             ~in_buffer ~out_buffer fd in
+      Buffer_pool.with_buffer
+        buffer_pool
+        (fun buffer ->
+         let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
          asd_protocol
            kv
            ~release_fnr:(fun fnr -> advancer # release fnr)
@@ -1217,11 +1222,7 @@ let run_server
            stats
            ~mgmt
            ~get_next_fnr
-           asd_id conn fd)
-        (fun () ->
-         return_buffer in_buffer;
-         return_buffer out_buffer;
-         Lwt.return ())
+           asd_id fd ic)
     in
     Networking2.make_server hosts port protocol
   in

@@ -345,7 +345,8 @@ let with_client albamgr_client_cfg
     new Albamgr_client.client
       (new basic_mgr_pooled
         ~albamgr_connection_pool_size
-        ~albamgr_client_cfg)
+        ~albamgr_client_cfg
+        default_buffer_pool)
   in
   let client = new alba_client
                    cache

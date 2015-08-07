@@ -20,7 +20,7 @@ open Slice
 open Asd_protocol
 open Protocol
 
-class client fd (ic, oc) id =
+class client fd ic id =
   let read_response deserializer =
     Llio.input_string ic >>= fun res_s ->
     let res_buf = Llio.make_buffer res_s 0 in
@@ -42,11 +42,16 @@ class client fd (ic, oc) id =
           id descr >>= fun () ->
         Alba_statistics.Statistics.with_timing_lwt
           (fun () ->
-             let buf = Buffer.create 20 in
-             Llio.int_to buf (command_to_code (Wrap_query command));
-             query_request_serializer command buf req;
-             Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-             read_response (query_response_deserializer command)) >>= fun (t, r) ->
+           let s =
+             serialize_with_length
+               (Llio.pair_to
+                  Llio.int_to
+                  (query_request_serializer command))
+               (command_to_code (Wrap_query command),
+                req)
+           in
+           Lwt_extra2.write_all' fd s >>= fun () ->
+           read_response (query_response_deserializer command)) >>= fun (t, r) ->
         Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
         Lwt.return r
 
@@ -58,11 +63,16 @@ class client fd (ic, oc) id =
           id descr >>= fun () ->
         Alba_statistics.Statistics.with_timing_lwt
           (fun () ->
-             let buf = Buffer.create 20 in
-             Llio.int_to buf (command_to_code (Wrap_update command));
-             update_request_serializer command buf req;
-             Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-             read_response (update_response_deserializer command)) >>= fun (t, r) ->
+           let s =
+             serialize_with_length
+               (Llio.pair_to
+                  Llio.int_to
+                  (update_request_serializer command))
+               (command_to_code (Wrap_update command),
+                req)
+           in
+           Lwt_extra2.write_all' fd s >>= fun () ->
+           read_response (update_response_deserializer command)) >>= fun (t, r) ->
         Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
         Lwt.return r
 
@@ -222,30 +232,34 @@ let _prologue_response ic lido =
 
 
 
-let make_client ips port (lido:string option) =
-  Networking2.first_connection ~buffer_size:(768*1024) ips port
-  >>= fun (fd, conn) ->
-  let closer = Networking2.closer conn in
+let make_client buffer_pool ips port (lido:string option) =
+  Networking2.first_connection ips port
+  >>= fun (fd, closer) ->
+  let buffer = Buffer_pool.get_buffer buffer_pool in
+  let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
+  let closer () =
+    Buffer_pool.return_buffer buffer_pool buffer;
+    closer ()
+  in
   Lwt.catch
     (fun () ->
-       let ic,oc = conn in
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
-       Lwt_io.write oc prologue_bytes >>= fun () ->
+       Lwt_extra2.write_all' fd prologue_bytes >>= fun () ->
        _prologue_response ic lido >>= fun long_id ->
-       let client = new client fd conn long_id in
+       let client = new client fd ic long_id in
        Lwt.return (client, closer)
     )
     (fun exn ->
      closer () >>= fun () ->
      Lwt.fail exn)
 
-let with_client ips port (lido:string option) f =
+let with_client buffer_pool ips port (lido:string option) f =
   (* TODO: validation here? or elsewhere *)
   if ips = []
   then failwith "empty ips list for asd_client.with_client";
 
-  make_client ips port lido >>= fun (client, closer) ->
+  make_client buffer_pool ips port lido >>= fun (client, closer) ->
   Lwt.finalize
     (fun () -> f client)
     closer

@@ -120,8 +120,16 @@ let asd_start_cmd =
   in
   asd_start_t, info
 
+let buffer_pool = Buffer_pool.osd_buffer_pool
+
 let run_with_asd_client' host port asd_id f =
-    lwt_cmd_line false (fun () -> Asd_client.with_client host port asd_id f)
+  lwt_cmd_line
+    false
+    (fun () ->
+     Asd_client.with_client
+       buffer_pool
+       host port asd_id
+       f)
 
 let run_with_osd_client'
       (ips:string list)
@@ -129,10 +137,10 @@ let run_with_osd_client'
     lwt_cmd_line
       false
       (fun () ->
-       Discovery.get_kind ips port >>= function
+       Discovery.get_kind buffer_pool ips port >>= function
        | None -> failwith "what kind is this?"
        | Some k ->
-          Remotes.Pool.Osd.factory k >>= fun (client, closer) ->
+          Remotes.Pool.Osd.factory buffer_pool k >>= fun (client, closer) ->
           Lwt.finalize (fun () ->f client) closer
       )
 
@@ -358,7 +366,7 @@ let asd_statistics hosts port_o asd_id to_json config_o clear =
                     get_ips_port osd.kind
                   in
                   Asd_client.with_client
-                    ips port asd_id
+                    buffer_pool ips port asd_id
                     _inner
               end
            )

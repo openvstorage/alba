@@ -395,14 +395,16 @@ let wrap_around' ara_c =
   wrap_around ara_c >>= fun c ->
   Lwt.return (new client c)
 
-let make_client (ccfg:Arakoon_client_config.t) =
+let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
   let open Client_helper in
   find_master' ~tls:None ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->
      let open Arakoon_client_config in
-     Networking2.first_connection ncfg.ips ncfg.port
-     >>= fun (_, conn) ->
-     let closer = Networking2.closer conn in
+     Networking2.first_connection'
+       buffer_pool
+       ncfg.ips ncfg.port
+       ~close_msg:"closing albamgr"
+     >>= fun (fd, conn, closer) ->
      Lwt.catch
        (fun () ->
           Arakoon_remote_client.make_remote_client
@@ -411,12 +413,11 @@ let make_client (ccfg:Arakoon_client_config.t) =
           wrap_around (client:Arakoon_client.client))
        (fun exn ->
           closer () >>= fun () ->
-          Lwt.fail exn)>>= fun c ->
+          Lwt.fail exn)
+     >>= fun c ->
      Lwt.return (c,
                  m,
-                 (fun () ->
-                    Lwt_log.debug_f "closing albamgr" >>= fun () ->
-                    Networking2.closer conn ()))
+                 closer)
   | r -> Lwt.fail (Client_helper.MasterLookupResult.Error r)
 
 let with_client cfg f =

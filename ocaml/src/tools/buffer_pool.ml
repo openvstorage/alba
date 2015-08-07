@@ -6,3 +6,13 @@ let create ~buffer_size =
 let get_buffer = Weak_pool.take
 
 let return_buffer = Weak_pool.return
+
+let with_buffer t f =
+  let buffer = get_buffer t in
+  Lwt.finalize
+    (fun () -> f buffer)
+    (fun () -> return_buffer t buffer;
+               Lwt.return ())
+
+let default_buffer_pool = create ~buffer_size:4096
+let osd_buffer_pool = create ~buffer_size:(768*1024)
