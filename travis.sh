@@ -105,6 +105,10 @@ script () {
             fab dev.run_tests_ocaml | tail -n256
             fab alba.smoke_test
             ;;
+        disk_failures)
+            fab dev.run_tests_disk_failures
+            fab alba.smoke_test
+            ;;
         *)
             echo "invalid test suite specified..."
             exit1

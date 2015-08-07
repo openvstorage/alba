@@ -422,11 +422,14 @@ def smoke_test():
     print "master:", m
     fuser = "fuser"
     centos = False
-    with open('/etc/os-release','r') as f:
-        data = f.read()
-        print data
-        if data.find('centos') > 0:
-            centos = True
+    try:
+        with open('/etc/os-release','r') as f:
+            data = f.read()
+            print data
+            if data.find('centos') > 0:
+                centos = True
+    except:
+        pass
 
     if centos:
         fuser = "sudo fuser"
