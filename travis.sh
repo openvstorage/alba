@@ -5,7 +5,7 @@ APT_DEPENDS="libev-dev libssl-dev libsnappy-dev \
              libgcrypt11-dev \
              protobuf-compiler libjerasure-dev \
              build-essential automake autoconf yasm \
-             python-pip"
+             procps python-pip"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.0 \
@@ -88,16 +88,19 @@ install () {
 script () {
     echo "Running 'script' phase"
 
+    eval `opam config env`
+    export ARAKOON_BIN=arakoon
+
     case "$SUITE" in
         build)
             ./ocaml/alba.native version
             ;;
         system2)
-            fab dev.run_tests_ocaml:xml=True || true
-            ./jenkins/system2/050-smoke_test.sh
+            fab dev.run_tests_ocaml | tail -n256
+            fab alba.smoke_test
             ;;
         *)
-            echo "invalid suite specified.."
+            echo "invalid test suite specified..."
             exit1
     esac
 }
