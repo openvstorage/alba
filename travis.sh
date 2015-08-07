@@ -4,7 +4,8 @@ APT_DEPENDS="libev-dev libssl-dev libsnappy-dev \
              libgmp3-dev help2man g++-4.8 \
              libgcrypt11-dev \
              protobuf-compiler libjerasure-dev \
-             build-essential automake autoconf yasm"
+             build-essential automake autoconf yasm \
+             procps python-pip"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.0 \
@@ -66,6 +67,8 @@ before_install () {
     ./configure
     make
     sudo make install
+
+    sudo pip install fabric junit-xml
 }
 
 install () {
@@ -74,6 +77,12 @@ install () {
     opam init
     eval `opam config env`
     opam update
+
+    wget https://gist.github.com/domsj/f2d7726e5d9895d498fb/raw/1e6191c16cc45bbc493328188079cad40a7aa6c8/librocksdb.so.3.12.0
+    sudo cp librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12.0
+    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12
+    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3
+    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so
 
     opam install ${OPAM_DEPENDS} || true
     opam depext arakoon.1.8.6 orocksdb.0.2.0
@@ -85,7 +94,25 @@ install () {
 script () {
     echo "Running 'script' phase"
 
-    ./ocaml/alba.native version
+    eval `opam config env`
+    export ARAKOON_BIN=arakoon
+
+    case "$SUITE" in
+        build)
+            ./ocaml/alba.native version
+            ;;
+        system2)
+            fab dev.run_tests_ocaml | tail -n256
+            fab alba.smoke_test
+            ;;
+        disk_failures)
+            fab dev.run_tests_disk_failures
+            fab alba.smoke_test
+            ;;
+        *)
+            echo "invalid test suite specified..."
+            exit1
+    esac
 }
 
 case "$1" in
