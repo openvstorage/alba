@@ -4,7 +4,8 @@ APT_DEPENDS="libev-dev libssl-dev libsnappy-dev \
              libgmp3-dev help2man g++-4.8 \
              libgcrypt11-dev \
              protobuf-compiler libjerasure-dev \
-             build-essential automake autoconf yasm"
+             build-essential automake autoconf yasm \
+             python-pip"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.0 \
@@ -66,6 +67,8 @@ before_install () {
     ./configure
     make
     sudo make install
+
+    sudo pip install fabric junit-xml
 }
 
 install () {
@@ -85,7 +88,18 @@ install () {
 script () {
     echo "Running 'script' phase"
 
-    ./ocaml/alba.native version
+    case "$SUITE" in
+        build)
+            ./ocaml/alba.native version
+            ;;
+        system2)
+            fab dev.run_tests_ocaml:xml=True || true
+            ./jenkins/system2/050-smoke_test.sh
+            ;;
+        *)
+            echo "invalid suite specified.."
+            exit1
+    esac
 }
 
 case "$1" in

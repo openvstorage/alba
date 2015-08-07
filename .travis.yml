@@ -3,7 +3,9 @@ cache: apt
 matrix:
   include:
   - os: linux
-    env: OCAML_VERSION=4.02.1 OPAM_VERSION=1.2.2
+    env: SUITE=build
+  - os: linux
+    env: SUITE=system2
 
 sudo: required
 before_install: ./travis.sh before_install
