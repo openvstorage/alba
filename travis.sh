@@ -78,6 +78,12 @@ install () {
     eval `opam config env`
     opam update
 
+    wget https://gist.github.com/domsj/f2d7726e5d9895d498fb/raw/1e6191c16cc45bbc493328188079cad40a7aa6c8/librocksdb.so.3.12.0
+    sudo cp librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12.0
+    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12
+    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3
+    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so
+
     opam install ${OPAM_DEPENDS} || true
     opam depext arakoon.1.8.6 orocksdb.0.2.0
     opam install ${OPAM_DEPENDS}
