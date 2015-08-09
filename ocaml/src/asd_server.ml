@@ -388,8 +388,8 @@ let execute_query : type req res.
               dir_info fnr
               (fun blob_fd ->
                Fsutil.sendfile_all
-                 ~fd_in:(Fsutil.lwt_unix_fd_to_fd blob_fd)
-                 ~fd_out:(Fsutil.lwt_unix_fd_to_fd fd)
+                 ~fd_in:blob_fd
+                 ~fd_out:fd
                  size))
            (List.rev !write_laters))
     | Statistics -> fun clear ->

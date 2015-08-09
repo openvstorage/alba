@@ -125,12 +125,21 @@ class client fd ic id =
                      assert (read = buffered);
                      assert (0 = Lwt_io.buffered ic);
 
+                     let remaining = size - read in
                      Lwt_extra2.read_all
                        fd target
-                       read (size - read)
+                       read remaining
                      >>= fun read' ->
-                     assert (read + read' = size);
-                     Lwt.return ()
+                     if read' = remaining
+                     then Lwt.return ()
+                     else begin
+                         Lwt_log.debug_f
+                           "read=%i, read'=%i, size=%i, buffered=%i, new buffered=%i"
+                           read read' size
+                           buffered (Lwt_io.buffered ic)
+                         >>= fun () ->
+                         Lwt.fail End_of_file
+                     end
                    end) >>= fun () ->
 
                 Lwt.return (Some (Slice.wrap_bytes target, cs)))
