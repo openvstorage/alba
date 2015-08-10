@@ -667,7 +667,7 @@ let test_discover_claimed () =
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
          (fun asd ->
-            alba_client # seen
+            alba_client # osd_access # seen
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = test_name;
                                     extras = Some({
@@ -1112,7 +1112,7 @@ let test_disk_churn () =
          | (asd_name, asd_port) :: asds ->
            Asd_test.with_asd_client asd_name asd_port
              (fun asd ->
-                alba_client # seen
+                alba_client # osd_access # seen
                   ~check_claimed_delay:1.
                   Discovery.(Good("", { id = asd_name;
                                         extras = Some({
@@ -1382,7 +1382,7 @@ let test_add_disk () =
        let asd_port = 17843 in
        Asd_test.with_asd_client asd_name asd_port
          (fun asd ->
-            alba_client # seen
+            alba_client # osd_access # seen
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = asd_name;
                                     extras = Some({

@@ -20,7 +20,7 @@ open Recovery_info
 open Lwt.Infix
 
 
-let gc_grace_period = Access.gc_grace_period
+let gc_grace_period = Nsm_host_access.gc_grace_period
 type namespace_id = Albamgr_protocol.Protocol.Namespace.id
 
 type flavour =
@@ -299,7 +299,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                 osds that will be force chosen *)
              Lwt_list.iter_p
                (fun osd_id ->
-                  alba_client # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+                  alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
                   Hashtbl.replace osds_info_cache' osd_id osd_info;
                   Lwt.return ())
                ok_fragments' >>= fun () ->

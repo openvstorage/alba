@@ -16,7 +16,7 @@ limitations under the License.
 
 open Lwt.Infix
 open Fragment_cache
-open Access
+open Albamgr_access
 open Alba_base_client
 open Alba_statistics
 open Alba_client_errors

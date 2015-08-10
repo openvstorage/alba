@@ -18,33 +18,6 @@ open Prelude
 open Remotes
 open Lwt.Infix
 
-class basic_mgr_pooled
-        buffer_pool
-        ~albamgr_connection_pool_size
-        ~albamgr_client_cfg =
-
-  let albamgr_pool =
-    Pool.Albamgr.make
-      ~size:albamgr_connection_pool_size
-      albamgr_client_cfg
-      buffer_pool
-  in
-  let with_basic_albamgr_from_pool f =
-    Pool.Albamgr.use_mgr
-      albamgr_pool
-      f
-  in
-  object(self :# Albamgr_client.basic_client)
-
-    method query ?consistency command req =
-      with_basic_albamgr_from_pool
-        (fun mgr -> mgr # query ?consistency command req)
-
-    method update command req =
-      with_basic_albamgr_from_pool
-        (fun mgr -> mgr # update command req)
-  end
-
 class basic_nsm_host_pooled
     (mgr_access : Albamgr_client.client)
     nsm_hosts_pool
