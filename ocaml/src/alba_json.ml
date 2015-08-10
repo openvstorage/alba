@@ -170,7 +170,7 @@ module Preset = struct
 
   type osds = Albamgr_protocol.Protocol.Preset.osds =
     | All      [@name "all"]
-    | Explicit [@name "explicit"] of int32 list
+    | Explicit of (int32 list) [@name "explicit"]
   [@@deriving yojson]
 
   type checksum_algo =

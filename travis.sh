@@ -5,7 +5,8 @@ APT_DEPENDS="libev-dev libssl-dev libsnappy-dev \
              libgcrypt11-dev \
              protobuf-compiler libjerasure-dev \
              build-essential automake autoconf yasm \
-             procps python-pip"
+             procps python-pip \
+             aspcud"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.0 \
@@ -38,19 +39,32 @@ export OPAMCOLOR=never
 before_install () {
     echo "Running 'before_install' phase"
 
+    env
+
     echo "Adding PPA"
     sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty main restricted universe multiverse"
     sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty-updates main restricted universe multiverse"
     sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty-backports main restricted universe multiverse"
-    sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
 
     echo "Updating Apt cache"
-    sudo apt-get update -qq
+    sudo apt-get update -q
 
     echo "Installing general dependencies"
-    sudo apt-get install -qq ${APT_DEPENDS}
-    echo "Installing dependencies"
-    sudo apt-get install -qq ${APT_OCAML_DEPENDS}
+    sudo apt-get install -q ${APT_DEPENDS}
+
+    # using
+    # sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
+    # and then
+    # sudo apt-get install ocaml ocaml-native-compilers camlp4-extra opam
+    # no longer works because it results in 4.02.3...
+    # so now using this alternative method:
+    wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
+    sudo sh ./opam_installer.sh /usr/local/bin 4.02.1  # change to system once it works with 4.02.3
+    /usr/local/bin/opam init --comp 4.02.1 |tail -n256 # change to system once it works with 4.02.3
+    expr $PIPESTATUS && false
+    eval `opam config env`
+    opam update
+    opam install camlp4
 
     echo "OCaml versions:"
     ocaml -version
