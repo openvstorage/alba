@@ -21,18 +21,18 @@ open Prelude
 
 module Config = struct
   type t = {
-    ips : string list [@default []];
+    ips : (string list [@default []]);
     port : int;
     log_level : string;
     albamgr_cfg_file : string;
     fragment_cache_dir : string;
-    manifest_cache_size : int [@default 100_000];
-    fragment_cache_size : int [@default 100_000_000];
-    albamgr_connection_pool_size : int [@default 10];
-    nsm_host_connection_pool_size : int [@default 10];
-    osd_connection_pool_size : int [@default 10];
-    lwt_preemptive_thread_pool_min_size : int [@default 6];
-    lwt_preemptive_thread_pool_max_size : int [@default 8];
+    manifest_cache_size : (int [@default 100_000]);
+    fragment_cache_size : (int [@default 100_000_000]);
+    albamgr_connection_pool_size : (int [@default 10]);
+    nsm_host_connection_pool_size : (int [@default 10]);
+    osd_connection_pool_size : (int [@default 10]);
+    lwt_preemptive_thread_pool_min_size : (int [@default 6]);
+    lwt_preemptive_thread_pool_max_size : (int [@default 8]);
   } [@@deriving yojson, show]
 end
 

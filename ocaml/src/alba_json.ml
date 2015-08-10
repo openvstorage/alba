@@ -194,16 +194,16 @@ module Preset = struct
   [@@deriving yojson]
 
   type t = {
-    name : string [@default ""];
+    name : (string [@default ""]);
     policies : (int * int * int * int) list;
-    is_default : bool [@default false];
+    is_default : (bool [@default false]);
     fragment_size : int;
     osds : osds;
     compression : string;
     fragment_checksum : checksum_algo;
     object_checksum : object_checksum;
     fragment_encryption : fragment_encryption;
-    in_use : bool [@default true];
+    in_use : (bool [@default true]);
   } [@@deriving yojson]
 
   type t_list = t list [@@deriving yojson]

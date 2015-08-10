@@ -22,11 +22,11 @@ module Config = struct
   type t = {
     log_level : string;
     albamgr_cfg_file : string;
-    albamgr_connection_pool_size : int [@default 10];
-    nsm_host_connection_pool_size : int [@default 10];
-    osd_connection_pool_size : int [@default 10];
-    lwt_preemptive_thread_pool_min_size : int [@default 6];
-    lwt_preemptive_thread_pool_max_size : int [@default 8];
+    albamgr_connection_pool_size : (int [@default 10]);
+    nsm_host_connection_pool_size : (int [@default 10]);
+    osd_connection_pool_size : (int [@default 10]);
+    lwt_preemptive_thread_pool_min_size : (int [@default 6]);
+    lwt_preemptive_thread_pool_max_size : (int [@default 8]);
   } [@@deriving yojson, show]
 end
 
