@@ -115,11 +115,6 @@ class client
       end;
       Lwt.return preset
   in
-  let deliver_nsm_host_messages ~nsm_host_id =
-    Alba_client_message_delivery.deliver_nsm_host_messages
-      mgr_access nsm_host_access osd_access
-      ~nsm_host_id
-  in
   let deliver_osd_messages ~osd_id =
     Alba_client_message_delivery.deliver_osd_messages
       mgr_access nsm_host_access osd_access
@@ -176,7 +171,7 @@ class client
         let finished = ref false in
 
         Lwt_list.iter_p
-          (fun (osd_id, _) ->
+          (fun (osd_id, (_ : Albamgr_protocol.Protocol.Osd.NamespaceLink.state)) ->
              Lwt_extra2.ignore_errors
                (fun () ->
                   (if Hashtbl.mem osd_msg_delivery_threads osd_id
@@ -225,34 +220,6 @@ class client
         [ Lwt_mvar.take mvar;
           Lwt_unix.sleep 2. ]
 
-    method create_namespace ~namespace ~preset_name ?nsm_host_id () =
-      Lwt_log.debug_f "Alba_client: create_namespace %S" namespace >>= fun () ->
-      mgr_access #  create_namespace ~namespace ~preset_name ?nsm_host_id ()
-      >>= fun ns_info ->
-
-      let open Albamgr_protocol.Protocol in
-      let namespace_id = ns_info.Namespace.id in
-      let nsm_host_id = ns_info.Namespace.nsm_host_id in
-
-      get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-
-      let osds_t =
-        mgr_access # list_all_namespace_osds ~namespace_id >>= fun (_, osds) ->
-        self # deliver_messages_to_most_osds ~osds ~preset
-      in
-
-      osds_t >>= fun () ->
-
-      (* message delivery can interfere with message delivery
-         from e.g. the maintenance process, that's why we're
-         ignoring errors here *)
-      Lwt_extra2.ignore_errors
-        (fun () -> deliver_nsm_host_messages ~nsm_host_id) >>= fun () ->
-
-      Lwt_log.debug_f "Alba_client: create_namespace %S:%li ok"
-                      namespace namespace_id
-      >>= fun () ->
-      Lwt.return namespace_id
 
     method claim_osd long_id =
       mgr_access # get_alba_id >>= fun alba_id ->

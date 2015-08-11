@@ -27,6 +27,13 @@ class alba_client (base_client : Alba_base_client.client)
   let nsm_host_access = base_client # nsm_host_access in
   let osd_access = base_client # osd_access in
   let fragment_cache = base_client # get_fragment_cache in
+
+  let deliver_nsm_host_messages ~nsm_host_id =
+    Alba_client_message_delivery.deliver_nsm_host_messages
+      mgr_access nsm_host_access osd_access
+      ~nsm_host_id
+  in
+
   object(self)
     method get_base_client = base_client
     method mgr_access = mgr_access
@@ -38,7 +45,14 @@ class alba_client (base_client : Alba_base_client.client)
     method delete_object' = base_client # delete_object'
     method download_object_generic'' = base_client # download_object_generic''
 
-    method create_namespace = base_client # create_namespace
+    method create_namespace ~namespace ~preset_name ?nsm_host_id () =
+      Alba_client_namespace.create_namespace
+        mgr_access
+        (base_client # get_preset_info)
+        (base_client # deliver_messages_to_most_osds)
+        deliver_nsm_host_messages
+        ~namespace ~preset_name ?nsm_host_id ()
+
     method upload_object_from_file = base_client # upload_object_from_file
 
     method discover_osds_check_claimed = base_client # discover_osds_check_claimed
@@ -325,22 +339,11 @@ class alba_client (base_client : Alba_base_client.client)
         ~osd_id
 
     method delete_namespace ~namespace =
-      Lwt_log.debug_f "Alba_client: delete_namespace %S" namespace >>= fun () ->
-
-      self # nsm_host_access # with_namespace_id
+      Alba_client_namespace.delete_namespace
+        mgr_access nsm_host_access
+        deliver_nsm_host_messages
+        (self # drop_cache_by_id)
         ~namespace
-        (fun namespace_id ->
-
-           Lwt.ignore_result begin
-             Lwt_extra2.ignore_errors
-               (fun () -> self # drop_cache_by_id namespace_id)
-           end;
-
-           mgr_access # list_all_namespace_osds ~namespace_id >>= fun (_, osds) ->
-
-           mgr_access # delete_namespace ~namespace >>= fun nsm_host_id ->
-
-           self # deliver_nsm_host_messages ~nsm_host_id)
   end
 
 let with_client albamgr_client_cfg
