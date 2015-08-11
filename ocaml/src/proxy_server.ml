@@ -434,7 +434,7 @@ let run_server hosts port
   Lwt.catch
     (fun () ->
        let bad_fragment_callback
-           (alba_client : Alba_client.alba_client)
+           (alba_client : Alba_base_client.client)
            ~namespace_id
            ~object_id ~object_name
            ~chunk_id ~fragment_id ~version_id =

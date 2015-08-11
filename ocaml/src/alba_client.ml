@@ -21,28 +21,44 @@ open Alba_base_client
 open Alba_statistics
 open Alba_client_errors
 
-class alba_client (fragment_cache : cache)
-                  ~(mgr_access : Albamgr_client.client)
-                  ~manifest_cache_size
-                  ~bad_fragment_callback
-                  ~nsm_host_connection_pool_size
-                  ~osd_connection_pool_size
-  = object(self)
-  inherit alba_base_client
-            fragment_cache
-            ~mgr_access
-            ~manifest_cache_size
-            ~bad_fragment_callback
-            ~nsm_host_connection_pool_size
-            ~osd_connection_pool_size
+class alba_client (base_client : Alba_base_client.client)
+  =
+  let mgr_access = base_client # mgr_access in
+  let fragment_cache = base_client # get_fragment_cache in
+  object(self)
+    method get_base_client = base_client
+    method mgr_access = mgr_access
+    method nsm_host_access = base_client # nsm_host_access
+    method osd_access = base_client # osd_access
 
-  method get_object_manifest ~namespace ~object_name ~consistent_read ~should_cache =
+    method get_object_manifest' = base_client # get_object_manifest'
+    method download_object_slices = base_client # download_object_slices
+    method delete_object' = base_client # delete_object'
+    method download_object_generic'' = base_client # download_object_generic''
+
+    method create_namespace = base_client # create_namespace
+    method upload_object_from_file = base_client # upload_object_from_file
+
+    method discover_osds_check_claimed = base_client # discover_osds_check_claimed
+
+    method with_osd :
+             'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
+                          (Osd.osd -> 'a Lwt.t) -> 'a Lwt.t =
+      base_client # with_osd
+    method with_nsm_client' :
+      'a. namespace_id : int32 ->
+                         (Nsm_client.client -> 'a Lwt.t) -> 'a Lwt.t =
+      base_client # with_nsm_client'
+
+    method upload_object_from_bytes = base_client # upload_object_from_bytes
+
+    method get_object_manifest ~namespace ~object_name ~consistent_read ~should_cache =
       self # nsm_host_access # with_namespace_id
-        ~namespace
-        (fun namespace_id ->
-           self # get_object_manifest'
-             ~namespace_id ~object_name
-             ~consistent_read ~should_cache)
+           ~namespace
+           (fun namespace_id ->
+            self # get_object_manifest'
+                 ~namespace_id ~object_name
+                 ~consistent_read ~should_cache)
 
 
     method download_object_slices_to_string
@@ -201,7 +217,7 @@ class alba_client (fragment_cache : cache)
            (fun () ->
               let () =
                 Manifest_cache.ManifestCache.remove
-                  _mf_cache namespace_id object_name
+                  (base_client # get_manifest_cache) namespace_id object_name
               in
               Lwt.return_unit
            ))
@@ -285,10 +301,10 @@ class alba_client (fragment_cache : cache)
         (fun namespace_id ->
            (* Fragment cache needs no invalidation as keys are globally unique *)
            let open Manifest_cache in
-           ManifestCache.invalidate _mf_cache namespace_id)
+           ManifestCache.invalidate (base_client # get_manifest_cache) namespace_id)
 
     method drop_cache_by_id namespace_id =
-      Manifest_cache.ManifestCache.drop _mf_cache namespace_id;
+      Manifest_cache.ManifestCache.drop (base_client # get_manifest_cache) namespace_id;
       fragment_cache # drop namespace_id
 
     method drop_cache namespace =
@@ -312,7 +328,7 @@ class alba_client (fragment_cache : cache)
 
            mgr_access # delete_namespace ~namespace >>= fun nsm_host_id ->
 
-           self # deliver_nsm_host_messages ~nsm_host_id)
+           base_client # deliver_nsm_host_messages ~nsm_host_id)
   end
 
 let with_client albamgr_client_cfg
@@ -348,12 +364,12 @@ let with_client albamgr_client_cfg
         ~albamgr_client_cfg
         default_buffer_pool)
   in
-  let client = new alba_client
-                   cache
-                   ~mgr_access
-                   ~manifest_cache_size
-                   ~bad_fragment_callback
-                   ~nsm_host_connection_pool_size
-                   ~osd_connection_pool_size
-  in
+  let base_client = new Alba_base_client.client
+                        cache
+                        ~mgr_access
+                        ~manifest_cache_size
+                        ~bad_fragment_callback
+                        ~nsm_host_connection_pool_size
+                        ~osd_connection_pool_size in
+  let client = new alba_client base_client in
   f client

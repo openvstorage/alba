@@ -32,7 +32,7 @@ type flavour =
 class client ?(filter: namespace_id -> bool = fun _ -> true)
              ?(retry_timeout = 60.)
              ?(flavour = ALL_IN_ONE)
-             (alba_client : Alba_client.alba_client)
+             (alba_client : Alba_base_client.client)
 
   =
 

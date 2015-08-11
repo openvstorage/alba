@@ -162,7 +162,7 @@ let plan_move cache (too_low,ok, too_high) manifest
 
 
  let get_some_manifests
-       (alba_client:Alba_client.alba_client)
+       (alba_client:Alba_base_client.client)
        ~make_first
        ~namespace_id
        osd_id

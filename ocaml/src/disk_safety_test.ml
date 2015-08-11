@@ -46,7 +46,7 @@ let test_safety () =
 
        let object_name = test_name in
 
-       client # upload_object_from_string
+       client # get_base_client # upload_object_from_string
          ~namespace
          ~object_name
          ~object_data:"y"

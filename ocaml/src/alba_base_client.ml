@@ -92,7 +92,7 @@ let maintenance_for_all_x task_name list_x maintenance_f get_x_id show_x =
 
 let default_buffer_pool = Buffer_pool.default_buffer_pool
 
-class alba_base_client
+class client
     (fragment_cache : cache)
     ~(mgr_access : Albamgr_client.client)
     ~manifest_cache_size
@@ -115,35 +115,9 @@ class alba_base_client
   let osds_info_cache = osd_access # osds_info_cache in
   let get_osd_info = osd_access # get_osd_info in
 
-  let osds_to_osds_info_cache osds =
-    let osds_info_cache = Hashtbl.create 0 in
-    Lwt_list.iter_p
-      (fun osd_id ->
-         let open Albamgr_protocol.Protocol in
-         osd_access # get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
-         let osd_ok =
-           not osd_state.disqualified &&
-           not osd_info.Osd.decommissioned &&
-           (match osd_state.write, osd_state.errors with
-            | [], [] -> true
-            | [], _ -> false
-            | _, [] -> true
-            | write_time::_, (error_time, _)::_ -> write_time > error_time)
-         in
-         if osd_ok
-         then begin
-           Hashtbl.add
-             osds_info_cache
-             osd_id
-             osd_info
-         end;
-         Lwt.return ())
-      osds >>= fun () ->
-    Lwt.return osds_info_cache
-  in
   let get_namespace_osds_info_cache ~namespace_id =
     nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
-    osds_to_osds_info_cache osds
+    osd_access # osds_to_osds_info_cache osds
   in
 
   let preset_cache = Hashtbl.create 3 in
@@ -289,7 +263,9 @@ class alba_base_client
   let osd_msg_delivery_threads = Hashtbl.create 3 in
   object(self)
 
-    val _mf_cache = Manifest_cache.ManifestCache.make manifest_cache_size
+    val manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size
+    method get_manifest_cache : (string, string) Manifest_cache.ManifestCache.t = manifest_cache
+    method get_fragment_cache = fragment_cache
 
     method mgr_access = mgr_access
     method nsm_host_access = nsm_host_access
@@ -399,7 +375,7 @@ class alba_base_client
                      inner
                        (fun () ->
                           osds_delivered := osd_id :: !osds_delivered;
-                          osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
+                          osd_access # osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
                           if get_best_policy
                               preset.Albamgr_protocol.Protocol.Preset.policies
                               osds_info_cache = None
@@ -594,7 +570,7 @@ class alba_base_client
         client # get_object_manifest_by_name object_name
       in
       Manifest_cache.ManifestCache.lookup
-        _mf_cache
+        manifest_cache
         namespace_id object_name
         lookup_on_nsm_host
         ~consistent_read ~should_cache
@@ -1195,7 +1171,7 @@ class alba_base_client
              store_manifest
              (fun exn ->
                 Manifest_cache.ManifestCache.remove
-                  _mf_cache
+                  manifest_cache
                   namespace_id object_name;
                 Lwt.fail exn))
       >>= fun (t_store_manifest, old_manifest_o) ->
@@ -1248,7 +1224,7 @@ class alba_base_client
       >>= fun () ->
       let open Manifest_cache in
       ManifestCache.add
-        _mf_cache
+        manifest_cache
         namespace_id object_name manifest;
 
       Lwt.return (manifest, t_object)

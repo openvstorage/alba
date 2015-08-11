@@ -176,6 +176,30 @@ class osd_access mgr_access osd_connection_pool_size =
 
     method osds_info_cache = osds_info_cache
 
+    method osds_to_osds_info_cache osds =
+      let res = Hashtbl.create 0 in
+      Lwt_list.iter_p
+        (fun osd_id ->
+         let open Albamgr_protocol.Protocol in
+         get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
+         let osd_ok =
+           not osd_state.disqualified &&
+             not osd_info.Osd.decommissioned &&
+               (match osd_state.write, osd_state.errors with
+               | [], [] -> true
+                | [], _ -> false
+                | _, [] -> true
+                | write_time::_, (error_time, _)::_ -> write_time > error_time)
+         in
+         if osd_ok
+         then Hashtbl.add
+                res
+                osd_id
+                osd_info;
+         Lwt.return ())
+        osds >>= fun () ->
+      Lwt.return res
+
     method seen ?(check_claimed_delay=60.) =
       let open Discovery in
       function
