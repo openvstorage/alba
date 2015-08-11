@@ -24,12 +24,14 @@ open Alba_client_errors
 class alba_client (base_client : Alba_base_client.client)
   =
   let mgr_access = base_client # mgr_access in
+  let nsm_host_access = base_client # nsm_host_access in
+  let osd_access = base_client # osd_access in
   let fragment_cache = base_client # get_fragment_cache in
   object(self)
     method get_base_client = base_client
     method mgr_access = mgr_access
-    method nsm_host_access = base_client # nsm_host_access
-    method osd_access = base_client # osd_access
+    method nsm_host_access = nsm_host_access
+    method osd_access = osd_access
 
     method get_object_manifest' = base_client # get_object_manifest'
     method download_object_slices = base_client # download_object_slices
@@ -312,6 +314,16 @@ class alba_client (base_client : Alba_base_client.client)
         ~namespace
         (self # drop_cache_by_id)
 
+    method deliver_nsm_host_messages ~nsm_host_id =
+      Alba_client_message_delivery.deliver_nsm_host_messages
+        mgr_access nsm_host_access osd_access
+        ~nsm_host_id
+
+    method deliver_osd_messages ~osd_id =
+      Alba_client_message_delivery.deliver_osd_messages
+        mgr_access nsm_host_access osd_access
+        ~osd_id
+
     method delete_namespace ~namespace =
       Lwt_log.debug_f "Alba_client: delete_namespace %S" namespace >>= fun () ->
 
@@ -328,7 +340,7 @@ class alba_client (base_client : Alba_base_client.client)
 
            mgr_access # delete_namespace ~namespace >>= fun nsm_host_id ->
 
-           base_client # deliver_nsm_host_messages ~nsm_host_id)
+           self # deliver_nsm_host_messages ~nsm_host_id)
   end
 
 let with_client albamgr_client_cfg

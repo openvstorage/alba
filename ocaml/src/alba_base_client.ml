@@ -50,46 +50,6 @@ let get_best_policy_exn policies osds_info_cache =
 let fragment_multiple = Fragment_helper.fragment_multiple
 
 
-let maintenance_for_all_x task_name list_x maintenance_f get_x_id show_x =
-  let x_threads = Hashtbl.create 4 in
-
-  let sync_x_threads () =
-    list_x () >>= fun (_, xs) ->
-
-    List.iter
-      (fun x ->
-         let x_id = get_x_id x in
-         if Hashtbl.mem x_threads x_id
-         then ()
-         else begin
-           let t =
-             Lwt.catch
-               (fun () ->
-                  Lwt_log.debug_f
-                    "Starting %s for %s"
-                    task_name (show_x x) >>= fun () ->
-                  maintenance_f x)
-               (fun exn ->
-                  Lwt_log.debug_f
-                    ~exn
-                    "Thread %s for %s stopped due to an exception"
-                    task_name (show_x x))
-             >>= fun () ->
-             Hashtbl.remove x_threads x_id;
-             Lwt.return ()
-           in
-           Lwt.ignore_result t;
-           Hashtbl.add x_threads x_id ()
-         end)
-      xs;
-
-    Lwt.return ()
-  in
-  Lwt_extra2.run_forever
-    (Printf.sprintf "Got unexpected exception in main %s thread" task_name)
-    sync_x_threads
-    60.
-
 let default_buffer_pool = Buffer_pool.default_buffer_pool
 
 class client
@@ -155,110 +115,15 @@ class client
       end;
       Lwt.return preset
   in
-  let rec deliver_messages
-    : type dest msg. (dest, msg) Albamgr_protocol.Protocol.Msg_log.t ->
-           dest ->
-           unit Lwt.t
-        =
-    fun t dest ->
-      let module Osd' = Osd in
-      let open Albamgr_protocol.Protocol in
-      mgr_access # get_next_msgs t dest >>= fun  ((cnt, msgs), has_more) ->
-      Lwt_log.debug_f "deliver_messages: count = %i" cnt >>= fun () ->
-      let do_one :
-               type dest msg. (dest, msg) Albamgr_protocol.Protocol.Msg_log.t ->
-                    dest ->
-                    (int32 * msg) ->
-                    unit Lwt.t
-          = fun t dest (msg_id,msg) ->
-            begin
-              match t with
-              | Msg_log.Nsm_host ->
-                 Lwt_log.debug_f
-                   "Delivering msg %li to %s: %s"
-                   msg_id
-                   dest
-                   ([%show : Nsm_host_protocol.Protocol.Message.t] msg) >>= fun () ->
-                 (nsm_host_access # get ~nsm_host_id:dest) # deliver_message msg msg_id
-              | Msg_log.Osd ->
-                 let osd_id = dest in
-                 Lwt_log.debug_f
-                   "Delivering msg %li to %li: %s"
-                   msg_id
-                   osd_id
-                   ([%show : Albamgr_protocol.Protocol.Osd.Message.t] msg) >>= fun () ->
-                 with_osd_from_pool
-                   ~osd_id
-                   (fun client ->
-                    let module DK = Osd_keys.AlbaInstance in
-                    client # get_option (Slice.wrap_string DK.next_msg_id)
-                    >>= fun next_id_so ->
-                    let next_id = match next_id_so with
-                      | None -> 0l
-                      | Some next_id_s -> deserialize Llio.int32_from (Slice.get_string_unsafe next_id_s)
-                    in
-                    if Int32.(next_id =: msg_id)
-                    then begin
-                        let open Albamgr_protocol.Protocol.Osd.Message in
-                        let asserts, upds =
-                          match msg with
-                          | AddNamespace (namespace_name, namespace_id) ->
-                            let namespace_status_key = DK.namespace_status ~namespace_id in
-                             [ Osd'.Assert.none_string namespace_status_key; ],
-                             [ Osd'.Update.set_string
-                                 namespace_status_key
-                                 Osd'.Osd_namespace_state.(serialize to_buffer Active)
-                                 Checksum.NoChecksum true;
-                               Osd'.Update.set_string
-                                 (DK.namespace_name ~namespace_id) namespace_name
-                                 Checksum.NoChecksum true;
-                             ]
-                        in
-                        let bump_msg_id =
-                          Osd'.Update.set_string
-                            DK.next_msg_id
-                            (serialize Llio.int32_to (Int32.succ next_id))
-                            Checksum.NoChecksum
-                            true
-                        in
-                        let asserts' =
-                           Osd'.Assert.value_option
-                              (Slice.wrap_string DK.next_msg_id)
-                              next_id_so :: asserts
-                        in
-                        client # apply_sequence
-                               asserts'
-                               (bump_msg_id :: upds)
-                        >>=
-                          let open Osd_sec in
-                          (function
-                            | Ok    -> Lwt.return ()
-                            | Exn x ->
-                               Lwt_log.warning ([%show : Error.t] x)
-                               >>= fun () ->
-                               Error.lwt_fail x
-                          )
-                      end
-                    else if Int32.(next_id =: succ msg_id)
-                    then Lwt.return ()
-                    else
-                      begin
-                        let msg =
-                          Printf.sprintf
-                            "Osd msg_id (%li) too far off"
-                            msg_id
-                        in
-                        Lwt_log.warning msg >>= fun () ->
-                        Lwt.fail_with msg
-                      end
-                   )
-            end >>= fun () ->
-            mgr_access #  mark_msg_delivered t dest msg_id
-      in
-      Lwt_list.iter_s (do_one t dest) msgs >>= fun () ->
-      if has_more
-      then deliver_messages t dest
-      else Lwt.return ()
+  let deliver_nsm_host_messages ~nsm_host_id =
+    Alba_client_message_delivery.deliver_nsm_host_messages
+      mgr_access nsm_host_access osd_access
+      ~nsm_host_id
+  in
+  let deliver_osd_messages ~osd_id =
+    Alba_client_message_delivery.deliver_osd_messages
+      mgr_access nsm_host_access osd_access
+      ~osd_id
   in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
   object(self)
@@ -303,44 +168,6 @@ class client
       'a. namespace : string ->
       (Nsm_client.client -> 'a Lwt.t) -> 'a Lwt.t = nsm_host_access # with_nsm_client
 
-    method deliver_nsm_host_messages ~nsm_host_id =
-      deliver_messages
-        Albamgr_protocol.Protocol.Msg_log.Nsm_host
-        nsm_host_id
-
-    method deliver_osd_messages ~osd_id =
-      deliver_messages
-        Albamgr_protocol.Protocol.Msg_log.Osd
-        osd_id
-
-    method deliver_all_messages () : unit Lwt.t =
-      let deliver_nsm_messages =
-        maintenance_for_all_x
-          "deliver nsm messages"
-          (fun () -> mgr_access # list_all_nsm_hosts ())
-          (fun (nsm_host_id, _, _) -> self # deliver_nsm_host_messages ~nsm_host_id)
-          (fun (nsm_host_id, _, _) -> nsm_host_id)
-          [%show : (string * Albamgr_protocol.Protocol.Nsm_host.t * int64)]
-      in
-
-      let deliver_osd_messages =
-        maintenance_for_all_x
-          "deliver osd messages"
-          (fun () ->
-             let osds =
-               Hashtbl.fold
-                 (fun osd_id _ (cnt, acc) -> cnt+1, osd_id::acc)
-                 osds_info_cache
-                 (0, [])
-             in
-             Lwt.return osds)
-          (fun osd_id -> self # deliver_osd_messages ~osd_id)
-          (fun osd_id -> osd_id)
-          Int32.to_string
-      in
-      Lwt.choose [ deliver_nsm_messages;
-                   deliver_osd_messages; ]
-
     method deliver_messages_to_most_osds ~osds ~preset =
       let mvar = Lwt_mvar.create_empty () in
 
@@ -361,7 +188,7 @@ class client
                        Hashtbl.replace osd_msg_delivery_threads osd_id `Busy;
                        Lwt.finalize
                          (fun () ->
-                            self # deliver_osd_messages ~osd_id >>=
+                            deliver_osd_messages ~osd_id >>=
                             f
                          )
                          (fun () ->
@@ -420,8 +247,7 @@ class client
          from e.g. the maintenance process, that's why we're
          ignoring errors here *)
       Lwt_extra2.ignore_errors
-        (fun () ->
-           self # deliver_nsm_host_messages ~nsm_host_id) >>= fun () ->
+        (fun () -> deliver_nsm_host_messages ~nsm_host_id) >>= fun () ->
 
       Lwt_log.debug_f "Alba_client: create_namespace %S:%li ok"
                       namespace namespace_id

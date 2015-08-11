@@ -148,7 +148,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
                 let base_threads () =
                   [
                     (Lwt_extra2.make_fuse_thread ());
-                    (client # get_base_client # deliver_all_messages ());
+                    (maintenance_client # deliver_all_messages ());
                     (client # get_base_client # discover_osds_check_claimed ());
                   ]
                 in
@@ -237,14 +237,14 @@ let alba_deliver_messages cfg_file =
            (function
              | (Osd.ClaimInfo.ThisAlba osd_id, _) ->
                 Lwt_extra2.ignore_errors
-                  (fun () -> client # get_base_client # deliver_osd_messages ~osd_id)
+                  (fun () -> client # deliver_osd_messages ~osd_id)
              | _ -> Lwt.return ())
            osds >>= fun () ->
 
          client # mgr_access # list_all_nsm_hosts () >>= fun (_, nsms) ->
          Lwt_list.iter_p
            (fun (nsm_host_id, _, _) ->
-            client # get_base_client # deliver_nsm_host_messages ~nsm_host_id)
+            client # deliver_nsm_host_messages ~nsm_host_id)
            nsms
       )
   in

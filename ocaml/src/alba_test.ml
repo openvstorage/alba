@@ -137,7 +137,7 @@ let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
   let rec deliver_nsm_host_messages () =
     Lwt_list.iter_p
       (fun (nsm_host_id, _, _) ->
-       alba_client # get_base_client # deliver_nsm_host_messages ~nsm_host_id)
+       alba_client # deliver_nsm_host_messages ~nsm_host_id)
       nsm_hosts >>= fun () ->
     Lwt_unix.sleep 1. >>=
     deliver_nsm_host_messages
@@ -891,10 +891,10 @@ let test_repair_by_policy () =
          ~osd_ids:new_osd_ids >>= fun () ->
 
        Lwt_list.iter_p
-         (fun osd_id -> alba_client # get_base_client # deliver_osd_messages ~osd_id)
+         (fun osd_id -> alba_client # deliver_osd_messages ~osd_id)
          new_osd_ids >>= fun () ->
 
-       alba_client # get_base_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->
+       alba_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->
 
        alba_client # nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun (cnt, ns_osds) ->
 
@@ -1065,7 +1065,7 @@ let test_full_asd () =
             (fun osd_id ->
              Lwt_log.debug_f "delivering messages for %lil" osd_id
              >>= fun () ->
-             alba_client # get_base_client # deliver_osd_messages ~osd_id)
+             alba_client # deliver_osd_messages ~osd_id)
             osd_ids
          )
          (fun exn ->
@@ -1170,10 +1170,10 @@ let test_disk_churn () =
            ~preset_name:(Some preset_name) () >>= fun namespace_id ->
 
          Lwt_list.iter_p
-           (fun osd_id -> alba_client # get_base_client # deliver_osd_messages ~osd_id)
+           (fun osd_id -> alba_client # deliver_osd_messages ~osd_id)
            osd_ids >>= fun () ->
 
-         alba_client # get_base_client # deliver_nsm_host_messages ~nsm_host_id:"ricky" >>= fun () ->
+         alba_client # deliver_nsm_host_messages ~nsm_host_id:"ricky" >>= fun () ->
 
          let open Nsm_model in
 
@@ -1198,7 +1198,7 @@ let test_disk_churn () =
            used_osds
          >>= fun () ->
 
-         alba_client # get_base_client # deliver_nsm_host_messages ~nsm_host_id:"ricky" >>= fun () ->
+         alba_client # deliver_nsm_host_messages ~nsm_host_id:"ricky" >>= fun () ->
 
          let maintenance_client =
            new Maintenance.client

@@ -1467,4 +1467,9 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
 
     inner ()
 
+  method deliver_all_messages () : unit Lwt.t =
+    Alba_client_message_delivery.deliver_all_messages
+      (alba_client # mgr_access)
+      (alba_client # nsm_host_access)
+      (alba_client # osd_access)
   end

@@ -288,7 +288,7 @@ let test_repair_orange () =
        alba_client # create_namespace ~namespace ~preset_name:None ()
        >>= fun namespace_id ->
 
-       wait_for_namespace_osds (alba_client # get_base_client) namespace_id 11 >>= fun () ->
+       wait_for_namespace_osds alba_client namespace_id 11 >>= fun () ->
 
        let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
 
