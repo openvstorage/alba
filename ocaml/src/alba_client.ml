@@ -344,6 +344,16 @@ class alba_client (base_client : Alba_base_client.client)
         deliver_nsm_host_messages
         (self # drop_cache_by_id)
         ~namespace
+
+    method decommission_osd ~long_id =
+      Alba_client_osd.decommission_osd
+        mgr_access osd_access
+        ~long_id
+
+    method claim_osd ~long_id =
+      Alba_client_osd.claim_osd
+        mgr_access osd_access
+        ~long_id
   end
 
 let with_client albamgr_client_cfg

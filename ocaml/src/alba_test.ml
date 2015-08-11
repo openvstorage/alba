@@ -112,7 +112,7 @@ let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
   Lwt_list.iter_p
     (fun long_id ->
        Lwt.catch
-         (fun () -> alba_client # get_base_client # decommission_osd ~long_id)
+         (fun () -> alba_client # decommission_osd ~long_id)
          (let open Albamgr_protocol.Protocol.Error in
           function
           | Albamgr_exn (Osd_already_decommissioned, _) -> Lwt.return ()
@@ -768,7 +768,7 @@ let test_change_osd_ip_port () =
             (* give maintenance process some time to discover the
                osd and register it in the albamgr *)
             Lwt_unix.sleep 0.2 >>= fun () ->
-            client # get_base_client # claim_osd osd_name >>= fun osd_id ->
+            client # claim_osd ~long_id:osd_name >>= fun osd_id ->
             (* sleep a bit here so the alba client can discover it's claimed status *)
             Lwt_unix.sleep 0.2 >>= fun () ->
 
@@ -1128,7 +1128,7 @@ let test_disk_churn () =
                                           });
                                         ips = ["::1"];
                                         port = asd_port; })) >>= fun () ->
-                alba_client # get_base_client # claim_osd asd_name >>= fun osd_id ->
+                alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
                 with_asds
                   f
                   (osd_id :: acc)
@@ -1193,7 +1193,7 @@ let test_disk_churn () =
               alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>= function
               | None -> Lwt.fail_with "can't find osd"
               | Some osd_info ->
-                alba_client # get_base_client # decommission_osd
+                alba_client # decommission_osd
                   ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
            used_osds
          >>= fun () ->
@@ -1401,7 +1401,7 @@ let test_add_disk () =
                                       });
                                     ips = ["::1"];
                                     port = asd_port; })) >>= fun () ->
-            alba_client # get_base_client # claim_osd asd_name >>= fun osd_id ->
+            alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
 
             alba_client # mgr_access # list_namespace_osds
               ~namespace_id

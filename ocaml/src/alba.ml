@@ -107,7 +107,7 @@ let alba_claim_osd alba_cfg_file long_id to_json =
     with_alba_client
       alba_cfg_file
       (fun alba_client ->
-         alba_client # get_base_client # claim_osd long_id) >>= fun osd_id ->
+         alba_client # claim_osd ~long_id) >>= fun osd_id ->
     Lwt_log.debug_f "Claimed %S with id=%li" long_id osd_id
   in
   lwt_cmd_line_unit to_json t
@@ -127,7 +127,7 @@ let alba_decommission_osd alba_cfg_file long_id to_json =
   let t () =
     with_alba_client
       alba_cfg_file
-      (fun alba_client -> alba_client # get_base_client # decommission_osd ~long_id)
+      (fun alba_client -> alba_client # decommission_osd ~long_id)
   in
   lwt_cmd_line_unit to_json t
 
