@@ -18,6 +18,7 @@ open Prelude
 open Slice
 open Checksum
 open Lwt.Infix
+open Alba_client_common
 module Osd_sec = Osd
 
 let deliver_messages :
@@ -176,3 +177,66 @@ let deliver_all_messages mgr_access nsm_host_access osd_access =
   in
   Lwt.choose [ deliver_nsm_messages;
                deliver_osd_messages; ]
+
+let deliver_messages_to_most_osds
+      mgr_access nsm_host_access osd_access
+      osd_msg_delivery_threads
+      ~osds ~preset =
+  let mvar = Lwt_mvar.create_empty () in
+
+  Lwt.ignore_result begin
+      let osds_delivered = ref [] in
+      let finished = ref false in
+
+      Lwt_list.iter_p
+        (fun (osd_id, (_ : Albamgr_protocol.Protocol.Osd.NamespaceLink.state)) ->
+         Lwt_extra2.ignore_errors
+           (fun () ->
+            (if Hashtbl.mem osd_msg_delivery_threads osd_id
+             then begin
+                 Hashtbl.replace osd_msg_delivery_threads osd_id `Extend;
+                 Lwt.return ()
+               end else begin
+                 let rec inner f =
+                   Hashtbl.replace osd_msg_delivery_threads osd_id `Busy;
+                   Lwt.finalize
+                     (fun () ->
+                      deliver_osd_messages
+                        mgr_access nsm_host_access osd_access
+                        ~osd_id >>=
+                        f
+                     )
+                     (fun () ->
+                      match Hashtbl.find osd_msg_delivery_threads osd_id with
+                      | `Busy ->
+                         Hashtbl.remove osd_msg_delivery_threads osd_id;
+                         Lwt.return ()
+                      | `Extend ->
+                         inner Lwt.return)
+                 in
+                 inner
+                   (fun () ->
+                    osds_delivered := osd_id :: !osds_delivered;
+                    osd_access # osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
+                    if get_best_policy
+                         preset.Albamgr_protocol.Protocol.Preset.policies
+                         osds_info_cache = None
+                    then Lwt.return ()
+                    else begin
+                        if not !finished
+                        then begin
+                            finished := true;
+                            Lwt_mvar.put mvar ()
+                          end else
+                          Lwt.return ()
+                      end
+                   )
+               end)
+           ))
+        osds
+    end;
+
+  Lwt.choose
+    [ Lwt_mvar.take mvar;
+      Lwt_unix.sleep 2. ]
+

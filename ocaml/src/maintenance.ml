@@ -799,7 +799,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
       >>= fun osd_info_cache ->
       let open Albamgr_protocol.Protocol.Preset in
       let policies = preset.policies in
-      let best = Alba_base_client.get_best_policy_exn policies osd_info_cache in
+      let best = Alba_client_common.get_best_policy_exn policies osd_info_cache in
       let (best_k, best_m, _, _), _ = best in
       let current_k,current_m =
         let open Nsm_model in
@@ -984,7 +984,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
       alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache ->
 
       let best_policy, best_actual_fragment_count =
-        Alba_base_client.get_best_policy_exn
+        Alba_client_common.get_best_policy_exn
           policies
           osds_info_cache
       in

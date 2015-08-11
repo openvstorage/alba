@@ -27,24 +27,11 @@ open Alba_client_errors
 module Osd_sec = Osd
 open Nsm_host_access
 open Osd_access
+open Alba_client_common
 
 let hm_to_source =  function
   | true  -> Statistics.Cache
   | false -> Statistics.NsmHost
-
-let get_best_policy policies osds_info_cache =
-  Policy.get_first_applicable_policy
-    policies
-    (Hashtbl.fold
-       (fun osd_id osd_info acc ->
-          (osd_id, osd_info.Albamgr_protocol.Protocol.Osd.node_id) :: acc)
-       osds_info_cache
-       [])
-
-let get_best_policy_exn policies osds_info_cache =
-  match get_best_policy policies osds_info_cache with
-  | None -> Error.(failwith NoSatisfiablePolicy)
-  | Some p -> p
 
 
 let fragment_multiple = Fragment_helper.fragment_multiple
@@ -115,11 +102,6 @@ class client
       end;
       Lwt.return preset
   in
-  let deliver_osd_messages ~osd_id =
-    Alba_client_message_delivery.deliver_osd_messages
-      mgr_access nsm_host_access osd_access
-      ~osd_id
-  in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
   object(self)
 
@@ -164,62 +146,10 @@ class client
       (Nsm_client.client -> 'a Lwt.t) -> 'a Lwt.t = nsm_host_access # with_nsm_client
 
     method deliver_messages_to_most_osds ~osds ~preset =
-      let mvar = Lwt_mvar.create_empty () in
-
-      Lwt.ignore_result begin
-        let osds_delivered = ref [] in
-        let finished = ref false in
-
-        Lwt_list.iter_p
-          (fun (osd_id, (_ : Albamgr_protocol.Protocol.Osd.NamespaceLink.state)) ->
-             Lwt_extra2.ignore_errors
-               (fun () ->
-                  (if Hashtbl.mem osd_msg_delivery_threads osd_id
-                   then begin
-                     Hashtbl.replace osd_msg_delivery_threads osd_id `Extend;
-                     Lwt.return ()
-                   end else begin
-                     let rec inner f =
-                       Hashtbl.replace osd_msg_delivery_threads osd_id `Busy;
-                       Lwt.finalize
-                         (fun () ->
-                            deliver_osd_messages ~osd_id >>=
-                            f
-                         )
-                         (fun () ->
-                            match Hashtbl.find osd_msg_delivery_threads osd_id with
-                            | `Busy ->
-                              Hashtbl.remove osd_msg_delivery_threads osd_id;
-                              Lwt.return ()
-                            | `Extend ->
-                              inner Lwt.return)
-                     in
-                     inner
-                       (fun () ->
-                          osds_delivered := osd_id :: !osds_delivered;
-                          osd_access # osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
-                          if get_best_policy
-                              preset.Albamgr_protocol.Protocol.Preset.policies
-                              osds_info_cache = None
-                          then Lwt.return ()
-                          else begin
-                            if not !finished
-                            then begin
-                              finished := true;
-                              Lwt_mvar.put mvar ()
-                            end else
-                              Lwt.return ()
-                          end
-                       )
-                   end)
-               ))
-          osds
-      end;
-
-      Lwt.choose
-        [ Lwt_mvar.take mvar;
-          Lwt_unix.sleep 2. ]
-
+      Alba_client_message_delivery.deliver_messages_to_most_osds
+        mgr_access nsm_host_access osd_access
+        osd_msg_delivery_threads
+        ~osds ~preset
 
     method claim_osd long_id =
       mgr_access # get_alba_id >>= fun alba_id ->
