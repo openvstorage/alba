@@ -945,20 +945,4 @@ class client
         let r = Some (manifest, t_object) in
         Lwt.return r
 
-    method delete_object'
-             (nsm_client:Nsm_client.client) ~object_name ~may_not_exist =
-
-      let open Nsm_model in
-      nsm_client # delete_object
-        ~object_name
-        ~allow_overwrite:(if may_not_exist
-                          then Unconditionally
-                          else AnyPrevious)
-      >>= function
-      | None ->
-        Lwt_log.debug_f "no object with name %s could be found\n" object_name
-      | Some old_manifest ->
-        (* TODO add en-passant deletion of fragments *)
-        Lwt_log.debug_f "object with name %s was deleted\n" object_name
-
   end
