@@ -144,45 +144,10 @@ class client
         osd_msg_delivery_threads
         ~osds ~preset
 
-    method get_object_manifest'
-        ~namespace_id ~object_name
-        ~consistent_read ~should_cache =
-      Lwt_log.debug_f
-        "get_object_manifest %li %S ~consistent_read:%b ~should_cache:%b"
-        namespace_id object_name consistent_read should_cache
-      >>= fun () ->
-      let lookup_on_nsm_host namespace_id object_name =
-        nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
-        client # get_object_manifest_by_name object_name
-      in
-      Manifest_cache.ManifestCache.lookup
+    method get_object_manifest' =
+      Alba_client_download.get_object_manifest'
+        nsm_host_access
         manifest_cache
-        namespace_id object_name
-        lookup_on_nsm_host
-        ~consistent_read ~should_cache
-
-    method upload_chunk
-          ~namespace_id
-          ~object_id ~object_name
-          ~chunk ~chunk_id ~chunk_size
-          ~k ~m ~w'
-          ~compression ~encryption
-          ~fragment_checksum_algo
-          ~version_id ~gc_epoch
-          ~object_info_o
-          ~osds
-      =
-      Alba_client_upload.upload_chunk
-        osd_access
-        ~namespace_id
-        ~object_id ~object_name
-        ~chunk ~chunk_id ~chunk_size
-        ~k ~m ~w'
-        ~compression ~encryption
-        ~fragment_checksum_algo
-        ~version_id ~gc_epoch
-        ~object_info_o
-        ~osds
 
     method upload_object_from_file
       ~namespace
