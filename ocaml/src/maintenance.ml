@@ -150,7 +150,8 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
             then Lwt.fail (Exn ChecksumMismatch)
             else
               begin
-                alba_client # upload_packed_fragment_data
+                Alba_client_upload.upload_packed_fragment_data
+                  (alba_client # osd_access)
                   ~namespace_id ~object_id
                   ~chunk_id ~fragment_id ~version_id:version_id1
                   ~packed_fragment ~checksum:fragment_checksum
@@ -380,7 +381,8 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                   if checksum = checksum'
                   then
                     begin
-                      alba_client # upload_packed_fragment_data
+                      Alba_client_upload.upload_packed_fragment_data
+                        (alba_client # osd_access)
                         ~namespace_id
                         ~osd_id:chosen_osd_id
                         ~object_id ~version_id
@@ -877,10 +879,10 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
 
       (* TODO due to changed circumstances this may actually rewrite the object
          with a worse policy than before! *)
-      alba_client # upload_object_from_string'
+      alba_client # upload_object'
         ~namespace_id
         ~object_name
-        ~object_data
+        ~object_reader:(new Object_reader.string_reader object_data)
         ~checksum_o
         ~allow_overwrite >>= fun _ ->
 

@@ -393,7 +393,8 @@ let test_garbage_collect () =
          and fragment_id = 0
          and object_id = "bla bla"
          and version_id = 9 in
-         client # get_base_client # upload_packed_fragment_data
+         Alba_client_upload.upload_packed_fragment_data
+           (client # osd_access)
            ~namespace_id
            ~packed_fragment:(Bigarray.Array1.create
                                Bigarray.Char
