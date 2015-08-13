@@ -203,8 +203,7 @@ def run_tests_recovery(xml = False):
 
     alba.proxy_start(abm_cfg = abm_cfg)
 
-    # TODO should work with N=3 too!
-    N = 4
+    N = 3
     alba.start_osds("ASD", N, False)
 
     alba.claim_local_osds(N, abm_cfg = abm_cfg)
