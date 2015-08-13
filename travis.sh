@@ -124,6 +124,9 @@ script () {
             fab dev.run_tests_disk_failures
             fab alba.smoke_test
             ;;
+        recovery)
+            fab dev.run_tests_recovery
+            ;;
         *)
             echo "invalid test suite specified..."
             exit1
