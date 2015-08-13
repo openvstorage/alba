@@ -302,20 +302,19 @@ let gather_and_push_objects
           fs
       in
 
-      let get_fragments_x f =
-        List.map
-          (fun (_, chunk_fragments) ->
-           List.sort
-             (fun f1 f2 -> compare f1.fragment_id f2.fragment_id)
-             chunk_fragments |>
-           List.map f
-          )
-          fs
-      in
       let fragment_locations =
-        get_fragments_x
-          (fun { osd_id; version_id; _; } ->
-           (Some osd_id, version_id))
+        List.mapi
+          (fun chunk_id l ->
+           let _, chunk_fragments = List.nth_exn fs chunk_id in
+           List.mapi
+             (fun fragment_id _ ->
+              match List.find
+                      (fun f1 -> f1.fragment_id = fragment_id)
+                      chunk_fragments with
+              | None -> None, 0
+              | Some f -> Some f.osd_id, f.version_id)
+             l)
+          fragment_packed_sizes
       in
 
       (* TODO only do this when there are enough fragments
