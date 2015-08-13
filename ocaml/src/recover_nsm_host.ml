@@ -302,19 +302,36 @@ let gather_and_push_objects
           fs
       in
 
+      let open Nsm_model in
+      let open RecoveryInfo in
+      let Storage_scheme.EncodeCompressEncrypt (ec, compression) =
+        (recovery_info_last.object_info_o
+         |> Option.get_some).storage_scheme in
+      let Encoding_scheme.RSVM (k, m, w) = ec in
+
       let fragment_locations =
-        List.mapi
-          (fun chunk_id l ->
-           let _, chunk_fragments = List.nth_exn fs chunk_id in
-           List.mapi
-             (fun fragment_id _ ->
-              match List.find
-                      (fun f1 -> f1.fragment_id = fragment_id)
-                      chunk_fragments with
-              | None -> None, 0
-              | Some f -> Some f.osd_id, f.version_id)
-             l)
-          fragment_packed_sizes
+        List.map
+          (fun (_, chunk_fragments) ->
+           let cnt = ref 0 in
+           let res =
+             List.mapi
+               (fun fragment_id _ ->
+                match List.find
+                        (fun f1 -> f1.fragment_id = fragment_id)
+                        chunk_fragments with
+                | None -> None, 0
+                | Some f ->
+                   incr cnt;
+                   Some f.osd_id, f.version_id)
+               (Int.range 0 (k+m))
+           in
+           (* only do upload when there are enough fragments
+              fragments each chunk!
+              (repair by policy can take it from there)
+            *)
+           assert (!cnt >= k);
+           res)
+          fs
       in
 
       let version_id =
@@ -329,10 +346,6 @@ let gather_and_push_objects
           fs
       in
 
-      (* TODO only do this when there are enough fragments
-         for each chunk!
-         (repair by policy can take it from there)
-       *)
 
       let open Nsm_model in
       let manifest : Manifest.t =
