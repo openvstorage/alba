@@ -101,10 +101,14 @@ let safe_delete_namespace client namespace =
          "Ignoring exception in delete namespace test cleanup")
 
 let wait_for_work alba_client =
-  let maintenance_client = new Maintenance.client ~retry_timeout:1. alba_client in
+  let maintenance_client =
+    new Maintenance.client
+        ~retry_timeout:1.
+        (alba_client # get_base_client)
+  in
   maintenance_client # do_work ~once:true ()
 
-let safe_decommission alba_client long_ids =
+let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
   Lwt_list.iter_p
     (fun long_id ->
        Lwt.catch
@@ -132,7 +136,8 @@ let safe_decommission alba_client long_ids =
 
   let rec deliver_nsm_host_messages () =
     Lwt_list.iter_p
-      (fun (nsm_host_id, _, _) -> alba_client # deliver_nsm_host_messages ~nsm_host_id)
+      (fun (nsm_host_id, _, _) ->
+       alba_client # deliver_nsm_host_messages ~nsm_host_id)
       nsm_hosts >>= fun () ->
     Lwt_unix.sleep 1. >>=
     deliver_nsm_host_messages
@@ -312,7 +317,7 @@ let test_clean_obsolete_keys () =
   test_with_alba_client
       (fun client ->
 
-         let maintenance_client = new Maintenance.client client in
+         let maintenance_client = new Maintenance.client (client # get_base_client) in
 
          let namespace = "test_clean_obsolete_keys" in
          client # create_namespace ~preset_name:None ~namespace ~nsm_host_id:"ricky" ()
@@ -388,7 +393,8 @@ let test_garbage_collect () =
          and fragment_id = 0
          and object_id = "bla bla"
          and version_id = 9 in
-         client # upload_packed_fragment_data
+         Alba_client_upload.upload_packed_fragment_data
+           (client # osd_access)
            ~namespace_id
            ~packed_fragment:(Bigarray.Array1.create
                                Bigarray.Char
@@ -422,7 +428,7 @@ let test_garbage_collect () =
 
          assert_fragment ((<>) None) >>= fun () ->
 
-         let maintenance_client = new Maintenance.client client in
+         let maintenance_client = new Maintenance.client (client # get_base_client) in
 
          Printf.printf "garbage collecting fragments..\n";
 
@@ -462,7 +468,7 @@ let test_create_namespaces () =
              client # delete_namespace ~namespace >>= fun () ->
              Lwt_log.debug_f "deleted namespace %s" namespace >>= fun () ->
 
-             let maintenance_client = new Maintenance.client client in
+             let maintenance_client = new Maintenance.client (client # get_base_client) in
              maintenance_client # do_work ~once:true () >>= fun () ->
 
              Lwt_log.debug_f "finished work" >>= fun () ->
@@ -667,7 +673,7 @@ let test_discover_claimed () =
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
          (fun asd ->
-            alba_client # seen
+            alba_client # osd_access # seen
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = test_name;
                                     extras = Some({
@@ -763,7 +769,7 @@ let test_change_osd_ip_port () =
             (* give maintenance process some time to discover the
                osd and register it in the albamgr *)
             Lwt_unix.sleep 0.2 >>= fun () ->
-            client # claim_osd osd_name >>= fun osd_id ->
+            client # claim_osd ~long_id:osd_name >>= fun osd_id ->
             (* sleep a bit here so the alba client can discover it's claimed status *)
             Lwt_unix.sleep 0.2 >>= fun () ->
 
@@ -777,7 +783,7 @@ let test_change_osd_ip_port () =
 
             client # create_namespace ~preset_name:(Some test_name) ~namespace () >>= fun _ ->
 
-            client # upload_object_from_string
+            client # get_base_client # upload_object_from_string
               ~namespace
               ~object_name
               ~object_data:"fsdajivivivisjivo"
@@ -871,7 +877,7 @@ let test_repair_by_policy () =
        in
 
        let object_name = test_name in
-       alba_client # upload_object_from_string
+       alba_client # get_base_client # upload_object_from_string
          ~namespace
          ~object_name
          ~object_data:"dfjsdl cjivo jiovppp"
@@ -899,7 +905,7 @@ let test_repair_by_policy () =
 
        assert (cnt = 4);
 
-       let maintenance_client = new Maintenance.client alba_client in
+       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
        maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
 
        alba_client # get_object_manifest
@@ -912,7 +918,7 @@ let test_repair_by_policy () =
 
        assert ((2,1,3) = get_k_m_x mf');
 
-       alba_client # with_nsm_client ~namespace
+       alba_client # get_base_client # with_nsm_client ~namespace
          (fun nsm ->
             nsm # list_objects_by_policy
               ~k:1 ~m:0
@@ -929,7 +935,7 @@ let test_repair_by_policy () =
 
 let test_missing_corrupted_fragment () =
   let bad_fragment_callback
-      (alba_client : Alba_client.alba_client)
+      (alba_client (* : Alba_client.alba_client *))
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id ~version_id =
@@ -964,7 +970,7 @@ let test_missing_corrupted_fragment () =
 
        let open Nsm_model in
 
-       alba_client # upload_object_from_string
+       alba_client # get_base_client # upload_object_from_string
          ~namespace
          ~object_name
          ~object_data
@@ -993,7 +999,7 @@ let test_missing_corrupted_fragment () =
 
        Lwt_unix.sleep 0.2 >>= fun () ->
 
-       let maintenance_client = new Maintenance.client alba_client in
+       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
        maintenance_client # do_work ~once:true () >>= fun () ->
 
        alba_client # get_object_manifest
@@ -1112,7 +1118,7 @@ let test_disk_churn () =
          | (asd_name, asd_port) :: asds ->
            Asd_test.with_asd_client asd_name asd_port
              (fun asd ->
-                alba_client # seen
+                alba_client # osd_access # seen
                   ~check_claimed_delay:1.
                   Discovery.(Good("", { id = asd_name;
                                         extras = Some({
@@ -1123,7 +1129,7 @@ let test_disk_churn () =
                                           });
                                         ips = ["::1"];
                                         port = asd_port; })) >>= fun () ->
-                alba_client # claim_osd asd_name >>= fun osd_id ->
+                alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
                 with_asds
                   f
                   (osd_id :: acc)
@@ -1172,7 +1178,7 @@ let test_disk_churn () =
 
          let open Nsm_model in
 
-         alba_client # upload_object_from_string
+         alba_client # get_base_client # upload_object_from_string
            ~namespace
            ~object_name
            ~object_data
@@ -1195,7 +1201,10 @@ let test_disk_churn () =
 
          alba_client # deliver_nsm_host_messages ~nsm_host_id:"ricky" >>= fun () ->
 
-         let maintenance_client = new Maintenance.client ~retry_timeout:1. alba_client in
+         let maintenance_client =
+           new Maintenance.client
+               ~retry_timeout:1.
+               (alba_client # get_base_client) in
 
          Lwt_list.iter_s
            (fun osd_id ->
@@ -1285,7 +1294,7 @@ let test_replication () =
          let object_name = test_name in
          let object_data = "a" in
 
-         client # upload_object_from_string
+         client # get_base_client # upload_object_from_string
            ~namespace
            ~object_name
            ~object_data
@@ -1382,7 +1391,7 @@ let test_add_disk () =
        let asd_port = 17843 in
        Asd_test.with_asd_client asd_name asd_port
          (fun asd ->
-            alba_client # seen
+            alba_client # osd_access # seen
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = asd_name;
                                     extras = Some({
@@ -1393,7 +1402,7 @@ let test_add_disk () =
                                       });
                                     ips = ["::1"];
                                     port = asd_port; })) >>= fun () ->
-            alba_client # claim_osd asd_name >>= fun osd_id ->
+            alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
 
             alba_client # mgr_access # list_namespace_osds
               ~namespace_id
@@ -1423,7 +1432,7 @@ let test_invalidate_deleted_namespace () =
             let checksum_o = get_checksum_o object_data in
 
             let do_upload (client : Alba_client.alba_client) =
-              client # upload_object_from_string
+              client # get_base_client # upload_object_from_string
                 ~namespace
                 ~object_name:""
                 ~object_data

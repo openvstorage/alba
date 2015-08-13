@@ -16,33 +16,64 @@ limitations under the License.
 
 open Lwt.Infix
 open Fragment_cache
-open Access
+open Albamgr_access
 open Alba_base_client
 open Alba_statistics
 open Alba_client_errors
 
-class alba_client (fragment_cache : cache)
-                  ~(mgr_access : Albamgr_client.client)
-                  ~manifest_cache_size
-                  ~bad_fragment_callback
-                  ~nsm_host_connection_pool_size
-                  ~osd_connection_pool_size
-  = object(self)
-  inherit alba_base_client
-            fragment_cache
-            ~mgr_access
-            ~manifest_cache_size
-            ~bad_fragment_callback
-            ~nsm_host_connection_pool_size
-            ~osd_connection_pool_size
+class alba_client (base_client : Alba_base_client.client)
+  =
+  let mgr_access = base_client # mgr_access in
+  let nsm_host_access = base_client # nsm_host_access in
+  let osd_access = base_client # osd_access in
+  let fragment_cache = base_client # get_fragment_cache in
 
-  method get_object_manifest ~namespace ~object_name ~consistent_read ~should_cache =
+  let deliver_nsm_host_messages ~nsm_host_id =
+    Alba_client_message_delivery.deliver_nsm_host_messages
+      mgr_access nsm_host_access osd_access
+      ~nsm_host_id
+  in
+
+  object(self)
+    method get_base_client = base_client
+    method mgr_access = mgr_access
+    method nsm_host_access = nsm_host_access
+    method osd_access = osd_access
+
+    method get_object_manifest' = base_client # get_object_manifest'
+    method download_object_slices = base_client # download_object_slices
+    method download_object_generic'' = base_client # download_object_generic''
+
+    method create_namespace ~namespace ~preset_name ?nsm_host_id () =
+      Alba_client_namespace.create_namespace
+        mgr_access
+        (base_client # get_preset_info)
+        (base_client # deliver_messages_to_most_osds)
+        deliver_nsm_host_messages
+        ~namespace ~preset_name ?nsm_host_id ()
+
+    method upload_object_from_file = base_client # upload_object_from_file
+
+    method discover_osds_check_claimed = base_client # discover_osds_check_claimed
+
+    method with_osd :
+             'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
+                          (Osd.osd -> 'a Lwt.t) -> 'a Lwt.t =
+      base_client # with_osd
+    method with_nsm_client' :
+      'a. namespace_id : int32 ->
+                         (Nsm_client.client -> 'a Lwt.t) -> 'a Lwt.t =
+      base_client # with_nsm_client'
+
+    method upload_object_from_bytes = base_client # upload_object_from_bytes
+
+    method get_object_manifest ~namespace ~object_name ~consistent_read ~should_cache =
       self # nsm_host_access # with_namespace_id
-        ~namespace
-        (fun namespace_id ->
-           self # get_object_manifest'
-             ~namespace_id ~object_name
-             ~consistent_read ~should_cache)
+           ~namespace
+           (fun namespace_id ->
+            self # get_object_manifest'
+                 ~namespace_id ~object_name
+                 ~consistent_read ~should_cache)
 
 
     method download_object_slices_to_string
@@ -195,13 +226,30 @@ class alba_client (fragment_cache : cache)
     self # nsm_host_access # with_namespace_id
       ~namespace
       (fun namespace_id ->
-         self # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
+         self # nsm_host_access # get_nsm_by_id ~namespace_id
+         >>= fun nsm_client ->
          Lwt.finalize
-           (fun () ->self # delete_object' client ~object_name ~may_not_exist)
+           (fun () ->
+            let open Nsm_model in
+            nsm_client # delete_object
+                       ~object_name
+                       ~allow_overwrite:(if may_not_exist
+                                         then Unconditionally
+                                         else AnyPrevious)
+            >>= function
+            | None ->
+               Lwt_log.debug_f
+                 "no object with name %s could be found\n"
+                 object_name
+            | Some old_manifest ->
+               (* TODO add en-passant deletion of fragments *)
+               Lwt_log.debug_f
+                 "object with name %s was deleted\n"
+                 object_name)
            (fun () ->
               let () =
                 Manifest_cache.ManifestCache.remove
-                  _mf_cache namespace_id object_name
+                  (base_client # get_manifest_cache) namespace_id object_name
               in
               Lwt.return_unit
            ))
@@ -285,10 +333,10 @@ class alba_client (fragment_cache : cache)
         (fun namespace_id ->
            (* Fragment cache needs no invalidation as keys are globally unique *)
            let open Manifest_cache in
-           ManifestCache.invalidate _mf_cache namespace_id)
+           ManifestCache.invalidate (base_client # get_manifest_cache) namespace_id)
 
     method drop_cache_by_id namespace_id =
-      Manifest_cache.ManifestCache.drop _mf_cache namespace_id;
+      Manifest_cache.ManifestCache.drop (base_client # get_manifest_cache) namespace_id;
       fragment_cache # drop namespace_id
 
     method drop_cache namespace =
@@ -296,23 +344,32 @@ class alba_client (fragment_cache : cache)
         ~namespace
         (self # drop_cache_by_id)
 
+    method deliver_nsm_host_messages ~nsm_host_id =
+      Alba_client_message_delivery.deliver_nsm_host_messages
+        mgr_access nsm_host_access osd_access
+        ~nsm_host_id
+
+    method deliver_osd_messages ~osd_id =
+      Alba_client_message_delivery.deliver_osd_messages
+        mgr_access nsm_host_access osd_access
+        ~osd_id
+
     method delete_namespace ~namespace =
-      Lwt_log.debug_f "Alba_client: delete_namespace %S" namespace >>= fun () ->
-
-      self # nsm_host_access # with_namespace_id
+      Alba_client_namespace.delete_namespace
+        mgr_access nsm_host_access
+        deliver_nsm_host_messages
+        (self # drop_cache_by_id)
         ~namespace
-        (fun namespace_id ->
 
-           Lwt.ignore_result begin
-             Lwt_extra2.ignore_errors
-               (fun () -> self # drop_cache_by_id namespace_id)
-           end;
+    method decommission_osd ~long_id =
+      Alba_client_osd.decommission_osd
+        mgr_access osd_access
+        ~long_id
 
-           mgr_access # list_all_namespace_osds ~namespace_id >>= fun (_, osds) ->
-
-           mgr_access # delete_namespace ~namespace >>= fun nsm_host_id ->
-
-           self # deliver_nsm_host_messages ~nsm_host_id)
+    method claim_osd ~long_id =
+      Alba_client_osd.claim_osd
+        mgr_access osd_access
+        ~long_id
   end
 
 let with_client albamgr_client_cfg
@@ -348,12 +405,12 @@ let with_client albamgr_client_cfg
         ~albamgr_client_cfg
         default_buffer_pool)
   in
-  let client = new alba_client
-                   cache
-                   ~mgr_access
-                   ~manifest_cache_size
-                   ~bad_fragment_callback
-                   ~nsm_host_connection_pool_size
-                   ~osd_connection_pool_size
-  in
+  let base_client = new Alba_base_client.client
+                        cache
+                        ~mgr_access
+                        ~manifest_cache_size
+                        ~bad_fragment_callback
+                        ~nsm_host_connection_pool_size
+                        ~osd_connection_pool_size in
+  let client = new alba_client base_client in
   f client

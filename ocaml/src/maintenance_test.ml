@@ -72,6 +72,7 @@ let test_rebalance_one () =
      Lwt_log.debug_f "object_osds: %s" (set2s object_osds ) >>= fun () ->
      let get_targets () =
        alba_client
+         # get_base_client
          # with_nsm_client ~namespace
          (fun nsm -> nsm # list_all_active_osds)
        >>= fun (n,osds_l) ->
@@ -85,7 +86,7 @@ let test_rebalance_one () =
 
      let target_osd = DeviceSet.choose targets in
      let source_osd = DeviceSet.choose object_osds in
-     let mc = new Maintenance.client alba_client in
+     let mc = new Maintenance.client (alba_client # get_base_client) in
      with_nice_error_log
        (fun () ->
         mc # rebalance_object
@@ -155,7 +156,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
          else
            begin
              let object_name = object_name_template i in
-             alba_client # upload_object_from_string
+             alba_client # get_base_client # upload_object_from_string
                          ~namespace
                          ~object_name
                          ~object_data
@@ -170,7 +171,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
      let n = 20 in
      with_nice_error_log (fun () -> upload 20) >>= fun () ->
      Lwt_log.debug_f "uploaded ... %i" n >>= fun () ->
-     let mc = new Maintenance.client alba_client in
+     let mc = new Maintenance.client (alba_client # get_base_client) in
      let make_first () = "" in
      Lwt.catch
        (fun () ->
@@ -191,7 +192,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
        | None -> Lwt.return ()
        | Some (fat_id,_) ->
           Rebalancing_helper.get_some_manifests
-            alba_client
+            (alba_client # get_base_client)
             ~make_first
             ~namespace_id
             fat_id
@@ -209,7 +210,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
        | None -> Lwt.return ()
        | Some (ano_id,_) ->
           Rebalancing_helper.get_some_manifests
-            alba_client
+            (alba_client # get_base_client)
             ~make_first
             ~namespace_id
             ano_id
@@ -289,11 +290,11 @@ let test_repair_orange () =
 
        wait_for_namespace_osds alba_client namespace_id 11 >>= fun () ->
 
-       let maintenance_client = new Maintenance.client alba_client in
+       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
 
        let object_name = test_name in
        let object_data = test_name in
-       alba_client # upload_object_from_string
+       alba_client # get_base_client # upload_object_from_string
          ~namespace
          ~object_name
          ~object_data
@@ -354,7 +355,7 @@ let test_repair_orange2 () =
 
        let object_name = test_name in
        let object_data = get_random_string 399 in
-       alba_client # upload_object_from_string
+       alba_client # get_base_client # upload_object_from_string
          ~namespace
          ~object_name
          ~object_data
@@ -365,7 +366,7 @@ let test_repair_orange2 () =
          ~update_manifest:true
          alba_client namespace_id mf 0 0 >>= fun () ->
 
-       let maintenance_client = new Maintenance.client alba_client in
+       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
        maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
 
        alba_client # get_object_manifest

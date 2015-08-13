@@ -107,7 +107,7 @@ let alba_claim_osd alba_cfg_file long_id to_json =
     with_alba_client
       alba_cfg_file
       (fun alba_client ->
-         alba_client # claim_osd long_id) >>= fun osd_id ->
+         alba_client # claim_osd ~long_id) >>= fun osd_id ->
     Lwt_log.debug_f "Claimed %S with id=%li" long_id osd_id
   in
   lwt_cmd_line_unit to_json t
@@ -182,7 +182,7 @@ let alba_show_namespace cfg_file namespace to_json =
           match ro with
           | None -> Lwt_io.printlf "not found"
           | Some (namespace, r) ->
-             client # with_nsm_client ~namespace
+             client # get_base_client # with_nsm_client ~namespace
                (fun nsm_client ->
                   nsm_client # get_stats >>= fun { Nsm_model.NamespaceStats.logical_size;
                                                    storage_size;
@@ -370,7 +370,7 @@ let alba_list_objects cfg_file namespace =
     with_alba_client
       cfg_file
       (fun alba_client ->
-         alba_client # with_nsm_client
+         alba_client # get_base_client # with_nsm_client
            ~namespace
            (fun nsm ->
               nsm # list_all_objects ())) >>= fun (cnt, objs) ->

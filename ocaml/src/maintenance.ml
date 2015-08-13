@@ -20,7 +20,7 @@ open Recovery_info
 open Lwt.Infix
 
 
-let gc_grace_period = Access.gc_grace_period
+let gc_grace_period = Nsm_host_access.gc_grace_period
 type namespace_id = Albamgr_protocol.Protocol.Namespace.id
 
 type flavour =
@@ -32,7 +32,7 @@ type flavour =
 class client ?(filter: namespace_id -> bool = fun _ -> true)
              ?(retry_timeout = 60.)
              ?(flavour = ALL_IN_ONE)
-             (alba_client : Alba_client.alba_client)
+             (alba_client : Alba_base_client.client)
 
   =
 
@@ -150,7 +150,8 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
             then Lwt.fail (Exn ChecksumMismatch)
             else
               begin
-                alba_client # upload_packed_fragment_data
+                Alba_client_upload.upload_packed_fragment_data
+                  (alba_client # osd_access)
                   ~namespace_id ~object_id
                   ~chunk_id ~fragment_id ~version_id:version_id1
                   ~packed_fragment ~checksum:fragment_checksum
@@ -299,7 +300,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                 osds that will be force chosen *)
              Lwt_list.iter_p
                (fun osd_id ->
-                  alba_client # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+                  alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
                   Hashtbl.replace osds_info_cache' osd_id osd_info;
                   Lwt.return ())
                ok_fragments' >>= fun () ->
@@ -380,7 +381,8 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                   if checksum = checksum'
                   then
                     begin
-                      alba_client # upload_packed_fragment_data
+                      Alba_client_upload.upload_packed_fragment_data
+                        (alba_client # osd_access)
                         ~namespace_id
                         ~osd_id:chosen_osd_id
                         ~object_id ~version_id
@@ -799,7 +801,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
       >>= fun osd_info_cache ->
       let open Albamgr_protocol.Protocol.Preset in
       let policies = preset.policies in
-      let best = Alba_base_client.get_best_policy_exn policies osd_info_cache in
+      let best = Alba_client_common.get_best_policy_exn policies osd_info_cache in
       let (best_k, best_m, _, _), _ = best in
       let current_k,current_m =
         let open Nsm_model in
@@ -877,10 +879,10 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
 
       (* TODO due to changed circumstances this may actually rewrite the object
          with a worse policy than before! *)
-      alba_client # upload_object_from_string'
+      alba_client # upload_object'
         ~namespace_id
         ~object_name
-        ~object_data
+        ~object_reader:(new Object_reader.string_reader object_data)
         ~checksum_o
         ~allow_overwrite >>= fun _ ->
 
@@ -984,7 +986,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
       alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache ->
 
       let best_policy, best_actual_fragment_count =
-        Alba_base_client.get_best_policy_exn
+        Alba_client_common.get_best_policy_exn
           policies
           osds_info_cache
       in
@@ -1467,4 +1469,9 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
 
     inner ()
 
+  method deliver_all_messages () : unit Lwt.t =
+    Alba_client_message_delivery.deliver_all_messages
+      (alba_client # mgr_access)
+      (alba_client # nsm_host_access)
+      (alba_client # osd_access)
   end

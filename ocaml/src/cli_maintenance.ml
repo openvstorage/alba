@@ -130,7 +130,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~osd_connection_pool_size
         (fun client ->
            let maintenance_client =
-             new Maintenance.client ~flavour ~filter client
+             new Maintenance.client ~flavour ~filter (client # get_base_client)
            in
            Lwt.catch
              (fun () ->
@@ -148,8 +148,8 @@ let alba_maintenance cfg_file modulo remainder flavour =
                 let base_threads () =
                   [
                     (Lwt_extra2.make_fuse_thread ());
-                    (client # deliver_all_messages ());
-                    (client # discover_osds_check_claimed ());
+                    (maintenance_client # deliver_all_messages ());
+                    (client # get_base_client # discover_osds_check_claimed ());
                   ]
                 in
 
@@ -236,13 +236,15 @@ let alba_deliver_messages cfg_file =
          Lwt_list.iter_p
            (function
              | (Osd.ClaimInfo.ThisAlba osd_id, _) ->
-               Lwt_extra2.ignore_errors (fun () -> client # deliver_osd_messages ~osd_id)
+                Lwt_extra2.ignore_errors
+                  (fun () -> client # deliver_osd_messages ~osd_id)
              | _ -> Lwt.return ())
            osds >>= fun () ->
 
          client # mgr_access # list_all_nsm_hosts () >>= fun (_, nsms) ->
          Lwt_list.iter_p
-           (fun (nsm_host_id, _, _) -> client # deliver_nsm_host_messages ~nsm_host_id)
+           (fun (nsm_host_id, _, _) ->
+            client # deliver_nsm_host_messages ~nsm_host_id)
            nsms
       )
   in
@@ -261,7 +263,7 @@ let alba_rewrite_object
     with_alba_client
       cfg_file
       (fun client ->
-         let maintenance_client = new Maintenance.client client in
+         let maintenance_client = new Maintenance.client (client # get_base_client) in
          client # nsm_host_access # with_namespace_id ~namespace
            (fun namespace_id ->
               client # nsm_host_access # get_nsm_by_id ~namespace_id
