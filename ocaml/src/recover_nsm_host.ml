@@ -317,6 +317,18 @@ let gather_and_push_objects
           fragment_packed_sizes
       in
 
+      let version_id =
+        List.fold_left
+          (fun max_v (_, fs) ->
+           List.fold_left
+             (fun max_v f  ->
+              max max_v f.version_id)
+             max_v
+             fs)
+          0
+          fs
+      in
+
       (* TODO only do this when there are enough fragments
          for each chunk!
          (repair by policy can take it from there)
@@ -336,9 +348,9 @@ let gather_and_push_objects
           ~fragment_locations
           ~fragment_checksums
           ~fragment_packed_sizes
+          ~version_id
 
           (* TODO *)
-          ~version_id:0
           ~max_disks_per_node:100
       in
 
