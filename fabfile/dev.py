@@ -269,6 +269,10 @@ def run_tests_recovery(xml = False):
     local(' '.join(cmd))
     local(' '.join(cmd))
 
+    # bring down one of the osds
+    # we should be able to handle this...
+    alba.osd_stop(8000)
+
     local('mkdir -p /tmp/alba/recovery_agent')
     cmd = [
         env['alba_bin'],
