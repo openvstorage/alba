@@ -454,7 +454,9 @@ let nsm_recovery_agent
     namespace
     home
     total_workers
-    worker_id =
+    worker_id
+    osds
+  =
 
   let kv = R.create' ~db_path:home () in
 
@@ -506,12 +508,9 @@ let nsm_recovery_agent
    | None ->
      R.set kv Keys.worker_id (serialize Llio.int_to worker_id));
 
-  Lwt_log.info_f "Fetching list of namespace osds ..." >>= fun () ->
-  alba_client # mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
-
   (* start threads to scrape an osd *)
   Lwt_list.map_p
-    (fun (osd_id, _) ->
+    (fun osd_id ->
        reap_osd
          alba_client kv
          ~osd_id ~namespace_id

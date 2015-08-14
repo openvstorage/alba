@@ -278,7 +278,8 @@ def run_tests_recovery(xml = False):
         env['alba_bin'],
         'namespace-recovery-agent',
         ns, '/tmp/alba/recovery_agent', '1', '0',
-        "--config", abm_cfg
+        "--config", abm_cfg,
+        "--osd-id 1 --osd-id 2"
     ]
     local(' '.join(cmd))
 
