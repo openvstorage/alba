@@ -19,8 +19,7 @@ open Lwt
 open Generic_bench
 
 
-let deletes (client: Osd.osd) n value_size power prefix =
-  let period = period_of_power power in
+let deletes (client: Osd.osd) n value_size period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let key = gen () in
@@ -35,8 +34,7 @@ let deletes (client: Osd.osd) n value_size power prefix =
   report "deletes" r
 
 
-let gets (client: Osd.osd) n value_size power prefix =
-  let period = period_of_power power in
+let gets (client: Osd.osd) n value_size period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let key = gen () in
@@ -53,8 +51,7 @@ let gets (client: Osd.osd) n value_size power prefix =
   measured_loop do_one n >>= fun r ->
   report "gets" r
 
-let sets (client:Osd.osd) n value_size power prefix =
-  let period = period_of_power power in
+let sets (client:Osd.osd) n value_size period prefix =
   let gen = make_key period prefix in
   (* TODO: this affects performance as there is compression going
      on inside the database
@@ -94,9 +91,10 @@ let do_all client n value_size power prefix=
       deletes;
     ]
   in
+  let period = period_of_power power in
   Lwt_list.iter_s
     (fun which ->
      which client
-           n value_size power prefix
+           n value_size period prefix
     )
     scenario

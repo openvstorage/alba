@@ -53,16 +53,18 @@ let _make_key period prefix =
          then this one is of full period
    *)
   let _x = ref 42 in
-  (fun () ->
-   let i = !_x in
-   let x' = (21 * !_x + 3) mod period in
-   let () = _x := x'  in
-   let r = Printf.sprintf "%s%s_%016i" Osd_keys.bench_prefix prefix i in
-   (*let () = Printf.printf "period:%i i:%i x:%i: r:%S\n%!" period i !_x r in *)
-   r)
+  fun () ->
+  begin
+    let i = !_x in
+    let x' = (21 * !_x + 3) mod period in
+    let () = _x := x'  in
+    Printf.sprintf "%s%s_%016i" Osd_keys.bench_prefix prefix i
+  end
+
 
 
 let period_of_power power =
+  assert (power >= 0);
   let rec loop acc = function
     | 0 -> acc
     | i -> loop (10 * acc) (i-1)

@@ -315,7 +315,7 @@ let proxy_bench host port
 
 let proxy_bench_cmd =
   let n default =
-    let doc = "do runs (gets,sets,...) of $(docv) iterations" in
+    let doc = "do runs (writes,reads,partial_reads,...) of $(docv) iterations" in
     Arg.(value
          & opt int default
          & info ["n"; "nn"] ~docv:"N" ~doc)
