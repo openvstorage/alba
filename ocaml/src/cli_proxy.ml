@@ -74,7 +74,7 @@ let proxy_start cfg_file =
         (* the fragment cache size is currently a rather soft limit which we'll
            surely exceed. this can lead to disk full conditions. by taking a
            safety margin of 10% we turn the soft limit into a hard one... *)
-        cfg.fragment_cache_size / 10 * 9,
+        (cfg.fragment_cache_size / 100) * 85,
         cfg.albamgr_connection_pool_size,
         cfg.nsm_host_connection_pool_size,
         cfg.osd_connection_pool_size,
