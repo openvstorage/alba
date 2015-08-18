@@ -1,23 +1,3 @@
-# Arakoon Installation
-
->Clone the arakoon repo.
->> - git clone https://github.com/openvstorage/arakoon.git
-
->Install the dependencies.
->> - sudo apt-get install aspcud m4 libssl-dev libsnappy-dev libbz2-dev libgmp3-dev curl
-
->Run script to install all required package.
->> -  ./jenkins/package_deb/008_install_dev_env.sh
-
->If everything goes well so far then run
- >> -  make
- >> -  ./arakoon.native --run-all-tests
-
-> Optional (This is required if you want to run alba.)
- >> -  export OCAML_LIBDIR=``ocamlfind printconf destdir`\`
- >> -  make install_client
-
-
 # Alba Installation
 
 > Clone the alba repo.
@@ -32,13 +12,13 @@
 >> make
 >> sudo make install
 
-> List of required packages (See the file _tags under ocaml directory. You don't have to install all these package because some of them will be installed automatically during arakoon installation.)
-
+> List of required opam packages (See the file _tags under ocaml directory. You don't have to install all these package because some of them will be installed automatically during arakoon installation.)
+>> arakoon.1.8.8
 >> kinetic-client
 >> tiny_json
 >> cmdliner
 >> ppx_deriving_yojson
->> lwt.2.4.8
+>> lwt.2.5.0
 >> oUnit
 >> ctypes
 >> ctypes-foreign
