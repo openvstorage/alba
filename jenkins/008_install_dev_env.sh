@@ -20,6 +20,6 @@ opam install -y ssl.0.5.0 \
      ocplib-endian.0.8 \
      quickcheck.1.0.2 \
      nocrypto.0.5.1 \
-     sexplib.112.35.00 \
      uuidm.0.9.5 \
-     zarith.1.3
+     zarith.1.3 \
+     core_kernel.112.35.00

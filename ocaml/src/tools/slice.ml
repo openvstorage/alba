@@ -124,8 +124,6 @@ module Slice = struct
     res
 
   let of_bigstring bs =
-    let len = Lwt_bytes.length bs in
-    let res = create len in
-    Lwt_bytes.blit_to_bytes bs 0 res.buf res.offset len;
-    res
+    let s = Lwt_bytes.to_string bs in
+    wrap_string s
 end
