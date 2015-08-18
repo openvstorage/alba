@@ -304,6 +304,53 @@ let proxy_get_version_cmd =
   ),
   Term.info "proxy-get-version" ~doc:"the proxy's version info"
 
+let proxy_bench host port
+                (n:int) file_name (power:int)
+                prefix (slice_size:int) namespace_name
+  =
+  lwt_cmd_line
+    false
+    (fun () -> Proxy_bench.bench host port n file_name power prefix slice_size namespace_name)
+
+
+let proxy_bench_cmd =
+  let n default =
+    let doc = "do runs (writes,reads,partial_reads,...) of $(docv) iterations" in
+    Arg.(value
+         & opt int default
+         & info ["n"; "nn"] ~docv:"N" ~doc)
+  in
+  let power default =
+    let doc = "$(docv) for random number generation: period = 10^$(docv)" in
+    Arg.(value
+           & opt int default
+           & info ["power"] ~docv:"power" ~doc
+    )
+  in
+  let prefix default =
+    let doc = "$(docv) to keep multiple clients out of each other's way" in
+    Arg.(value
+           & opt string default
+           & info ["prefix"] ~docv:"prefix" ~doc
+    )
+  in
+  let slice_size default =
+    let doc = "partial reads phaze will use slices of size $(docv)" in
+    Arg.(value
+         & opt int default
+         & info ["slice-size"] ~docv:"SLICE_SIZE"  ~doc
+    )
+  in
+  Term.(pure proxy_bench
+        $ host $ port 10000
+        $ n 10000
+        $ file_upload 1
+        $ power 4
+        $ prefix ""
+        $ slice_size 4096
+        $ namespace 0
+  ),
+  Term.info "proxy-bench" ~doc:"simple proxy benchmark"
 let cmds = [
   proxy_start_cmd;
   proxy_list_namespaces_cmd;
@@ -315,4 +362,5 @@ let cmds = [
   proxy_delete_namespace_cmd;
   proxy_list_objects_cmd;
   proxy_get_version_cmd;
+  proxy_bench_cmd
 ]

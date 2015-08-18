@@ -67,6 +67,12 @@ class proxy_client (ic, oc) =
          consistent_read,
          should_cache)
 
+    method read_object_slices ~namespace ~object_slices ~consistent_read =
+      self # request ReadObjectsSlices (namespace, object_slices, consistent_read)
+
+    method delete_object ~namespace ~object_name ~may_not_exist=
+      self # request DeleteObject (namespace, object_name, may_not_exist)
+
     method invalidate_cache ~namespace =
       self # request InvalidateCache namespace
 
