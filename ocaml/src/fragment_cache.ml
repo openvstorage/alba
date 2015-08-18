@@ -326,7 +326,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let _lookup bid oid f =
         let boid = bid,oid in
         let blob_fsid_key = blob_fsid_key_of boid in
-        Lwt_log.debug_f "lookup %lx oid:%S" bid oid >>= fun () ->
+        Lwt_log.debug_f "_lookup %lx oid:%S" bid oid >>= fun () ->
         match KV.get db blob_fsid_key with
         | None     -> Lwt.return None
         | Some ts ->
@@ -378,6 +378,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
                )
            end
       in
+      Lwt_log.debug_f "lookup %lx oid:%S" bid oid >>= fun () ->
       Lwt.catch
         (fun () ->
          Lwt_mutex.with_lock
@@ -927,58 +928,61 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         );
       Lwt.return ()
 
-    method add bid oid blob =
+    method add bid oid blob : unit Lwt.t =
 
-      Lwt_mutex.with_lock _mutex
+      Lwt_log.debug_f "add %lx %S" bid oid >>= fun () ->
+      let _add () =
+        Lwt_log.debug_f "_add %lx %S" bid oid >>= fun () ->
+        let boid = (bid, oid) in
+
+        let fsid = self # create_fs_id () in
+        let fsid_key = blob_fsid_key_of boid in
+        let access = create_access () in
+        Lwt.catch
+          (fun () ->
+           let path = path_of_fsid bid fsid in
+           let dir = Filename.dirname path in
+           Lwt_log.debug_f "add...path=%s dir=%s" path dir
+           >>= fun () ->
+           Asd_server.DirectoryInfo.ensure_dir_exists dirs dir
+           >>= fun () ->
+           let total_count = get_int64 db _TOTAL_COUNT in
+           let total_size  = get_int64 db _TOTAL_SIZE in
+           let blob_length = Bytes.length blob |> Int64.of_int in
+           begin
+             match total_size +: blob_length < max_size ,
+                   KV.get db fsid_key
+             with
+             | true, None      ->
+                self#_add_new_grow
+                  ~total_size ~total_count ~access ~fsid boid path blob
+             | true, Some fsid0  ->
+                self#_replace_grow
+                  ~total_size ~total_count ~access ~fsid boid path blob ~fsid0
+
+             | false, None     ->
+                self#_add_new_full
+                  ~total_size ~total_count ~access ~fsid boid path blob
+
+             | false, Some fsid0 ->
+                self#_replace_full
+                  ~total_size ~total_count ~access ~fsid boid path blob ~fsid0
+
+           end
+          )
+          (fun exn ->
+           Lwt_log.warning_f ~exn
+                             "adding fragment to cache failed; ignoring error"
+          )
+      in
+      Alba_statistics.Statistics.with_timing_lwt
         (fun () ->
          Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
-         let boid = (bid, oid) in
-
-         let fsid = self # create_fs_id () in
-         let fsid_key = blob_fsid_key_of boid in
-         let access = create_access () in
-         Lwt.catch
-           (fun () ->
-            let path = path_of_fsid bid fsid in
-            let dir = Filename.dirname path in
-            Lwt_log.debug_f ~section "add...path=%s dir=%s" path dir
-            >>= fun () ->
-            Alba_statistics.Statistics.with_timing_lwt
-             (fun () -> Asd_server.DirectoryInfo.ensure_dir_exists dirs dir)
-            >>= fun (took, ()) ->
-            Lwt_log.debug_f ~section "ensure_dir_exists %s took:%f" dir took
-            >>= fun () ->
-            let total_count = get_int64 db _TOTAL_COUNT in
-            let total_size  = get_int64 db _TOTAL_SIZE in
-            let blob_length = Bytes.length blob |> Int64.of_int in
-            begin
-              match total_size +: blob_length < max_size ,
-                    KV.get db fsid_key
-              with
-              | true, None      ->
-                 self#_add_new_grow
-                   ~total_size ~total_count ~access ~fsid boid path blob
-              | true, Some fsid0  ->
-                 self#_replace_grow
-                   ~total_size ~total_count ~access ~fsid boid path blob ~fsid0
-
-              | false, None     ->
-                 self#_add_new_full
-                   ~total_size ~total_count ~access ~fsid boid path blob
-
-              | false, Some fsid0 ->
-                 self#_replace_full
-                   ~total_size ~total_count ~access ~fsid boid path blob ~fsid0
-
-            end
-           )
-           (fun exn ->
-            Lwt_log.warning_f
-              ~exn
-              ~section
-              "adding fragment to cache failed; ignoring error"
-           )
+         Lwt_mutex.with_lock _mutex _add
         )
+      >>= fun (t,()) ->
+      Lwt_log.debug_f "add %lx %S took:%f" bid oid t
+
 
     method drop bid =
       Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->

@@ -431,6 +431,20 @@ let run_server hosts port
   >>= fun () ->
   let stats = ProxyStatistics.make () in
 
+  let rec fragment_cache_disk_usage_t () =
+    Lwt.catch
+      (fun () ->
+       Fsutil.lwt_disk_usage cache_dir >>= fun (used_b, total_b) ->
+       let percentage =
+         100.0 *. ((Int64.to_float used_b) /. (Int64.to_float total_b))
+       in
+       Lwt_log.info_f "fragment_cache disk_usage: %.2f%%" percentage)
+      (fun exn -> Lwt_log.warning ~exn "fragment_cache_disk_usage_t")
+    >>= fun () ->
+    Lwt_unix.sleep 60.0 >>= fun () ->
+    fragment_cache_disk_usage_t ()
+  in
+
   Lwt.catch
     (fun () ->
        let bad_fragment_callback
@@ -478,6 +492,7 @@ let run_server hosts port
                      proxy_protocol alba_client stats fd ic)));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
+              (fragment_cache_disk_usage_t ());
             ])
     )
     (fun exn ->
