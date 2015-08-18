@@ -305,9 +305,8 @@ let upload_object''
 
   let object_id = get_random_string 32 in
 
-  let fold_chunks () =
+  let fold_chunks chunk =
 
-    let chunk = Lwt_bytes.create desired_chunk_size in
     let rec inner acc_chunk_sizes acc_fragments_info total_size chunk_times hash_time chunk_id =
       let t0_chunk = Unix.gettimeofday () in
       Statistics.with_timing_lwt
@@ -390,7 +389,11 @@ let upload_object''
     in
     inner [] [] 0 [] 0. 0 in
 
-  fold_chunks ()
+  let chunk = Lwt_bytes.create desired_chunk_size in
+  Lwt.finalize
+    (fun () -> fold_chunks chunk)
+    (fun () -> Core_kernel.Bigstring.unsafe_destroy chunk;
+               Lwt.return ())
   >>= fun ((chunk_sizes', fragments_info'), size, chunk_times, hash_time) ->
 
   (* all fragments have been stored
