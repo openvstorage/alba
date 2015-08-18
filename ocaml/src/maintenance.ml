@@ -142,9 +142,8 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
            (fun osd_client -> osd_client # get_option key)
          >>= function
          | None -> Lwt.fail (Exn NotEnoughFragments)
-         | Some packed_fragment_slice ->
-            let packed_fragment = Slice.to_bigarray packed_fragment_slice in
-            Fragment_helper.verify packed_fragment fragment_checksum
+         | Some packed_fragment ->
+            Fragment_helper.verify' packed_fragment fragment_checksum
             >>= fun checksum_valid ->
             if not checksum_valid
             then Lwt.fail (Exn ChecksumMismatch)
@@ -376,7 +375,9 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                     compression
                     encryption
                     fragment_checksum_algo
-                  >>= fun (packed_fragment, _, _, checksum') ->
+                  >>= fun (packed_fragment_bs, _, _, checksum') ->
+                  let packed_fragment = Slice.of_bigstring packed_fragment_bs in
+                  Core_kernel.Bigstring.unsafe_destroy packed_fragment_bs;
 
                   if checksum = checksum'
                   then

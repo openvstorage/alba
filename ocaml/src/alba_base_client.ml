@@ -338,7 +338,7 @@ class client
 
       >>= fun (t_retrieve, (hit_or_miss, fragment_data)) ->
 
-      let fragment_data' = Slice.to_bigarray fragment_data in
+      let fragment_data' = Slice.to_bigstring fragment_data in
 
       Statistics.with_timing_lwt
         (fun () ->

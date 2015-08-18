@@ -396,10 +396,7 @@ let test_garbage_collect () =
          Alba_client_upload.upload_packed_fragment_data
            (client # osd_access)
            ~namespace_id
-           ~packed_fragment:(Bigarray.Array1.create
-                               Bigarray.Char
-                               Bigarray.C_layout
-                               1)
+           ~packed_fragment:(Slice.create 1)
            ~osd_id ~version_id
            ~object_id
            ~chunk_id ~fragment_id

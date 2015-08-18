@@ -118,8 +118,14 @@ module Slice = struct
 
   let compare' = CompareLib.wrap compare
 
-  let to_bigarray t =
+  let to_bigstring t =
     let res = Lwt_bytes.create t.length in
     Lwt_bytes.blit_from_bytes t.buf t.offset res 0 t.length;
+    res
+
+  let of_bigstring bs =
+    let len = Lwt_bytes.length bs in
+    let res = create len in
+    Lwt_bytes.blit_to_bytes bs 0 res.buf res.offset len;
     res
 end

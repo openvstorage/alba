@@ -15,6 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
+open Slice
 open Nsm_model
 open Encryption
 open Gcrypt
@@ -121,6 +122,17 @@ let verify fragment_data checksum =
     fragment_data
     0
     (Lwt_bytes.length fragment_data) >>= fun () ->
+  let checksum2 = hash # final () in
+  Lwt.return (checksum2 = checksum)
+
+let verify' fragment_data checksum =
+  let algo = Checksum.algo_of checksum in
+  let hash = Hashes.make_hash algo in
+  let open Slice in
+  hash # update_substring
+    fragment_data.buf
+    fragment_data.offset
+    fragment_data.length;
   let checksum2 = hash # final () in
   Lwt.return (checksum2 = checksum)
 
@@ -231,12 +243,15 @@ let chunk_to_packed_fragments
         fragment
         ~object_id ~chunk_id ~fragment_id:0 ~ignore_fragment_id:true
         compression encryption fragment_checksum_algo
-      >>= fun packed ->
+      >>= fun (packed, f1, f2, cs) ->
+      let packed' = Slice.of_bigstring packed in
+      Core_kernel.Bigstring.unsafe_destroy packed;
+
       let rec build_result acc = function
         | 0 -> acc
         | n ->
           let fragment_id = n - 1 in
-          let acc' = (fragment_id, fragment, packed) :: acc in
+          let acc' = (fragment_id, fragment, (packed', f1, f2, cs)) :: acc in
           build_result
             acc'
             (n-1)
@@ -254,6 +269,9 @@ let chunk_to_packed_fragments
              fragment
              ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
              compression encryption fragment_checksum_algo
-           >>= fun packed ->
-           Lwt.return (fragment_id, fragment, packed))
+           >>= fun (packed, f1, f2, cs) ->
+           let packed' = Slice.of_bigstring packed in
+           Core_kernel.Bigstring.unsafe_destroy packed;
+
+           Lwt.return (fragment_id, fragment, (packed', f1, f2, cs)))
     end
