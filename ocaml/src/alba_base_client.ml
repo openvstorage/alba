@@ -512,9 +512,14 @@ class client
     method download_object_slices
       ~namespace
       ~object_name
-      ~(object_slices : (Int64.t * int) list)
+      ~(object_slices : (int64 * int) list)
       ~consistent_read
       write_data =
+      Lwt_log.debug_f "download_object_slices: %S %S %s consistent_read:%b"
+                      namespace object_name
+                      ([%show: (int64 * int) list] object_slices)
+                      consistent_read
+      >>= fun () ->
       nsm_host_access # with_namespace_id
         ~namespace
         (fun namespace_id ->
