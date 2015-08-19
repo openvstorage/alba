@@ -19,10 +19,10 @@ open Cli_common
 open Cmdliner
 
 
-let alba_list_namespaces_by_id cfg_file to_json =
+let alba_list_namespaces_by_id cfg_file to_json attempts =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts
       (fun client ->
        let first = 0l
        and finc = true
@@ -58,14 +58,18 @@ let alba_list_namespaces_by_id cfg_file to_json =
   lwt_cmd_line to_json t
 
 let alba_list_namespaces_by_id_cmd =
-  Term.(pure alba_list_namespaces_by_id $ alba_cfg_file $ to_json),
+  Term.(pure alba_list_namespaces_by_id
+        $ alba_cfg_file
+        $ to_json
+        $ attempts 1
+  ),
   Term.info "list-namespaces-by-id"
             ~doc:"show id to name mapping"
 
 let recover_namespace cfg_file namespace nsm_host_id =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts:1
       (fun client ->
          client # recover_namespace ~namespace ~nsm_host_id)
   in
@@ -80,10 +84,10 @@ let recover_namespace_cmd =
     "recover-namespace"
     ~doc:"recover an existing namespace from which the metadata got lost to another nsm host"
 
-let alba_list_osds cfg_file node_id to_json =
+let alba_list_osds cfg_file node_id to_json attempts =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts
       (fun client ->
          client # list_all_claimed_osds
          >>= fun (i,devices) ->
@@ -138,7 +142,9 @@ let alba_list_osds_cmd =
     Term.(pure alba_list_osds
           $ alba_cfg_file
           $ node_id None
-          $ to_json)
+          $ to_json
+          $ attempts 1
+    )
   in
   let info =
     let doc = "list registered osds" in
@@ -146,10 +152,10 @@ let alba_list_osds_cmd =
   in
   alba_list_osds_t, info
 
-let alba_list_all_osds cfg_file node_id to_json =
+let alba_list_all_osds cfg_file node_id to_json attempts =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts
       (fun client ->
          client # list_all_osds
          >>= fun (i,devices) ->
@@ -197,7 +203,9 @@ let alba_list_all_osds_cmd =
     Term.(pure alba_list_all_osds
           $ alba_cfg_file
           $ node_id None
-          $ to_json)
+          $ to_json
+          $ attempts 1
+    )
   in
   let info =
     let doc = "list registered osds" in
@@ -206,10 +214,10 @@ let alba_list_all_osds_cmd =
   alba_list_all_osds_t, info
 
 
-let alba_list_available_osds alba_cfg_file to_json =
+let alba_list_available_osds alba_cfg_file to_json attempts =
   let t () =
     with_albamgr_client
-      alba_cfg_file
+      alba_cfg_file ~attempts
       (fun client -> client # list_available_osds) >>= fun (cnt, osds) ->
     if to_json
     then begin
@@ -230,16 +238,18 @@ let alba_list_available_osds alba_cfg_file to_json =
 let alba_list_available_osds_cmd =
   Term.(pure alba_list_available_osds
         $ alba_cfg_file
-        $ to_json),
+        $ to_json
+        $ attempts 1
+  ),
   Term.info
     "list-available-osds"
     ~doc:"list known osds still available for claiming by this alba instance"
 
 
-let alba_list_nsm_hosts cfg_file to_json =
+let alba_list_nsm_hosts cfg_file to_json attempts =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts
       (fun client ->
          client # list_all_nsm_hosts ()) >>= fun (cnt, nsm_hosts) ->
     if to_json
@@ -260,14 +270,17 @@ let alba_list_nsm_hosts cfg_file to_json =
   lwt_cmd_line to_json t
 
 let alba_list_nsm_hosts_cmd =
-  Term.(pure alba_list_nsm_hosts $ alba_cfg_file $ to_json),
+  Term.(pure alba_list_nsm_hosts
+        $ alba_cfg_file
+        $ to_json
+        $ attempts 1),
   Term.info "list-nsm-hosts" ~doc:"list all nsm hosts"
 
-let alba_add_nsm_host alba_cfg_file nsm_host_cfg_file to_json =
+let alba_add_nsm_host alba_cfg_file nsm_host_cfg_file to_json attempts =
   let t () =
     let open Albamgr_protocol.Protocol in
     with_albamgr_client
-      alba_cfg_file
+      alba_cfg_file ~attempts
       (fun client ->
        let cfg = Arakoon_config.from_config_file nsm_host_cfg_file in
        let nsm_host_id = fst cfg in
@@ -283,14 +296,16 @@ let alba_add_nsm_host_cmd =
         $ Arg.(required &
                pos 0 (some file) None &
                info [] ~docv:"CONFIG_FILE" ~doc:"config file for the nsm host")
-        $ to_json),
+        $ to_json
+        $ attempts 1
+  ),
   Term.info "add-nsm-host" ~doc:"add a nsm host"
 
-let alba_update_nsm_host alba_cfg_file nsm_host_cfg_file lost to_json =
+let alba_update_nsm_host alba_cfg_file nsm_host_cfg_file lost to_json attempts =
   let t () =
     let open Albamgr_protocol.Protocol in
     with_albamgr_client
-      alba_cfg_file
+      alba_cfg_file ~attempts
       (fun client ->
        let cfg = Arakoon_config.from_config_file nsm_host_cfg_file in
        let nsm_host_id = fst cfg in
@@ -309,13 +324,15 @@ let alba_update_nsm_host_cmd =
         $ Arg.(value &
                flag &
                info ["lost"] ~doc:"optionally mark the nsm host as lost (so it will not be used for new namespaces)")
-        $ to_json),
+        $ to_json
+        $ attempts 1
+  ),
   Term.info "update-nsm-host" ~doc:"update a nsm host"
 
-let alba_mgr_get_version cfg_file =
+let alba_mgr_get_version cfg_file attempts =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts
       (fun client ->
        client # get_version >>= fun (major,minor, patch, hash) ->
        Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
@@ -326,15 +343,16 @@ let alba_mgr_get_version cfg_file =
 let alba_mgr_get_version_cmd =
   Term.(pure alba_mgr_get_version
         $ alba_cfg_file
+        $ attempts 1
   ),
   Term.info
     "mgr-get-version"
     ~doc:"the alba mgr's version info"
 
-let alba_list_decommissioning_osds cfg_file to_json =
+let alba_list_decommissioning_osds cfg_file to_json attempts =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts
       (fun client ->
          client # list_all_decommissioning_osds >>= fun (cnt, osds) ->
          let open Albamgr_protocol.Protocol in
@@ -361,13 +379,15 @@ let alba_list_decommissioning_osds cfg_file to_json =
 let alba_list_decommissioning_osds_cmd =
   Term.(pure alba_list_decommissioning_osds
         $ alba_cfg_file
-        $ to_json),
+        $ to_json
+        $ attempts 1
+  ),
   Term.info
     "list-decommissioning-osds"
     ~doc:"list osds that are not yet fully decommissioned"
 
 
-let alba_add_osd cfg_file host port node_id to_json =
+let alba_add_osd cfg_file host port node_id to_json attempts =
   let node_id = match node_id with
     | None ->  failwith "A node id is needed here"
     | Some n -> n
@@ -407,7 +427,9 @@ let alba_add_osd_cmd =
   Term.(pure alba_add_osd
         $ alba_cfg_file $ host $ port 8000
         $ (node_id None)
-        $ to_json),
+        $ to_json
+        $ attempts 1
+  ),
   Term.info
     "add-osd"
     ~doc:("add osd to manager so it could be claimed later." ^
