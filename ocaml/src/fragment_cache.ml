@@ -209,7 +209,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
   let bid_of boid = fst boid in
 
   let canonical path = Printf.sprintf "%s/%s" root path in
-  let _write_blob path fragment =
+  let _write_blob path fragment :unit Lwt.t=
+    let _inner () =
       let full_path = canonical path in
       Lwt_log.debug_f "_write_blob: %s" full_path >>= fun () ->
       let perm = 0o644 in
@@ -221,6 +222,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
          let fragment_l = String.length fragment in
          Lwt_extra2.write_all fd_out fragment 0 fragment_l
         )
+    in
+    Alba_statistics.Statistics.with_timing_lwt _inner  >>= fun (took,()) ->
+    Lwt_log.debug_f "_write_blob path:%s took:%f" path took
   in
 
   let cleanup_needed bid fsid fsid0 =
@@ -825,7 +829,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
             let dir = Filename.dirname path in
             Lwt_log.debug_f "add...path=%s dir=%s" path dir
             >>= fun () ->
-            Asd_server.DirectoryInfo.ensure_dir_exists dirs dir
+            Alba_statistics.Statistics.with_timing_lwt
+             (fun () -> Asd_server.DirectoryInfo.ensure_dir_exists dirs dir)
+            >>= fun (took, ()) ->
+            Lwt_log.debug_f "ensure_dir_exists %s took:%f" dir took
             >>= fun () ->
             let total_count = get_int64 db _TOTAL_COUNT in
             let total_size  = get_int64 db _TOTAL_SIZE in
