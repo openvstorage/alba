@@ -397,6 +397,7 @@ class client
       let module CountDownLatch = Lwt_extra2.CountDownLatch in
       let successes = CountDownLatch.create ~count:k in
       let failures = CountDownLatch.create ~count:(m+1) in
+      let finito = ref false in
 
       let threads : unit Lwt.t list =
         List.mapi
@@ -418,8 +419,14 @@ class client
                       ~encryption
                     >>= fun (t_fragment, fragment_data) ->
 
-                    Hashtbl.add fragments fragment_id (fragment_data, t_fragment);
-                    CountDownLatch.count_down successes;
+                    if !finito
+                    then
+                      Core_kernel.Bigstring.unsafe_destroy fragment_data
+                    else
+                      begin
+                        Hashtbl.add fragments fragment_id (fragment_data, t_fragment);
+                        CountDownLatch.count_down successes;
+                      end;
                     Lwt.return ())
                  (function
                    | Canceled -> Lwt.return ()
@@ -439,6 +446,8 @@ class client
       Lwt.pick [ CountDownLatch.await successes;
                  CountDownLatch.await failures; ] >>= fun () ->
 
+      finito := true;
+
       let () =
         if Hashtbl.length fragments < k
         then
@@ -447,6 +456,10 @@ class client
               "could not receive enough fragments for chunk %i; got %i while %i needed\n%!"
               chunk_id (Hashtbl.length fragments) k
           in
+          Hashtbl.iter
+            (fun _ (fragment, _) -> Core_kernel.Bigstring.unsafe_destroy fragment)
+            fragments;
+
           Error.failwith Error.NotEnoughFragments
       in
       let fragment_size =
