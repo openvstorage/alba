@@ -44,7 +44,7 @@ let test_encrypt_decrypt () =
          Cipher.decrypt
            cipher
            res1) >>= fun () ->
-    let data' = Padding.unpad res1 in
+    let data' = Padding.unpad ~release_input:false res1 in
     OUnit.assert_equal (Lwt_bytes.to_string data') data;
     Lwt.return ()
   in

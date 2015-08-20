@@ -365,7 +365,7 @@ class client
       >>= fun (t_decrypt, maybe_decrypted) ->
 
       Statistics.with_timing_lwt
-        (fun () -> decompress maybe_decrypted)
+        (fun () -> decompress ~release_input:true maybe_decrypted)
       >>= fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 
       let t_fragment = Statistics.({

@@ -91,7 +91,7 @@ let maybe_decrypt
         Cipher.with_t_lwt
           key Cipher.AES256 Cipher.CBC []
           (fun cipher -> Cipher.decrypt ~iv cipher data) >>= fun () ->
-        Lwt.return (Padding.unpad data)
+        Lwt.return (Padding.unpad ~release_input:true data)
     end
 
 let maybe_compress compression fragment_data =
@@ -104,9 +104,9 @@ let maybe_compress compression fragment_data =
     (Lwt_bytes.length r) >>= fun () ->
   Lwt.return r
 
-let maybe_decompress compression compressed =
+let maybe_decompress ~release_input compression compressed =
   let open Lwt.Infix in
-  Compressors.decompress compression compressed >>= fun r ->
+  Compressors.decompress ~release_input compression compressed >>= fun r ->
   Lwt_log.debug_f
      "decompression: %s (%i => %i)"
      ([%show: Compression.t] compression)

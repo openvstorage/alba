@@ -364,34 +364,32 @@ end
 open Alba_compression.Compression
 open Lwt.Infix
 
-let decompress =
+let decompress ~release_input c f =
   (* big array to big array, detached *)
-  function
-  | NoCompression -> Lwt.return
+  match c with
+  | NoCompression ->
+     if release_input
+     then Lwt.return f
+     else Lwt.return (Lwt_bytes.copy f)
   | Snappy ->
-     fun f ->
      Lwt_preemptive.detach
        (Snappy.uncompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
-     Core_kernel.Bigstring.unsafe_destroy f;
+     if release_input
+     then Core_kernel.Bigstring.unsafe_destroy f;
      Lwt.return res
   | Bzip2 ->
-     fun f ->
      Lwt_preemptive.detach
        (Bzip2.decompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
-     Core_kernel.Bigstring.unsafe_destroy f;
+     if release_input
+     then Core_kernel.Bigstring.unsafe_destroy f;
      Lwt.return res
 
-let compress = function
-  | NoCompression -> Lwt.return
+let compress c f = match c with
+  | NoCompression ->
+     Lwt.return (Lwt_bytes.copy f)
   | Snappy ->
-     fun f ->
      Lwt_preemptive.detach
-       (Snappy.compress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
-     Core_kernel.Bigstring.unsafe_destroy f;
-     Lwt.return res
+       (Snappy.compress_ba_ba ~release_runtime_lock:true) f
   | Bzip2 ->
-     fun f ->
      Lwt_preemptive.detach
-       (Bzip2.compress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
-     Core_kernel.Bigstring.unsafe_destroy f;
-     Lwt.return res
+       (Bzip2.compress_ba_ba ~release_runtime_lock:true) f
