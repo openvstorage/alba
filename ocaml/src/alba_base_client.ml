@@ -732,7 +732,11 @@ class client
 
                        let relevant_fragments_data =
                          List.filter
-                           (fun (fragment_id, _) -> IntMap.mem fragment_id relevant_fragments)
+                           (fun (fragment_id, fragment) ->
+                            let b = IntMap.mem fragment_id relevant_fragments in
+                            if not b
+                            then Core_kernel.Bigstring.unsafe_destroy fragment;
+                            b)
                            data_fragments_i
                        in
 
@@ -745,17 +749,44 @@ class client
                       Lwt.return ()
                     end;
 
-                  Lwt.pick [
-                      begin
-                        Lwt.catch
-                          download_fragments
-                          (fun exn ->
-                           Lwt_condition.signal condition `FragmentsFailed;
-                           Lwt.fail exn)
-                      end;
-                      download_chunk;
-                    ]
-                  >>= fun fragments_data ->
+                  let result, wakener = Lwt.wait () in
+
+                  Lwt.async
+                    (fun () ->
+                     Lwt.catch
+                       (fun () ->
+                        download_fragments () >>= fun fragments ->
+                        let () =
+                          try Lwt.wakeup wakener fragments
+                          with Invalid_argument("Lwt.wakeup_result") ->
+                            List.iter
+                              (fun (_, fragment) -> Core_kernel.Bigstring.unsafe_destroy fragment)
+                              fragments
+                        in
+                        Lwt.return ())
+                       (fun exn ->
+                        Lwt_condition.signal condition `FragmentsFailed;
+                        Lwt.fail exn)
+                    );
+                  Lwt.async
+                    (fun () ->
+                     Lwt.catch
+                       (fun () ->
+                        download_chunk >>= fun fragments ->
+                        let () =
+                          try Lwt.wakeup wakener fragments
+                          with Invalid_argument("Lwt.wakeup_result") ->
+                            List.iter
+                              (fun (_, fragment) -> Core_kernel.Bigstring.unsafe_destroy fragment)
+                              fragments
+                        in
+                        Lwt.return ())
+                       (fun exn ->
+                        Lwt.wakeup_exn wakener exn;
+                        Lwt.return ())
+                    );
+
+                  result >>= fun fragments_data ->
                   Lwt_condition.signal condition `FragmentsSucceeded;
 
                   (* write all data for this chunk *)
