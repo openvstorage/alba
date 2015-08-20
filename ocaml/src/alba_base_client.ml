@@ -723,7 +723,12 @@ class client
                             ~object_name
                             chunk_locations ~chunk_id
                             decompress
-                            k m w' >>= fun (data_fragments, _, t_chunk) ->
+                            k m w' >>= fun (data_fragments, coding_fragments, t_chunk) ->
+
+                       List.iter
+                         Core_kernel.Bigstring.unsafe_destroy
+                         coding_fragments;
+
                        let data_fragments_i =
                          List.mapi
                            (fun fragment_id fragment_data ->
