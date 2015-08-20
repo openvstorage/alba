@@ -901,26 +901,35 @@ class client
          >>= fun (data_fragments, coding_fragments, t_chunk) ->
 
 
-         Lwt_list.fold_left_s
-           (fun (offset, t_write_data, t_verify) fragment ->
-            let fragment_size' =
-              if offset + fragment_size < object_size
-              then fragment_size
-              else (object_size - offset)
-            in
-            Statistics.with_timing_lwt
-              (fun () ->
-               hash2 # update_lwt_bytes_detached fragment 0 fragment_size')
-            >>= fun (t_verify', ()) ->
-
-            Statistics.with_timing_lwt
-              (fun () ->
-               write_object_data fragment 0 fragment_size') >>= fun (t_write_data', ()) ->
-            Lwt.return (offset + fragment_size',
-                        t_write_data +. t_write_data',
-                        t_verify +. t_verify'))
-           (offset, t_write_data, t_verify)
-           data_fragments
+         Lwt.finalize
+           (fun () ->
+            Lwt_list.fold_left_s
+              (fun (offset, t_write_data, t_verify) fragment ->
+               let fragment_size' =
+                 if offset + fragment_size < object_size
+                 then fragment_size
+                 else (object_size - offset)
+               in
+               Statistics.with_timing_lwt
+                 (fun () ->
+                  hash2 # update_lwt_bytes_detached fragment 0 fragment_size')
+               >>= fun (t_verify', ()) ->
+               Statistics.with_timing_lwt
+                 (fun () ->
+                  write_object_data fragment 0 fragment_size') >>= fun (t_write_data', ()) ->
+               Lwt.return (offset + fragment_size',
+                           t_write_data +. t_write_data',
+                           t_verify +. t_verify'))
+              (offset, t_write_data, t_verify)
+              data_fragments)
+           (fun () ->
+            List.iter
+              Core_kernel.Bigstring.unsafe_destroy
+              data_fragments;
+            List.iter
+              Core_kernel.Bigstring.unsafe_destroy
+              coding_fragments;
+            Lwt.return ())
          >>= fun (offset', t_write_data', t_verify') ->
          Lwt.return (offset',
                      t_chunk :: t_chunks,
