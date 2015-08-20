@@ -139,7 +139,7 @@ let attempts default =
   let doc = "number of attempts" in
   Arg.(value
        & opt int default
-       & info ["attempts"] ~docv:"ATEMPTS" ~doc
+       & info ["attempts"] ~docv:"ATTEMPTS" ~doc
   )
 
 let host =

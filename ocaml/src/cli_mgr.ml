@@ -417,7 +417,7 @@ let alba_add_osd cfg_file host port node_id to_json attempts =
                })
        in
        with_albamgr_client
-         cfg_file
+         cfg_file ~attempts
          (fun client -> client # add_osd osd_info
          )
   in
