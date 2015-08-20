@@ -41,11 +41,17 @@ module Bytes_descr = struct
       ocaml_string_start sl.buf +@ sl.offset
     | Bigarray -> bigarray_start array1
 
-  let sub : type t' c'. (t', c') t -> t' -> int -> int -> t' = function
+  let start_with_offset : type t' c'. (t', c') t -> t' -> int -> c' =
+    function
+    | Slice -> fun t offset -> (start Slice t) +@ offset
+    | Bigarray -> fun t offset -> (start Bigarray t) +@ offset
+
+  let extract : type t' c'. (t', c') t -> t' -> int -> int -> t' =
+    function
     | Slice -> Slice.sub
-    | Bigarray -> fun t off len ->
-                  let res = Lwt_bytes.extract t off len in
-                  (* Core_kernel.Bigstring.unsafe_destroy t; *)
+    | Bigarray -> fun t offset len ->
+                  let res = Lwt_bytes.extract t offset len in
+                  Core_kernel.Bigstring.unsafe_destroy t;
                   res
 
   let set32_prim : type t' c'. (t', c') t -> t' -> int -> int32 -> unit = function

@@ -77,7 +77,7 @@ module Snappy = struct
             (Bytes_descr.start descr_res res)
             len_res in
         check_status status;
-        Bytes_descr.sub descr_res res 0 !@len_res
+        Bytes_descr.extract descr_res res 0 !@len_res
 
   let compress_substring s off len =
     let res =
@@ -244,9 +244,7 @@ module Bzip2 = struct
         let dest = Bytes_descr.create descr_res (max_len + 4) in
         let status =
           inner
-            (let l = Bytes_descr.sub descr_res dest 4 max_len in
-             Bytes_descr.start descr_res l)
-            (* (Bytes_descr.start descr_res dest +@ 4) *)
+            (Bytes_descr.start_with_offset descr_res dest 4)
             len_res
             (Bytes_descr.start descr_data data)
             len
@@ -257,7 +255,7 @@ module Bzip2 = struct
         check_status status;
         (* serialize effective length before compressed data *)
         Bytes_descr.set32_prim descr_res dest 0 (Int32.of_int len);
-        Bytes_descr.sub descr_res dest 0 (!@len_res + 4)
+        Bytes_descr.extract descr_res dest 0 (!@len_res + 4)
 
   let compress_string ?block s =
     let res =
@@ -319,8 +317,7 @@ module Bzip2 = struct
           inner
             (Bytes_descr.start descr_res res)
             (allocate int_to_unsigned_int res_len)
-            (let l = Bytes_descr.sub descr_data data 4 len in
-             Bytes_descr.start descr_data l)
+            (Bytes_descr.start_with_offset descr_data data 4)
             len
             small
             verbosity in
