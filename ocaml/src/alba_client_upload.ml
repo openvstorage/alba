@@ -346,7 +346,8 @@ let upload_object''
             s
           end
       in
-      let chunk' = Lwt_bytes.proxy chunk 0 chunk_size_with_padding in
+      (* TODO, extra kopie, dus er moet extra free gebeuren. *)
+      let chunk' = Lwt_bytes.extract chunk 0 chunk_size_with_padding in
 
       upload_chunk
         osd_access

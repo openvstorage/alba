@@ -43,7 +43,10 @@ module Bytes_descr = struct
 
   let sub : type t' c'. (t', c') t -> t' -> int -> int -> t' = function
     | Slice -> Slice.sub
-    | Bigarray -> Lwt_bytes.proxy
+    | Bigarray -> fun t off len ->
+                  let res = Lwt_bytes.extract t off len in
+                  (* Core_kernel.Bigstring.unsafe_destroy t; *)
+                  res
 
   let set32_prim : type t' c'. (t', c') t -> t' -> int -> int32 -> unit = function
     | Slice -> fun sl off ->
