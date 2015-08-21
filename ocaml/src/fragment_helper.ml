@@ -100,7 +100,7 @@ let maybe_compress compression fragment_data =
   Lwt_log.debug_f
     "compression: %s (%i => %i)"
     ([%show: Compression.t] compression)
-    (Lwt_bytes.length fragment_data)
+    (Bigstring_slice.length fragment_data)
     (Lwt_bytes.length r) >>= fun () ->
   Lwt.return r
 
@@ -137,7 +137,7 @@ let verify' fragment_data checksum =
   Lwt.return (checksum2 = checksum)
 
 let pack_fragment
-    fragment
+    (fragment : Bigstring_slice.t)
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
     compression
     encryption
@@ -172,7 +172,7 @@ let chunk_to_data_fragments ~chunk ~chunk_size ~k =
       | n ->
         let fragment =
           let pos = (n-1) * fragment_size in
-          Bigarray.Array1.sub chunk pos fragment_size
+          Bigstring_slice.from_bigstring chunk pos fragment_size
         in
         inner (fragment :: acc) (n - 1) in
     inner [] k in
@@ -204,11 +204,7 @@ let chunk_to_fragments_ec
     let rec inner acc = function
       | 0 -> acc
       | n ->
-        let fragment =
-          Bigarray.Array1.create
-            Bigarray.Char
-            Bigarray.C_layout
-            fragment_size in
+        let fragment = Bigstring_slice.create fragment_size in
         inner (fragment :: acc) (n - 1) in
     inner [] m
   in
@@ -238,7 +234,7 @@ let chunk_to_packed_fragments
   if k = 1
   then
     begin
-      let fragment = chunk in
+      let fragment = Bigstring_slice.wrap_bigstring chunk in
       pack_fragment
         fragment
         ~object_id ~chunk_id ~fragment_id:0 ~ignore_fragment_id:true

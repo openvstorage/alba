@@ -104,6 +104,10 @@ module Snappy = struct
     _snappy_compress_generic
       Bytes_descr.Bigarray Bytes_descr.Bigarray
 
+  let compress_bss_ba =
+    _snappy_compress_generic
+      Bytes_descr.Bigstring_slice Bytes_descr.Bigarray
+
   let _snappy_uncompress_generic : type t1 c1 t2 c2.
     (t1, c1) Bytes_descr.t -> (t2, c2) Bytes_descr.t ->
     release_runtime_lock : bool -> t1 -> t2 =
@@ -285,6 +289,10 @@ module Bzip2 = struct
     _compress_generic
       Bytes_descr.Bigarray Bytes_descr.Bigarray
 
+  let compress_bss_ba =
+    _compress_generic
+      Bytes_descr.Bigstring_slice Bytes_descr.Bigarray
+
   let _decompress_generic : type t1 c1 t2 c2.
     (t1, c1) Bytes_descr.t -> (t2, c2) Bytes_descr.t ->
     release_runtime_lock:bool ->t1 -> t2 =
@@ -383,10 +391,10 @@ let decompress ~release_input c f =
 
 let compress c f = match c with
   | NoCompression ->
-     Lwt.return (Lwt_bytes.copy f)
+     Lwt.return (Bigstring_slice.extract_to_bigstring f)
   | Snappy ->
      Lwt_preemptive.detach
-       (Snappy.compress_ba_ba ~release_runtime_lock:true) f
+       (Snappy.compress_bss_ba ~release_runtime_lock:true) f
   | Bzip2 ->
      Lwt_preemptive.detach
-       (Bzip2.compress_ba_ba ~release_runtime_lock:true) f
+       (Bzip2.compress_bss_ba ~release_runtime_lock:true) f

@@ -165,7 +165,7 @@ let upload_chunk
      >>= fun (t_store, x) ->
 
      let t_fragment = Statistics.({
-                                     size_orig = Lwt_bytes.length fragment;
+                                     size_orig = Bigstring_slice.length fragment;
                                      size_final = Slice.length packed_fragment;
                                      compress_encrypt = t_compress_encrypt;
                                      hash = t_hash;

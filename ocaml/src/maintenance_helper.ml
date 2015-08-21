@@ -102,7 +102,7 @@ let upload_missing_fragments
     (fun ((fragment_id, checksum), chosen_osd_id) ->
      let fragment_ba = List.nth_exn all_fragments fragment_id in
      Fragment_helper.pack_fragment
-       fragment_ba
+       (Bigstring_slice.wrap_bigstring fragment_ba)
        ~object_id ~chunk_id ~fragment_id
        ~ignore_fragment_id:is_replication
        compression

@@ -25,7 +25,14 @@ let pointers_of fragments =
 
 let get_start_ptr fragments = CArray.start (pointers_of fragments)
 
-let list_to_carray (l : Lwt_bytes.t list) =
+let bigstring_list_to_carray (l : Bigstring_slice.t list) =
+  let open CArray in
+  start
+    (of_list
+       (ptr char)
+       (List.map Bigstring_slice.ptr_start l))
+
+let lwt_bytes_list_to_carray (l : Lwt_bytes.t list) =
   let open CArray in
   start
     (of_list
@@ -39,9 +46,7 @@ type kind =
   | Jerasure
   | Isa_l
 
-let encode ?(kind=Isa_l) ~k ~m ~w data parity size =
-  let data_ptrs = list_to_carray data in
-  let parity_ptrs = list_to_carray parity in
+let _encode ?(kind=Isa_l) ~k ~m ~w data_ptrs parity_ptrs size =
   match kind with
   | Jerasure ->
     with_free_lwt
@@ -74,6 +79,15 @@ let encode ?(kind=Isa_l) ~k ~m ~w data parity size =
          ~data_out:parity_ptrs)
       ()
 
+let encode ?kind ~k ~m ~w data parity size =
+  let data_ptrs = bigstring_list_to_carray data in
+  let parity_ptrs = bigstring_list_to_carray parity in
+  _encode ?kind ~k ~m ~w data_ptrs parity_ptrs size
+
+let encode' ?kind ~k ~m ~w data parity size =
+  let data_ptrs = lwt_bytes_list_to_carray data in
+  let parity_ptrs = lwt_bytes_list_to_carray parity in
+  _encode ?kind ~k ~m ~w data_ptrs parity_ptrs size
 
 let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
   if erasures <> [ -1 ]
@@ -88,7 +102,7 @@ let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
             ~k ~m ~w
             cm row_k_ones
             (Ctypes.CArray.start (Ctypes.CArray.of_list Ctypes.int erasures))
-            (list_to_carray data) (list_to_carray parity)
+            (lwt_bytes_list_to_carray data) (lwt_bytes_list_to_carray parity)
             size)
     | Isa_l ->
        (* TODO this decode is rather suboptimal. It will
@@ -157,11 +171,15 @@ let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
             ~len:size
             ~k ~rows:k
             ~gftbls
-            ~data_in:(list_to_carray data_in)
-            ~data_out:(list_to_carray data_out))
+            ~data_in:(lwt_bytes_list_to_carray data_in)
+            ~data_out:(lwt_bytes_list_to_carray data_out))
          () >>= fun () ->
 
-       encode ~kind ~k ~m ~w data parity size
+       _encode
+         ~kind ~k ~m ~w
+         (lwt_bytes_list_to_carray data)
+         (lwt_bytes_list_to_carray parity)
+         size
     end
   else
     Lwt.return ()
