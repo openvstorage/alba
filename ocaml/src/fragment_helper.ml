@@ -181,6 +181,11 @@ let chunk_to_data_fragments ~chunk ~chunk_size ~k =
 (* this should be at least sizeof(long) according to the jerasure documentation *)
 let fragment_multiple = 16
 
+(* The lifetime of the returned data fragments is
+   determined by the lifetime of the passed in chunk.
+   The returned coding fragments are freshly created
+   and should thus be freed by the consumer of this function.
+ *)
 let chunk_to_fragments_ec
     ~chunk ~chunk_size
     ~k ~m ~w' =
@@ -215,15 +220,7 @@ let chunk_to_fragments_ec
     coding_fragments
     fragment_size >>= fun () ->
 
-  let all_data = List.append data_fragments coding_fragments in
-
-  let data_with_fragment_id =
-    List.mapi
-      (fun i data -> i, data)
-      all_data
-  in
-
-  Lwt.return data_with_fragment_id
+  Lwt.return (data_fragments, coding_fragments)
 
 let chunk_to_packed_fragments
     ~object_id ~chunk_id
@@ -258,16 +255,25 @@ let chunk_to_packed_fragments
     begin
       chunk_to_fragments_ec
         ~chunk ~chunk_size
-        ~k ~m ~w' >>=
-      Lwt_list.map_p
-        (fun (fragment_id, fragment) ->
-           pack_fragment
-             fragment
-             ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
-             compression encryption fragment_checksum_algo
-           >>= fun (packed, f1, f2, cs) ->
-           let packed' = Slice.of_bigstring packed in
-           Core_kernel.Bigstring.unsafe_destroy packed;
+        ~k ~m ~w' >>= fun (data_fragments, coding_fragments) ->
+      Lwt.finalize
+        (fun () ->
+         let all_fragments = List.append data_fragments coding_fragments in
+         Lwt_list.mapi_p
+           (fun fragment_id fragment ->
+            pack_fragment
+              fragment
+              ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
+              compression encryption fragment_checksum_algo
+            >>= fun (packed, f1, f2, cs) ->
+            let packed' = Slice.of_bigstring packed in
+            Core_kernel.Bigstring.unsafe_destroy packed;
 
-           Lwt.return (fragment_id, fragment, (packed', f1, f2, cs)))
+            Lwt.return (fragment_id, fragment, (packed', f1, f2, cs)))
+           all_fragments)
+        (fun () ->
+         List.iter
+           (fun bss -> Core_kernel.Bigstring.unsafe_destroy bss.Bigstring_slice.bs)
+           coding_fragments;
+         Lwt.return ())
     end
