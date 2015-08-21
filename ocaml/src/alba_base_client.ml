@@ -794,7 +794,10 @@ class client
                         in
                         Lwt.return ())
                        (fun exn ->
-                        Lwt.wakeup_exn wakener exn;
+                        let () =
+                          try Lwt.wakeup_exn wakener exn
+                          with _ -> ()
+                        in
                         Lwt.return ())
                     );
 
