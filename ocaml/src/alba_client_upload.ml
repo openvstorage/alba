@@ -346,20 +346,24 @@ let upload_object''
             s
           end
       in
-      (* TODO, extra kopie, dus er moet extra free gebeuren. *)
       let chunk' = Lwt_bytes.extract chunk 0 chunk_size_with_padding in
 
-      upload_chunk
-        osd_access
-        ~namespace_id
-        ~object_id ~object_name
-        ~chunk:chunk' ~chunk_size:chunk_size_with_padding
-        ~chunk_id
-        ~k ~m ~w'
-        ~compression ~encryption ~fragment_checksum_algo
-        ~version_id ~gc_epoch
-        ~object_info_o
-        ~osds:target_osds
+      Lwt.finalize
+        (fun () ->
+         upload_chunk
+           osd_access
+           ~namespace_id
+           ~object_id ~object_name
+           ~chunk:chunk' ~chunk_size:chunk_size_with_padding
+           ~chunk_id
+           ~k ~m ~w'
+           ~compression ~encryption ~fragment_checksum_algo
+           ~version_id ~gc_epoch
+           ~object_info_o
+           ~osds:target_osds)
+        (fun () ->
+         Core_kernel.Bigstring.unsafe_destroy chunk';
+         Lwt.return ())
       >>= fun fragment_info ->
 
       let t_fragments, fragment_info = List.split fragment_info in
