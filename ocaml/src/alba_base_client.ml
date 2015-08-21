@@ -245,6 +245,9 @@ class client
          ~checksum_o
          ~allow_overwrite
 
+    (* consumers of this method are responsible for freeing
+     * the returned fragment bigstring
+     *)
     method download_fragment
         ~osd_id_o
         ~namespace_id
@@ -347,13 +350,15 @@ class client
 
       (if checksum_valid
        then Lwt.return ()
-       else begin
-        bad_fragment_callback
-          self
-          ~namespace_id ~object_id ~object_name
-          ~chunk_id ~fragment_id ~version_id;
-        Lwt.fail_with "Checksum mismatch"
-       end) >>= fun () ->
+       else
+         begin
+           Core_kernel.Bigstring.unsafe_destroy fragment_data';
+           bad_fragment_callback
+             self
+             ~namespace_id ~object_id ~object_name
+             ~chunk_id ~fragment_id ~version_id;
+           Lwt.fail_with "Checksum mismatch"
+         end) >>= fun () ->
 
       Statistics.with_timing_lwt
         (fun () ->
@@ -380,7 +385,9 @@ class client
 
       Lwt.return (t_fragment, maybe_decompressed)
 
-
+    (* consumers of this method are responsible for freeing
+     * the returned fragment bigstrings
+     *)
     method download_chunk
         ~namespace_id
         ~object_id ~object_name
