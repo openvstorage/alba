@@ -130,10 +130,17 @@ let to_json =
        & info ["to-json"] ~docv:"only output json to stdout")
 
 let port default =
-    let doc = "tcp $(docv)" in
-    Arg.(value
-         & opt int default
-         & info ["p"; "port"] ~docv:"PORT" ~doc)
+  let doc = "tcp $(docv)" in
+  Arg.(value
+       & opt int default
+       & info ["p"; "port"] ~docv:"PORT" ~doc)
+
+let attempts default =
+  let doc = "number of attempts" in
+  Arg.(value
+       & opt int default
+       & info ["attempts"] ~docv:"ATTEMPTS" ~doc
+  )
 
 let host =
   Arg.(value
@@ -279,11 +286,11 @@ let with_alba_client cfg_file f =
     (ref (Albamgr_protocol.Protocol.Arakoon_config.from_config_file cfg_file))
     f
 
-let with_albamgr_client cfg_file f =
+let with_albamgr_client ~attempts cfg_file f =
   let cfg =
     Albamgr_protocol.Protocol.Arakoon_config.from_config_file
       cfg_file
   in
-  Albamgr_client.with_client'
+  Albamgr_client.with_client' ~attempts
     cfg
     f
