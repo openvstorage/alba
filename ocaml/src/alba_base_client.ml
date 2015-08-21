@@ -763,7 +763,7 @@ class client
                         download_fragments () >>= fun fragments ->
                         let () =
                           try Lwt.wakeup wakener fragments
-                          with Invalid_argument("Lwt.wakeup_result") ->
+                          with _ ->
                             List.iter
                               (fun (_, fragment) -> Core_kernel.Bigstring.unsafe_destroy fragment)
                               fragments
@@ -780,7 +780,7 @@ class client
                         download_chunk >>= fun fragments ->
                         let () =
                           try Lwt.wakeup wakener fragments
-                          with Invalid_argument("Lwt.wakeup_result") ->
+                          with _ ->
                             List.iter
                               (fun (_, fragment) -> Core_kernel.Bigstring.unsafe_destroy fragment)
                               fragments
