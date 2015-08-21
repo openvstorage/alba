@@ -22,4 +22,5 @@ opam install -y ssl.0.5.0 \
      nocrypto.0.5.1 \
      uuidm.0.9.5 \
      zarith.1.3 \
+     sexplib.112.35.00 \
      core_kernel.112.35.00
