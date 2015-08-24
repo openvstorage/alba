@@ -12,6 +12,7 @@ opam install -y ssl.0.5.0 \
      camlbz2.0.6.0 \
      snappy.0.1.0 \
      lwt.2.5.0 \
+     kinetic-client.0.0.6 \
      camltc.0.9.2 \
      cstruct.1.7.0 \
      ctypes.0.4.1 \
