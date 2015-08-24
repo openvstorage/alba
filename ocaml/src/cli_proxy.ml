@@ -33,6 +33,7 @@ module Config = struct
     osd_connection_pool_size : (int [@default 10]);
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
+    chattiness : float [@default 1.0];
   } [@@deriving yojson, show]
 end
 
@@ -55,21 +56,19 @@ let proxy_start cfg_file =
     read_cfg () >>= function
     | `Error err -> failwith err
     | `Ok cfg ->
-      let ips, port,
-          log_level,
-          albamgr_cfg_file,
-          cache_dir,
-          manifest_cache_size,
-          fragment_cache_size,
-          albamgr_connection_pool_size,
-          nsm_host_connection_pool_size,
-          osd_connection_pool_size,
-          lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size
-        =
-        let open Config in
-        cfg.ips, cfg.port,
-        cfg.log_level,
-        cfg.albamgr_cfg_file,
+      let open Config in
+      let ips  = cfg.ips
+      and port = cfg.port
+      and log_level = cfg.log_level
+      and albamgr_cfg_file = cfg.albamgr_cfg_file
+      and
+        cache_dir,
+        manifest_cache_size,
+        fragment_cache_size,
+        albamgr_connection_pool_size,
+        nsm_host_connection_pool_size,
+        osd_connection_pool_size,
+        lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size =
         cfg.fragment_cache_dir,
         cfg.manifest_cache_size,
         (* the fragment cache size is currently a rather soft limit which we'll
@@ -80,6 +79,7 @@ let proxy_start cfg_file =
         cfg.nsm_host_connection_pool_size,
         cfg.osd_connection_pool_size,
         cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size
+      and chattiness = cfg.chattiness
       in
 
       Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
@@ -123,6 +123,7 @@ let proxy_start cfg_file =
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
         ~albamgr_cfg_file
+        ~chattiness
   in
   lwt_server t
 

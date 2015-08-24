@@ -27,6 +27,7 @@ module Config = struct
     osd_connection_pool_size : (int [@default 10]);
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
+    chattiness : float [@default 1.];
   } [@@deriving yojson, show]
 end
 
@@ -71,18 +72,15 @@ let alba_maintenance cfg_file modulo remainder flavour =
     read_cfg () >>= function
     | `Error err -> failwith err
     | `Ok cfg ->
-      let log_level, albamgr_cfg_file,
-          albamgr_connection_pool_size,
-          nsm_host_connection_pool_size,
-          osd_connection_pool_size,
-          lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size
-        =
-        let open Config in
-        cfg.log_level, cfg.albamgr_cfg_file,
-        cfg.albamgr_connection_pool_size,
-        cfg.nsm_host_connection_pool_size,
-        cfg.osd_connection_pool_size,
-        cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size
+      let open Config in
+      let log_level                           = cfg.log_level
+      and albamgr_cfg_file                    = cfg.albamgr_cfg_file
+      and albamgr_connection_pool_size        = cfg.albamgr_connection_pool_size
+      and nsm_host_connection_pool_size       = cfg.nsm_host_connection_pool_size
+      and osd_connection_pool_size            = cfg.osd_connection_pool_size
+      and lwt_preemptive_thread_pool_min_size = cfg.lwt_preemptive_thread_pool_min_size
+      and lwt_preemptive_thread_pool_max_size = cfg.lwt_preemptive_thread_pool_max_size
+      and chattiness                          = cfg.chattiness
       in
 
       Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
@@ -149,7 +147,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
                   [
                     (Lwt_extra2.make_fuse_thread ());
                     (maintenance_client # deliver_all_messages ());
-                    (client # get_base_client # discover_osds_check_claimed ());
+                    (client # get_base_client # discover_osds_check_claimed ~chattiness ());
                   ]
                 in
 

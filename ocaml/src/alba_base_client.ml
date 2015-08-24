@@ -115,11 +115,11 @@ class client
 
     method get_namespace_osds_info_cache = get_namespace_osds_info_cache
 
-    method discover_osds_check_claimed ?check_claimed_delay () : unit Lwt.t =
+    method discover_osds_check_claimed ?check_claimed_delay ~chattiness () : unit Lwt.t =
       Discovery.discovery
         (fun d ->
            Lwt_extra2.ignore_errors
-             (fun () -> osd_access # seen ?check_claimed_delay d))
+             (fun () -> osd_access # seen ?check_claimed_delay ~chattiness d))
 
     method with_osd :
       'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
