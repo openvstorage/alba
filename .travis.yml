@@ -8,8 +8,6 @@ matrix:
     env: SUITE=system2
   - os: linux
     env: SUITE=disk_failures
-  - os: linux
-    env: SUITE=cpp
 
 sudo: required
 before_install: ./travis.sh before_install
