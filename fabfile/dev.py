@@ -299,6 +299,21 @@ def run_tests_recovery(xml = False):
 
     assert (checksum1 == checksum2)
 
+    # TODO 1
+    # iets asserten ivm hoeveel fragments er in manifest aanwezig zijn
+    # dan osd 0 starten en recovery opnieuw draaien
+    # die moet kunnen de extra fragments goed benutten
+
+    # TODO 2
+    # object eerst es overschrijven, dan recovery doen
+    # en zien of we laatste versie krijgen
+
+    # TODO 3
+    # add more objects (and verify them all)
+
+    # TODO 4
+    # start met 1 osd die alive is
+
     if xml:
         alba.dump_junit_xml()
 
