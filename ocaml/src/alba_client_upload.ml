@@ -362,7 +362,7 @@ let upload_object''
            ~object_info_o
            ~osds:target_osds)
         (fun () ->
-         Core_kernel.Bigstring.unsafe_destroy chunk';
+         Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
       >>= fun fragment_info ->
 
@@ -398,7 +398,7 @@ let upload_object''
   let chunk = Lwt_bytes.create desired_chunk_size in
   Lwt.finalize
     (fun () -> fold_chunks chunk)
-    (fun () -> Core_kernel.Bigstring.unsafe_destroy chunk;
+    (fun () -> Lwt_bytes.unsafe_destroy chunk;
                Lwt.return ())
   >>= fun ((chunk_sizes', fragments_info'), size, chunk_times, hash_time) ->
 

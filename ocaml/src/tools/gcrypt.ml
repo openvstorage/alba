@@ -137,7 +137,7 @@ module Padding = struct
     let res = Lwt_bytes.extract data 0 (len - cnt) in
 
     if release_input
-    then Core_kernel.Bigstring.unsafe_destroy data;
+    then Lwt_bytes.unsafe_destroy data;
 
     res
 

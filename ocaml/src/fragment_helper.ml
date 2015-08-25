@@ -238,7 +238,7 @@ let chunk_to_packed_fragments
         compression encryption fragment_checksum_algo
       >>= fun (packed, f1, f2, cs) ->
       let packed' = Slice.of_bigstring packed in
-      Core_kernel.Bigstring.unsafe_destroy packed;
+      Lwt_bytes.unsafe_destroy packed;
 
       let rec build_result acc = function
         | 0 -> acc
@@ -267,13 +267,13 @@ let chunk_to_packed_fragments
               compression encryption fragment_checksum_algo
             >>= fun (packed, f1, f2, cs) ->
             let packed' = Slice.of_bigstring packed in
-            Core_kernel.Bigstring.unsafe_destroy packed;
+            Lwt_bytes.unsafe_destroy packed;
 
             Lwt.return (fragment_id, fragment, (packed', f1, f2, cs)))
            all_fragments)
         (fun () ->
          List.iter
-           (fun bss -> Core_kernel.Bigstring.unsafe_destroy bss.Bigstring_slice.bs)
+           (fun bss -> Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs)
            coding_fragments;
          Lwt.return ())
     end

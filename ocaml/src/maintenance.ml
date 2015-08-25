@@ -305,7 +305,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                   ~is_replication:(k=1))
                (fun () ->
                 List.iter
-                  Core_kernel.Bigstring.unsafe_destroy
+                  Lwt_bytes.unsafe_destroy
                   all_fragments;
                 Lwt.return ())
              >>= fun updated_locations ->

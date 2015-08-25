@@ -581,3 +581,9 @@ module Lwt_list = struct
         | Not_found -> Lwt.return_none
         | exn -> Lwt.fail exn)
 end
+
+module Lwt_bytes = struct
+  include Lwt_bytes
+
+  let unsafe_destroy (t : t) = Core_kernel.Bigstring.unsafe_destroy t
+end

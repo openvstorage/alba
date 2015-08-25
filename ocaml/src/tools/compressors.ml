@@ -380,13 +380,13 @@ let decompress ~release_input c f =
      Lwt_preemptive.detach
        (Snappy.uncompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
      if release_input
-     then Core_kernel.Bigstring.unsafe_destroy f;
+     then Lwt_bytes.unsafe_destroy f;
      Lwt.return res
   | Bzip2 ->
      Lwt_preemptive.detach
        (Bzip2.decompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
      if release_input
-     then Core_kernel.Bigstring.unsafe_destroy f;
+     then Lwt_bytes.unsafe_destroy f;
      Lwt.return res
 
 let compress c f = match c with

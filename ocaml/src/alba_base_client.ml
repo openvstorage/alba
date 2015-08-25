@@ -352,7 +352,7 @@ class client
        then Lwt.return ()
        else
          begin
-           Core_kernel.Bigstring.unsafe_destroy fragment_data';
+           Lwt_bytes.unsafe_destroy fragment_data';
            bad_fragment_callback
              self
              ~namespace_id ~object_id ~object_name
@@ -428,7 +428,7 @@ class client
 
                     if !finito
                     then
-                      Core_kernel.Bigstring.unsafe_destroy fragment_data
+                      Lwt_bytes.unsafe_destroy fragment_data
                     else
                       begin
                         Hashtbl.add fragments fragment_id (fragment_data, t_fragment);
@@ -464,7 +464,7 @@ class client
               chunk_id (Hashtbl.length fragments) k
           in
           Hashtbl.iter
-            (fun _ (fragment, _) -> Core_kernel.Bigstring.unsafe_destroy fragment)
+            (fun _ (fragment, _) -> Lwt_bytes.unsafe_destroy fragment)
             fragments;
 
           Error.failwith Error.NotEnoughFragments
@@ -733,7 +733,7 @@ class client
                             k m w' >>= fun (data_fragments, coding_fragments, t_chunk) ->
 
                        List.iter
-                         Core_kernel.Bigstring.unsafe_destroy
+                         Lwt_bytes.unsafe_destroy
                          coding_fragments;
 
                        let data_fragments_i =
@@ -747,7 +747,7 @@ class client
                            (fun (fragment_id, fragment) ->
                             let b = IntMap.mem fragment_id relevant_fragments in
                             if not b
-                            then Core_kernel.Bigstring.unsafe_destroy fragment;
+                            then Lwt_bytes.unsafe_destroy fragment;
                             b)
                            data_fragments_i
                        in
@@ -772,7 +772,7 @@ class client
                           try Lwt.wakeup wakener fragments
                           with _ ->
                             List.iter
-                              (fun (_, fragment) -> Core_kernel.Bigstring.unsafe_destroy fragment)
+                              (fun (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
                               fragments
                         in
                         Lwt.return ())
@@ -789,7 +789,7 @@ class client
                           try Lwt.wakeup wakener fragments
                           with _ ->
                             List.iter
-                              (fun (_, fragment) -> Core_kernel.Bigstring.unsafe_destroy fragment)
+                              (fun (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
                               fragments
                         in
                         Lwt.return ())
@@ -939,10 +939,10 @@ class client
               data_fragments)
            (fun () ->
             List.iter
-              Core_kernel.Bigstring.unsafe_destroy
+              Lwt_bytes.unsafe_destroy
               data_fragments;
             List.iter
-              Core_kernel.Bigstring.unsafe_destroy
+              Lwt_bytes.unsafe_destroy
               coding_fragments;
             Lwt.return ())
          >>= fun (offset', t_write_data', t_verify') ->

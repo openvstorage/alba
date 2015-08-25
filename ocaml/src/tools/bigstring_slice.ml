@@ -1,6 +1,5 @@
-open Core_kernel
 type t = {
-  bs : Bigstring.t;
+  bs : Lwt_bytes.t;
   offset : int;
   length : int;
 }
@@ -12,7 +11,7 @@ let wrap_bigstring bs =
   from_bigstring bs 0 (Lwt_bytes.length bs)
 
 let create length =
-  wrap_bigstring (Bigstring.create length)
+  wrap_bigstring (Lwt_bytes.create length)
 
 let ptr_start t =
   let open Ctypes in
