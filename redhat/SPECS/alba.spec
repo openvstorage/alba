@@ -2,7 +2,7 @@
 
 Summary: Alba
 Name: alba
-Version: 0.6.11
+Version: 0.6.12
 Release: 1%{?dist}
 License: Proprietary license
 Requires: libev >= 4
@@ -44,6 +44,8 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
+* Tue Aug 25 2015 Jan Doms <jan.doms@gmail.com> - 0.6.12
+- Create Alba 0.6.12 RPM package
 * Mon Aug 24 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.11
 - Create Alba 0.6.11 RPM package
 * Thu Aug 20 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.10
