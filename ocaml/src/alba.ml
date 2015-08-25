@@ -31,10 +31,10 @@ let unescape =
        & flag
        & info ["unescape"] ~docv:"unescape keys")
 
-let alba_get_id cfg_file to_json =
+let alba_get_id cfg_file to_json attempts =
   let t () =
     with_albamgr_client
-      cfg_file
+      cfg_file ~attempts
       (fun client ->
          client # get_alba_id >>= fun alba_id ->
          if to_json
@@ -47,7 +47,7 @@ let alba_get_id cfg_file to_json =
   lwt_cmd_line to_json t
 
 let alba_get_id_cmd =
-  Term.(pure alba_get_id $ alba_cfg_file $ to_json),
+  Term.(pure alba_get_id $ alba_cfg_file $ to_json $ attempts 1),
   Term.info "get-alba-id" ~doc:"Get the unique alba instance id"
 
 let osd_multi_get osd_id cfg_file keys unescape =

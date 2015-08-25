@@ -21,7 +21,7 @@ namespace llio {
 
 void check_stream(const std::istream &is) {
   if (!is) {
-    throw stream_exception("invalid inputstream");
+    throw input_stream_exception("invalid inputstream");
   }
 }
 

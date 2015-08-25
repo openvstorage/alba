@@ -10,6 +10,7 @@ make clean
 make
 
 cd ../
+
 if [ ! -d ".tup" ]; then
     tup init
     printf 'CONFIG_COMPILER=clang++-3.5\n' > ./tup.config

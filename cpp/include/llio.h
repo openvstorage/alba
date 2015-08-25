@@ -28,15 +28,23 @@ namespace alba {
 namespace llio {
 
 struct stream_exception : virtual std::exception {
-  stream_exception(std::string what) : _what(what) {}
+  stream_exception(const std::string& what) : _what(what) {}
 
   virtual const char *what() const noexcept { return _what.c_str(); }
 
   std::string _what;
 };
 
+struct input_stream_exception : virtual stream_exception {
+  input_stream_exception(const std::string& what) : stream_exception(what) {}
+};
+
+struct output_stream_exception : virtual stream_exception {
+  output_stream_exception(const std::string& what) : stream_exception(what) {}
+};
+
 struct deserialisation_exception : virtual std::exception {
-  deserialisation_exception(std::string what) : _what(what) {}
+  deserialisation_exception(const std::string& what) : _what(what) {}
 
   virtual const char *what() const noexcept { return _what.c_str(); }
 
@@ -84,7 +92,7 @@ public:
     os.write(data, size + 4);
     os.flush();
     if (!os) {
-      throw stream_exception("invalid outputstream");
+      throw output_stream_exception("invalid outputstream");
     }
   }
   void add_raw(const char *b, uint32_t size) noexcept {

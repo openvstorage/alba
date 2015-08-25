@@ -420,39 +420,50 @@ let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
                  closer)
   | r -> Lwt.fail (Client_helper.MasterLookupResult.Error r)
 
-let with_client cfg f =
-  Lwt.catch
-    (fun () ->
+let _msg_of_exception = function
+  | Protocol.Error.Albamgr_exn (err, _) ->
+     Protocol.Error.show err
+  | Client_helper.MasterLookupResult.Error err ->
+     Client_helper.MasterLookupResult.to_string err
+  | Arakoon_exc.Exception (rc, msg) ->
+     Printf.sprintf "%s: %s" (Arakoon_exc.string_of_rc rc) msg
+  | exn -> Printexc.to_string exn
+
+let _with_client ~attempts cfg f =
+  let attempt_it () =
+    Lwt.catch
+      (fun () ->
        Client_helper.with_master_client'
          ~tls:None
          (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg cfg)
-         (fun c ->
-          wrap_around c
-          >>= fun wc ->
-          f wc)
-    )
-    (function
-      | Protocol.Error.Albamgr_exn (err, _) as exn ->
-        Lwt_log.debug_f
-          "albamgr client failed with %s"
-          (Protocol.Error.show err) >>= fun () ->
-        Lwt.fail exn
-      | Client_helper.MasterLookupResult.Error err as exn ->
-        Lwt_log.debug_f
-          "albamgr client failed with %s"
-          (Client_helper.MasterLookupResult.to_string err) >>= fun () ->
-        Lwt.fail exn
-      | Arakoon_exc.Exception (rc, msg) as exn ->
-        Lwt_log.debug_f
-          "albamgr client failed with %s: %s"
-          (Arakoon_exc.string_of_rc rc) msg >>= fun () ->
-        Lwt.fail exn
-      | exn ->
-        Lwt_log.info_f ~exn "albamgr client failed with %s" (Printexc.to_string exn)
-        >>= fun () ->
-        Lwt.fail exn)
+         (fun c -> wrap_around c >>= fun wc -> f wc)
+       >>= fun r ->
+       Lwt.return (`Success r)
+      )
+      (fun exn -> Lwt.return (`Failure exn))
+  in
+  let should_retry = function
+    | Client_helper.MasterLookupResult.Error err -> true
+    | _ -> false
+  in
+  let rec loop n d =
+    attempt_it () >>= function
+    | `Success r -> Lwt.return r
+    | `Failure exn ->
+       begin
+         Lwt_log.debug_f "albamgr_client failed with %s" (_msg_of_exception exn) >>= fun () ->
+         if n <= 1 || not (should_retry exn )
+         then Lwt.fail exn
+         else
+           begin
+             Lwt_log.debug_f "albamgr_client: n=%i sleep:%f before retry" n d >>= fun () ->
+             Lwt_unix.sleep d >>= fun () ->
+             loop (n-1) (d *. 2.0)
+           end
+       end
+  in loop attempts 1.0
 
-let with_client' cfg f =
-  with_client
+let with_client' ?(attempts=1) cfg f =
+  _with_client ~attempts
     cfg
     (fun c -> f (new client c))
