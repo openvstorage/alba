@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Slice
+open Lwt_bytes2
 open Nsm_model
 open Encryption
 open Gcrypt

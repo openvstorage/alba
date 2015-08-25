@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Slice
+open Lwt_bytes2
 open Ctypes
 
 module Bytes_descr = struct

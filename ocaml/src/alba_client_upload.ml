@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Slice
+open Lwt_bytes2
 open Checksum
 open Recovery_info
 open Alba_statistics

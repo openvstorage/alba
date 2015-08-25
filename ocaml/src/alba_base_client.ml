@@ -18,6 +18,7 @@ open Prelude
 open Lwt
 open Checksum
 open Slice
+open Lwt_bytes2
 open Alba_statistics
 open Fragment_cache
 open Alba_interval

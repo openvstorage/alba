@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Slice
+open Lwt_bytes2
 open Ctypes
 open Foreign
 open Bytes_descr
