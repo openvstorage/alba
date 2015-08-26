@@ -725,10 +725,11 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       >>= fun () ->
 
       _write_blob path blob >>= fun () ->
-
+      let blob_size = Bytes.length blob |> Int64.of_int in
+      let victims_size = blob_size -: (max_size -: total_size) |> Int64.to_int in
       self # _evict
         ~total_count ~total_size
-        ~victims_size:Int64.(to_int (sub max_size total_size))
+        ~victims_size
       >>= fun (total_count, total_size) ->
 
       let blob_length   = Bytes.length blob in
