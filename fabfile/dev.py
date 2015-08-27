@@ -203,8 +203,7 @@ def run_tests_recovery(xml = False):
 
     alba.proxy_start(abm_cfg = abm_cfg)
 
-    # TODO should work with N=3 too!
-    N = 4
+    N = 3
     alba.start_osds("ASD", N, False)
 
     alba.claim_local_osds(N, abm_cfg = abm_cfg)
@@ -270,12 +269,17 @@ def run_tests_recovery(xml = False):
     local(' '.join(cmd))
     local(' '.join(cmd))
 
+    # bring down one of the osds
+    # we should be able to handle this...
+    alba.osd_stop(8000)
+
     local('mkdir -p /tmp/alba/recovery_agent')
     cmd = [
         env['alba_bin'],
         'namespace-recovery-agent',
         ns, '/tmp/alba/recovery_agent', '1', '0',
-        "--config", abm_cfg
+        "--config", abm_cfg,
+        "--osd-id 1 --osd-id 2"
     ]
     local(' '.join(cmd))
 
@@ -294,6 +298,21 @@ def run_tests_recovery(xml = False):
     print "Got checksums %s & %s" % (checksum1, checksum2)
 
     assert (checksum1 == checksum2)
+
+    # TODO 1
+    # iets asserten ivm hoeveel fragments er in manifest aanwezig zijn
+    # dan osd 0 starten en recovery opnieuw draaien
+    # die moet kunnen de extra fragments goed benutten
+
+    # TODO 2
+    # object eerst es overschrijven, dan recovery doen
+    # en zien of we laatste versie krijgen
+
+    # TODO 3
+    # add more objects (and verify them all)
+
+    # TODO 4
+    # start met 1 osd die alive is
 
     if xml:
         alba.dump_junit_xml()

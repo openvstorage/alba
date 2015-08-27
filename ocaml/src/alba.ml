@@ -590,13 +590,21 @@ let alba_get_disk_safety_cmd =
         $ to_json),
   Term.info "get-disk-safety" ~doc:"get the disk safety"
 
-let namespace_recovery_agent cfg_file namespace home workers worker_id =
+let namespace_recovery_agent
+      cfg_file
+      namespace
+      home
+      workers worker_id
+      osds
+  =
   let t () =
     with_alba_client
       cfg_file
       (fun client ->
          Recover_nsm_host.nsm_recovery_agent
-           client namespace home workers worker_id)
+           client namespace home
+           workers worker_id
+           osds)
   in
   lwt_cmd_line false t
 
@@ -612,7 +620,13 @@ let namespace_recovery_agent_cmd =
                info [] ~docv:"MODULO" ~doc:"total number of workers for this namespace")
         $ Arg.(required &
                pos 3 (some int) None &
-               info [] ~docv:"REMAINDER" ~doc:"number of the worker")),
+               info [] ~docv:"REMAINDER" ~doc:"number of the worker")
+        $ Arg.(value
+               & opt_all int32 []
+               & info ["osd-id"]
+                      ~docv:"OSD_ID"
+                      ~doc:"osd to wait for")
+  ),
   Term.info "namespace-recovery-agent" ~doc:"recover the contents of a namespace from the osds"
 
 

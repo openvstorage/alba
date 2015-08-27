@@ -302,26 +302,50 @@ let gather_and_push_objects
           fs
       in
 
-      let get_fragments_x f =
+      let open Nsm_model in
+      let open RecoveryInfo in
+      let Storage_scheme.EncodeCompressEncrypt (ec, compression) =
+        (recovery_info_last.object_info_o
+         |> Option.get_some).storage_scheme in
+      let Encoding_scheme.RSVM (k, m, w) = ec in
+
+      let fragment_locations =
         List.map
           (fun (_, chunk_fragments) ->
-           List.sort
-             (fun f1 f2 -> compare f1.fragment_id f2.fragment_id)
-             chunk_fragments |>
-           List.map f
-          )
+           let cnt = ref 0 in
+           let res =
+             List.mapi
+               (fun fragment_id _ ->
+                match List.find
+                        (fun f1 -> f1.fragment_id = fragment_id)
+                        chunk_fragments with
+                | None -> None, 0
+                | Some f ->
+                   incr cnt;
+                   Some f.osd_id, f.version_id)
+               (Int.range 0 (k+m))
+           in
+           (* only do upload when there are enough fragments
+              fragments each chunk!
+              (repair by policy can take it from there)
+            *)
+           assert (!cnt >= k);
+           res)
           fs
       in
-      let fragment_locations =
-        get_fragments_x
-          (fun { osd_id; version_id; _; } ->
-           (Some osd_id, version_id))
+
+      let version_id =
+        List.fold_left
+          (fun max_v (_, fs) ->
+           List.fold_left
+             (fun max_v f  ->
+              max max_v f.version_id)
+             max_v
+             fs)
+          0
+          fs
       in
 
-      (* TODO only do this when there are enough fragments
-         for each chunk!
-         (repair by policy can take it from there)
-       *)
 
       let open Nsm_model in
       let manifest : Manifest.t =
@@ -337,9 +361,9 @@ let gather_and_push_objects
           ~fragment_locations
           ~fragment_checksums
           ~fragment_packed_sizes
+          ~version_id
 
           (* TODO *)
-          ~version_id:0
           ~max_disks_per_node:100
       in
 
@@ -430,7 +454,9 @@ let nsm_recovery_agent
     namespace
     home
     total_workers
-    worker_id =
+    worker_id
+    osds
+  =
 
   let kv = R.create' ~db_path:home () in
 
@@ -482,12 +508,9 @@ let nsm_recovery_agent
    | None ->
      R.set kv Keys.worker_id (serialize Llio.int_to worker_id));
 
-  Lwt_log.info_f "Fetching list of namespace osds ..." >>= fun () ->
-  alba_client # mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
-
   (* start threads to scrape an osd *)
   Lwt_list.map_p
-    (fun (osd_id, _) ->
+    (fun osd_id ->
        reap_osd
          alba_client kv
          ~osd_id ~namespace_id
