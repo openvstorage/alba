@@ -29,7 +29,7 @@ OPAM_DEPENDS="ocamlfind \
          kinetic-client \
          tiny_json \
          cmdliner \
-         ppx_deriving ppx_deriving_yojson         
+         ppx_deriving ppx_deriving_yojson
 "
 
 export OPAMYES=1
@@ -126,6 +126,20 @@ script () {
             ;;
         recovery)
             fab dev.run_tests_recovery
+            ;;
+        cpp)
+            g++ --version
+            uname -a
+            export CXX=g++-4.8
+            sudo apt-get install -y libboost-all-dev # kitchen sink
+            sudo apt-get install -y fuse
+            sudo modprobe fuse
+            wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
+            sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
+
+            ./jenkins/cpp/010-build_client.sh
+            fab dev.run_tests_cpp
+            fab alba.smoke_test
             ;;
         *)
             echo "invalid test suite specified..."
