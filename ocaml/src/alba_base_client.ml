@@ -557,10 +557,6 @@ class client
       ~(object_slices : (Int64.t * int) list)
       ~consistent_read
       write_data =
-      self # get_object_manifest'
-        ~namespace_id ~object_name
-        ~consistent_read ~should_cache:true
-      >>= fun (cache_hit, r) ->
       let attempt_download_slices manifest =
          begin
            let open Nsm_model in
@@ -832,6 +828,10 @@ class client
              end
          end
       in
+      self # get_object_manifest'
+        ~namespace_id ~object_name
+        ~consistent_read ~should_cache:true
+      >>= fun (cache_hit, r) ->
       match r with
       | None -> Lwt.return None
       | Some manifest ->
