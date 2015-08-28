@@ -20,6 +20,11 @@ open Prelude
 open Slice
 open Cli_common
 
+let () =
+  Lwt_engine.set (new Lwt_engine.select);
+  Lwt.async_exception_hook :=
+    (fun exn -> Lwt_log.ign_debug_f ~exn "Caught async exception")
+
 let osd_id =
   let doc = "$(docv) of the osd to connect with" in
   Arg.(required
@@ -683,17 +688,6 @@ let verify_namespace_cmd =
         $ namespace 0),
   Term.info "verify-namespace" ~doc:"verifies all objects of a namespace can be downloaded"
 
-let exit' rc =
-    let () =
-    (* no exit hook processing needed: we've done everything we needed to do *)
-    let rec loop () =
-      let _ = Lwt_sequence.take_l Lwt_main.exit_hooks in
-      loop ()
-    in
-    try loop () with Lwt_sequence.Empty -> ()
-  in
-  exit rc
-
 let unit_tests produce_xml alba_cfg_file only_test =
   Albamgr_test.ccfg_ref :=
     Some (Albamgr_protocol.Protocol.Arakoon_config.from_config_file alba_cfg_file);
@@ -735,7 +729,7 @@ let unit_tests produce_xml alba_cfg_file only_test =
     else _my_run only_test suite
   in
   let rc = rc_of results in
-  exit' rc
+  exit rc
 
 
 let unit_tests_cmd =
@@ -843,5 +837,5 @@ let () =
         cmds1; ]
   in
   match Term.eval_choice default_cmd cmds with
-  | `Error _ -> exit' 1
-  | _ -> exit' 0
+  | `Error _ -> exit 1
+  | _ -> exit 0

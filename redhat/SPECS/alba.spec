@@ -5,7 +5,6 @@ Name: alba
 Version: 0.6.13
 Release: 1%{?dist}
 License: Proprietary license
-Requires: libev >= 4
 ExclusiveArch: x86_64
 
 %description
