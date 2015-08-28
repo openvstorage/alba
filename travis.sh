@@ -21,7 +21,6 @@ OPAM_DEPENDS="ocamlfind \
          ocplib-endian.0.8 \
          quickcheck.1.0.2 \
          nocrypto.0.5.1 \
-         sexplib.112.35.00 \
          uuidm.0.9.5 \
          zarith.1.3 \
          arakoon.1.8.8 \
@@ -29,7 +28,9 @@ OPAM_DEPENDS="ocamlfind \
          kinetic-client \
          tiny_json \
          cmdliner \
-         ppx_deriving ppx_deriving_yojson
+         ppx_deriving ppx_deriving_yojson \
+         sexplib.112.35.00 \
+         core_kernel.112.35.00
 "
 
 export OPAMYES=1

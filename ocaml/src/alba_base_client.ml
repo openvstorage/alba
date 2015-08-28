@@ -18,6 +18,7 @@ open Prelude
 open Lwt
 open Checksum
 open Slice
+open Lwt_bytes2
 open Alba_statistics
 open Fragment_cache
 open Alba_interval
@@ -115,11 +116,11 @@ class client
 
     method get_namespace_osds_info_cache = get_namespace_osds_info_cache
 
-    method discover_osds_check_claimed ?check_claimed_delay () : unit Lwt.t =
+    method discover_osds_check_claimed ?check_claimed_delay ~chattiness () : unit Lwt.t =
       Discovery.discovery
         (fun d ->
            Lwt_extra2.ignore_errors
-             (fun () -> osd_access # seen ?check_claimed_delay d))
+             (fun () -> osd_access # seen ?check_claimed_delay ~chattiness d))
 
     method with_osd :
       'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -245,6 +246,9 @@ class client
          ~checksum_o
          ~allow_overwrite
 
+    (* consumers of this method are responsible for freeing
+     * the returned fragment bigstring
+     *)
     method download_fragment
         ~osd_id_o
         ~namespace_id
@@ -338,7 +342,7 @@ class client
 
       >>= fun (t_retrieve, (hit_or_miss, fragment_data)) ->
 
-      let fragment_data' = Slice.to_bigarray fragment_data in
+      let fragment_data' = Slice.to_bigstring fragment_data in
 
       Statistics.with_timing_lwt
         (fun () ->
@@ -347,13 +351,15 @@ class client
 
       (if checksum_valid
        then Lwt.return ()
-       else begin
-        bad_fragment_callback
-          self
-          ~namespace_id ~object_id ~object_name
-          ~chunk_id ~fragment_id ~version_id;
-        Lwt.fail_with "Checksum mismatch"
-       end) >>= fun () ->
+       else
+         begin
+           Lwt_bytes.unsafe_destroy fragment_data';
+           bad_fragment_callback
+             self
+             ~namespace_id ~object_id ~object_name
+             ~chunk_id ~fragment_id ~version_id;
+           Lwt.fail_with "Checksum mismatch"
+         end) >>= fun () ->
 
       Statistics.with_timing_lwt
         (fun () ->
@@ -365,7 +371,7 @@ class client
       >>= fun (t_decrypt, maybe_decrypted) ->
 
       Statistics.with_timing_lwt
-        (fun () -> decompress maybe_decrypted)
+        (fun () -> decompress ~release_input:true maybe_decrypted)
       >>= fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 
       let t_fragment = Statistics.({
@@ -380,7 +386,9 @@ class client
 
       Lwt.return (t_fragment, maybe_decompressed)
 
-
+    (* consumers of this method are responsible for freeing
+     * the returned fragment bigstrings
+     *)
     method download_chunk
         ~namespace_id
         ~object_id ~object_name
@@ -397,6 +405,7 @@ class client
       let module CountDownLatch = Lwt_extra2.CountDownLatch in
       let successes = CountDownLatch.create ~count:k in
       let failures = CountDownLatch.create ~count:(m+1) in
+      let finito = ref false in
 
       let threads : unit Lwt.t list =
         List.mapi
@@ -418,8 +427,14 @@ class client
                       ~encryption
                     >>= fun (t_fragment, fragment_data) ->
 
-                    Hashtbl.add fragments fragment_id (fragment_data, t_fragment);
-                    CountDownLatch.count_down successes;
+                    if !finito
+                    then
+                      Lwt_bytes.unsafe_destroy fragment_data
+                    else
+                      begin
+                        Hashtbl.add fragments fragment_id (fragment_data, t_fragment);
+                        CountDownLatch.count_down successes;
+                      end;
                     Lwt.return ())
                  (function
                    | Canceled -> Lwt.return ()
@@ -439,6 +454,8 @@ class client
       Lwt.pick [ CountDownLatch.await successes;
                  CountDownLatch.await failures; ] >>= fun () ->
 
+      finito := true;
+
       let () =
         if Hashtbl.length fragments < k
         then
@@ -447,6 +464,10 @@ class client
               "could not receive enough fragments for chunk %i; got %i while %i needed\n%!"
               chunk_id (Hashtbl.length fragments) k
           in
+          Hashtbl.iter
+            (fun _ (fragment, _) -> Lwt_bytes.unsafe_destroy fragment)
+            fragments;
+
           Error.failwith Error.NotEnoughFragments
       in
       let fragment_size =
@@ -710,7 +731,12 @@ class client
                             ~object_name
                             chunk_locations ~chunk_id
                             decompress
-                            k m w' >>= fun (data_fragments, _, t_chunk) ->
+                            k m w' >>= fun (data_fragments, coding_fragments, t_chunk) ->
+
+                       List.iter
+                         Lwt_bytes.unsafe_destroy
+                         coding_fragments;
+
                        let data_fragments_i =
                          List.mapi
                            (fun fragment_id fragment_data ->
@@ -719,7 +745,11 @@ class client
 
                        let relevant_fragments_data =
                          List.filter
-                           (fun (fragment_id, _) -> IntMap.mem fragment_id relevant_fragments)
+                           (fun (fragment_id, fragment) ->
+                            let b = IntMap.mem fragment_id relevant_fragments in
+                            if not b
+                            then Lwt_bytes.unsafe_destroy fragment;
+                            b)
                            data_fragments_i
                        in
 
@@ -732,17 +762,47 @@ class client
                       Lwt.return ()
                     end;
 
-                  Lwt.pick [
-                      begin
-                        Lwt.catch
-                          download_fragments
-                          (fun exn ->
-                           Lwt_condition.signal condition `FragmentsFailed;
-                           Lwt.fail exn)
-                      end;
-                      download_chunk;
-                    ]
-                  >>= fun fragments_data ->
+                  let result, wakener = Lwt.wait () in
+
+                  Lwt.async
+                    (fun () ->
+                     Lwt.catch
+                       (fun () ->
+                        download_fragments () >>= fun fragments ->
+                        let () =
+                          try Lwt.wakeup wakener fragments
+                          with _ ->
+                            List.iter
+                              (fun (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
+                              fragments
+                        in
+                        Lwt.return ())
+                       (fun exn ->
+                        Lwt_condition.signal condition `FragmentsFailed;
+                        Lwt.fail exn)
+                    );
+                  Lwt.async
+                    (fun () ->
+                     Lwt.catch
+                       (fun () ->
+                        download_chunk >>= fun fragments ->
+                        let () =
+                          try Lwt.wakeup wakener fragments
+                          with _ ->
+                            List.iter
+                              (fun (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
+                              fragments
+                        in
+                        Lwt.return ())
+                       (fun exn ->
+                        let () =
+                          try Lwt.wakeup_exn wakener exn
+                          with _ -> ()
+                        in
+                        Lwt.return ())
+                    );
+
+                  result >>= fun fragments_data ->
                   Lwt_condition.signal condition `FragmentsSucceeded;
 
                   (* write all data for this chunk *)
@@ -857,26 +917,35 @@ class client
          >>= fun (data_fragments, coding_fragments, t_chunk) ->
 
 
-         Lwt_list.fold_left_s
-           (fun (offset, t_write_data, t_verify) fragment ->
-            let fragment_size' =
-              if offset + fragment_size < object_size
-              then fragment_size
-              else (object_size - offset)
-            in
-            Statistics.with_timing_lwt
-              (fun () ->
-               hash2 # update_lwt_bytes_detached fragment 0 fragment_size')
-            >>= fun (t_verify', ()) ->
-
-            Statistics.with_timing_lwt
-              (fun () ->
-               write_object_data fragment 0 fragment_size') >>= fun (t_write_data', ()) ->
-            Lwt.return (offset + fragment_size',
-                        t_write_data +. t_write_data',
-                        t_verify +. t_verify'))
-           (offset, t_write_data, t_verify)
-           data_fragments
+         Lwt.finalize
+           (fun () ->
+            Lwt_list.fold_left_s
+              (fun (offset, t_write_data, t_verify) fragment ->
+               let fragment_size' =
+                 if offset + fragment_size < object_size
+                 then fragment_size
+                 else (object_size - offset)
+               in
+               Statistics.with_timing_lwt
+                 (fun () ->
+                  hash2 # update_lwt_bytes_detached fragment 0 fragment_size')
+               >>= fun (t_verify', ()) ->
+               Statistics.with_timing_lwt
+                 (fun () ->
+                  write_object_data fragment 0 fragment_size') >>= fun (t_write_data', ()) ->
+               Lwt.return (offset + fragment_size',
+                           t_write_data +. t_write_data',
+                           t_verify +. t_verify'))
+              (offset, t_write_data, t_verify)
+              data_fragments)
+           (fun () ->
+            List.iter
+              Lwt_bytes.unsafe_destroy
+              data_fragments;
+            List.iter
+              Lwt_bytes.unsafe_destroy
+              coding_fragments;
+            Lwt.return ())
          >>= fun (offset', t_write_data', t_verify') ->
          Lwt.return (offset',
                      t_chunk :: t_chunks,

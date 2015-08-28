@@ -426,6 +426,7 @@ let run_server hosts port
                ~nsm_host_connection_pool_size
                ~osd_connection_pool_size
                ~albamgr_cfg_file
+               ~chattiness
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -458,7 +459,7 @@ let run_server hosts port
          ~osd_connection_pool_size
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # discover_osds_check_claimed ());
+            [ (alba_client # discover_osds_check_claimed ~chattiness ());
               (refresh_albamgr_cfg
                  ~loop:true
                  albamgr_client_cfg

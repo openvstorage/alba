@@ -18,6 +18,7 @@ true: package(cmdliner)
 true: package(snappy)
 true: package(tiny_json)
 true: package(uuidm)
+true: package(core_kernel)
 true: use_rocks
 true: package(kinetic-client)
 "src/alba.native" : use_Jerasure, use_gcrypt, use_isal

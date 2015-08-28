@@ -237,7 +237,8 @@ def arakoon_stop():
         where(cmd_line)
 
 @task
-def proxy_start(abm_cfg = arakoon_config_file):
+def proxy_start(abm_cfg = arakoon_config_file,
+                n_proxies = 1, n_others = 1):
     proxy_home = "/tmp/alba/proxy"
     proxy_cache = proxy_home + "/fragment_cache"
     proxy_cfg = "%s/proxy.cfg" % proxy_home
@@ -253,7 +254,8 @@ def proxy_start(abm_cfg = arakoon_config_file):
     # make a proxy local copy of albamgr cfg file, as it will rewrite it
     proxy_albmamgr_cfg_file = proxy_home + "/albamgr.cfg"
     local("cp %s %s" % (abm_cfg, proxy_albmamgr_cfg_file))
-
+    chattiness = 1.0 / (n_proxies + n_others)
+    chattiness = round(chattiness, 2)
     with lcd(proxy_home):
         cfg = {
             'port' : 10000,
@@ -261,7 +263,8 @@ def proxy_start(abm_cfg = arakoon_config_file):
             'log_level' : 'debug',
             'fragment_cache_dir' : proxy_cache,
             'manifest_cache_size' : 100 * 1000,
-            'fragment_cache_size' : 100 * 1000 * 1000
+            'fragment_cache_size' : 100 * 1000 * 1000,
+            'chattiness': chattiness
         }
         dump_to_cfg_as_json(proxy_cfg, cfg)
 
@@ -277,16 +280,20 @@ def proxy_stop():
 
 
 @task
-def maintenance_start(n_agents = 1):
+def maintenance_start(n_agents = 1, n_others = 1):
     maintenance_home = "/tmp/alba/maintenance"
 
     local("mkdir -p %s" % maintenance_home)
 
+    chattiness = 1.0 / (n_agents + n_others)
+    chattiness = round(chattiness, 2)
     with lcd(maintenance_home):
         maintenance_cfg = "%s/maintenance.cfg" % maintenance_home
         dump_to_cfg_as_json(maintenance_cfg,
                             { 'albamgr_cfg_file' : arakoon_config_file,
-                              'log_level' : 'debug' })
+                              'log_level' : 'debug',
+                              'chattiness' : chattiness
+                            })
 
         modulo = n_agents
         for i in range(n_agents):
@@ -394,7 +401,7 @@ def start_osds(kind, n, slow, multicast=True):
 
 
 @task
-def demo_setup(kind = default_kind, multicast = True):
+def demo_setup(kind = default_kind, multicast = True, n_agents = 1, n_proxies = 1):
     cmd = [ env['arakoon_bin'], '--version' ]
     local(' '.join(cmd))
     cmd = [ env['alba_bin'], 'version' ]
@@ -403,8 +410,9 @@ def demo_setup(kind = default_kind, multicast = True):
     arakoon_start()
     wait_for_master()
 
-    proxy_start()
-    maintenance_start()
+    proxy_start(n_proxies = n_proxies, n_others = n_agents)
+    maintenance_start(n_agents = n_agents,
+                      n_others = n_proxies)
 
     nsm_host_register_default()
 

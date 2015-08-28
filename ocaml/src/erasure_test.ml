@@ -48,7 +48,7 @@ let test_isa_l_jerasure () =
         (fun _ -> Lwt_bytes.create len)
         (Int.range 0 m)
     in
-    Erasure.encode
+    Erasure.encode'
       ~kind:Erasure.Isa_l
       ~k ~m ~w
       data parity
@@ -62,7 +62,7 @@ let test_isa_l_jerasure () =
         (fun _ -> Lwt_bytes.create len)
         (Int.range 0 m)
     in
-    Erasure.encode
+    Erasure.encode'
       ~kind:Erasure.Jerasure
       ~k ~m ~w
       data parity'
@@ -99,7 +99,7 @@ let test_encode_decode () =
         (fun _ -> Lwt_bytes.create len)
         (Int.range 0 m)
     in
-    Erasure.encode
+    Erasure.encode'
       ~kind
       ~k ~m ~w
       data parity

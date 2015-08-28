@@ -200,7 +200,7 @@ class osd_access mgr_access osd_connection_pool_size =
         osds >>= fun () ->
       Lwt.return res
 
-    method seen ?(check_claimed_delay=60.) =
+    method seen ?(check_claimed_delay=60.) ~chattiness =
       let open Discovery in
       function
       | Bad s ->
@@ -259,9 +259,16 @@ class osd_access mgr_access osd_connection_pool_size =
                      Pool.Osd.invalidate osds_pool ~osd_id;
                      Lwt.return ()
                    end else
-                   Lwt.return ()) >>= fun () ->
+                   Lwt.return ())
+                >>= fun () ->
 
-                mgr_access # update_osd ~long_id:id
+                let tell_mgr =
+                  let x = Random.float 1.0 in
+                  (x < chattiness)
+                in
+                if tell_mgr
+                then
+                  mgr_access # update_osd ~long_id:id
                            (Osd.Update.make
                               ~ips':ips ~port':port
                               ~total':total ~used':used
@@ -269,6 +276,8 @@ class osd_access mgr_access osd_connection_pool_size =
                               ~read' ~write' ~errors'
                               ~other':json ()
                            )
+                else
+                  Lwt_log.debug_f "skipping OSD update long_id:%s" id
            end else begin
 
              let osd_info =

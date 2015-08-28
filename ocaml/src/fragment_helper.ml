@@ -15,6 +15,8 @@ limitations under the License.
 *)
 
 open Prelude
+open Slice
+open Lwt_bytes2
 open Nsm_model
 open Encryption
 open Gcrypt
@@ -90,7 +92,7 @@ let maybe_decrypt
         Cipher.with_t_lwt
           key Cipher.AES256 Cipher.CBC []
           (fun cipher -> Cipher.decrypt ~iv cipher data) >>= fun () ->
-        Lwt.return (Padding.unpad data)
+        Lwt.return (Padding.unpad ~release_input:true data)
     end
 
 let maybe_compress compression fragment_data =
@@ -99,13 +101,13 @@ let maybe_compress compression fragment_data =
   Lwt_log.debug_f
     "compression: %s (%i => %i)"
     ([%show: Compression.t] compression)
-    (Lwt_bytes.length fragment_data)
+    (Bigstring_slice.length fragment_data)
     (Lwt_bytes.length r) >>= fun () ->
   Lwt.return r
 
-let maybe_decompress compression compressed =
+let maybe_decompress ~release_input compression compressed =
   let open Lwt.Infix in
-  Compressors.decompress compression compressed >>= fun r ->
+  Compressors.decompress ~release_input compression compressed >>= fun r ->
   Lwt_log.debug_f
      "decompression: %s (%i => %i)"
      ([%show: Compression.t] compression)
@@ -124,8 +126,19 @@ let verify fragment_data checksum =
   let checksum2 = hash # final () in
   Lwt.return (checksum2 = checksum)
 
+let verify' fragment_data checksum =
+  let algo = Checksum.algo_of checksum in
+  let hash = Hashes.make_hash algo in
+  let open Slice in
+  hash # update_substring
+    fragment_data.buf
+    fragment_data.offset
+    fragment_data.length;
+  let checksum2 = hash # final () in
+  Lwt.return (checksum2 = checksum)
+
 let pack_fragment
-    fragment
+    (fragment : Bigstring_slice.t)
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
     compression
     encryption
@@ -160,7 +173,7 @@ let chunk_to_data_fragments ~chunk ~chunk_size ~k =
       | n ->
         let fragment =
           let pos = (n-1) * fragment_size in
-          Bigarray.Array1.sub chunk pos fragment_size
+          Bigstring_slice.from_bigstring chunk pos fragment_size
         in
         inner (fragment :: acc) (n - 1) in
     inner [] k in
@@ -169,6 +182,11 @@ let chunk_to_data_fragments ~chunk ~chunk_size ~k =
 (* this should be at least sizeof(long) according to the jerasure documentation *)
 let fragment_multiple = 16
 
+(* The lifetime of the returned data fragments is
+   determined by the lifetime of the passed in chunk.
+   The returned coding fragments are freshly created
+   and should thus be freed by the consumer of this function.
+ *)
 let chunk_to_fragments_ec
     ~chunk ~chunk_size
     ~k ~m ~w' =
@@ -192,11 +210,7 @@ let chunk_to_fragments_ec
     let rec inner acc = function
       | 0 -> acc
       | n ->
-        let fragment =
-          Bigarray.Array1.create
-            Bigarray.Char
-            Bigarray.C_layout
-            fragment_size in
+        let fragment = Bigstring_slice.create fragment_size in
         inner (fragment :: acc) (n - 1) in
     inner [] m
   in
@@ -207,15 +221,7 @@ let chunk_to_fragments_ec
     coding_fragments
     fragment_size >>= fun () ->
 
-  let all_data = List.append data_fragments coding_fragments in
-
-  let data_with_fragment_id =
-    List.mapi
-      (fun i data -> i, data)
-      all_data
-  in
-
-  Lwt.return data_with_fragment_id
+  Lwt.return (data_fragments, coding_fragments)
 
 let chunk_to_packed_fragments
     ~object_id ~chunk_id
@@ -226,17 +232,20 @@ let chunk_to_packed_fragments
   if k = 1
   then
     begin
-      let fragment = chunk in
+      let fragment = Bigstring_slice.wrap_bigstring chunk in
       pack_fragment
         fragment
         ~object_id ~chunk_id ~fragment_id:0 ~ignore_fragment_id:true
         compression encryption fragment_checksum_algo
-      >>= fun packed ->
+      >>= fun (packed, f1, f2, cs) ->
+      let packed' = Slice.of_bigstring packed in
+      Lwt_bytes.unsafe_destroy packed;
+
       let rec build_result acc = function
         | 0 -> acc
         | n ->
           let fragment_id = n - 1 in
-          let acc' = (fragment_id, fragment, packed) :: acc in
+          let acc' = (fragment_id, fragment, (packed', f1, f2, cs)) :: acc in
           build_result
             acc'
             (n-1)
@@ -247,13 +256,25 @@ let chunk_to_packed_fragments
     begin
       chunk_to_fragments_ec
         ~chunk ~chunk_size
-        ~k ~m ~w' >>=
-      Lwt_list.map_p
-        (fun (fragment_id, fragment) ->
-           pack_fragment
-             fragment
-             ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
-             compression encryption fragment_checksum_algo
-           >>= fun packed ->
-           Lwt.return (fragment_id, fragment, packed))
+        ~k ~m ~w' >>= fun (data_fragments, coding_fragments) ->
+      Lwt.finalize
+        (fun () ->
+         let all_fragments = List.append data_fragments coding_fragments in
+         Lwt_list.mapi_p
+           (fun fragment_id fragment ->
+            pack_fragment
+              fragment
+              ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
+              compression encryption fragment_checksum_algo
+            >>= fun (packed, f1, f2, cs) ->
+            let packed' = Slice.of_bigstring packed in
+            Lwt_bytes.unsafe_destroy packed;
+
+            Lwt.return (fragment_id, fragment, (packed', f1, f2, cs)))
+           all_fragments)
+        (fun () ->
+         List.iter
+           (fun bss -> Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs)
+           coding_fragments;
+         Lwt.return ())
     end
