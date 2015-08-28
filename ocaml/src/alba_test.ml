@@ -1531,6 +1531,74 @@ let test_master_switch () =
      Lwt.return ()
     )
 
+let test_stale_manifest_download () =
+  test_with_alba_client
+    (fun alba_client ->
+     let test_name = "test_stale_manifest_download" in
+     let namespace = test_name in
+
+     alba_client # create_namespace ~namespace ~preset_name:None ()
+     >>= fun namespace_id ->
+
+     let object_name = test_name in
+     let object_length = 932 in
+     let object_data = Bytes.create object_length in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data
+                 ~checksum_o:None
+                 ~allow_overwrite:Nsm_model.NoPrevious
+     >>= fun mf ->
+
+     let download () =
+       alba_client # download_object_to_string
+                   ~namespace
+                   ~object_name
+                   ~consistent_read:false
+                   ~should_cache:true
+       >>= fun _ ->
+       Lwt.return ()
+     in
+     let download_slices () =
+       alba_client # download_object_slices
+                   ~namespace
+                   ~object_name
+                   ~object_slices:[0L, object_length]
+                   ~consistent_read:false
+                   (fun _ _ _ _ -> Lwt.return ())
+       >>= fun _ ->
+       Lwt.return ()
+     in
+     let rewrite_obj () =
+       Alba_client.with_client
+         (ref (Albamgr_test.get_ccfg ()))
+         (fun alba_client2 ->
+          let maintenance_client =
+            new Maintenance.client (alba_client2 # get_base_client) in
+          alba_client2 # get_object_manifest'
+                       ~namespace_id
+                       ~object_name
+                       ~consistent_read:true
+                       ~should_cache:false
+          >>= fun (_, manifest_o) ->
+          let manifest = Option.get_some manifest_o in
+          maintenance_client # repair_object_rewrite
+                             ~namespace_id
+                             ~manifest >>= fun () ->
+          maintenance_client # clean_obsolete_keys_namespace
+                             ~once:true ~namespace_id >>= fun () ->
+          Lwt.return ())
+     in
+
+     download () >>= fun () ->
+     rewrite_obj () >>= fun () ->
+     download () >>= fun () ->
+     rewrite_obj () >>= fun () ->
+     download_slices () >>= fun () ->
+     rewrite_obj () >>= fun () ->
+     download_slices () >>= fun () ->
+     Lwt.return ())
 
 open OUnit
 
@@ -1553,4 +1621,5 @@ let suite = "alba_test" >:::[
     "test_add_disk" >:: test_add_disk;
     "test_invalidate_deleted_namespace" >:: test_invalidate_deleted_namespace;
     "test_master_switch" >:: test_master_switch;
+    "test_stale_manifest_download" >:: test_stale_manifest_download;
   ]
