@@ -80,7 +80,6 @@ let alba_maintenance cfg_file modulo remainder flavour =
       and osd_connection_pool_size            = cfg.osd_connection_pool_size
       and lwt_preemptive_thread_pool_min_size = cfg.lwt_preemptive_thread_pool_min_size
       and lwt_preemptive_thread_pool_max_size = cfg.lwt_preemptive_thread_pool_max_size
-      and chattiness                          = cfg.chattiness
       in
 
       Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
@@ -147,7 +146,8 @@ let alba_maintenance cfg_file modulo remainder flavour =
                   [
                     (Lwt_extra2.make_fuse_thread ());
                     (maintenance_client # deliver_all_messages ());
-                    (client # get_base_client # discover_osds_check_claimed ~chattiness ());
+                    (client # get_base_client # discover_osds_check_claimed ());
+                    (client # osd_access # propagate_osd_info ());
                   ]
                 in
 

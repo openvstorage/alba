@@ -26,6 +26,7 @@ type osd_state = {
   mutable write : float list;
   mutable read : float list;
   mutable errors : (float * string) list;
+  mutable json: string option;
 }
 
 let large_value = lazy (String.make (512*1024) 'a')
@@ -50,6 +51,7 @@ class osd_access mgr_access osd_connection_pool_size =
           write = [];
           read = [];
           errors = [];
+          json = None;
         } in
       let info' = (osd_info, osd_state) in
       Hashtbl.replace osds_info_cache osd_id info';
@@ -200,7 +202,61 @@ class osd_access mgr_access osd_connection_pool_size =
         osds >>= fun () ->
       Lwt.return res
 
-    method seen ?(check_claimed_delay=60.) ~chattiness =
+    method propagate_osd_info () : unit Lwt.t =
+      let open Albamgr_protocol.Protocol in
+      let propagate_one (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) osd_json =
+        let open Osd in
+        let ips', port' =
+          get_ips_port osd_info.kind
+        and long_id = get_long_id osd_info.kind
+        and total'  = osd_info.total
+        and used'   = osd_info.used
+        and seen'   = [Unix.gettimeofday ()]
+        and read'   = osd_state.read
+        and write'  = osd_state.write
+        and errors' = osd_state.errors
+        and other'  = osd_json
+        in
+        let update = Osd.Update.make
+                       ~ips' ~port'
+                       ~total' ~used' ~seen'
+                       ~read' ~write' ~errors'
+                       ~other'
+                       ()
+        in
+        begin
+          Lwt_log.debug_f
+            "going to update:%s with %s"
+            long_id ([%show: Osd.Update.t] update)
+          >>= fun () ->
+          mgr_access # update_osd
+                     ~long_id update
+          >>= fun () ->
+          osd_state.read <- [];
+          osd_state.write <- [];
+          osd_state.errors <- [];
+          osd_state.json <- None;
+          Lwt.return ()
+        end
+      in
+      let maybe_propagate_one id x =
+        let osd_info, osd_state = x in
+        match osd_state.json with
+        | None -> Lwt.return () (* skip the ones that had no update *)
+        | Some json -> propagate_one id osd_info osd_state json
+      in
+      let propagate () =
+        let kvs = Hashtbl.fold (fun k v acc -> (k,v)::acc) osds_info_cache [] in
+        Lwt_list.iter_s
+          (fun (k,v) -> maybe_propagate_one k v)
+          kvs
+        >>= fun () ->
+        Lwt.return_unit
+      in
+      Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
+
+
+    method seen ?(check_claimed_delay=60.) =
       let open Discovery in
       function
       | Bad s ->
@@ -233,16 +289,9 @@ class osd_access mgr_access osd_connection_pool_size =
              | ThisAlba osd_id ->
 
                 get_osd_info ~osd_id >>= fun (osd_info, osd_state') ->
-                let read',
-                    write',
-                    errors' = osd_state'.read,
-                              osd_state'.write,
-                              osd_state'.errors in
-                osd_state'.read <- [];
-                osd_state'.write <- [];
-                osd_state'.errors <- [];
                 let ips', port' = Osd.get_ips_port osd_info.Osd.kind in
 
+                let () = osd_state'.json <- Some json in
                 Hashtbl.replace
                   osds_info_cache
                   osd_id
@@ -260,24 +309,6 @@ class osd_access mgr_access osd_connection_pool_size =
                      Lwt.return ()
                    end else
                    Lwt.return ())
-                >>= fun () ->
-
-                let tell_mgr =
-                  let x = Random.float 1.0 in
-                  (x < chattiness)
-                in
-                if tell_mgr
-                then
-                  mgr_access # update_osd ~long_id:id
-                           (Osd.Update.make
-                              ~ips':ips ~port':port
-                              ~total':total ~used':used
-                              ~seen':[Unix.gettimeofday ()]
-                              ~read' ~write' ~errors'
-                              ~other':json ()
-                           )
-                else
-                  Lwt_log.debug_f "skipping OSD update long_id:%s" id
            end else begin
 
              let osd_info =

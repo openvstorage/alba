@@ -459,7 +459,8 @@ let run_server hosts port
          ~osd_connection_pool_size
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # discover_osds_check_claimed ~chattiness ());
+            [ (alba_client # discover_osds_check_claimed ());
+              (alba_client # osd_access # propagate_osd_info ());
               (refresh_albamgr_cfg
                  ~loop:true
                  albamgr_client_cfg
