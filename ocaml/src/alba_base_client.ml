@@ -97,9 +97,21 @@ class client
       Lwt.return preset
   in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
+  let manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size in
+  let bad_fragment_callback
+        self
+        ~namespace_id ~object_id ~object_name
+        ~chunk_id ~fragment_id ~version_id =
+    Manifest_cache.ManifestCache.remove
+      manifest_cache
+      namespace_id object_name;
+    bad_fragment_callback
+      self
+      ~namespace_id ~object_id ~object_name
+      ~chunk_id ~fragment_id ~version_id
+  in
   object(self)
 
-    val manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size
     method get_manifest_cache : (string, string) Manifest_cache.ManifestCache.t = manifest_cache
     method get_fragment_cache = fragment_cache
 
