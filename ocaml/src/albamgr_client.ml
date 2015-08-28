@@ -30,6 +30,7 @@ end
 
 class client (client : basic_client) =
   object(self)
+    val support_update_osds = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -237,6 +238,29 @@ class client (client : basic_client) =
 
     method update_osd ~long_id changes =
       client # update UpdateOsd (long_id, changes)
+
+    method update_osds updates =
+      let do_it () = client # update UpdateOsds updates in
+      let fake_it () =
+        Lwt_list.fold_left_s
+          (fun () (long_id,changes) ->self # update_osd ~long_id changes)
+          () updates
+      in
+      match !supports_update_osds with
+      | None ->
+         Lwt_log.debug "testing update_osds support" >>= fun () ->
+         Lwt.catch
+           do_it
+           (let open Albamgr_protocol.Protocol.Error in
+             function
+             | Albamgr_exn (Unknown_operation,_) as exn ->
+                Lwt_log.debug ~exn "no support; fake it" >>= fun () ->
+                let () = supports_update_osds := Some false in
+                fake_it()
+             | exn -> Lwt.fail exn
+           )
+      | Some false -> fake_it()
+      | Some true  -> do_it()
 
     method decommission_osd ~long_id =
       client # update DecommissionOsd long_id

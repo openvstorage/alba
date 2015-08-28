@@ -202,9 +202,9 @@ class osd_access mgr_access osd_connection_pool_size =
         osds >>= fun () ->
       Lwt.return res
 
-    method propagate_osd_info () : unit Lwt.t =
+    method propagate_osd_info ?(run_once=false) () : unit Lwt.t =
       let open Albamgr_protocol.Protocol in
-      let propagate_one (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) osd_json =
+      let propagate_one (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) =
         let open Osd in
         let ips', port' =
           get_ips_port osd_info.kind
@@ -215,7 +215,7 @@ class osd_access mgr_access osd_connection_pool_size =
         and read'   = osd_state.read
         and write'  = osd_state.write
         and errors' = osd_state.errors
-        and other'  = osd_json
+        and other'  = osd_state.json |> Option.get_some
         in
         let update = Osd.Update.make
                        ~ips' ~port'
@@ -239,21 +239,33 @@ class osd_access mgr_access osd_connection_pool_size =
           Lwt.return ()
         end
       in
-      let maybe_propagate_one id x =
-        let osd_info, osd_state = x in
-        match osd_state.json with
-        | None -> Lwt.return () (* skip the ones that had no update *)
-        | Some json -> propagate_one id osd_info osd_state json
-      in
       let propagate () =
-        let kvs = Hashtbl.fold (fun k v acc -> (k,v)::acc) osds_info_cache [] in
+        let kvs =
+          Hashtbl.fold
+            (fun k v acc ->
+             let osd_info, osd_state = v in
+             let acc' =
+               if osd_state.json = None (* these had no update, so skip *)
+               then acc
+               else (k,osd_info,osd_state) :: acc
+             in
+             acc')
+            osds_info_cache
+            []
+        in
         Lwt_list.iter_s
-          (fun (k,v) -> maybe_propagate_one k v)
+          (fun (k, info, state) -> propagate_one k info state)
           kvs
         >>= fun () ->
         Lwt.return_unit
       in
-      Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
+      if run_once
+      then
+        Lwt.catch
+          propagate
+          (fun exn -> Lwt_log.debug ~exn "propagate_osd_info")
+      else
+        Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
 
 
     method seen ?(check_claimed_delay=60.) =

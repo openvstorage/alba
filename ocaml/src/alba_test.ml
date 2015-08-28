@@ -760,14 +760,13 @@ let test_change_osd_ip_port () =
          (client # discover_osds_check_claimed
             ~check_claimed_delay:0.1 ());
 
-       Lwt.ignore_result (client # osd_access # propagate_osd_info ());
-
        Asd_test.with_asd_client
          osd_name 16541
          (fun asd ->
             (* give maintenance process some time to discover the
                osd and register it in the albamgr *)
             Lwt_unix.sleep 0.2 >>= fun () ->
+            client # propagate_osd_info ~run_once:true () >>= fun () ->
             client # claim_osd ~long_id:osd_name >>= fun osd_id ->
             (* sleep a bit here so the alba client can discover it's claimed status *)
             Lwt_unix.sleep 0.2 >>= fun () ->
@@ -810,7 +809,6 @@ let test_change_osd_ip_port () =
          osd_name 16542
          (fun asd ->
 
-            Lwt_unix.sleep 0.3 >>= fun () ->
             (* hmm or use with_osd !
                TODO, test with both... *)
 
@@ -825,17 +823,19 @@ let test_change_osd_ip_port () =
   test_with_alba_client
     (fun client ->
        Lwt.finalize
-         (fun () -> t client)
+         (fun () ->
+          t client >>= fun () ->
+          Lwt_log.debug "==================== end")
          (fun () ->
             safe_delete_namespace client test_name >>= fun () ->
             Asd_test.with_asd_client
               ~is_restart:true
               osd_name 16543
               (fun _ ->
-                 Lwt_unix.sleep 0.3 >>= fun () ->
-                 safe_decommission client [ osd_name ] >>= fun () ->
-                 wait_for_work client >>= fun () ->
-                 wait_for_work client)
+               client # propagate_osd_info ~run_once:true () >>= fun () ->
+               safe_decommission client [ osd_name ] >>= fun () ->
+               wait_for_work client >>= fun () ->
+               wait_for_work client)
          )
     )
 
