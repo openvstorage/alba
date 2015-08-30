@@ -263,12 +263,8 @@ class osd_access mgr_access osd_connection_pool_size =
         Lwt.return_unit
       in
       if run_once
-      then
-        Lwt.catch
-          propagate
-          (fun exn -> Lwt_log.debug ~exn "propagate_osd_info")
-      else
-        Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
+      then propagate ()
+      else Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
 
 
     method seen ?(check_claimed_delay=60.) =
