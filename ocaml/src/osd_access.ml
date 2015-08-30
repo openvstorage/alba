@@ -25,6 +25,7 @@ type osd_state = {
   mutable disqualified : bool;
   mutable write : float list;
   mutable read : float list;
+  mutable seen : float list;
   mutable errors : (float * string) list;
   mutable json: string option;
 }
@@ -50,6 +51,7 @@ class osd_access mgr_access osd_connection_pool_size =
           disqualified = false;
           write = [];
           read = [];
+          seen = [];
           errors = [];
           json = None;
         } in
@@ -211,7 +213,7 @@ class osd_access mgr_access osd_connection_pool_size =
         and long_id = get_long_id osd_info.kind
         and total'  = osd_info.total
         and used'   = osd_info.used
-        and seen'   = [Unix.gettimeofday ()]
+        and seen'   = osd_info.seen
         and read'   = osd_state.read
         and write'  = osd_state.write
         and errors' = osd_state.errors
@@ -234,6 +236,7 @@ class osd_access mgr_access osd_connection_pool_size =
           >>= fun () ->
           osd_state.read <- [];
           osd_state.write <- [];
+          osd_state.seen <- [];
           osd_state.errors <- [];
           osd_state.json <- None;
           Lwt.return ()
@@ -310,6 +313,7 @@ class osd_access mgr_access osd_connection_pool_size =
                   (Osd.({ osd_info with
                           kind;
                           total; used;
+                          seen = Unix.gettimeofday () :: osd_info.seen;
                         }),
                    osd_state');
 

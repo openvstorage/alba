@@ -766,7 +766,7 @@ let test_change_osd_ip_port () =
             (* give maintenance process some time to discover the
                osd and register it in the albamgr *)
             Lwt_unix.sleep 0.2 >>= fun () ->
-            client # propagate_osd_info ~run_once:true () >>= fun () ->
+            client # osd_access # propagate_osd_info ~run_once:true () >>= fun () ->
             client # claim_osd ~long_id:osd_name >>= fun osd_id ->
             (* sleep a bit here so the alba client can discover it's claimed status *)
             Lwt_unix.sleep 0.2 >>= fun () ->
@@ -832,7 +832,7 @@ let test_change_osd_ip_port () =
               ~is_restart:true
               osd_name 16543
               (fun _ ->
-               client # propagate_osd_info ~run_once:true () >>= fun () ->
+               client # osd_access # propagate_osd_info ~run_once:true () >>= fun () ->
                safe_decommission client [ osd_name ] >>= fun () ->
                wait_for_work client >>= fun () ->
                wait_for_work client)

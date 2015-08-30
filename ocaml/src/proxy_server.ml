@@ -426,7 +426,6 @@ let run_server hosts port
                ~nsm_host_connection_pool_size
                ~osd_connection_pool_size
                ~albamgr_cfg_file
-               ~chattiness
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->

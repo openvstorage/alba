@@ -30,7 +30,7 @@ end
 
 class client (client : basic_client) =
   object(self)
-    val support_update_osds = ref None
+    val supports_update_osds = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
