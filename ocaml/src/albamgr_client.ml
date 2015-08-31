@@ -250,7 +250,12 @@ class client (client : basic_client) =
       | None ->
          Lwt_log.debug "testing update_osds support" >>= fun () ->
          Lwt.catch
-           do_it
+           (fun () ->
+            do_it ()
+            >>= fun () ->
+            supports_update_osds := Some true;
+            Lwt.return_unit
+           )
            (let open Albamgr_protocol.Protocol.Error in
              function
              | Albamgr_exn (Unknown_operation,_) as exn ->
