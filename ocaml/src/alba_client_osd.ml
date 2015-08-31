@@ -121,7 +121,7 @@ let claim_osd mgr_access osd_access ~long_id =
              | ThisAlba id -> Lwt.return id
              | AnotherAlba _
              | Available ->
-                Lwt_log.debug_f
+                Lwt_log.info_f
                   "Osd is already claimed, but strangely enough not by this instance ... consider this a bug" >>= fun () ->
                 Lwt.fail_with "Osd is already claimed, but strangely enough not by this instance ... consider this a bug")
          | exn -> Lwt.fail exn)

@@ -53,6 +53,7 @@ def demo_kill():
             path = env['asd_path_t'] % i
             if os.path.exists(path + "_file"):
                 where("sudo umount " + path)
+            where("rm -rf %s" % path)
         where("rm -rf /tmp/alba/")
         arakoon_remove_dir()
 
@@ -409,6 +410,9 @@ def demo_setup(kind = default_kind, multicast = True, n_agents = 1, n_proxies = 
 
     arakoon_start()
     wait_for_master()
+
+    n_agents = int(n_agents)
+    n_proxies = int(n_proxies)
 
     proxy_start(n_proxies = n_proxies, n_others = n_agents)
     maintenance_start(n_agents = n_agents,

@@ -481,7 +481,7 @@ let run_server hosts port
             ])
     )
     (fun exn ->
-       Lwt_log.warning_f
+       Lwt_log.fatal_f
          ~exn
          "Going down after unexpected exception in proxy process" >>= fun () ->
        Lwt.fail exn)

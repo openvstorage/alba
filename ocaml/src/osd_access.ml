@@ -142,7 +142,7 @@ class osd_access mgr_access osd_connection_pool_size =
         (fun exn -> Lwt.return (`Continue exn))
       >>= function
       | `Continue exn ->
-         Lwt_log.debug_f
+         Lwt_log.info_f
            ~exn
            "Could not yet requalify osd %li, trying again in %f seconds"
            osd_id delay >>= fun () ->
@@ -156,12 +156,12 @@ class osd_access mgr_access osd_connection_pool_size =
     then Lwt.return ()
     else begin
         state.disqualified <- true;
-        Lwt_log.debug_f "Disqualifying osd %li" osd_id >>= fun () ->
+        Lwt_log.info_f "Disqualifying osd %li" osd_id >>= fun () ->
         (* start loop to get it requalified... *)
         Lwt.async
           (fun () ->
            inner 1. >>= fun () ->
-           Lwt_log.debug_f "Requalified osd %li" osd_id >>= fun () ->
+           Lwt_log.info_f "Requalified osd %li" osd_id >>= fun () ->
            state.disqualified <- false;
            state.write <- Unix.gettimeofday() :: state.write;
            Lwt.return ());
@@ -206,7 +206,7 @@ class osd_access mgr_access osd_connection_pool_size =
 
     method propagate_osd_info ?(run_once=false) () : unit Lwt.t =
       let open Albamgr_protocol.Protocol in
-      let propagate_one (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) =
+      let make_update (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) =
         let open Osd in
         let ips', port' =
           get_ips_port osd_info.kind
@@ -226,41 +226,33 @@ class osd_access mgr_access osd_connection_pool_size =
                        ~other'
                        ()
         in
-        begin
-          Lwt_log.debug_f
-            "going to update:%s with %s"
-            long_id ([%show: Osd.Update.t] update)
-          >>= fun () ->
-          mgr_access # update_osd
-                     ~long_id update
-          >>= fun () ->
-          osd_state.read <- [];
-          osd_state.write <- [];
-          osd_state.seen <- [];
-          osd_state.errors <- [];
-          osd_state.json <- None;
-          Lwt.return ()
-        end
+        (long_id, update)
+      in
+      let reset osd_state =
+        osd_state.read <- [];
+        osd_state.write <- [];
+        osd_state.errors <- [];
+        osd_state.seen <- [];
+        osd_state.json <- None
       in
       let propagate () =
-        let kvs =
+        let updates =
           Hashtbl.fold
             (fun k v acc ->
              let osd_info, osd_state = v in
              let acc' =
                if osd_state.json = None (* these had no update, so skip *)
                then acc
-               else (k,osd_info,osd_state) :: acc
+               else
+                 let update = make_update k osd_info osd_state in
+                 update :: acc
              in
+             let () = reset osd_state in
              acc')
             osds_info_cache
             []
         in
-        Lwt_list.iter_s
-          (fun (k, info, state) -> propagate_one k info state)
-          kvs
-        >>= fun () ->
-        Lwt.return_unit
+        mgr_access # update_osds updates
       in
       if run_once
       then propagate ()
@@ -316,7 +308,7 @@ class osd_access mgr_access osd_connection_pool_size =
                 (* TODO compare ips as a set? (such that ordering doesn't matter) *)
                 (if ips' <> ips || port' <> port
                  then begin
-                     Lwt_log.debug_f "Asd now has new ips/port -> invalidating connection pool" >>= fun () ->
+                     Lwt_log.info_f "Asd now has new ips/port -> invalidating connection pool" >>= fun () ->
                      Pool.Osd.invalidate osds_pool ~osd_id;
                      Lwt.return ()
                    end else
