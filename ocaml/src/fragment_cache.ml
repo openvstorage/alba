@@ -110,6 +110,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
   and _ACCESS = "20_access"
   (* set of bid-s which are being dropped *)
   and _dropping = Hashtbl.create 3
+  and section = Lwt_log.Section.make "fragment_cache"
   in
 
   let path_of_fsid (bid:int32) fsid =
@@ -164,7 +165,11 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
     Llio.int64_be_to b access;
     Buffer.contents b
   in
-
+  let access_of_access_key kaccess =
+    let head = String.length _LRU in
+    let sub = Bytes.sub kaccess head 8 in
+    deserialize Llio.int64_be_from sub
+  in
   let boid_of vboid =
     let b   = Llio.make_buffer vboid 0 in
     let bid = Llio.int32_from b in
@@ -251,6 +256,28 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
     val mutable c = 0L
     val _mutex = Lwt_mutex.create ()
 
+    method dump_lru() =
+      KV.with_cursor
+        db
+        (fun c ->
+         let _ = KV.cur_jump c Prelude.Right _LRU in
+         let rec loop count =
+           if Rocks.Iterator.is_valid c
+           then
+             let key  = KV.cur_get_key c in
+             let vboid = KV.cur_get_value c in
+             let boid = boid_of vboid in
+             let access = access_of_access_key key in
+             Printf.printf "key:%30S access:%Li boid:%s\n%!"
+                           key
+                           access
+                           ([%show:boid] boid);
+             let _ = KV.cur_next c in
+             loop ()
+           else ()
+         in
+         loop ()
+        )
 
     method create_fs_id () =
       let c0 = c in
@@ -420,6 +447,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         iter_blob_kvs check_key;
         !count |> Int64.of_int
       in
+
       let from_fs () =
         let is_dir f =
           let st = Unix.stat f in
@@ -487,6 +515,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         size_fs  |> Int64.of_int, remainder_set
       in
       try
+        (*let () = self # dump_lru() in *)
         let size_rocks = self # get_total_size () in
         let count_fs,size_fs,remainder_set  = from_fs()  in
         Printf.printf "size_fs=%Li size_rocks=%Li\n" size_fs size_rocks;
@@ -514,14 +543,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
              ~total_size ~total_count
              ~access ~fsid
              (boid:boid) path blob =
-      Lwt_log.debug_f
-        ("_add_new_grow ~boid:%s ~fsid:%s ~access:%Li " ^^
-        " ~total_size:%Li ~max_size:%Li ~total_count:%Li")
+      Lwt_log.debug_f ~section
+        ("_add_new_grow ~boid:%s ~fsid:%s " ^^
+           "~total_size:%Li ~max_size:%Li access:%Li ~total_count:%Li")
         ([%show : boid] boid)
         (Prelude.to_hex fsid)
-        access
         total_size
         max_size
+        access
         total_count
       >>= fun () ->
       _write_blob path blob >>= fun () ->
@@ -530,17 +559,12 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let blob_length64 = Int64.of_int blob_length in
       let total_count' = ser64 (Int64.succ total_count) in
       let total_size' = ser64 (total_size +: blob_length64) in
-      let access = create_access () in
       let open Rocks in
-
       let kfsid = blob_fsid_key_of boid in
       let ksize = blob_size_key_of boid in
       let kaccess = blob_access_key_of boid in
-
-
       let kaccess_rev = access_key_of access in
       let vsize = size_value_of blob_length in
-      let access = create_access() in
       let vaccess = access_value_of access in
       let vboid = boid_value_of boid in
       WriteBatch.with_t
@@ -565,7 +589,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
              ~fsid0
       =
 
-      Lwt_log.debug_f
+      Lwt_log.debug_f ~section
         "_replace_grow ~boid:%s ~fsid:%s ~fsid0:%s"
         ([%show: boid] boid)
         (Prelude.to_hex fsid)
@@ -579,7 +603,6 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let kfsid   = blob_fsid_key_of boid in
       let ksize   = blob_size_key_of boid in
       let kaccess = blob_access_key_of boid in
-      let access = create_access () in
       let kaccess_rev = access_key_of access in
       let vaccess0 = KV.get_exn db kaccess in
       let access0 = access_of vaccess0 in
@@ -721,13 +744,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
                  let vboid   = KV.cur_get_value c in
                  let boid_i  = boid_of vboid in
                  let ksize_i = blob_size_key_of boid_i in
-                 let size_i =
-                   let v = KV.get_exn db ksize_i in
-                   size_of v
-                 in
+                 let size_i  = KV.get_exn db ksize_i |> size_of in
 
                  let kfsid_i = blob_fsid_key_of boid_i in
-
                  let fsid_i = KV.get_exn db kfsid_i in
 
                  let victim_i = kaccess_rev_i, boid_i, fsid_i, size_i in
@@ -788,7 +807,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         | v_i :: vs ->
            let kaccess_rev_i, boid_i, fsid_i, size_i = v_i in
 
-           Lwt_log.debug_f "victim: %s %s"
+           Lwt_log.debug_f ~section
+                           "victim: %s %s"
                            ([%show : boid] boid_i)
                            (Prelude.to_hex fsid_i)
            >>= fun () ->
@@ -806,7 +826,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
              ~fsid
              (boid:boid) path blob
       =
-      Lwt_log.debug_f
+      Lwt_log.debug_f ~section
         "_add_new_full ~boid:%s ~fsid:%s ~total_size:%Li ~max_size:%Li access:%Li"
         ([%show : boid] boid) (Prelude.to_hex fsid)
         total_size
@@ -827,7 +847,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
 
       let open Rocks in
 
-      Lwt_log.debug_f "going to update KV" >>= fun () ->
+      Lwt_log.debug_f ~section "going to update KV" >>= fun () ->
       WriteBatch.with_t
         (fun wb ->
          let vsize = size_value_of blob_length in
@@ -850,7 +870,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
          WriteOptions.with_t (fun wo ->RocksDb.write db wo wb)
         );
 
-      Lwt_log.debug_f "after batch"
+      Lwt_log.debug_f ~section "after batch"
 
     method _replace_full
              ~(total_size:int64)
@@ -861,11 +881,13 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
              path blob
              ~fsid0
       =
-      Lwt_log.debug_f
-        "_replace_full ~boid:%s ~fsid:%s ~total_size:%Li ..."
+      Lwt_log.debug_f ~section
+        "_replace_full ~boid:%s ~fsid:%s ~total_size:%Li ~max_size:%Li access:%Li"
         ([%show:boid] boid)
         (Prelude.to_hex fsid)
         total_size
+        max_size
+        access
 
       >>= fun () ->
       let bid = bid_of boid in
@@ -890,6 +912,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let kaccess_rev0 = access_key_of access0 in
       let vboid = boid_value_of boid in
       let vaccess = access_value_of access in
+
       let open Rocks in
       WriteBatch.with_t
         (fun wb ->
@@ -898,7 +921,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
          WriteBatch.put wb kaccess vaccess;
          WriteBatch.put wb kaccess_rev vboid;
          WriteBatch.delete wb kaccess_rev0;
-         (*  total' = total *)
+         (* total count remains the same *)
          WriteBatch.put wb _TOTAL_SIZE total_size';
          WriteOptions.with_t (fun wo -> RocksDb.write db wo wb)
         );
@@ -908,7 +931,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
 
       Lwt_mutex.with_lock _mutex
         (fun () ->
-         Lwt_log.debug_f "add %lx %S" bid oid >>= fun () ->
+         Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
          let boid = (bid, oid) in
 
          let fsid = self # create_fs_id () in
@@ -918,12 +941,12 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
            (fun () ->
             let path = path_of_fsid bid fsid in
             let dir = Filename.dirname path in
-            Lwt_log.debug_f "add...path=%s dir=%s" path dir
+            Lwt_log.debug_f ~section "add...path=%s dir=%s" path dir
             >>= fun () ->
             Alba_statistics.Statistics.with_timing_lwt
              (fun () -> Asd_server.DirectoryInfo.ensure_dir_exists dirs dir)
             >>= fun (took, ()) ->
-            Lwt_log.debug_f "ensure_dir_exists %s took:%f" dir took
+            Lwt_log.debug_f ~section "ensure_dir_exists %s took:%f" dir took
             >>= fun () ->
             let total_count = get_int64 db _TOTAL_COUNT in
             let total_size  = get_int64 db _TOTAL_SIZE in
@@ -950,18 +973,20 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
             end
            )
            (fun exn ->
-            Lwt_log.warning_f ~exn
-                              "adding fragment to cache failed; ignoring error"
+            Lwt_log.warning_f
+              ~exn
+              ~section
+              "adding fragment to cache failed; ignoring error"
            )
         )
 
     method drop bid =
-      Lwt_log.debug_f "blob_cache # drop %li" bid >>= fun () ->
+      Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->
       Hashtbl.replace _dropping bid ();
       Lwt.return ()
 
     method close () =
-      Lwt_log.warning_f "closing database" >>= fun () ->
+      Lwt_log.warning_f ~section "closing database" >>= fun () ->
       Lwt_mutex.with_lock _mutex
       (fun () ->
        Rocks.RocksDb.close db;
@@ -978,7 +1003,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
                           ~perm:0o644
                           (fun fd -> Lwt.return ())
        >>= fun () ->
-       Lwt_log.debug_f "marker written:%s" fn >>= fun () ->
+       Lwt_log.debug_f ~section "marker written:%s" fn >>= fun () ->
        Lwt.return ()
       )
 end

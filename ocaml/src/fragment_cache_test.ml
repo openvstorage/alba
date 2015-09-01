@@ -213,7 +213,7 @@ let test_5 () =
 let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
     cache #clear_all () >>= fun () ->
-    let blob = Bytes.create 4096 in
+    let make_blob () = Bytes.create (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
         if i = 0
@@ -223,6 +223,7 @@ let test_long () =
             let bid = Random.int32 10l in
             let oid = Random.int 100  |> Printf.sprintf "%04x" in
             Lwt_io.printlf "i:%i" i >>= fun () ->
+            let blob = make_blob() in
             cache # add bid oid blob >>= fun () ->
             Lwt_log.debug_f "after add in fill" >>= fun () ->
             loop (i-1)
@@ -249,7 +250,7 @@ let test_long () =
       loop 0 0 n
     in
     let t0 = Unix.gettimeofday () in
-    fill  1000 >>= fun () ->
+    fill 1000 >>= fun () ->
     let t1 = Unix.gettimeofday () in
     let d = t1 -. t0 in
     Lwt_log.debug_f "fill loop took: %3f" d >>= fun () ->
