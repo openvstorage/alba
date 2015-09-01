@@ -60,6 +60,37 @@ let alba_create_preset_cmd =
     "create-preset"
     ~doc:"create a new preset. the preset is read from stdin as json, pls have a look at cfg/preset.json for more details."
 
+let alba_update_preset
+      cfg_file preset_name
+      to_json
+  =
+  let t () =
+    Lwt_io.read Lwt_io.stdin >>= fun txt ->
+    let json = Yojson.Safe.from_string txt in
+    let open Albamgr_protocol.Protocol in
+    let preset_updates =
+      match Preset.Update.of_yojson json with
+      | `Error s -> failwith s
+      | `Ok p -> p
+    in
+    Albamgr_client.with_client'
+      (Arakoon_config.from_config_file cfg_file)
+      (fun client ->
+         client # update_preset
+           preset_name
+           preset_updates)
+  in
+  lwt_cmd_line_unit to_json t
+
+let alba_update_preset_cmd =
+  Term.(pure alba_update_preset
+        $ alba_cfg_file
+        $ preset_name 0
+        $ to_json),
+  Term.info
+    "update-preset"
+    ~doc:"update an existing preset. the preset is read from stdin as json, pls have a look at cfg/update_preset.json for more details."
+
 let alba_preset_set_default cfg_file preset_name to_json =
   let t () =
     let open Albamgr_protocol.Protocol in
@@ -142,6 +173,7 @@ let alba_list_presets_cmd =
 
 let cmds = [
   alba_create_preset_cmd;
+  alba_update_preset_cmd;
   alba_preset_set_default_cmd;
   alba_add_osds_to_preset_cmd;
   alba_delete_preset_cmd;
