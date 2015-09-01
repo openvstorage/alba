@@ -336,6 +336,11 @@ class client (client : basic_client) =
         (self # list_decommissioning_osds
            ~last:None
            ~max:(-1) ~reverse:false)
+
+    method update_preset name updates =
+      client # update
+        UpdatePreset
+        (name, updates)
   end
 
 class single_connection_client (ic, oc) =

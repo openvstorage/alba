@@ -59,43 +59,9 @@ class client
     nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
     osd_access # osds_to_osds_info_cache osds
   in
-
-  let preset_cache = Hashtbl.create 3 in
-  let get_preset_info ~preset_name =
-    try Lwt.return (Hashtbl.find preset_cache preset_name)
-    with Not_found ->
-      let get_preset () =
-        mgr_access # get_preset ~preset_name >>= fun preset_o ->
-        let _name, preset, _is_default, _in_use = Option.get_some preset_o in
-        Lwt.return preset
-      in
-      get_preset () >>= fun preset ->
-
-      if not (Hashtbl.mem preset_cache preset_name)
-      then begin
-        Lwt.ignore_result begin
-          (* start a thread to refresh the preset periodically *)
-          let rec inner () =
-            Lwt.catch
-              (fun () ->
-                 Lwt_extra2.sleep_approx 120. >>= fun () ->
-                 get_preset () >>= fun preset ->
-                 Hashtbl.replace preset_cache preset_name preset;
-                 Lwt.return ())
-              (fun exn ->
-                 Lwt_log.debug_f
-                   ~exn
-                   "Error in refresh preset loop %S, ignoring"
-                   preset_name) >>= fun () ->
-            inner ()
-          in
-          inner ()
-        end;
-        Hashtbl.replace preset_cache preset_name preset
-      end;
-      Lwt.return preset
-  in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
+  let preset_cache = new Alba_client_preset_cache.preset_cache mgr_access in
+  let get_preset_info = preset_cache # get in
   object(self)
 
     val manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size
@@ -106,6 +72,7 @@ class client
     method nsm_host_access = nsm_host_access
     method osd_access = osd_access
 
+    method get_preset_cache = preset_cache
     method get_preset_info = get_preset_info
 
     method get_ns_preset_info ~namespace_id =

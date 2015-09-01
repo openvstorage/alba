@@ -1055,6 +1055,7 @@ module Protocol = struct
                       Wrap_u SetDefaultPreset, 25l, "SetDefaultPreset";
                       Wrap_u DeletePreset, 26l, "DeletePreset";
                       Wrap_u AddOsdsToPreset, 27l, "AddOsdsToPreset";
+                      Wrap_u UpdatePreset, 49l, "UpdatePreset";
 
                       Wrap_u AddOsd, 28l, "AddOsd";
                       Wrap_u MarkOsdClaimed, 29l, "MarkOsdClaimed";
@@ -1125,7 +1126,12 @@ module Protocol = struct
 
   let tag_to_command =
     let hasht = Hashtbl.create 3 in
-    List.iter (fun (comm, tag, _) -> Hashtbl.add hasht tag comm) command_map;
+    List.iter
+      (fun (comm, tag, _) ->
+       if Hashtbl.mem hasht tag
+       then failwith (Printf.sprintf "%li is used for multiple albamgr commands" tag);
+       Hashtbl.add hasht tag comm)
+      command_map;
     (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
 
   let tag_to_name =

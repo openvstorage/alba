@@ -18,6 +18,7 @@ open Lwt.Infix
 open Prelude
 
 let test_with_alba_client = Alba_test.test_with_alba_client
+let _wait_for_osds = Alba_test._wait_for_osds
 
 let with_nice_error_log f =
   let open Alba_client_errors in
@@ -29,16 +30,6 @@ let with_nice_error_log f =
          >>= fun () -> Lwt.fail x
       | x     -> Lwt.fail x
     )
-
-let _wait_for_osds (alba_client:Alba_client.alba_client) namespace_id =
-  let rec loop () =
-    alba_client # nsm_host_access # refresh_namespace_osds ~namespace_id
-    >>= fun (cnt, osd_ids) ->
-    if cnt > 10
-    then Lwt.return ()
-    else Lwt_unix.sleep 0.1 >>= fun () -> loop ()
-  in
-  loop ()
 
 let test_rebalance_one () =
   let test_name = "test_rebalance_one" in

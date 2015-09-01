@@ -28,6 +28,16 @@ let test_with_alba_client ?bad_fragment_callback f =
       f
   end
 
+let _wait_for_osds (alba_client:Alba_client.alba_client) namespace_id =
+  let rec loop () =
+    alba_client # nsm_host_access # refresh_namespace_osds ~namespace_id
+    >>= fun (cnt, osd_ids) ->
+    if cnt > 10
+    then Lwt.return ()
+    else Lwt_unix.sleep 0.1 >>= fun () -> loop ()
+  in
+  loop ()
+
 let delete_fragment
       (alba_client:Alba_client.alba_client)
       namespace_id object_id
@@ -1532,6 +1542,60 @@ let test_master_switch () =
      Lwt.return ()
     )
 
+let test_update_policies () =
+  let test_name = "test_update_policies" in
+  test_with_alba_client
+    (fun alba_client ->
+     let namespace = test_name in
+     let preset_name = test_name in
+     let open Albamgr_protocol.Protocol in
+     let preset =
+       Preset.({ _DEFAULT with
+                 policies = [ (2,1,2,3); ]; })
+     in
+     alba_client # mgr_access # create_preset preset_name preset >>= fun () ->
+     alba_client # create_namespace ~namespace ~preset_name:(Some preset_name) ()
+     >>= fun namespace_id ->
+     _wait_for_osds alba_client namespace_id >>= fun () ->
+
+     let assert_k_m mf k m =
+       let open Nsm_model in
+       let es, compression = match mf.Manifest.storage_scheme with
+         | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
+       let k', m', w = match es with
+         | Encoding_scheme.RSVM (k, m, w) -> k, m, w in
+       assert (k = k');
+       assert (m = m')
+     in
+
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name:"1"
+                 ~object_data:"a"
+                 ~checksum_o:None
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf1, _) ->
+
+     assert_k_m mf1 2 1;
+
+     alba_client # mgr_access # update_preset
+                 preset_name
+                 Preset.Update.({ policies' = Some [ (5,4,8,3); ]; }) >>= fun () ->
+
+     alba_client # get_base_client # get_preset_cache # refresh ~preset_name >>= fun () ->
+
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name:"2"
+                 ~object_data:"a"
+                 ~checksum_o:None
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf2, _) ->
+
+     assert_k_m mf2 5 4;
+
+     (* TODO run maintenance, then assert policy for object 1 *)
+
+     Lwt.return ()
+    )
 
 open OUnit
 
@@ -1554,4 +1618,5 @@ let suite = "alba_test" >:::[
     "test_add_disk" >:: test_add_disk;
     "test_invalidate_deleted_namespace" >:: test_invalidate_deleted_namespace;
     "test_master_switch" >:: test_master_switch;
+    "test_update_policies" >:: test_update_policies;
   ]
