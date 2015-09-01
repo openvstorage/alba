@@ -29,7 +29,11 @@ let test_with_alba_client ?bad_fragment_callback f =
   end
 
 let _wait_for_osds (alba_client:Alba_client.alba_client) namespace_id =
+  alba_client # nsm_host_access # get_namespace_info ~namespace_id
+  >>= fun (ns_info, _, _) ->
+  let nsm_host_id = ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id in
   let rec loop () =
+    alba_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->
     alba_client # nsm_host_access # refresh_namespace_osds ~namespace_id
     >>= fun (cnt, osd_ids) ->
     if cnt > 10
@@ -1568,9 +1572,10 @@ let test_update_policies () =
        assert (m = m')
      in
 
+     let object_name = "1" in
      alba_client # get_base_client # upload_object_from_string
                  ~namespace
-                 ~object_name:"1"
+                 ~object_name
                  ~object_data:"a"
                  ~checksum_o:None
                  ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf1, _) ->
@@ -1592,7 +1597,18 @@ let test_update_policies () =
 
      assert_k_m mf2 5 4;
 
-     (* TODO run maintenance, then assert policy for object 1 *)
+     let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
+     maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
+
+     alba_client # get_object_manifest
+                 ~consistent_read:true
+                 ~should_cache:false
+                 ~namespace
+                 ~object_name >>= fun (_, id_mf_o) ->
+
+     assert (id_mf_o <> None);
+     let mf' = Option.get_some id_mf_o in
+     assert_k_m mf' 5 4;
 
      Lwt.return ()
     )
