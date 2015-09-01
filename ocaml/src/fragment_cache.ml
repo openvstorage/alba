@@ -365,7 +365,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
 
     method _check () =
       Printf.printf "_check()\n%!";
-      let from_db () = (* for all fsids in the database, do we have a blob? *)
+      let iter_blob_kvs f =
         let prefix_length = String.length _BLOBS in
         KV.with_cursor
           db
@@ -380,42 +380,132 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
                if key_prefix = _BLOBS
                then
                  begin
-                   let () = Printf.printf "key:%s fsid:%s%!"
-                                          (Prelude.to_hex key)
-                                          (Prelude.to_hex fsid)
-                   in
-                   let () =
-                     let boid = boid_of_fsid_key key in
-                     let () = Printf.printf " boid:%s %!" ([%show :boid] boid) in
-                     let bid = bid_of boid in
-                     let path = path_of_fsid bid fsid in
-                     let full_path = canonical path in
-                     if Sys.file_exists full_path
+                   let () = f key fsid in
+                   let _ = KV.cur_next c in (*size *)
+                   let _ = KV.cur_next c in (*access *)
+                   let _ = KV.cur_next c in
+                   loop ()
+                 end
+               else ()
+             else
+               ()
+           in
+           loop ()
+          )
+      in
+      let from_db () = (* for all fsids in the database, do we have a blob? *)
+        let count = ref 0 in
+        let check_key key fsid =
+          begin
+            let () =
+              Printf.printf "key:%60s fsid:%48s%!"
+                            (Prelude.to_hex key)
+                            (Prelude.to_hex fsid)
+            in
+            let boid = boid_of_fsid_key key in
+            let () = Printf.printf " boid:%16s %!" ([%show :boid] boid) in
+            let bid = bid_of boid in
+            let path = path_of_fsid bid fsid in
+            let full_path = canonical path in
+            let () = if Sys.file_exists full_path
                      then Printf.printf " %S exists\n%!" full_path
                      else
                        let () = Printf.printf " %S does not exist\n%!" full_path
                        in
                        failwith "check failed (1)"
-                   in
-                   let _ = KV.cur_next c in (*size *)
-                   let _ = KV.cur_next c in (*access *)
-                   let _ = KV.cur_next c in
-                   loop (count + 1)
-                 end
-               else count
-             else
-               count
-           in
-           loop 0
-          )
+            in
+            incr count
+          end
+        in
+        iter_blob_kvs check_key;
+        !count |> Int64.of_int
+      in
+      let from_fs () =
+        let is_dir f =
+          let st = Unix.stat f in
+          st.st_kind = Unix.S_DIR
+        in
+        let this_level (dir:string) =
+          let rec inner h (dirs:string list) files =
+            let entry = try Some (Unix.readdir h ) with End_of_file -> None in
+            match entry with
+            | None -> (dirs,files)
+            | Some "." | Some ".." | Some "db" -> inner h dirs files
+            | Some e ->
+               let full = Printf.sprintf "%s/%s" dir e in
+               if is_dir full
+               then inner h (full::dirs) files
+               else inner h dirs (full::files)
+          in
+          let h = Unix.opendir dir in
+          let r = inner h [] [] in
+          let () = closedir h in
+          r
+        in
+        let entries dir =
+          let rec walk dir acc =
+            let dirs,files = this_level dir in
+            List.fold_left
+              (fun acc d ->
+               let acc' = walk d acc in
+               acc'
+              ) (files @ acc) dirs
+          in
+          walk dir []
+        in
+        let blob_names = entries root in
+        let size_fs =
+          List.fold_left
+            (fun acc f ->
+             let st = Unix.stat f in
+             acc + st.st_size
+            )
+            0
+            blob_names
+        in
+        let count_fs = List.length blob_names in
+        Printf.printf "xs=%s count_fs:%i total_size:%i\n"
+                      ([%show:string list] blob_names)
+                      count_fs size_fs;
+        let blob_names_set = StringSet.of_list blob_names in
+        let remainder_set =
+          let r = ref blob_names_set in
+          let () =
+            iter_blob_kvs
+              (fun key fsid ->
+               let boid = boid_of_fsid_key key in
+               let bid = bid_of boid in
+               let path = path_of_fsid bid fsid in
+               let full_path = canonical path in
+               let new_set = StringSet.remove full_path !r in
+               r := new_set
+            )
+          in
+          ! r
+        in
+        count_fs |> Int64.of_int,
+        size_fs  |> Int64.of_int, remainder_set
       in
       try
-        let count_here = from_db() in
+        let size_rocks = self # get_total_size () in
+        let count_fs,size_fs,remainder_set  = from_fs()  in
+        Printf.printf "size_fs=%Li size_rocks=%Li\n" size_fs size_rocks;
+        let n_rogue_blobs = StringSet.cardinal remainder_set in
+        Printf.printf "n_rogue_blobs:%i\n" n_rogue_blobs;
+        StringSet.iter
+          (fun bn -> Printf.printf "%S?\n" bn) remainder_set;
+        let count_db = from_db() in
         let count_rocks = self # get_count ()  in
+
         Printf.printf
-          "count_here=%i, count_rocks=%Li \n"
-          count_here count_rocks;
-        true
+          "count_db:%Li, count_fs:%Li get_count:%Li\n%!"
+          count_db count_fs count_rocks;
+        (size_rocks = size_fs
+         && count_fs = count_db
+         && count_db = count_rocks
+         && n_rogue_blobs = 0
+        )
+
       with exn ->
         let () = Printf.printf "exn:%s\n%!" (Printexc.to_string exn) in
         false

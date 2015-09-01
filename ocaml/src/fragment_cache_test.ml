@@ -142,16 +142,17 @@ let test_4 () =
   let _inner (cache : Fragment_cache.blob_cache) =
     cache # clear_all() >>= fun () ->
     let blob = Bytes.create blob_size in
+    let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
       if n = 1000
       then Lwt.return ()
       else
-        let oid = Printf.sprintf "%i" n in
+        let oid = make_oid n in
         cache # add 0l oid blob >>= fun () ->
         begin
           if n > 100
           then
-            let oid' = Printf.sprintf "%i" (n - 100) in
+            let oid' = make_oid (n - 100) in
             cache # add 0l oid' blob
           else
             Lwt.return ()
@@ -159,7 +160,9 @@ let test_4 () =
         >>= fun () ->
         loop (n+1)
     in
-    loop 0
+    loop 0 >>= fun () ->
+    let _ = cache # _check () in
+    Lwt.return ()
   in
   let size = 40_000_000L in
   run_with_fragment_cache size _inner "test_4"
@@ -201,6 +204,7 @@ let test_5 () =
       ~printer ~msg:"total_size" 16384L (cache # get_total_size ());
     OUnit.assert_equal
       ~printer ~msg:"cache count after" 4L (cache # get_count());
+    OUnit.assert_bool "_check failed" (cache # _check ());
     Lwt.return ()
   in
   run_with_fragment_cache 65536L _inner "test_5"
