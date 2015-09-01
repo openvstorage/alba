@@ -1147,7 +1147,7 @@ let test_disk_churn () =
 
        let fragment_size = 40 in
        let k = 2 in
-       let object_size = fragment_size * k * 3 in
+       let object_size = fragment_size * k * 30 in
        let object_data = String.make object_size 'a' in
 
        let inner osd_ids =
@@ -1156,7 +1156,7 @@ let test_disk_churn () =
                _DEFAULT
                with
                  osds = Explicit osd_ids;
-                 policies = [(k,1,k,k+1)];
+                 policies = [ (k,1,k+1,k+1); (1,0,1,1); ];
                  fragment_size;
              })
          in
@@ -1186,7 +1186,7 @@ let test_disk_churn () =
 
          let used_osds_set = Manifest.osds_used mf.Manifest.fragment_locations in
          let used_osds = DeviceSet.elements used_osds_set in
-         assert (List.length used_osds = 3);
+         assert (List.length used_osds = (k+1));
 
          Lwt_list.iter_s
            (fun osd_id ->
@@ -1222,10 +1222,10 @@ let test_disk_churn () =
            ~consistent_read:true
            ~should_cache:false
            ~namespace
-           ~object_name >>= fun (_, id_mf_o) ->
+           ~object_name >>= fun (_, mf_o) ->
 
-         assert (id_mf_o <> None);
-         let mf' = Option.get_some id_mf_o in
+         assert (mf_o <> None);
+         let mf' = Option.get_some mf_o in
 
          assert (mf'.Manifest.object_id = mf.Manifest.object_id);
          let used_osds_set' = Manifest.osds_used mf'.Manifest.fragment_locations in
@@ -1268,7 +1268,38 @@ let test_disk_churn () =
 
          assert (data_o <> None);
 
-         Lwt.return ()
+         begin
+           Lwt_log.debug_f "starting disk churn test phase 2" >>= fun () ->
+           (* decommission another osd. now there will not be enough osds
+            * remaining to do an orange repair (which leaves the object id intact)
+            *)
+           let osd_id = List.hd_exn used_osds' in
+
+           alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>=
+             (function
+               | None -> Lwt.fail_with "can't find osd"
+               | Some osd_info ->
+                  alba_client # decommission_osd
+                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+           >>= fun () ->
+           maintenance_client # decommission_device
+                              ~namespace_id
+                              ~osd_id >>= fun () ->
+
+           alba_client # get_object_manifest
+                       ~consistent_read:true
+                       ~should_cache:false
+                       ~namespace
+                       ~object_name >>= fun (_, mf_o) ->
+
+           assert (mf_o <> None);
+           let mf' = Option.get_some mf_o in
+
+           assert (mf'.Manifest.object_id <> mf.Manifest.object_id);
+           assert (1 = DeviceSet.cardinal (Manifest.osds_used mf'.Manifest.fragment_locations));
+
+           Lwt.return ()
+         end
        in
 
        with_asds
