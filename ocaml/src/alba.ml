@@ -23,7 +23,7 @@ open Cli_common
 let () =
   Lwt_engine.set (new Lwt_engine.select);
   Lwt.async_exception_hook :=
-    (fun exn -> Lwt_log.ign_debug_f ~exn "Caught async exception")
+    (fun exn -> Lwt_log.ign_info_f ~exn "Caught async exception")
 
 let osd_id =
   let doc = "$(docv) of the osd to connect with" in
