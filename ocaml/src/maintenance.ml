@@ -997,17 +997,37 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
         (Policy.show_policy best_policy) best_actual_fragment_count
       >>= fun () ->
 
-      (*
-         iter policies, start from worst until best policy
-         query objects by bucket; start with the weakest
-         and repair it
-
-         for current best policy: do orange repair
-      *)
+      (* first get all buckets
+       * - for non existing buckets -> rewrite all objects
+       * - for existing buckets: iter from worst until best policy
+       *   rewrite objects in weak buckets
+       *   for current best policy: do orange repair
+       *)
 
       alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
 
+      nsm # get_stats >>= fun stats ->
+      let (_, bucket_counts) = stats.Nsm_model.NamespaceStats.bucket_count in
+
       let policies_rev = List.rev policies in
+
+      let policies_rev =
+        List.fold_left
+          (fun acc ((k,m,_,_), cnt) ->
+           if cnt > 0L
+           then
+             begin
+               if List.exists
+                    (fun (k', m', _, _) -> k' = k && m' = m)
+                    acc
+               then acc
+               else (k,m,0,0) :: acc
+             end
+           else
+             acc)
+          policies_rev
+          bucket_counts
+      in
 
       let rec inner = function
         | [] -> Lwt.fail_with "should never get here"
