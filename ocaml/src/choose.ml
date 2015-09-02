@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+exception EmptyChoose
+
 module Inner = struct
 
     let take_random items =
@@ -102,7 +104,7 @@ module Inner = struct
 
     let rec choose_device bags =
       match bags with
-      | [] -> failwith "empty in Choose.choose_device"
+      | [] -> raise EmptyChoose
       | [] :: t -> choose_device t
       | bag :: t ->
          let p, rbags = take_biased weight_of bag in

@@ -107,11 +107,12 @@ let maybe_compress compression fragment_data =
 
 let maybe_decompress ~release_input compression compressed =
   let open Lwt.Infix in
+  let compressed_length = Lwt_bytes.length compressed in
   Compressors.decompress ~release_input compression compressed >>= fun r ->
   Lwt_log.debug_f
      "decompression: %s (%i => %i)"
      ([%show: Compression.t] compression)
-     (Lwt_bytes.length compressed)
+     compressed_length
      (Lwt_bytes.length r) >>= fun () ->
   Lwt.return r
 

@@ -39,6 +39,7 @@ ALBA_BIN = env_or_default("ALBA_BIN",
 ALBA_PLUGIN_HOME = env_or_default("ALBA_PLUGIN_HOME",
                                   "%s/ocaml" % cwd)
 
+ALBA_ASD_PATH_T = env_or_default("ALBA_ASD_PATH_T", "/tmp/alba/asd/%02i")
 
 KINDS = ["ASD","KINETIC"]
 env = {
@@ -46,7 +47,7 @@ env = {
     'alba_plugin_path' : ALBA_PLUGIN_HOME,
     'alba_bin' : ALBA_BIN,
     'kinetic_bin': '%s/bin/start_kinetic.sh' % cwd,
-    'asd_path_t': "/tmp/alba/asd/%02i",
+    'asd_path_t': ALBA_ASD_PATH_T,
     'arakoon_bin' : ARAKOON_BIN,
     'voldrv_backend_test' : "%s/backend_test" % VOLDRV_HOME,
     'voldrv_tests' : "%s/volumedriver_test" % VOLDRV_HOME,

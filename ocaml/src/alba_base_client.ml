@@ -97,9 +97,21 @@ class client
       Lwt.return preset
   in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
+  let manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size in
+  let bad_fragment_callback
+        self
+        ~namespace_id ~object_id ~object_name
+        ~chunk_id ~fragment_id ~version_id =
+    Manifest_cache.ManifestCache.remove
+      manifest_cache
+      namespace_id object_name;
+    bad_fragment_callback
+      self
+      ~namespace_id ~object_id ~object_name
+      ~chunk_id ~fragment_id ~version_id
+  in
   object(self)
 
-    val manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size
     method get_manifest_cache : (string, string) Manifest_cache.ManifestCache.t = manifest_cache
     method get_fragment_cache = fragment_cache
 
@@ -116,11 +128,11 @@ class client
 
     method get_namespace_osds_info_cache = get_namespace_osds_info_cache
 
-    method discover_osds_check_claimed ?check_claimed_delay ~chattiness () : unit Lwt.t =
+    method discover_osds_check_claimed ?check_claimed_delay () : unit Lwt.t =
       Discovery.discovery
         (fun d ->
            Lwt_extra2.ignore_errors
-             (fun () -> osd_access # seen ?check_claimed_delay ~chattiness d))
+             (fun () -> osd_access # seen ?check_claimed_delay d))
 
     method with_osd :
       'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -557,10 +569,6 @@ class client
       ~(object_slices : (Int64.t * int) list)
       ~consistent_read
       write_data =
-      self # get_object_manifest'
-        ~namespace_id ~object_name
-        ~consistent_read ~should_cache:true
-      >>= fun (cache_hit, r) ->
       let attempt_download_slices manifest =
          begin
            let open Nsm_model in
@@ -832,6 +840,10 @@ class client
              end
          end
       in
+      self # get_object_manifest'
+        ~namespace_id ~object_name
+        ~consistent_read ~should_cache:true
+      >>= fun (cache_hit, r) ->
       match r with
       | None -> Lwt.return None
       | Some manifest ->

@@ -1,6 +1,6 @@
 #!/bin/bash -xue
 
-APT_DEPENDS="libev-dev libssl-dev libsnappy-dev \
+APT_DEPENDS="libssl-dev libsnappy-dev \
              libgmp3-dev help2man g++-4.8 \
              libgcrypt11-dev \
              protobuf-compiler libjerasure-dev \
