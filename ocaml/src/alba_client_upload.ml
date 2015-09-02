@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Slice
+open Lwt_bytes2
 open Checksum
 open Recovery_info
 open Alba_statistics
@@ -38,12 +39,13 @@ let upload_packed_fragment_data
   =
   let open Osd_keys in
   let set_data =
-    Osd.Update.set_string
+    Osd.Update.set
       (AlbaInstance.fragment
          ~namespace_id
          ~object_id ~version_id
-         ~chunk_id ~fragment_id)
-      (Lwt_bytes.to_string packed_fragment) checksum false
+         ~chunk_id ~fragment_id
+       |> Slice.wrap_string)
+      packed_fragment checksum false
   in
   let set_recovery_info =
     Osd.Update.set
@@ -120,7 +122,7 @@ let upload_chunk
   let packed_fragment_sizes =
     List.map
       (fun (_, _, (packed_fragment, _, _, _)) ->
-       Lwt_bytes.length packed_fragment)
+       Slice.length packed_fragment)
       fragments_with_id
   in
   let fragment_checksums =
@@ -164,8 +166,8 @@ let upload_chunk
      >>= fun (t_store, x) ->
 
      let t_fragment = Statistics.({
-                                     size_orig = Lwt_bytes.length fragment;
-                                     size_final = Lwt_bytes.length packed_fragment;
+                                     size_orig = Bigstring_slice.length fragment;
+                                     size_final = Slice.length packed_fragment;
                                      compress_encrypt = t_compress_encrypt;
                                      hash = t_hash;
                                      osd_id_o;
@@ -305,9 +307,8 @@ let upload_object''
 
   let object_id = get_random_string 32 in
 
-  let fold_chunks () =
+  let fold_chunks chunk =
 
-    let chunk = Lwt_bytes.create desired_chunk_size in
     let rec inner acc_chunk_sizes acc_fragments_info total_size chunk_times hash_time chunk_id =
       let t0_chunk = Unix.gettimeofday () in
       Statistics.with_timing_lwt
@@ -346,19 +347,24 @@ let upload_object''
             s
           end
       in
-      let chunk' = Lwt_bytes.proxy chunk 0 chunk_size_with_padding in
+      let chunk' = Lwt_bytes.extract chunk 0 chunk_size_with_padding in
 
-      upload_chunk
-        osd_access
-        ~namespace_id
-        ~object_id ~object_name
-        ~chunk:chunk' ~chunk_size:chunk_size_with_padding
-        ~chunk_id
-        ~k ~m ~w'
-        ~compression ~encryption ~fragment_checksum_algo
-        ~version_id ~gc_epoch
-        ~object_info_o
-        ~osds:target_osds
+      Lwt.finalize
+        (fun () ->
+         upload_chunk
+           osd_access
+           ~namespace_id
+           ~object_id ~object_name
+           ~chunk:chunk' ~chunk_size:chunk_size_with_padding
+           ~chunk_id
+           ~k ~m ~w'
+           ~compression ~encryption ~fragment_checksum_algo
+           ~version_id ~gc_epoch
+           ~object_info_o
+           ~osds:target_osds)
+        (fun () ->
+         Lwt_bytes.unsafe_destroy chunk';
+         Lwt.return ())
       >>= fun fragment_info ->
 
       let t_fragments, fragment_info = List.split fragment_info in
@@ -390,7 +396,11 @@ let upload_object''
     in
     inner [] [] 0 [] 0. 0 in
 
-  fold_chunks ()
+  let chunk = Lwt_bytes.create desired_chunk_size in
+  Lwt.finalize
+    (fun () -> fold_chunks chunk)
+    (fun () -> Lwt_bytes.unsafe_destroy chunk;
+               Lwt.return ())
   >>= fun ((chunk_sizes', fragments_info'), size, chunk_times, hash_time) ->
 
   (* all fragments have been stored

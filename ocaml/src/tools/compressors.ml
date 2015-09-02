@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Slice
+open Lwt_bytes2
 open Bytes_descr
 open Ctypes
 open Foreign
@@ -77,7 +78,7 @@ module Snappy = struct
             (Bytes_descr.start descr_res res)
             len_res in
         check_status status;
-        Bytes_descr.sub descr_res res 0 !@len_res
+        Bytes_descr.extract descr_res res 0 !@len_res
 
   let compress_substring s off len =
     let res =
@@ -103,6 +104,10 @@ module Snappy = struct
   let compress_ba_ba =
     _snappy_compress_generic
       Bytes_descr.Bigarray Bytes_descr.Bigarray
+
+  let compress_bss_ba =
+    _snappy_compress_generic
+      Bytes_descr.Bigstring_slice Bytes_descr.Bigarray
 
   let _snappy_uncompress_generic : type t1 c1 t2 c2.
     (t1, c1) Bytes_descr.t -> (t2, c2) Bytes_descr.t ->
@@ -244,9 +249,7 @@ module Bzip2 = struct
         let dest = Bytes_descr.create descr_res (max_len + 4) in
         let status =
           inner
-            (let l = Bytes_descr.sub descr_res dest 4 max_len in
-             Bytes_descr.start descr_res l)
-            (* (Bytes_descr.start descr_res dest +@ 4) *)
+            (Bytes_descr.start_with_offset descr_res dest 4)
             len_res
             (Bytes_descr.start descr_data data)
             len
@@ -257,7 +260,7 @@ module Bzip2 = struct
         check_status status;
         (* serialize effective length before compressed data *)
         Bytes_descr.set32_prim descr_res dest 0 (Int32.of_int len);
-        Bytes_descr.sub descr_res dest 0 (!@len_res + 4)
+        Bytes_descr.extract descr_res dest 0 (!@len_res + 4)
 
   let compress_string ?block s =
     let res =
@@ -286,6 +289,10 @@ module Bzip2 = struct
   let compress_ba_ba =
     _compress_generic
       Bytes_descr.Bigarray Bytes_descr.Bigarray
+
+  let compress_bss_ba =
+    _compress_generic
+      Bytes_descr.Bigstring_slice Bytes_descr.Bigarray
 
   let _decompress_generic : type t1 c1 t2 c2.
     (t1, c1) Bytes_descr.t -> (t2, c2) Bytes_descr.t ->
@@ -319,8 +326,7 @@ module Bzip2 = struct
           inner
             (Bytes_descr.start descr_res res)
             (allocate int_to_unsigned_int res_len)
-            (let l = Bytes_descr.sub descr_data data 4 len in
-             Bytes_descr.start descr_data l)
+            (Bytes_descr.start_with_offset descr_data data 4)
             len
             small
             verbosity in
@@ -362,24 +368,34 @@ module Bzip2 = struct
 end
 
 open Alba_compression.Compression
+open Lwt.Infix
 
-let decompress =
+let decompress ~release_input c f =
   (* big array to big array, detached *)
-  function
-  | NoCompression -> Lwt.return
+  match c with
+  | NoCompression ->
+     if release_input
+     then Lwt.return f
+     else Lwt.return (Lwt_bytes.copy f)
   | Snappy ->
-    Lwt_preemptive.detach
-      (Snappy.uncompress_ba_ba ~release_runtime_lock:true)
+     Lwt_preemptive.detach
+       (Snappy.uncompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
+     if release_input
+     then Lwt_bytes.unsafe_destroy f;
+     Lwt.return res
   | Bzip2 ->
-    Lwt_preemptive.detach
-      (Bzip2.decompress_ba_ba ~release_runtime_lock:true)
+     Lwt_preemptive.detach
+       (Bzip2.decompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
+     if release_input
+     then Lwt_bytes.unsafe_destroy f;
+     Lwt.return res
 
-let compress = function
-  | NoCompression -> Lwt.return
+let compress c f = match c with
+  | NoCompression ->
+     Lwt.return (Bigstring_slice.extract_to_bigstring f)
   | Snappy ->
-    Lwt_preemptive.detach
-      (Snappy.compress_ba_ba ~release_runtime_lock:true)
+     Lwt_preemptive.detach
+       (Snappy.compress_bss_ba ~release_runtime_lock:true) f
   | Bzip2 ->
-    Lwt_preemptive.detach
-      (Bzip2.compress_ba_ba ~release_runtime_lock:true)
-
+     Lwt_preemptive.detach
+       (Bzip2.compress_bss_ba ~release_runtime_lock:true) f

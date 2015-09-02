@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Slice
+open Lwt_bytes2
 open Ctypes
 open Foreign
 open Bytes_descr
@@ -122,7 +123,7 @@ module Padding = struct
     Lwt_bytes.fill res used_len n (Char.chr n);
     res
 
-  let unpad data =
+  let unpad ~release_input data =
     (* unpad from bigarray to bigarray (in place) *)
     let len = Lwt_bytes.length data in
     let cnt_char = Lwt_bytes.get data (len - 1) in
@@ -134,7 +135,12 @@ module Padding = struct
       then failwith "bad padding'"
     done;
 
-    Lwt_bytes.proxy data 0 (len - cnt)
+    let res = Lwt_bytes.extract data 0 (len - cnt) in
+
+    if release_input
+    then Lwt_bytes.unsafe_destroy data;
+
+    res
 
 end
 
