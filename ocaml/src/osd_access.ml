@@ -33,7 +33,11 @@ type osd_state = {
 let large_value = lazy (String.make (512*1024) 'a')
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool
 
-class osd_access mgr_access osd_connection_pool_size =
+class osd_access
+        mgr_access
+        ~osd_connection_pool_size
+        ~osd_timeout
+  =
   let osds_info_cache =
     let open Albamgr_protocol.Protocol in
     (Hashtbl.create 3
@@ -134,7 +138,7 @@ class osd_access mgr_access osd_connection_pool_size =
                                            false ])
                                 >>= function
                                 | (t, Osd.Ok) ->
-                                   if t < 1.
+                                   if t < osd_timeout
                                    then Lwt.return `OkAgain
                                    else Lwt.return (`Continue Lwt_unix.Timeout)
                                 | (_, Osd.Exn err) ->
@@ -179,6 +183,8 @@ class osd_access mgr_access osd_connection_pool_size =
     method get_osd_info = get_osd_info
 
     method osds_info_cache = osds_info_cache
+
+    method osd_timeout = osd_timeout
 
     method osds_to_osds_info_cache osds =
       let res = Hashtbl.create 0 in

@@ -25,6 +25,7 @@ module Config = struct
     albamgr_connection_pool_size : (int [@default 10]);
     nsm_host_connection_pool_size : (int [@default 10]);
     osd_connection_pool_size : (int [@default 10]);
+    osd_timeout : float [@default 2.];
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
@@ -80,6 +81,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
       and albamgr_connection_pool_size        = cfg.albamgr_connection_pool_size
       and nsm_host_connection_pool_size       = cfg.nsm_host_connection_pool_size
       and osd_connection_pool_size            = cfg.osd_connection_pool_size
+      and osd_timeout                         = cfg.osd_timeout
       and lwt_preemptive_thread_pool_min_size = cfg.lwt_preemptive_thread_pool_min_size
       and lwt_preemptive_thread_pool_max_size = cfg.lwt_preemptive_thread_pool_max_size
       in
@@ -131,6 +133,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
+        ~osd_timeout
         (fun client ->
            let maintenance_client =
              new Maintenance.client ~flavour ~filter (client # get_base_client)

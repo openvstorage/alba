@@ -75,7 +75,7 @@ let upload_packed_fragment_data
 
   let do_upload () =
     Lwt_unix.with_timeout
-      1.0
+      (osd_access # osd_timeout)
       (fun () ->
        osd_access # with_osd
          ~osd_id

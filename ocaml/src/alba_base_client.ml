@@ -41,6 +41,7 @@ class client
     ~bad_fragment_callback
     ~nsm_host_connection_pool_size
     ~osd_connection_pool_size
+    ~osd_timeout
   =
 
   let nsm_host_access =
@@ -51,7 +52,7 @@ class client
   in
 
   let osd_access =
-    new osd_access mgr_access osd_connection_pool_size
+    new osd_access mgr_access ~osd_connection_pool_size ~osd_timeout
   in
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
   let get_osd_info = osd_access # get_osd_info in

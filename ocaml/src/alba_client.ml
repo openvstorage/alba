@@ -388,6 +388,7 @@ let with_client albamgr_client_cfg
                 ?(albamgr_connection_pool_size = 10)
                 ?(nsm_host_connection_pool_size = 10)
                 ?(osd_connection_pool_size = 10)
+                ?(osd_timeout = 2.)
                 f
   =
   begin
@@ -415,6 +416,8 @@ let with_client albamgr_client_cfg
                         ~manifest_cache_size
                         ~bad_fragment_callback
                         ~nsm_host_connection_pool_size
-                        ~osd_connection_pool_size in
+                        ~osd_connection_pool_size
+                        ~osd_timeout
+  in
   let client = new alba_client base_client in
   f client

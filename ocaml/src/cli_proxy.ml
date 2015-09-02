@@ -31,6 +31,7 @@ module Config = struct
     albamgr_connection_pool_size : (int [@default 10]);
     nsm_host_connection_pool_size : (int [@default 10]);
     osd_connection_pool_size : (int [@default 10]);
+    osd_timeout : float [@default 2.];
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
@@ -67,7 +68,7 @@ let proxy_start cfg_file =
         fragment_cache_size,
         albamgr_connection_pool_size,
         nsm_host_connection_pool_size,
-        osd_connection_pool_size,
+        osd_connection_pool_size, osd_timeout,
         lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size =
         cfg.fragment_cache_dir,
         cfg.manifest_cache_size,
@@ -77,7 +78,7 @@ let proxy_start cfg_file =
         (cfg.fragment_cache_size / 100) * 85,
         cfg.albamgr_connection_pool_size,
         cfg.nsm_host_connection_pool_size,
-        cfg.osd_connection_pool_size,
+        cfg.osd_connection_pool_size, cfg.osd_timeout,
         cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size
       in
       let () = match cfg.chattiness with
@@ -125,6 +126,7 @@ let proxy_start cfg_file =
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
+        ~osd_timeout
         ~albamgr_cfg_file
   in
   lwt_server t
