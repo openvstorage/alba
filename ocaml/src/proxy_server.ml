@@ -256,11 +256,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
         | End_of_file as e ->
           Lwt.fail e
         | Protocol.Error.Exn err ->
-          Lwt_log.debug_f "Returning %s error to client"
+          Lwt_log.info_f "Returning %s error to client"
                           (Protocol.Error.show err) >>= fun () ->
           return_err_response err
         | Asd_protocol.Protocol.Error.Exn err ->
-          Lwt_log.debug_f
+          Lwt_log.info_f
             "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
             (Asd_protocol.Protocol.Error.show err) >>= fun () ->
           return_err_response Protocol.Error.Unknown
@@ -329,7 +329,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
         | Alba_client_errors.Error.Exn err ->
           begin
             let open Alba_client_errors.Error in
-            Lwt_log.debug_f "Got error from alba client: %s" (show err) >>= fun () ->
+            Lwt_log.info_f "Got error from alba client: %s" (show err) >>= fun () ->
             return_err_response
               (let open Protocol in
                match err with
@@ -345,7 +345,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
               )
           end
         | exn ->
-          Lwt_log.debug_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
+          Lwt_log.info_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
           return_err_response Protocol.Error.Unknown)
     >>= fun res ->
     Lwt_extra2.write_all' fd res
@@ -426,11 +426,24 @@ let run_server hosts port
                ~nsm_host_connection_pool_size
                ~osd_connection_pool_size
                ~albamgr_cfg_file
-               ~chattiness
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
   let stats = ProxyStatistics.make () in
+
+  let rec fragment_cache_disk_usage_t () =
+    Lwt.catch
+      (fun () ->
+       Fsutil.lwt_disk_usage cache_dir >>= fun (used_b, total_b) ->
+       let percentage =
+         100.0 *. ((Int64.to_float used_b) /. (Int64.to_float total_b))
+       in
+       Lwt_log.info_f "fragment_cache disk_usage: %.2f%%" percentage)
+      (fun exn -> Lwt_log.warning ~exn "fragment_cache_disk_usage_t")
+    >>= fun () ->
+    Lwt_unix.sleep 60.0 >>= fun () ->
+    fragment_cache_disk_usage_t ()
+  in
 
   Lwt.catch
     (fun () ->
@@ -459,7 +472,8 @@ let run_server hosts port
          ~osd_connection_pool_size
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # discover_osds_check_claimed ~chattiness ());
+            [ (alba_client # discover_osds_check_claimed ());
+              (alba_client # osd_access # propagate_osd_info ());
               (refresh_albamgr_cfg
                  ~loop:true
                  albamgr_client_cfg
@@ -478,10 +492,11 @@ let run_server hosts port
                      proxy_protocol alba_client stats fd ic)));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
+              (fragment_cache_disk_usage_t ());
             ])
     )
     (fun exn ->
-       Lwt_log.warning_f
+       Lwt_log.fatal_f
          ~exn
          "Going down after unexpected exception in proxy process" >>= fun () ->
        Lwt.fail exn)

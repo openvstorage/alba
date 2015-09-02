@@ -686,7 +686,6 @@ let test_discover_claimed () =
          (fun asd ->
             alba_client # osd_access # seen
               ~check_claimed_delay:1.
-              ~chattiness:1.
               Discovery.(Good("", { id = test_name;
                                     extras = Some({
                                         node_id = "bla";
@@ -773,8 +772,7 @@ let test_change_osd_ip_port () =
 
        Lwt.ignore_result
          (client # discover_osds_check_claimed
-            ~check_claimed_delay:0.1
-            ~chattiness:1. ());
+            ~check_claimed_delay:0.1 ());
 
        Asd_test.with_asd_client
          osd_name 16541
@@ -782,6 +780,7 @@ let test_change_osd_ip_port () =
             (* give maintenance process some time to discover the
                osd and register it in the albamgr *)
             Lwt_unix.sleep 0.2 >>= fun () ->
+            client # osd_access # propagate_osd_info ~run_once:true () >>= fun () ->
             client # claim_osd ~long_id:osd_name >>= fun osd_id ->
             (* sleep a bit here so the alba client can discover it's claimed status *)
             Lwt_unix.sleep 0.2 >>= fun () ->
@@ -824,7 +823,6 @@ let test_change_osd_ip_port () =
          osd_name 16542
          (fun asd ->
 
-            Lwt_unix.sleep 0.3 >>= fun () ->
             (* hmm or use with_osd !
                TODO, test with both... *)
 
@@ -839,17 +837,19 @@ let test_change_osd_ip_port () =
   test_with_alba_client
     (fun client ->
        Lwt.finalize
-         (fun () -> t client)
+         (fun () ->
+          t client >>= fun () ->
+          Lwt_log.debug "==================== end")
          (fun () ->
             safe_delete_namespace client test_name >>= fun () ->
             Asd_test.with_asd_client
               ~is_restart:true
               osd_name 16543
               (fun _ ->
-                 Lwt_unix.sleep 0.3 >>= fun () ->
-                 safe_decommission client [ osd_name ] >>= fun () ->
-                 wait_for_work client >>= fun () ->
-                 wait_for_work client)
+               client # osd_access # propagate_osd_info ~run_once:true () >>= fun () ->
+               safe_decommission client [ osd_name ] >>= fun () ->
+               wait_for_work client >>= fun () ->
+               wait_for_work client)
          )
     )
 
@@ -1133,7 +1133,6 @@ let test_disk_churn () =
              (fun asd ->
                 alba_client # osd_access # seen
                   ~check_claimed_delay:1.
-                  ~chattiness:1.
                   Discovery.(Good("", { id = asd_name;
                                         extras = Some({
                                             node_id = "bla";
@@ -1171,7 +1170,7 @@ let test_disk_churn () =
                _DEFAULT
                with
                  osds = Explicit osd_ids;
-                 policies = [(k,1,k,k+1)];
+                 policies = [ (k,1,k,k+1); (1,0,1,1); ];
                  fragment_size;
              })
          in
@@ -1201,7 +1200,7 @@ let test_disk_churn () =
 
          let used_osds_set = Manifest.osds_used mf.Manifest.fragment_locations in
          let used_osds = DeviceSet.elements used_osds_set in
-         assert (List.length used_osds = 3);
+         assert (List.length used_osds = (k+1));
 
          Lwt_list.iter_s
            (fun osd_id ->
@@ -1237,10 +1236,10 @@ let test_disk_churn () =
            ~consistent_read:true
            ~should_cache:false
            ~namespace
-           ~object_name >>= fun (_, id_mf_o) ->
+           ~object_name >>= fun (_, mf_o) ->
 
-         assert (id_mf_o <> None);
-         let mf' = Option.get_some id_mf_o in
+         assert (mf_o <> None);
+         let mf' = Option.get_some mf_o in
 
          assert (mf'.Manifest.object_id = mf.Manifest.object_id);
          let used_osds_set' = Manifest.osds_used mf'.Manifest.fragment_locations in
@@ -1283,7 +1282,84 @@ let test_disk_churn () =
 
          assert (data_o <> None);
 
-         Lwt.return ()
+         begin
+           Lwt_log.debug_f "starting disk churn test phase 2" >>= fun () ->
+           (* decommission another osd. only 2 osds will remain.
+            * the first policy (2,1,2,3) is still possible.
+            * the object should not be rewritten.
+            *)
+           let osd_id = List.hd_exn used_osds' in
+
+           alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>=
+             (function
+               | None -> Lwt.fail_with "can't find osd"
+               | Some osd_info ->
+                  alba_client # decommission_osd
+                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+           >>= fun () ->
+           maintenance_client # decommission_device
+                              ~namespace_id
+                              ~osd_id >>= fun () ->
+
+           alba_client # get_object_manifest
+                       ~consistent_read:true
+                       ~should_cache:false
+                       ~namespace
+                       ~object_name >>= fun (_, mf_o) ->
+
+           assert (mf_o <> None);
+           let mf' = Option.get_some mf_o in
+
+           (* TODO assert (mf'.Manifest.object_id = mf.Manifest.object_id); *)
+           assert (2 = DeviceSet.cardinal (Manifest.osds_used mf'.Manifest.fragment_locations));
+           Lwt.return ()
+         end >>= fun () ->
+
+         begin
+           Lwt_log.debug_f "starting disk churn test phase 3" >>= fun () ->
+           (* decommission another osd. now there will not be enough osds
+            * remaining so object should be rewritten to (1,0,1,1)
+            *)
+           alba_client # get_object_manifest
+                       ~consistent_read:true
+                       ~should_cache:false
+                       ~namespace
+                       ~object_name >>= fun (_, mf_o) ->
+
+           assert (mf_o <> None);
+           let mf = Option.get_some mf_o in
+           let used_osds =
+             Manifest.osds_used mf.Manifest.fragment_locations
+             |> DeviceSet.elements
+           in
+
+           let osd_id = List.hd_exn used_osds in
+
+           alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>=
+             (function
+               | None -> Lwt.fail_with "can't find osd"
+               | Some osd_info ->
+                  alba_client # decommission_osd
+                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+           >>= fun () ->
+           maintenance_client # decommission_device
+                              ~namespace_id
+                              ~osd_id >>= fun () ->
+
+           alba_client # get_object_manifest
+                       ~consistent_read:true
+                       ~should_cache:false
+                       ~namespace
+                       ~object_name >>= fun (_, mf_o) ->
+
+           assert (mf_o <> None);
+           let mf' = Option.get_some mf_o in
+
+           assert (mf'.Manifest.object_id <> mf.Manifest.object_id);
+           assert (1 = DeviceSet.cardinal (Manifest.osds_used mf'.Manifest.fragment_locations));
+
+           Lwt.return ()
+         end
        in
 
        with_asds
@@ -1407,7 +1483,6 @@ let test_add_disk () =
          (fun asd ->
             alba_client # osd_access # seen
               ~check_claimed_delay:1.
-              ~chattiness:1.
               Discovery.(Good("", { id = asd_name;
                                     extras = Some({
                                         node_id = "bla";
@@ -1614,6 +1689,75 @@ let test_update_policies () =
      Lwt.return ()
     )
 
+let test_stale_manifest_download () =
+  test_with_alba_client
+    (fun alba_client ->
+     let test_name = "test_stale_manifest_download" in
+     let namespace = test_name in
+
+     alba_client # create_namespace ~namespace ~preset_name:None ()
+     >>= fun namespace_id ->
+
+     let object_name = test_name in
+     let object_length = 932 in
+     let object_data = Bytes.create object_length in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data
+                 ~checksum_o:None
+                 ~allow_overwrite:Nsm_model.NoPrevious
+     >>= fun mf ->
+
+     let download () =
+       alba_client # download_object_to_string
+                   ~namespace
+                   ~object_name
+                   ~consistent_read:false
+                   ~should_cache:true
+       >>= fun _ ->
+       Lwt.return ()
+     in
+     let download_slices () =
+       alba_client # download_object_slices
+                   ~namespace
+                   ~object_name
+                   ~object_slices:[0L, object_length]
+                   ~consistent_read:false
+                   (fun _ _ _ _ -> Lwt.return ())
+       >>= fun _ ->
+       Lwt.return ()
+     in
+     let rewrite_obj () =
+       Alba_client.with_client
+         (ref (Albamgr_test.get_ccfg ()))
+         (fun alba_client2 ->
+          let maintenance_client =
+            new Maintenance.client (alba_client2 # get_base_client) in
+          alba_client2 # get_object_manifest'
+                       ~namespace_id
+                       ~object_name
+                       ~consistent_read:true
+                       ~should_cache:false
+          >>= fun (_, manifest_o) ->
+          let manifest = Option.get_some manifest_o in
+          maintenance_client # repair_object_rewrite
+                             ~namespace_id
+                             ~manifest >>= fun () ->
+          maintenance_client # clean_obsolete_keys_namespace
+                             ~once:true ~namespace_id >>= fun () ->
+          Lwt.return ())
+     in
+
+     download () >>= fun () ->
+     rewrite_obj () >>= fun () ->
+     download () >>= fun () ->
+     rewrite_obj () >>= fun () ->
+     download_slices () >>= fun () ->
+     rewrite_obj () >>= fun () ->
+     download_slices () >>= fun () ->
+     Lwt.return ())
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -1635,5 +1779,6 @@ let suite = "alba_test" >:::[
     "test_add_disk" >:: test_add_disk;
     "test_invalidate_deleted_namespace" >:: test_invalidate_deleted_namespace;
     "test_master_switch" >:: test_master_switch;
+    "test_stale_manifest_download" >:: test_stale_manifest_download;
     "test_update_policies" >:: test_update_policies;
   ]

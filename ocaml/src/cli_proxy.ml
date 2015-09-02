@@ -33,7 +33,7 @@ module Config = struct
     osd_connection_pool_size : (int [@default 10]);
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
-    chattiness : float [@default 1.0];
+    chattiness : float option [@default None];
   } [@@deriving yojson, show]
 end
 
@@ -74,12 +74,15 @@ let proxy_start cfg_file =
         (* the fragment cache size is currently a rather soft limit which we'll
            surely exceed. this can lead to disk full conditions. by taking a
            safety margin of 10% we turn the soft limit into a hard one... *)
-        cfg.fragment_cache_size / 10 * 9,
+        (cfg.fragment_cache_size / 100) * 85,
         cfg.albamgr_connection_pool_size,
         cfg.nsm_host_connection_pool_size,
         cfg.osd_connection_pool_size,
         cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size
-      and chattiness = cfg.chattiness
+      in
+      let () = match cfg.chattiness with
+        | None -> ()
+        | Some _ -> Lwt_log.ign_warning "chattiness was deprecated, and won't be used"
       in
 
       Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
@@ -123,7 +126,6 @@ let proxy_start cfg_file =
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
         ~albamgr_cfg_file
-        ~chattiness
   in
   lwt_server t
 

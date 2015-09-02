@@ -25,7 +25,9 @@ type osd_state = {
   mutable disqualified : bool;
   mutable write : float list;
   mutable read : float list;
+  mutable seen : float list;
   mutable errors : (float * string) list;
+  mutable json: string option;
 }
 
 let large_value = lazy (String.make (512*1024) 'a')
@@ -49,7 +51,9 @@ class osd_access mgr_access osd_connection_pool_size =
           disqualified = false;
           write = [];
           read = [];
+          seen = [];
           errors = [];
+          json = None;
         } in
       let info' = (osd_info, osd_state) in
       Hashtbl.replace osds_info_cache osd_id info';
@@ -138,7 +142,7 @@ class osd_access mgr_access osd_connection_pool_size =
         (fun exn -> Lwt.return (`Continue exn))
       >>= function
       | `Continue exn ->
-         Lwt_log.debug_f
+         Lwt_log.info_f
            ~exn
            "Could not yet requalify osd %li, trying again in %f seconds"
            osd_id delay >>= fun () ->
@@ -152,12 +156,12 @@ class osd_access mgr_access osd_connection_pool_size =
     then Lwt.return ()
     else begin
         state.disqualified <- true;
-        Lwt_log.debug_f "Disqualifying osd %li" osd_id >>= fun () ->
+        Lwt_log.info_f "Disqualifying osd %li" osd_id >>= fun () ->
         (* start loop to get it requalified... *)
         Lwt.async
           (fun () ->
            inner 1. >>= fun () ->
-           Lwt_log.debug_f "Requalified osd %li" osd_id >>= fun () ->
+           Lwt_log.info_f "Requalified osd %li" osd_id >>= fun () ->
            state.disqualified <- false;
            state.write <- Unix.gettimeofday() :: state.write;
            Lwt.return ());
@@ -200,7 +204,62 @@ class osd_access mgr_access osd_connection_pool_size =
         osds >>= fun () ->
       Lwt.return res
 
-    method seen ?(check_claimed_delay=60.) ~chattiness =
+    method propagate_osd_info ?(run_once=false) () : unit Lwt.t =
+      let open Albamgr_protocol.Protocol in
+      let make_update (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) =
+        let open Osd in
+        let ips', port' =
+          get_ips_port osd_info.kind
+        and long_id = get_long_id osd_info.kind
+        and total'  = osd_info.total
+        and used'   = osd_info.used
+        and seen'   = osd_info.seen
+        and read'   = osd_state.read
+        and write'  = osd_state.write
+        and errors' = osd_state.errors
+        and other'  = osd_state.json |> Option.get_some
+        in
+        let update = Osd.Update.make
+                       ~ips' ~port'
+                       ~total' ~used' ~seen'
+                       ~read' ~write' ~errors'
+                       ~other'
+                       ()
+        in
+        (long_id, update)
+      in
+      let reset osd_state =
+        osd_state.read <- [];
+        osd_state.write <- [];
+        osd_state.errors <- [];
+        osd_state.seen <- [];
+        osd_state.json <- None
+      in
+      let propagate () =
+        let updates =
+          Hashtbl.fold
+            (fun k v acc ->
+             let osd_info, osd_state = v in
+             let acc' =
+               if osd_state.json = None (* these had no update, so skip *)
+               then acc
+               else
+                 let update = make_update k osd_info osd_state in
+                 update :: acc
+             in
+             let () = reset osd_state in
+             acc')
+            osds_info_cache
+            []
+        in
+        mgr_access # update_osds updates
+      in
+      if run_once
+      then propagate ()
+      else Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
+
+
+    method seen ?(check_claimed_delay=60.) =
       let open Discovery in
       function
       | Bad s ->
@@ -233,51 +292,27 @@ class osd_access mgr_access osd_connection_pool_size =
              | ThisAlba osd_id ->
 
                 get_osd_info ~osd_id >>= fun (osd_info, osd_state') ->
-                let read',
-                    write',
-                    errors' = osd_state'.read,
-                              osd_state'.write,
-                              osd_state'.errors in
-                osd_state'.read <- [];
-                osd_state'.write <- [];
-                osd_state'.errors <- [];
                 let ips', port' = Osd.get_ips_port osd_info.Osd.kind in
 
+                let () = osd_state'.json <- Some json in
                 Hashtbl.replace
                   osds_info_cache
                   osd_id
                   (Osd.({ osd_info with
                           kind;
                           total; used;
+                          seen = Unix.gettimeofday () :: osd_info.seen;
                         }),
                    osd_state');
 
                 (* TODO compare ips as a set? (such that ordering doesn't matter) *)
                 (if ips' <> ips || port' <> port
                  then begin
-                     Lwt_log.debug_f "Asd now has new ips/port -> invalidating connection pool" >>= fun () ->
+                     Lwt_log.info_f "Asd now has new ips/port -> invalidating connection pool" >>= fun () ->
                      Pool.Osd.invalidate osds_pool ~osd_id;
                      Lwt.return ()
                    end else
                    Lwt.return ())
-                >>= fun () ->
-
-                let tell_mgr =
-                  let x = Random.float 1.0 in
-                  (x < chattiness)
-                in
-                if tell_mgr
-                then
-                  mgr_access # update_osd ~long_id:id
-                           (Osd.Update.make
-                              ~ips':ips ~port':port
-                              ~total':total ~used':used
-                              ~seen':[Unix.gettimeofday ()]
-                              ~read' ~write' ~errors'
-                              ~other':json ()
-                           )
-                else
-                  Lwt_log.debug_f "skipping OSD update long_id:%s" id
            end else begin
 
              let osd_info =

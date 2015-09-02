@@ -27,7 +27,7 @@ module Config = struct
     osd_connection_pool_size : (int [@default 10]);
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
-    chattiness : float [@default 1.];
+    chattiness : float option [@default None];
   } [@@deriving yojson, show]
 end
 
@@ -63,7 +63,9 @@ let alba_maintenance cfg_file modulo remainder flavour =
      | `Ok cfg ->
        Lwt_log.info_f
          "Interpreted the config as: %s"
-         ([%show : Config.t] cfg)) >>= fun () ->
+         ([%show : Config.t] cfg))
+    >>= fun () ->
+
     Lwt.return config
   in
   let filter id = (Int32.to_int id) mod modulo = remainder in
@@ -80,7 +82,10 @@ let alba_maintenance cfg_file modulo remainder flavour =
       and osd_connection_pool_size            = cfg.osd_connection_pool_size
       and lwt_preemptive_thread_pool_min_size = cfg.lwt_preemptive_thread_pool_min_size
       and lwt_preemptive_thread_pool_max_size = cfg.lwt_preemptive_thread_pool_max_size
-      and chattiness                          = cfg.chattiness
+      in
+      let () = match cfg.chattiness with
+        | None -> ()
+        | Some _ -> Lwt_log.ign_warning_f "chattiness was deprecated, and won't be used"
       in
 
       Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
@@ -147,7 +152,8 @@ let alba_maintenance cfg_file modulo remainder flavour =
                   [
                     (Lwt_extra2.make_fuse_thread ());
                     (maintenance_client # deliver_all_messages ());
-                    (client # get_base_client # discover_osds_check_claimed ~chattiness ());
+                    (client # get_base_client # discover_osds_check_claimed ());
+                    (client # osd_access # propagate_osd_info ());
                   ]
                 in
 

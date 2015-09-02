@@ -142,16 +142,17 @@ let test_4 () =
   let _inner (cache : Fragment_cache.blob_cache) =
     cache # clear_all() >>= fun () ->
     let blob = Bytes.create blob_size in
+    let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
       if n = 1000
       then Lwt.return ()
       else
-        let oid = Printf.sprintf "%i" n in
+        let oid = make_oid n in
         cache # add 0l oid blob >>= fun () ->
         begin
           if n > 100
           then
-            let oid' = Printf.sprintf "%i" (n - 100) in
+            let oid' = make_oid (n - 100) in
             cache # add 0l oid' blob
           else
             Lwt.return ()
@@ -159,7 +160,9 @@ let test_4 () =
         >>= fun () ->
         loop (n+1)
     in
-    loop 0
+    loop 0 >>= fun () ->
+    let _ = cache # _check () in
+    Lwt.return ()
   in
   let size = 40_000_000L in
   run_with_fragment_cache size _inner "test_4"
@@ -201,6 +204,7 @@ let test_5 () =
       ~printer ~msg:"total_size" 16384L (cache # get_total_size ());
     OUnit.assert_equal
       ~printer ~msg:"cache count after" 4L (cache # get_count());
+    OUnit.assert_bool "_check failed" (cache # _check ());
     Lwt.return ()
   in
   run_with_fragment_cache 65536L _inner "test_5"
@@ -209,7 +213,7 @@ let test_5 () =
 let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
     cache #clear_all () >>= fun () ->
-    let blob = Bytes.create 4096 in
+    let make_blob () = Bytes.create (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
         if i = 0
@@ -219,6 +223,7 @@ let test_long () =
             let bid = Random.int32 10l in
             let oid = Random.int 100  |> Printf.sprintf "%04x" in
             Lwt_io.printlf "i:%i" i >>= fun () ->
+            let blob = make_blob() in
             cache # add bid oid blob >>= fun () ->
             Lwt_log.debug_f "after add in fill" >>= fun () ->
             loop (i-1)
@@ -245,7 +250,7 @@ let test_long () =
       loop 0 0 n
     in
     let t0 = Unix.gettimeofday () in
-    fill  1000 >>= fun () ->
+    fill 1000 >>= fun () ->
     let t1 = Unix.gettimeofday () in
     let d = t1 -. t0 in
     Lwt_log.debug_f "fill loop took: %3f" d >>= fun () ->

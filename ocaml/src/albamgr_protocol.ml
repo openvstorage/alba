@@ -715,6 +715,7 @@ module Protocol = struct
     | RecoverNamespace : (Namespace.name * Nsm_host.id, unit) update
     | AddOsd : (Osd.t, unit) update
     | UpdateOsd : (Osd.long_id * Osd.Update.t, unit) update
+    | UpdateOsds : ((Osd.long_id * Osd.Update.t) list, unit) update
     | DecommissionOsd : (Osd.long_id, unit) update
     | MarkOsdClaimed : (Osd.long_id, Osd.id) update
     | MarkOsdClaimedByOther : (Osd.long_id * alba_id, unit) update
@@ -912,6 +913,11 @@ module Protocol = struct
       Llio.pair_from
         Llio.string_from
         Osd.Update.from_buffer
+    | UpdateOsds ->
+       Llio.list_from
+         (Llio.pair_from
+            Llio.string_from
+            Osd.Update.from_buffer)
     | DecommissionOsd -> Llio.string_from
     | MarkOsdClaimed -> Llio.string_from
     | MarkOsdClaimedByOther ->
@@ -948,10 +954,9 @@ module Protocol = struct
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
     | UpdateNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
     | AddOsd -> Osd.to_buffer
-    | UpdateOsd ->
-      Llio.pair_to
-        Llio.string_to
-        Osd.Update.to_buffer
+    | UpdateOsd -> Llio.pair_to Llio.string_to Osd.Update.to_buffer
+    | UpdateOsds ->
+       Llio.list_to (Llio.pair_to Llio.string_to Osd.Update.to_buffer)
     | DecommissionOsd -> Llio.string_to
     | MarkOsdClaimed -> Llio.string_to
     | MarkOsdClaimedByOther ->
@@ -987,10 +992,11 @@ module Protocol = struct
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
-    | AddNsmHost -> Llio.unit_from
-    | UpdateNsmHost -> Llio.unit_from
-    | AddOsd -> Llio.unit_from
-    | UpdateOsd -> Llio.unit_from
+    | AddNsmHost      -> Llio.unit_from
+    | UpdateNsmHost   -> Llio.unit_from
+    | AddOsd          -> Llio.unit_from
+    | UpdateOsd       -> Llio.unit_from
+    | UpdateOsds      -> Llio.unit_from
     | DecommissionOsd -> Llio.unit_from
     | MarkOsdClaimed -> Llio.int32_from
     | MarkOsdClaimedByOther -> Llio.unit_from
@@ -1007,10 +1013,11 @@ module Protocol = struct
     | UpdatePreset -> Llio.unit_from
     | StoreClientConfig -> Llio.unit_from
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
-    | AddNsmHost -> Llio.unit_to
-    | UpdateNsmHost -> Llio.unit_to
-    | AddOsd -> Llio.unit_to
-    | UpdateOsd -> Llio.unit_to
+    | AddNsmHost      -> Llio.unit_to
+    | UpdateNsmHost   -> Llio.unit_to
+    | AddOsd          -> Llio.unit_to
+    | UpdateOsd       -> Llio.unit_to
+    | UpdateOsds      -> Llio.unit_to
     | DecommissionOsd -> Llio.unit_to
     | MarkOsdClaimed -> Llio.int32_to
     | MarkOsdClaimedByOther -> Llio.unit_to
@@ -1079,7 +1086,7 @@ module Protocol = struct
 
                       Wrap_q ListDecommissioningOsds, 47l, "ListDecommissioningOsds";
                       Wrap_q ListOsdNamespaces, 48l, "ListOsdNamespaces";
-                    ]
+                      Wrap_u UpdateOsds,        49l, "UpdateOsds";                    ]
 
   module Error = struct
     type t =

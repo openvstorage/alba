@@ -301,6 +301,10 @@ class alba_client (base_client : Alba_base_client.client)
                  Lwt_log.info_f ~exn "retrying " >>= fun () ->
                  Statistics.with_timing_lwt
                    (fun () ->
+                    Manifest_cache.ManifestCache.remove
+                      (base_client # get_manifest_cache)
+                      namespace_id
+                      object_name;
                     self # get_object_manifest'
                          ~namespace_id
                          ~object_name
