@@ -1055,7 +1055,7 @@ module Protocol = struct
                       Wrap_u SetDefaultPreset, 25l, "SetDefaultPreset";
                       Wrap_u DeletePreset, 26l, "DeletePreset";
                       Wrap_u AddOsdsToPreset, 27l, "AddOsdsToPreset";
-                      Wrap_u UpdatePreset, 49l, "UpdatePreset";
+                      Wrap_u UpdatePreset, 50l, "UpdatePreset";
 
                       Wrap_u AddOsd, 28l, "AddOsd";
                       Wrap_u MarkOsdClaimed, 29l, "MarkOsdClaimed";
