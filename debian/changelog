@@ -1,17 +1,17 @@
 alba (0.6.15) unstable; urgency=low
   * v 0.6.15
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Wed, 02 Sep 2015 09:30:41 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Wed, 02 Sep 2015 09:30:41 +0100
 
 alba (0.6.14) unstable; urgency=low
   * v 0.6.14
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Mon, 31 Aug 2015 10:03:10 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Mon, 31 Aug 2015 10:03:10 +0100
 
 alba (0.6.13) unstable; urgency=low
   * v 0.6.13
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Thu, 27 Aug 2015 10:21:41 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Thu, 27 Aug 2015 10:21:41 +0100
 
 alba (0.6.12) unstable; urgency=low
   * v 0.6.12
@@ -21,12 +21,12 @@ alba (0.6.12) unstable; urgency=low
 alba (0.6.11) unstable; urgency=low
   * v 0.6.11
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Mon, 24 Aug 2015 14:38:08 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Mon, 24 Aug 2015 14:38:08 +0100
 
 alba (0.6.10) unstable; urgency=low
   * v 0.6.10
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Thu, 20 Aug 2015 11:11:16 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Thu, 20 Aug 2015 11:11:16 +0100
 
 alba (0.6.9) unstable; urgency=low
   * v 0.6.9
@@ -61,7 +61,7 @@ alba (0.6.4) unstable; urgency=low
 alba (0.6.3) unstable; urgency=low
   * v 0.6.3
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Fri, 17 Jul 2015 10:02:34 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Fri, 17 Jul 2015 10:02:34 +0100
 
 alba (0.6.2) unstable; urgency=low
   * v 0.6.2
@@ -91,118 +91,118 @@ alba (0.5.13) unstable; urgency=low
 alba (0.5.12) unstable; urgency=low
   * v 0.5.12
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Fri, 26 Jun 2015 10:00:20 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Fri, 26 Jun 2015 10:00:20 +0100
 
 alba (0.5.11-1) unstable; urgency=medium
 
   * v 0.5.11
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Wed, 24 Jun 2015 17:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Wed, 24 Jun 2015 17:15:00 +0100
 
 alba (0.5.10-1) unstable; urgency=medium
 
   * v 0.5.10
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Tue, 23 Jun 2015 14:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Tue, 23 Jun 2015 14:15:00 +0100
 
 alba (0.5.9-1) unstable; urgency=medium
 
   * v 0.5.9
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Tue, 17 Jun 2015 14:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Tue, 17 Jun 2015 14:15:00 +0100
 
 alba (0.5.8-1) unstable; urgency=medium
 
   * v 0.5.8
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Thu, 11 Jun 2015 14:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Thu, 11 Jun 2015 14:15:00 +0100
 
 alba (0.5.7-1) unstable; urgency=medium
 
   * v 0.5.7
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Thu, 04 Jun 2015 17:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Thu, 04 Jun 2015 17:15:00 +0100
 
 alba (0.5.6-1) unstable; urgency=medium
 
   * v 0.5.6
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Thu, 28 May 2015 17:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Thu, 28 May 2015 17:15:00 +0100
 
 alba (0.5.5-1) unstable; urgency=medium
 
   * v 0.5.5
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Tue, 26 May 2015 12:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Tue, 26 May 2015 12:15:00 +0100
 
 alba (0.5.4-1) unstable; urgency=medium
 
   * v 0.5.4
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Wed, 13 May 2015 16:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Wed, 13 May 2015 16:15:00 +0100
 
 alba (0.5.3-1) unstable; urgency=medium
 
   * v 0.5.3
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Mon, 11 May 2015 16:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Mon, 11 May 2015 16:15:00 +0100
 
 alba (0.5.2-1) unstable; urgency=medium
 
   * v 0.5.2
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Fri, 08 May 2015 10:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Fri, 08 May 2015 10:15:00 +0100
 
 alba (0.5.1-1) unstable; urgency=medium
 
   * v 0.5.1
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Thu, 07 May 2015 15:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Thu, 07 May 2015 15:15:00 +0100
 
 alba (0.5.0-1) unstable; urgency=medium
 
   * v 0.5.0
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Mon, 04 May 2015 10:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Mon, 04 May 2015 10:15:00 +0100
 
 alba (0.4.3-1) UNRELEASED; urgency=medium
 
   * v 0.4.3
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Tue, 14 Apr 2015 13:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Tue, 14 Apr 2015 13:15:00 +0100
 
 alba (0.4.2-1) UNRELEASED; urgency=medium
 
   * v 0.4.2
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Fri, 10 Apr 2015 13:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Fri, 10 Apr 2015 13:15:00 +0100
 
 alba (0.4.0-1) UNRELEASED; urgency=medium
 
   * v 0.4.0
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Fri, 06 Mar 2015 17:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Fri, 06 Mar 2015 17:15:00 +0100
 
 alba (0.3.2-1) UNRELEASED; urgency=medium
 
   * v 0.3.2
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Wed, 04 Mar 2015 10:15:00 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Wed, 04 Mar 2015 10:15:00 +0100
 
 alba (0.3.1-1) UNRELEASED; urgency=medium
 
   * v 0.3.1
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Fri, 20 Feb 2015 17:00:10 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Fri, 20 Feb 2015 17:00:10 +0100
 
 alba (0.3.0-1) UNRELEASED; urgency=medium
 
   * v 0.3.0
 
- -- Jan Doms <jan.doms@cloudfounders.com>  Wed, 18 Feb 2015 09:00:10 +0100
+ -- Jan Doms <jan.doms@openvstorage.com>  Wed, 18 Feb 2015 09:00:10 +0100
 
 alba (0.0.3-1) UNRELEASED; urgency=medium
 
   * v 0.0.3-1
 
- -- Romain Slootmaekers <romain.slootmaekers@cloudfounders.com>  Fri, 06 Feb 2015 16:35:10 +0100
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Fri, 06 Feb 2015 16:35:10 +0100

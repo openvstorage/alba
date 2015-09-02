@@ -43,17 +43,17 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
-* Wed Sep 02 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.15
+* Wed Sep 02 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.15
 - Create Alba 0.6.15 RPM package
-* Mon Aug 31 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.14
+* Mon Aug 31 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.14
 - Create Alba 0.6.14 RPM package
-* Thu Aug 27 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.13
+* Thu Aug 27 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.13
 - Create Alba 0.6.13 RPM package
 * Tue Aug 25 2015 Jan Doms <jan.doms@gmail.com> - 0.6.12
 - Create Alba 0.6.12 RPM package
-* Mon Aug 24 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.11
+* Mon Aug 24 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.11
 - Create Alba 0.6.11 RPM package
-* Thu Aug 20 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.10
+* Thu Aug 20 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.10
 - Create Alba 0.6.10 RPM package
 * Wed Aug 12 2015 Jan Doms <jan.doms@gmail.com> - 0.6.9
 - Create Alba 0.6.9 RPM package
@@ -67,7 +67,7 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 - Create Alba 0.6.5 RPM package
 * Thu Jul 30 2015 Jan Doms <jan.doms@gmail.com> - 0.6.4
 - Create Alba 0.6.4 RPM package
-* Fri Jul 17 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.3
+* Fri Jul 17 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.3
 - Create Alba 0.6.3 RPM package
 * Wed Jul 15 2015 Jan Doms <jan.doms@gmail.com> - 0.6.2
 - Create Alba 0.6.2 RPM package
@@ -79,13 +79,13 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 - Create Alba 0.5.14 RPM package
 * Thu Jul 02 2015 Jan Doms <jan.doms@gmail.com> - 0.5.13
 - Create Alba 0.5.13 RPM package
-* Fri Jun 26 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.5.12
+* Fri Jun 26 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.5.12
 - Create Alba 0.5.12 RPM package
-* Wed Jun 24 2015 Jan Doms <jan.doms@cloudfounders.com> - 0.5.11
+* Wed Jun 24 2015 Jan Doms <jan.doms@openvstorage.com> - 0.5.11
 - Create alba 0.5.11 RPM package
-* Tue Jun 23 2015 Jan Doms <jan.doms@cloudfounders.com> - 0.5.10
+* Tue Jun 23 2015 Jan Doms <jan.doms@openvstorage.com> - 0.5.10
 - Create alba 0.5.10 RPM package
-* Tue Jun 17 2015 Jan Doms <jan.doms@cloudfounders.com> - 0.5.9
+* Tue Jun 17 2015 Jan Doms <jan.doms@openvstorage.com> - 0.5.9
 - Create alba 0.5.9 RPM package
 * Thu Jun 11 2015 Jan Doms <jan.doms@gmail.com> - 0.5.8
 - Create alba 0.5.8 RPM package
