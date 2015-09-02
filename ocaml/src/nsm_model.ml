@@ -1050,12 +1050,11 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     let clean_old_info,
         old_info_o,
-        old_locations ,
         logical_delta,
         storage_delta
       =
       match old_object_id_o with
-       | None -> [], None, [], manifest.size, Manifest.get_summed_fragment_sizes manifest
+       | None -> [], None, manifest.size, Manifest.get_summed_fragment_sizes manifest
        | Some old_object_id ->
          let upds, old_manifest = cleanup_for_object_id kv old_object_id in
 
@@ -1070,7 +1069,6 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          in
          upds,
          Some old_manifest,
-         old_manifest.fragment_locations,
          logical_delta, storage_delta
     in
     let update_logical_size =
@@ -1082,7 +1080,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       update_device_object_mapping
         kv
         object_id
-        ~old_locations
+        ~old_locations:[]
         ~new_locations:manifest.fragment_locations
         ~max_disks_per_node:manifest.Manifest.max_disks_per_node
     in

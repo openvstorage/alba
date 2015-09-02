@@ -1147,7 +1147,7 @@ let test_disk_churn () =
 
        let fragment_size = 40 in
        let k = 2 in
-       let object_size = fragment_size * k * 30 in
+       let object_size = fragment_size * k * 3 in
        let object_data = String.make object_size 'a' in
 
        let inner osd_ids =
@@ -1156,7 +1156,7 @@ let test_disk_churn () =
                _DEFAULT
                with
                  osds = Explicit osd_ids;
-                 policies = [ (k,1,k+1,k+1); (1,0,1,1); ];
+                 policies = [ (k,1,k,k+1); (1,0,1,1); ];
                  fragment_size;
              })
          in
@@ -1270,10 +1270,56 @@ let test_disk_churn () =
 
          begin
            Lwt_log.debug_f "starting disk churn test phase 2" >>= fun () ->
-           (* decommission another osd. now there will not be enough osds
-            * remaining to do an orange repair (which leaves the object id intact)
+           (* decommission another osd. only 2 osds will remain.
+            * the first policy (2,1,2,3) is still possible.
+            * the object should not be rewritten.
             *)
            let osd_id = List.hd_exn used_osds' in
+
+           alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>=
+             (function
+               | None -> Lwt.fail_with "can't find osd"
+               | Some osd_info ->
+                  alba_client # decommission_osd
+                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+           >>= fun () ->
+           maintenance_client # decommission_device
+                              ~namespace_id
+                              ~osd_id >>= fun () ->
+
+           alba_client # get_object_manifest
+                       ~consistent_read:true
+                       ~should_cache:false
+                       ~namespace
+                       ~object_name >>= fun (_, mf_o) ->
+
+           assert (mf_o <> None);
+           let mf' = Option.get_some mf_o in
+
+           (* TODO assert (mf'.Manifest.object_id = mf.Manifest.object_id); *)
+           assert (2 = DeviceSet.cardinal (Manifest.osds_used mf'.Manifest.fragment_locations));
+           Lwt.return ()
+         end >>= fun () ->
+
+         begin
+           Lwt_log.debug_f "starting disk churn test phase 3" >>= fun () ->
+           (* decommission another osd. now there will not be enough osds
+            * remaining so object should be rewritten to (1,0,1,1)
+            *)
+           alba_client # get_object_manifest
+                       ~consistent_read:true
+                       ~should_cache:false
+                       ~namespace
+                       ~object_name >>= fun (_, mf_o) ->
+
+           assert (mf_o <> None);
+           let mf = Option.get_some mf_o in
+           let used_osds =
+             Manifest.osds_used mf.Manifest.fragment_locations
+             |> DeviceSet.elements
+           in
+
+           let osd_id = List.hd_exn used_osds in
 
            alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>=
              (function
