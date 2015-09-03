@@ -389,9 +389,10 @@ let upload_object''
           hash_time'
           (chunk_id + 1)
       else
-        Lwt.return ((acc_chunk_sizes', acc_fragments_info'),
+        Lwt.return ((List.rev acc_chunk_sizes',
+                     List.rev acc_fragments_info'),
                     total_size',
-                    chunk_times',
+                    List.rev chunk_times',
                     hash_time')
     in
     inner [] [] 0 [] 0. 0 in
@@ -401,21 +402,15 @@ let upload_object''
     (fun () -> fold_chunks chunk)
     (fun () -> Lwt_bytes.unsafe_destroy chunk;
                Lwt.return ())
-  >>= fun ((chunk_sizes', fragments_info'), size, chunk_times, hash_time) ->
+  >>= fun ((chunk_sizes', fragments_info), size, chunk_times, hash_time) ->
 
   (* all fragments have been stored
          make a manifest and store it in the namespace manager *)
 
-  let fragments_info = List.rev fragments_info' in
   let locations, fragment_checksums =
     Nsm_model.Layout.split fragments_info in
 
-  let chunk_sizes =
-    List.map
-      snd
-      (List.sort
-         (fun (chunk_id1, _) (chunk_id2, _) -> compare chunk_id1 chunk_id2)
-         chunk_sizes') in
+  let chunk_sizes = List.map snd chunk_sizes' in
   let open Nsm_model in
   let object_checksum = object_hash # final () in
   let checksum =

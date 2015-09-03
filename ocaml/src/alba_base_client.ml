@@ -967,6 +967,7 @@ class client
         (0, [], 0., 0.)
         (List.mapi (fun i fragment_info -> i, fragment_info) fragment_info)
       >>= fun (_, t_chunks, t_write_data, t_verify) ->
+      let t_chunks = List.rev t_chunks in
 
       let checksum2 = hash2 # final () in
 
