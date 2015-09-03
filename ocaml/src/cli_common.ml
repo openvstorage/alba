@@ -249,20 +249,6 @@ let reverse =
   Arg.(value & opt bool false & info["reverse"] ~doc:"")
 
 
-let read_file file =
-  Lwt_io.file_length file >>= fun len ->
-  let len' = Int64.to_int len in
-  let buf = Bytes.create len' in
-  Lwt_extra2.with_fd
-    file
-    ~flags:Lwt_unix.([O_RDONLY;])
-    ~perm:0600
-    (fun fd ->
-       Lwt_extra2.read_all fd buf 0 len' >>= fun read ->
-       assert (read = len');
-       Lwt.return ()) >>= fun () ->
-  Lwt.return buf
-
 let verify_log_level log_level =
   let levels = [ "debug"; "info"; "notice"; "warning"; "error"; "fatal"; ] in
   if not (List.mem log_level levels)

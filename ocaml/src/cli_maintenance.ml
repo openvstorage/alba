@@ -55,7 +55,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
     then failwith "bad modulo/remainder"
   in
   let read_cfg () =
-    read_file cfg_file >>= fun txt ->
+    Lwt_extra2.read_file cfg_file >>= fun txt ->
     Lwt_log.info_f "Found the following config: %s" txt >>= fun () ->
     let config = Config.of_yojson (Yojson.Safe.from_string txt) in
     (match config with
