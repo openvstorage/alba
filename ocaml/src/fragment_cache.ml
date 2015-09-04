@@ -57,7 +57,7 @@ let ser64_be x =
 let (+:) = Int64.add
 let (-:) = Int64.sub
 
-let marker_name root = Printf.sprintf "%s/marker" root
+let marker_name root = Printf.sprintf "%s/alba_proxy_marker" root
 
 let get_int64 db key =
   match KV.get db key with
@@ -938,9 +938,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         let fsid = self # create_fs_id () in
         let fsid_key = blob_fsid_key_of boid in
         let access = create_access () in
+        let path = path_of_fsid bid fsid in
         Lwt.catch
           (fun () ->
-           let path = path_of_fsid bid fsid in
            let dir = Filename.dirname path in
            Lwt_log.debug_f "add...path=%s dir=%s" path dir
            >>= fun () ->
@@ -972,7 +972,13 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
           )
           (fun exn ->
            Lwt_log.warning_f ~exn
-                             "adding fragment to cache failed; ignoring error"
+             "adding fragment to cache failed; ignoring error; cleaning up blob"
+           >>= fun () ->
+           let full_path = canonical path in
+           Lwt.catch
+             (fun ()  -> Lwt_unix.unlink full_path)
+             (fun ex -> Lwt_log.warning_f ~section ~exn:ex "%s: cleanup failed" full_path
+             )
           )
       in
       Alba_statistics.Statistics.with_timing_lwt
