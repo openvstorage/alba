@@ -420,4 +420,6 @@ let with_client albamgr_client_cfg
                         ~osd_timeout
   in
   let client = new alba_client base_client in
-  f client
+  Lwt.finalize
+  (fun () -> f client)
+  (fun () -> cache # close ())
