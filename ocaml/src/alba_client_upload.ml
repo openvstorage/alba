@@ -307,15 +307,20 @@ let upload_object''
 
   let object_id = get_random_string 32 in
 
+  object_reader # length >>= fun object_length ->
+
   let fold_chunks chunk =
 
     let rec inner acc_chunk_sizes acc_fragments_info total_size chunk_times hash_time chunk_id =
       let t0_chunk = Unix.gettimeofday () in
+      let chunk_size' = min desired_chunk_size (object_length - total_size) in
+      Lwt_log.debug_f "chunk_size' = %i" chunk_size' >>= fun () ->
       Statistics.with_timing_lwt
-        (fun () -> object_reader # read desired_chunk_size chunk)
-      >>= fun (read_data_time, (chunk_size', has_more)) ->
+        (fun () -> object_reader # read chunk_size' chunk)
+      >>= fun (read_data_time, ()) ->
 
       let total_size' = total_size + chunk_size' in
+      let has_more = total_size' < object_length in
 
       Statistics.with_timing_lwt
         (fun () ->
