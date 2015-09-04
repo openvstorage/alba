@@ -389,20 +389,18 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                  ~manifest
                  ~problem_fragments:[]
                  ~problem_osds:(Int32Set.of_list [ osd_id ]))
-           (function
-             | Choose.EmptyChoose ->
-                Lwt_extra2.ignore_errors
-                  ~logging:true
-                  (fun () ->
-                   self # repair_object_rewrite
-                        ~namespace_id
-                        ~manifest)
-             | exn ->
-                let open Nsm_model.Manifest in
-                Lwt_log.info_f
-                  ~exn
-                  "Exn while repairing osd %li (object name,id = %s,%s"
-                  osd_id manifest.name manifest.object_id)
+           (fun exn ->
+            let open Nsm_model.Manifest in
+            Lwt_log.info_f
+              ~exn
+              "Exn while repairing osd %li (object name,id = %s,%s), will now try object rewrite"
+              osd_id manifest.name manifest.object_id >>= fun () ->
+            Lwt_extra2.ignore_errors
+              ~logging:true
+              (fun () ->
+               self # repair_object_rewrite
+                    ~namespace_id
+                    ~manifest))
         )
         manifests >>= fun () ->
 
