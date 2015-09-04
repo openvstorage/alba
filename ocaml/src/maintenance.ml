@@ -769,40 +769,19 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
         (Manifest.show manifest) namespace_id
       >>= fun () ->
 
-      (* TODO don't download to a string
-         instead download to a file without syncing it?
-         or download to a bigarray?
-      *)
-      let object_data = Bytes.create (Int64.to_int manifest.Manifest.size) in
-      let offset = ref 0 in
-      let write_object_data source pos len =
-        Lwt_bytes.blit_to_bytes source pos object_data !offset len;
-        offset := !offset + len;
-        Lwt.return ()
-      in
-
-      alba_client # download_object_generic''
-        ~namespace_id
-        ~manifest
-        ~get_manifest_dh:(0.,Alba_statistics.Statistics.NsmHost)
-        ~t0_object:(Unix.gettimeofday ())
-        ~write_object_data >>= fun _ ->
+      let object_reader =
+        new Object_reader2.object_reader
+            alba_client
+            namespace_id manifest in
 
       let object_name = manifest.Manifest.name in
-      Lwt_log.debug_f
-        "Downloaded object %S (%li), reuploading it with changed policy"
-        object_name namespace_id >>= fun () ->
-
       let checksum_o = Some manifest.Manifest.checksum in
-
       let allow_overwrite = PreviousObjectId manifest.Manifest.object_id in
 
-      (* TODO due to changed circumstances this may actually rewrite the object
-         with a worse policy than before! *)
       alba_client # upload_object'
         ~namespace_id
         ~object_name
-        ~object_reader:(new Object_reader.string_reader object_data)
+        ~object_reader
         ~checksum_o
         ~allow_overwrite >>= fun _ ->
 

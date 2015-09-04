@@ -531,15 +531,14 @@ class client
              ~consistent_read
              write_data)
 
-    method download_object_slices'
+    method download_object_slices''
       ~namespace_id
-      ~object_name
+      ~manifest
       ~(object_slices : (Int64.t * int) list)
-      ~consistent_read
       write_data =
-      let attempt_download_slices manifest =
-         begin
            let open Nsm_model in
+
+           let object_name = manifest.Manifest.name in
 
            let slices =
              List.fold_left
@@ -806,7 +805,19 @@ class client
 
                Lwt.return (Some manifest)
              end
-         end
+
+    method download_object_slices'
+             ~namespace_id
+             ~object_name
+             ~object_slices
+             ~consistent_read
+             write_data =
+      let attempt_download_slices manifest =
+        self # download_object_slices''
+             ~namespace_id
+             ~manifest
+             ~object_slices
+             write_data
       in
       self # get_object_manifest'
         ~namespace_id ~object_name
