@@ -254,13 +254,6 @@ let upload_object''
     EncryptInfo.from_encryption encryption
   in
 
-  let desired_chunk_size =
-    (* TODO this size will often be too big for objects
-           that consist of only 1 chunk. object_reader should
-           allow getting the total object size in order to not
-           waste memory here... *)
-    (max_fragment_size / fragment_multiple) * fragment_multiple * k in
-
   let object_checksum_algo =
     let open Albamgr_protocol.Protocol.Preset in
     match checksum_o with
@@ -308,6 +301,13 @@ let upload_object''
   let object_id = get_random_string 32 in
 
   object_reader # length >>= fun object_length ->
+
+  let desired_chunk_size =
+    let x = fragment_multiple * k in
+    if max_fragment_size > (object_length / k)
+    then ((object_length / x) + 1) * x
+    else (max_fragment_size / fragment_multiple) * x
+  in
 
   let fold_chunks chunk =
 
