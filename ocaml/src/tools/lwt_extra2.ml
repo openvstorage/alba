@@ -201,3 +201,17 @@ let get_files_of_directory dir =
       l
   in
   Lwt.return res
+
+let read_file file =
+  Lwt_io.file_length file >>= fun len ->
+  let len' = Int64.to_int len in
+  let buf = Bytes.create len' in
+  with_fd
+    file
+    ~flags:Lwt_unix.([O_RDONLY;])
+    ~perm:0600
+    (fun fd ->
+       read_all fd buf 0 len' >>= fun read ->
+       assert (read = len');
+       Lwt.return ()) >>= fun () ->
+  Lwt.return buf

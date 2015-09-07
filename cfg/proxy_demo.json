@@ -8,6 +8,6 @@
     "fragment_cache_size" : 100000000, // optional, default 100_000_000
     "albamgr_connection_pool_size" : 10, // optional, default 10
     "nsm_host_connection_pool_size" : 10, // optional, default 10
-    "osd_connection_pool_size" : 10 // optional, default 10
-    "chattiness" : 1.0 //optional, default 1.0
+    "osd_connection_pool_size" : 10, // optional, default 10
+    "osd_timeout" : 2.0 //optional, default 2.0
 }

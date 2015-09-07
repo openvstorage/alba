@@ -23,7 +23,6 @@
     },
 
     //"fragment_encryption" : ["none"]
-    // the encryption key should be specified on file descriptor 3
-    "fragment_encryption" : [ "aes-cbc-256" "this is ignored, the key is read from fd 6" ]
-    // ./alba create-preset my_preset --config cfg/test.ini < cfg/preset.json 6< cfg/enc_key
+    "fragment_encryption" : [ "aes-cbc-256", "cfg/enc_key" ]
+    // ./alba create-preset my_fsdajsdfpreset --config cfg/test.ini < cfg/preset.json
 }

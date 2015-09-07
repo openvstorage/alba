@@ -39,8 +39,7 @@ let alba_create_preset
       | `Ok p -> p
     in
     Alba_json.Preset.to_preset
-      preset'
-      ~key_fd:((Obj.magic 6) : Unix.file_descr) >>= fun preset ->
+      preset' >>= fun preset ->
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
       (Arakoon_config.from_config_file cfg_file)

@@ -39,7 +39,7 @@ end
 
 let asd_start cfg_file slow =
   let read_cfg () =
-    read_file cfg_file >>= fun txt ->
+    Lwt_extra2.read_file cfg_file >>= fun txt ->
     Lwt_log.debug_f "Found the following config: %s" txt >>= fun () ->
     let config = Config.of_yojson (Yojson.Safe.from_string txt) in
     (match config with

@@ -41,6 +41,7 @@ class client
     ~bad_fragment_callback
     ~nsm_host_connection_pool_size
     ~osd_connection_pool_size
+    ~osd_timeout
   =
 
   let nsm_host_access =
@@ -51,7 +52,7 @@ class client
   in
 
   let osd_access =
-    new osd_access mgr_access osd_connection_pool_size
+    new osd_access mgr_access ~osd_connection_pool_size ~osd_timeout
   in
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
   let get_osd_info = osd_access # get_osd_info in
@@ -933,6 +934,7 @@ class client
         (0, [], 0., 0.)
         (List.mapi (fun i fragment_info -> i, fragment_info) fragment_info)
       >>= fun (_, t_chunks, t_write_data, t_verify) ->
+      let t_chunks = List.rev t_chunks in
 
       let checksum2 = hash2 # final () in
 

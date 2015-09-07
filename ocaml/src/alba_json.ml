@@ -190,7 +190,7 @@ module Preset = struct
 
   type fragment_encryption =
     | NO_ENCRYPTION [@name "none"]
-    | AES_CBC_256 of string [@name "aes-cbc-256"]
+    | AES_CBC_256   [@name "aes-cbc-256"] of string
   [@@deriving yojson]
 
   type t = {
@@ -239,7 +239,6 @@ module Preset = struct
       compression; object_checksum;
       fragment_checksum; fragment_encryption;
     }
-    ~key_fd
     =
     let open Albamgr_protocol.Protocol.Preset in
     let open Lwt.Infix in
@@ -248,15 +247,10 @@ module Preset = struct
      match fragment_encryption with
      | NO_ENCRYPTION ->
        Lwt.return NoEncryption
-     | AES_CBC_256 _ ->
-       Lwt_log.info_f "Reading from fd ..." >>= fun () ->
-       let fd = Lwt_unix.of_unix_file_descr key_fd in
-       Lwt_unix.fstat fd >>= fun stat ->
-       let size = stat.Unix.st_size in
-       let bs = Bytes.create size in
-       Lwt_extra2.read_all fd bs 0 size >>= fun size' ->
-       assert (size' = size);
-       Lwt.return (AlgoWithKey (AES (CBC, L256), bs))) >>= fun fragment_encryption ->
+     | AES_CBC_256 enc_key_file ->
+       Lwt_extra2.read_file enc_key_file >>= fun enc_key ->
+       Lwt_log.debug_f "Read encryption key with size %i" (Bytes.length enc_key) >>= fun () ->
+       Lwt.return (AlgoWithKey (AES (CBC, L256), enc_key))) >>= fun fragment_encryption ->
 
     Lwt.return
       { policies;
