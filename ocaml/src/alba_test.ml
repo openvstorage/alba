@@ -28,6 +28,20 @@ let test_with_alba_client ?bad_fragment_callback f =
       f
   end
 
+let _wait_for_osds (alba_client:Alba_client.alba_client) namespace_id =
+  alba_client # nsm_host_access # get_namespace_info ~namespace_id
+  >>= fun (ns_info, _, _) ->
+  let nsm_host_id = ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id in
+  let rec loop () =
+    alba_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->
+    alba_client # nsm_host_access # refresh_namespace_osds ~namespace_id
+    >>= fun (cnt, osd_ids) ->
+    if cnt > 10
+    then Lwt.return ()
+    else Lwt_unix.sleep 0.1 >>= fun () -> loop ()
+  in
+  loop ()
+
 let delete_fragment
       (alba_client:Alba_client.alba_client)
       namespace_id object_id
@@ -1608,6 +1622,73 @@ let test_master_switch () =
      Lwt.return ()
     )
 
+let test_update_policies () =
+  let test_name = "test_update_policies" in
+  test_with_alba_client
+    (fun alba_client ->
+     let namespace = test_name in
+     let preset_name = test_name in
+     let open Albamgr_protocol.Protocol in
+     let preset =
+       Preset.({ _DEFAULT with
+                 policies = [ (2,1,2,3); ]; })
+     in
+     alba_client # mgr_access # create_preset preset_name preset >>= fun () ->
+     alba_client # create_namespace ~namespace ~preset_name:(Some preset_name) ()
+     >>= fun namespace_id ->
+     _wait_for_osds alba_client namespace_id >>= fun () ->
+
+     let assert_k_m mf k m =
+       let open Nsm_model in
+       let es, compression = match mf.Manifest.storage_scheme with
+         | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
+       let k', m', w = match es with
+         | Encoding_scheme.RSVM (k, m, w) -> k, m, w in
+       assert (k = k');
+       assert (m = m')
+     in
+
+     let object_name = "1" in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data:"a"
+                 ~checksum_o:None
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf1, _) ->
+
+     assert_k_m mf1 2 1;
+
+     alba_client # mgr_access # update_preset
+                 preset_name
+                 Preset.Update.({ policies' = Some [ (5,4,8,3); ]; }) >>= fun () ->
+
+     alba_client # get_base_client # get_preset_cache # refresh ~preset_name >>= fun () ->
+
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name:"2"
+                 ~object_data:"a"
+                 ~checksum_o:None
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf2, _) ->
+
+     assert_k_m mf2 5 4;
+
+     let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
+     maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
+
+     alba_client # get_object_manifest
+                 ~consistent_read:true
+                 ~should_cache:false
+                 ~namespace
+                 ~object_name >>= fun (_, id_mf_o) ->
+
+     assert (id_mf_o <> None);
+     let mf' = Option.get_some id_mf_o in
+     assert_k_m mf' 5 4;
+
+     Lwt.return ()
+    )
+
 let test_stale_manifest_download () =
   test_with_alba_client
     (fun alba_client ->
@@ -1699,4 +1780,5 @@ let suite = "alba_test" >:::[
     "test_invalidate_deleted_namespace" >:: test_invalidate_deleted_namespace;
     "test_master_switch" >:: test_master_switch;
     "test_stale_manifest_download" >:: test_stale_manifest_download;
+    "test_update_policies" >:: test_update_policies;
   ]

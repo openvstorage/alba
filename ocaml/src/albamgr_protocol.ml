@@ -528,6 +528,39 @@ module Protocol = struct
         fragment_checksum_algo = Checksum.Checksum.Algo.CRC32c;
         fragment_encryption = Encryption.Encryption.NoEncryption;
         }
+
+    module Update = struct
+      type t = {
+        policies' [@key "policies"] : (Policy.policy list option [@default None]);
+      } [@@deriving show, yojson]
+
+      let make ?policies' () = { policies'; }
+
+      let apply preset t =
+        { preset with
+          policies = (Option.get_some_default
+                        preset.policies
+                        t.policies'); }
+
+      let from_buffer buf =
+        let ser_version = Llio.int8_from buf in
+        assert (ser_version = 1);
+        let policies' =
+          Llio.option_from
+            (Llio.list_from
+               Policy.from_buffer)
+            buf
+        in
+        { policies' }
+
+      let to_buffer buf t =
+        let ser_version = 1 in
+        Llio.int8_to buf ser_version;
+        Llio.option_to
+          (Llio.list_to Policy.to_buffer)
+          buf
+          t.policies'
+    end
   end
 
   module Work = struct
@@ -693,6 +726,7 @@ module Protocol = struct
     | DeletePreset : (Preset.name, unit) update
     | SetDefaultPreset : (Preset.name, unit) update
     | AddOsdsToPreset : (Preset.name * Osd.id Std.counted_list, unit) update
+    | UpdatePreset : (Preset.name * Preset.Update.t, unit) update
     | StoreClientConfig : (Arakoon_config.t, unit) update
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -910,6 +944,10 @@ module Protocol = struct
       Llio.pair_from
         Llio.string_from
         (Llio.counted_list_from Llio.int32_from)
+    | UpdatePreset ->
+      Llio.pair_from
+        Llio.string_from
+        Preset.Update.from_buffer
     | StoreClientConfig ->
       Arakoon_config.from_buffer
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
@@ -945,6 +983,10 @@ module Protocol = struct
       Llio.pair_to
         Llio.string_to
         (Llio.counted_list_to Llio.int32_to)
+    | UpdatePreset ->
+      Llio.pair_to
+        Llio.string_to
+        Preset.Update.to_buffer
     | StoreClientConfig ->
       Arakoon_config.to_buffer
 
@@ -968,6 +1010,7 @@ module Protocol = struct
     | DeletePreset -> Llio.unit_from
     | SetDefaultPreset -> Llio.unit_from
     | AddOsdsToPreset -> Llio.unit_from
+    | UpdatePreset -> Llio.unit_from
     | StoreClientConfig -> Llio.unit_from
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
@@ -988,6 +1031,7 @@ module Protocol = struct
     | DeletePreset -> Llio.unit_to
     | SetDefaultPreset -> Llio.unit_to
     | AddOsdsToPreset -> Llio.unit_to
+    | UpdatePreset -> Llio.unit_to
     | StoreClientConfig -> Llio.unit_to
 
 
@@ -1018,6 +1062,7 @@ module Protocol = struct
                       Wrap_u SetDefaultPreset, 25l, "SetDefaultPreset";
                       Wrap_u DeletePreset, 26l, "DeletePreset";
                       Wrap_u AddOsdsToPreset, 27l, "AddOsdsToPreset";
+                      Wrap_u UpdatePreset, 50l, "UpdatePreset";
 
                       Wrap_u AddOsd, 28l, "AddOsd";
                       Wrap_u MarkOsdClaimed, 29l, "MarkOsdClaimed";
@@ -1088,7 +1133,12 @@ module Protocol = struct
 
   let tag_to_command =
     let hasht = Hashtbl.create 3 in
-    List.iter (fun (comm, tag, _) -> Hashtbl.add hasht tag comm) command_map;
+    List.iter
+      (fun (comm, tag, _) ->
+       if Hashtbl.mem hasht tag
+       then failwith (Printf.sprintf "%li is used for multiple albamgr commands" tag);
+       Hashtbl.add hasht tag comm)
+      command_map;
     (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
 
   let tag_to_name =

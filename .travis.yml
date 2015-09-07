@@ -3,8 +3,6 @@ cache: apt
 matrix:
   include:
   - os: linux
-    env: SUITE=build
-  - os: linux
     env: SUITE=system2
   - os: linux
     env: SUITE=disk_failures

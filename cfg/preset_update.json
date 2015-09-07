@@ -1,0 +1,5 @@
+// example: $ ./alba update-preset default --config ./cfg/test.ini <cfg/preset_update.json
+{
+    // all updates/properties are optional. don't specify if you don't want it to change.
+    "policies" : [[ 2, 2, 3, 4 ]]
+}

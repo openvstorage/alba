@@ -54,13 +54,18 @@ let user_function (user_db : Registry.user_db) (value_o: string option)
             | Some a_v -> Prelude.deserialize Llio.int64_from a_v
           in
           let a' = Int64.add a value in
-          let r_s = Prelude.serialize Llio.int64_to a' in
-          let r = Some r_s in
+          let r =
+            if a' = 0L
+            then None
+            else Some (Prelude.serialize Llio.int64_to a')
+          in
           user_db # put key r;
-          r_s
+          r
      end
   in
-  Prelude.Option.map inner value_o
+  match value_o with
+  | None -> None
+  | Some value -> inner value
 
 let register =
   let registered = ref false in

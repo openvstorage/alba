@@ -112,9 +112,11 @@ script () {
     eval `opam config env`
     export ARAKOON_BIN=arakoon
 
+    ./ocaml/alba.native version
+
     case "$SUITE" in
         build)
-            ./ocaml/alba.native version
+            true
             ;;
         system2)
             fab dev.run_tests_ocaml | tail -n256

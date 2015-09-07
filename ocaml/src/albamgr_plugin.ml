@@ -1385,6 +1385,19 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               Update.Assert (preset_key, Some preset_v);
               Update.Set (preset_key, serialize Preset.to_buffer preset') ];
             add_namespace_osds_upds ])
+    | UpdatePreset ->
+      fun (preset_name, preset_update) ->
+      let preset_key = Keys.Preset.prefix ^ preset_name in
+      let preset_v = begin match db # get preset_key with
+        | None -> Error.failwith Error.Preset_does_not_exist
+        | Some v -> v
+      end in
+      let preset = deserialize Protocol.Preset.from_buffer preset_v in
+      let preset' = Protocol.Preset.Update.apply preset preset_update in
+      return_upds [
+          Update.Assert (preset_key, Some preset_v);
+          Update.Set    (preset_key, serialize Protocol.Preset.to_buffer preset');
+        ]
     | StoreClientConfig -> fun ccfg ->
       return_upds [ Update.Set
                       (Keys.client_config,
