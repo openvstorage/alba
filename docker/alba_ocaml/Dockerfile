@@ -1,4 +1,4 @@
-FROM alba_base
+FROM toolslive/alba_base:latest
 
 ENV opam_env='opam config env --root=/home/alba/OPAM'
 ENV alba_home=/home/alba/alba
