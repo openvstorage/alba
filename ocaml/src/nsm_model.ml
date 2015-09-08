@@ -1203,8 +1203,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         ~first:"" ~finc:true ~last:None
         ~max:(-1) ~reverse:false
     in
-    Update.delete (Keys.Device.info ~osd_id) :: mark_keys_deleted kv [ (osd_id, keys); ],
-    cnt
+    mark_keys_deleted kv [ (osd_id, keys); ], cnt
 
   let update_manifest
       kv object_name object_id
