@@ -213,8 +213,9 @@ let test_5 () =
 let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
     cache #clear_all () >>= fun () ->
-    cache # add Int32.max_int "oid" "blob" >>= fun () ->
-    cache # drop Int32.max_int >>= fun () ->
+    let bid_to_drop = Int32.of_int 20 in
+    cache # add bid_to_drop "oid" "blob" >>= fun () ->
+    cache # drop bid_to_drop >>= fun () ->
     let make_blob () = Bytes.create (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
@@ -227,7 +228,8 @@ let test_long () =
             Lwt_io.printlf "i:%i" i >>= fun () ->
             let blob = make_blob() in
             cache # add bid oid blob >>= fun () ->
-            Lwt_log.debug_f "after add in fill" >>= fun () ->
+            let count = cache # get_count () in
+            Lwt_log.debug_f "after add in fill, count=%Li" count >>= fun () ->
             loop (i-1)
           end
       in
