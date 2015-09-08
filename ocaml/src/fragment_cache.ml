@@ -762,39 +762,41 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       in
 
       let delete_victims_from_rocksdb victims =
-        let open Rocks in
-        WriteBatch.with_t
-          (fun wb ->
-           let del_victim v_i =
-             let kaccess_rev_i,boid_i, fsid_i, size_i = v_i in
-             let kfsid_i   = blob_fsid_key_of   boid_i in
-             let ksize_i   = blob_size_key_of   boid_i in
-             let kaccess_i = blob_access_key_of boid_i in
+        if victims <> []
+        then
+          begin
+            let open Rocks in
+            WriteBatch.with_t
+              (fun wb ->
+               let del_victim v_i =
+                 let kaccess_rev_i,boid_i, fsid_i, size_i = v_i in
+                 let kfsid_i   = blob_fsid_key_of   boid_i in
+                 let ksize_i   = blob_size_key_of   boid_i in
+                 let kaccess_i = blob_access_key_of boid_i in
 
-             WriteBatch.delete wb kfsid_i;
-             WriteBatch.delete wb ksize_i;
-             WriteBatch.delete wb kaccess_i;
-             WriteBatch.delete wb kaccess_rev_i;
-           in
-           let () = List.iter del_victim victims in
+                 WriteBatch.delete wb kfsid_i;
+                 WriteBatch.delete wb ksize_i;
+                 WriteBatch.delete wb kaccess_i;
+                 WriteBatch.delete wb kaccess_rev_i;
+               in
+               let () = List.iter del_victim victims in
 
-           WriteOptions.with_t (fun wo ->RocksDb.write db wo wb))
+               WriteOptions.with_t (fun wo ->RocksDb.write db wo wb))
+          end
       in
 
       let victims, n_victims, delta =
         let space_needed = victims_size in
         let victims, n_victims, delta = get_dropping_victims space_needed in
 
-        if victims <> []
-        then delete_victims_from_rocksdb victims;
+        delete_victims_from_rocksdb victims;
 
         let space_needed' = space_needed - delta in
         if space_needed' > 0
         then
           let victims', n_victims', delta' = get_lru_victims space_needed' in
 
-          if victims' <> []
-          then delete_victims_from_rocksdb victims';
+          delete_victims_from_rocksdb victims';
 
           (List.append victims victims',
            n_victims + n_victims',
