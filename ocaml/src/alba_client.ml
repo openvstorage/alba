@@ -36,6 +36,7 @@ class alba_client (base_client : Alba_base_client.client)
 
   object(self)
     method get_base_client = base_client
+    method get_manifest_cache = base_client # get_manifest_cache
     method mgr_access = mgr_access
     method nsm_host_access = nsm_host_access
     method osd_access = osd_access
@@ -142,11 +143,19 @@ class alba_client (base_client : Alba_base_client.client)
 
     let fd_ref = ref None in
     let write_object_data total_size =
-      Lwt_unix.openfile
-        output_file
-        Lwt_unix.([O_WRONLY; O_CREAT;])
-        0o664 >>= fun fd ->
-      fd_ref := Some fd;
+      (match !fd_ref with
+       | None ->
+          Lwt_unix.openfile
+            output_file
+            Lwt_unix.([O_WRONLY; O_CREAT; O_TRUNC])
+            0o664 >>= fun fd ->
+          fd_ref := Some fd;
+          Lwt.return fd
+       | Some fd ->
+          Lwt_unix.ftruncate fd 0 >>= fun () ->
+          Lwt_unix.lseek fd 0 Lwt_unix.SEEK_SET >>= fun _ ->
+          Lwt.return fd) >>= fun fd ->
+      (* TODO could fallocate here *)
       Lwt.return (Lwt_extra2.write_all_lwt_bytes fd)
     in
     Lwt.finalize
@@ -282,9 +291,9 @@ class alba_client (base_client : Alba_base_client.client)
           hit_or_miss
           (Manifest.show manifest) >>= fun () ->
 
-        write_object_data manifest.Manifest.size >>= fun write_object_data ->
         let get_manifest_dh = t_get_manifest, hm_to_source hit_or_miss in
         let attempt_download get_manifest_dh manifest =
+          write_object_data manifest.Manifest.size >>= fun write_object_data ->
           self # download_object_generic''
                ~namespace_id
                ~manifest

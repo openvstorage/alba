@@ -1834,34 +1834,50 @@ let test_retry_download () =
          fragment_locations; }
      in
 
-     (* poison manifest cache so a retry will be needed
-        to download the object *)
-     let manifest_cache = client # get_base_client # get_manifest_cache in
-     Manifest_cache.ManifestCache.add
-       manifest_cache
-       namespace_id
-       object_name
-       bad_mf;
+     let poison_mf_cache () =
+       (* poison manifest cache so a retry will be needed
+         to download the object *)
+       Manifest_cache.ManifestCache.add
+         (client # get_manifest_cache)
+         namespace_id
+         object_name
+         bad_mf
+     in
+     let assert_stale res_o =
+       (* assert a retry was needed due to a stale manifest *)
+       let _, stats = Option.get_some res_o in
+       assert
+         (let open Alba_statistics.Statistics in
+          snd stats.get_manifest_dh = Stale)
+     in
+     begin
+       poison_mf_cache ();
+       let output_file = "/tmp/" ^ test_name in
+       client # download_object_to_file
+              ~namespace
+              ~object_name
+              ~output_file
+              ~consistent_read:false
+              ~should_cache:false >>= fun res_o ->
 
-     let output_file = "/tmp/" ^ test_name in
-     client # download_object_to_file
-            ~namespace
-            ~object_name
-            ~output_file
-            ~consistent_read:false
-            ~should_cache:false >>= fun res_o ->
+       assert_stale res_o;
+       Lwt_extra2.read_file output_file >>= fun object_data' ->
+       assert (object_data' = Lwt_bytes.to_string object_data);
+       Lwt.return ()
+     end >>= fun () ->
 
-     (* assert a retry was needed due to a stale manifest *)
-     let _, stats = Option.get_some res_o in
-     assert
-       (let open Alba_statistics.Statistics in
-        snd stats.get_manifest_dh = Stale);
-
-     Lwt_extra2.read_file output_file >>= fun object_data' ->
-     assert (object_data' = Lwt_bytes.to_string object_data);
-
-     (* TODO also test for download to (lwt)bytes *)
-     Lwt.return ())
+     begin
+       poison_mf_cache ();
+       client # download_object_to_string
+              ~namespace
+              ~object_name
+              ~consistent_read:false
+              ~should_cache:false >>= function
+       | None -> assert false
+       | Some object_data' ->
+          assert (object_data = Lwt_bytes.of_string object_data');
+          Lwt.return ()
+     end)
 
 open OUnit
 
