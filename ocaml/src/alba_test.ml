@@ -1791,6 +1791,78 @@ let test_object_sizes () =
         Lwt.return ())
        (Int.range 0 (20 + 128*2)))
 
+
+let test_retry_download () =
+  test_with_alba_client
+    (fun client ->
+     let test_name = "test_retry_download" in
+
+     let open Albamgr_protocol.Protocol in
+     let preset_name = test_name in
+     let preset' = Preset.({ _DEFAULT with
+                             policies = [ (2,1,3,3); ];
+                             fragment_size = 128; }) in
+     client # mgr_access # create_preset
+            preset_name preset' >>= fun () ->
+
+     let namespace = test_name in
+     client # create_namespace
+            ~preset_name:(Some preset_name)
+            ~namespace () >>= fun namespace_id ->
+
+     let object_name = test_name in
+     let object_data =
+       (* 2 chunks *)
+       Lwt_bytes2.Lwt_bytes.create (2*2*128)
+     in
+     client # upload_object_from_bytes
+            ~namespace
+            ~object_name
+            ~object_data
+            ~checksum_o:None
+            ~allow_overwrite:Nsm_model.NoPrevious
+     >>= fun (mf, _) ->
+
+     let bad_mf =
+       let open Nsm_model.Manifest in
+       let fragment_locations =
+         [ List.hd_exn mf.fragment_locations;
+           [ (Some 0l,0); (Some 0l,0); (Some 0l,0); ] ]
+       in
+       { mf with
+         size = Int64.(add mf.size 5L);
+         fragment_locations; }
+     in
+
+     (* poison manifest cache so a retry will be needed
+        to download the object *)
+     let manifest_cache = client # get_base_client # get_manifest_cache in
+     Manifest_cache.ManifestCache.add
+       manifest_cache
+       namespace_id
+       object_name
+       bad_mf;
+
+     let output_file = "/tmp/" ^ test_name in
+     client # download_object_to_file
+            ~namespace
+            ~object_name
+            ~output_file
+            ~consistent_read:false
+            ~should_cache:false >>= fun res_o ->
+
+     (* assert a retry was needed due to a stale manifest *)
+     let _, stats = Option.get_some res_o in
+     assert
+       (let open Alba_statistics.Statistics in
+        snd stats.get_manifest_dh = Stale);
+
+     Lwt_extra2.read_file output_file >>= fun object_data' ->
+     assert (object_data' = Lwt_bytes.to_string object_data);
+
+     (* TODO also test for download to (lwt)bytes *)
+     Lwt.return ())
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -1815,4 +1887,5 @@ let suite = "alba_test" >:::[
     "test_stale_manifest_download" >:: test_stale_manifest_download;
     "test_update_policies" >:: test_update_policies;
     "test_object_sizes" >:: test_object_sizes;
+    "test_retry_download" >:: test_retry_download;
   ]
