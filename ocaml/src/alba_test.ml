@@ -1758,6 +1758,39 @@ let test_stale_manifest_download () =
      download_slices () >>= fun () ->
      Lwt.return ())
 
+let test_object_sizes () =
+  test_with_alba_client
+    (fun client ->
+     let test_name = "test_object_sizes" in
+     let preset_name = test_name in
+     let open Albamgr_protocol.Protocol in
+     let preset' = Preset.({ _DEFAULT with
+                             policies = [ (2,1,3,3); ];
+                             fragment_size = 128; }) in
+     client # mgr_access # create_preset preset_name preset' >>= fun () ->
+     let namespace = test_name in
+     client # create_namespace ~preset_name:(Some preset_name) ~namespace () >>= fun _ ->
+
+     Lwt_list.iter_s
+       (fun i ->
+        let object_name = string_of_int i in
+        let object_data = Bytes.create i in
+        client # get_base_client # upload_object_from_string
+               ~namespace
+               ~object_name
+               ~object_data
+               ~checksum_o:None
+               ~allow_overwrite:Nsm_model.NoPrevious
+        >>= fun _ ->
+        client # download_object_to_string
+               ~namespace
+               ~object_name
+               ~consistent_read:false
+               ~should_cache:true >>= fun object_data_o' ->
+        assert (object_data = Option.get_some object_data_o');
+        Lwt.return ())
+       (Int.range 0 (20 + 128*2)))
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -1781,4 +1814,5 @@ let suite = "alba_test" >:::[
     "test_master_switch" >:: test_master_switch;
     "test_stale_manifest_download" >:: test_stale_manifest_download;
     "test_update_policies" >:: test_update_policies;
+    "test_object_sizes" >:: test_object_sizes;
   ]

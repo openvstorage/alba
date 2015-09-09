@@ -18,21 +18,23 @@ open Lwt.Infix
 
 class type reader = object
   method reset : unit Lwt.t
-  (* returns amount of bytes read + has_more  *)
-  method read : int -> Lwt_bytes.t -> (int * bool) Lwt.t
+  method length : int Lwt.t
+  (* reads exactly the amount of requested bytes or gives an error *)
+  method read : int -> Lwt_bytes.t -> unit Lwt.t
 end
 
 class file_reader fd size = (object
-  val mutable pos = 0
-
   method reset =
-    pos <- 0;
     Lwt.map ignore (Lwt_unix.lseek fd 0 Lwt_unix.SEEK_SET)
+
+  method length =
+    Lwt_unix.fstat fd >>= fun stat ->
+    Lwt.return stat.Lwt_unix.st_size
 
   method read cnt target =
     Lwt_extra2.read_all_lwt_bytes fd target 0 cnt >>= fun read ->
-    pos <- pos + read;
-    Lwt.return (read, pos < size)
+    assert (read = cnt);
+    Lwt.return_unit
 end : reader)
 
 let with_file_reader input_file f =
@@ -53,15 +55,13 @@ class string_reader object_data = (object
     pos <- 0;
     Lwt.return_unit
 
+  method length =
+    Lwt.return obj_len
+
   method read cnt target =
-    let n' =
-      if pos + cnt > obj_len
-      then obj_len - pos
-      else cnt
-    in
-    Lwt_bytes.blit_from_bytes object_data pos target 0 n';
-    pos <- pos + n';
-    Lwt.return (n', pos < obj_len)
+    Lwt_bytes.blit_from_bytes object_data pos target 0 cnt;
+    pos <- pos + cnt;
+    Lwt.return_unit
 end : reader)
 
 class bytes_reader object_data = (object
@@ -72,13 +72,11 @@ class bytes_reader object_data = (object
     pos <- 0;
     Lwt.return_unit
 
-  method read n target =
-    let n' =
-      if pos + n > obj_len
-      then obj_len - pos
-      else n
-    in
-    Lwt_bytes.blit object_data pos target 0 n';
-    pos <- pos + n';
-    Lwt.return (n', pos < obj_len)
+  method length =
+    Lwt.return obj_len
+
+  method read cnt target =
+    Lwt_bytes.blit object_data pos target 0 cnt;
+    pos <- pos + cnt;
+    Lwt.return_unit
 end : reader)

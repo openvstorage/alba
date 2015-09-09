@@ -665,10 +665,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
                let open Rocks in
                if not (Iterator.is_valid c)
                then
-                 begin
-                   Hashtbl.remove _dropping bid;
-                   acc
-                 end
+                 acc
                else if delta >= victims_size
                then
                  acc
@@ -721,8 +718,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
                let victims', n_victims', delta' = get_bid_victims bid victims_size in
 
                (* stop dropping items from this bucket if the
-               bucket did not result in additional victims *)
-               if n_victims' = n_victims
+               bucket did not result in sufficient victims *)
+               if delta' < victims_size
                then Hashtbl.remove _dropping bid;
 
                inner
@@ -764,13 +761,43 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
           )
       in
 
+      let delete_victims_from_rocksdb victims =
+        if victims <> []
+        then
+          begin
+            let open Rocks in
+            WriteBatch.with_t
+              (fun wb ->
+               let del_victim v_i =
+                 let kaccess_rev_i,boid_i, fsid_i, size_i = v_i in
+                 let kfsid_i   = blob_fsid_key_of   boid_i in
+                 let ksize_i   = blob_size_key_of   boid_i in
+                 let kaccess_i = blob_access_key_of boid_i in
+
+                 WriteBatch.delete wb kfsid_i;
+                 WriteBatch.delete wb ksize_i;
+                 WriteBatch.delete wb kaccess_i;
+                 WriteBatch.delete wb kaccess_rev_i;
+               in
+               let () = List.iter del_victim victims in
+
+               WriteOptions.with_t (fun wo ->RocksDb.write db wo wb))
+          end
+      in
+
       let victims, n_victims, delta =
         let space_needed = victims_size in
         let victims, n_victims, delta = get_dropping_victims space_needed in
+
+        delete_victims_from_rocksdb victims;
+
         let space_needed' = space_needed - delta in
         if space_needed' > 0
         then
           let victims', n_victims', delta' = get_lru_victims space_needed' in
+
+          delete_victims_from_rocksdb victims';
+
           (List.append victims victims',
            n_victims + n_victims',
            delta + delta')
@@ -786,19 +813,6 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let open Rocks in
       WriteBatch.with_t
         (fun wb ->
-         let del_victim v_i =
-           let kaccess_rev_i,boid_i, fsid_i, size_i = v_i in
-           let kfsid_i   = blob_fsid_key_of   boid_i in
-           let ksize_i   = blob_size_key_of   boid_i in
-           let kaccess_i = blob_access_key_of boid_i in
-
-           WriteBatch.delete wb kfsid_i;
-           WriteBatch.delete wb ksize_i;
-           WriteBatch.delete wb kaccess_i;
-           WriteBatch.delete wb kaccess_rev_i;
-         in
-         let () = List.iter del_victim victims in
-
          WriteBatch.put wb _TOTAL_COUNT (ser64 total_count');
          WriteBatch.put wb _TOTAL_SIZE (ser64 total_size');
          WriteOptions.with_t (fun wo ->RocksDb.write db wo wb));

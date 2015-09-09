@@ -393,8 +393,8 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
             let open Nsm_model.Manifest in
             Lwt_log.info_f
               ~exn
-              "Exn while repairing osd %li (object name,id = %s,%s), will now try object rewrite"
-              osd_id manifest.name manifest.object_id >>= fun () ->
+              "Exn while repairing osd %li (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+              osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
             Lwt_extra2.ignore_errors
               ~logging:true
               (fun () ->
