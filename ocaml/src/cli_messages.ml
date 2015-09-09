@@ -23,13 +23,13 @@ let alba_list_osd_messages cfg_file attempts (destinations:int32 list) =
        transform destinations >>= fun destinations' ->
        let open Albamgr_protocol in
        Lwt_list.fold_left_s
-         (fun (c0,xs0) destination ->
+         (fun xs0 destination ->
           client # get_next_msgs Protocol.Msg_log.Osd destination
-          >>= fun ((c,xs),_more) ->
+          >>= fun ((_,xs),_more) ->
           let xs' = List.map (fun (msg_id,msg) -> (destination,msg_id, msg)) xs in
-          Lwt.return (c + c0, xs' @ xs0)
-         ) (0,[]) (List.rev destinations')
-       >>= fun (c,xs) ->
+          Lwt.return (xs' @ xs0)
+         ) [] (List.rev destinations')
+       >>= fun xs ->
        Lwt_io.printlf "destination | msg_id | message" >>= fun () ->
        Lwt_io.printlf "------------+--------+--------" >>= fun () ->
        Lwt_list.iter_s
