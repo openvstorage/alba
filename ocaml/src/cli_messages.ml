@@ -7,6 +7,20 @@ let alba_list_osd_messages cfg_file attempts (destinations:int32 list) =
     with_albamgr_client
       cfg_file ~attempts
       (fun client ->
+       let transform =
+         function
+         | [] -> client # list_all_claimed_osds >>= fun (c,osd_infos ) ->
+                 let r =
+                   List.map
+                     (fun ((x : int32),_ ) -> x)
+                     osd_infos
+                 in
+                 Lwt.return r
+
+         | x -> Lwt.return x
+       in
+
+       transform destinations >>= fun destinations' ->
        let open Albamgr_protocol in
        Lwt_list.fold_left_s
          (fun (c0,xs0) destination ->
@@ -14,7 +28,7 @@ let alba_list_osd_messages cfg_file attempts (destinations:int32 list) =
           >>= fun ((c,xs),_more) ->
           let xs' = List.map (fun (msg_id,msg) -> (destination,msg_id, msg)) xs in
           Lwt.return (c + c0, xs' @ xs0)
-         ) (0,[]) (List.rev destinations)
+         ) (0,[]) (List.rev destinations')
        >>= fun (c,xs) ->
        Lwt_io.printlf "destination | msg_id | message" >>= fun () ->
        Lwt_io.printlf "------------+--------+--------" >>= fun () ->
@@ -25,7 +39,6 @@ let alba_list_osd_messages cfg_file attempts (destinations:int32 list) =
             destination msg_id ([%show: Protocol.Osd.Message.t] msg)>>= fun () ->
           Lwt.return ()
          ) xs
-
       )
   in
   lwt_cmd_line false t

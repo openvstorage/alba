@@ -647,43 +647,44 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               let _, osd_info = deserialize Osd.from_buffer_with_claim_info osd_info_v in
 
               if osd_info.Osd.decommissioned
-              then begin
-                let add_work_items =
-                  add_work_items
-                    [ Work.CleanupOsdNamespace (osd_id, namespace_id) ] in
-
-                Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
-                                None) ::
-                Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
-                                None) ::
-                add_work_items
-              end else begin
-                let add_nsm_msg =
+              then
+                begin
+                  let add_work_items =
+                    add_work_items
+                      [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
+                  in
+                  Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None)
+                  :: Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None)
+                  :: add_work_items
+                end
+              else
+                begin
                   match get_namespace_by_id ~namespace_id with
-                  | None -> []
-                  | Some (_, ns_info) ->
-                    add_msg
-                      Msg_log.Nsm_host
-                      ns_info.Namespace.nsm_host_id
-                      (let open Nsm_host_protocol.Protocol in
-                       Message.NamespaceMsg
-                         (namespace_id,
-                          Namespace_message.LinkOsd (osd_id, osd_info)))
-                in
+                    | None -> []
+                    | Some (_, ns_info) ->
+                       let add_nsm_msg =
+                         add_msg
+                           Msg_log.Nsm_host
+                           ns_info.Namespace.nsm_host_id
+                           (let open Nsm_host_protocol.Protocol in
+                            Message.NamespaceMsg
+                              (namespace_id,
+                               Namespace_message.LinkOsd (osd_id, osd_info)))
+                       in
+                       List.concat
+                         [ (* prevent race by making sure the decommissioned flag
+                              hasn't changed in the meantime
+                            *)
+                           [ Update.Assert (osd_info_key, Some osd_info_v);
+                             Update.Set (Keys.Osd.namespaces ~osd_id ~namespace_id, "");
+                           ];
+                           update_namespace_link
+                             ~osd_id ~namespace_id
+                             Osd.NamespaceLink.Adding
+                             Osd.NamespaceLink.Active;
 
-                List.concat
-                  [ (* prevent race by making sure the decommissioned flag
-                       hasn't changed in the meantime *)
-                    [ Update.Assert (osd_info_key, Some osd_info_v);
-                      Update.Set (Keys.Osd.namespaces ~osd_id ~namespace_id, ""); ];
-
-                    update_namespace_link
-                      ~osd_id ~namespace_id
-                      Osd.NamespaceLink.Adding
-                      Osd.NamespaceLink.Active;
-
-                    add_nsm_msg ]
-              end
+                           add_nsm_msg ]
+                end
           end
     in
     let upds =
