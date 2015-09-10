@@ -21,7 +21,8 @@ RUN apt-get -y update && apt-get install -y \
         yasm \
         automake \
         python-dev \
-        python-pip
+        python-pip \
+        debhelper 
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y darcs
 RUN pip install fabric junit-xml
