@@ -68,7 +68,7 @@ let list_nsm_host_messages cfg_file attempts (destinations: string list) =
 
 let list_nsm_host_messages_cmd =
   let nsm_hosts =
-    let doc = "nsm hosts" in
+    let doc = "a comma seperated list of the names of the nsm hosts, empty means \"`em all\"" in
     Arg.(value
          & opt (list string) []
          & info ["nsm-hosts"] ~docv:"NSM_HOSTS" ~doc
@@ -82,7 +82,6 @@ let list_osd_messages cfg_file attempts (destinations:int32 list) =
     with_albamgr_client
       cfg_file ~attempts
       (fun client ->
-
 
        transform_osd client destinations >>= fun destinations' ->
        accumulate Protocol.Msg_log.Osd client destinations' >>= fun xs ->
@@ -102,10 +101,11 @@ let list_osd_messages cfg_file attempts (destinations:int32 list) =
 
 let list_osd_messages_cmd =
   let destinations  =
-    let doc = "destinations" in
+    let doc = "a comma seperated list of the names of the osd-ids, empty means \"`em all\""
+    in
     Arg.(value
          & opt (list ~sep:',' int32) []
-         & info ["destinations"] ~docv:"DESTINATIONS" ~doc
+         & info ["osd-ids"] ~docv:"OSD-IDS" ~doc
     )
   in
   Term.(pure list_osd_messages $ alba_cfg_file $ attempts 1 $ destinations),
