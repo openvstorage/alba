@@ -413,3 +413,54 @@ def run_test_asd_start(xml=False):
 
     if xml:
         alba.dump_junit_xml()
+
+@task
+def run_test_big_object():
+    alba.demo_kill()
+    alba.demo_setup()
+
+    # create the preset in albamgr
+    local(" ".join([
+        env['alba_bin'],
+        'create-preset', 'preset_no_compression',
+        '--config', arakoon_config_file,
+        '< ./cfg/preset_no_compression.json'
+    ]))
+
+    # create new namespace with this preset
+    local(" ".join([
+        env['alba_bin'],
+        'create-namespace', 'big', 'preset_no_compression',
+        '--config', arakoon_config_file
+    ]))
+
+    # upload a big object
+    local("truncate -s 2G /tmp/alba/obj")
+    local(" ".join([
+        'time', env['alba_bin'],
+        'proxy-upload-object', 'big', '/tmp/alba/obj', 'bigobj'
+    ]))
+    # note this may fail with NoSatisfiablePolicy from time to time
+
+    local(" ".join([
+        'time', env['alba_bin'],
+        'proxy-download-object', 'big', 'bigobj', '/tmp/alba/obj_download'
+    ]))
+    local("rm /tmp/alba/obj_download")
+
+    # policy says we can lose a node,
+    # so stop and decommission osd 0 to 3
+    for i in range(0,4):
+        port = 8000+i
+        alba.osd_stop(port)
+        long_id = "%i_%i_%s" % (port, 2000, alba.local_nodeid_prefix)
+        local(" ".join([
+            env['alba_bin'],
+            'decommission-osd', '--long-id', long_id,
+            '--config', arakoon_config_file
+        ]))
+
+    # TODO
+    # wait for maintenance process to repair it
+    # (give maintenance process a kick?)
+    # report mem usage of proxy & maintenance process
