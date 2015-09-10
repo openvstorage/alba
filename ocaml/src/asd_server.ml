@@ -986,12 +986,13 @@ let run_server
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision
   >>= fun () ->
   let db_path = path ^ "/db" in
+  Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
   let kv =
     Rocks_key_value_store.create'
       ~max_open_files:rocksdb_max_open_files
       ~db_path ()
   in
-
+  Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->
   let endgame () =
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->

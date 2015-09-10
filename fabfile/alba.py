@@ -156,6 +156,7 @@ def _asd_inner(port, path, node_id, slow, multicast):
     dump_to_cfg_as_json(cfg_path, cfg)
 
     cmd = [
+        'strace',
         env['alba_bin'],
         'asd-start',
         "--config", cfg_path
