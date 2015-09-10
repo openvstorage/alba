@@ -1,4 +1,4 @@
-FROM toolslive/alba_base:latest
+FROM alba_base
 
 RUN apt-get install -y strace
 
