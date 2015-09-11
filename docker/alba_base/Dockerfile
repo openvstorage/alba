@@ -24,11 +24,15 @@ RUN apt-get -y update && apt-get install -y \
         python-pip \
         debhelper \
         psmisc \
-        strace
+        strace \
+        curl \
+        g++ \
+        libgflags-dev \
+        sudo
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y darcs
 RUN pip install fabric junit-xml
-#RUN apt-get clean
+
 RUN mkdir /home/alba
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 RUN sh ./opam_installer.sh /usr/local/bin 4.02.1
@@ -66,9 +70,7 @@ RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
 RUN eval `${opam_env}` && opam install -y arakoon.1.8.8
-RUN apt-get install -y curl g++   libgflags-dev sudo
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
-
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
 RUN cd /home/alba && git clone https://github.com/openvstorage/alba.git
 CMD eval `${opam_env}` && opam list
