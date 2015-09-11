@@ -26,7 +26,11 @@ module Keys = struct
   let alba_id = "/alba/id"
   let albamgr_version = "/alba/version"
   let client_config = "/alba/client_config"
+
   let lease ~lease_name = "/alba/lease/" ^ lease_name
+
+  let participants_prefix = "/alba/participants/"
+  let participants ~prefix ~name = participants_prefix ^ prefix ^ name
 
   module Nsm_host = struct
     (* this maps to some info about the nsmhost *)
@@ -1416,6 +1420,23 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
       return_upds [ Update.Assert (lease_key, lease_so);
                     Update.Set (lease_key, (serialize Llio.int_to (lease + 1))); ]
+    | RegisterParticipant ->
+      fun (prefix, (name, cnt)) ->
+      let key = Keys.participants ~prefix ~name in
+      return_upds [ Update.Set (key, serialize Llio.int_to cnt); ]
+    | RemoveParticipant ->
+      fun (prefix, (name, cnt)) ->
+      let key = Keys.participants ~prefix ~name in
+      let upds = match db # get key with
+        | None -> []
+        | Some v ->
+           let cnt' = deserialize Llio.int_from v in
+           if cnt' = cnt
+           then [ Update.Assert (key, Some v);
+                  Update.Replace (key, None); ]
+           else []
+      in
+      return_upds upds
   in
 
   let handle_query : type i o. (i, o) query -> i -> o = function
@@ -1589,6 +1610,25 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | Some s -> deserialize Llio.int_from s
       in
       lease
+    | GetParticipants ->
+      fun prefix ->
+      let keys_prefix = Keys.participants ~prefix ~name:"" in
+      let module KV = WrapReadUserDb(struct
+          let db = db
+          let prefix = keys_prefix
+        end)
+      in
+      let module EKV = Key_value_store.Read_store_extensions(KV) in
+      let res, _ =
+        EKV.map_range
+          db
+          ~first:"" ~finc:true ~last:None
+          ~max:(-1) ~reverse:false
+          (fun cur name ->
+           let cnt = deserialize Llio.int_from (KV.cur_get_value cur) in
+           (name, cnt))
+      in
+      res
   in
 
 

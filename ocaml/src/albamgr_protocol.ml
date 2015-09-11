@@ -706,6 +706,7 @@ module Protocol = struct
     | ListOsdNamespaces : (Osd.id * Namespace.id RangeQueryArgs.t,
                            Namespace.id counted_list_more) query
     | CheckLease : (string, int) query
+    | GetParticipants : (string, (string * int) counted_list) query
 
 
   type ('i, 'o) update =
@@ -730,6 +731,9 @@ module Protocol = struct
     | UpdatePreset : (Preset.name * Preset.Update.t, unit) update
     | StoreClientConfig : (Arakoon_config.t, unit) update
     | TryGetLease : (string * int, unit) update
+    | RegisterParticipant : (string * (string * int), unit) update
+    | RemoveParticipant : (string * (string * int), unit) update
+
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
     | ListNsmHosts -> RangeQueryArgs.from_buffer Llio.string_from
@@ -755,6 +759,7 @@ module Protocol = struct
         Llio.int32_from
         (RangeQueryArgs.from_buffer Llio.int32_from)
     | CheckLease -> Llio.string_from
+    | GetParticipants -> Llio.string_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -780,6 +785,7 @@ module Protocol = struct
         Llio.int32_to
         (RangeQueryArgs.to_buffer Llio.int32_to)
     | CheckLease -> Llio.string_to
+    | GetParticipants -> Llio.string_to
 
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
@@ -846,6 +852,11 @@ module Protocol = struct
     | ListOsdNamespaces ->
       counted_list_more_from Llio.int32_from
     | CheckLease -> Llio.int_from
+    | GetParticipants ->
+       Llio.counted_list_from
+         (Llio.pair_from
+            Llio.string_from
+            Llio.int_from)
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -911,6 +922,11 @@ module Protocol = struct
     | ListOsdNamespaces ->
       counted_list_more_to Llio.int32_to
     | CheckLease -> Llio.int_to
+    | GetParticipants ->
+       Llio.counted_list_to
+         (Llio.pair_to
+            Llio.string_to
+            Llio.int_to)
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -959,6 +975,18 @@ module Protocol = struct
        Arakoon_config.from_buffer
     | TryGetLease ->
        Llio.pair_from Llio.string_from Llio.int_from
+    | RegisterParticipant ->
+      Llio.pair_from
+        Llio.string_from
+        (Llio.pair_from
+           Llio.string_from
+           Llio.int_from)
+    | RemoveParticipant ->
+      Llio.pair_from
+        Llio.string_from
+        (Llio.pair_from
+           Llio.string_from
+           Llio.int_from)
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -1001,6 +1029,19 @@ module Protocol = struct
        Arakoon_config.to_buffer
     | TryGetLease ->
        Llio.pair_to Llio.string_to Llio.int_to
+    | RegisterParticipant ->
+      Llio.pair_to
+        Llio.string_to
+        (Llio.pair_to
+           Llio.string_to
+           Llio.int_to)
+    | RemoveParticipant ->
+      Llio.pair_to
+        Llio.string_to
+        (Llio.pair_to
+           Llio.string_to
+           Llio.int_to)
+
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
     | AddNsmHost      -> Llio.unit_from
@@ -1024,7 +1065,8 @@ module Protocol = struct
     | UpdatePreset ->       Llio.unit_from
     | StoreClientConfig ->  Llio.unit_from
     | TryGetLease ->        Llio.unit_from
-
+    | RegisterParticipant ->Llio.unit_from
+    | RemoveParticipant ->  Llio.unit_from
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
     | UpdateNsmHost   -> Llio.unit_to
@@ -1047,6 +1089,8 @@ module Protocol = struct
     | UpdatePreset ->       Llio.unit_to
     | StoreClientConfig ->  Llio.unit_to
     | TryGetLease ->        Llio.unit_to
+    | RegisterParticipant ->Llio.unit_to
+    | RemoveParticipant ->  Llio.unit_to
 
 
   type request =
@@ -1104,6 +1148,10 @@ module Protocol = struct
 
                       Wrap_q CheckLease, 51l, "CheckLease";
                       Wrap_u TryGetLease, 52l, "TryGetLease";
+
+                      Wrap_q GetParticipants, 53l, "GetParticipants";
+                      Wrap_u RegisterParticipant, 54l, "RegisterParticipant";
+                      Wrap_u RemoveParticipant, 55l, "RemoveParticipant";
                     ]
 
 

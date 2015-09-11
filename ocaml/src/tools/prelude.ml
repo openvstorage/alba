@@ -531,7 +531,8 @@ module HexInt32 = struct
 end
 
 type has_more = bool
-type 'a counted_list_more = 'a Std.counted_list * has_more
+type 'a counted_list = 'a Std.counted_list
+type 'a counted_list_more = 'a counted_list * has_more
 
 let counted_list_more_from a_from =
   Llio.pair_from
