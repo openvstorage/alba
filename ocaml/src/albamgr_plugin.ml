@@ -26,6 +26,7 @@ module Keys = struct
   let alba_id = "/alba/id"
   let albamgr_version = "/alba/version"
   let client_config = "/alba/client_config"
+  let lease ~lease_name = "/alba/lease/" ^ lease_name
 
   module Nsm_host = struct
     (* this maps to some info about the nsmhost *)
@@ -1403,6 +1404,18 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       return_upds [ Update.Set
                       (Keys.client_config,
                        serialize Arakoon_config.to_buffer ccfg); ]
+    | TryGetLease -> fun (lease_name, counter) ->
+      let lease_key = Keys.lease ~lease_name in
+      let lease_so = db # get lease_key in
+      let lease = match lease_so with
+        | None -> 0
+        | Some s -> deserialize Llio.int_from s
+      in
+      if lease <> counter
+      then Error.(failwith Claim_lease_mismatch);
+
+      return_upds [ Update.Assert (lease_key, lease_so);
+                    Update.Set (lease_key, (serialize Llio.int_to (lease + 1))); ]
   in
 
   let handle_query : type i o. (i, o) query -> i -> o = function
@@ -1568,6 +1581,14 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             | None -> Keys.Osd.namespaces_next_prefix ~osd_id)
         ~max:(cap_max ~max ()) ~reverse
         (fun cur key -> Keys.Osd.namespaces_extract_namespace_id key)
+    | CheckLease -> fun lease_name ->
+      let lease_key = Keys.lease ~lease_name in
+      let lease_so = db # get lease_key in
+      let lease = match lease_so with
+        | None -> 0
+        | Some s -> deserialize Llio.int_from s
+      in
+      lease
   in
 
 

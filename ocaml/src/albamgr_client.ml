@@ -366,6 +366,16 @@ class client (client : basic_client) =
            ~last:None
            ~max:(-1) ~reverse:false)
 
+    method try_get_lease name counter =
+      client # update
+        TryGetLease
+        (name, counter)
+
+    method check_lease name =
+      client # query
+        CheckLease
+        name
+
     method update_preset name updates =
       client # update
         UpdatePreset
