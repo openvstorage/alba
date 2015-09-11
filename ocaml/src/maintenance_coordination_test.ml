@@ -1,7 +1,7 @@
 open Maintenance_coordination
 open Lwt.Infix
 
-let test_coordinator () =
+let test_coordinator_master () =
   Alba_test.test_with_alba_client
     (fun client ->
      let lease_name = "x" in
@@ -47,8 +47,70 @@ let test_coordinator () =
 
      Lwt.return ())
 
+let test_coordinator_participants () =
+  Alba_test.test_with_alba_client
+    (fun client ->
+     let lease_name = "x" in
+     let lease_timeout = 0.2 in
+     let c1 = new coordinator
+                  (client#mgr_access)
+                  ~name:"c1"
+                  ~lease_name
+                  ~lease_timeout
+                  ~registration_prefix:""
+     in
+     c1 # init;
+     let c2 = new coordinator
+                  (client#mgr_access)
+                  ~name:"c2"
+                  ~lease_name
+                  ~lease_timeout
+                  ~registration_prefix:""
+     in
+     c2 # init;
+
+     Lwt_unix.sleep (2. *. lease_timeout) >>= fun () ->
+
+     assert (2 = c1 # get_modulo);
+     assert (2 = c2 # get_modulo);
+
+     assert (0 = c1 # get_remainder);
+     assert (1 = c2 # get_remainder);
+
+     let c3 = new coordinator
+                  (client#mgr_access)
+                  ~name:"c3"
+                  ~lease_name
+                  ~lease_timeout
+                  ~registration_prefix:""
+     in
+     c3 # init;
+
+     Lwt_unix.sleep (2. *. lease_timeout) >>= fun () ->
+
+     assert (3 = c1 # get_modulo);
+     assert (3 = c2 # get_modulo);
+     assert (3 = c3 # get_modulo);
+
+     assert (0 = c1 # get_remainder);
+     assert (1 = c2 # get_remainder);
+     assert (2 = c3 # get_remainder);
+
+     c1 # stop;
+
+     Lwt_unix.sleep (3. *. lease_timeout) >>= fun () ->
+
+     assert (2 = c2 # get_modulo);
+     assert (2 = c3 # get_modulo);
+
+     assert (0 = c2 # get_remainder);
+     assert (1 = c3 # get_remainder);
+
+     Lwt.return ())
+
 open OUnit
 
 let suite = "maintenance_coordination" >:::[
-      "test_coordinator" >:: test_coordinator;
+      "test_coordinator_master" >:: test_coordinator_master;
+      "test_coordinator_participants" >:: test_coordinator_participants;
     ]

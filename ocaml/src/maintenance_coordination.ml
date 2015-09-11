@@ -22,9 +22,13 @@ class coordinator
   val mutable modulo = 1
   val mutable remainder = 0
 
+  method get_modulo = modulo
+  method get_remainder = remainder
+
   method init =
     Lwt.ignore_result
       begin
+
         let rec become_master_loop () =
           Lwt.catch
             (fun () ->
@@ -62,7 +66,6 @@ class coordinator
           then
             begin
               state <- Follower;
-              stop <- false;
               Lwt.return ()
             end
           else become_master_loop ()
@@ -80,8 +83,10 @@ class coordinator
             (fun exn ->
              Lwt_log.info_f ~exn "exception in maintenance registration loop for %s" name)
           >>= fun () ->
-          Lwt_unix.sleep lease_timeout >>= fun () ->
-          registration_loop ()
+          Lwt_unix.sleep (lease_timeout /. 2.) >>= fun () ->
+          if stop
+          then Lwt.return_unit
+          else registration_loop ()
         in
 
         let rec check_position_loop previous_participants =
@@ -96,11 +101,23 @@ class coordinator
 
              (if self # is_master
               then
-                begin
-                  (* TODO look at previous participants and maybe kick some out *)
-                  Lwt.return_unit
-                end
-              else Lwt.return_unit) >>= fun () ->
+                (* do cleanup of participants that don't renew their lease *)
+                Lwt_list.iter_p
+                  (fun (participant, cnt) ->
+                   match List.find
+                           (fun (name, _) -> name = participant)
+                           previous_participants with
+                   | None -> Lwt.return_unit
+                   | Some (_, cnt') ->
+                      if cnt = cnt'
+                      then client # remove_participant
+                                  ~prefix:registration_prefix
+                                  ~name:participant
+                                  ~counter:cnt
+                      else Lwt.return_unit)
+                  participants
+              else
+                Lwt.return_unit) >>= fun () ->
              Lwt.return participants)
             (fun exn ->
              Lwt_log.info_f ~exn "exception in maintenance check position loop for %s" name
@@ -108,14 +125,18 @@ class coordinator
              Lwt.return previous_participants)
           >>= fun participants ->
           Lwt_unix.sleep lease_timeout >>= fun () ->
-          check_position_loop participants
+          if stop
+          then Lwt.return_unit
+          else check_position_loop participants
         in
 
+        stop <- false;
         Lwt.join
           [ become_master_loop ();
             registration_loop ();
             check_position_loop [];
-          ]
+          ] >>= fun () ->
+        Lwt.return ()
       end
 
   method is_master = state = Master
