@@ -4,7 +4,9 @@ ENV opam_env='opam config env --root=/home/alba/OPAM'
 ENV alba_home=/home/alba/alba
 ENV ARAKOON_BIN=arakoon
 
-RUN apt-get install -y libtool
+RUN apt-get install -y \
+        libtool \
+        libboost-all-dev
 
 # stuff below isn't really needed for jenkins.
 
