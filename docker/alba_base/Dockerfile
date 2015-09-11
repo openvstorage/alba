@@ -22,7 +22,9 @@ RUN apt-get -y update && apt-get install -y \
         automake \
         python-dev \
         python-pip \
-        debhelper 
+        debhelper \
+        psmisc \
+        strace
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y darcs
 RUN pip install fabric junit-xml
@@ -64,7 +66,7 @@ RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
 RUN eval `${opam_env}` && opam install -y arakoon.1.8.8
-RUN apt-get install -y curl g++-4.8 libgflags-dev sudo
+RUN apt-get install -y curl g++   libgflags-dev sudo
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
 
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
