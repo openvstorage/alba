@@ -9,7 +9,7 @@ RUN apt-get install -y \
         libboost-all-dev \
         fuse
 RUN wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
-sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
+RUN sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
 
 # stuff below isn't really needed for jenkins.
 
