@@ -182,6 +182,15 @@ module List = struct
         | (Some _) as i -> i
       end
 
+  let rec find_index' f pos = function
+    | [] -> None
+    | hd :: tl ->
+      if f hd
+      then Some pos
+      else find_index' f (pos+1) tl
+
+  let find_index f l = find_index' f 0 l
+
   let flatten_unordered lists =
     let rec inner acc = function
       | [] -> acc

@@ -10,13 +10,17 @@ let test_coordinator () =
                   (client#mgr_access)
                   ~name:"c1"
                   ~lease_name
-                  ~lease_timeout in
+                  ~lease_timeout
+                  ~registration_prefix:""
+     in
      c1 # init;
      let c2 = new coordinator
                   (client#mgr_access)
                   ~name:"c2"
                   ~lease_name
-                  ~lease_timeout in
+                  ~lease_timeout
+                  ~registration_prefix:""
+     in
      c2 # init;
 
      Lwt_unix.sleep (2. *. lease_timeout) >>= fun () ->

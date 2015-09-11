@@ -376,6 +376,21 @@ class client (client : basic_client) =
         CheckLease
         name
 
+    method register_participant ~prefix ~name ~counter =
+      client # update
+        RegisterParticipant
+        (prefix, (name, counter))
+
+    method remove_participant ~prefix ~name ~counter =
+      client # update
+        RemoveParticipant
+        (prefix, (name, counter))
+
+    method get_participants ~prefix =
+      client # query
+        GetParticipants
+        prefix
+
     method update_preset name updates =
       client # update
         UpdatePreset
