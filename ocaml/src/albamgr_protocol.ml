@@ -706,7 +706,7 @@ module Protocol = struct
                                  (Osd.id * Osd.t) counted_list_more) query
     | ListOsdNamespaces : (Osd.id * Namespace.id RangeQueryArgs.t,
                            Namespace.id counted_list_more) query
-    | GetStatistics : (bool, Albamgr_statistics.t) query
+    | Statistics : (bool, Albamgr_statistics.t) query
     | CheckLease : (string, int) query
     | GetParticipants : (string, (string * int) counted_list) query
 
@@ -760,7 +760,7 @@ module Protocol = struct
       Llio.pair_from
         Llio.int32_from
         (RangeQueryArgs.from_buffer Llio.int32_from)
-    | GetStatistics -> Llio.bool_from
+    | Statistics -> Llio.bool_from
     | CheckLease -> Llio.string_from
     | GetParticipants -> Llio.string_from
 
@@ -787,7 +787,7 @@ module Protocol = struct
       Llio.pair_to
         Llio.int32_to
         (RangeQueryArgs.to_buffer Llio.int32_to)
-    | GetStatistics -> Llio.bool_to
+    | Statistics -> Llio.bool_to
     | CheckLease -> Llio.string_to
     | GetParticipants -> Llio.string_to
 
@@ -854,7 +854,7 @@ module Protocol = struct
            Llio.int32_from
            Osd.from_buffer)
     | ListOsdNamespaces -> counted_list_more_from Llio.int32_from
-    | GetStatistics     -> Albamgr_statistics.from_buffer
+    | Statistics     -> Albamgr_statistics.from_buffer
     | CheckLease -> Llio.int_from
     | GetParticipants ->
        Llio.counted_list_from
@@ -925,7 +925,7 @@ module Protocol = struct
            Osd.to_buffer)
     | ListOsdNamespaces ->
        counted_list_more_to Llio.int32_to
-    | GetStatistics -> Albamgr_statistics.to_buffer
+    | Statistics -> Albamgr_statistics.to_buffer
     | CheckLease -> Llio.int_to
     | GetParticipants ->
        Llio.counted_list_to
@@ -1150,7 +1150,7 @@ module Protocol = struct
                       Wrap_q ListDecommissioningOsds, 47l, "ListDecommissioningOsds";
                       Wrap_q ListOsdNamespaces, 48l, "ListOsdNamespaces";
                       Wrap_u UpdateOsds,        49l, "UpdateOsds";
-                      Wrap_q GetStatistics,     50l, "GetStatistics";
+                      Wrap_q Statistics,        50l, "Statistics";
                       Wrap_q CheckLease, 51l, "CheckLease";
                       Wrap_u TryGetLease, 52l, "TryGetLease";
 

@@ -349,12 +349,12 @@ let alba_mgr_get_version_cmd =
     "mgr-get-version"
     ~doc:"the alba mgr's version info"
 
-let alba_mgr_get_statistics cfg_file attempts =
+let alba_mgr_get_statistics cfg_file attempts clear =
   let t () =
     with_albamgr_client
       cfg_file ~attempts
       (fun client ->
-       client # get_statistics false >>= fun statistics ->
+       client # get_statistics clear >>= fun statistics ->
        Lwt_io.printlf "%s" (Albamgr_statistics.Albamgr_statistics.show statistics)
       )
   in
@@ -364,6 +364,7 @@ let alba_mgr_get_statistics_cmd =
   Term.(pure alba_mgr_get_statistics
         $ alba_cfg_file
         $ attempts 1
+        $ clear
   ),
   Term.info
     "mgr-get-statistics"

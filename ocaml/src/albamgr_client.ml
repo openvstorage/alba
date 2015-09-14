@@ -330,7 +330,7 @@ class client (client : basic_client) =
       client # query GetVersion ()
 
     method get_statistics reset =
-      client # query GetStatistics reset
+      client # query Statistics reset
 
     method check_can_claim ~long_id =
       client # query CheckClaimOsd long_id

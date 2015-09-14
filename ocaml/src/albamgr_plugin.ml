@@ -1605,9 +1605,15 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             | None -> Keys.Osd.namespaces_next_prefix ~osd_id)
         ~max:(cap_max ~max ()) ~reverse
         (fun cur key -> Keys.Osd.namespaces_extract_namespace_id key)
-    | GetStatistics ->
-       fun reset ->
-       statistics
+    | Statistics ->
+       fun clear ->
+       begin
+         let open Albamgr_statistics in
+         let stopped = Albamgr_statistics.clone statistics in
+         let () = Albamgr_statistics.stop stopped in
+         if clear then Albamgr_statistics.clear statistics;
+         stopped
+       end;
     | CheckLease -> fun lease_name ->
       let lease_key = Keys.lease ~lease_name in
       let lease_so = db # get lease_key in
