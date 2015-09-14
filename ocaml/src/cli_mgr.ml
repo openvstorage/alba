@@ -349,6 +349,26 @@ let alba_mgr_get_version_cmd =
     "mgr-get-version"
     ~doc:"the alba mgr's version info"
 
+let alba_mgr_get_statistics cfg_file attempts =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts
+      (fun client ->
+       client # get_statistics false >>= fun statistics ->
+       Lwt_io.printlf "%s" (Albamgr_statistics.Albamgr_statistics.show statistics)
+      )
+  in
+  lwt_cmd_line false t
+
+let alba_mgr_get_statistics_cmd =
+  Term.(pure alba_mgr_get_statistics
+        $ alba_cfg_file
+        $ attempts 1
+  ),
+  Term.info
+    "mgr-get-statistics"
+    ~doc:"the alba mgr's statistics"
+
 let alba_list_decommissioning_osds cfg_file to_json attempts =
   let t () =
     with_albamgr_client
@@ -452,4 +472,5 @@ let cmds = [
   alba_update_nsm_host_cmd;
   alba_list_nsm_hosts_cmd;
   alba_add_osd_cmd;
+  alba_mgr_get_statistics_cmd;
 ]

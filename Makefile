@@ -69,6 +69,9 @@ build-mgr-plugin: build-alba
 	_build/src/nsm_model.cmx \
 	_build/src/nsm_protocol.cmx \
 	_build/src/nsm_host_protocol.cmx \
+        _build/src/tools/stat.cmx \
+        _build/src/alba_statistics.cmx \
+	_build/src/albamgr_statistics.cmx \
 	_build/src/albamgr_protocol.cmx \
 	_build/src/albamgr_plugin.cmx \
 	-linkpkg -package ppx_deriving_yojson \

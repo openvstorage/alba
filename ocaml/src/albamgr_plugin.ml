@@ -21,6 +21,8 @@ open Albamgr_protocol
 open Plugin_extra
 open Update
 
+
+
 module Keys = struct
 
   let alba_id = "/alba/id"
@@ -172,6 +174,7 @@ module Keys = struct
   end
 end
 
+let statistics = Albamgr_statistics.Albamgr_statistics.make ()
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
@@ -1602,6 +1605,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             | None -> Keys.Osd.namespaces_next_prefix ~osd_id)
         ~max:(cap_max ~max ()) ~reverse
         (fun cur key -> Keys.Osd.namespaces_extract_namespace_id key)
+    | GetStatistics ->
+       fun reset ->
+       statistics
     | CheckLease -> fun lease_name ->
       let lease_key = Keys.lease ~lease_name in
       let lease_so = db # get lease_key in
@@ -1632,7 +1638,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
 
 
-  let do_one () =
+  let do_one statistics () =
     Plugin_helper.debug_f "Albamgr: Waiting for new request";
     Llio.input_string ic >>= fun req_s ->
     let req_buf = Llio.make_buffer req_s 0 in
@@ -1653,10 +1659,17 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         then
           Lwt.catch
             (fun () ->
-               let req = read_query_i r req_buf in
-               let res = handle_query r req in
-               let res_serializer = write_query_o r in
-               write_response_ok res_serializer res)
+             let (delta,(res,res_serializer)) =
+               Albamgr_statistics.Albamgr_statistics.with_timing
+               (fun () ->
+                let req = read_query_i r req_buf in
+                let res = handle_query r req in
+                let res_serializer = write_query_o r in
+                (res,res_serializer))
+             in
+             Albamgr_statistics.Albamgr_statistics.new_query statistics tag delta;
+             write_response_ok res_serializer res
+            )
             (function
               | Error.Albamgr_exn (err, payload) -> write_response_error payload err
               | exn ->
@@ -1677,30 +1690,39 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    "Albamgr: too many retries for operation %s"
                    (Protocol.tag_to_name tag))
             | cnt ->
-              Lwt.catch
-                (fun () ->
-                   handle_update r req >>= fun (res, upds) ->
-                   backend # push_update
-                     (Update.Sequence
-                        (assert_version_update :: upds)) >>= fun _ ->
-                   Lwt.return (`Succes res))
-                (function
-                  | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
-                    Plugin_helper.info_f
-                      "Albamgr: Assert failed %s (attempt %i)" msg cnt;
-                    Lwt.return `Retry
-                  | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_NOT_MASTER ->
-                    Error.failwith Error.Not_master
-                  | exn -> Lwt.return (`Fail exn))
-              >>= function
-              | `Succes res -> Lwt.return res
-              | `Retry -> try_update (cnt + 1)
-              | `Fail exn -> Lwt.fail exn in
+               let open Albamgr_statistics in
+               Lwt.catch
+                 (fun () ->
+                  Albamgr_statistics.with_timing_lwt
+                    (fun () ->
+                     handle_update r req >>= fun (res, upds) ->
+                     backend # push_update
+                             (Update.Sequence
+                                (assert_version_update :: upds))
+                     >>= fun _ ->
+                     Lwt.return (`Succes res)
+                    )
+                  >>= fun (delta,r) ->
+                  Albamgr_statistics.new_update statistics tag delta;
+                  Lwt.return r
+                 )
+                 (function
+                   | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+                      Plugin_helper.info_f
+                        "Albamgr: Assert failed %s (attempt %i)" msg cnt;
+                      Lwt.return `Retry
+                   | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_NOT_MASTER ->
+                      Error.failwith Error.Not_master
+                   | exn -> Lwt.return (`Fail exn))
+               >>= function
+               | `Succes res -> Lwt.return res
+               | `Retry -> try_update (cnt + 1)
+               | `Fail exn -> Lwt.fail exn in
           Lwt.catch
             (fun () ->
-               if not (check_version ())
-               then write_response_error "" Error.Old_plugin_version
-               else begin
+             if not (check_version ())
+             then write_response_error "" Error.Old_plugin_version
+             else begin
                  try_update 0 >>= fun res ->
                  let serializer = write_update_o r in
                  write_response_ok serializer res
@@ -1709,15 +1731,15 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               | End_of_file as exn -> Lwt.fail exn
               | Error.Albamgr_exn (err, payload) -> write_response_error payload err
               | exn ->
-                let msg = Printexc.to_string exn in
-                Plugin_helper.info_f "unknown exception : %s" msg;
-                write_response_error msg Error.Unknown >>= fun () ->
-                Lwt.fail exn)
+                 let msg = Printexc.to_string exn in
+                 Plugin_helper.info_f "unknown exception : %s" msg;
+                 write_response_error msg Error.Unknown >>= fun () ->
+                 Lwt.fail exn)
         end
   in
   let rec inner () =
     Lwt.catch
-      do_one
+      (do_one statistics)
       (function
         | End_of_file as exn -> Lwt.fail exn
         | Error.Albamgr_exn (e, payload) -> write_response_error payload e
@@ -1728,6 +1750,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       inner ()
   in
   inner ()
+  >>= fun () ->
+  Lwt_log.debug_f "statistics:%s" (Albamgr_statistics.Albamgr_statistics.show statistics)
 
 let () = HookRegistry.register "albamgr" albamgr_user_hook
 let () = Log_plugin.register ()

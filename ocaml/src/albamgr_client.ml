@@ -329,6 +329,9 @@ class client (client : basic_client) =
     method get_version =
       client # query GetVersion ()
 
+    method get_statistics reset =
+      client # query GetStatistics reset
+
     method check_can_claim ~long_id =
       client # query CheckClaimOsd long_id
 
