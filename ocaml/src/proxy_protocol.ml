@@ -92,7 +92,7 @@ module ProxyStatistics = struct
         fragment_cache_misses }
 
     type t = {
-        mutable creation:float;
+        mutable creation:timestamp;
         mutable period: float;
         mutable ns_stats : (string, ns_t) H.t;
       }[@@deriving show, yojson]
