@@ -146,3 +146,4 @@ end
 
 let maintenance_lease_timeout = 20.
 let maintenance_lease_name = "maintenance"
+let maintenance_registration_prefix = "maintenance"

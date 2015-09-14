@@ -68,7 +68,6 @@ let alba_maintenance cfg_file modulo remainder flavour =
 
     Lwt.return config
   in
-  let filter id = true in
 
   let t () =
     read_cfg () >>= function
@@ -133,7 +132,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~osd_timeout
         (fun client ->
            let maintenance_client =
-             new Maintenance.client ~flavour ~filter (client # get_base_client)
+             new Maintenance.client ~flavour (client # get_base_client)
            in
            Lwt.catch
              (fun () ->
