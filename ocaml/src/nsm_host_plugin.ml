@@ -193,7 +193,7 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
     cnt, nsms
   | GetVersion -> Alba_version.summary
   | NSMHStatistics ->
-     Statistics_collection.Generic.snapshot statistics req
+     NSMHStatistics.snapshot statistics req
   | NsmQuery tag ->
     let namespace_id, req = req in
     let prefix = Keys.namespace_content namespace_id in
@@ -400,10 +400,10 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        Llio.input_string ic >>= fun req_s ->
        let req_buf = Llio.make_buffer req_s 0 in
        let tag = Llio.int32_from req_buf in
-       Statistics_collection.Generic.with_timing_lwt
+       Protocol.NSMHStatistics.with_timing_lwt
          (fun () -> do_one tag req_buf)
        >>= fun (delta,r) ->
-       Statistics_collection.Generic.new_delta statistics tag delta;
+       Protocol.NSMHStatistics.new_delta statistics tag delta;
        Lwt.return r
       )
       (function

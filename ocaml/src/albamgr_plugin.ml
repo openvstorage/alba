@@ -174,7 +174,7 @@ module Keys = struct
   end
 end
 
-let statistics = Statistics_collection.Generic.make ()
+
 
 module Statistics =
   struct
@@ -182,6 +182,7 @@ module Statistics =
     let show t = show_inner t Albamgr_protocol.Protocol.tag_to_name
   end
 
+let statistics = Statistics_collection.Generic.make ()
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
@@ -1612,8 +1613,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             | None -> Keys.Osd.namespaces_next_prefix ~osd_id)
         ~max:(cap_max ~max ()) ~reverse
         (fun cur key -> Keys.Osd.namespaces_extract_namespace_id key)
-    | Statistics ->
-       fun clear -> Statistics_collection.Generic.snapshot statistics clear
+    | Statistics -> Statistics.snapshot statistics
     | CheckLease -> fun lease_name ->
       let lease_key = Keys.lease ~lease_name in
       let lease_so = db # get lease_key in
@@ -1665,16 +1665,15 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         then
           Lwt.catch
             (fun () ->
-             let open Statistics_collection in
              let (delta,(res,res_serializer)) =
-               Generic.with_timing
+               Statistics.with_timing
                (fun () ->
                 let req = read_query_i r req_buf in
                 let res = handle_query r req in
                 let res_serializer = write_query_o r in
                 (res,res_serializer))
              in
-             Generic.new_delta statistics tag delta;
+             Statistics.new_delta statistics tag delta;
              write_response_ok res_serializer res
             )
             (function
@@ -1697,10 +1696,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    "Albamgr: too many retries for operation %s"
                    (Protocol.tag_to_name tag))
             | cnt ->
-               let open Statistics_collection in
                Lwt.catch
                  (fun () ->
-                  Generic.with_timing_lwt
+                  Statistics.with_timing_lwt
                     (fun () ->
                      handle_update r req >>= fun (res, upds) ->
                      backend # push_update
@@ -1710,7 +1708,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                      Lwt.return (`Succes res)
                     )
                   >>= fun (delta,r) ->
-                  Generic.new_delta statistics tag delta;
+                  Statistics.new_delta statistics tag delta;
                   Lwt.return r
                  )
                  (function
