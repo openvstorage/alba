@@ -1150,7 +1150,7 @@ module Protocol = struct
                       Wrap_q ListDecommissioningOsds, 47l, "ListDecommissioningOsds";
                       Wrap_q ListOsdNamespaces, 48l, "ListOsdNamespaces";
                       Wrap_u UpdateOsds,        49l, "UpdateOsds";
-                      Wrap_q Statistics,        50l, "Statistics";
+                      Wrap_q Statistics,        60l, "Statistics";
                       Wrap_q CheckLease, 51l, "CheckLease";
                       Wrap_u TryGetLease, 52l, "TryGetLease";
 
@@ -1206,7 +1206,7 @@ module Protocol = struct
     with Not_found -> Error.(failwith Unknown_operation)
 
   let tag_to_command =
-    let hasht = Hashtbl.create 3 in
+    let hasht = Hashtbl.create 100 in
     List.iter
       (fun (comm, tag, _) ->
        if Hashtbl.mem hasht tag
@@ -1216,12 +1216,12 @@ module Protocol = struct
     (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
 
   let tag_to_name =
-    let hasht = Hashtbl.create 3 in
+    let hasht = Hashtbl.create 100 in
     List.iter (fun (_, tag, name) -> Hashtbl.add hasht tag name) command_map;
     (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
 
   let command_to_tag =
-    let hasht = Hashtbl.create 3 in
+    let hasht = Hashtbl.create 100 in
     List.iter (fun (comm, tag, _) -> Hashtbl.add hasht comm tag) command_map;
     (fun comm -> wrap_unknown_operation (fun () -> Hashtbl.find hasht comm))
 end

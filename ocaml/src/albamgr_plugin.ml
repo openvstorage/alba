@@ -176,6 +176,17 @@ end
 
 let statistics = Albamgr_statistics.Albamgr_statistics.make ()
 
+let () =
+  let rec inner () =
+    Lwt_unix.sleep 60. >>= fun() ->
+    Lwt_log.info_f
+      "stats:\n%s%!"
+      (Albamgr_statistics.Albamgr_statistics.show statistics)
+    >>= fun () ->
+    inner ()
+  in
+  Lwt.ignore_result (inner ())
+
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
   Llio.output_int32 oc 0l >>= fun () ->
@@ -1756,8 +1767,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       inner ()
   in
   inner ()
-  >>= fun () ->
-  Lwt_log.debug_f "statistics:%s" (Albamgr_statistics.Albamgr_statistics.show statistics)
+
 
 let () = HookRegistry.register "albamgr" albamgr_user_hook
 let () = Log_plugin.register ()

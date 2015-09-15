@@ -60,7 +60,7 @@ module Albamgr_statistics = struct
       |47l -> "ListDecommissioningOsds"
       |48l -> "ListOsdNamespaces"
       |49l -> "UpdateOsds"
-      |50l -> "GetStatistics"
+      |60l -> "Statistics"
       | x  -> Printf.sprintf "??_stat_%li_??" x
 
     let show t =
