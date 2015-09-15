@@ -376,20 +376,24 @@ class client ?(retry_timeout = 60.)
       Lwt.return ()
 
     method decommission_device
+        ?(deterministic=false)
         ~namespace_id
-        ~osd_id
+        ~osd_id ()
       =
       Lwt_log.debug_f "Decommissioning osd %li" osd_id >>= fun () ->
 
       alba_client # with_nsm_client'
         ~namespace_id
         (fun client ->
+           let first, reverse =
+             if deterministic
+             then "", false
+             else get_random_string 32, Random.bool ()
+           in
            client # list_device_objects
              ~osd_id
-             ~first:(get_random_string 32) ~finc:true
-             ~last:None
-             ~max:100
-             ~reverse:(Random.bool ()))
+             ~first ~finc:true ~last:None
+             ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
 
       Lwt_list.iter_s
@@ -417,7 +421,7 @@ class client ?(retry_timeout = 60.)
         manifests >>= fun () ->
 
       if has_more
-      then self # decommission_device ~namespace_id ~osd_id
+      then self # decommission_device ~deterministic ~namespace_id ~osd_id ()
       else Lwt.return ()
 
     method repair_osd ~osd_id =
@@ -429,7 +433,7 @@ class client ?(retry_timeout = 60.)
              (fun () ->
                 self # decommission_device
                   ~namespace_id
-                  ~osd_id))
+                  ~osd_id ()))
         namespaces
 
     method repair_osds : unit Lwt.t =

@@ -1222,8 +1222,9 @@ let test_disk_churn () =
          Lwt_list.iter_s
            (fun osd_id ->
               maintenance_client # decommission_device
+                ~deterministic:true
                 ~namespace_id
-                ~osd_id >>= fun () ->
+                ~osd_id () >>= fun () ->
 
               maintenance_client # clean_obsolete_keys_namespace
                 ~once:true ~namespace_id)
@@ -1298,8 +1299,9 @@ let test_disk_churn () =
                               ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
+                              ~deterministic:true
                               ~namespace_id
-                              ~osd_id >>= fun () ->
+                              ~osd_id () >>= fun () ->
 
            alba_client # get_object_manifest
                        ~consistent_read:true
@@ -1343,8 +1345,9 @@ let test_disk_churn () =
                               ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
+                              ~deterministic:true
                               ~namespace_id
-                              ~osd_id >>= fun () ->
+                              ~osd_id () >>= fun () ->
 
            alba_client # get_object_manifest
                        ~consistent_read:true
