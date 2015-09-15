@@ -329,7 +329,7 @@ class client (client : basic_client) =
     method get_version =
       client # query GetVersion ()
 
-    method get_statistics reset =
+    method statistics reset =
       client # query Statistics reset
 
     method check_can_claim ~long_id =
