@@ -51,12 +51,7 @@ module Generic = struct
         try Hashtbl.find t.statistics tag
         with Not_found -> Stat.make ()
 
-    let new_query (t:t) tag delta =
-      let stat = _find_stat t tag in
-      let stat' = _update stat delta in
-      Hashtbl.replace t.statistics tag stat'
-
-    let new_update (t:t) tag delta =
+    let new_delta (t:t) tag delta =
       let stat = _find_stat t tag in
       let stat' = _update stat delta in
       Hashtbl.replace t.statistics tag stat'

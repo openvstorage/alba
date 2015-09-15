@@ -403,7 +403,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        Statistics_collection.Generic.with_timing_lwt
          (fun () -> do_one tag req_buf)
        >>= fun (delta,r) ->
-       Statistics_collection.Generic.new_query statistics tag delta;
+       Statistics_collection.Generic.new_delta statistics tag delta;
        Lwt.return r
       )
       (function

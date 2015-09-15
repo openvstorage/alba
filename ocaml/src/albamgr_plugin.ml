@@ -1674,7 +1674,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                 let res_serializer = write_query_o r in
                 (res,res_serializer))
              in
-             Generic.new_query statistics tag delta;
+             Generic.new_delta statistics tag delta;
              write_response_ok res_serializer res
             )
             (function
@@ -1710,7 +1710,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                      Lwt.return (`Succes res)
                     )
                   >>= fun (delta,r) ->
-                  Generic.new_update statistics tag delta;
+                  Generic.new_delta statistics tag delta;
                   Lwt.return r
                  )
                  (function
