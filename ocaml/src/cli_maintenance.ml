@@ -156,7 +156,8 @@ let alba_maintenance cfg_file modulo remainder flavour =
                     (Lwt_extra2.make_fuse_thread ());
                     (maintenance_client # deliver_all_messages
                             ~is_master:(fun () -> coordinator # is_master) ());
-                    (client # get_base_client # discover_osds_check_claimed ());
+                    (client # get_base_client # discover_osds
+                            ~check_claimed:(fun () -> coordinator # is_master) ());
                     (client # osd_access # propagate_osd_info ());
                   ]
                 in

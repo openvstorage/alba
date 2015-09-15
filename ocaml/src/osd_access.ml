@@ -265,7 +265,7 @@ class osd_access
       else Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
 
 
-    method seen ?(check_claimed_delay=60.) =
+    method seen ?(check_claimed=fun() -> false) ?(check_claimed_delay=60.) =
       let open Discovery in
       function
       | Bad s ->
@@ -319,7 +319,9 @@ class osd_access
                      Lwt.return ()
                    end else
                    Lwt.return ())
-           end else begin
+           end
+         else if check_claimed ()
+         then begin
 
              let osd_info =
                Osd.({
@@ -406,7 +408,15 @@ class osd_access
                              Lwt.return `StopAndRemove) >>= function
                           | `Continue ->
                              Lwt_extra2.sleep_approx check_claimed_delay >>= fun () ->
-                             inner ()
+                             if check_claimed ()
+                             then inner ()
+                             else
+                               begin
+                                 (* forget we ever saw this osd (if needed it will be picked up again) *)
+                                 osd_long_id_claim_info := StringMap.remove id !osd_long_id_claim_info;
+                                 Lwt.return ()
+                               end
+
                           | `Stop ->
                              Lwt.return ()
                           | `StopAndRemove ->
@@ -419,6 +429,7 @@ class osd_access
                     Lwt.return ()
                   end else
                   Lwt.return ()
-           end
+           end else
+             Lwt.return ()
 
   end

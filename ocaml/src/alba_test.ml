@@ -771,8 +771,9 @@ let test_change_osd_ip_port () =
        let object_name = "object_name" in
 
        Lwt.ignore_result
-         (client # discover_osds_check_claimed
-            ~check_claimed_delay:0.1 ());
+         (client # discover_osds
+                 ~check_claimed:(fun () -> true)
+                 ~check_claimed_delay:0.1 ());
 
        Asd_test.with_asd_client
          osd_name 16541

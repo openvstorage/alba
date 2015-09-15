@@ -55,7 +55,7 @@ class alba_client (base_client : Alba_base_client.client)
 
     method upload_object_from_file = base_client # upload_object_from_file
 
-    method discover_osds_check_claimed = base_client # discover_osds_check_claimed
+    method discover_osds = base_client # discover_osds
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
