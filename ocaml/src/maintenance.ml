@@ -46,7 +46,7 @@ class client ?(retry_timeout = 60.)
   let filter namespace_id =
     (Int32.to_int namespace_id) mod coordinator # get_modulo = coordinator # get_remainder
   in
-
+  let is_master () = coordinator # is_master in
   object(self)
 
     method rebalance_object
@@ -1253,22 +1253,20 @@ class client ?(retry_timeout = 60.)
 
   method do_work ?(once = false) () : unit Lwt.t =
     let rec inner () =
-      alba_client # mgr_access # get_work
-        ~first:next_work_item ~finc:true
-        ~last:None ~max:100 ~reverse:false
+      let is_master = is_master () in
+      (if once || is_master
+      then alba_client # mgr_access # get_work
+                       ~first:next_work_item ~finc:true
+                       ~last:None ~max:100 ~reverse:false
+       else
+         Lwt.return ((0, []), false))
       >>= fun ((cnt, work_items), _) ->
-      Lwt_log.debug_f "Adding work, got %i items\n" cnt >>= fun () ->
+      Lwt_log.debug_f "Adding work, got %i items (is_master=%b)" cnt is_master >>= fun () ->
       self # add_work_threads work_items;
 
-      if once
-      then
-        if cnt = 0
-        then Lwt.return ()
-        else inner ()
-      else begin
-        Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
-        inner ()
-      end
+      if once && cnt > 0
+      then inner ()
+      else Lwt.return_unit
     in
 
     if once
