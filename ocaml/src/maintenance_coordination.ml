@@ -40,11 +40,11 @@ class coordinator
              | Follower ->
                 client # check_lease lease_name >>= fun counter ->
 
-                if counter = last_seen_master_counter
+                if counter = 0 || counter = last_seen_master_counter
                 then
                   begin
-                    client # try_get_lease lease_name last_seen_master_counter >>= fun () ->
-                    last_seen_master_counter <- last_seen_master_counter + 1;
+                    client # try_get_lease lease_name counter >>= fun () ->
+                    last_seen_master_counter <- counter + 1;
                     state <- Master;
                     Lwt_log.info_f "%s is now the maintenance master" name
                   end
