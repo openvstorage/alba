@@ -791,11 +791,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     : type i o. (i, o) update -> i ->
       (o * Update.t list) Lwt.t =
     let return_upds upds = Lwt.return ((), upds) in
-    let make_update_osd_updates long_id osd_changes =
+    let make_update_osd_updates long_id osd_changes acc =
       let open Protocol in
-      Plugin_helper.debug_f "UpdateOsd: %s %s%!"
-                            long_id
-                            ([%show : Osd.Update.t] osd_changes);
       let info_key = Keys.Osd.info ~long_id in
       let info_serialized, (claim_info, osd_info_current) =
         match db # get info_key with
@@ -807,11 +804,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
       let osd_info_new = Osd.Update.apply osd_info_current osd_changes in
       let upds =
-        [ Update.Assert (info_key, Some info_serialized);
-          Update.Set (info_key,
-                      serialize
-                        Osd.to_buffer_with_claim_info
-                        (claim_info, osd_info_new)); ];
+        Update.Assert (info_key, Some info_serialized)
+        :: Update.Set (info_key,
+                       serialize
+                         Osd.to_buffer_with_claim_info
+                         (claim_info, osd_info_new))
+        :: acc;
       in
       upds
     in
@@ -858,7 +856,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       Lwt.return ((), upds)
     | UpdateOsd ->
        fun (long_id, osd_changes) ->
-       let upds = make_update_osd_updates long_id osd_changes in
+       let upds = make_update_osd_updates long_id osd_changes [] in
        return_upds upds
     | UpdateOsds ->
        fun updates ->
@@ -866,7 +864,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
          let upds =
            List.fold_left
              (fun acc (long_id,osd_changes) ->
-             make_update_osd_updates long_id osd_changes @ acc
+             make_update_osd_updates long_id osd_changes acc
              ) [] updates
          in
          return_upds upds
