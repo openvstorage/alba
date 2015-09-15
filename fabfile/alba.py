@@ -288,30 +288,24 @@ def maintenance_start(n_agents = 1, n_others = 1):
 
     local("mkdir -p %s" % maintenance_home)
 
-    chattiness = 1.0 / (n_agents + n_others)
-    chattiness = round(chattiness, 2)
     with lcd(maintenance_home):
         maintenance_cfg = "%s/maintenance.cfg" % maintenance_home
         dump_to_cfg_as_json(maintenance_cfg,
                             { 'albamgr_cfg_file' : arakoon_config_file,
-                              'log_level' : 'debug',
-                              'chattiness' : chattiness
+                              'log_level' : 'debug'
                             })
 
-        modulo = n_agents
+
         for i in range(n_agents):
-            remainder = i
             where = local
             inner = [
                 env['alba_bin'],
                 'maintenance',
-                '--modulo', str(modulo),
-                '--remainder', str(remainder),
                 "--config=%s" % maintenance_cfg
             ]
             out = '%s/maintenance_%i_%i.out' % (maintenance_home,
-                                                remainder,
-                                                modulo)
+                                                i,
+                                                n_agents)
             cmd_line = _detach(inner, out = out )
             where(cmd_line)
 

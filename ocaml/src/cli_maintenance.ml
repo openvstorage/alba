@@ -135,6 +135,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
              Maintenance_coordination.make_maintenance_coordinator
                (client # mgr_access)
            in
+           coordinator # init;
            let maintenance_client =
              new Maintenance.client ~flavour ~coordinator (client # get_base_client)
            in
