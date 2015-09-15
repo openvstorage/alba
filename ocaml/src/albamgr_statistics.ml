@@ -17,53 +17,7 @@ module Albamgr_statistics = struct
       t.period <- 0.0;
       Hashtbl.clear t.statistics
 
-
-    (* TODO: maybe better to lift the names out of the protocol *)
-    let _name_of = function
-      | 3l -> "ListNsmHosts"
-      | 4l -> "AddNsmHost"
-      | 5l -> "UpdateNsmHost"
-      | 6l -> "ListNamespaces"
-      | 7l -> "CreateNamespace"
-      | 8l -> "DeleteNamespace"
-      |11l -> "ListNamespaceOsds"
-      |15l -> "GetNextMsgs Msg_log.Nsm_host"
-      |16l -> "MarkMsgDelivered Msg_log.Nsm_host"
-      |17l -> "GetNextMsgs Msg_log.Osd"
-      |18l -> "MarkMsgDelivered Msg_log.Osd"
-      |19l -> "GetWork"
-      |20l -> "MarkWorkCompleted"
-      |22l -> "GetAlbaId"
-      |23l -> "CreatePreset"
-      |24l -> "ListPresets"
-      |25l -> "SetDefaultPreset"
-      |26l -> "DeletePreset"
-      |27l -> "AddOsdsToPreset"
-      |28l -> "AddOsd"
-      |29l -> "MarkOsdClaimed"
-      |30l -> "ListAvailableOsds"
-      |31l -> "ListOsdsByOsdId"
-      |32l -> "ListOsdsByLongId"
-      |33l -> "MarkOsdClaimedByOther"
-      |34l -> "UpdateOsd"
-      |35l -> "AddWork"
-      |36l -> "GetLicense"
-      |37l -> "ApplyLicense"
-      |38l -> "StoreClientConfig"
-      |39l -> "GetClientConfig"
-      |41l -> "ListNamespacesById"
-      |42l -> "RecoverNamespace"
-      |43l -> "GetActiveOsdCount"
-      |44l -> "GetVersion"
-      |45l -> "CheckClaimOsd"
-      |46l -> "DecommissionOsd"
-      |47l -> "ListDecommissioningOsds"
-      |48l -> "ListOsdNamespaces"
-      |49l -> "UpdateOsds"
-      |60l -> "Statistics"
-      | x  -> Printf.sprintf "??_stat_%li_??" x
-
-    let show t =
+    let show_inner t tag_to_name =
       let b = Buffer.create 1024 in
       let add = Buffer.add_string b in
       add "{\n\tcreation: ";
@@ -72,10 +26,10 @@ module Albamgr_statistics = struct
       add (Printf.sprintf "%.2f" t.period);
       add ";\n\t ";
       Hashtbl.fold
-        (fun k v acc ->
-         add (_name_of k);
+        (fun tag stat acc ->
+         add (tag_to_name tag);
          add  " : ";
-         add ([%show : stat] v);
+         add ([%show : stat] stat);
          add ";\n\t")
         t.statistics ();
       add "}";

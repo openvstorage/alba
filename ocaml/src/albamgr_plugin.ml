@@ -176,12 +176,18 @@ end
 
 let statistics = Albamgr_statistics.Albamgr_statistics.make ()
 
+module Statistics =
+  struct
+    include Albamgr_statistics.Albamgr_statistics
+    let show t = show_inner t Albamgr_protocol.Protocol.tag_to_name
+  end
+
 let () =
   let rec inner () =
     Lwt_unix.sleep 60. >>= fun() ->
     Lwt_log.info_f
       "stats:\n%s%!"
-      (Albamgr_statistics.Albamgr_statistics.show statistics)
+      (Statistics.show statistics)
     >>= fun () ->
     inner ()
   in

@@ -355,7 +355,7 @@ let alba_mgr_get_statistics cfg_file attempts clear =
       cfg_file ~attempts
       (fun client ->
        client # get_statistics clear >>= fun statistics ->
-       Lwt_io.printlf "%s" (Albamgr_statistics.Albamgr_statistics.show statistics)
+       Lwt_io.printlf "%s" (Albamgr_plugin.Statistics.show statistics)
       )
   in
   lwt_cmd_line false t
