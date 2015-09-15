@@ -1,4 +1,4 @@
-module Albamgr_statistics = struct
+module Generic = struct
     let with_timing_lwt = Alba_statistics.Statistics.with_timing_lwt
     let with_timing = Alba_statistics.Statistics.with_timing
     open Stat
@@ -16,6 +16,12 @@ module Albamgr_statistics = struct
       t.creation <- Unix.gettimeofday();
       t.period <- 0.0;
       Hashtbl.clear t.statistics
+
+    let snapshot t reset =
+      let stopped = clone t in
+      let () = stop stopped in
+      if reset then clear t;
+      stopped
 
     let show_inner t tag_to_name =
       let b = Buffer.create 1024 in

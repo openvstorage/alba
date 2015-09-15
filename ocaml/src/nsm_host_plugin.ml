@@ -166,6 +166,8 @@ let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (
     let arakoon_upds = transform_updates namespace_id upds in
     Lwt.return (res, arakoon_upds)
 
+let statistics = Protocol.NSMHStatistics.make ()
+
 let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.query -> i -> o =
   fun db tag req ->
   let open Nsm_host_protocol.Protocol in
@@ -190,6 +192,8 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
     in
     cnt, nsms
   | GetVersion -> Alba_version.summary
+  | NSMHStatistics ->
+     Statistics_collection.Generic.snapshot statistics req
   | NsmQuery tag ->
     let namespace_id, req = req in
     let prefix = Keys.namespace_content namespace_id in
@@ -311,12 +315,9 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
 
 
-  let do_one () =
-    Plugin_helper.debug_f "NSM host: Waiting for new request";
-    Llio.input_string ic >>= fun req_s ->
-    let req_buf = Llio.make_buffer req_s 0 in
-    let tag = Llio.int32_from req_buf in
-    Plugin_helper.debug_f "NSM host: Got tag %s" (Protocol.tag_to_name tag);
+  let do_one tag req_buf =
+    let tag_name = (Protocol.tag_to_name tag) in
+    Plugin_helper.debug_f "NSM host: Got tag %s" tag_name;
     let open Protocol in
     match (tag_to_command tag) with
     | Wrap_q r ->
@@ -352,7 +353,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | 5 -> Lwt.fail_with
                  (Printf.sprintf
                     "NSM host: too many retries for operation %s"
-                    (Protocol.tag_to_name tag))
+                    tag_name)
         | cnt ->
           Lwt.catch
             (fun () ->
@@ -394,7 +395,17 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
   let rec inner () =
     Lwt.catch
-      do_one
+      (fun () ->
+       Plugin_helper.debug_f "NSM host: Waiting for new request";
+       Llio.input_string ic >>= fun req_s ->
+       let req_buf = Llio.make_buffer req_s 0 in
+       let tag = Llio.int32_from req_buf in
+       Statistics_collection.Generic.with_timing_lwt
+         (fun () -> do_one tag req_buf)
+       >>= fun (delta,r) ->
+       Statistics_collection.Generic.new_query statistics tag delta;
+       Lwt.return r
+      )
       (function
         | End_of_file as exn -> Lwt.fail exn
         | Err.Nsm_exn (err, payload) -> write_response_error payload err
@@ -407,6 +418,17 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     inner ()
   in
   inner ()
+
+let () =
+  let rec inner () =
+    Lwt_unix.sleep 60. >>= fun() ->
+    Lwt_log.info_f
+      "stats:\n%s%!"
+      (Protocol.NSMHStatistics.show statistics)
+    >>= fun () ->
+    inner ()
+  in
+  Lwt.ignore_result (inner ())
 
 let () = HookRegistry.register "nsm_host" nsm_host_user_hook
 let () = Arith64.register()

@@ -320,4 +320,6 @@ class nsm_host_access
 
     method refresh_namespace_osds = refresh_namespace_osds
     method maybe_update_namespace_info = maybe_update_namespace_info
+    method statistics nsm_host_id clear =
+      (self # get ~nsm_host_id) # statistics clear
   end

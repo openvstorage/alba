@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
-open Albamgr_statistics
+open Statistics_collection
 
 module Protocol = struct
 
@@ -706,7 +706,7 @@ module Protocol = struct
                                  (Osd.id * Osd.t) counted_list_more) query
     | ListOsdNamespaces : (Osd.id * Namespace.id RangeQueryArgs.t,
                            Namespace.id counted_list_more) query
-    | Statistics : (bool, Albamgr_statistics.t) query
+    | Statistics : (bool, Generic.t) query
     | CheckLease : (string, int) query
     | GetParticipants : (string, (string * int) counted_list) query
 
@@ -854,7 +854,7 @@ module Protocol = struct
            Llio.int32_from
            Osd.from_buffer)
     | ListOsdNamespaces -> counted_list_more_from Llio.int32_from
-    | Statistics     -> Albamgr_statistics.from_buffer
+    | Statistics     -> Generic.from_buffer
     | CheckLease -> Llio.int_from
     | GetParticipants ->
        Llio.counted_list_from
@@ -925,7 +925,7 @@ module Protocol = struct
            Osd.to_buffer)
     | ListOsdNamespaces ->
        counted_list_more_to Llio.int32_to
-    | Statistics -> Albamgr_statistics.to_buffer
+    | Statistics -> Generic.to_buffer
     | CheckLease -> Llio.int_to
     | GetParticipants ->
        Llio.counted_list_to

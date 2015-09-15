@@ -174,24 +174,14 @@ module Keys = struct
   end
 end
 
-let statistics = Albamgr_statistics.Albamgr_statistics.make ()
+let statistics = Statistics_collection.Generic.make ()
 
 module Statistics =
   struct
-    include Albamgr_statistics.Albamgr_statistics
+    include Statistics_collection.Generic
     let show t = show_inner t Albamgr_protocol.Protocol.tag_to_name
   end
 
-let () =
-  let rec inner () =
-    Lwt_unix.sleep 60. >>= fun() ->
-    Lwt_log.info_f
-      "stats:\n%s%!"
-      (Statistics.show statistics)
-    >>= fun () ->
-    inner ()
-  in
-  Lwt.ignore_result (inner ())
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
@@ -802,7 +792,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     let return_upds upds = Lwt.return ((), upds) in
     let make_update_osd_updates long_id osd_changes =
       let open Protocol in
-      Plugin_helper.debug_f "UpdateOsd: %s %s"
+      Plugin_helper.debug_f "UpdateOsd: %s %s%!"
                             long_id
                             ([%show : Osd.Update.t] osd_changes);
       let info_key = Keys.Osd.info ~long_id in
@@ -1623,14 +1613,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~max:(cap_max ~max ()) ~reverse
         (fun cur key -> Keys.Osd.namespaces_extract_namespace_id key)
     | Statistics ->
-       fun clear ->
-       begin
-         let open Albamgr_statistics in
-         let stopped = Albamgr_statistics.clone statistics in
-         let () = Albamgr_statistics.stop stopped in
-         if clear then Albamgr_statistics.clear statistics;
-         stopped
-       end;
+       fun clear -> Statistics_collection.Generic.snapshot statistics clear
     | CheckLease -> fun lease_name ->
       let lease_key = Keys.lease ~lease_name in
       let lease_so = db # get lease_key in
@@ -1682,15 +1665,16 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         then
           Lwt.catch
             (fun () ->
+             let open Statistics_collection in
              let (delta,(res,res_serializer)) =
-               Albamgr_statistics.Albamgr_statistics.with_timing
+               Generic.with_timing
                (fun () ->
                 let req = read_query_i r req_buf in
                 let res = handle_query r req in
                 let res_serializer = write_query_o r in
                 (res,res_serializer))
              in
-             Albamgr_statistics.Albamgr_statistics.new_query statistics tag delta;
+             Generic.new_query statistics tag delta;
              write_response_ok res_serializer res
             )
             (function
@@ -1713,10 +1697,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    "Albamgr: too many retries for operation %s"
                    (Protocol.tag_to_name tag))
             | cnt ->
-               let open Albamgr_statistics in
+               let open Statistics_collection in
                Lwt.catch
                  (fun () ->
-                  Albamgr_statistics.with_timing_lwt
+                  Generic.with_timing_lwt
                     (fun () ->
                      handle_update r req >>= fun (res, upds) ->
                      backend # push_update
@@ -1726,7 +1710,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                      Lwt.return (`Succes res)
                     )
                   >>= fun (delta,r) ->
-                  Albamgr_statistics.new_update statistics tag delta;
+                  Generic.new_update statistics tag delta;
                   Lwt.return r
                  )
                  (function
@@ -1774,10 +1758,21 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
   inner ()
 
+let () =
+  let rec inner () =
+    Lwt_unix.sleep 60. >>= fun() ->
+    Lwt_log.info_f
+      "stats:\n%s%!"
+      (Statistics.show statistics)
+    >>= fun () ->
+    inner ()
+  in
+  Lwt.ignore_result (inner ())
 
 let () = HookRegistry.register "albamgr" albamgr_user_hook
 let () = Log_plugin.register ()
 let () = Arith64.register()
+
 
 let () =
   let open Alba_version in
