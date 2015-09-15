@@ -386,8 +386,10 @@ class client ?(retry_timeout = 60.)
         (fun client ->
            client # list_device_objects
              ~osd_id
-             ~first:"" ~finc:true ~last:None
-             ~max:100 ~reverse:false)
+             ~first:(get_random_string 32) ~finc:true
+             ~last:None
+             ~max:100
+             ~reverse:(Random.bool ()))
       >>= fun ((cnt, manifests), has_more) ->
 
       Lwt_list.iter_s
@@ -815,14 +817,14 @@ class client ?(retry_timeout = 60.)
              ?delay
              ?categorize
              ?only_once
-             ~make_first
+             ~make_first_reverse
              ~namespace_id () =
       if filter namespace_id
       then self # rebalance_namespace'
                 ?delay
                 ?categorize
                 ?only_once
-                ~make_first
+                ~make_first_reverse
                 ~namespace_id ()
       else Lwt.return ()
 
@@ -830,7 +832,7 @@ class client ?(retry_timeout = 60.)
              ?(delay=0.)
              ?(categorize = Rebalancing_helper.categorize)
              ?(only_once = false)
-             ~make_first
+             ~make_first_reverse
              ~namespace_id () =
       alba_client # get_namespace_osds_info_cache ~namespace_id
       >>= fun cache ->
@@ -858,7 +860,7 @@ class client ?(retry_timeout = 60.)
            in
            Rebalancing_helper.get_some_manifests
              alba_client
-             ~make_first
+             ~make_first_reverse
              ~namespace_id
              random_osd
            >>= fun (n, manifests) ->
@@ -910,7 +912,7 @@ class client ?(retry_timeout = 60.)
                self # rebalance_namespace
                     ~delay
                     ~categorize
-                    ~make_first
+                    ~make_first_reverse
                     ~namespace_id ()
              end
          end
@@ -1384,7 +1386,8 @@ class client ?(retry_timeout = 60.)
          let rebalance =
            "rebalance",
            fun () -> self # rebalance_namespace
-                          ~make_first:(fun () ->get_random_string 32)
+                          ~make_first_reverse:(fun () -> get_random_string 32,
+                                                         Random.bool ())
                           ~namespace_id ()
          in
          let tasks =
