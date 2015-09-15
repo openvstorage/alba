@@ -16,16 +16,24 @@ limitations under the License.
 
 open Lwt.Infix
 
-let maintenance_for_all_x task_name list_x maintenance_f get_x_id show_x =
+let maintenance_for_all_x
+      task_name
+      list_x
+      maintenance_f
+      get_x_id
+      show_x
+      is_master
+  =
   let x_threads = Hashtbl.create 4 in
 
   let sync_x_threads () =
-    list_x () >>= fun (_, xs) ->
-
+    (if is_master ()
+     then list_x()
+     else Lwt.return (0,[])) >>= fun (_,xs) ->
     List.iter
       (fun x ->
          let x_id = get_x_id x in
-         if Hashtbl.mem x_threads x_id
+         if Hashtbl.mem x_threads x_id || not (is_master())
          then ()
          else begin
            let t =

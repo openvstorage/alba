@@ -131,8 +131,12 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~osd_connection_pool_size
         ~osd_timeout
         (fun client ->
+           let coordinator =
+             Maintenance_coordination.make_maintenance_coordinator
+               (client # mgr_access)
+           in
            let maintenance_client =
-             new Maintenance.client ~flavour (client # get_base_client)
+             new Maintenance.client ~flavour ~coordinator (client # get_base_client)
            in
            Lwt.catch
              (fun () ->
@@ -150,7 +154,8 @@ let alba_maintenance cfg_file modulo remainder flavour =
                 let base_threads () =
                   [
                     (Lwt_extra2.make_fuse_thread ());
-                    (maintenance_client # deliver_all_messages ());
+                    (maintenance_client # deliver_all_messages
+                            ~is_master:(fun () -> coordinator # is_master) ());
                     (client # get_base_client # discover_osds_check_claimed ());
                     (client # osd_access # propagate_osd_info ());
                   ]

@@ -32,21 +32,16 @@ type flavour =
 
 class client ?(retry_timeout = 60.)
              ?(flavour = ALL_IN_ONE)
+             ?coordinator
              (alba_client : Alba_base_client.client)
 
   =
 
-  let coordinator =
-    let open Maintenance_coordination in
-    let name = Uuidm.v4_gen (Random.State.make_self_init ()) ()
-               |> Uuidm.to_string
-    in
-    new coordinator
-        (alba_client # mgr_access)
-        ~name
-        ~lease_name:maintenance_lease_name
-        ~lease_timeout:maintenance_lease_timeout
-        ~registration_prefix:maintenance_registration_prefix
+  let coordinator = match coordinator with
+    | Some c -> c
+    | None ->
+       Maintenance_coordination.make_maintenance_coordinator
+         (alba_client # mgr_access)
   in
   let filter namespace_id =
     (Int32.to_int namespace_id) mod coordinator # get_modulo = coordinator # get_remainder
@@ -1436,8 +1431,9 @@ class client ?(retry_timeout = 60.)
 
     inner ()
 
-  method deliver_all_messages () : unit Lwt.t =
+  method deliver_all_messages ?(is_master= fun () -> true) () : unit Lwt.t =
     Alba_client_message_delivery.deliver_all_messages
+      is_master
       (alba_client # mgr_access)
       (alba_client # nsm_host_access)
       (alba_client # osd_access)
