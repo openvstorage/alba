@@ -4,14 +4,16 @@ open Lwt.Infix
 let test_coordinator_master () =
   Alba_test.test_with_alba_client
     (fun client ->
-     let lease_name = "x" in
+     let test_name = "test_coordinator_master" in
+     let lease_name = test_name in
+     let registration_prefix = test_name in
      let lease_timeout = 0.2 in
      let c1 = new coordinator
                   (client#mgr_access)
                   ~name:"c1"
                   ~lease_name
                   ~lease_timeout
-                  ~registration_prefix:""
+                  ~registration_prefix
      in
      c1 # init;
      let c2 = new coordinator
@@ -19,7 +21,7 @@ let test_coordinator_master () =
                   ~name:"c2"
                   ~lease_name
                   ~lease_timeout
-                  ~registration_prefix:""
+                  ~registration_prefix
      in
      c2 # init;
 
@@ -50,14 +52,16 @@ let test_coordinator_master () =
 let test_coordinator_participants () =
   Alba_test.test_with_alba_client
     (fun client ->
-     let lease_name = "x" in
+     let test_name = "test_coordinator_participants" in
+     let lease_name = test_name in
+     let registration_prefix = test_name in
      let lease_timeout = 0.2 in
      let c1 = new coordinator
                   (client#mgr_access)
                   ~name:"c1"
                   ~lease_name
                   ~lease_timeout
-                  ~registration_prefix:""
+                  ~registration_prefix
      in
      c1 # init;
      let c2 = new coordinator
@@ -65,7 +69,7 @@ let test_coordinator_participants () =
                   ~name:"c2"
                   ~lease_name
                   ~lease_timeout
-                  ~registration_prefix:""
+                  ~registration_prefix
      in
      c2 # init;
 
@@ -82,7 +86,7 @@ let test_coordinator_participants () =
                   ~name:"c3"
                   ~lease_name
                   ~lease_timeout
-                  ~registration_prefix:""
+                  ~registration_prefix
      in
      c3 # init;
 
@@ -98,7 +102,7 @@ let test_coordinator_participants () =
 
      c1 # stop;
 
-     Lwt_unix.sleep (3. *. lease_timeout) >>= fun () ->
+     Lwt_unix.sleep (4. *. lease_timeout) >>= fun () ->
 
      assert (2 = c2 # get_modulo);
      assert (2 = c3 # get_modulo);

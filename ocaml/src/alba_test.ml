@@ -655,7 +655,7 @@ let test_encryption () =
 
        OUnit.assert_equal data_o (Some object_data);
 
-       let object_name' = "" in
+       let object_name' = "empty" in
        let object_data' = "" in
        alba_client # upload_object_from_bytes
          ~namespace
@@ -684,7 +684,8 @@ let test_discover_claimed () =
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
          (fun asd ->
-            alba_client # osd_access # seen
+          alba_client # osd_access # seen
+              ~check_claimed:(fun () -> true)
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = test_name;
                                     extras = Some({
