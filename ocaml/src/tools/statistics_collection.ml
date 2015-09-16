@@ -10,7 +10,8 @@ module Generic = struct
         statistics : (int32, stat) Hashtbl.t;
       }
 
-    let clone t = {t with creation = t.creation}
+    let clone t = {t with statistics = Hashtbl.copy t.statistics }
+
     let stop  t = t.period <- Unix.gettimeofday() -. t.creation
     let clear t =
       t.creation <- Unix.gettimeofday();
