@@ -431,6 +431,46 @@ let alba_list_participants_cmd =
     "list-participants"
     ~doc:"list participants"
 
+
+let alba_list_work cfg_file attempts =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts
+      (fun client ->
+       let first = 0l
+       and finc = true
+       and last = None
+       and max = -1 in
+       client # get_work  ~first ~finc ~last ~max ~reverse:false
+       >>= fun ((cnt,r),more) ->
+       begin
+         Lwt_io.printlf "received %i items\n" cnt >>= fun () ->
+         Lwt_io.printlf "    id   | item " >>= fun () ->
+         Lwt_io.printlf "---------+------" >>= fun () ->
+         Lwt_list.iter_s
+           (fun (id, item) ->
+            Lwt_io.printlf "%8li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
+           ) r
+         >>= fun () ->
+         if more
+         then Lwt_io.printl "..."
+         else Lwt.return ()
+       end
+      )
+  in
+  lwt_cmd_line false t
+
+let alba_list_work_cmd =
+  Term.(pure alba_list_work
+        $ alba_cfg_file
+        $ attempts 1
+  ),
+  Term.info
+    "list-work"
+    ~doc:"list outstanding work items"
+
+
+
 let alba_add_osd cfg_file host port node_id to_json attempts =
   let node_id = match node_id with
     | None ->  failwith "A node id is needed here"
@@ -499,4 +539,5 @@ let cmds = [
   alba_mgr_statistics_cmd;
 
   alba_list_participants_cmd;
+  alba_list_work_cmd;
 ]
