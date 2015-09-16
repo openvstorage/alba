@@ -303,7 +303,7 @@ let test_repair_orange () =
          ~max:10 >>= fun ((cnt, _), _) ->
        assert (cnt = 1);
 
-       maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
+       maintenance_client # repair_by_policy_namespace' ~namespace_id >>= fun () ->
 
        alba_client # get_object_manifest
          ~namespace ~object_name
