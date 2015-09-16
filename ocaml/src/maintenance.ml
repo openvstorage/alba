@@ -40,8 +40,12 @@ class client ?(retry_timeout = 60.)
   let coordinator = match coordinator with
     | Some c -> c
     | None ->
-       Maintenance_coordination.make_maintenance_coordinator
-         (alba_client # mgr_access)
+       let c =
+         Maintenance_coordination.make_maintenance_coordinator
+           (alba_client # mgr_access)
+       in
+       c # init;
+       c
   in
   let filter namespace_id =
     (Int32.to_int namespace_id) mod coordinator # get_modulo = coordinator # get_remainder
