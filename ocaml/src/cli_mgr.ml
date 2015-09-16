@@ -407,6 +407,29 @@ let alba_list_decommissioning_osds_cmd =
     "list-decommissioning-osds"
     ~doc:"list osds that are not yet fully decommissioned"
 
+let alba_list_participants cfg_file prefix =
+  let t () =
+    with_albamgr_client
+      cfg_file
+      ~attempts:1
+      (fun client ->
+       client # get_participants ~prefix >>= fun (cnt, participants) ->
+       Lwt_log.debug_f
+         "Found %i participants:\n%s"
+         cnt
+         ([%show : (string*int) list] participants))
+  in
+  lwt_cmd_line false t
+
+let alba_list_participants_cmd =
+  Term.(pure alba_list_participants
+        $ alba_cfg_file
+        $ Arg.(required
+               & pos 0 (some string) None
+               & info [] ~docv:"PREFIX" ~doc:"prefix")),
+  Term.info
+    "list-participants"
+    ~doc:"list participants"
 
 let alba_add_osd cfg_file host port node_id to_json attempts =
   let node_id = match node_id with
@@ -474,4 +497,6 @@ let cmds = [
   alba_list_nsm_hosts_cmd;
   alba_add_osd_cmd;
   alba_mgr_statistics_cmd;
+
+  alba_list_participants_cmd;
 ]
