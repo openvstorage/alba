@@ -323,6 +323,7 @@ let osd_bench_cmd =
   osd_bench_t, info
 
 let asd_statistics hosts port_o asd_id to_json config_o clear =
+  let open Asd_statistics in
   let _inner =
     (fun (client:Asd_client.client) ->
      client # statistics clear >>= fun stats ->
@@ -330,7 +331,10 @@ let asd_statistics hosts port_o asd_id to_json config_o clear =
      then
        let open Alba_json.AsdStatistics in
        print_result (make stats) to_yojson
-     else Lwt_io.printl ([%show: Asd_statistics.AsdStatistics.t] stats)
+     else Lwt_io.printl
+            (AsdStatistics.show_inner
+               stats
+               Asd_protocol.Protocol.code_to_description)
     )
   in
   let from_asd hosts port asd_id =

@@ -317,15 +317,15 @@ module Protocol = struct
     | Wrap_query : _ query -> t
     | Wrap_update : _ update -> t
 
-  let command_map = [ Wrap_query Range, 1, "Range";
-                      Wrap_query MultiGet, 2, "MultiGet";
-                      Wrap_update Apply, 3, "Apply";
-                      Wrap_query RangeEntries, 4, "RangeEntries";
-                      Wrap_query Statistics, 5, "Statistics";
-                      Wrap_update SetFull, 6, "SetFull";
-                      Wrap_query GetVersion, 7, "GetVersion";
-                      Wrap_query MultiGet2, 8, "MultiGet2";
-                      Wrap_query MultiExists, 9, "MultiExists";
+  let command_map = [ Wrap_query Range,        1l, "Range";
+                      Wrap_query MultiGet,     2l, "MultiGet";
+                      Wrap_update Apply,       3l, "Apply";
+                      Wrap_query RangeEntries, 4l, "RangeEntries";
+                      Wrap_query Statistics,   5l, "Statistics";
+                      Wrap_update SetFull,     6l, "SetFull";
+                      Wrap_query GetVersion,   7l, "GetVersion";
+                      Wrap_query MultiGet2,    8l, "MultiGet2";
+                      Wrap_query MultiExists,  9l, "MultiExists";
                     ]
 
   let wrap_unknown_operation f =

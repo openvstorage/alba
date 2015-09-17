@@ -45,7 +45,7 @@ class client fd ic id =
            let s =
              serialize_with_length
                (Llio.pair_to
-                  Llio.int_to
+                  Llio.int32_to
                   (query_request_serializer command))
                (command_to_code (Wrap_query command),
                 req)
@@ -66,7 +66,7 @@ class client fd ic id =
            let s =
              serialize_with_length
                (Llio.pair_to
-                  Llio.int_to
+                  Llio.int32_to
                   (update_request_serializer command))
                (command_to_code (Wrap_update command),
                 req)
