@@ -99,6 +99,24 @@ let test_multiget port () =
        assert ([ Some value1; Some value2; ] = List.map (Option.map fst) res);
        Lwt.return ())
 
+let test_multi_exists port () =
+  test_with_asd_client
+    "test_multi_exists" port
+    (fun client ->
+     let open Slice in
+     let v = "xxxx" in
+     let existing_key = "exists" in
+     client # set_string existing_key v true >>= fun () ->
+     client # multi_exists [
+              Slice.wrap_string existing_key;
+              Slice.wrap_string "non_existing"
+            ]
+     >>= fun res ->
+     assert (2 = List.length res);
+     assert ([true;false] = res );
+     Lwt.return ()
+    )
+
 let test_range_query port () =
   test_with_asd_client
     "test_range_query" port
@@ -272,4 +290,5 @@ let suite = "asd_test" >:::[
     "test_list_all" >:: test_list_all 7904;
     "test_startup" >:: test_startup 7905 7906;
     "test_protocol_version" >:: test_protocol_version 7907;
+    "test_multi_exists" >:: test_multi_exists 7908;
   ]

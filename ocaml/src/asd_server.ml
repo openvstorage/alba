@@ -294,6 +294,7 @@ let get_value_option kv key =
   in
   Option.map (fun v -> deserialize Value.from_buffer v) vo_raw
 
+let key_exists kv key = (get_value_option kv key) <> None
 
 
 let execute_query : type req res.
@@ -405,6 +406,10 @@ let execute_query : type req res.
         return stopped
       end
     | GetVersion -> fun () -> return Alba_version.summary
+    | MultiExists ->
+       fun keys ->
+       List.map (fun k -> key_exists kv k) keys |> return
+
 
 
 exception ConcurrentModification
