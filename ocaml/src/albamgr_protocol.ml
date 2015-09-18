@@ -217,19 +217,7 @@ module Protocol = struct
             other';
           }
         =
-        let merge ?(compare=compare) l1 l2 =
-          let res =
-            List.merge
-              compare
-              l1
-              (List.fast_sort compare l2)
-          in
-          let len = List.length res in
-          if len > 10
-          then List.drop res (len - 10)
-          else res
-        in
-
+        let my_compare x y = compare y x in
         let kind =
           let ips, port = get_ips_port osd.kind in
           let ips' = Option.get_some_default ips ips' in
@@ -238,19 +226,18 @@ module Protocol = struct
           | Asd (_, _, asd_id) -> Asd (ips', port', asd_id)
           | Kinetic (_, _, k_id) -> Kinetic (ips', port', k_id)
         in
-
+        let max_n = 10 in
         { node_id = osd.node_id;
           kind; decommissioned = osd.decommissioned;
           other = Option.get_some_default osd.other other';
           total = Option.get_some_default osd.total total';
           used = Option.get_some_default osd.used used';
-          seen = merge osd.seen seen';
-          read = merge osd.read read';
-          write = merge osd.write write';
-          errors =
-            merge
-              ~compare:(fun i1 i2 -> compare (fst i1) (fst i2))
-              osd.errors errors';
+          seen   = List.merge_head  ~compare:my_compare osd.seen seen' max_n;
+          read   = List.merge_head  ~compare:my_compare osd.read read' max_n;
+          write  = List.merge_head  ~compare:my_compare osd.write write' max_n;
+          errors = List.merge_head
+                     ~compare:(fun i1 i2 -> my_compare (fst i1) (fst i2))
+                     osd.errors errors' max_n;
         }
 
       let to_buffer buf u =

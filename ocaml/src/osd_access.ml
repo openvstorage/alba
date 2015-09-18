@@ -30,6 +30,14 @@ type osd_state = {
   mutable json: string option;
 }
 
+let reset osd_state =
+  osd_state.read <- [];
+  osd_state.write <- [];
+  osd_state.errors <- [];
+  osd_state.seen <- [];
+  osd_state.json <- None
+
+
 let large_value = lazy (String.make (512*1024) 'a')
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -213,16 +221,21 @@ class osd_access
     method propagate_osd_info ?(run_once=false) () : unit Lwt.t =
       let open Albamgr_protocol.Protocol in
       let make_update (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) =
+        let n = 10 in
+        let most_recent xs =
+          let my_compare x y = ~-(compare x y) in
+          List.merge_head ~compare:my_compare [] xs n
+        in
         let open Osd in
         let ips', port' =
           get_ips_port osd_info.kind
         and long_id = get_long_id osd_info.kind
         and total'  = osd_info.total
         and used'   = osd_info.used
-        and seen'   = osd_info.seen
-        and read'   = osd_state.read
-        and write'  = osd_state.write
-        and errors' = osd_state.errors
+        and seen'   = most_recent osd_info.seen
+        and read'   = most_recent osd_state.read
+        and write'  = most_recent osd_state.write
+        and errors' = most_recent osd_state.errors
         and other'  = osd_state.json |> Option.get_some
         in
         let update = Osd.Update.make
@@ -233,13 +246,6 @@ class osd_access
                        ()
         in
         (long_id, update)
-      in
-      let reset osd_state =
-        osd_state.read <- [];
-        osd_state.write <- [];
-        osd_state.errors <- [];
-        osd_state.seen <- [];
-        osd_state.json <- None
       in
       let propagate () =
         let updates =
