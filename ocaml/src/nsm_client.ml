@@ -49,6 +49,13 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
         Std.id
         (self # list_objects ~last:None ~max:(-1) ~reverse:false)
 
+    method list_objects_by_id ~first ~finc ~last ~max ~reverse =
+      self # query
+        ListObjectsById
+        RangeQueryArgs.({ first; finc;
+                          last; max;
+                          reverse; })
+
     method list_device_objects ~osd_id ~first ~finc ~last ~max ~reverse =
       self # query
         ListObjectsByOsd

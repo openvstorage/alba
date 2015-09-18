@@ -155,6 +155,7 @@ module Protocol = struct
       nsm_query GetObjectManifestByName, 5l, "GetObjectManifestByName";
       nsm_query GetObjectManifestById, 6l, "GetObjectManifestById";
       nsm_query ListObjects, 7l, "ListObjects";
+      nsm_query ListObjectsById, 31l, "ListObjectsById";
       nsm_update PutObject, 8l, "PutObject";
       nsm_update DeleteObject, 9l, "DeleteObject";
       nsm_update UpdateObject, 10l, "UpdateObject";

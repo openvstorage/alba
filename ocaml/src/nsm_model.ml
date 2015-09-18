@@ -549,7 +549,12 @@ module Keys = struct
     fun key -> Str.string_after key prefix_len
 
   (* map an object_id (which is unique) to a manifest *)
-  let objects object_id = Printf.sprintf "objects/%s" object_id
+  let objects_prefix = "objects/"
+  let objects ~object_id = objects_prefix ^ object_id
+  let objects_next_prefix = next_prefix objects_prefix
+  let objects_extract_id =
+    let prefix_len = String.length objects_prefix in
+    fun key -> Str.string_after key prefix_len
 
   (* this contains the range of gc epochs for which
      fragments can be added to this namespace
@@ -748,7 +753,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       (fun cur key -> Keys.Device.active_osds_extract_osd_id key)
 
   let get_object_manifest_by_id kv object_id =
-    match KV.get kv (Keys.objects object_id) with
+    match KV.get kv (Keys.objects ~object_id) with
     | None -> Err.failwith Err.Object_not_found
     | Some manifest_s -> deserialize Manifest.input manifest_s, manifest_s
 
@@ -757,7 +762,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       (fun object_info_s ->
         let object_info = deserialize ObjectInfo.from_buffer object_info_s in
         let object_id = ObjectInfo.get_object_id object_info in
-        let manifest_s = KV.get_exn kv (Keys.objects object_id) in
+        let manifest_s = KV.get_exn kv (Keys.objects ~object_id) in
         let manifest = deserialize Manifest.input manifest_s in
         manifest)
       (KV.get kv (Keys.names name))
@@ -839,7 +844,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
 
   let cleanup_for_object_id kv old_object_id =
-    let object_key = Keys.objects old_object_id in
+    let object_key = Keys.objects ~object_id:old_object_id in
     let old_manifest, old_manifest_s = get_object_manifest_by_id kv old_object_id in
     let delete_manifest =
       Update.compare_and_swap
@@ -1010,7 +1015,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let object_id = manifest.Manifest.object_id in
 
     (* sanity check to see if the client is really generating unique object_ids *)
-    if KV.exists kv (Keys.objects object_id)
+    if KV.exists kv (Keys.objects ~object_id)
     then Err.failwith Err.Non_unique_object_id;
 
     check_fragment_osd_spread manifest;
@@ -1035,7 +1040,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                  (ObjectInfo.ManifestWithObjectId object_id))) in
     let add_manifest =
       Update.compare_and_swap
-        (Keys.objects object_id)
+        (Keys.objects ~object_id)
         None
         (Some (serialize Manifest.output manifest)) in
 
@@ -1160,8 +1165,18 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       ~last:(match last with
           | Some (last,linc) -> Some (Keys.names last, linc)
           | None -> Keys.names_next_prefix)
-      ~max:(cap_max ~max ()) ~reverse
+      ~max ~reverse
       (fun cur key -> Keys.names_extract_name key)
+
+  let list_objects_by_id kv ~first ~finc ~last ~max ~reverse =
+    EKV.map_range
+      kv
+      ~first:(Keys.objects ~object_id:first) ~finc
+      ~last:(match last with
+             | Some (last, linc) -> Some (Keys.objects ~object_id:last, linc)
+             | None -> Keys.objects_next_prefix)
+      ~max ~reverse
+      (fun cur key -> KV.cur_get_value cur |> deserialize Manifest.input)
 
   let list_device_objects kv device_id ~first ~finc ~last ~max ~reverse =
     EKV.map_range
@@ -1170,7 +1185,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       ~last:(match last with
           | Some (last, linc) -> Some (Keys.Device.objects device_id last, linc)
           | None -> Keys.Device.objects_next_prefix device_id)
-      ~max:(cap_max ~max ()) ~reverse
+      ~max ~reverse
       (fun cur key ->
          let object_id = Keys.Device.objects_extract_object_id key in
          let manifest, _ = get_object_manifest_by_id kv object_id in
@@ -1183,7 +1198,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       ~last:(match last with
           | Some (last, linc) -> Some ((Keys.Device.keys_to_be_deleted device_id) ^ last, linc)
           | None -> Keys.Device.keys_to_be_deleted_next_prefix device_id)
-      ~max:(cap_max ~max ()) ~reverse
+      ~max ~reverse
       (fun cur key -> Keys.Device.keys_to_be_deleted_extract_key key)
 
   let mark_keys_deleted kv device_keys =
@@ -1390,8 +1405,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let updated_manifest_s = serialize Manifest.output updated_manifest in
     let update_manifest =
       Update.compare_and_swap
-        (Keys.objects
-           object_id)
+        (Keys.objects ~object_id)
         (Some manifest_old_s)
         (Some updated_manifest_s) in
     List.concat
@@ -1457,7 +1471,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           | Some (((k, m, fragment_count, max_disks_per_node), object_id),
                   linc) ->
             Some (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id, linc))
-      ~max:(cap_max ~max ()) ~reverse
+      ~max ~reverse
       (fun cur key ->
          let k, m, fragment_count, max_disks_per_node, object_id = Keys.parse_policies_key key in
          let manifest, _ = get_object_manifest_by_id kv object_id in

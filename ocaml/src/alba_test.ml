@@ -1884,6 +1884,38 @@ let test_retry_download () =
           Lwt.return ()
      end)
 
+let test_list_objects_by_id () =
+  let test_name = "test_list_objects_by_id" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+     alba_client # create_namespace
+                 ~preset_name:None
+                 ~namespace () >>= fun namespace_id ->
+
+     let open Nsm_model in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name:""
+                 ~object_data:""
+                 ~checksum_o:None
+                 ~allow_overwrite:NoPrevious
+     >>= fun (mf, _) ->
+
+     let object_id = mf.Manifest.object_id in
+
+     alba_client # with_nsm_client'
+                 ~namespace_id
+                 (fun client ->
+                  client # list_objects_by_id
+                         ~first:object_id ~finc:true
+                         ~last:(Some (object_id, true))
+                         ~max:100 ~reverse:false >>= fun ((cnt, objs), has_more) ->
+                  assert (not has_more);
+                  assert (cnt = 1);
+                  assert (objs = [ mf; ]);
+                  Lwt.return ()))
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -1909,4 +1941,5 @@ let suite = "alba_test" >:::[
     "test_update_policies" >:: test_update_policies;
     "test_object_sizes" >:: test_object_sizes;
     "test_retry_download" >:: test_retry_download;
+    "test_list_objects_by_id" >:: test_list_objects_by_id;
   ]
