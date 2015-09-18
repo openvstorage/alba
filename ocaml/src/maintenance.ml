@@ -1199,49 +1199,71 @@ class client ?(retry_timeout = 60.)
                Lwt.return ()
         end
       | IterNamespaceLeaf (action, namespace_id, name, (first, last)) ->
-        begin
-          alba_client # mgr_access # get_progress name >>= fun po ->
-          match po with
+        let rec inner = function
           | None -> Lwt.return ()
           | Some p ->
              let open Albamgr_protocol.Protocol in
              match p, action with
              | Progress.Rewrite (count, next), Work.Rewrite ->
-                (* alba_client # with_nsm_client' *)
-                (*  ~namespace_id *)
-                (*  (fun client -> *)
-                (*   Lwt.return ()) *)
+                let fetch ~first ~last =
+                  alba_client # with_nsm_client'
+                              ~namespace_id
+                              (fun client ->
+                               client # list_objects_by_id
+                                      ~first ~finc:true
+                                      ~last
+                                      ~max:100 ~reverse:false)
+                in
 
                 (match next, last with
                  | None, _ -> Lwt.return ((0,[]), false)
-                 | Some next, None ->
-                    (* TODO fetch till the end *)
-                    Lwt.return ((0,[]), false)
+                 | Some next, None -> fetch ~first:next ~last:None
                  | Some next, Some last ->
                     if next >= last
                     then Lwt.return ((0,[]), false)
-                    else
-                      (* TODO fetch till last *)
-                      Lwt.return ((0,[]), false)) >>= fun ((cnt, objs), has_more) ->
+                    else fetch ~first:next ~last:(Some (last, false)))
+
+                >>= fun ((cnt, objs), has_more) ->
+
                 Lwt_list.iter_s
                   (fun manifest ->
-                   (* TODO does this throw an exception if obj is in the mean time overwritten? *)
-                   self # repair_object_rewrite
-                        ~namespace_id
-                        ~manifest)
+                   Lwt.catch
+                     (fun () ->
+                      self # repair_object_rewrite
+                           ~namespace_id
+                           ~manifest)
+                     (let open Nsm_model.Err in
+                      function
+                      | Nsm_exn (Overwrite_not_allowed, _) ->
+                        (* ignore this one ... the object was overwritten
+                         * already in the meantime, which is just fine for us
+                         *)
+                        Lwt.return ()
+                      | exn -> Lwt.fail exn))
                   objs >>= fun () ->
 
+                let next =
+                  if has_more
+                  then last
+                  else
+                    Option.map
+                      (fun mf -> mf.Nsm_model.Manifest.object_id ^ "\000")
+                      (List.last objs)
+                in
+                let po = (Some (Progress.Rewrite
+                                   (Int64.(add count (of_int cnt)),
+                                    next)))
+                in
+
                 alba_client # mgr_access # update_progress
-                            name
-                            p
-                            (Some (Progress.Rewrite (Int64.(add count (of_int cnt)), Some "")))
-        (* TODO
-         * - check current progress
-         * - compare with target
-         * - fetch some objects, perform action
-         * - update progress, repeat
-         *)
-        end
+                            name p po >>= fun () ->
+
+                if has_more
+                then inner po
+                else Lwt.return ()
+        in
+        alba_client # mgr_access # get_progress name >>= fun po ->
+        inner po
       | IterNamespace _ ->
         (* the logic for this task is on the albamgr (server) side *)
         Lwt.return ()
