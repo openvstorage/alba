@@ -398,6 +398,16 @@ class client (client : basic_client) =
       client # update
         UpdatePreset
         (name, updates)
+
+    method get_progress name =
+      client # query
+        GetProgress
+        name
+
+    method update_progress name old new_o =
+      client # update
+        UpdateProgress
+        (name, Progress.Update.CAS (old, new_o))
   end
 
 class single_connection_client (ic, oc) =

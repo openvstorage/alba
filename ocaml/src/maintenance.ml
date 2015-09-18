@@ -1172,30 +1172,79 @@ class client ?(retry_timeout = 60.)
              Lwt.return (cnt = 0))
       | RepairBadFragment (namespace_id, object_id, object_name,
                            chunk_id, fragment_id, version) ->
-        alba_client # with_nsm_client'
-          ~namespace_id
-          (fun client ->
-             client # get_object_manifest_by_name object_name)
-        >>= function
-        | None ->
-          (* object must've been deleted in the mean time, so no work to do here *)
-          Lwt.return ()
-        | Some manifest ->
-          if manifest.Nsm_model.Manifest.object_id = object_id
-          then begin
-            Lwt_log.warning_f
-              "Repairing object due to bad (missing/corrupted) fragment (%li, %S, %S, %i, %i)"
-              namespace_id object_id object_name chunk_id fragment_id
-            >>= fun () ->
-            (* this is inefficient but in general it should never happen *)
-            self # repair_object
-              ~namespace_id
-              ~manifest
-              ~problem_fragments:[(chunk_id,fragment_id)]
-          end else
-            (* object has been replaced with a new version in the mean time,
+        begin
+          alba_client # with_nsm_client'
+                      ~namespace_id
+                      (fun client ->
+                       client # get_object_manifest_by_name object_name)
+          >>= function
+          | None ->
+             (* object must've been deleted in the mean time, so no work to do here *)
+             Lwt.return ()
+          | Some manifest ->
+             if manifest.Nsm_model.Manifest.object_id = object_id
+             then begin
+                 Lwt_log.warning_f
+                   "Repairing object due to bad (missing/corrupted) fragment (%li, %S, %S, %i, %i)"
+                   namespace_id object_id object_name chunk_id fragment_id
+                 >>= fun () ->
+                 (* this is inefficient but in general it should never happen *)
+                 self # repair_object
+                      ~namespace_id
+                      ~manifest
+                      ~problem_fragments:[(chunk_id,fragment_id)]
+               end else
+               (* object has been replaced with a new version in the mean time,
                so no work to do here *)
-            Lwt.return ()
+               Lwt.return ()
+        end
+      | IterNamespaceLeaf (action, namespace_id, name, (first, last)) ->
+        begin
+          alba_client # mgr_access # get_progress name >>= fun po ->
+          match po with
+          | None -> Lwt.return ()
+          | Some p ->
+             let open Albamgr_protocol.Protocol in
+             match p, action with
+             | Progress.Rewrite (count, next), Work.Rewrite ->
+                (* alba_client # with_nsm_client' *)
+                (*  ~namespace_id *)
+                (*  (fun client -> *)
+                (*   Lwt.return ()) *)
+
+                (match next, last with
+                 | None, _ -> Lwt.return ((0,[]), false)
+                 | Some next, None ->
+                    (* TODO fetch till the end *)
+                    Lwt.return ((0,[]), false)
+                 | Some next, Some last ->
+                    if next >= last
+                    then Lwt.return ((0,[]), false)
+                    else
+                      (* TODO fetch till last *)
+                      Lwt.return ((0,[]), false)) >>= fun ((cnt, objs), has_more) ->
+                Lwt_list.iter_s
+                  (fun manifest ->
+                   (* TODO does this throw an exception if obj is in the mean time overwritten? *)
+                   self # repair_object_rewrite
+                        ~namespace_id
+                        ~manifest)
+                  objs >>= fun () ->
+
+                alba_client # mgr_access # update_progress
+                            name
+                            p
+                            (Some (Progress.Rewrite (Int64.(add count (of_int cnt)), Some "")))
+        (* TODO
+         * - check current progress
+         * - compare with target
+         * - fetch some objects, perform action
+         * - update progress, repeat
+         *)
+        end
+      | IterNamespace _ ->
+        (* the logic for this task is on the albamgr (server) side *)
+        Lwt.return ()
 
 
     val mutable next_work_item = 0l
