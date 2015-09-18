@@ -264,6 +264,38 @@ module List = struct
 
   let map_filter f l =
     List.rev (map_filter_rev f l)
+
+  let merge_head ?(compare= compare) x y max_n =
+    let rec push x y n =
+      let rec _inner r y = function
+        | 0 -> r
+        | n ->
+           begin
+             match y with
+             | [] -> r
+             | yh :: yt -> _inner (yh::r) yt (n-1)
+           end
+      in
+      _inner x y n
+    in
+    let rec _inner todo acc x y =
+      if todo = 0
+      then acc
+      else
+        match x,y with
+        |     [], []     -> acc
+        |     [],  y     -> push acc y todo
+        |      x, []     -> push acc x todo
+        | xh::xt, yh::yt ->
+           begin
+             let todo' = todo - 1
+             and c = compare xh yh in
+             if c < 0      then  _inner todo' (xh::acc) xt y
+             else if c = 0 then  _inner todo' (xh::acc) xt yt
+             else                _inner todo' (yh::acc) x  yt
+           end
+    in
+    (_inner max_n [] x y) |> List.rev
 end
 
 module Option = struct
