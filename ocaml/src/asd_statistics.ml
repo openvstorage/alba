@@ -59,7 +59,7 @@ module AsdStatistics = struct
           }
          end
       | 2 -> Statistics_collection.Generic.from_buffer_raw buf
-      | _ -> failwith "bad serialization version"
+      | k -> Prelude.raise_bad_tag "AsdStatistics" k
 
     let to_buffer buf t =
       Statistics_collection.Generic.to_buffer_with_version ~ser_version:2 buf t
