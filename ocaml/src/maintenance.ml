@@ -30,6 +30,8 @@ type flavour =
   | ONLY_REBALANCE
   [@@deriving show]
 
+exception NotMyTask
+
 class client ?(retry_timeout = 60.)
              ?(flavour = ALL_IN_ONE)
              ?coordinator
@@ -47,10 +49,10 @@ class client ?(retry_timeout = 60.)
        c # init;
        c
   in
-  let filter namespace_id =
-    (Int32.to_int namespace_id) mod coordinator # get_modulo = coordinator # get_remainder
+  let filter item_id =
+    (* item_id could be e.g. namespace_id or work item id *)
+    (Int32.to_int item_id) mod coordinator # get_modulo = coordinator # get_remainder
   in
-  let is_master () = coordinator # is_master in
   object(self)
 
     method rebalance_object
@@ -1053,7 +1055,7 @@ class client ?(retry_timeout = 60.)
       else Lwt.return ()
 
 
-    method handle_work_item work_item =
+    method handle_work_item work_item work_id =
       let open Albamgr_protocol.Protocol.Work in
       Lwt_log.debug_f
         "Performing work item %s"
@@ -1071,8 +1073,10 @@ class client ?(retry_timeout = 60.)
               "Condition for %s not yet satisfied, trying again in ~%f."
               msg retry_timeout
             >>= fun () ->
-            Lwt_extra2.sleep_approx retry_timeout >>=
-            inner
+            Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
+            if filter work_id
+            then inner ()
+            else Lwt.fail NotMyTask
           | true ->
             Lwt.return ()
         in
@@ -1090,7 +1094,10 @@ class client ?(retry_timeout = 60.)
           >>= fun () ->
           if cnt = 0
           then Lwt.return ()
-          else inner () in
+          else if filter work_id
+          then inner ()
+          else Lwt.fail NotMyTask
+        in
         inner ()
       | CleanupOsdNamespace (osd_id, namespace_id) ->
         alba_client # with_osd
@@ -1117,7 +1124,9 @@ class client ?(retry_timeout = 60.)
                  (List.map
                     (fun k -> Osd.Update.delete k)
                     keys) >>= fun _ ->
-               if has_more
+               if not (filter work_id)
+               then Lwt.fail NotMyTask
+               else if has_more
                then inner ()
                else Lwt.return ()
              in
@@ -1130,7 +1139,9 @@ class client ?(retry_timeout = 60.)
                (fun nsm ->
                   let rec inner () =
                     nsm # cleanup_osd_keys_to_be_deleted osd_id >>= fun cnt ->
-                    if cnt <> 0
+                    if not (filter work_id)
+                    then Lwt.fail NotMyTask
+                    else if cnt <> 0
                     then inner ()
                     else Lwt.return ()
                   in
@@ -1258,7 +1269,9 @@ class client ?(retry_timeout = 60.)
                 alba_client # mgr_access # update_progress
                             name p po >>= fun () ->
 
-                if has_more
+                if not (filter work_id)
+                then Lwt.fail NotMyTask
+                else if has_more
                 then inner po
                 else Lwt.return ()
         in
@@ -1281,15 +1294,21 @@ class client ?(retry_timeout = 60.)
              let try_do_work () =
                Lwt.catch
                  (fun () ->
-                    Lwt_log.debug_f
-                      "Doing work: id=%li, item=%s"
-                      work_id
-                      (Work.show work_item) >>= fun () ->
+                  (if filter work_id
+                   then
+                     begin
+                       Lwt_log.debug_f
+                         "Doing work: id=%li, item=%s"
+                         work_id
+                         (Work.show work_item) >>= fun () ->
 
-                    self # handle_work_item work_item >>= fun () ->
-                    alba_client # mgr_access # mark_work_completed ~work_id
-                    >>= fun () ->
-                    Lwt.return `Finished)
+                       self # handle_work_item work_item work_id >>= fun () ->
+                       alba_client # mgr_access # mark_work_completed ~work_id
+                     end
+                   else
+                     Lwt.return_unit)
+                  >>= fun () ->
+                  Lwt.return `Finished)
                  (function
                    | Lwt.Canceled -> Lwt.fail Lwt.Canceled
                    | exn ->
@@ -1333,16 +1352,15 @@ class client ?(retry_timeout = 60.)
 
 
   method do_work ?(once = false) () : unit Lwt.t =
+
+    coordinator # add_on_position_changed (fun () -> next_work_item <- 0l);
+
     let rec inner () =
-      let is_master = is_master () in
-      (if once || is_master
-      then alba_client # mgr_access # get_work
-                       ~first:next_work_item ~finc:true
-                       ~last:None ~max:100 ~reverse:false
-       else
-         Lwt.return ((0, []), false))
+      alba_client # mgr_access # get_work
+                  ~first:next_work_item ~finc:true
+                  ~last:None ~max:100 ~reverse:false
       >>= fun ((cnt, work_items), _) ->
-      Lwt_log.debug_f "Adding work, got %i items (is_master=%b)" cnt is_master >>= fun () ->
+      Lwt_log.debug_f "Adding work, got %i items" cnt >>= fun () ->
       self # add_work_threads work_items;
 
       if once && cnt > 0

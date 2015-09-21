@@ -21,9 +21,13 @@ class coordinator
 
   val mutable modulo = 1
   val mutable remainder = 0
+  val mutable on_position_changed : (unit -> unit) list = []
+
+  method trigger_on_position_changed = List.iter ((|>) ()) on_position_changed
 
   method get_modulo = modulo
   method get_remainder = remainder
+  method add_on_position_changed f = on_position_changed <- f :: on_position_changed
 
   method init =
     Lwt.ignore_result
@@ -95,9 +99,17 @@ class coordinator
              client # get_participants ~prefix:registration_prefix
              >>= fun (cnt, participants) ->
 
-             modulo <- cnt;
-             remainder <- (List.find_index (fun (name', _) -> name' = name) participants)
-                          |> Option.get_some;
+             let modulo' = cnt in
+             let remainder' = (List.find_index (fun (name', _) -> name' = name) participants)
+                              |> Option.get_some in
+             if modulo' <> modulo
+                || remainder' <> remainder
+             then
+               begin
+                 modulo <- modulo';
+                 remainder <- remainder';
+                 self # trigger_on_position_changed
+               end;
 
              (if self # is_master
               then
