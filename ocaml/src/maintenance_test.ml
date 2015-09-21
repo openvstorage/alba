@@ -427,7 +427,7 @@ let test_rewrite_namespace () =
                  [ Albamgr_protocol.Protocol.Work.(IterNamespace
                                                      (Rewrite,
                                                       namespace_id,
-                                                      1)) ] >>= fun () ->
+                                                      10)) ] >>= fun () ->
 
      Alba_test.wait_for_work alba_client >>= fun () ->
      Alba_test.wait_for_work alba_client >>= fun () ->

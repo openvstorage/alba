@@ -1302,27 +1302,38 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           | RepairBadFragment _
           | IterNamespaceLeaf _ -> []
           | IterNamespace (action, namespace_id, cnt) ->
-            (* TODO split according to count
-             * - determine start keys
-             * - map them to work items
-             *)
-            let name = "iter_namespace/"^(Int32.to_string id) in
-            let work_items =
-              [ Work.IterNamespaceLeaf (action,
-                                        namespace_id,
-                                        name,
-                                        ("", None)); ]
+
+            let get_key = function
+              | i when i = cnt -> None
+              | i ->
+                 let b = i * (1 lsl 32) / cnt in
+                 Some (serialize Llio.int32_be_to (Int32.of_int b))
             in
-            let add_work_items = add_work_items work_items in
-            let update_progress =
-              match action with
-              | Rewrite ->
-                 [ Update.Set (Keys.progress name,
-                               serialize
-                                 Progress.to_buffer
-                                 (Progress.Rewrite (0L, Some ""))) ]
+
+            let items =
+              List.map
+                (fun i ->
+                 let start = get_key i |> Option.get_some in
+                 let range = start, get_key (i + 1) in
+                 let name = Printf.sprintf "iter_namespace/%li/%i" id i in
+                 Work.IterNamespaceLeaf
+                   (action,
+                    namespace_id,
+                    name,
+                    range),
+                 match action with
+                 | Rewrite ->
+                    Update.Set (Keys.progress name,
+                                serialize
+                                  Progress.to_buffer
+                                  (Progress.Rewrite (0L, Some start)))
+                )
+                (Int.range 0 cnt)
             in
-            List.concat [ add_work_items; update_progress; ]
+
+            let add_work_items = add_work_items (List.map fst items) in
+            let update_progress = List.map snd items in
+            List.rev_append add_work_items update_progress
           | WaitUntilRepaired (osd_id, namespace_id) ->
             let add_work =
               add_work_items
