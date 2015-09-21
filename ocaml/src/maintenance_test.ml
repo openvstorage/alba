@@ -423,14 +423,33 @@ let test_rewrite_namespace () =
      get_objs () >>= fun manifests' ->
      assert (manifests' = manifests);
 
+     let open Albamgr_protocol.Protocol in
+     let name = "name" in
+     let cnt = 10 in
      alba_client # mgr_access # add_work_items
-                 [ Albamgr_protocol.Protocol.Work.(IterNamespace
-                                                     (Rewrite,
-                                                      namespace_id,
-                                                      10)) ] >>= fun () ->
+                 [ Work.(IterNamespace
+                           (Rewrite,
+                            namespace_id,
+                            name,
+                            cnt)) ] >>= fun () ->
 
      Alba_test.wait_for_work alba_client >>= fun () ->
      Alba_test.wait_for_work alba_client >>= fun () ->
+
+     alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
+     assert (cnt = cnt');
+     let cnt'' =
+       List.fold_left
+         (fun acc (i, p) ->
+          let end_key = get_start_key (i+1) cnt in
+          match p with
+          | Progress.Rewrite (c, end_key') ->
+             assert (end_key = end_key');
+             acc + (Int64.to_int c))
+         0
+         progresses
+     in
+     assert (cnt'' = List.length objs);
 
      get_objs () >>= fun manifests' ->
      assert (manifests' <> manifests);

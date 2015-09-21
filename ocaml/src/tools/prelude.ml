@@ -502,6 +502,18 @@ let serialize_with_length ?buf_size serializer a =
   set32_prim res 0 (Int32.of_int len);
   res
 
+let get_start_key i n =
+  if i < 0 || i > n
+  then failwith "bad input for get_start_key";
+
+  if i = n
+  then None
+  else
+    begin
+      let s = i * (1 lsl 32) / n in
+      Some (serialize Llio.int32_be_to (Int32.of_int s))
+    end
+
 module Hashtbl = struct
   include Hashtbl
 

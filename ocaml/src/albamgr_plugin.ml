@@ -809,6 +809,24 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       (deserialize from_buffer)
       v_o
   in
+  let get_progress_for_prefix name =
+    let first = Keys.progress name in
+    let module KV = WrapReadUserDb(
+                        struct
+                          let db = db
+                          let prefix = ""
+                        end) in
+    let module EKV = Key_value_store.Read_store_extensions(KV) in
+    EKV.map_range
+      db
+      ~first ~finc:true ~last:(Key_value_store.next_prefix first)
+      ~max:(-1) ~reverse:false
+      (fun cur key ->
+       let i = deserialize ~offset:(String.length first) Llio.int_from key in
+       i, deserialize Progress.from_buffer (KV.cur_get_value cur)
+      )
+    |> fst
+  in
 
   let handle_update
     : type i o. (i, o) update -> i ->
@@ -1301,21 +1319,20 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           | CleanupNamespaceOsd _
           | RepairBadFragment _
           | IterNamespaceLeaf _ -> []
-          | IterNamespace (action, namespace_id, cnt) ->
+          | IterNamespace (action, namespace_id, name, cnt) ->
 
-            let get_key = function
-              | i when i = cnt -> None
-              | i ->
-                 let b = i * (1 lsl 32) / cnt in
-                 Some (serialize Llio.int32_be_to (Int32.of_int b))
-            in
+            let get_key i = get_start_key i cnt in
 
             let items =
               List.map
                 (fun i ->
                  let start = get_key i |> Option.get_some in
                  let range = start, get_key (i + 1) in
-                 let name = Printf.sprintf "iter_namespace/%li/%i" id i in
+                 let name = serialize
+                              (Llio.pair_to
+                                 Llio.raw_string_to
+                                 Llio.int_to)
+                              (name, i) in
                  Work.IterNamespaceLeaf
                    (action,
                     namespace_id,
@@ -1708,6 +1725,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       fun name ->
       let _, _, p = get_progress name in
       p
+    | GetProgressForPrefix -> get_progress_for_prefix
   in
 
 

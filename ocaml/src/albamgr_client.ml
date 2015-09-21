@@ -407,6 +407,11 @@ class client (client : basic_client) =
         GetProgress
         name
 
+    method get_progress_for_prefix name =
+      client # query
+        GetProgressForPrefix
+        name
+
     method update_progress name old new_o =
       client # update
         UpdateProgress

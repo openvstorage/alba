@@ -1255,11 +1255,10 @@ class client ?(retry_timeout = 60.)
 
                 let next =
                   if has_more
-                  then last
-                  else
-                    Option.map
-                      (fun mf -> mf.Nsm_model.Manifest.object_id ^ "\000")
-                      (List.last objs)
+                  then Option.map
+                         (fun mf -> mf.Nsm_model.Manifest.object_id ^ "\000")
+                         (List.last objs)
+                  else last
                 in
                 let po = (Some (Progress.Rewrite
                                    (Int64.(add count (of_int cnt)),

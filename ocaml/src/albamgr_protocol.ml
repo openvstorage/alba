@@ -575,7 +575,7 @@ module Protocol = struct
           Nsm_model.chunk_id * Nsm_model.fragment_id * Nsm_model.version
       | WaitUntilRepaired of Osd.id * Namespace.id
       | WaitUntilDecommissioned of Osd.id
-      | IterNamespace of action * Namespace.id * int
+      | IterNamespace of action * Namespace.id * string * int
       | IterNamespaceLeaf of action * Namespace.id * string * range
     [@@ deriving show]
 
@@ -608,10 +608,11 @@ module Protocol = struct
       | WaitUntilDecommissioned osd_id ->
         Llio.int8_to buf 10;
         Llio.int32_to buf osd_id
-      | IterNamespace (action, namespace_id, cnt) ->
+      | IterNamespace (action, namespace_id, name, cnt) ->
         Llio.int8_to buf 11;
         action_to_buffer buf action;
         Llio.int32_to buf namespace_id;
+        Llio.string_to buf name;
         Llio.int_to buf cnt
       | IterNamespaceLeaf (action, namespace_id, name, range) ->
         Llio.int8_to buf 12;
@@ -657,8 +658,9 @@ module Protocol = struct
       | 11 ->
         let action = action_from_buffer buf in
         let namespace_id = Llio.int32_from buf in
+        let name = Llio.string_from buf in
         let cnt = Llio.int_from buf in
-        IterNamespace (action, namespace_id, cnt)
+        IterNamespace (action, namespace_id, name, cnt)
       | 12 ->
         let action = action_from_buffer buf in
         let namespace_id = Llio.int32_from buf in
@@ -707,6 +709,7 @@ module Protocol = struct
   module Progress = struct
     type t =
       | Rewrite of int64 * string option
+    [@@deriving show]
 
     let to_buffer buf = function
       | Rewrite (count, next) ->
@@ -782,7 +785,7 @@ module Protocol = struct
     | CheckLease : (string, int) query
     | GetParticipants : (string, (string * int) counted_list) query
     | GetProgress : (string, Progress.t option) query
-
+    | GetProgressForPrefix : (string, (int * Progress.t) counted_list) query
 
   type ('i, 'o) update =
     | AddNsmHost : (Nsm_host.id * Nsm_host.t, unit) update
@@ -838,6 +841,7 @@ module Protocol = struct
     | CheckLease -> Llio.string_from
     | GetParticipants -> Llio.string_from
     | GetProgress -> Llio.string_from
+    | GetProgressForPrefix -> Llio.string_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -866,6 +870,7 @@ module Protocol = struct
     | CheckLease -> Llio.string_to
     | GetParticipants -> Llio.string_to
     | GetProgress -> Llio.string_to
+    | GetProgressForPrefix -> Llio.string_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -937,6 +942,11 @@ module Protocol = struct
             Llio.string_from
             Llio.int_from)
     | GetProgress -> Llio.option_from Progress.from_buffer
+    | GetProgressForPrefix ->
+       Llio.counted_list_from
+         (Llio.pair_from
+            Llio.int_from
+            Progress.from_buffer)
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -1009,6 +1019,11 @@ module Protocol = struct
             Llio.string_to
             Llio.int_to)
     | GetProgress -> Llio.option_to Progress.to_buffer
+    | GetProgressForPrefix ->
+      Llio.counted_list_to
+        (Llio.pair_to
+           Llio.int_to
+           Progress.to_buffer)
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -1241,6 +1256,7 @@ module Protocol = struct
 
                       Wrap_q GetProgress, 61l, "GetProgress";
                       Wrap_u UpdateProgress, 62l, "UpdateProgress";
+                      Wrap_q GetProgressForPrefix, 63l, "GetProgressForPrefix";
                     ]
 
 
@@ -1281,8 +1297,12 @@ module Protocol = struct
 
     exception Albamgr_exn of t * string
 
-    let failwith ?(payload="") err = raise (Albamgr_exn (err, payload))
-    let failwith_lwt ?(payload="") err = Lwt.fail (Albamgr_exn (err, payload))
+    let payload_2s err = function
+      | None -> show err
+      | Some p -> p
+
+    let failwith ?payload err = raise (Albamgr_exn (err, payload_2s err payload))
+    let failwith_lwt ?payload err = Lwt.fail (Albamgr_exn (err, payload_2s err payload))
 
     let err2int = to_enum
     let int2err x = Option.get_some_default Unknown (of_enum x)
