@@ -211,6 +211,8 @@ class kinetic_client cid session conn =
         (fun key -> self # get_option key)
         keys
 
+    method multi_exists keys = failwith "not implemented"
+
     method range ~first ~finc ~last ~reverse ~max =
       (* TODO this can't handle max > 200 *)
       let first' = slice2s first in

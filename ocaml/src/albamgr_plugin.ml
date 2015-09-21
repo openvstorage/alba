@@ -787,6 +787,16 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       f_removing ()
   in
 
+  let get_lease ~lease_name =
+    let lease_key = Keys.lease ~lease_name in
+    let lease_so = db # get lease_key in
+    let lease = match lease_so with
+      | None -> 0
+      | Some s -> deserialize Llio.int_from s
+    in
+    (lease_key, lease_so, lease)
+  in
+
   let handle_update
     : type i o. (i, o) update -> i ->
       (o * Update.t list) Lwt.t =
@@ -1418,12 +1428,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                       (Keys.client_config,
                        serialize Arakoon_config.to_buffer ccfg); ]
     | TryGetLease -> fun (lease_name, counter) ->
-      let lease_key = Keys.lease ~lease_name in
-      let lease_so = db # get lease_key in
-      let lease = match lease_so with
-        | None -> 0
-        | Some s -> deserialize Llio.int_from s
-      in
+      let lease_key, lease_so, lease = get_lease ~lease_name in
       if lease <> counter
       then Error.(failwith Claim_lease_mismatch);
 
@@ -1613,12 +1618,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         (fun cur key -> Keys.Osd.namespaces_extract_namespace_id key)
     | Statistics -> Statistics.snapshot statistics
     | CheckLease -> fun lease_name ->
-      let lease_key = Keys.lease ~lease_name in
-      let lease_so = db # get lease_key in
-      let lease = match lease_so with
-        | None -> 0
-        | Some s -> deserialize Llio.int_from s
-      in
+      let lease_key, lease_so, lease = get_lease ~lease_name in
       lease
     | GetParticipants ->
       fun prefix ->

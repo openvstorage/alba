@@ -10,7 +10,8 @@ module Generic = struct
         statistics : (int32, stat) Hashtbl.t;
       }
 
-    let clone t = {t with creation = t.creation}
+    let clone t = {t with statistics = Hashtbl.copy t.statistics }
+
     let stop  t = t.period <- Unix.gettimeofday() -. t.creation
     let clear t =
       t.creation <- Unix.gettimeofday();
@@ -56,16 +57,16 @@ module Generic = struct
       let stat' = _update stat delta in
       Hashtbl.replace t.statistics tag stat'
 
-    let to_buffer buf t =
-      let ser_version = 1 in
+    let to_buffer_with_version ~ser_version buf t=
       Llio.int8_to buf ser_version;
       Llio.float_to buf t.creation;
       Llio.float_to buf t.period;
       Llio.hashtbl_to Llio.int32_to stat_to buf t.statistics
 
-    let from_buffer buf =
-      let ser_version = Llio.int8_from buf in
-      assert (ser_version = 1);
+    let to_buffer buf t =
+      to_buffer_with_version ~ser_version:1 buf t
+
+    let from_buffer_raw buf =
       let creation = Llio.float_from buf in
       let period   = Llio.float_from buf in
       let statistics =
@@ -74,4 +75,8 @@ module Generic = struct
       in
       { creation; period; statistics}
 
+    let from_buffer buf =
+      let ser_version = Llio.int8_from buf in
+      assert (ser_version = 1);
+      from_buffer_raw buf
   end
