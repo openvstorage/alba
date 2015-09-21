@@ -826,6 +826,7 @@ let () =
       verify_namespace_cmd;
 
       unit_tests_cmd;
+
     ] in
   let cmds =
     List.flatten_unordered
@@ -834,6 +835,7 @@ let () =
         Cli_asd.cmds;
         Cli_maintenance.cmds;
         Cli_mgr.cmds;
+        Cli_messages.cmds;
         cmds1; ]
   in
   match Term.eval_choice default_cmd cmds with
