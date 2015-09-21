@@ -301,6 +301,8 @@ class nsm_host_access
     method get = get
     method get_basic = get_basic
 
+    method get_nsm_host_info = get_nsm_host_info
+
     method get_nsm_by_id = get_nsm_by_id
 
     method get_namespace_info = get_namespace_info

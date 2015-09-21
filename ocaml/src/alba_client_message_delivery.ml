@@ -44,12 +44,20 @@ type dest msg.
     begin
       match t with
       | Msg_log.Nsm_host ->
-         Lwt_log.debug_f
-           "Delivering msg %li to %s: %s"
-           msg_id
-           dest
-           ([%show : Nsm_host_protocol.Protocol.Message.t] msg) >>= fun () ->
-         (nsm_host_access # get ~nsm_host_id:dest) # deliver_message msg msg_id
+         let nsm_host_id = dest in
+         nsm_host_access # get_nsm_host_info ~nsm_host_id
+         >>= fun nsm_host_info ->
+         if nsm_host_info.Nsm_host.lost
+         then Lwt.return_unit
+         else
+           begin
+             Lwt_log.debug_f
+               "Delivering msg %li to %s: %s"
+               msg_id
+               dest
+               ([%show : Nsm_host_protocol.Protocol.Message.t] msg) >>= fun () ->
+             (nsm_host_access # get ~nsm_host_id:dest) # deliver_message msg msg_id
+           end
       | Msg_log.Osd ->
          let osd_id = dest in
          Lwt_log.debug_f
