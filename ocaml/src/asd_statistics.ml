@@ -19,13 +19,14 @@ open Stat
 module AsdStatistics = struct
     let section = Alba_statistics.Statistics.section
     include Stat
+    open Prelude
 
     type t = {
         mutable multi_get     : stat;
         mutable range         : stat;
         mutable range_entries : stat;
         mutable apply         : stat;
-        mutable creation      : float;
+        mutable creation      : timestamp;
         mutable period        : float;
       } [@@deriving show, yojson]
 

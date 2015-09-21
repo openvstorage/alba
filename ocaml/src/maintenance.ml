@@ -30,13 +30,23 @@ type flavour =
   | ONLY_REBALANCE
   [@@deriving show]
 
-class client ?(filter: namespace_id -> bool = fun _ -> true)
-             ?(retry_timeout = 60.)
+class client ?(retry_timeout = 60.)
              ?(flavour = ALL_IN_ONE)
+             ?coordinator
              (alba_client : Alba_base_client.client)
 
   =
 
+  let coordinator = match coordinator with
+    | Some c -> c
+    | None ->
+       Maintenance_coordination.make_maintenance_coordinator
+         (alba_client # mgr_access)
+  in
+  let filter namespace_id =
+    (Int32.to_int namespace_id) mod coordinator # get_modulo = coordinator # get_remainder
+  in
+  let is_master () = coordinator # is_master in
   object(self)
 
     method rebalance_object
@@ -366,18 +376,24 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
       Lwt.return ()
 
     method decommission_device
+        ?(deterministic=false)
         ~namespace_id
-        ~osd_id
+        ~osd_id ()
       =
       Lwt_log.debug_f "Decommissioning osd %li" osd_id >>= fun () ->
 
       alba_client # with_nsm_client'
         ~namespace_id
         (fun client ->
+           let first, reverse =
+             if deterministic
+             then "", false
+             else get_random_string 32, Random.bool ()
+           in
            client # list_device_objects
              ~osd_id
-             ~first:"" ~finc:true ~last:None
-             ~max:100 ~reverse:false)
+             ~first ~finc:true ~last:None
+             ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
 
       Lwt_list.iter_s
@@ -405,7 +421,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
         manifests >>= fun () ->
 
       if has_more
-      then self # decommission_device ~namespace_id ~osd_id
+      then self # decommission_device ~deterministic ~namespace_id ~osd_id ()
       else Lwt.return ()
 
     method repair_osd ~osd_id =
@@ -417,7 +433,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
              (fun () ->
                 self # decommission_device
                   ~namespace_id
-                  ~osd_id))
+                  ~osd_id ()))
         namespaces
 
     method repair_osds : unit Lwt.t =
@@ -491,7 +507,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                ~osd_id
                ~keys:keys_to_be_deleted) >>= fun () ->
 
-        if has_more
+        if has_more && filter namespace_id
         then self # clean_device_obsolete_keys ~namespace_id ~osd_id
         else Lwt.return ()
       end else
@@ -512,22 +528,29 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
         begin
           let threads = Hashtbl.create 3 in
           let rec inner () =
-            alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
-            List.iter
-              (fun osd_id ->
-                 if not (Hashtbl.mem threads osd_id)
-                 then begin
-                   Hashtbl.add threads osd_id ();
-                   Lwt.async
-                     (fun () ->
-                        Lwt_extra2.ignore_errors
+            (if filter namespace_id
+             then
+               begin
+                 alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
+                 List.iter
+                   (fun osd_id ->
+                    if not (Hashtbl.mem threads osd_id)
+                    then begin
+                        Hashtbl.add threads osd_id ();
+                        Lwt.async
                           (fun () ->
-                             self # clean_device_obsolete_keys
-                               ~namespace_id ~osd_id) >>= fun () ->
-                        Hashtbl.remove threads osd_id;
-                        Lwt.return ())
-                 end)
-              osds;
+                           Lwt_extra2.ignore_errors
+                             (fun () ->
+                              self # clean_device_obsolete_keys
+                                   ~namespace_id ~osd_id) >>= fun () ->
+                           Hashtbl.remove threads osd_id;
+                           Lwt.return ())
+                      end)
+                   osds;
+                 Lwt.return_unit
+               end
+             else
+               Lwt.return_unit) >>= fun () ->
 
             Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
             inner ()
@@ -618,7 +641,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                then cleanup_gc_epoch_tag ()
                else cleanup_fragment ())
           keys >>= fun () ->
-        if has_more
+        if has_more && filter namespace_id
         then inner ()
         else Lwt.return ()
       in
@@ -686,24 +709,31 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
             bump_epoch () >>= function
             | None -> Lwt.return ()
             | Some latest_gc_epoch ->
-              alba_client # nsm_host_access # get_namespace_info ~namespace_id
-              >>= fun (_, devices, _) ->
-              List.iter
-                (fun osd_id ->
-                   if not (Hashtbl.mem threads osd_id)
-                   then begin
-                     Hashtbl.add threads osd_id ();
-                     Lwt.async
-                       (fun () ->
-                          Lwt_extra2.ignore_errors
-                            (fun () ->
-                               self # garbage_collect_device
-                                 ~gc_epoch:latest_gc_epoch
-                                 ~namespace_id ~osd_id) >>= fun () ->
-                          Hashtbl.remove threads osd_id;
-                          Lwt.return ())
-                   end)
-                devices;
+               (if filter namespace_id
+                then
+                  begin
+                    alba_client # nsm_host_access # get_namespace_info ~namespace_id
+                    >>= fun (_, devices, _) ->
+                    List.iter
+                      (fun osd_id ->
+                       if not (Hashtbl.mem threads osd_id)
+                       then begin
+                           Hashtbl.add threads osd_id ();
+                           Lwt.async
+                             (fun () ->
+                              Lwt_extra2.ignore_errors
+                                (fun () ->
+                                 self # garbage_collect_device
+                                      ~gc_epoch:latest_gc_epoch
+                                      ~namespace_id ~osd_id) >>= fun () ->
+                              Hashtbl.remove threads osd_id;
+                              Lwt.return ())
+                         end)
+                      devices;
+                    Lwt.return_unit
+                  end
+                else
+                  Lwt.return_unit) >>= fun () ->
               Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
               inner ()
           in
@@ -788,10 +818,25 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
       Lwt.return ()
 
     method rebalance_namespace
+             ?delay
+             ?categorize
+             ?only_once
+             ~make_first_reverse
+             ~namespace_id () =
+      if filter namespace_id
+      then self # rebalance_namespace'
+                ?delay
+                ?categorize
+                ?only_once
+                ~make_first_reverse
+                ~namespace_id ()
+      else Lwt.return ()
+
+    method rebalance_namespace'
              ?(delay=0.)
              ?(categorize = Rebalancing_helper.categorize)
              ?(only_once = false)
-             ~make_first
+             ~make_first_reverse
              ~namespace_id () =
       alba_client # get_namespace_osds_info_cache ~namespace_id
       >>= fun cache ->
@@ -819,7 +864,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
            in
            Rebalancing_helper.get_some_manifests
              alba_client
-             ~make_first
+             ~make_first_reverse
              ~namespace_id
              random_osd
            >>= fun (n, manifests) ->
@@ -863,19 +908,25 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
                let delay' = delay *. 1.5 in
                min 60. (max delay' 1.)
            in
-           if only_once then Lwt.return ()
+           if only_once || not (filter namespace_id)
+           then Lwt.return ()
            else
              begin
                Lwt_unix.sleep delay >>= fun () ->
                self # rebalance_namespace
                     ~delay
                     ~categorize
-                    ~make_first
+                    ~make_first_reverse
                     ~namespace_id ()
              end
          end
 
     method repair_by_policy_namespace ~namespace_id =
+      if filter namespace_id
+      then self # repair_by_policy_namespace' ~namespace_id
+      else Lwt.return ()
+
+    method repair_by_policy_namespace' ~namespace_id =
 
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
       let policies =
@@ -993,7 +1044,7 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
 
       inner policies_rev >>= fun repaired_some ->
 
-      if repaired_some
+      if repaired_some && filter namespace_id
       then self # repair_by_policy_namespace ~namespace_id
       else Lwt.return ()
 
@@ -1208,22 +1259,20 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
 
   method do_work ?(once = false) () : unit Lwt.t =
     let rec inner () =
-      alba_client # mgr_access # get_work
-        ~first:next_work_item ~finc:true
-        ~last:None ~max:100 ~reverse:false
+      let is_master = is_master () in
+      (if once || is_master
+      then alba_client # mgr_access # get_work
+                       ~first:next_work_item ~finc:true
+                       ~last:None ~max:100 ~reverse:false
+       else
+         Lwt.return ((0, []), false))
       >>= fun ((cnt, work_items), _) ->
-      Lwt_log.debug_f "Adding work, got %i items\n" cnt >>= fun () ->
+      Lwt_log.debug_f "Adding work, got %i items (is_master=%b)" cnt is_master >>= fun () ->
       self # add_work_threads work_items;
 
-      if once
-      then
-        if cnt = 0
-        then Lwt.return ()
-        else inner ()
-      else begin
-        Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
-        inner ()
-      end
+      if once && cnt > 0
+      then inner ()
+      else Lwt.return_unit
     in
 
     if once
@@ -1341,7 +1390,8 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
          let rebalance =
            "rebalance",
            fun () -> self # rebalance_namespace
-                          ~make_first:(fun () ->get_random_string 32)
+                          ~make_first_reverse:(fun () -> get_random_string 32,
+                                                         Random.bool ())
                           ~namespace_id ()
          in
          let tasks =
@@ -1368,12 +1418,10 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
            List.iter
              (fun (namespace_id, namespace, namespace_info) ->
                 next_id := Int32.succ namespace_id;
-                if filter namespace_id
-                then
-                  Lwt.async
-                    (fun () ->
-                       self # maintenance_for_namespace
-                            ~namespace ~namespace_id ~namespace_info)
+                Lwt.async
+                  (fun () ->
+                   self # maintenance_for_namespace
+                        ~namespace ~namespace_id ~namespace_info)
              )
              namespaces;
 
@@ -1388,8 +1436,9 @@ class client ?(filter: namespace_id -> bool = fun _ -> true)
 
     inner ()
 
-  method deliver_all_messages () : unit Lwt.t =
+  method deliver_all_messages ?(is_master= fun () -> true) () : unit Lwt.t =
     Alba_client_message_delivery.deliver_all_messages
+      is_master
       (alba_client # mgr_access)
       (alba_client # nsm_host_access)
       (alba_client # osd_access)

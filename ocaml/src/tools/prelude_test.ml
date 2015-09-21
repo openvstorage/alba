@@ -19,8 +19,15 @@ open Prelude
 let test_range () =
   assert ([ 0; 1; 2; 3; ] = Int.range 0 4)
 
+let test_list_find_index () =
+  assert (List.find_index ((=) 3) [] = None);
+  assert (List.find_index ((=) 3) [ 0; 4; 6; ] = None);
+  assert (List.find_index ((=) 3) [ 0; 3; 6; ] = Some 1);
+  assert (List.find_index ((=) 3) [ 3; 6; 3; ] = Some 0)
+
 open OUnit
 
 let suite = "prelude_test" >::: [
-    "test_range" >:: test_range;
+      "test_range" >:: test_range;
+      "test_list_find_index" >:: test_list_find_index;
   ]

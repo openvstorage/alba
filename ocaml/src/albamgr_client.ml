@@ -329,6 +329,9 @@ class client (client : basic_client) =
     method get_version =
       client # query GetVersion ()
 
+    method statistics reset =
+      client # query Statistics reset
+
     method check_can_claim ~long_id =
       client # query CheckClaimOsd long_id
 
@@ -365,6 +368,31 @@ class client (client : basic_client) =
         (self # list_decommissioning_osds
            ~last:None
            ~max:(-1) ~reverse:false)
+
+    method try_get_lease name counter =
+      client # update
+        TryGetLease
+        (name, counter)
+
+    method check_lease name =
+      client # query
+        CheckLease
+        name
+
+    method register_participant ~prefix ~name ~counter =
+      client # update
+        RegisterParticipant
+        (prefix, (name, counter))
+
+    method remove_participant ~prefix ~name ~counter =
+      client # update
+        RemoveParticipant
+        (prefix, (name, counter))
+
+    method get_participants ~prefix =
+      client # query
+        GetParticipants
+        prefix
 
     method update_preset name updates =
       client # update

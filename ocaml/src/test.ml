@@ -34,4 +34,5 @@ let suite = "all" >:::[
     Maintenance_test.suite;
     Erasure_test.suite;
     Buffer_pool_test.suite;
+    Maintenance_coordination_test.suite;
   ]

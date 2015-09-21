@@ -182,6 +182,15 @@ module List = struct
         | (Some _) as i -> i
       end
 
+  let rec find_index' f pos = function
+    | [] -> None
+    | hd :: tl ->
+      if f hd
+      then Some pos
+      else find_index' f (pos+1) tl
+
+  let find_index f l = find_index' f 0 l
+
   let flatten_unordered lists =
     let rec inner acc = function
       | [] -> acc
@@ -531,7 +540,8 @@ module HexInt32 = struct
 end
 
 type has_more = bool
-type 'a counted_list_more = 'a Std.counted_list * has_more
+type 'a counted_list = 'a Std.counted_list
+type 'a counted_list_more = 'a counted_list * has_more
 
 let counted_list_more_from a_from =
   Llio.pair_from
@@ -558,10 +568,25 @@ let list_all_x ~first get_first harvest =
 
 type timestamp = float
 
-let show_timestamp t =
-  Printf.sprintf "%f" t
-let pp_timestamp formatter t =
-  Format.pp_print_string formatter (show_timestamp t)
+let show_timestamp x =
+      let open Unix in
+      let t = localtime x in
+      let s = (float_of_int t.tm_sec) +. (x -. (floor x)) in
+      Printf.sprintf "%04i/%02i/%02i_%02i:%02i:%02.4f" (t.tm_year + 1900)
+                     (t.tm_mon + 1)
+                     t.tm_mday
+                     t.tm_hour t.tm_min s
+
+let pp_timestamp : Format.formatter -> timestamp -> unit =
+  fun fmt timestamp ->
+  Format.pp_print_string fmt (show_timestamp timestamp)
+
+let timestamp_to_yojson t = `Float t
+let timestamp_of_yojson = function
+  | `Float fs ->
+    `Ok fs
+  | e ->
+    `Error (Yojson.Safe.to_string e)
 
 let _BATCH_SIZE = 200
 

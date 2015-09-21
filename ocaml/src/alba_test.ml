@@ -655,7 +655,7 @@ let test_encryption () =
 
        OUnit.assert_equal data_o (Some object_data);
 
-       let object_name' = "" in
+       let object_name' = "empty" in
        let object_data' = "" in
        alba_client # upload_object_from_bytes
          ~namespace
@@ -684,7 +684,8 @@ let test_discover_claimed () =
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
          (fun asd ->
-            alba_client # osd_access # seen
+          alba_client # osd_access # seen
+              ~check_claimed:(fun () -> true)
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = test_name;
                                     extras = Some({
@@ -771,8 +772,9 @@ let test_change_osd_ip_port () =
        let object_name = "object_name" in
 
        Lwt.ignore_result
-         (client # discover_osds_check_claimed
-            ~check_claimed_delay:0.1 ());
+         (client # discover_osds
+                 ~check_claimed:(fun () -> true)
+                 ~check_claimed_delay:0.1 ());
 
        Asd_test.with_asd_client
          osd_name 16541
@@ -1222,8 +1224,9 @@ let test_disk_churn () =
          Lwt_list.iter_s
            (fun osd_id ->
               maintenance_client # decommission_device
+                ~deterministic:true
                 ~namespace_id
-                ~osd_id >>= fun () ->
+                ~osd_id () >>= fun () ->
 
               maintenance_client # clean_obsolete_keys_namespace
                 ~once:true ~namespace_id)
@@ -1298,8 +1301,9 @@ let test_disk_churn () =
                               ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
+                              ~deterministic:true
                               ~namespace_id
-                              ~osd_id >>= fun () ->
+                              ~osd_id () >>= fun () ->
 
            alba_client # get_object_manifest
                        ~consistent_read:true
@@ -1343,8 +1347,9 @@ let test_disk_churn () =
                               ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
+                              ~deterministic:true
                               ~namespace_id
-                              ~osd_id >>= fun () ->
+                              ~osd_id () >>= fun () ->
 
            alba_client # get_object_manifest
                        ~consistent_read:true

@@ -92,6 +92,8 @@ class client (client : basic_client) =
 
 
     method get_version = client # query GetVersion ()
+
+    method statistics (clear:bool) = client # query NSMHStatistics clear
   end
 
 let wrap_around (client:Arakoon_client.client) =

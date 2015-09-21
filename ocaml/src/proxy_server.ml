@@ -320,6 +320,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Osd_unknown
             | Osd_info_mismatch
             | Osd_already_decommissioned
+            | Claim_lease_mismatch
             | Unknown_operation ->
               Lwt_log.info_f
                 "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"
@@ -474,7 +475,7 @@ let run_server hosts port
          ~osd_timeout
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # discover_osds_check_claimed ());
+            [ (alba_client # discover_osds ());
               (alba_client # osd_access # propagate_osd_info ());
               (refresh_albamgr_cfg
                  ~loop:true

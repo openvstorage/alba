@@ -18,14 +18,6 @@ open Prelude
 open Encryption
 open Albamgr_protocol.Protocol
 
-let timestamp_to_yojson t =
-  `String (show_timestamp t)
-let timestamp_of_yojson = function
-  | `String fs ->
-    `Ok (float_of_string fs)
-  | e ->
-    `Error (Yojson.Safe.to_string e)
-
 module Osd = struct
   type t = {
     id : Osd.id option;

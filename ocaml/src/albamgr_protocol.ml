@@ -15,6 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
+open Statistics_collection
 
 module Protocol = struct
 
@@ -705,6 +706,9 @@ module Protocol = struct
                                  (Osd.id * Osd.t) counted_list_more) query
     | ListOsdNamespaces : (Osd.id * Namespace.id RangeQueryArgs.t,
                            Namespace.id counted_list_more) query
+    | Statistics : (bool, Generic.t) query
+    | CheckLease : (string, int) query
+    | GetParticipants : (string, (string * int) counted_list) query
 
 
   type ('i, 'o) update =
@@ -728,6 +732,10 @@ module Protocol = struct
     | AddOsdsToPreset : (Preset.name * Osd.id Std.counted_list, unit) update
     | UpdatePreset : (Preset.name * Preset.Update.t, unit) update
     | StoreClientConfig : (Arakoon_config.t, unit) update
+    | TryGetLease : (string * int, unit) update
+    | RegisterParticipant : (string * (string * int), unit) update
+    | RemoveParticipant : (string * (string * int), unit) update
+
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
     | ListNsmHosts -> RangeQueryArgs.from_buffer Llio.string_from
@@ -752,6 +760,9 @@ module Protocol = struct
       Llio.pair_from
         Llio.int32_from
         (RangeQueryArgs.from_buffer Llio.int32_from)
+    | Statistics -> Llio.bool_from
+    | CheckLease -> Llio.string_from
+    | GetParticipants -> Llio.string_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -776,6 +787,10 @@ module Protocol = struct
       Llio.pair_to
         Llio.int32_to
         (RangeQueryArgs.to_buffer Llio.int32_to)
+    | Statistics -> Llio.bool_to
+    | CheckLease -> Llio.string_to
+    | GetParticipants -> Llio.string_to
+
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -838,8 +853,14 @@ module Protocol = struct
         (Llio.pair_from
            Llio.int32_from
            Osd.from_buffer)
-    | ListOsdNamespaces ->
-      counted_list_more_from Llio.int32_from
+    | ListOsdNamespaces -> counted_list_more_from Llio.int32_from
+    | Statistics     -> Generic.from_buffer
+    | CheckLease -> Llio.int_from
+    | GetParticipants ->
+       Llio.counted_list_from
+         (Llio.pair_from
+            Llio.string_from
+            Llio.int_from)
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -903,7 +924,14 @@ module Protocol = struct
            Llio.int32_to
            Osd.to_buffer)
     | ListOsdNamespaces ->
-      counted_list_more_to Llio.int32_to
+       counted_list_more_to Llio.int32_to
+    | Statistics -> Generic.to_buffer
+    | CheckLease -> Llio.int_to
+    | GetParticipants ->
+       Llio.counted_list_to
+         (Llio.pair_to
+            Llio.string_to
+            Llio.int_to)
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -949,7 +977,22 @@ module Protocol = struct
         Llio.string_from
         Preset.Update.from_buffer
     | StoreClientConfig ->
-      Arakoon_config.from_buffer
+       Arakoon_config.from_buffer
+    | TryGetLease ->
+       Llio.pair_from Llio.string_from Llio.int_from
+    | RegisterParticipant ->
+      Llio.pair_from
+        Llio.string_from
+        (Llio.pair_from
+           Llio.string_from
+           Llio.int_from)
+    | RemoveParticipant ->
+      Llio.pair_from
+        Llio.string_from
+        (Llio.pair_from
+           Llio.string_from
+           Llio.int_from)
+
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
     | UpdateNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -988,7 +1031,21 @@ module Protocol = struct
         Llio.string_to
         Preset.Update.to_buffer
     | StoreClientConfig ->
-      Arakoon_config.to_buffer
+       Arakoon_config.to_buffer
+    | TryGetLease ->
+       Llio.pair_to Llio.string_to Llio.int_to
+    | RegisterParticipant ->
+      Llio.pair_to
+        Llio.string_to
+        (Llio.pair_to
+           Llio.string_to
+           Llio.int_to)
+    | RemoveParticipant ->
+      Llio.pair_to
+        Llio.string_to
+        (Llio.pair_to
+           Llio.string_to
+           Llio.int_to)
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -998,20 +1055,23 @@ module Protocol = struct
     | UpdateOsd       -> Llio.unit_from
     | UpdateOsds      -> Llio.unit_from
     | DecommissionOsd -> Llio.unit_from
-    | MarkOsdClaimed -> Llio.int32_from
+    | MarkOsdClaimed  -> Llio.int32_from
     | MarkOsdClaimedByOther -> Llio.unit_from
-    | CreateNamespace -> Namespace.from_buffer
-    | DeleteNamespace -> Llio.string_from
-    | RecoverNamespace -> Llio.unit_from
+    | CreateNamespace ->    Namespace.from_buffer
+    | DeleteNamespace ->    Llio.string_from
+    | RecoverNamespace ->   Llio.unit_from
     | MarkMsgDelivered _ -> Llio.unit_from
-    | AddWork -> Llio.unit_from
-    | MarkWorkCompleted -> Llio.unit_from
-    | CreatePreset -> Llio.unit_from
-    | DeletePreset -> Llio.unit_from
-    | SetDefaultPreset -> Llio.unit_from
-    | AddOsdsToPreset -> Llio.unit_from
-    | UpdatePreset -> Llio.unit_from
-    | StoreClientConfig -> Llio.unit_from
+    | AddWork ->            Llio.unit_from
+    | MarkWorkCompleted ->  Llio.unit_from
+    | CreatePreset ->       Llio.unit_from
+    | DeletePreset ->       Llio.unit_from
+    | SetDefaultPreset ->   Llio.unit_from
+    | AddOsdsToPreset ->    Llio.unit_from
+    | UpdatePreset ->       Llio.unit_from
+    | StoreClientConfig ->  Llio.unit_from
+    | TryGetLease ->        Llio.unit_from
+    | RegisterParticipant ->Llio.unit_from
+    | RemoveParticipant ->  Llio.unit_from
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
     | UpdateNsmHost   -> Llio.unit_to
@@ -1021,18 +1081,21 @@ module Protocol = struct
     | DecommissionOsd -> Llio.unit_to
     | MarkOsdClaimed -> Llio.int32_to
     | MarkOsdClaimedByOther -> Llio.unit_to
-    | CreateNamespace -> Namespace.to_buffer
-    | DeleteNamespace -> Llio.string_to
-    | RecoverNamespace -> Llio.unit_to
+    | CreateNamespace ->    Namespace.to_buffer
+    | DeleteNamespace ->    Llio.string_to
+    | RecoverNamespace ->   Llio.unit_to
     | MarkMsgDelivered _ -> Llio.unit_to
-    | AddWork -> Llio.unit_to
-    | MarkWorkCompleted -> Llio.unit_to
-    | CreatePreset -> Llio.unit_to
-    | DeletePreset -> Llio.unit_to
-    | SetDefaultPreset -> Llio.unit_to
-    | AddOsdsToPreset -> Llio.unit_to
-    | UpdatePreset -> Llio.unit_to
-    | StoreClientConfig -> Llio.unit_to
+    | AddWork ->            Llio.unit_to
+    | MarkWorkCompleted ->  Llio.unit_to
+    | CreatePreset ->       Llio.unit_to
+    | DeletePreset ->       Llio.unit_to
+    | SetDefaultPreset ->   Llio.unit_to
+    | AddOsdsToPreset ->    Llio.unit_to
+    | UpdatePreset ->       Llio.unit_to
+    | StoreClientConfig ->  Llio.unit_to
+    | TryGetLease ->        Llio.unit_to
+    | RegisterParticipant ->Llio.unit_to
+    | RemoveParticipant ->  Llio.unit_to
 
 
   type request =
@@ -1086,7 +1149,16 @@ module Protocol = struct
 
                       Wrap_q ListDecommissioningOsds, 47l, "ListDecommissioningOsds";
                       Wrap_q ListOsdNamespaces, 48l, "ListOsdNamespaces";
-                      Wrap_u UpdateOsds,        49l, "UpdateOsds";                    ]
+                      Wrap_u UpdateOsds,        49l, "UpdateOsds";
+                      Wrap_q Statistics,        60l, "Statistics";
+                      Wrap_q CheckLease, 51l, "CheckLease";
+                      Wrap_u TryGetLease, 52l, "TryGetLease";
+
+                      Wrap_q GetParticipants, 53l, "GetParticipants";
+                      Wrap_u RegisterParticipant, 54l, "RegisterParticipant";
+                      Wrap_u RemoveParticipant, 55l, "RemoveParticipant";
+                    ]
+
 
   module Error = struct
     type t =
@@ -1116,6 +1188,8 @@ module Protocol = struct
       | Old_plugin_version              [@value 26]
       | Inconsistent_read               [@value 27]
       | Unknown_operation               [@value 28]
+
+      | Claim_lease_mismatch            [@value 29]
     [@@deriving show, enum]
 
     exception Albamgr_exn of t * string
@@ -1132,7 +1206,7 @@ module Protocol = struct
     with Not_found -> Error.(failwith Unknown_operation)
 
   let tag_to_command =
-    let hasht = Hashtbl.create 3 in
+    let hasht = Hashtbl.create 100 in
     List.iter
       (fun (comm, tag, _) ->
        if Hashtbl.mem hasht tag
@@ -1142,12 +1216,12 @@ module Protocol = struct
     (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
 
   let tag_to_name =
-    let hasht = Hashtbl.create 3 in
+    let hasht = Hashtbl.create 100 in
     List.iter (fun (_, tag, name) -> Hashtbl.add hasht tag name) command_map;
     (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
 
   let command_to_tag =
-    let hasht = Hashtbl.create 3 in
+    let hasht = Hashtbl.create 100 in
     List.iter (fun (comm, tag, _) -> Hashtbl.add hasht comm tag) command_map;
     (fun comm -> wrap_unknown_operation (fun () -> Hashtbl.find hasht comm))
 end

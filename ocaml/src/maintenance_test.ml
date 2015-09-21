@@ -163,12 +163,12 @@ let _test_rebalance_namespace test_name fat ano categorize =
      with_nice_error_log (fun () -> upload 20) >>= fun () ->
      Lwt_log.debug_f "uploaded ... %i" n >>= fun () ->
      let mc = new Maintenance.client (alba_client # get_base_client) in
-     let make_first () = "" in
+     let make_first_reverse () = "",false in
      Lwt.catch
        (fun () ->
         mc # rebalance_namespace
            ~categorize
-           ~make_first
+           ~make_first_reverse
            ~namespace_id
            ~only_once:true
            ()
@@ -184,7 +184,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
        | Some (fat_id,_) ->
           Rebalancing_helper.get_some_manifests
             (alba_client # get_base_client)
-            ~make_first
+            ~make_first_reverse
             ~namespace_id
             fat_id
           >>= fun (n0,mfs) ->
@@ -202,7 +202,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
        | Some (ano_id,_) ->
           Rebalancing_helper.get_some_manifests
             (alba_client # get_base_client)
-            ~make_first
+            ~make_first_reverse
             ~namespace_id
             ano_id
           >>= fun (n0, mfs) ->

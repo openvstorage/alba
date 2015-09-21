@@ -144,7 +144,7 @@ let deliver_nsm_host_messages mgr_access nsm_host_access osd_access ~nsm_host_id
     Albamgr_protocol.Protocol.Msg_log.Nsm_host
     nsm_host_id
 
-let deliver_all_messages mgr_access nsm_host_access osd_access =
+let deliver_all_messages is_master mgr_access nsm_host_access osd_access =
   let deliver_nsm_messages =
     Maintenance_common.maintenance_for_all_x
       "deliver nsm messages"
@@ -155,6 +155,7 @@ let deliver_all_messages mgr_access nsm_host_access osd_access =
          ~nsm_host_id)
       (fun (nsm_host_id, _, _) -> nsm_host_id)
       [%show : (string * Albamgr_protocol.Protocol.Nsm_host.t * int64)]
+      is_master
   in
 
   let deliver_osd_messages =
@@ -174,6 +175,7 @@ let deliver_all_messages mgr_access nsm_host_access osd_access =
          ~osd_id)
       Std.id
       Int32.to_string
+      is_master
   in
   Lwt.choose [ deliver_nsm_messages;
                deliver_osd_messages; ]
@@ -239,4 +241,3 @@ let deliver_messages_to_most_osds
   Lwt.choose
     [ Lwt_mvar.take mvar;
       Lwt_unix.sleep 2. ]
-

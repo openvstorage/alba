@@ -836,6 +836,7 @@ let () =
         Cli_maintenance.cmds;
         Cli_mgr.cmds;
         Cli_messages.cmds;
+        Cli_nsm_host.cmds;
         cmds1; ]
   in
   match Term.eval_choice default_cmd cmds with
