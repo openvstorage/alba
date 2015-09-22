@@ -1333,17 +1333,23 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                                  Llio.raw_string_to
                                  Llio.int_to)
                               (name, i) in
+                 let progress =
+                   let open Progress in
+                   match action with
+                   | Rewrite ->
+                      (Rewrite { count = 0L; next = Some start; })
+                   | Verify _ ->
+                      (Verify ({ count = 0L; next = Some start; },
+                               { fragments_detected_missing  = 0L;
+                                 fragments_osd_unavailable   = 0L;
+                                 fragments_checksum_mismatch = 0L; })) in
                  Work.IterNamespaceLeaf
                    (action,
                     namespace_id,
                     name,
                     range),
-                 match action with
-                 | Rewrite ->
-                    Update.Set (Keys.progress name,
-                                serialize
-                                  Progress.to_buffer
-                                  (Progress.Rewrite (0L, Some start)))
+                 Update.Set (Keys.progress name,
+                             serialize Progress.to_buffer progress)
                 )
                 (Int.range 0 cnt)
             in

@@ -443,9 +443,10 @@ let test_rewrite_namespace () =
          (fun acc (i, p) ->
           let end_key = get_start_key (i+1) cnt in
           match p with
-          | Progress.Rewrite (c, end_key') ->
-             assert (end_key = end_key');
-             acc + (Int64.to_int c))
+          | Progress.Rewrite { Progress.count; next; } ->
+             assert (end_key = next);
+             acc + (Int64.to_int count)
+          | _ -> assert false)
          0
          progresses
      in

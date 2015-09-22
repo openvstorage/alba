@@ -1215,7 +1215,7 @@ class client ?(retry_timeout = 60.)
           | Some p ->
              let open Albamgr_protocol.Protocol in
              match p, action with
-             | Progress.Rewrite (count, next), Work.Rewrite ->
+             | Progress.Rewrite { Progress.count; next; }, Work.Rewrite ->
                 let fetch ~first ~last =
                   alba_client # with_nsm_client'
                               ~namespace_id
@@ -1260,9 +1260,9 @@ class client ?(retry_timeout = 60.)
                          (List.last objs)
                   else last
                 in
-                let po = (Some (Progress.Rewrite
-                                   (Int64.(add count (of_int cnt)),
-                                    next)))
+                let po = Some (Progress.Rewrite
+                                 { Progress.count = Int64.(add count (of_int cnt));
+                                   next; })
                 in
 
                 alba_client # mgr_access # update_progress
@@ -1273,6 +1273,15 @@ class client ?(retry_timeout = 60.)
                 else if has_more
                 then inner po
                 else Lwt.return ()
+             | Progress.Verify ({ Progress.count; next; },
+                                { Progress.fragments_detected_missing;
+                                  fragments_osd_unavailable;
+                                  fragments_checksum_mismatch }),
+               Work.Verify _ ->
+                Lwt.fail_with "TODO"
+             | _, Work.Rewrite
+             | _, Work.Verify _ ->
+                Lwt.fail_with "badly set up IterNamespace task!"
         in
         alba_client # mgr_access # get_progress name >>= fun po ->
         inner po
@@ -1324,7 +1333,7 @@ class client ?(retry_timeout = 60.)
                  Lwt.return ()
                | `Retry ->
                  Lwt_unix.sleep backoff >>= fun () ->
-                 inner (backoff *. 1.5)
+                 inner (min (backoff *. 1.5) 120.)
              in
              Lwt.finalize
                (fun () -> inner 1.0)
