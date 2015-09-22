@@ -45,7 +45,7 @@ class client fd ic id =
            let s =
              serialize_with_length
                (Llio.pair_to
-                  Llio.int_to
+                  Llio.int32_to
                   (query_request_serializer command))
                (command_to_code (Wrap_query command),
                 req)
@@ -66,7 +66,7 @@ class client fd ic id =
            let s =
              serialize_with_length
                (Llio.pair_to
-                  Llio.int_to
+                  Llio.int32_to
                   (update_request_serializer command))
                (command_to_code (Wrap_update command),
                 req)
@@ -151,6 +151,8 @@ class client fd ic id =
         (List.map
            (Option.map (fun (slice, cs) -> Slice.get_string_unsafe slice, cs))
            res)
+
+    method multi_exists keys = self # query MultiExists keys
 
     method get key =
       self # multi_get [ key ] >>= fun res ->
@@ -299,6 +301,8 @@ class asd_osd (asd_id : string) (asd : client) =
       (List.map
          (Option.map fst)
          vcos)
+
+  method multi_exists keys = asd # multi_exists keys
 
   method range = asd # range
 

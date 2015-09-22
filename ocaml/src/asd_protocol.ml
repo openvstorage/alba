@@ -306,7 +306,7 @@ module Protocol = struct
     | Statistics: (bool, AsdStatistics.t) query
     | GetVersion: (unit, (int * int * int *string)) query
     | MultiGet2 : (key list, Value.t option list) query
-
+    | MultiExists: (key list, bool list) query
   [@deriving show]
 
   type ('request, 'response) update =
@@ -317,14 +317,15 @@ module Protocol = struct
     | Wrap_query : _ query -> t
     | Wrap_update : _ update -> t
 
-  let command_map = [ Wrap_query Range, 1, "Range";
-                      Wrap_query MultiGet, 2, "MultiGet";
-                      Wrap_update Apply, 3, "Apply";
-                      Wrap_query RangeEntries, 4, "RangeEntries";
-                      Wrap_query Statistics, 5, "Statistics";
-                      Wrap_update SetFull, 6, "SetFull";
-                      Wrap_query GetVersion, 7, "GetVersion";
-                      Wrap_query MultiGet2, 8, "MultiGet2";
+  let command_map = [ Wrap_query Range,        1l, "Range";
+                      Wrap_query MultiGet,     2l, "MultiGet";
+                      Wrap_update Apply,       3l, "Apply";
+                      Wrap_query RangeEntries, 4l, "RangeEntries";
+                      Wrap_query Statistics,   5l, "Statistics";
+                      Wrap_update SetFull,     6l, "SetFull";
+                      Wrap_query GetVersion,   7l, "GetVersion";
+                      Wrap_query MultiGet2,    8l, "MultiGet2";
+                      Wrap_query MultiExists,  9l, "MultiExists";
                     ]
 
   let wrap_unknown_operation f =
@@ -354,6 +355,7 @@ module Protocol = struct
       | MultiGet2 -> Llio.list_to Slice.to_buffer
       | Statistics -> Llio.bool_to
       | GetVersion -> Llio.unit_to
+      | MultiExists -> Llio.list_to Slice.to_buffer
 
   let query_request_deserializer : type req res. (req, res) query -> req Llio.deserializer
     = function
@@ -363,6 +365,7 @@ module Protocol = struct
       | MultiGet2 -> Llio.list_from Slice.from_buffer
       | Statistics -> Llio.bool_from
       | GetVersion -> Llio.unit_from
+      | MultiExists -> Llio.list_from Slice.from_buffer
 
   let query_response_serializer : type req res. (req, res) query -> res Llio.serializer
     = function
@@ -389,6 +392,7 @@ module Protocol = struct
            Llio.int_to
            Llio.int_to
            Llio.string_to)
+      | MultiExists -> Llio.list_to Llio.bool_to
 
   let query_response_deserializer : type req res. (req, res) query -> res Llio.deserializer
     = function
@@ -415,6 +419,7 @@ module Protocol = struct
                          Llio.int_from
                          Llio.string_from
                       )
+      | MultiExists -> Llio.list_from Llio.bool_from
 
   let update_request_serializer : type req res. (req, res) update -> req Llio.serializer
     = function

@@ -294,6 +294,7 @@ let get_value_option kv key =
   in
   Option.map (fun v -> deserialize Value.from_buffer v) vo_raw
 
+let key_exists kv key = (get_value_option kv key) <> None
 
 
 let execute_query : type req res.
@@ -392,19 +393,15 @@ let execute_query : type req res.
                  ~fd_out:fd
                  size))
            (List.rev !write_laters))
-    | Statistics -> fun clear ->
+    | Statistics ->fun clear ->
       begin
-        let stopped = AsdStatistics.clone stats in
-        let () = AsdStatistics.stop stopped in
-        if clear then
-          begin
-            Lwt_log.ign_info_f ~section:AsdStatistics.section "before clear %s"
-                               (AsdStatistics.show stopped);
-            AsdStatistics.clear stats
-          end;
-        return stopped
+        Asd_statistics.AsdStatistics.snapshot stats clear |> return
       end
     | GetVersion -> fun () -> return Alba_version.summary
+    | MultiExists ->
+       fun keys ->
+       List.map (fun k -> key_exists kv k) keys |> return
+
 
 
 exception ConcurrentModification
@@ -787,26 +784,6 @@ let check_asd_id kv asd_id =
     then asd_id
     else failwith (Printf.sprintf "asd id mismatch: %s <> %s" asd_id asd_id')
 
-let update_statistics =
-  let ignore2 _ _ = () in
-  function
-  | Protocol.Wrap_query q ->
-    begin
-      match q with
-      | Protocol.Range -> AsdStatistics.new_range
-      | Protocol.RangeEntries -> AsdStatistics.new_range_entries
-      | Protocol.MultiGet -> AsdStatistics.new_multi_get
-      | Protocol.MultiGet2 -> AsdStatistics.new_multi_get
-      | Protocol.Statistics -> ignore2
-      | Protocol.GetVersion -> ignore2
-    end
-  | Protocol.Wrap_update u ->
-    begin
-      match u with
-      | Protocol.Apply -> AsdStatistics.new_apply
-      | Protocol.SetFull -> ignore2
-    end
-
 
 let asd_protocol
       kv ~release_fnr ~slow ~syncfs_batched
@@ -880,12 +857,12 @@ let asd_protocol
   let rec inner () =
     Llio.input_string ic >>= fun req_s ->
     let buf = Llio.make_buffer req_s 0 in
-    let code = Llio.int_from buf in
+    let code = Llio.int32_from buf in
     let command = Protocol.code_to_command code in
     Statistics.with_timing_lwt
       (fun () -> handle_request buf command)
-    >>= fun (time_inner, ()) ->
-    update_statistics command stats time_inner;
+    >>= fun (delta, ()) ->
+    Statistics_collection.Generic.new_delta stats code delta;
 
     (if slow
      then
@@ -897,10 +874,10 @@ let asd_protocol
      else
        Lwt.return_unit) >>= fun () ->
 
-    (if time_inner > 0.5
+    (if delta > 0.5
      then Lwt_log.info_f
      else Lwt_log.debug_f)
-      "Request %s took %f" (Protocol.code_to_description code) time_inner >>= fun () ->
+      "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
     inner ()
   in
   let b0 = Bytes.create 4 in
@@ -1240,7 +1217,11 @@ let run_server
     Mem_stats.reporting_t
       ~section
       ~f:(fun () ->
-          Lwt_log.info_f ~section "%s" (AsdStatistics.show stats))
+          Lwt_log.info_f
+            ~section "%s"
+            (AsdStatistics.show_inner
+               stats
+               Asd_protocol.Protocol.code_to_description))
       ()
   in
   let threads = [

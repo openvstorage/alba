@@ -163,12 +163,12 @@ let _test_rebalance_namespace test_name fat ano categorize =
      with_nice_error_log (fun () -> upload 20) >>= fun () ->
      Lwt_log.debug_f "uploaded ... %i" n >>= fun () ->
      let mc = new Maintenance.client (alba_client # get_base_client) in
-     let make_first () = "" in
+     let make_first_reverse () = "",false in
      Lwt.catch
        (fun () ->
         mc # rebalance_namespace
            ~categorize
-           ~make_first
+           ~make_first_reverse
            ~namespace_id
            ~only_once:true
            ()
@@ -184,7 +184,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
        | Some (fat_id,_) ->
           Rebalancing_helper.get_some_manifests
             (alba_client # get_base_client)
-            ~make_first
+            ~make_first_reverse
             ~namespace_id
             fat_id
           >>= fun (n0,mfs) ->
@@ -202,7 +202,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
        | Some (ano_id,_) ->
           Rebalancing_helper.get_some_manifests
             (alba_client # get_base_client)
-            ~make_first
+            ~make_first_reverse
             ~namespace_id
             ano_id
           >>= fun (n0, mfs) ->
@@ -303,7 +303,7 @@ let test_repair_orange () =
          ~max:10 >>= fun ((cnt, _), _) ->
        assert (cnt = 1);
 
-       maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
+       maintenance_client # repair_by_policy_namespace' ~namespace_id >>= fun () ->
 
        alba_client # get_object_manifest
          ~namespace ~object_name
@@ -373,6 +373,93 @@ let test_repair_orange2 () =
 
        Lwt.return ())
 
+let test_rewrite_namespace () =
+  let test_name = "test_rewrite_namespace" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+     alba_client # create_namespace
+                 ~preset_name:None
+                 ~namespace () >>= fun namespace_id ->
+
+     let objs = ["1"; "2"; "a"; "b"] in
+
+     let open Nsm_model in
+
+     Lwt_list.map_p
+       (fun name ->
+        alba_client # get_base_client # upload_object_from_string
+               ~namespace
+               ~object_name:name
+               ~object_data:name
+               ~checksum_o:None
+               ~allow_overwrite:NoPrevious >>= fun (mf, _) ->
+        Lwt.return mf
+       )
+       objs >>= fun manifests ->
+
+     let object_ids =
+       List.map
+         (fun mf -> mf.Manifest.object_id)
+         manifests
+     in
+
+     let get_objs () =
+       alba_client # with_nsm_client'
+                   ~namespace_id
+                   (fun client ->
+                    client # list_objects_by_id
+                           ~first:"" ~finc:true
+                           ~last:None
+                           ~max:100 ~reverse:false) >>= fun ((_, objs'), _) ->
+       List.sort
+         (fun mf1 mf2 ->
+          let open Manifest in
+          compare mf1.name mf2.name)
+         objs'
+       |> Lwt.return
+     in
+
+     get_objs () >>= fun manifests' ->
+     assert (manifests' = manifests);
+
+     let open Albamgr_protocol.Protocol in
+     let name = "name" in
+     let cnt = 10 in
+     alba_client # mgr_access # add_work_items
+                 [ Work.(IterNamespace
+                           (Rewrite,
+                            namespace_id,
+                            name,
+                            cnt)) ] >>= fun () ->
+
+     Alba_test.wait_for_work alba_client >>= fun () ->
+     Alba_test.wait_for_work alba_client >>= fun () ->
+
+     alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
+     assert (cnt = cnt');
+     let cnt'' =
+       List.fold_left
+         (fun acc (i, p) ->
+          let end_key = get_start_key (i+1) cnt in
+          match p with
+          | Progress.Rewrite (c, end_key') ->
+             assert (end_key = end_key');
+             acc + (Int64.to_int c))
+         0
+         progresses
+     in
+     assert (cnt'' = List.length objs);
+
+     get_objs () >>= fun manifests' ->
+     assert (manifests' <> manifests);
+
+     List.iter
+       (fun mf -> assert (not (List.mem mf.Manifest.object_id object_ids)))
+       manifests';
+
+     Lwt.return ())
+
 
 open OUnit
 
@@ -382,4 +469,5 @@ let suite = "maintenance_test" >:::[
     "test_rebalance_namespace_2" >:: test_rebalance_namespace_2;
     "test_repair_orange" >:: test_repair_orange;
     "test_repair_orange2" >:: test_repair_orange2;
+    "test_rewrite_namespace" >:: test_rewrite_namespace;
 ]

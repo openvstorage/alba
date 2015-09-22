@@ -46,7 +46,8 @@ class type osd = object
   method get_exn : key -> value Lwt.t
   method get_option : key -> value option Lwt.t
 
-  method multi_get : key list -> value option list Lwt.t
+  method multi_get    : key list -> value option list Lwt.t
+  method multi_exists : key list -> bool list Lwt.t
 
   method range :
     first:key -> finc:bool ->

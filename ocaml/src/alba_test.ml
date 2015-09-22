@@ -655,7 +655,7 @@ let test_encryption () =
 
        OUnit.assert_equal data_o (Some object_data);
 
-       let object_name' = "" in
+       let object_name' = "empty" in
        let object_data' = "" in
        alba_client # upload_object_from_bytes
          ~namespace
@@ -684,7 +684,8 @@ let test_discover_claimed () =
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
          (fun asd ->
-            alba_client # osd_access # seen
+          alba_client # osd_access # seen
+              ~check_claimed:(fun () -> true)
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = test_name;
                                     extras = Some({
@@ -771,8 +772,9 @@ let test_change_osd_ip_port () =
        let object_name = "object_name" in
 
        Lwt.ignore_result
-         (client # discover_osds_check_claimed
-            ~check_claimed_delay:0.1 ());
+         (client # discover_osds
+                 ~check_claimed:(fun () -> true)
+                 ~check_claimed_delay:0.1 ());
 
        Asd_test.with_asd_client
          osd_name 16541
@@ -1222,8 +1224,9 @@ let test_disk_churn () =
          Lwt_list.iter_s
            (fun osd_id ->
               maintenance_client # decommission_device
+                ~deterministic:true
                 ~namespace_id
-                ~osd_id >>= fun () ->
+                ~osd_id () >>= fun () ->
 
               maintenance_client # clean_obsolete_keys_namespace
                 ~once:true ~namespace_id)
@@ -1298,8 +1301,9 @@ let test_disk_churn () =
                               ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
+                              ~deterministic:true
                               ~namespace_id
-                              ~osd_id >>= fun () ->
+                              ~osd_id () >>= fun () ->
 
            alba_client # get_object_manifest
                        ~consistent_read:true
@@ -1343,8 +1347,9 @@ let test_disk_churn () =
                               ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
+                              ~deterministic:true
                               ~namespace_id
-                              ~osd_id >>= fun () ->
+                              ~osd_id () >>= fun () ->
 
            alba_client # get_object_manifest
                        ~consistent_read:true
@@ -1791,6 +1796,126 @@ let test_object_sizes () =
         Lwt.return ())
        (Int.range 0 (20 + 128*2)))
 
+
+let test_retry_download () =
+  test_with_alba_client
+    (fun client ->
+     let test_name = "test_retry_download" in
+
+     let open Albamgr_protocol.Protocol in
+     let preset_name = test_name in
+     let preset' = Preset.({ _DEFAULT with
+                             policies = [ (2,1,3,3); ];
+                             fragment_size = 128; }) in
+     client # mgr_access # create_preset
+            preset_name preset' >>= fun () ->
+
+     let namespace = test_name in
+     client # create_namespace
+            ~preset_name:(Some preset_name)
+            ~namespace () >>= fun namespace_id ->
+
+     let object_name = test_name in
+     let object_data =
+       (* 2 chunks *)
+       Lwt_bytes2.Lwt_bytes.create (2*2*128)
+     in
+     client # upload_object_from_bytes
+            ~namespace
+            ~object_name
+            ~object_data
+            ~checksum_o:None
+            ~allow_overwrite:Nsm_model.NoPrevious
+     >>= fun (mf, _) ->
+
+     let bad_mf =
+       let open Nsm_model.Manifest in
+       let fragment_locations =
+         [ List.hd_exn mf.fragment_locations;
+           [ (Some 0l,0); (Some 0l,0); (Some 0l,0); ] ]
+       in
+       { mf with
+         size = Int64.(add mf.size 5L);
+         fragment_locations; }
+     in
+
+     let poison_mf_cache () =
+       (* poison manifest cache so a retry will be needed
+         to download the object *)
+       Manifest_cache.ManifestCache.add
+         (client # get_manifest_cache)
+         namespace_id
+         object_name
+         bad_mf
+     in
+     let assert_stale res_o =
+       (* assert a retry was needed due to a stale manifest *)
+       let _, stats = Option.get_some res_o in
+       assert
+         (let open Alba_statistics.Statistics in
+          snd stats.get_manifest_dh = Stale)
+     in
+     begin
+       poison_mf_cache ();
+       let output_file = "/tmp/" ^ test_name in
+       client # download_object_to_file
+              ~namespace
+              ~object_name
+              ~output_file
+              ~consistent_read:false
+              ~should_cache:false >>= fun res_o ->
+
+       assert_stale res_o;
+       Lwt_extra2.read_file output_file >>= fun object_data' ->
+       assert (object_data' = Lwt_bytes.to_string object_data);
+       Lwt.return ()
+     end >>= fun () ->
+
+     begin
+       poison_mf_cache ();
+       client # download_object_to_string
+              ~namespace
+              ~object_name
+              ~consistent_read:false
+              ~should_cache:false >>= function
+       | None -> assert false
+       | Some object_data' ->
+          assert (object_data = Lwt_bytes.of_string object_data');
+          Lwt.return ()
+     end)
+
+let test_list_objects_by_id () =
+  let test_name = "test_list_objects_by_id" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+     alba_client # create_namespace
+                 ~preset_name:None
+                 ~namespace () >>= fun namespace_id ->
+
+     let open Nsm_model in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name:""
+                 ~object_data:""
+                 ~checksum_o:None
+                 ~allow_overwrite:NoPrevious
+     >>= fun (mf, _) ->
+
+     let object_id = mf.Manifest.object_id in
+
+     alba_client # with_nsm_client'
+                 ~namespace_id
+                 (fun client ->
+                  client # list_objects_by_id
+                         ~first:object_id ~finc:true
+                         ~last:(Some (object_id, true))
+                         ~max:100 ~reverse:false >>= fun ((cnt, objs), has_more) ->
+                  assert (not has_more);
+                  assert (cnt = 1);
+                  assert (objs = [ mf; ]);
+                  Lwt.return ()))
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -1815,4 +1940,6 @@ let suite = "alba_test" >:::[
     "test_stale_manifest_download" >:: test_stale_manifest_download;
     "test_update_policies" >:: test_update_policies;
     "test_object_sizes" >:: test_object_sizes;
+    "test_retry_download" >:: test_retry_download;
+    "test_list_objects_by_id" >:: test_list_objects_by_id;
   ]

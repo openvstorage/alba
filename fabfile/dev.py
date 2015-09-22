@@ -201,12 +201,15 @@ def run_tests_recovery(xml = False):
 
     alba.nsm_host_register(nsm_cfg, albamgr_cfg = abm_cfg)
 
+    alba.maintenance_start(abm_cfg = abm_cfg)
     alba.proxy_start(abm_cfg = abm_cfg)
 
     N = 3
     alba.start_osds("ASD", N, False)
 
     alba.claim_local_osds(N, abm_cfg = abm_cfg)
+
+    alba.maintenance_stop()
 
     ns = 'test'
     alba.create_namespace(ns, abm_cfg = abm_cfg)

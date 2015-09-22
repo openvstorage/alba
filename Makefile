@@ -38,7 +38,10 @@ build-nsm-plugin: build-cmxs
 	_build/src/key_value_store.cmx \
 	_build/src/mem_key_value_store.cmx \
 	_build/src/osd_keys.cmx \
-	_build/src/nsm_model.cmx \
+        _build/src/nsm_model.cmx \
+	_build/src/tools/stat.cmx \
+	_build/src/alba_statistics.cmx \
+	_build/src/tools/statistics_collection.cmx \
 	_build/src/nsm_protocol.cmx \
 	_build/src/nsm_host_protocol.cmx \
 	_build/src/plugin_extra.cmx \
@@ -67,6 +70,9 @@ build-mgr-plugin: build-alba
 	_build/src/log_plugin.cmx \
 	_build/src/osd_keys.cmx \
 	_build/src/nsm_model.cmx \
+	_build/src/tools/stat.cmx \
+	_build/src/alba_statistics.cmx \
+	_build/src/tools/statistics_collection.cmx \
 	_build/src/nsm_protocol.cmx \
 	_build/src/nsm_host_protocol.cmx \
 	_build/src/albamgr_protocol.cmx \
@@ -84,9 +90,14 @@ install: build-alba
 	echo $(START)
 
 	echo $(LIB)
-	cp /usr/local/lib/libJerasure.so.2     $(LIB)/libJerasure.so.2
-	cp /usr/local/lib/librocksdb.so	       $(LIB)/librocksdb.so
-	cp /usr/local/lib/libgf_complete.so.1  $(LIB)/libgf_complete.so.1
+	for i in Jerasure rocksdb isal gf_complete; \
+        do ldd ./ocaml/alba.native \
+           | grep $$i \
+           | grep "=> /" \
+           | awk '{print $$3}' \
+           | xargs -I{} cp -v "{}" $(LIB) ;\
+        done
+
 	cp ./ocaml/albamgr_plugin.cmxs         $(LIB)/albamgr_plugin.cmxs
 	cp ./ocaml/nsm_host_plugin.cmxs        $(LIB)/nsm_host_plugin.cmxs
 	mkdir -p $(DESTDIR)/etc/ld.so.conf.d

@@ -2,7 +2,7 @@
 
 Summary: Alba
 Name: alba
-Version: 0.6.17
+Version: 0.6.20
 Release: 1%{?dist}
 License: Proprietary license
 ExclusiveArch: x86_64
@@ -26,9 +26,9 @@ mkdir -p                               %{buildroot}%{_libdir}/alba/
 cp ocaml/albamgr_plugin.cmxs           %{buildroot}%{_libdir}/alba/
 cp ocaml/nsm_host_plugin.cmxs          %{buildroot}%{_libdir}/alba/
 cp /usr/local/lib/libJerasure.so.2     %{buildroot}%{_libdir}/alba/
-cp /usr/local/lib/librocksdb.so	       %{buildroot}%{_libdir}/alba/
+cp /usr/local/lib/librocksdb.so        %{buildroot}%{_libdir}/alba/
 cp /usr/local/lib/libgf_complete.so.1  %{buildroot}%{_libdir}/alba/
-
+cp /usr/local/lib/libisal.so.2         %{buildroot}%{_libdir}/alba/
 
 %files
 %{_bindir}/alba
@@ -43,6 +43,12 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
+* Tue Sep 22 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.20
+- Create Alba 0.6.20 RPM package
+* Wed Sep 16 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.19
+- Create Alba 0.6.19 RPM package
+* Wed Sep 09 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.18
+- Create Alba 0.6.18 RPM package
 * Tue Sep 08 2015 Jan Doms <jan.doms@openvstorage.com> - 0.6.17
 - Create Alba 0.6.17 RPM package
 * Fri Sep 04 2015 Jan Doms <jan.doms@openvstorage.com> - 0.6.16

@@ -276,18 +276,21 @@ class client (client : basic_client) =
     method mark_osd_claimed_by_other ~long_id ~alba_id =
       client # update MarkOsdClaimedByOther (long_id, alba_id)
 
+    method add_work_items work_items =
+      client # update
+        AddWork
+        (List.length work_items, work_items)
+
     method add_work_repair_fragment
       ~namespace_id ~object_id ~object_name
       ~chunk_id ~fragment_id ~version_id =
-      client # update
-        AddWork
-        (1,
-         [ Work.RepairBadFragment (namespace_id,
-                                   object_id,
-                                   object_name,
-                                   chunk_id,
-                                   fragment_id,
-                                   version_id) ])
+      self # add_work_items
+           [ Work.RepairBadFragment (namespace_id,
+                                     object_id,
+                                     object_name,
+                                     chunk_id,
+                                     fragment_id,
+                                     version_id) ]
 
     method get_work ~first ~finc ~last ~max ~reverse =
       client # query
@@ -329,6 +332,9 @@ class client (client : basic_client) =
     method get_version =
       client # query GetVersion ()
 
+    method statistics reset =
+      client # query Statistics reset
+
     method check_can_claim ~long_id =
       client # query CheckClaimOsd long_id
 
@@ -366,10 +372,50 @@ class client (client : basic_client) =
            ~last:None
            ~max:(-1) ~reverse:false)
 
+    method try_get_lease name counter =
+      client # update
+        TryGetLease
+        (name, counter)
+
+    method check_lease name =
+      client # query
+        CheckLease
+        name
+
+    method register_participant ~prefix ~name ~counter =
+      client # update
+        RegisterParticipant
+        (prefix, (name, counter))
+
+    method remove_participant ~prefix ~name ~counter =
+      client # update
+        RemoveParticipant
+        (prefix, (name, counter))
+
+    method get_participants ~prefix =
+      client # query
+        GetParticipants
+        prefix
+
     method update_preset name updates =
       client # update
         UpdatePreset
         (name, updates)
+
+    method get_progress name =
+      client # query
+        GetProgress
+        name
+
+    method get_progress_for_prefix name =
+      client # query
+        GetProgressForPrefix
+        name
+
+    method update_progress name old new_o =
+      client # update
+        UpdateProgress
+        (name, Progress.Update.CAS (old, new_o))
   end
 
 class single_connection_client (ic, oc) =

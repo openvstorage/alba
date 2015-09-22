@@ -1,0 +1,26 @@
+Several types of maintenance work has to happen inside alba
+
+1) message delivery (from albamgr to osds & nsm hosts)
+2) check if available osds are claimed by another env
+3) rebalancing data (when new nodes/disks are added)
+4) repairing decommissioned disks
+5) cleaning up obsolete fragments
+6) garbage collecting fragments written by dead (or extremely slow) clients
+7) repair by policy (upgrade objects written with a narrow policy to wider policies when applicable)
+8) diverse work items (cleanup osds/namespaces, repair object for which a bad fragment was detected, rewrite a namespace, ...)
+
+
+This work can be executed by 1 or more maintenance agents.
+We try not to have 2 maintenance agents perform the same work.
+This requires a bit of coordination.
+
+2 concepts are introduced
+- maintenance master
+- position (number) of the maintenance process (e.g. 7 of 9)
+
+
+Tasks 1 & 2 are only performed by the maintenance master.
+Task 4 is performed by all maintenance agents. They don't run into each
+others way due to how they select which objects to repair.
+Tasks 3, 5, 6 & 7 are divided amongst the several agents based on the namespace_id.
+Task 8 is divided amongst the several agents based on the work_id.

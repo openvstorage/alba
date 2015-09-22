@@ -48,12 +48,11 @@ let rec upload_albamgr_cfg albamgr_cfg (client : Alba_client.alba_client) =
 
 
 let alba_maintenance cfg_file modulo remainder flavour =
-  let () =
-    if modulo <= 0 ||
-       remainder < 0 ||
-       remainder >= modulo
-    then failwith "bad modulo/remainder"
-  in
+  if modulo <> None
+  then Lwt_log.ign_warning "modulo was deprecated, and won't be used";
+  if remainder <> None
+  then Lwt_log.ign_warning "remainder was deprecated, and won't be used";
+
   let read_cfg () =
     Lwt_extra2.read_file cfg_file >>= fun txt ->
     Lwt_log.info_f "Found the following config: %s" txt >>= fun () ->
@@ -69,7 +68,6 @@ let alba_maintenance cfg_file modulo remainder flavour =
 
     Lwt.return config
   in
-  let filter id = (Int32.to_int id) mod modulo = remainder in
 
   let t () =
     read_cfg () >>= function
@@ -125,8 +123,6 @@ let alba_maintenance cfg_file modulo remainder flavour =
 
       Lwt_log.info_f "maintenance version:%s" Alba_version.git_revision
       >>= fun () ->
-      Lwt_log.info_f "Maintenance drone modulo:%i; remainder:%i" modulo remainder
-      >>= fun () ->
 
       Alba_client.with_client
         albamgr_cfg
@@ -135,8 +131,13 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~osd_connection_pool_size
         ~osd_timeout
         (fun client ->
+           let coordinator =
+             Maintenance_coordination.make_maintenance_coordinator
+               (client # mgr_access)
+           in
+           coordinator # init;
            let maintenance_client =
-             new Maintenance.client ~flavour ~filter (client # get_base_client)
+             new Maintenance.client ~flavour ~coordinator (client # get_base_client)
            in
            Lwt.catch
              (fun () ->
@@ -154,8 +155,10 @@ let alba_maintenance cfg_file modulo remainder flavour =
                 let base_threads () =
                   [
                     (Lwt_extra2.make_fuse_thread ());
-                    (maintenance_client # deliver_all_messages ());
-                    (client # get_base_client # discover_osds_check_claimed ());
+                    (maintenance_client # deliver_all_messages
+                            ~is_master:(fun () -> coordinator # is_master) ());
+                    (client # get_base_client # discover_osds
+                            ~check_claimed:(fun () -> coordinator # is_master) ());
                     (client # osd_access # propagate_osd_info ());
                   ]
                 in
@@ -193,17 +196,17 @@ let alba_maintenance cfg_file modulo remainder flavour =
   lwt_server t
 
 let alba_maintenance_cmd =
-  let remainder default =
+  let remainder =
     let doc = "$(docv)" in
     Arg.(value
-         & opt int default
-         & info ["remainder"] ~docv:"REMAINDER" ~doc)
+         & opt (some int) None
+         & info ["remainder"] ~docv:"REMAINDER (obsolete)" ~doc)
   in
-  let modulo default =
+  let modulo =
     let doc = "$(docv)" in
     Arg.(value
-         & opt int default
-         & info ["modulo"] ~docv:"MODULO" ~doc)
+         & opt (some int) None
+         & info ["modulo"] ~docv:"MODULO (obsolete)" ~doc)
   in
   let flavour =
     let open Maintenance in
@@ -227,8 +230,9 @@ let alba_maintenance_cmd =
   Term.(pure alba_maintenance
         $ Arg.(required
                & opt (some file) None
-               & info ["config"] ~docv:"CONFIG_FILE" ~doc:"maintenance config file")      $ modulo 1
-        $ remainder 0
+               & info ["config"] ~docv:"CONFIG_FILE" ~doc:"maintenance config file")
+        $ modulo
+        $ remainder
         $ flavour
   ),
   Term.info "maintenance" ~doc:"run the maintenance process (garbage collection, obsolete fragment deletion, repair, ...)"

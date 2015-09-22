@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
 open Lwt.Infix
 open Cli_common
 open Cmdliner
@@ -349,6 +350,27 @@ let alba_mgr_get_version_cmd =
     "mgr-get-version"
     ~doc:"the alba mgr's version info"
 
+let alba_mgr_statistics cfg_file attempts clear =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts
+      (fun client ->
+       client # statistics clear >>= fun statistics ->
+       Lwt_io.printlf "%s" (Albamgr_plugin.Statistics.show statistics)
+      )
+  in
+  lwt_cmd_line false t
+
+let alba_mgr_statistics_cmd =
+  Term.(pure alba_mgr_statistics
+        $ alba_cfg_file
+        $ attempts 1
+        $ clear
+  ),
+  Term.info
+    "mgr-statistics"
+    ~doc:"the alba mgr's statistics"
+
 let alba_list_decommissioning_osds cfg_file to_json attempts =
   let t () =
     with_albamgr_client
@@ -385,6 +407,69 @@ let alba_list_decommissioning_osds_cmd =
   Term.info
     "list-decommissioning-osds"
     ~doc:"list osds that are not yet fully decommissioned"
+
+let alba_list_participants cfg_file prefix =
+  let t () =
+    with_albamgr_client
+      cfg_file
+      ~attempts:1
+      (fun client ->
+       client # get_participants ~prefix >>= fun (cnt, participants) ->
+       Lwt_log.debug_f
+         "Found %i participants:\n%s"
+         cnt
+         ([%show : (string*int) list] participants))
+  in
+  lwt_cmd_line false t
+
+let alba_list_participants_cmd =
+  Term.(pure alba_list_participants
+        $ alba_cfg_file
+        $ Arg.(required
+               & pos 0 (some string) None
+               & info [] ~docv:"PREFIX" ~doc:"prefix")),
+  Term.info
+    "list-participants"
+    ~doc:"list participants"
+
+
+let alba_list_work cfg_file attempts =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts
+      (fun client ->
+       let first = 0l
+       and finc = true
+       and last = None
+       and max = -1 in
+       client # get_work  ~first ~finc ~last ~max ~reverse:false
+       >>= fun ((cnt,r),more) ->
+       begin
+         Lwt_io.printlf "received %i items\n" cnt >>= fun () ->
+         Lwt_io.printlf "    id   | item " >>= fun () ->
+         Lwt_io.printlf "---------+------" >>= fun () ->
+         Lwt_list.iter_s
+           (fun (id, item) ->
+            Lwt_io.printlf "%8li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
+           ) r
+         >>= fun () ->
+         if more
+         then Lwt_io.printl "..."
+         else Lwt.return ()
+       end
+      )
+  in
+  lwt_cmd_line false t
+
+let alba_list_work_cmd =
+  Term.(pure alba_list_work
+        $ alba_cfg_file
+        $ attempts 1
+  ),
+  Term.info
+    "list-work"
+    ~doc:"list outstanding work items"
+
 
 
 let alba_add_osd cfg_file host port node_id to_json attempts =
@@ -437,6 +522,93 @@ let alba_add_osd_cmd =
               " Note: this is for development purposes only."
          )
 
+let alba_rewrite_namespace cfg_file namespace name factor =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # get_namespace ~namespace >>= function
+       | None -> Lwt.fail_with ""
+       | Some (_, namespace_info) ->
+          let open Albamgr_protocol.Protocol in
+          let namespace_id = namespace_info.Namespace.id in
+          client # add_work_items
+                 [ Work.(IterNamespace
+                           (Rewrite,
+                            namespace_id,
+                            name,
+                            factor)) ])
+  in
+  lwt_cmd_line false t
+
+let job_name p =
+  Arg.(required
+       & pos p (some string) None
+       & info [] ~docv:"the name of the job")
+
+let alba_rewrite_namespace_cmd =
+  Term.(pure alba_rewrite_namespace
+        $ alba_cfg_file
+        $ namespace 0
+        $ job_name 1
+        $ Arg.(value
+               & opt int 1
+               & info ["factor"] ~docv:"specifies into how many pieces the job should be divided")),
+  Term.info
+    "rewrite-namespace"
+    ~doc:"rewrite all objects in the specified namespace"
+
+let alba_show_job_progress cfg_file name =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # get_progress_for_prefix name >>= fun (_, progresses) ->
+       Lwt_list.iter_s
+         (fun (id, p) ->
+          Lwt_log.debug_f
+            "%i: %s"
+            id
+            ([%show : Albamgr_protocol.Protocol.Progress.t] p))
+         progresses)
+  in
+  lwt_cmd_line false t
+
+let alba_show_job_progress_cmd =
+  Term.(pure alba_show_job_progress
+        $ alba_cfg_file
+        $ job_name 0),
+  Term.info
+    "show-job-progress"
+    ~doc:"show progress of a certain job"
+
+let alba_clear_job_progress cfg_file name =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # get_progress_for_prefix name >>= fun (_, progresses) ->
+       Lwt_list.iter_s
+         (fun (i, p) ->
+          let name = serialize (Llio.pair_to
+                                  Llio.raw_string_to
+                                  Llio.int_to)
+                               (name, i)
+          in
+          client # update_progress name p None)
+         progresses)
+  in
+  lwt_cmd_line false t
+
+let alba_clear_job_progress_cmd =
+  Term.(pure alba_clear_job_progress
+        $ alba_cfg_file
+        $ job_name 0),
+  Term.info
+    "clear-job-progress"
+    ~doc:"clear progress of a certain job"
+
+
 let cmds = [
   alba_list_namespaces_by_id_cmd;
 
@@ -452,4 +624,12 @@ let cmds = [
   alba_update_nsm_host_cmd;
   alba_list_nsm_hosts_cmd;
   alba_add_osd_cmd;
+  alba_mgr_statistics_cmd;
+
+  alba_list_participants_cmd;
+  alba_list_work_cmd;
+
+  alba_rewrite_namespace_cmd;
+  alba_show_job_progress_cmd;
+  alba_clear_job_progress_cmd;
 ]

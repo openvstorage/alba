@@ -182,6 +182,15 @@ module List = struct
         | (Some _) as i -> i
       end
 
+  let rec find_index' f pos = function
+    | [] -> None
+    | hd :: tl ->
+      if f hd
+      then Some pos
+      else find_index' f (pos+1) tl
+
+  let find_index f l = find_index' f 0 l
+
   let flatten_unordered lists =
     let rec inner acc = function
       | [] -> acc
@@ -255,6 +264,38 @@ module List = struct
 
   let map_filter f l =
     List.rev (map_filter_rev f l)
+
+  let merge_head ?(compare= compare) x y max_n =
+    let rec push x y n =
+      let rec _inner r y = function
+        | 0 -> r
+        | n ->
+           begin
+             match y with
+             | [] -> r
+             | yh :: yt -> _inner (yh::r) yt (n-1)
+           end
+      in
+      _inner x y n
+    in
+    let rec _inner todo acc x y =
+      if todo = 0
+      then acc
+      else
+        match x,y with
+        |     [], []     -> acc
+        |     [],  y     -> push acc y todo
+        |      x, []     -> push acc x todo
+        | xh::xt, yh::yt ->
+           begin
+             let todo' = todo - 1
+             and c = compare xh yh in
+             if c < 0      then  _inner todo' (xh::acc) xt y
+             else if c = 0 then  _inner todo' (xh::acc) xt yt
+             else                _inner todo' (yh::acc) x  yt
+           end
+    in
+    (_inner max_n [] x y) |> List.rev
 end
 
 module Option = struct
@@ -461,6 +502,18 @@ let serialize_with_length ?buf_size serializer a =
   set32_prim res 0 (Int32.of_int len);
   res
 
+let get_start_key i n =
+  if i < 0 || i > n
+  then failwith "bad input for get_start_key";
+
+  if i = n
+  then None
+  else
+    begin
+      let s = i * (1 lsl 32) / n in
+      Some (serialize Llio.int32_be_to (Int32.of_int s))
+    end
+
 module Hashtbl = struct
   include Hashtbl
 
@@ -531,7 +584,8 @@ module HexInt32 = struct
 end
 
 type has_more = bool
-type 'a counted_list_more = 'a Std.counted_list * has_more
+type 'a counted_list = 'a Std.counted_list
+type 'a counted_list_more = 'a counted_list * has_more
 
 let counted_list_more_from a_from =
   Llio.pair_from
@@ -558,10 +612,25 @@ let list_all_x ~first get_first harvest =
 
 type timestamp = float
 
-let show_timestamp t =
-  Printf.sprintf "%f" t
-let pp_timestamp formatter t =
-  Format.pp_print_string formatter (show_timestamp t)
+let show_timestamp x =
+      let open Unix in
+      let t = localtime x in
+      let s = (float_of_int t.tm_sec) +. (x -. (floor x)) in
+      Printf.sprintf "%04i/%02i/%02i_%02i:%02i:%02.4f" (t.tm_year + 1900)
+                     (t.tm_mon + 1)
+                     t.tm_mday
+                     t.tm_hour t.tm_min s
+
+let pp_timestamp : Format.formatter -> timestamp -> unit =
+  fun fmt timestamp ->
+  Format.pp_print_string fmt (show_timestamp timestamp)
+
+let timestamp_to_yojson t = `Float t
+let timestamp_of_yojson = function
+  | `Float fs ->
+    `Ok fs
+  | e ->
+    `Error (Yojson.Safe.to_string e)
 
 let _BATCH_SIZE = 200
 

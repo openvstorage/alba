@@ -239,8 +239,10 @@ def arakoon_stop():
 
 @task
 def proxy_start(abm_cfg = arakoon_config_file,
+                proxy_id = '0',
                 n_proxies = 1, n_others = 1):
-    proxy_home = "/tmp/alba/proxy"
+    proxy_id = int(proxy_id) # how to enter ints from cli?
+    proxy_home = "/tmp/alba/proxies/%02i" % proxy_id
     proxy_cache = proxy_home + "/fragment_cache"
     proxy_cfg = "%s/proxy.cfg" % proxy_home
 
@@ -259,7 +261,7 @@ def proxy_start(abm_cfg = arakoon_config_file,
     chattiness = round(chattiness, 2)
     with lcd(proxy_home):
         cfg = {
-            'port' : 10000,
+            'port' : 10000 + proxy_id,
             'albamgr_cfg_file' : proxy_albmamgr_cfg_file,
             'log_level' : 'debug',
             'fragment_cache_dir' : proxy_cache,
@@ -274,42 +276,39 @@ def proxy_start(abm_cfg = arakoon_config_file,
         where(cmd_line)
 
 @task
-def proxy_stop():
-    port = 10000
+def proxy_stop(proxy_id = 0):
+    port = 10000 + proxy_id
     where = local
     where("fuser -k -n tcp %i" % port)
 
 
 @task
-def maintenance_start(n_agents = 1, n_others = 1):
+def maintenance_start(abm_cfg = arakoon_config_file,
+                      n_agents = 1, n_others = 1):
     maintenance_home = "/tmp/alba/maintenance"
 
     local("mkdir -p %s" % maintenance_home)
 
-    chattiness = 1.0 / (n_agents + n_others)
-    chattiness = round(chattiness, 2)
+    maintenance_albmamgr_cfg_file = maintenance_home + "/albamgr.cfg"
+    local("cp %s %s" % (abm_cfg, maintenance_albmamgr_cfg_file))
     with lcd(maintenance_home):
         maintenance_cfg = "%s/maintenance.cfg" % maintenance_home
         dump_to_cfg_as_json(maintenance_cfg,
-                            { 'albamgr_cfg_file' : arakoon_config_file,
-                              'log_level' : 'debug',
-                              'chattiness' : chattiness
+                            { 'albamgr_cfg_file' : maintenance_albmamgr_cfg_file,
+                              'log_level' : 'debug'
                             })
 
-        modulo = n_agents
+
         for i in range(n_agents):
-            remainder = i
             where = local
             inner = [
                 env['alba_bin'],
                 'maintenance',
-                '--modulo', str(modulo),
-                '--remainder', str(remainder),
                 "--config=%s" % maintenance_cfg
             ]
             out = '%s/maintenance_%i_%i.out' % (maintenance_home,
-                                                remainder,
-                                                modulo)
+                                                i,
+                                                n_agents)
             cmd_line = _detach(inner, out = out )
             where(cmd_line)
 
@@ -383,6 +382,7 @@ def claim_local_osds(n, multicast=True, abm_cfg = arakoon_config_file):
 
     assert (claimed_osds == n)
 
+@task
 def start_osds(kind, n, slow, multicast=True):
     for i in range(n):
         if kind == "MIXED":
