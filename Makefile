@@ -90,9 +90,14 @@ install: build-alba
 	echo $(START)
 
 	echo $(LIB)
-	cp /usr/local/lib/libJerasure.so.2     $(LIB)/libJerasure.so.2
-	cp /usr/local/lib/librocksdb.so	       $(LIB)/librocksdb.so
-	cp /usr/local/lib/libgf_complete.so.1  $(LIB)/libgf_complete.so.1
+	for i in Jerasure rocksdb isal gf_complete; \
+        do ldd ./ocaml/alba.native \
+           | grep $$i \
+           | grep "=> /" \
+           | awk '{print $$3}' \
+           | xargs -I{} cp -v "{}" $(LIB) ;\
+        done
+
 	cp ./ocaml/albamgr_plugin.cmxs         $(LIB)/albamgr_plugin.cmxs
 	cp ./ocaml/nsm_host_plugin.cmxs        $(LIB)/nsm_host_plugin.cmxs
 	mkdir -p $(DESTDIR)/etc/ld.so.conf.d

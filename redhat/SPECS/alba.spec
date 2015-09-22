@@ -26,9 +26,9 @@ mkdir -p                               %{buildroot}%{_libdir}/alba/
 cp ocaml/albamgr_plugin.cmxs           %{buildroot}%{_libdir}/alba/
 cp ocaml/nsm_host_plugin.cmxs          %{buildroot}%{_libdir}/alba/
 cp /usr/local/lib/libJerasure.so.2     %{buildroot}%{_libdir}/alba/
-cp /usr/local/lib/librocksdb.so	       %{buildroot}%{_libdir}/alba/
+cp /usr/local/lib/librocksdb.so        %{buildroot}%{_libdir}/alba/
 cp /usr/local/lib/libgf_complete.so.1  %{buildroot}%{_libdir}/alba/
-
+cp /usr/local/lib/libisal.so.2         %{buildroot}%{_libdir}/alba/
 
 %files
 %{_bindir}/alba
