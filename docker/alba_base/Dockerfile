@@ -1,5 +1,5 @@
 FROM ubuntu:15.04
-RUN apt-get -y update && apt-get install -y \
+RUN apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         build-essential m4 apt-utils \
         libffi-dev libssl-dev \
         libbz2-dev \
@@ -13,6 +13,7 @@ RUN apt-get -y update && apt-get install -y \
         aspcud \
         wget \
         rsync \
+        darcs \
         git \
         unzip \
         protobuf-compiler \
@@ -28,14 +29,22 @@ RUN apt-get -y update && apt-get install -y \
         curl \
         g++ \
         libgflags-dev \
-        sudo
+        sudo \
+        libtool \
+        libboost-all-dev \
+        fuse
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y darcs
+RUN useradd jenkins -g root
+
+RUN wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
+RUN sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
+
 RUN pip install fabric junit-xml
 
 RUN mkdir /home/alba
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 RUN sh ./opam_installer.sh /usr/local/bin 4.02.1
+
 ENV opam_env='opam config env --root=/home/alba/OPAM'
 RUN opam init --root=/home/alba/OPAM --comp 4.02.1
 RUN eval `${opam_env}` && opam install -y \
