@@ -34,6 +34,8 @@ module Keys = struct
   let participants_prefix = "/alba/participants/"
   let participants ~prefix ~name = participants_prefix ^ prefix ^ name
 
+  let progress name = "/alba/progress/" ^ name
+
   module Nsm_host = struct
     (* this maps to some info about the nsmhost *)
     let info_prefix = "/alba/nsm_host/info/"
@@ -797,6 +799,35 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     (lease_key, lease_so, lease)
   in
 
+  let get_progress name =
+    let key = Keys.progress name in
+    let v_o = db # get key in
+    let open Albamgr_protocol.Protocol.Progress in
+    key,
+    v_o,
+    Option.map
+      (deserialize from_buffer)
+      v_o
+  in
+  let get_progress_for_prefix name =
+    let first = Keys.progress name in
+    let module KV = WrapReadUserDb(
+                        struct
+                          let db = db
+                          let prefix = ""
+                        end) in
+    let module EKV = Key_value_store.Read_store_extensions(KV) in
+    EKV.map_range
+      db
+      ~first ~finc:true ~last:(Key_value_store.next_prefix first)
+      ~max:(-1) ~reverse:false
+      (fun cur key ->
+       let i = deserialize ~offset:(String.length first) Llio.int_from key in
+       i, deserialize Progress.from_buffer (KV.cur_get_value cur)
+      )
+    |> fst
+  in
+
   let handle_update
     : type i o. (i, o) update -> i ->
       (o * Update.t list) Lwt.t =
@@ -1286,7 +1317,40 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           | CleanupNsmHostNamespace _
           | CleanupOsdNamespace _
           | CleanupNamespaceOsd _
-          | RepairBadFragment _ -> []
+          | RepairBadFragment _
+          | IterNamespaceLeaf _ -> []
+          | IterNamespace (action, namespace_id, name, cnt) ->
+
+            let get_key i = get_start_key i cnt in
+
+            let items =
+              List.map
+                (fun i ->
+                 let start = get_key i |> Option.get_some in
+                 let range = start, get_key (i + 1) in
+                 let name = serialize
+                              (Llio.pair_to
+                                 Llio.raw_string_to
+                                 Llio.int_to)
+                              (name, i) in
+                 Work.IterNamespaceLeaf
+                   (action,
+                    namespace_id,
+                    name,
+                    range),
+                 match action with
+                 | Rewrite ->
+                    Update.Set (Keys.progress name,
+                                serialize
+                                  Progress.to_buffer
+                                  (Progress.Rewrite (0L, Some start)))
+                )
+                (Int.range 0 cnt)
+            in
+
+            let add_work_items = add_work_items (List.map fst items) in
+            let update_progress = List.map snd items in
+            List.rev_append add_work_items update_progress
           | WaitUntilRepaired (osd_id, namespace_id) ->
             let add_work =
               add_work_items
@@ -1451,6 +1515,24 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
            else []
       in
       return_upds upds
+    | UpdateProgress ->
+      fun (name, upd) ->
+      begin
+        let key, v_o, p_o = get_progress name in
+        match p_o with
+        | None -> Error.(failwith Progress_does_not_exist)
+        | Some p ->
+           let open Progress.Update in
+           match upd with
+           | CAS (old, new_o) ->
+             if old <> p
+             then Error.(failwith Progress_CAS_failed)
+             else return_upds [ Update.Assert (key, v_o);
+                                Update.Replace (key,
+                                                Option.map
+                                                  (serialize Progress.to_buffer)
+                                                  new_o); ]
+      end
   in
 
   let handle_query : type i o. (i, o) query -> i -> o = function
@@ -1639,6 +1721,11 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
            (name, cnt))
       in
       res
+    | GetProgress ->
+      fun name ->
+      let _, _, p = get_progress name in
+      p
+    | GetProgressForPrefix -> get_progress_for_prefix
   in
 
 

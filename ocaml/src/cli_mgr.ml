@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
 open Lwt.Infix
 open Cli_common
 open Cmdliner
@@ -521,6 +522,93 @@ let alba_add_osd_cmd =
               " Note: this is for development purposes only."
          )
 
+let alba_rewrite_namespace cfg_file namespace name factor =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # get_namespace ~namespace >>= function
+       | None -> Lwt.fail_with ""
+       | Some (_, namespace_info) ->
+          let open Albamgr_protocol.Protocol in
+          let namespace_id = namespace_info.Namespace.id in
+          client # add_work_items
+                 [ Work.(IterNamespace
+                           (Rewrite,
+                            namespace_id,
+                            name,
+                            factor)) ])
+  in
+  lwt_cmd_line false t
+
+let job_name p =
+  Arg.(required
+       & pos p (some string) None
+       & info [] ~docv:"the name of the job")
+
+let alba_rewrite_namespace_cmd =
+  Term.(pure alba_rewrite_namespace
+        $ alba_cfg_file
+        $ namespace 0
+        $ job_name 1
+        $ Arg.(value
+               & opt int 1
+               & info ["factor"] ~docv:"specifies into how many pieces the job should be divided")),
+  Term.info
+    "rewrite-namespace"
+    ~doc:"rewrite all objects in the specified namespace"
+
+let alba_show_job_progress cfg_file name =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # get_progress_for_prefix name >>= fun (_, progresses) ->
+       Lwt_list.iter_s
+         (fun (id, p) ->
+          Lwt_log.debug_f
+            "%i: %s"
+            id
+            ([%show : Albamgr_protocol.Protocol.Progress.t] p))
+         progresses)
+  in
+  lwt_cmd_line false t
+
+let alba_show_job_progress_cmd =
+  Term.(pure alba_show_job_progress
+        $ alba_cfg_file
+        $ job_name 0),
+  Term.info
+    "show-job-progress"
+    ~doc:"show progress of a certain job"
+
+let alba_clear_job_progress cfg_file name =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # get_progress_for_prefix name >>= fun (_, progresses) ->
+       Lwt_list.iter_s
+         (fun (i, p) ->
+          let name = serialize (Llio.pair_to
+                                  Llio.raw_string_to
+                                  Llio.int_to)
+                               (name, i)
+          in
+          client # update_progress name p None)
+         progresses)
+  in
+  lwt_cmd_line false t
+
+let alba_clear_job_progress_cmd =
+  Term.(pure alba_clear_job_progress
+        $ alba_cfg_file
+        $ job_name 0),
+  Term.info
+    "clear-job-progress"
+    ~doc:"clear progress of a certain job"
+
+
 let cmds = [
   alba_list_namespaces_by_id_cmd;
 
@@ -540,4 +628,8 @@ let cmds = [
 
   alba_list_participants_cmd;
   alba_list_work_cmd;
+
+  alba_rewrite_namespace_cmd;
+  alba_show_job_progress_cmd;
+  alba_clear_job_progress_cmd;
 ]

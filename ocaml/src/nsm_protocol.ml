@@ -51,8 +51,10 @@ module Protocol = struct
 
     | GetGcEpochs : (unit, GcEpochs.t) query
 
-    | ListObjects : (string RangeQueryArgs.t,
+    | ListObjects : (object_name RangeQueryArgs.t,
                      object_name counted_list_more) query
+    | ListObjectsById : (object_id RangeQueryArgs.t,
+                         Manifest.t counted_list_more) query
     | ListObjectsByOsd : (osd_id * object_id RangeQueryArgs.t,
                           Manifest.t counted_list_more) query
     | ListObjectsByPolicy : ((Policy.policy * object_id) RangeQueryArgs.t,
@@ -106,6 +108,7 @@ module Protocol = struct
       | GetGcEpochs -> Llio.unit_from
 
       | ListObjects -> RangeQueryArgs.from_buffer Llio.string_from
+      | ListObjectsById -> RangeQueryArgs.from_buffer Llio.string_from
       | ListObjectsByOsd ->
         Llio.pair_from
           Llio.int32_from
@@ -164,6 +167,7 @@ module Protocol = struct
       | GetGcEpochs -> Llio.unit_to
 
       | ListObjects -> RangeQueryArgs.to_buffer Llio.string_to
+      | ListObjectsById -> RangeQueryArgs.to_buffer Llio.string_to
       | ListObjectsByOsd ->
         Llio.pair_to
           Llio.int32_to
@@ -225,6 +229,8 @@ module Protocol = struct
 
       | ListObjects ->
         counted_list_more_to Llio.string_to
+      | ListObjectsById ->
+        counted_list_more_to Manifest.to_buffer
       | ListObjectsByPolicy ->
         counted_list_more_to Manifest.to_buffer
       | ListObjectsByOsd ->
@@ -259,6 +265,8 @@ module Protocol = struct
 
       | ListObjects ->
         counted_list_more_from Llio.string_from
+      | ListObjectsById ->
+        counted_list_more_from Manifest.from_buffer
       | ListObjectsByOsd ->
         counted_list_more_from Manifest.from_buffer
       | ListObjectsByPolicy ->

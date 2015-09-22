@@ -217,19 +217,7 @@ module Protocol = struct
             other';
           }
         =
-        let merge ?(compare=compare) l1 l2 =
-          let res =
-            List.merge
-              compare
-              l1
-              (List.fast_sort compare l2)
-          in
-          let len = List.length res in
-          if len > 10
-          then List.drop res (len - 10)
-          else res
-        in
-
+        let my_compare x y = compare y x in
         let kind =
           let ips, port = get_ips_port osd.kind in
           let ips' = Option.get_some_default ips ips' in
@@ -238,19 +226,18 @@ module Protocol = struct
           | Asd (_, _, asd_id) -> Asd (ips', port', asd_id)
           | Kinetic (_, _, k_id) -> Kinetic (ips', port', k_id)
         in
-
+        let max_n = 10 in
         { node_id = osd.node_id;
           kind; decommissioned = osd.decommissioned;
           other = Option.get_some_default osd.other other';
           total = Option.get_some_default osd.total total';
           used = Option.get_some_default osd.used used';
-          seen = merge osd.seen seen';
-          read = merge osd.read read';
-          write = merge osd.write write';
-          errors =
-            merge
-              ~compare:(fun i1 i2 -> compare (fst i1) (fst i2))
-              osd.errors errors';
+          seen   = List.merge_head  ~compare:my_compare osd.seen seen' max_n;
+          read   = List.merge_head  ~compare:my_compare osd.read read' max_n;
+          write  = List.merge_head  ~compare:my_compare osd.write write' max_n;
+          errors = List.merge_head
+                     ~compare:(fun i1 i2 -> my_compare (fst i1) (fst i2))
+                     osd.errors errors' max_n;
         }
 
       let to_buffer buf u =
@@ -566,6 +553,19 @@ module Protocol = struct
 
   module Work = struct
     type id = Int32.t
+
+    type action =
+      | Rewrite
+    [@@deriving show]
+    let action_to_buffer buf = function
+      | Rewrite -> Llio.int8_to buf 1
+    let action_from_buffer buf =
+      match Llio.int8_from buf with
+      | 1 -> Rewrite
+      | k -> raise_bad_tag "Work.action" k
+
+    type range = string * string option [@@deriving show]
+
     type t =
       | CleanupNsmHostNamespace of Nsm_host.id * Namespace.id
       | CleanupOsdNamespace of Osd.id * Namespace.id
@@ -575,6 +575,8 @@ module Protocol = struct
           Nsm_model.chunk_id * Nsm_model.fragment_id * Nsm_model.version
       | WaitUntilRepaired of Osd.id * Namespace.id
       | WaitUntilDecommissioned of Osd.id
+      | IterNamespace of action * Namespace.id * string * int
+      | IterNamespaceLeaf of action * Namespace.id * string * range
     [@@ deriving show]
 
     let to_buffer buf = function
@@ -606,6 +608,22 @@ module Protocol = struct
       | WaitUntilDecommissioned osd_id ->
         Llio.int8_to buf 10;
         Llio.int32_to buf osd_id
+      | IterNamespace (action, namespace_id, name, cnt) ->
+        Llio.int8_to buf 11;
+        action_to_buffer buf action;
+        Llio.int32_to buf namespace_id;
+        Llio.string_to buf name;
+        Llio.int_to buf cnt
+      | IterNamespaceLeaf (action, namespace_id, name, range) ->
+        Llio.int8_to buf 12;
+        action_to_buffer buf action;
+        Llio.int32_to buf namespace_id;
+        Llio.string_to buf name;
+        Llio.pair_to
+          Llio.string_to
+          (Llio.option_to Llio.string_to)
+          buf
+          range
 
     let from_buffer buf =
       match Llio.int8_from buf with
@@ -637,6 +655,23 @@ module Protocol = struct
       | 10 ->
         let osd_id = Llio.int32_from buf in
         WaitUntilDecommissioned osd_id
+      | 11 ->
+        let action = action_from_buffer buf in
+        let namespace_id = Llio.int32_from buf in
+        let name = Llio.string_from buf in
+        let cnt = Llio.int_from buf in
+        IterNamespace (action, namespace_id, name, cnt)
+      | 12 ->
+        let action = action_from_buffer buf in
+        let namespace_id = Llio.int32_from buf in
+        let name = Llio.string_from buf in
+        let range =
+          Llio.pair_from
+            Llio.string_from
+            (Llio.option_from Llio.string_from)
+            buf
+        in
+        IterNamespaceLeaf (action, namespace_id, name, range)
       | k -> raise_bad_tag "Work" k
   end
 
@@ -669,6 +704,46 @@ module Protocol = struct
       let max = Llio.int_from buf in
       let reverse = Llio.bool_from buf in
       { first; finc; last; max; reverse; }
+  end
+
+  module Progress = struct
+    type t =
+      | Rewrite of int64 * string option
+    [@@deriving show]
+
+    let to_buffer buf = function
+      | Rewrite (count, next) ->
+        Llio.int8_to buf 1;
+        Llio.int64_to buf count;
+        Llio.string_option_to buf next
+
+    let from_buffer buf =
+      match Llio.int8_from buf with
+      | 1 ->
+         let count = Llio.int64_from buf in
+         let next = Llio.string_option_from buf in
+         Rewrite (count, next)
+      | k -> raise_bad_tag "Progress" k
+
+    module Update = struct
+      type t' = t
+      type t =
+        | CAS of t' * t' option
+
+      let to_buffer buf = function
+        | CAS (old, new_o) ->
+          Llio.int8_to buf 1;
+          to_buffer buf old;
+          Llio.option_to to_buffer buf new_o
+
+      let from_buffer buf =
+        match Llio.int8_from buf with
+        | 1 ->
+          let old = from_buffer buf in
+          let new_o = Llio.option_from from_buffer buf in
+          CAS (old, new_o)
+        | k -> raise_bad_tag "Progress.Update" k
+    end
   end
 
   module RangeQueryArgs = Nsm_protocol.Protocol.RangeQueryArgs
@@ -709,7 +784,8 @@ module Protocol = struct
     | Statistics : (bool, Generic.t) query
     | CheckLease : (string, int) query
     | GetParticipants : (string, (string * int) counted_list) query
-
+    | GetProgress : (string, Progress.t option) query
+    | GetProgressForPrefix : (string, (int * Progress.t) counted_list) query
 
   type ('i, 'o) update =
     | AddNsmHost : (Nsm_host.id * Nsm_host.t, unit) update
@@ -735,6 +811,7 @@ module Protocol = struct
     | TryGetLease : (string * int, unit) update
     | RegisterParticipant : (string * (string * int), unit) update
     | RemoveParticipant : (string * (string * int), unit) update
+    | UpdateProgress : (string * Progress.Update.t, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -763,6 +840,8 @@ module Protocol = struct
     | Statistics -> Llio.bool_from
     | CheckLease -> Llio.string_from
     | GetParticipants -> Llio.string_from
+    | GetProgress -> Llio.string_from
+    | GetProgressForPrefix -> Llio.string_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -790,7 +869,8 @@ module Protocol = struct
     | Statistics -> Llio.bool_to
     | CheckLease -> Llio.string_to
     | GetParticipants -> Llio.string_to
-
+    | GetProgress -> Llio.string_to
+    | GetProgressForPrefix -> Llio.string_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -861,6 +941,12 @@ module Protocol = struct
          (Llio.pair_from
             Llio.string_from
             Llio.int_from)
+    | GetProgress -> Llio.option_from Progress.from_buffer
+    | GetProgressForPrefix ->
+       Llio.counted_list_from
+         (Llio.pair_from
+            Llio.int_from
+            Progress.from_buffer)
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -932,6 +1018,12 @@ module Protocol = struct
          (Llio.pair_to
             Llio.string_to
             Llio.int_to)
+    | GetProgress -> Llio.option_to Progress.to_buffer
+    | GetProgressForPrefix ->
+      Llio.counted_list_to
+        (Llio.pair_to
+           Llio.int_to
+           Progress.to_buffer)
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -992,6 +1084,7 @@ module Protocol = struct
         (Llio.pair_from
            Llio.string_from
            Llio.int_from)
+    | UpdateProgress -> Llio.pair_from Llio.string_from Progress.Update.from_buffer
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -1046,6 +1139,7 @@ module Protocol = struct
         (Llio.pair_to
            Llio.string_to
            Llio.int_to)
+    | UpdateProgress -> Llio.pair_to Llio.string_to Progress.Update.to_buffer
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -1072,6 +1166,7 @@ module Protocol = struct
     | TryGetLease ->        Llio.unit_from
     | RegisterParticipant ->Llio.unit_from
     | RemoveParticipant ->  Llio.unit_from
+    | UpdateProgress     -> Llio.unit_from
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
     | UpdateNsmHost   -> Llio.unit_to
@@ -1096,6 +1191,7 @@ module Protocol = struct
     | TryGetLease ->        Llio.unit_to
     | RegisterParticipant ->Llio.unit_to
     | RemoveParticipant ->  Llio.unit_to
+    | UpdateProgress     -> Llio.unit_to
 
 
   type request =
@@ -1157,6 +1253,10 @@ module Protocol = struct
                       Wrap_q GetParticipants, 53l, "GetParticipants";
                       Wrap_u RegisterParticipant, 54l, "RegisterParticipant";
                       Wrap_u RemoveParticipant, 55l, "RemoveParticipant";
+
+                      Wrap_q GetProgress, 61l, "GetProgress";
+                      Wrap_u UpdateProgress, 62l, "UpdateProgress";
+                      Wrap_q GetProgressForPrefix, 63l, "GetProgressForPrefix";
                     ]
 
 
@@ -1190,12 +1290,19 @@ module Protocol = struct
       | Unknown_operation               [@value 28]
 
       | Claim_lease_mismatch            [@value 29]
+
+      | Progress_does_not_exist         [@value 30]
+      | Progress_CAS_failed             [@value 31]
     [@@deriving show, enum]
 
     exception Albamgr_exn of t * string
 
-    let failwith ?(payload="") err = raise (Albamgr_exn (err, payload))
-    let failwith_lwt ?(payload="") err = Lwt.fail (Albamgr_exn (err, payload))
+    let payload_2s err = function
+      | None -> show err
+      | Some p -> p
+
+    let failwith ?payload err = raise (Albamgr_exn (err, payload_2s err payload))
+    let failwith_lwt ?payload err = Lwt.fail (Albamgr_exn (err, payload_2s err payload))
 
     let err2int = to_enum
     let int2err x = Option.get_some_default Unknown (of_enum x)

@@ -321,6 +321,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Osd_info_mismatch
             | Osd_already_decommissioned
             | Claim_lease_mismatch
+            | Progress_does_not_exist
+            | Progress_CAS_failed
             | Unknown_operation ->
               Lwt_log.info_f
                 "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"

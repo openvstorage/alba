@@ -21,6 +21,7 @@ let suite = "all" >:::[
     "Choose_test" >::: Choose_test.suite;
     "Nsm_protocol">::: Nsm_protocol_test.suite;
     Nsm_model_test.suite;
+    Albamgr_protocol_test.suite;
     Albamgr_test.suite;
     Proxy_test.suite;
     Alba_test.suite;

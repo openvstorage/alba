@@ -283,15 +283,18 @@ def proxy_stop(proxy_id = 0):
 
 
 @task
-def maintenance_start(n_agents = 1, n_others = 1):
+def maintenance_start(abm_cfg = arakoon_config_file,
+                      n_agents = 1, n_others = 1):
     maintenance_home = "/tmp/alba/maintenance"
 
     local("mkdir -p %s" % maintenance_home)
 
+    maintenance_albmamgr_cfg_file = maintenance_home + "/albamgr.cfg"
+    local("cp %s %s" % (abm_cfg, maintenance_albmamgr_cfg_file))
     with lcd(maintenance_home):
         maintenance_cfg = "%s/maintenance.cfg" % maintenance_home
         dump_to_cfg_as_json(maintenance_cfg,
-                            { 'albamgr_cfg_file' : arakoon_config_file,
+                            { 'albamgr_cfg_file' : maintenance_albmamgr_cfg_file,
                               'log_level' : 'debug'
                             })
 

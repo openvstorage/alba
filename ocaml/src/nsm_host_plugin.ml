@@ -225,6 +225,13 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
             ~first ~finc ~last
             ~max:(cap_max ~max ())
             ~reverse
+      | ListObjectsById ->
+        fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+          NSM.list_objects_by_id
+            db
+            ~first ~finc ~last
+            ~max:(cap_max ~max ())
+            ~reverse
       | ListDeviceKeysToBeDeleted ->
         fun (device_id, { RangeQueryArgs.first; finc; last; max; reverse; }) ->
           NSM.list_device_keys_to_be_deleted db device_id
