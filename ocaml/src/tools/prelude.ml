@@ -663,3 +663,28 @@ let with_timing_lwt f =
   f () >>= fun res ->
   let t1 = Unix.gettimeofday () in
   Lwt.return (t1 -. t0, res)
+
+module Error = struct
+  type ('a, 'b) t =
+    | Ok of 'a
+    | Error of 'b
+
+  let map f = function
+    | Ok a -> Ok (f a)
+    | Error _ as err -> err
+
+  module Lwt = struct
+
+    let return a = Lwt.return (Ok a)
+    let fail b = Lwt.return (Error b)
+
+    let bind t f =
+      t >>= function
+      | Ok a -> f a
+      | (Error b as res) -> Lwt.return res
+
+    let with_timing f =
+      with_timing_lwt f >>= fun (delta, res) ->
+      Lwt.return (map (fun a -> (delta, a)) res)
+  end
+end

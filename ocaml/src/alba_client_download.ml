@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Prelude
 open Lwt_bytes2
 open Slice
 open Alba_statistics
@@ -56,12 +55,14 @@ let download_fragment
       decompress
       ~encryption
       fragment_cache
-      bad_fragment_callback
   =
+  let module E = Prelude.Error.Lwt in
+  let (>>==) = E.bind in
+
   (match osd_id_o with
-   | None -> Lwt.fail_with "can't download fragment from None osd"
-   | Some osd_id -> Lwt.return osd_id)
-  >>= fun osd_id ->
+   | None -> E.fail `NoneOsd
+   | Some osd_id -> E.return osd_id)
+  >>== fun osd_id ->
 
   let t0_fragment = Unix.gettimeofday () in
 
@@ -87,24 +88,13 @@ let download_fragment
             osd_access # with_osd
                        ~osd_id
                        (fun device_client ->
-                        device_client # get_option key))
+                        device_client # get_option key
+                        >>= E.return))
            (let open Asd_protocol.Protocol in
             function
-            | (Error.Exn err) as exn ->
-               begin match err with
-                     | Error.Unknown_error _
-                     | Error.ProtocolVersionMismatch _ ->
-                        bad_fragment_callback
-                          ~namespace_id ~object_id ~object_name
-                          ~chunk_id ~fragment_id ~version_id
-                     | Error.Full (* a bit silly as this is not an update *)
-                     | Error.Assert_failed _
-                     | Error.Unknown_operation ->
-                        ()
-               end;
-               Lwt.fail exn
-            | exn -> Lwt.fail exn)
-         >>= function
+            | Error.Exn err -> E.fail (`AsdError err)
+            | exn -> E.fail (`AsdExn exn))
+         >>== function
          | None ->
             let msg =
               Printf.sprintf
@@ -113,12 +103,7 @@ let download_fragment
                 chunk_id fragment_id version_id
             in
             Lwt_log.warning msg >>= fun () ->
-            bad_fragment_callback
-              ~namespace_id ~object_id ~object_name
-              ~chunk_id ~fragment_id ~version_id;
-            (* TODO loopke die queue harvest en nr albamgr duwt *)
-            (* TODO testje *)
-            Lwt.fail_with msg
+            E.fail `FragmentMissing
          | Some (data:Slice.t) ->
             osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
             state.read <- Unix.gettimeofday () :: state.read;
@@ -128,46 +113,47 @@ let download_fragment
                               (Slice.get_string_unsafe data)
               );
             let hit_or_mis = false in
-            Lwt.return (hit_or_mis, data)
+            E.return (hit_or_mis, data)
        end
     | Some data ->
        let hit_or_mis = true in
-       Lwt.return (hit_or_mis, Slice.wrap_string data)
+       E.return (hit_or_mis, Slice.wrap_string data)
   in
-  with_timing_lwt (fun () -> retrieve key)
 
-  >>= fun (t_retrieve, (hit_or_miss, fragment_data)) ->
+  E.with_timing (fun () -> retrieve key)
+  >>== fun (t_retrieve, (hit_or_miss, fragment_data)) ->
 
   let fragment_data' = Slice.to_bigstring fragment_data in
 
-  with_timing_lwt
+  E.with_timing
     (fun () ->
-     Fragment_helper.verify fragment_data' fragment_checksum)
-  >>= fun (t_verify, checksum_valid) ->
+     Fragment_helper.verify fragment_data' fragment_checksum
+     >>= E.return)
+  >>== fun (t_verify, checksum_valid) ->
 
   (if checksum_valid
-   then Lwt.return ()
+   then E.return ()
    else
      begin
        Lwt_bytes.unsafe_destroy fragment_data';
-       bad_fragment_callback
-         ~namespace_id ~object_id ~object_name
-         ~chunk_id ~fragment_id ~version_id;
-       Lwt.fail_with "Checksum mismatch"
-     end) >>= fun () ->
+       E.fail `ChecksumMismatch
+     end) >>== fun () ->
 
-  with_timing_lwt
+  E.with_timing
     (fun () ->
      Fragment_helper.maybe_decrypt
        encryption
        ~object_id ~chunk_id ~fragment_id
        ~ignore_fragment_id:replication
-       fragment_data')
-  >>= fun (t_decrypt, maybe_decrypted) ->
+       fragment_data'
+     >>= E.return)
+  >>== fun (t_decrypt, maybe_decrypted) ->
 
-  with_timing_lwt
-    (fun () -> decompress ~release_input:true maybe_decrypted)
-  >>= fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
+  E.with_timing
+    (fun () ->
+     decompress ~release_input:true maybe_decrypted
+     >>= E.return)
+  >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 
   let t_fragment = Statistics.({
                                   osd_id;
@@ -179,4 +165,4 @@ let download_fragment
                                   total = Unix.gettimeofday () -. t0_fragment;
                                 }) in
 
-  Lwt.return (t_fragment, maybe_decompressed)
+  E.return (t_fragment, maybe_decompressed)

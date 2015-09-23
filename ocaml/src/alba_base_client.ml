@@ -250,7 +250,19 @@ class client
         decompress
         ~encryption
         fragment_cache
-        (bad_fragment_callback self)
+      >>= function
+      | Prelude.Error.Ok a -> Lwt.return a
+      | Prelude.Error.Error x ->
+         bad_fragment_callback
+           self
+           ~namespace_id ~object_name ~object_id
+           ~chunk_id ~fragment_id ~version_id;
+         match x with
+         | `AsdError err -> Lwt.fail (Asd_protocol.Protocol.Error.Exn err)
+         | `AsdExn exn -> Lwt.fail exn
+         | `NoneOsd -> Lwt.fail_with "can't download fragment from None osd"
+         | `FragmentMissing -> Lwt.fail_with "missing fragment"
+         | `ChecksumMismatch -> Lwt.fail_with "checksum mismatch"
 
 
     (* consumers of this method are responsible for freeing
