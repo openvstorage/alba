@@ -23,16 +23,21 @@ cd ../SOURCES/alba
 mkdir -p                               %{buildroot}%{_bindir}
 cp ocaml/alba.native                   %{buildroot}%{_bindir}/alba
 mkdir -p                               %{buildroot}%{_libdir}/alba/
+
+for i in Jerasure rocksdb isal gf_complete; \
+    do ldd ./ocaml/alba.native \
+            | grep $$i \
+            | grep "=> /" \
+            | awk '{print $$3}' \
+            | xargs -I{} cp -v "{}" %{buildroot}%{_libdir}/alba/ ;\
+done
+
 cp ocaml/albamgr_plugin.cmxs           %{buildroot}%{_libdir}/alba/
 cp ocaml/nsm_host_plugin.cmxs          %{buildroot}%{_libdir}/alba/
-cp /usr/local/lib/libJerasure.so.2     %{buildroot}%{_libdir}/alba/
-cp /usr/local/lib/librocksdb.so        %{buildroot}%{_libdir}/alba/
-cp /usr/local/lib/libgf_complete.so.1  %{buildroot}%{_libdir}/alba/
-cp /usr/local/lib/libisal.so.2         %{buildroot}%{_libdir}/alba/
 
 %files
-%{_bindir}/alba
-%{_libdir}/alba/*
+%attr(-, root, root) %{_bindir}/alba
+%attr(-, root, root) %{_libdir}/alba/*
 
 %post
 echo %{_libdir}/alba/ > /etc/ld.so.conf.d/alba-x86_64.conf
@@ -95,7 +100,7 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 - Create alba 0.5.11 RPM package
 * Tue Jun 23 2015 Jan Doms <jan.doms@openvstorage.com> - 0.5.10
 - Create alba 0.5.10 RPM package
-* Tue Jun 17 2015 Jan Doms <jan.doms@openvstorage.com> - 0.5.9
+* Wed Jun 17 2015 Jan Doms <jan.doms@openvstorage.com> - 0.5.9
 - Create alba 0.5.9 RPM package
 * Thu Jun 11 2015 Jan Doms <jan.doms@openvstorage.com> - 0.5.8
 - Create alba 0.5.8 RPM package
