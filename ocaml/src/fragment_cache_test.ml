@@ -64,7 +64,7 @@ let test_1 () =
     Bytes.set blob 0 'z';     (* _replace_grow *)
     cache # add bid oid blob >>= fun () ->
     (* lookup *)
-    cache # lookup bid oid read_it >>=
+    cache # lookup bid oid >>=
       begin
         function
         | None ->
@@ -116,7 +116,7 @@ let test_3 () =
       | [] -> Lwt.return ()
       | (k, is_some)::rest ->
          begin
-           cache # lookup 0l k read_it >>= fun r ->
+           cache # lookup 0l k >>= fun r ->
            match r, is_some with
            | None  , false  -> Lwt.return ()
            | Some _, true   -> Lwt.return ()
@@ -250,7 +250,7 @@ let test_long () =
           begin
             let bid = Random.int32 10l in
             let oid = Random.int 100 |> Printf.sprintf "%04x" in
-            cache # lookup bid oid read_it
+            cache # lookup bid oid
             >>= function
             | None ->    loop (found    ) (missed + 1) (i-1)
             | Some _  -> loop (found + 1)     missed   (i-1)
