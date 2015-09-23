@@ -1,6 +1,4 @@
 module Generic = struct
-    let with_timing_lwt = Alba_statistics.Statistics.with_timing_lwt
-    let with_timing = Alba_statistics.Statistics.with_timing
     open Stat
     include Stat
 

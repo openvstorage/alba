@@ -16,7 +16,6 @@ limitations under the License.
 
 open Prelude
 open Remotes
-open Alba_statistics
 open Checksum
 open Slice
 open Lwt.Infix
@@ -135,7 +134,7 @@ class osd_access
          | Some osd_info ->
             with_osd_from_pool ~osd_id
                                (fun osd ->
-                                Statistics.with_timing_lwt
+                                with_timing_lwt
                                   (fun () ->
                                    osd # apply_sequence
                                        []

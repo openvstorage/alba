@@ -804,11 +804,11 @@ class client
                  then fragment_size
                  else (object_size - offset)
                in
-               Statistics.with_timing_lwt
+               with_timing_lwt
                  (fun () ->
                   hash2 # update_lwt_bytes_detached fragment 0 fragment_size')
                >>= fun (t_verify', ()) ->
-               Statistics.with_timing_lwt
+               with_timing_lwt
                  (fun () ->
                   write_object_data fragment 0 fragment_size') >>= fun (t_write_data', ()) ->
                Lwt.return (offset + fragment_size',

@@ -225,7 +225,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
          Lwt_extra2.write_all fd_out fragment 0 fragment_l
         )
     in
-    Alba_statistics.Statistics.with_timing_lwt _inner  >>= fun (took,()) ->
+    with_timing_lwt _inner  >>= fun (took,()) ->
     Lwt_log.debug_f "_write_blob path:%s took:%f" path took
   in
 
@@ -992,7 +992,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
              )
           )
       in
-      Alba_statistics.Statistics.with_timing_lwt
+      with_timing_lwt
         (fun () ->
          Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
          Lwt_mutex.with_lock _mutex _add

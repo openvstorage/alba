@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
 open Lwt_bytes2
 open Slice
 open Alba_statistics
@@ -133,13 +134,13 @@ let download_fragment
        let hit_or_mis = true in
        Lwt.return (hit_or_mis, Slice.wrap_string data)
   in
-  Statistics.with_timing_lwt (fun () -> retrieve key)
+  with_timing_lwt (fun () -> retrieve key)
 
   >>= fun (t_retrieve, (hit_or_miss, fragment_data)) ->
 
   let fragment_data' = Slice.to_bigstring fragment_data in
 
-  Statistics.with_timing_lwt
+  with_timing_lwt
     (fun () ->
      Fragment_helper.verify fragment_data' fragment_checksum)
   >>= fun (t_verify, checksum_valid) ->
@@ -155,7 +156,7 @@ let download_fragment
        Lwt.fail_with "Checksum mismatch"
      end) >>= fun () ->
 
-  Statistics.with_timing_lwt
+  with_timing_lwt
     (fun () ->
      Fragment_helper.maybe_decrypt
        encryption
@@ -164,7 +165,7 @@ let download_fragment
        fragment_data')
   >>= fun (t_decrypt, maybe_decrypted) ->
 
-  Statistics.with_timing_lwt
+  with_timing_lwt
     (fun () -> decompress ~release_input:true maybe_decrypted)
   >>= fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 

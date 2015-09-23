@@ -1757,7 +1757,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           Lwt.catch
             (fun () ->
              let (delta,(res,res_serializer)) =
-               Statistics.with_timing
+               with_timing
                (fun () ->
                 let req = read_query_i r req_buf in
                 let res = handle_query r req in
@@ -1789,7 +1789,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             | cnt ->
                Lwt.catch
                  (fun () ->
-                  Statistics.with_timing_lwt
+                  with_timing_lwt
                     (fun () ->
                      handle_update r req >>= fun (res, upds) ->
                      backend # push_update

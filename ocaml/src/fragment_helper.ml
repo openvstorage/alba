@@ -145,7 +145,6 @@ let pack_fragment
     encryption
     checksum_algo
   =
-  let with_timing_lwt = Alba_statistics.Statistics.with_timing_lwt in
   with_timing_lwt
     (fun () ->
        maybe_compress compression fragment

@@ -650,3 +650,16 @@ module Lwt_list = struct
         | Not_found -> Lwt.return_none
         | exn -> Lwt.fail exn)
 end
+
+let with_timing f =
+  let t0 = Unix.gettimeofday () in
+  let res = f () in
+  let t1 = Unix.gettimeofday () in
+  t1 -. t0, res
+
+let with_timing_lwt f =
+  let t0 = Unix.gettimeofday () in
+  let open Lwt.Infix in
+  f () >>= fun res ->
+  let t1 = Unix.gettimeofday () in
+  Lwt.return (t1 -. t0, res)

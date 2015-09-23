@@ -17,7 +17,6 @@ limitations under the License.
 open Lwt
 open Prelude
 open Proxy_protocol
-open Alba_statistics
 
 let ini_hash_to_string tbl =
   let buf = Buffer.create 20 in
@@ -357,7 +356,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     Llio.input_string ic >>= fun req_s ->
     let buf = Llio.make_buffer req_s 0 in
     let code = Llio.int_from buf in
-    Statistics.with_timing_lwt
+    with_timing_lwt
       (fun () -> handle_request buf code)
     >>= fun (time_inner, ()) ->
     (if time_inner > 0.5

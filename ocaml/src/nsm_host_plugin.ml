@@ -407,7 +407,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        Llio.input_string ic >>= fun req_s ->
        let req_buf = Llio.make_buffer req_s 0 in
        let tag = Llio.int32_from req_buf in
-       Protocol.NSMHStatistics.with_timing_lwt
+       with_timing_lwt
          (fun () -> do_one tag req_buf)
        >>= fun (delta,r) ->
        Protocol.NSMHStatistics.new_delta statistics tag delta;

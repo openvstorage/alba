@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Lwt.Infix
+open Prelude
 open Fragment_cache
 open Albamgr_access
 open Alba_base_client
 open Alba_statistics
 open Alba_client_errors
+open Lwt.Infix
 
 class alba_client (base_client : Alba_base_client.client)
   =
@@ -276,7 +277,7 @@ class alba_client (base_client : Alba_base_client.client)
 
       =
       let t0_object = Unix.gettimeofday () in
-      Statistics.with_timing_lwt
+      with_timing_lwt
         (fun () -> self # get_object_manifest'
                         ~namespace_id ~object_name
                         ~consistent_read ~should_cache)
@@ -308,7 +309,7 @@ class alba_client (base_client : Alba_base_client.client)
               | Error.Exn Error.NotEnoughFragments as exn ->
                  (* Download probably failed because of stale manifest *)
                  Lwt_log.info_f ~exn "retrying " >>= fun () ->
-                 Statistics.with_timing_lwt
+                 with_timing_lwt
                    (fun () ->
                     Manifest_cache.ManifestCache.remove
                       (base_client # get_manifest_cache)
