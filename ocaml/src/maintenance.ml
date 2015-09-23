@@ -1214,18 +1214,16 @@ class client ?(retry_timeout = 60.)
           | None -> Lwt.return ()
           | Some p ->
              let open Albamgr_protocol.Protocol in
-             match p, action with
-             | Progress.Rewrite { Progress.count; next; }, Work.Rewrite ->
-                let fetch ~first ~last =
-                  alba_client # with_nsm_client'
-                              ~namespace_id
-                              (fun client ->
-                               client # list_objects_by_id
-                                      ~first ~finc:true
-                                      ~last
-                                      ~max:100 ~reverse:false)
-                in
-
+             let fetch ~first ~last =
+               alba_client # with_nsm_client'
+                           ~namespace_id
+                           (fun client ->
+                            client # list_objects_by_id
+                                   ~first ~finc:true
+                                   ~last
+                                   ~max:100 ~reverse:false)
+             in
+             let get_next_batch { Progress.count; next; } =
                 (match next, last with
                  | None, _ -> Lwt.return ((0,[]), false)
                  | Some next, None -> fetch ~first:next ~last:None
@@ -1233,8 +1231,34 @@ class client ?(retry_timeout = 60.)
                     if next >= last
                     then Lwt.return ((0,[]), false)
                     else fetch ~first:next ~last:(Some (last, false)))
+             in
+             let get_update_progress_base { Progress.count; _; } ((cnt, objs), has_more) =
+                let next =
+                  if has_more
+                  then Option.map
+                         (fun mf -> mf.Nsm_model.Manifest.object_id ^ "\000")
+                         (List.last objs)
+                  else last
+                in
+                { Progress.count = Int64.(add count (of_int cnt));
+                  next; }
+             in
+             let update_progress_and_maybe_continue new_p has_more =
+               let po = Some new_p in
+               alba_client # mgr_access # update_progress
+                           name p po >>= fun () ->
 
-                >>= fun ((cnt, objs), has_more) ->
+               if not (filter work_id)
+               then Lwt.fail NotMyTask
+               else if has_more
+               then inner po
+               else Lwt.return ()
+             in
+
+             match p, action with
+             | Progress.Rewrite pb, Work.Rewrite ->
+
+                get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
 
                 Lwt_list.iter_s
                   (fun manifest ->
@@ -1253,32 +1277,38 @@ class client ?(retry_timeout = 60.)
                       | exn -> Lwt.fail exn))
                   objs >>= fun () ->
 
-                let next =
-                  if has_more
-                  then Option.map
-                         (fun mf -> mf.Nsm_model.Manifest.object_id ^ "\000")
-                         (List.last objs)
-                  else last
-                in
-                let po = Some (Progress.Rewrite
-                                 { Progress.count = Int64.(add count (of_int cnt));
-                                   next; })
-                in
+                let new_p = Progress.Rewrite (get_update_progress_base pb batch) in
 
-                alba_client # mgr_access # update_progress
-                            name p po >>= fun () ->
-
-                if not (filter work_id)
-                then Lwt.fail NotMyTask
-                else if has_more
-                then inner po
-                else Lwt.return ()
-             | Progress.Verify ({ Progress.count; next; },
-                                { Progress.fragments_detected_missing;
-                                  fragments_osd_unavailable;
-                                  fragments_checksum_mismatch }),
+                update_progress_and_maybe_continue
+                  new_p
+                  has_more
+             | Progress.Verify (pb,
+                                ({ Progress.fragments_detected_missing;
+                                   fragments_osd_unavailable;
+                                   fragments_checksum_mismatch } as progress_verify)),
                Work.Verify _ ->
-                Lwt.fail_with "TODO"
+                get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
+
+                Lwt_list.iter_s
+                  (fun manifest ->
+                   (* TODO
+                    * - get all fragments, check result...
+                    *   maybe change return type van download fragment...
+                    * - do inline repair where needed
+                    *)
+                   Lwt.return ())
+                  objs >>= fun () ->
+
+                let new_p = Progress.Verify
+                              (get_update_progress_base pb batch,
+                               (* TODO update this based the result
+                                * of iterating (mapping) over all
+                                * manifests *)
+                               progress_verify) in
+
+                update_progress_and_maybe_continue
+                  new_p
+                  has_more
              | _, Work.Rewrite
              | _, Work.Verify _ ->
                 Lwt.fail_with "badly set up IterNamespace task!"

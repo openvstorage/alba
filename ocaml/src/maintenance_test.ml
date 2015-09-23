@@ -461,6 +461,75 @@ let test_rewrite_namespace () =
 
      Lwt.return ())
 
+let test_verify_namespace () =
+  let test_name = "test_verify_namespace" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+     alba_client # create_namespace
+                 ~preset_name:None
+                 ~namespace () >>= fun namespace_id ->
+
+     let open Nsm_model in
+
+     let object_name = "abc" in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data:"efg"
+                 ~checksum_o:None
+                 ~allow_overwrite:NoPrevious >>= fun (mf, _) ->
+
+     let object_id = mf.Manifest.object_id in
+
+     (* remove a fragment *)
+     let locations = List.hd_exn (mf.Manifest.fragment_locations) in
+     let victim_osd_o, version0 = List.hd_exn locations in
+     let victim_osd = Option.get_some victim_osd_o in
+     Alba_test.delete_fragment
+       alba_client namespace_id object_id
+       (victim_osd, 0)
+       0 0
+     >>= fun () ->
+
+     let open Albamgr_protocol.Protocol in
+     let name = "name" in
+     let cnt = 10 in
+     alba_client # mgr_access # add_work_items
+                 [ Work.(IterNamespace
+                           (Verify
+                              { checksum = true;
+                                repair_osd_unavailable = true; },
+                            namespace_id,
+                            name,
+                            cnt)) ] >>= fun () ->
+
+     Alba_test.wait_for_work alba_client >>= fun () ->
+     Alba_test.wait_for_work alba_client >>= fun () ->
+
+     alba_client # with_nsm_client'
+                 ~namespace_id
+                 (fun client ->
+                  client # get_object_manifest_by_name object_name)
+     >>= fun mfo ->
+     let mf = Option.get_some mfo in
+     assert (mf.Manifest.version_id = 1);
+     assert (mf.Manifest.fragment_locations
+             |> List.hd_exn
+             |> List.hd_exn
+             |> snd
+             = 1);
+
+     (* TODO test
+     - corrupted fragment
+     - fragment that can't be downloaded (because asd got corrupted)
+     - fragment on asd that is offline
+
+     assert all those fragments are now ok
+      *)
+
+     Lwt.return ())
+
 
 open OUnit
 
@@ -471,4 +540,5 @@ let suite = "maintenance_test" >:::[
     "test_repair_orange" >:: test_repair_orange;
     "test_repair_orange2" >:: test_repair_orange2;
     "test_rewrite_namespace" >:: test_rewrite_namespace;
+    "test_verify_namespace" >:: test_verify_namespace;
 ]
