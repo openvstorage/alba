@@ -1,12 +1,11 @@
 #!/bin/bash
 
-eval `opam config env`
-
-mkdir ./redhat/SOURCES
-ln -s '../../' ./redhat/SOURCES/alba | true
-ALBA_HOME=`pwd`
-cd
-rm rpmbuild | true
-ln -s $ALBA_HOME/redhat rpmbuild
-cd rpmbuild
-rpmbuild -ba SPECS/alba.spec
+eval `${opam_env}`
+export START=${PWD}
+echo START=${START}
+mkdir -p ${START}/rpmbuild/SOURCES
+cd ${START}/rpmbuild/SOURCES/
+ln -s ${START} ./alba
+cd ${START}
+chown root:root ./redhat/SPECS/alba.spec
+rpmbuild --define "_topdir ${START}/rpmbuild" -bb ./redhat/SPECS/alba.spec
