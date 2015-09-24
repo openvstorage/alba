@@ -499,12 +499,12 @@ def deb_integration_test(arakoon_version,
     alba_package = _alba_package(alba_version, alba_revision)
     local("sudo dpkg -r arakoon | true")
     local("rm arakoon_%s_amd64.deb | true" % arakoon_version)
-    local("wget http://jenkins.cloudfounders.com/view/alba/job/arakoon_debian/lastSuccessfulBuild/artifact/arakoon_%s_amd64.deb" % arakoon_version)
+    local("wget https://github.com/openvstorage/arakoon/releases/download/%s/arakoon_%s_amd64.deb" % (arakoon_version,arakoon_version))
     local("sudo dpkg -i arakoon_%s_amd64.deb" % arakoon_version)
 
     local("sudo dpkg -r alba | true")
     local("rm alba_%s_amd64.deb | true" % alba_package)
-    local("wget http://jenkins.cloudfounders.com/view/alba/job/alba_debian/lastSuccessfulBuild/artifact/alba_%s_amd64.deb" % alba_package)
+    local("wget http://10.100.129.100:8080/view/alba/job/alba_docker_deb_from_github/lastSuccessfulBuild/artifact/alba_%s_amd64.deb" % alba_package)
     local("sudo dpkg -i alba_%s_amd64.deb" % alba_package)
 
     demo_kill()
@@ -544,13 +544,10 @@ def rpm_integration_test(arakoon_version,
 
     arakoon_rpm = "arakoon-%s-3.el7.centos.x86_64.rpm" % arakoon_version
     alba_rpm = "alba-%s.el7.centos.x86_64.rpm" % alba_package
-    jenkins_prefix = "http://jenkins.cloudfounders.com/view/alba/job"
-    rpm_path = 'lastSuccessfulBuild/artifact/redhat/RPMS/x86_64'
     local("rm -f %s" % arakoon_rpm)
-    local("wget %s/arakoon_rpm/%s/%s" % (jenkins_prefix, rpm_path, arakoon_rpm))
+    local("wget https://github.com/openvstorage/arakoon/releases/download/%s/%s" % (arakoon_version, arakoon_rpm))
     local("rm -f %s" % alba_rpm)
-    local("wget %s/alba_rpm/%s/%s" %
-          (jenkins_prefix, rpm_path, alba_rpm))
+    local("wget http://10.100.129.100:8080/view/alba/job/alba_docker_rpm_from_github/lastSuccessfulBuild/artifact/rpmbuild/RPMS/x86_64/%s" % (alba_rpm,))
 
 
     local("sudo yum -y erase arakoon | true")
