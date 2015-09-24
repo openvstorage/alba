@@ -492,6 +492,28 @@ let test_verify_namespace () =
        0 0
      >>= fun () ->
 
+     (* overwrite a fragment with garbage (to create a checksum mismatch) *)
+     begin
+       let osd_id_o, version_id = List.nth_exn locations 1 in
+       let osd_id = Option.get_some osd_id_o in
+       alba_client # with_osd
+         ~osd_id
+         (fun osd ->
+          osd # apply_sequence
+              []
+              [ Osd.Update.set_string
+                  (Osd_keys.AlbaInstance.fragment
+                     ~namespace_id
+                     ~object_id ~version_id
+                     ~chunk_id:0
+                     ~fragment_id:1)
+                  (get_random_string 39)
+                  Checksum.NoChecksum
+                  false; ] >>= function
+          | Osd.Ok -> Lwt.return ()
+          | _ -> assert false)
+     end >>= fun () ->
+
      let open Albamgr_protocol.Protocol in
      let name = "name" in
      let cnt = 10 in
@@ -514,19 +536,20 @@ let test_verify_namespace () =
      >>= fun mfo ->
      let mf = Option.get_some mfo in
      assert (mf.Manifest.version_id = 1);
+
+     (* missing fragment *)
      assert (mf.Manifest.fragment_locations
              |> List.hd_exn
              |> List.hd_exn
              |> snd
              = 1);
 
-     (* TODO test
-     - corrupted fragment
-     - fragment that can't be downloaded (because asd got corrupted)
-     - fragment on asd that is offline
-
-     assert all those fragments are now ok
-      *)
+     (* checksum mismatch fragment *)
+     assert (mf.Manifest.fragment_locations
+             |> List.hd_exn
+             |> fun l -> List.nth_exn l 1
+             |> snd
+             = 1);
 
      Lwt.return ())
 
