@@ -107,6 +107,10 @@ RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudo
 
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
+
+# be uniform on shared lib locations
+RUN cp /usr/local/lib/librocksdb.so* /lib64/
+
 RUN cd /home/alba && git clone https://github.com/openvstorage/alba.git
 
 RUN yum -y install rpm-build
@@ -123,5 +127,5 @@ RUN rpm -ivv http://people.redhat.com/zaitcev/tmp/jerasure-2.0-1.fc20.src.rpm
 RUN rpmbuild -ba /root/rpmbuild/SPECS/jerasure.spec
 RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-2.0-1.el7.centos.x86_64.rpm
 RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-devel-2.0-1.el7.centos.x86_64.rpm
-
+RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 CMD eval `${opam_env}` && opam list

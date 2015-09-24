@@ -34,7 +34,7 @@ RUN apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libboost-all-dev \
         fuse
 
-RUN useradd jenkins -g root
+RUN useradd jenkins -u 1001 -g root
 
 RUN wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
 RUN sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
@@ -82,4 +82,5 @@ RUN eval `${opam_env}` && opam install -y arakoon.1.8.8
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
 RUN cd /home/alba && git clone https://github.com/openvstorage/alba.git
+RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 CMD eval `${opam_env}` && opam list

@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from fabric.api import local, task, warn_only
-from fabric.context_managers import lcd, path
+from fabric.context_managers import lcd, path, show
 import os
 import time
 from env import *
@@ -429,7 +429,7 @@ def demo_setup(kind = default_kind, multicast = True, n_agents = 1, n_proxies = 
 
 
 @task
-def smoke_test():
+def smoke_test(sudo = False):
     m = arakoon_who_master()
     print "master:", m
     fuser = "fuser"
@@ -444,10 +444,16 @@ def smoke_test():
         pass
 
     if centos:
-        fuser = "sudo fuser"
+        print "we're on centos"
+        sudo = True
+
+    my_fuser = "fuser"
+
+    if sudo:
+        my_fuser = "sudo fuser"
 
     def how_many_osds():
-        cmd = "%s -n tcp " % fuser
+        cmd = "%s -n tcp " % my_fuser
         for i in range(N):
             cmd += " %i" % (8000 + i)
         n = 0
@@ -498,14 +504,14 @@ def deb_integration_test(arakoon_version,
 
     alba_package = _alba_package(alba_version, alba_revision)
     local("sudo dpkg -r arakoon | true")
-    local("rm arakoon_%s_amd64.deb | true" % arakoon_version)
-    local("wget https://github.com/openvstorage/arakoon/releases/download/%s/arakoon_%s_amd64.deb" % (arakoon_version,arakoon_version))
-    local("sudo dpkg -i arakoon_%s_amd64.deb" % arakoon_version)
-
     local("sudo dpkg -r alba | true")
-    local("rm alba_%s_amd64.deb | true" % alba_package)
+    local("rm -f arakoon_%s_amd64.deb | true" % arakoon_version)
+    local("rm -f alba_%s_amd64.deb | true" % alba_package)
+
+    local("wget https://github.com/openvstorage/arakoon/releases/download/%s/arakoon_%s_amd64.deb" % (arakoon_version,arakoon_version))
+    local("sudo gdebi -n arakoon_%s_amd64.deb" % arakoon_version)
     local("wget http://10.100.129.100:8080/view/alba/job/alba_docker_deb_from_github/lastSuccessfulBuild/artifact/alba_%s_amd64.deb" % alba_package)
-    local("sudo dpkg -i alba_%s_amd64.deb" % alba_package)
+    local("sudo gdebi -n alba_%s_amd64.deb" % alba_package)
 
     demo_kill()
 
@@ -523,7 +529,12 @@ def deb_integration_test(arakoon_version,
         '2> /dev/null' ]
     local(' '.join(cmd))
 
-    smoke_test()
+    for i in range(N):
+        local("alba asd-statistics -h ::1 -p %i" % (8000+i))
+
+    # TODO: why doesn't this work?
+    #with show('debug'):
+    #    smoke_test(sudo=True)
 
     demo_kill()
 
@@ -541,6 +552,9 @@ def rpm_integration_test(arakoon_version,
     if not os.path.exists("/etc/redhat-release"):
         raise Exception("should be run on redhat")
     alba_package = _alba_package(alba_version, "1")
+
+    local("sudo yum -y erase arakoon | true")
+    local("sudo yum -y erase alba | true")
 
     arakoon_rpm = "arakoon-%s-3.el7.centos.x86_64.rpm" % arakoon_version
     alba_rpm = "alba-%s.el7.centos.x86_64.rpm" % alba_package
@@ -569,9 +583,11 @@ def rpm_integration_test(arakoon_version,
         '2> /dev/null' ]
     local(' '.join(cmd))
     print "got here..."
-    with path('/sbin'): # for CentOS
-        smoke_test()
-
+    #with path('/sbin'): # for CentOS
+    #    smoke_test()
+    #
+    for i in range(N):
+        local("alba asd-statistics -h ::1 -p %i" % (8000+i))
     demo_kill()
 
     local("sudo yum -y erase arakoon alba")
