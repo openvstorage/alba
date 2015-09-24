@@ -1746,9 +1746,10 @@ let test_stale_manifest_download () =
                        ~should_cache:false
           >>= fun (_, manifest_o) ->
           let manifest = Option.get_some manifest_o in
-          maintenance_client # repair_object_rewrite
-                             ~namespace_id
-                             ~manifest >>= fun () ->
+          Repair.rewrite_object
+            (alba_client2 # get_base_client)
+            ~namespace_id
+            ~manifest >>= fun () ->
           maintenance_client # clean_obsolete_keys_namespace
                              ~once:true ~namespace_id >>= fun () ->
           Lwt.return ())

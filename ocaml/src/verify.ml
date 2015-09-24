@@ -31,7 +31,7 @@ let verify_and_maybe_repair_object
 
   let osd_access = alba_client # osd_access in
 
-  if not verify_checksum
+  if true (* not verify_checksum *)
   then
     begin
       Lwt_list.mapi_p
@@ -64,14 +64,51 @@ let verify_and_maybe_repair_object
            chunk_location)
         manifest.Manifest.fragment_locations >>= fun results ->
 
-      (* TODO per chunk:
-       * - needs_repair = are there missing (or unavailable) fragments
-       * - repair can be done by restoring fragments or needs rewrite?
-       * => be lazy ... try repair, and if it fails do a rewrite
-       *    just like is done in decommission
-       *
-       * repairing `NoneOsd while at it would be nice but is not needed
-       *)
+      let _, problem_fragments =
+        List.fold_left
+          (fun (chunk_id, acc) ls ->
+           let _, acc' =
+             List.fold_left
+               (fun (fragment_id, acc) ->
+                function
+                | `NoneOsd
+                | `Ok -> (fragment_id + 1, acc)
+                | `Missing
+                | `Unavailable -> (fragment_id + 1, (chunk_id, fragment_id) :: acc))
+               (0, acc)
+               ls
+           in
+           (chunk_id + 1, acc'))
+          (0, [])
+          results
+      in
+
+      (if problem_fragments <> []
+       then
+         begin
+           Lwt_log.debug_f
+             "verify results in repairing fragments: %s"
+             ([%show : (int * int) list] problem_fragments) >>= fun () ->
+
+           Lwt.catch
+             (fun () ->
+              (* TODO use maintenance_client # repair_object instead? *)
+              Repair.repair_object_generic_and_update_manifest
+                alba_client
+                ~namespace_id
+                ~manifest
+                ~problem_osds:Int32Set.empty
+                ~problem_fragments)
+             (fun exn ->
+              Repair.rewrite_object
+                alba_client
+                ~namespace_id
+                ~manifest)
+         end
+       else
+         Lwt.return ()) >>= fun () ->
+
+      (* TODO report back on what happened... *)
       Lwt.return []
     end
   else

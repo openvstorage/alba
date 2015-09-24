@@ -265,9 +265,10 @@ class client ?(retry_timeout = 60.)
             Lwt_extra2.ignore_errors
               ~logging:true
               (fun () ->
-               self # repair_object_rewrite
-                    ~namespace_id
-                    ~manifest))
+               Repair.rewrite_object
+                 alba_client
+                 ~namespace_id
+                 ~manifest))
         )
         manifests >>= fun () ->
 
@@ -638,36 +639,11 @@ class client ?(retry_timeout = 60.)
             ~problem_osds
         end
       else
-        self # repair_object_rewrite
-             ~namespace_id
-             ~manifest
+        Repair.rewrite_object
+          alba_client
+          ~namespace_id
+          ~manifest
 
-    method repair_object_rewrite
-             ~namespace_id ~manifest =
-      let open Nsm_model in
-
-      Lwt_log.debug_f
-        "Repairing %s in namespace %li"
-        (Manifest.show manifest) namespace_id
-      >>= fun () ->
-
-      let object_reader =
-        new Object_reader2.object_reader
-            alba_client
-            namespace_id manifest in
-
-      let object_name = manifest.Manifest.name in
-      let checksum_o = Some manifest.Manifest.checksum in
-      let allow_overwrite = PreviousObjectId manifest.Manifest.object_id in
-
-      alba_client # upload_object'
-        ~namespace_id
-        ~object_name
-        ~object_reader
-        ~checksum_o
-        ~allow_overwrite >>= fun _ ->
-
-      Lwt.return ()
 
     method rebalance_namespace
              ?delay
@@ -886,7 +862,7 @@ class client ?(retry_timeout = 60.)
             if cnt > 0
             then
               Lwt_list.iter_s
-                (fun manifest -> self # repair_object_rewrite ~namespace_id ~manifest)
+                (fun manifest -> Repair.rewrite_object alba_client ~namespace_id ~manifest)
                 objs >>= fun () ->
               Lwt.return true
             else
@@ -1108,19 +1084,10 @@ class client ?(retry_timeout = 60.)
 
                 Lwt_list.iter_s
                   (fun manifest ->
-                   Lwt.catch
-                     (fun () ->
-                      self # repair_object_rewrite
-                           ~namespace_id
-                           ~manifest)
-                     (let open Nsm_model.Err in
-                      function
-                      | Nsm_exn (Overwrite_not_allowed, _) ->
-                        (* ignore this one ... the object was overwritten
-                         * already in the meantime, which is just fine for us
-                         *)
-                        Lwt.return ()
-                      | exn -> Lwt.fail exn))
+                   Repair.rewrite_object
+                     alba_client
+                     ~namespace_id
+                     ~manifest)
                   objs >>= fun () ->
 
                 let new_p = Progress.Rewrite (get_update_progress_base pb batch) in

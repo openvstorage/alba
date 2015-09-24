@@ -175,3 +175,42 @@ let repair_object_generic_and_update_manifest
     ([%show : (int *int * int32) list] updated_object_locations)
   >>= fun () ->
   Lwt.return ()
+
+let rewrite_object
+      alba_client
+      ~namespace_id
+      ~manifest =
+  let open Nsm_model in
+
+  Lwt_log.debug_f
+    "Repairing %s in namespace %li"
+    (Manifest.show manifest) namespace_id
+  >>= fun () ->
+
+  let object_reader =
+    new Object_reader2.object_reader
+        alba_client
+        namespace_id manifest in
+
+  let object_name = manifest.Manifest.name in
+  let checksum_o = Some manifest.Manifest.checksum in
+  let allow_overwrite = PreviousObjectId manifest.Manifest.object_id in
+
+  Lwt.catch
+    (fun () ->
+     alba_client # upload_object'
+                 ~namespace_id
+                 ~object_name
+                 ~object_reader
+                 ~checksum_o
+                 ~allow_overwrite >>= fun _ ->
+     Lwt.return ())
+    (let open Nsm_model.Err in
+     function
+     | Nsm_exn (Overwrite_not_allowed, _) ->
+        (* ignore this one ... the object was overwritten
+         * already in the meantime, which is just fine when we're
+         * trying to rewrite it
+         *)
+        Lwt.return ()
+     | exn -> Lwt.fail exn)
