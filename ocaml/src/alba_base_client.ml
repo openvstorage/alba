@@ -66,14 +66,14 @@ class client
   let bad_fragment_callback
         self
         ~namespace_id ~object_id ~object_name
-        ~chunk_id ~fragment_id ~version_id =
+        ~chunk_id ~fragment_id ~location =
     Manifest_cache.ManifestCache.remove
       manifest_cache
       namespace_id object_name;
     bad_fragment_callback
       self
       ~namespace_id ~object_id ~object_name
-      ~chunk_id ~fragment_id ~version_id
+      ~chunk_id ~fragment_id ~location
   in
   object(self)
 
@@ -229,23 +229,21 @@ class client
      * the returned fragment bigstring
      *)
     method download_fragment
-        ~osd_id_o
+        ~location
         ~namespace_id
         ~object_id ~object_name
         ~chunk_id ~fragment_id
         ~replication
-        ~version_id
         ~fragment_checksum
         decompress
         ~encryption =
       Alba_client_download.download_fragment
         osd_access
-        ~osd_id_o
+        ~location
         ~namespace_id
         ~object_id ~object_name
         ~chunk_id ~fragment_id
         ~replication
-        ~version_id
         ~fragment_checksum
         decompress
         ~encryption
@@ -256,7 +254,7 @@ class client
          bad_fragment_callback
            self
            ~namespace_id ~object_name ~object_id
-           ~chunk_id ~fragment_id ~version_id;
+           ~chunk_id ~fragment_id ~location;
          match x with
          | `AsdError err -> Lwt.fail (Asd_protocol.Protocol.Error.Exn err)
          | `AsdExn exn -> Lwt.fail exn
@@ -288,19 +286,18 @@ class client
 
       let threads : unit Lwt.t list =
         List.mapi
-          (fun fragment_id ((osd_id_o, version_id), fragment_checksum) ->
+          (fun fragment_id (location, fragment_checksum) ->
              let t =
                Lwt.catch
                  (fun () ->
                     self # download_fragment
                       ~namespace_id
-                      ~osd_id_o
+                      ~location
                       ~object_id
                       ~object_name
                       ~chunk_id
                       ~fragment_id
                       ~replication:(k=1)
-                      ~version_id
                       ~fragment_checksum
                       decompress
                       ~encryption
@@ -573,13 +570,13 @@ class client
                   let download_fragments () =
                     Lwt_list.map_p
                       (fun (fragment_id, _, _) ->
-                         let (osd_id_o, version_id), fragment_checksum =
+                         let location, fragment_checksum =
                            List.nth_exn chunk_locations fragment_id
                          in
                          self # download_fragment
                            ~namespace_id
                            ~object_id ~object_name
-                           ~osd_id_o ~version_id
+                           ~location
                            ~chunk_id ~fragment_id
                            ~replication:(k=1)
                            ~fragment_checksum

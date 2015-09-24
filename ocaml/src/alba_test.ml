@@ -953,7 +953,7 @@ let test_missing_corrupted_fragment () =
       (alba_client (* : Alba_client.alba_client *))
       ~namespace_id
       ~object_id ~object_name
-      ~chunk_id ~fragment_id ~version_id =
+      ~chunk_id ~fragment_id ~location =
     Lwt.ignore_result
       (Lwt_extra2.ignore_errors
          (fun () ->
@@ -961,7 +961,7 @@ let test_missing_corrupted_fragment () =
                    ~namespace_id ~object_id
                    ~object_name
                    ~chunk_id
-                   ~fragment_id ~version_id))
+                   ~fragment_id ~version_id:(snd location)))
   in
   test_with_alba_client
     ~bad_fragment_callback

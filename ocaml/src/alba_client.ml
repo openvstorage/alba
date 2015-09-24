@@ -394,7 +394,7 @@ let with_client albamgr_client_cfg
                 ?(bad_fragment_callback = fun
                     alba_client
                     ~namespace_id ~object_id ~object_name
-                    ~chunk_id ~fragment_id ~version_id -> ())
+                    ~chunk_id ~fragment_id ~location -> ())
                 ?(albamgr_connection_pool_size = 10)
                 ?(nsm_host_connection_pool_size = 10)
                 ?(osd_connection_pool_size = 10)

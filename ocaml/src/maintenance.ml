@@ -1286,18 +1286,16 @@ class client ?(retry_timeout = 60.)
                                 ({ Progress.fragments_detected_missing;
                                    fragments_osd_unavailable;
                                    fragments_checksum_mismatch } as progress_verify)),
-               Work.Verify _ ->
+               Work.Verify { checksum; repair_osd_unavailable; } ->
                 get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
 
-                Lwt_list.iter_s
-                  (fun manifest ->
-                   (* TODO
-                    * - get all fragments, check result...
-                    *   maybe change return type van download fragment...
-                    * - do inline repair where needed
-                    *)
-                   Lwt.return ())
-                  objs >>= fun () ->
+                Lwt_list.map_s
+                  (Verify.verify_and_maybe_repair_object
+                     alba_client
+                     ~namespace_id
+                     ~verify_checksum:checksum
+                     ~repair_osd_unavailable)
+                  objs >>= fun _ ->
 
                 let new_p = Progress.Verify
                               (get_update_progress_base pb batch,

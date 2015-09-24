@@ -45,8 +45,7 @@ let get_object_manifest'
  *)
 let download_fragment
       (osd_access : osd_access)
-      (* TODO Nsm_model.location instead? *)
-      ~osd_id_o ~version_id
+      ~location
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
@@ -58,6 +57,8 @@ let download_fragment
   =
   let module E = Prelude.Error.Lwt in
   let (>>==) = E.bind in
+
+  let osd_id_o, version_id = location in
 
   (match osd_id_o with
    | None -> E.fail `NoneOsd
