@@ -634,60 +634,6 @@ let namespace_recovery_agent_cmd =
   ),
   Term.info "namespace-recovery-agent" ~doc:"recover the contents of a namespace from the osds"
 
-let verify_namespace cfg_file namespace =
-  let t () =
-    with_alba_client
-      cfg_file
-      (fun client ->
-       client # nsm_host_access # with_nsm_client
-              ~namespace
-              (fun client ->
-               client # list_all_objects ()) >>= fun (cnt, objs) ->
-       Lwt_list.map_s
-         (fun object_name ->
-          Lwt.catch
-            (fun () ->
-             client # download_object_generic
-                    ~namespace
-                    ~object_name
-                    ~consistent_read:false
-                    ~should_cache:false
-                    ~write_object_data:(fun size ->
-                                        Lwt.return
-                                          begin
-                                            fun src offset length ->
-                                            (* ignore all data
-                                             * alba_client will verify checksum. *)
-                                            Lwt.return ()
-                                          end)
-             >>= fun _ ->
-             Lwt.return (`Ok object_name))
-            (fun exn ->
-             Lwt.return (`Failed (object_name, exn))))
-         objs >>= fun results ->
-       let ok, faileds =
-         List.fold_left
-           (fun (ok, faileds) ->
-            function
-            | `Ok object_name -> (ok + 1, faileds)
-            | `Failed (object_name, exn) -> (ok, (object_name, exn) :: faileds))
-           (0, [])
-           results
-       in
-       Lwt_log.info_f "Verified %i objects. %i downloads succeeded." cnt ok >>= fun () ->
-       Lwt_list.iter_s
-         (fun (object_name, exn) ->
-          Lwt_log.info_f ~exn "Downloading object %s failed" object_name)
-         faileds)
-  in
-  lwt_cmd_line false t
-
-let verify_namespace_cmd =
-  Term.(pure verify_namespace
-        $ alba_cfg_file
-        $ namespace 0),
-  Term.info "verify-namespace" ~doc:"verifies all objects of a namespace can be downloaded"
-
 let unit_tests produce_xml alba_cfg_file only_test =
   Albamgr_test.ccfg_ref :=
     Some (Albamgr_protocol.Protocol.Arakoon_config.from_config_file alba_cfg_file);
@@ -822,8 +768,6 @@ let () =
       alba_get_disk_safety_cmd;
 
       namespace_recovery_agent_cmd;
-
-      verify_namespace_cmd;
 
       unit_tests_cmd;
 
