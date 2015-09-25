@@ -384,6 +384,7 @@ def claim_local_osds(n, multicast=True, abm_cfg = arakoon_config_file):
 
 @task
 def start_osds(kind, n, slow, multicast=True):
+    n = int(n) # as a separate task, you will be getting a string
     for i in range(n):
         if kind == "MIXED":
             my_kind = KINDS[i % 2]

@@ -1,0 +1,76 @@
+* Create the base images
+
+** Debian
+#+BEGIN_SRC
+$> docker build --rm=true --tag=alba_debian         ./docker/alba_debian/
+$> docker build --rm=true --tag=alba_debian_jenkins ./docker/alba_debian_jenkins/
+$> docker build --rm=true --tag=alba_debian_verify  ./docker/alba_debian_verify/
+#+END_SRC
+you'll have something like this:
+
+#+BEGIN_SRC
+$> docker images
+REPOSITORY            TAG                 IMAGE ID            CREATED             VIRTUAL SIZE
+alba_debian_verify    latest              98904840eca4        6 seconds ago       446.7 MB
+alba_debian_jenkins   latest              3fe3825aedb7        3 minutes ago       1.588 GB
+alba_debian           latest              108724743b79        12 minutes ago      1.588 GB
+alba_my_ocaml         latest              566a125ee41e        4 hours ago         1.371 GB
+alba_jenkins          latest              566a125ee41e        4 hours ago         1.371 GB
+ubuntu                15.04               013f3d01d247        5 weeks ago         131.4 MB
+
+#+END_SRC
+
+** Centos
+#+BEGIN_SRC
+$> docker build --rm=true --tag=alba_centos7         ./docker/alba_centos7/
+$> docker build --rm=true --tag=alba_centos7_jenkins ./docker/alba_centos7_jenkins/
+$> docker build --rm=true --tag=alba_centos7_verify  ./docker/alba_centos7_verify/
+#+END_SRC
+
+Mind, this can take a while (something like 20 minutes for the 3 debian images)
+
+* Run a testsuite inside a docker container
+
+edit the ./bin/run_docker.sh to suite your own needs (ALBA_HOME is the only thing you need to change)
+#+BEGIN_SRC
+$> ./bin/run_docker_debian.sh system2
+#+END_SRC
+
+This is not exactly the same as what jenkins does, but comes pretty close.
+
+** package debian
+#+BEGIN_SRC
+$> ./bin/run_docker_debian.sh package_deb
+#+END_SRC
+
+Similar for centos7
+
+** package centos7
+#+BEGIN_SRC
+$> ./bin/run_docker_centos7.sh package_rpm
+$>$ ls -alh  rpmbuild/RPMS/x86_64/alba-0.6.20-1.el7.centos.x86_64.rpm
+-rw-r--r-- 1 root root 17M Sep 25 17:27 rpmbuild/RPMS/x86_64/alba-0.6.20-1.el7.centos.x86_64.rpm
+#+END_SRC
+
+* From time to time you want to throw away all your images and containers
+
+#+BEGIN_SRC
+# Delete all containers
+$> docker rm $(docker ps -a -q)
+# Delete all images
+$> docker rmi $(docker images -q)
+#+END_SRC
+
+** Fuser problems
+Basically, fuser cannot list the /proc/ pseudo filesystem as it doesn't have permissions,
+You will find logs on the host:
+[ 2985.766130] audit_printk_skb: 2208 callbacks suppressed
+[ 2985.766136] audit: type=1400 audit(1443510398.026:794): apparmor="DENIED" operation="ptrace" profile="docker-default" pid=7537 comm="fuser" requested_mask="read" denied_mask="read" peer="docker-default"
+...
+
+The solution is to allow docker to do this (on the host):
+#+BEGIN_SRC
+sudo aa-complain /etc/apparmor.d/docker
+#+END_SRC
+
+reference: [[http://unix.stackexchange.com/questions/136690/how-can-i-substitute-lsof-inside-a-docker-native-not-lxc-based][lsof-inside-docker]]
