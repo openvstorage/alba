@@ -77,12 +77,36 @@ let verify_and_maybe_repair_object
        chunk_location)
     manifest.Manifest.fragment_locations >>= fun results ->
 
-  let _, problem_fragments =
+  let _,
+      (fragments_detected_missing,
+       fragments_osd_unavailable,
+       fragments_checksum_mismatch,
+       problem_fragments) =
     List.fold_left
-      (fun (chunk_id, acc) ls ->
-       let _, acc' =
+      (fun (chunk_id, (fragments_detected_missing,
+                       fragments_osd_unavailable,
+                       fragments_checksum_mismatch,
+                       problem_fragments))
+           ls ->
+       let _, acc =
          List.fold_left
-           (fun (fragment_id, acc) status ->
+           (fun (fragment_id,
+                 (fragments_detected_missing,
+                  fragments_osd_unavailable,
+                  fragments_checksum_mismatch,
+                  problem_fragments)) status ->
+            let fragments_detected_missing = match status with
+              | `Missing -> fragments_detected_missing + 1
+              | _        -> fragments_detected_missing
+            in
+            let fragments_osd_unavailable = match status with
+              | `Unavailable -> fragments_osd_unavailable + 1
+              | _            -> fragments_osd_unavailable
+            in
+            let fragments_checksum_mismatch = match status with
+              | `ChecksumMismatch -> fragments_checksum_mismatch + 1
+              | _                 -> fragments_checksum_mismatch
+            in
             let should_repair =
               match status with
               | `NoneOsd
@@ -91,15 +115,23 @@ let verify_and_maybe_repair_object
               | `Missing -> true
               | `Unavailable -> repair_osd_unavailable
             in
-            (fragment_id + 1,
+            fragment_id + 1,
+            (fragments_detected_missing,
+             fragments_osd_unavailable,
+             fragments_checksum_mismatch,
              if should_repair
-             then (chunk_id, fragment_id) :: acc
-             else acc))
-           (0, acc)
+             then (chunk_id, fragment_id) :: problem_fragments
+             else problem_fragments))
+           (0,
+            (fragments_detected_missing,
+             fragments_osd_unavailable,
+             fragments_checksum_mismatch,
+             problem_fragments))
            ls
        in
-       (chunk_id + 1, acc'))
-      (0, [])
+       chunk_id + 1,
+       acc)
+      (0, (0,0,0,[]))
       results
   in
 
@@ -128,5 +160,7 @@ let verify_and_maybe_repair_object
    else
      Lwt.return ()) >>= fun () ->
 
-  (* TODO report back on what happened... *)
-  Lwt.return []
+  Lwt.return
+    (fragments_detected_missing,
+     fragments_osd_unavailable,
+     fragments_checksum_mismatch)

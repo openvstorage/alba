@@ -1096,9 +1096,9 @@ class client ?(retry_timeout = 60.)
                   new_p
                   has_more
              | Progress.Verify (pb,
-                                ({ Progress.fragments_detected_missing;
-                                   fragments_osd_unavailable;
-                                   fragments_checksum_mismatch } as progress_verify)),
+                                { Progress.fragments_detected_missing;
+                                  fragments_osd_unavailable;
+                                  fragments_checksum_mismatch }),
                Work.Verify { checksum; repair_osd_unavailable; } ->
                 get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
 
@@ -1108,14 +1108,28 @@ class client ?(retry_timeout = 60.)
                      ~namespace_id
                      ~verify_checksum:checksum
                      ~repair_osd_unavailable)
-                  objs >>= fun _ ->
+                  objs >>= fun res ->
+
+                let fragments_detected_missing,
+                    fragments_osd_unavailable,
+                    fragments_checksum_mismatch =
+                  List.fold_left
+                    (fun (a,b,c) (a',b',c') ->
+                     let open Int64 in
+                     add a (of_int a'),
+                     add b (of_int b'),
+                     add c (of_int c'))
+                    (fragments_detected_missing,
+                     fragments_osd_unavailable,
+                     fragments_checksum_mismatch)
+                    res
+                in
 
                 let new_p = Progress.Verify
                               (get_update_progress_base pb batch,
-                               (* TODO update this based the result
-                                * of iterating (mapping) over all
-                                * manifests *)
-                               progress_verify) in
+                               { Progress.fragments_detected_missing;
+                                 fragments_osd_unavailable;
+                                 fragments_checksum_mismatch; }) in
 
                 update_progress_and_maybe_continue
                   new_p

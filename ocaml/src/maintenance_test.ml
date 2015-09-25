@@ -33,7 +33,6 @@ let with_nice_error_log f =
 
 let test_rebalance_one () =
   let test_name = "test_rebalance_one" in
-  (*let preset_name = test_name in*)
   let namespace = test_name in
   let object_name = namespace in
   let open Nsm_model in
@@ -463,11 +462,18 @@ let test_rewrite_namespace () =
 
 let test_verify_namespace () =
   let test_name = "test_verify_namespace" in
-  let namespace = test_name in
   test_with_alba_client
     (fun alba_client ->
+
+     let preset_name = test_name in
+     let preset' =
+       let open Albamgr_protocol.Protocol in
+       Preset.({ _DEFAULT with policies = [ (5,4,8,3); ]; }) in
+     alba_client # mgr_access # create_preset preset_name preset' >>= fun () ->
+
+     let namespace = test_name in
      alba_client # create_namespace
-                 ~preset_name:None
+                 ~preset_name:(Some preset_name)
                  ~namespace () >>= fun namespace_id ->
 
      let open Nsm_model in
@@ -550,6 +556,39 @@ let test_verify_namespace () =
              |> fun l -> List.nth_exn l 1
              |> snd
              = 1);
+
+     alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
+     assert (cnt = cnt');
+     let objects_verified,
+         fragments_detected_missing,
+         fragments_osd_unavailable,
+         fragments_checksum_mismatch
+       =
+       List.fold_left
+         (fun (objects_verified,
+               fragments_detected_missing',
+               fragments_osd_unavailable',
+               fragments_checksum_mismatch')
+              (i, p) ->
+          let end_key = get_start_key (i+1) cnt in
+          match p with
+          | Progress.Verify ({ Progress.count; next; },
+                             { Progress.fragments_detected_missing;
+                               fragments_osd_unavailable;
+                               fragments_checksum_mismatch })->
+             assert (end_key = next);
+             objects_verified + Int64.to_int count,
+             fragments_detected_missing' + Int64.to_int fragments_detected_missing,
+             fragments_osd_unavailable' + Int64.to_int fragments_osd_unavailable,
+             fragments_checksum_mismatch' + Int64.to_int fragments_checksum_mismatch
+          | _ -> assert false)
+         (0, 0, 0, 0)
+         progresses
+     in
+     assert (objects_verified = 1);
+     assert (fragments_detected_missing = 1);
+     assert (fragments_osd_unavailable = 0);
+     assert (fragments_checksum_mismatch = 1);
 
      Lwt.return ())
 
