@@ -26,9 +26,9 @@ mkdir -p                               %{buildroot}%{_libdir}/alba/
 
 for i in Jerasure rocksdb isal gf_complete; \
     do ldd ./ocaml/alba.native \
-            | grep $$i \
+            | grep $i \
             | grep "=> /" \
-            | awk '{print $$3}' \
+            | awk '{print $3}' \
             | xargs -I{} cp -v "{}" %{buildroot}%{_libdir}/alba/ ;\
 done
 
