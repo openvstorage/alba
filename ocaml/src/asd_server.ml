@@ -22,6 +22,7 @@ open Slice
 open Checksum
 open Asd_statistics
 open Lwt_buffer
+open Asd_io_scheduler
 
 let blob_threshold = 16 * 1024
 
