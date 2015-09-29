@@ -95,6 +95,13 @@ let _perform_reads_from_buffer buffer threshold =
 
 let run t ~fsync ~fs_fd =
   let rec inner () =
+    Lwt.pick
+      [ Lwt_buffer.wait_for_item t.high_prio_writes;
+        Lwt_buffer.wait_for_item t.high_prio_reads;
+        Lwt_buffer.wait_for_item t.low_prio_writes;
+        Lwt_buffer.wait_for_item t.low_prio_reads;
+      ] >>= fun () ->
+
     _perform_reads_from_buffer t.high_prio_reads 10_000_000 >>= fun _ ->
     _perform_reads_from_buffer t.low_prio_reads   2_000_000 >>= fun _ ->
 
