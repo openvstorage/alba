@@ -25,7 +25,7 @@ type 'a io = {
 
 type 'a io_with_waiter = 'a Lwt.u * 'a io
 type output = unit  io_with_waiter
-type input  = bytes io_with_waiter
+type input  = (bytes * (Lwt_unix.file_descr -> unit Lwt.t)) io_with_waiter
 
 type t = {
     high_prio_reads  : input  Lwt_buffer.t;

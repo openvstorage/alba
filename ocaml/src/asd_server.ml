@@ -21,7 +21,6 @@ open Asd_protocol
 open Slice
 open Checksum
 open Asd_statistics
-open Lwt_buffer
 open Asd_io_scheduler
 
 let blob_threshold = 16 * 1024
@@ -406,7 +405,7 @@ let execute_query : type req res.
 
 exception ConcurrentModification
 
-let cleanup_files_to_delete ignore_unlink_error syncfs_batched kv dir_info fnrs =
+let cleanup_files_to_delete ignore_unlink_error io_sched kv dir_info fnrs =
   if fnrs = []
   then Lwt.return ()
   else begin
@@ -418,7 +417,7 @@ let cleanup_files_to_delete ignore_unlink_error syncfs_batched kv dir_info fnrs 
          Lwt_extra2.unlink ~may_not_exist:ignore_unlink_error path)
       fnrs >>= fun () ->
 
-    syncfs_batched () >>= fun () ->
+    perform_write io_sched Low { perform = Lwt.return; cost = 4000; } >>= fun () ->
 
     List.iter
       (fun fnr ->
@@ -455,14 +454,14 @@ let maybe_delete_file kv dir_info fnr =
 let execute_update : type req res.
   Rocks_key_value_store.t ->
   release_fnr : (int64 -> unit) ->
-  syncfs_batched : (unit -> unit Lwt.t) ->
+  Asd_io_scheduler.t ->
   DirectoryInfo.t ->
   mgmt: AsdMgmt.t ->
   get_next_fnr : (unit -> int64) ->
   (req, res) Protocol.update ->
   req ->
   res Lwt.t
-  = fun kv ~release_fnr ~syncfs_batched dir_info
+  = fun kv ~release_fnr io_sched dir_info
         ~mgmt ~get_next_fnr ->
     let open Protocol in
     function
@@ -559,7 +558,12 @@ let execute_update : type req res.
                         let fnr, file_path, fnr_release = get_file_path () in
                         Lwt.finalize
                           (fun () ->
-                           DirectoryInfo.write_blob dir_info fnr v)
+                           perform_write
+                             io_sched
+                             High (* TODO get from request *)
+                             { perform = (fun () ->
+                                          DirectoryInfo.write_blob dir_info fnr v);
+                               cost = 4000 + Slice.length v; })
                           (fun () ->
                            Lwt.wakeup fnr_release ();
                            Lwt.return ()) >>= fun () ->
@@ -573,11 +577,7 @@ let execute_update : type req res.
                    Lwt.return (key, `Set (value, value'))
                 | Update.Set (key, None) ->
                    Lwt.return(key, `Delete))
-              upds >>= fun r ->
-            (if !need_syncfs
-             then syncfs_batched ()
-             else Lwt.return_unit) >>= fun () ->
-            Lwt.return r
+              upds
           in
           Lwt.catch
             (fun () ->
@@ -736,9 +736,10 @@ let execute_update : type req res.
                      try_apply_immediate
                        none_asserts some_asserts
                        immediate_updates in
-                   syncfs_batched () >>= fun () ->
+                   perform_write io_sched High { perform = Lwt.return;
+                                                 cost = 1000; } >>= fun () ->
                    Lwt.ignore_result
-                     (cleanup_files_to_delete false syncfs_batched kv dir_info files_to_be_deleted);
+                     (cleanup_files_to_delete false io_sched kv dir_info files_to_be_deleted);
                    Lwt.return `Succeeded)
                   (function
                     | Lwt.Canceled -> Lwt.fail Lwt.Canceled
@@ -786,7 +787,7 @@ let check_asd_id kv asd_id =
 
 
 let asd_protocol
-      kv ~release_fnr ~slow ~syncfs_batched
+      kv ~release_fnr ~slow io_sched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
       fd ic
@@ -823,16 +824,22 @@ let asd_protocol
        begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
-                execute_query kv dir_info stats q req >>= fun (res, write_extra) ->
-                return_result
-                  ~write_extra
-                  (Protocol.query_response_serializer q) res
+                perform_read
+                  io_sched
+                  High          (* TODO get from request *)
+                  { perform = (fun () ->
+                               execute_query kv dir_info stats q req >>= fun (res, write_extra) ->
+                               return_result
+                                 ~write_extra
+                                 (Protocol.query_response_serializer q) res);
+                    (* TODO cost *)
+                    cost = 1_000_000 }
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update
                   kv
                   ~release_fnr
-                  ~syncfs_batched
+                  io_sched
                   dir_info
                   ~mgmt
                   ~get_next_fnr
@@ -1008,40 +1015,11 @@ let run_server
     with Scanf.Scan_failure _ -> None
   in
 
-  let syncfs_waiters = Lwt_buffer.create () in
-  let syncfs_batched () =
-    let sleep, awake = Lwt.wait () in
-    Lwt_buffer.add awake syncfs_waiters >>= fun () ->
-    sleep
-  in
-
-  Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
-  let rec syncfs_t () =
-    Lwt_buffer.harvest syncfs_waiters >>= fun waiters ->
-    (if fsync
-     then begin
-       let waiters_len = List.length waiters in
-       Lwt_log.debug_f "Starting syncfs for %i waiters" waiters_len >>= fun () ->
-       with_timing_lwt
-         (fun () -> Syncfs.lwt_syncfs fs_fd) >>= fun (t_syncfs, rc) ->
-       assert (rc = 0);
-       let logger =
-         if t_syncfs < 0.5 then Lwt_log.debug_f
-         else if t_syncfs < 4.0 then Lwt_log.info_f
-         else Lwt_log.warning_f
-       in
-       logger "syncfs took %f for %i waiters" t_syncfs waiters_len
-     end else
-       Lwt.return ())
-    >>= fun () ->
-    Lwt_list.iter_s
-      (fun waiter -> Lwt.wakeup waiter (); Lwt.return_unit)
-      waiters >>= fun () ->
-    syncfs_t ()
-  in
   (* need to start the thread now, otherwise collecting garbage
      during startup may hang *)
-  let syncfs_t = syncfs_t () in
+  let io_sched = make () in
+  Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
+  let io_sched_t = run io_sched ~fsync ~fs_fd in
 
   let collect_leaf_dir leaf_dir =
     Lwt_log.debug_f "Collect leaf dir %s" leaf_dir >>= fun () ->
@@ -1123,7 +1101,7 @@ let run_server
          in
          fnr)
   in
-  cleanup_files_to_delete true syncfs_batched kv dir_info fnrs_to_delete >>= fun () ->
+  cleanup_files_to_delete true io_sched kv dir_info fnrs_to_delete >>= fun () ->
 
   (* do range query on rocksdb to get biggest fnr currently in use *)
   let next_fnr =
@@ -1202,7 +1180,7 @@ let run_server
            kv
            ~release_fnr:(fun fnr -> advancer # release fnr)
            ~slow
-           ~syncfs_batched
+           io_sched
            dir_info
            stats
            ~mgmt
@@ -1228,7 +1206,7 @@ let run_server
       server_t;
       (Lwt_extra2.make_fuse_thread ());
       reporting_t;
-      syncfs_t;
+      io_sched_t;
     ]
   in
   let threads' = match multicast with
