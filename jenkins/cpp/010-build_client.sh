@@ -11,26 +11,4 @@ make
 
 cd ../
 
-if [ ! -d ".tup" ]; then
-    tup init
-    printf 'CONFIG_COMPILER=clang++-3.5\n' > ./tup.config
-
-fi
-
-rm -f $(find ./ -name "*.o")
-rm -f lib/*
-rm -f bin/*
-
-cd ../
-
-if [ ! -d ".tup" ]; then
-    tup init
-    printf 'CONFIG_COMPILER=clang++-3.5\n' > ./tup.config
-
-fi
-
-rm -f $(find ./ -name "*.o")
-rm -f lib/*
-rm -f bin/*
-
-tup
+make

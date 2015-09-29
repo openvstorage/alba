@@ -78,9 +78,20 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
+# c++
+RUN apt-get -y install libgtest-dev cmake
+RUN cd /usr/src/gtest \
+        && cmake . \
+        && make \
+        && mv libg* /usr/lib/
+
+
 RUN eval `${opam_env}` && opam install -y arakoon.1.8.8
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
 RUN cd /home/alba && git clone https://github.com/openvstorage/alba.git
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
+
+RUN apt-get -y install clang-3.5
+
 CMD eval `${opam_env}` && opam list
