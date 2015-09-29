@@ -170,7 +170,8 @@ class kinetic_client cid session conn =
 
   object (self :# Osd.osd)
 
-    method get_option key_s =
+    method get_option prio key_s =
+      (* TODO use prio *)
       let key = slice2s key_s in
       Lwt.catch
         (fun () ->
@@ -193,10 +194,10 @@ class kinetic_client cid session conn =
          Lwt.return vo_s
 
 
-    method get_exn key_s =
+    method get_exn prio key_s =
       let key = slice2s key_s in
       Lwt_log.debug_f "kinetic_client.get_exn %S" key >>= fun () ->
-      self # get_option key_s >>= function
+      self # get_option prio key_s >>= function
       | None ->
          let f =  Failure
               ( Printf.sprintf "Could not find key:%S on .." key )
@@ -204,16 +205,17 @@ class kinetic_client cid session conn =
          Lwt.fail f
       | Some x -> Lwt.return x
 
-    method multi_get keys =
+    method multi_get prio keys =
       (* TODO the semantics here are different from
          those for the asd *)
       Lwt_list.map_s
-        (fun key -> self # get_option key)
+        (fun key -> self # get_option prio key)
         keys
 
-    method multi_exists keys = failwith "not implemented"
+    method multi_exists prio keys = failwith "not implemented"
 
-    method range ~first ~finc ~last ~reverse ~max =
+    method range prio ~first ~finc ~last ~reverse ~max =
+      (* TODO use prio *)
       (* TODO this can't handle max > 200 *)
       let first' = slice2s first in
       let last',linc = match last with
@@ -230,12 +232,13 @@ class kinetic_client cid session conn =
       Lwt.return ((List.length key_ss, key_ss), key_ss <> [])
 
 
-    method range_entries ~first ~finc ~last ~reverse ~max =
+    method range_entries prio ~first ~finc ~last ~reverse ~max =
       Lwt.fail_with "TODO"
 
     method get_version = Lwt.fail_with "TODO"
 
-    method apply_sequence asserts updates =
+    method apply_sequence prio asserts updates =
+      (* TODO use prio *)
       let kseq = translate asserts updates in
       Lwt_log.debug_f "KINETIC:%s kseq:[%s]"
                       cid

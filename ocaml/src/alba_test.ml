@@ -51,6 +51,7 @@ let delete_fragment
     ~osd_id
     (fun osd ->
      osd # apply_sequence
+         Osd.High
          []
          [ Osd.Update.delete_string
              (Osd_keys.AlbaInstance.fragment
@@ -291,7 +292,9 @@ let test_delete_namespace () =
              (fun c ->
                 let open Osd_keys in
                 let open Slice in
-                c # get_option (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
+                c # get_option
+                  Osd.High
+                  (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
                 let p = Option.map get_string_unsafe ps in
                 Lwt_io.printlf "got p = %s" ([%show : string option] p) >>= fun () ->
                 assert (presence = (p <> None));
@@ -303,7 +306,7 @@ let test_delete_namespace () =
                                         ~fragment_id:0
                                      )
                 in
-                c # get_option fragment_key >>= fun fs ->
+                c # get_option Osd.High fragment_key >>= fun fs ->
                 let f = Option.map get_string_unsafe fs in
                 Lwt_io.printlf "got f = %s" ([%show : string option] f) >>= fun () ->
                 assert (fragment = (f <> None));
@@ -370,7 +373,7 @@ let test_clean_obsolete_keys () =
                        ~chunk_id:0
                        ~fragment_id:0)
                 in
-                osd_client # get_option fragment_key >>= fun data_o ->
+                osd_client # get_option Osd.High fragment_key >>= fun data_o ->
                 assert (assert_ data_o);
                 Lwt.return ()) in
 
@@ -432,7 +435,7 @@ let test_garbage_collect () =
                      ~chunk_id
                      ~fragment_id)
               in
-                osd_client # get_option fragment_key
+                osd_client # get_option Osd.High fragment_key
                 >>= fun data_o ->
                 assert (assert_ data_o);
                 Lwt.return ()) in
@@ -733,6 +736,7 @@ let test_discover_claimed () =
             let osd = new Asd_client.asd_osd test_name asd in
 
             osd # apply_sequence
+              Osd.High
               [ Assert.none next_alba_instance';
                 Assert.none_string instance_log_key;
                 Assert.none_string instance_index_key; ]

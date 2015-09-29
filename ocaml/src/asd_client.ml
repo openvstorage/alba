@@ -77,16 +77,16 @@ class client fd ic id =
         Lwt.return r
 
     val mutable supports_multiget2 = None
-    method multi_get keys =
+    method multi_get ~prio keys =
       let old_multiget () =
-        self # query MultiGet (keys, High) (* TODO *)
+        self # query MultiGet (keys, prio)
       in
       match supports_multiget2 with
       | None ->
          (* try multiget2, if it succeeds the asd supports it *)
          Lwt.catch
            (fun () ->
-            self # multi_get2 keys >>= fun res ->
+            self # multi_get2 ~prio keys >>= fun res ->
             supports_multiget2 <- Some true;
             Lwt.return res)
            (function
@@ -96,13 +96,12 @@ class client fd ic id =
              | exn ->
                 Lwt.fail exn)
       | Some true ->
-         self # multi_get2 keys
+         self # multi_get2 ~prio keys
       | Some false ->
          old_multiget ()
 
-    method multi_get2 keys =
-      (* TODO *)
-      self # query MultiGet2 (keys, High) >>= fun res ->
+    method multi_get2 ~prio keys =
+      self # query MultiGet2 (keys, prio) >>= fun res ->
       Lwt_list.map_s
         (let open Value in
          function
@@ -149,70 +148,71 @@ class client fd ic id =
                 Lwt.return (Some (Slice.wrap_bytes target, cs)))
         res
 
-    method multi_get_string keys =
-      self # multi_get (List.map Slice.wrap_string keys) >>= fun res ->
+    method multi_get_string ~prio keys =
+      self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
            (Option.map (fun (slice, cs) -> Slice.get_string_unsafe slice, cs))
            res)
 
-    method multi_exists keys = self # query MultiExists (keys, High) (* TODO *)
+    method multi_exists ~prio keys = self # query MultiExists (keys, prio)
 
-    method get key =
-      self # multi_get [ key ] >>= fun res ->
+    method get ~prio key =
+      self # multi_get ~prio [ key ] >>= fun res ->
       List.hd_exn res |>
       Lwt.return
 
-    method get_string key =
-      self # multi_get_string [ key ] >>= fun res ->
+    method get_string ~prio key =
+      self # multi_get_string ~prio [ key ] >>= fun res ->
       List.hd_exn res |>
       Lwt.return
 
-    method set key value assertable ?(cs = Checksum.Checksum.NoChecksum) () =
+    method set ~prio key value assertable ?(cs = Checksum.Checksum.NoChecksum) () =
       let u = Update.set key value cs assertable in
-      self # apply_sequence [] [u] >>= fun _ ->
+      self # apply_sequence ~prio [] [u] >>= fun _ ->
       Lwt.return ()
 
-    method set_string ?(cs = Checksum.Checksum.NoChecksum)
+    method set_string ~prio ?(cs = Checksum.Checksum.NoChecksum)
              key value assertable
       =
       let u = Update.set_string key value cs assertable in
-      self # apply_sequence [] [u] >>= fun _ ->
+      self # apply_sequence ~prio [] [u] >>= fun _ ->
       Lwt.return ()
 
-    method delete key =
-      self # apply_sequence [] [ Update.delete key ] >>= fun _ ->
+    method delete ~prio key =
+      self # apply_sequence ~prio [] [ Update.delete key ] >>= fun _ ->
       Lwt.return ()
 
-    method delete_string key =
-      self # apply_sequence [] [ Update.delete_string key ] >>= fun _ ->
+    method delete_string ~prio key =
+      self # apply_sequence ~prio [] [ Update.delete_string key ] >>= fun _ ->
       Lwt.return ()
 
-    method range ~first ~finc ~last ~reverse ~max =
+    method range ~prio ~first ~finc ~last ~reverse ~max =
       self # query
         Range
-        ({ first; finc; last; reverse; max }, High) (* TODO *)
+        ({ first; finc; last; reverse; max }, prio)
 
-    method range_all ?(max = -1) () =
+    method range_all ~prio ?(max = -1) () =
       list_all_x
         ~first:(Slice.wrap_string "")
         Std.id
-        (self # range ~last:None ~max ~reverse:false)
+        (self # range ~prio ~last:None ~max ~reverse:false)
 
-    method range_string ~first ~finc ~last ~reverse ~max =
+    method range_string ~prio ~first ~finc ~last ~reverse ~max =
       self # range
+        ~prio
         ~first:(Slice.wrap_string first) ~finc
         ~last:(Option.map (fun (l, linc) -> Slice.wrap_string l, linc) last)
         ~max ~reverse >>= fun ((cnt, keys), has_more) ->
       Lwt.return ((cnt, List.map Slice.get_string_unsafe keys), has_more)
 
-    method range_entries ~first ~finc ~last ~reverse ~max =
+    method range_entries ~prio ~first ~finc ~last ~reverse ~max =
       self # query
         RangeEntries
-        ({ first; finc; last; reverse; max; }, High) (* TODO *)
+        ({ first; finc; last; reverse; max; }, prio)
 
-    method apply_sequence asserts updates =
-      self # update Apply (asserts, updates, High) (* TODO *)
+    method apply_sequence ~prio asserts updates =
+      self # update Apply (asserts, updates, prio)
 
     method statistics clear =
       self # query Statistics clear
@@ -281,8 +281,8 @@ let with_client buffer_pool ips port (lido:string option) f =
 
 class asd_osd (asd_id : string) (asd : client) =
   object(self :# Osd.osd)
-  method get_option (k:key) =
-    asd # multi_get [k] >>= fun vcos ->
+  method get_option prio (k:key) =
+    asd # multi_get ~prio [k] >>= fun vcos ->
     let ho = List.hd_exn vcos in
     let r =
       match ho with
@@ -291,31 +291,31 @@ class asd_osd (asd_id : string) (asd : client) =
     in
     Lwt.return r
 
-  method get_exn (k:key) =
-    self # get_option k
+  method get_exn prio (k:key) =
+    self # get_option prio k
     >>= function
     | None -> Lwt.fail (Failure (Printf.sprintf
                                    "Could not find key %s on asd %S"
                                    (Slice.get_string_unsafe k) asd_id))
     | Some v -> Lwt.return v
 
-  method multi_get keys =
-    asd # multi_get keys >>= fun vcos ->
+  method multi_get prio keys =
+    asd # multi_get ~prio keys >>= fun vcos ->
     Lwt.return
       (List.map
          (Option.map fst)
          vcos)
 
-  method multi_exists keys = asd # multi_exists keys
+  method multi_exists prio keys = asd # multi_exists ~prio keys
 
-  method range = asd # range
+  method range prio = asd # range ~prio
 
-  method range_entries = asd # range_entries
+  method range_entries prio = asd # range_entries ~prio
 
-  method apply_sequence asserts (upds: Update.t list) =
+  method apply_sequence prio asserts (upds: Update.t list) =
     Lwt.catch
       (fun () ->
-         asd # apply_sequence asserts upds >>= fun () ->
+         asd # apply_sequence ~prio asserts upds >>= fun () ->
          Lwt.return Osd.Ok)
       (function
         | Error.Exn e ->

@@ -474,6 +474,7 @@ let run_server hosts port
          ~nsm_host_connection_pool_size
          ~osd_connection_pool_size
          ~osd_timeout
+         ~default_osd_priority:Osd.High
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ());

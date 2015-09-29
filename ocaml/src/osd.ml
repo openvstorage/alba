@@ -20,6 +20,10 @@ type key = Asd_protocol.key
 type value = Asd_protocol.value
 type checksum = Asd_protocol.checksum
 
+type priority = Asd_protocol.Protocol.priority =
+              | High
+              | Low
+
 module Update = Asd_protocol.Update
 module Assert = Asd_protocol.Assert
 
@@ -43,25 +47,27 @@ type apply_result =
 
 class type osd = object
 
-  method get_exn : key -> value Lwt.t
-  method get_option : key -> value option Lwt.t
+  method get_exn : priority -> key -> value Lwt.t
+  method get_option : priority -> key -> value option Lwt.t
 
-  method multi_get    : key list -> value option list Lwt.t
-  method multi_exists : key list -> bool list Lwt.t
+  method multi_get    : priority -> key list -> value option list Lwt.t
+  method multi_exists : priority -> key list -> bool list Lwt.t
 
   method range :
+    priority ->
     first:key -> finc:bool ->
     last : (key * bool) option ->
     reverse:bool -> max:int ->
     key counted_list_more Lwt.t
 
   method range_entries :
+    priority ->
     first:key -> finc:bool ->
     last : (key * bool) option ->
     reverse:bool -> max:int ->
     (key * value * checksum) counted_list_more Lwt.t
 
-  method apply_sequence : Assert.t list -> Update.t list -> apply_result Lwt.t
+  method apply_sequence : priority -> Assert.t list -> Update.t list -> apply_result Lwt.t
   method set_full : bool -> unit Lwt.t
   method get_version : (int * int * int * string) Lwt.t
   method get_long_id : string

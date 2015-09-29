@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Lwt.Infix
 open Prelude
+open Osd
+open Lwt.Infix
 
 let buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -79,8 +80,8 @@ let test_set_get port () =
     (fun client ->
        let key = "key" in
        let value = "value" in
-       client # set_string key value true >>= fun () ->
-       client # get_string key >>= function
+       client # set_string ~prio:High key value true >>= fun () ->
+       client # get_string ~prio:High key >>= function
        | None -> failwith "oops got None"
        | Some (v, _) ->
          assert (v = value);
@@ -92,9 +93,9 @@ let test_multiget port () =
     (fun client ->
        let value1 = "fdidid" in
        let value2 = "vasi" in
-       client # set_string "key"  value1 true >>= fun () ->
-       client # set_string "key2" value2 true >>= fun () ->
-       client # multi_get_string ["key"; "key2"] >>= fun res ->
+       client # set_string ~prio:High "key"  value1 true >>= fun () ->
+       client # set_string ~prio:High "key2" value2 true >>= fun () ->
+       client # multi_get_string ~prio:High ["key"; "key2"] >>= fun res ->
        assert (2 = List.length res);
        assert ([ Some value1; Some value2; ] = List.map (Option.map fst) res);
        Lwt.return ())
@@ -106,8 +107,8 @@ let test_multi_exists port () =
      let open Slice in
      let v = "xxxx" in
      let existing_key = "exists" in
-     client # set_string existing_key v true >>= fun () ->
-     client # multi_exists [
+     client # set_string ~prio:High existing_key v true >>= fun () ->
+     client # multi_exists ~prio:High [
               Slice.wrap_string existing_key;
               Slice.wrap_string "non_existing"
             ]
@@ -125,11 +126,11 @@ let test_range_query port () =
        let set k = Osd.Update.set_string k v Checksum.Checksum.NoChecksum
                                          false
        in
-       client # apply_sequence
+       client # apply_sequence ~prio:High
          []
          [ set "" ; set "k"; set "kg"; set "l"; ] >>= fun _ ->
 
-       client # range_string
+       client # range_string ~prio:High
          ~first:"" ~finc:true ~last:None
          ~max:(-1) ~reverse:false >>= fun ((cnt, keys), _) ->
 
@@ -139,7 +140,7 @@ let test_range_query port () =
        assert (4 = cnt);
        assert (keys= [""; "k"; "kg"; "l";]);
 
-       client # range_string
+       client # range_string ~prio:High
          ~first:"l" ~finc:true ~last:(Some("o", false))
          ~max:(-1) ~reverse:false >>= fun ((cnt, keys), _) ->
 
@@ -155,14 +156,14 @@ let test_delete port () =
     "test_delete" port
     (fun client ->
        let key = "sda" in
-       client # delete_string key >>= fun () ->
-       client # get_string key >>= fun res ->
+       client # delete_string ~prio:High key >>= fun () ->
+       client # get_string ~prio:High key >>= fun res ->
        assert (None = res);
-       client # set_string key key false >>= fun () ->
-       client # get_string key >>= fun res ->
+       client # set_string ~prio:High key key false >>= fun () ->
+       client # get_string ~prio:High key >>= fun res ->
        assert (None <> res);
-       client # delete_string key >>= fun () ->
-       client # get_string key >>= fun res ->
+       client # delete_string ~prio:High key >>= fun () ->
+       client # get_string ~prio:High key >>= fun res ->
        assert (None = res);
        Lwt.return ())
 
@@ -173,26 +174,26 @@ let test_list_all port () =
        let rec add_keys = function
          | 100 -> Lwt.return ()
          | n ->
-           client # set_string (string_of_int n) "x" false >>= fun () ->
+           client # set_string ~prio:High (string_of_int n) "x" false >>= fun () ->
            add_keys (n + 1)
        in
        add_keys 0 >>= fun () ->
 
-       client # range_all ~max:50 () >>= fun (cnt, _) ->
+       client # range_all ~prio:High ~max:50 () >>= fun (cnt, _) ->
        Lwt_log.debug_f "cnt = %i" cnt >>= fun () ->
        assert (cnt = 100);
 
-       client # range_all ~max:99 () >>= fun (cnt, _) ->
+       client # range_all ~prio:High ~max:99 () >>= fun (cnt, _) ->
        Lwt_log.debug_f "cnt = %i" cnt >>= fun () ->
        assert (cnt = 100);
 
-       client # range_all ~max:(-1) () >>= fun (cnt, _) ->
+       client # range_all ~prio:High ~max:(-1) () >>= fun (cnt, _) ->
        assert (cnt = 100);
 
-       client # range_all ~max:100 () >>= fun (cnt, _) ->
+       client # range_all ~prio:High ~max:100 () >>= fun (cnt, _) ->
        assert (cnt = 100);
 
-       client # range_all ~max:49 () >>= fun (cnt, _) ->
+       client # range_all ~prio:High ~max:49 () >>= fun (cnt, _) ->
        assert (cnt = 100);
 
        Lwt.return ())
@@ -208,8 +209,8 @@ let test_startup port1 port2 () =
     with_asd_client
       tn port1
       (fun client ->
-         client # set_string "a" v1 true >>= fun () ->
-         client # set_string "b" v2 true >>= fun () ->
+         client # set_string ~prio:High "a" v1 true >>= fun () ->
+         client # set_string ~prio:High "b" v2 true >>= fun () ->
          Lwt.return ()) >>= fun () ->
     Lwt_unix.sleep 0.3 >>= fun () ->
     (* TODO shutdown in a not gracefull way! hmm, think about this. *)
@@ -217,10 +218,10 @@ let test_startup port1 port2 () =
       ~is_restart:true
       tn port2
       (fun client ->
-         client # set_string "c" v3 true >>= fun () ->
-         client # set_string "d" v4 true >>= fun () ->
+         client # set_string ~prio:High "c" v3 true >>= fun () ->
+         client # set_string ~prio:High "d" v4 true >>= fun () ->
 
-         client # multi_get_string ["a"; "b"; "c"; "d"; ] >>= fun vs ->
+         client # multi_get_string ~prio:High ["a"; "b"; "c"; "d"; ] >>= fun vs ->
          let vs' = List.map (fun v -> fst (Option.get_some v)) vs in
          assert (vs' = [ v1; v2; v3; v4 ]);
          Lwt.return ())

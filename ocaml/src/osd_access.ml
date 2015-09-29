@@ -44,6 +44,7 @@ class osd_access
         mgr_access
         ~osd_connection_pool_size
         ~osd_timeout
+        ~default_osd_priority
   =
   let osds_info_cache =
     let open Albamgr_protocol.Protocol in
@@ -137,6 +138,7 @@ class osd_access
                                 with_timing_lwt
                                   (fun () ->
                                    osd # apply_sequence
+                                       default_osd_priority
                                        []
                                        [ Osd.Update.set_string
                                            Osd_keys.test_key
@@ -188,6 +190,8 @@ class osd_access
       with_osd_from_pool ~osd_id f
 
     method get_osd_info = get_osd_info
+
+    method get_default_osd_priority = default_osd_priority
 
     method osds_info_cache = osds_info_cache
 
@@ -376,6 +380,7 @@ class osd_access
                              Lwt.finalize
                                (fun () ->
                                 osd # get_option
+                                    default_osd_priority
                                     (Slice.wrap_string
                                        (Osd_keys.AlbaInstanceRegistration.instance_log_key 0l)))
                                closer >>= function

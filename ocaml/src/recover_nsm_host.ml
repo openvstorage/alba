@@ -158,6 +158,7 @@ let reap_osd
              ~osd_id
              (fun osd ->
                 osd # range_entries
+                  Osd.High
                   ~first ~finc
                   ~last:(Some (Slice.wrap_string end_object_id, false))
                   ~reverse:false ~max:1000))

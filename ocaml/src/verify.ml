@@ -35,7 +35,9 @@ let verify_and_maybe_repair_object
     if verify_checksum
     then
       fun osd key ~chunk_id ~fragment_id ->
-      osd # multi_get [ key ] >>= function
+      osd # multi_get
+          (osd_access # get_default_osd_priority)
+          [ key ] >>= function
       | [ None ] -> Lwt.return `Missing
       | [ Some f ] ->
          let checksum = Layout.index manifest.fragment_checksums chunk_id fragment_id in
@@ -50,7 +52,9 @@ let verify_and_maybe_repair_object
       | _ -> assert false
     else
       fun osd key ~chunk_id ~fragment_id ->
-      osd # multi_exists [ key ] >>= function
+      osd # multi_exists
+          (osd_access # get_default_osd_priority)
+          [ key ] >>= function
       | [ true; ] -> Lwt.return `Ok
       | [ false; ] -> Lwt.return `Missing
       | _ -> assert false

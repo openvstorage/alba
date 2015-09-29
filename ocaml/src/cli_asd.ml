@@ -151,7 +151,7 @@ let asd_set host port asd_id key value =
      let checksum = Checksum.NoChecksum in
      Lwt_log.warning "checksum option will be `NoChecksum`"
      >>= fun ()->
-     client # apply_sequence []
+     client # apply_sequence ~prio:Osd.High []
              [ Update.set
                  (Slice.wrap_string key)
                  (Slice.wrap_string value)
@@ -197,7 +197,7 @@ let asd_multi_get host port asd_id (keys:string list) =
     host port asd_id
     (fun client ->
 
-     client # multi_get (List.map Slice.wrap_string keys)
+     client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys)
      >>= fun values ->
      print_endline ([%show: (Slice.t * Checksum.t) option list] values);
      Lwt.return ())
@@ -219,7 +219,7 @@ let asd_multi_get_cmd =
 let asd_delete host port asd_id key =
   run_with_asd_client'
     host port asd_id
-    (fun client -> client # delete (Slice.wrap_string key))
+    (fun client -> client # delete ~prio:Osd.High (Slice.wrap_string key))
 
 let asd_delete_cmd =
   let doc = "$(docv)" in
@@ -243,6 +243,7 @@ let asd_range host port asd_id first =
     host port asd_id
     (fun client ->
      client # range
+            ~prio:Osd.High
             ~first:(Slice.wrap_string first)
             ~finc ~last ~reverse:false ~max:~-1
      >>= fun ((cnt, keys), has_more) ->

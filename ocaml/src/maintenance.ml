@@ -155,7 +155,10 @@ class client ?(retry_timeout = 60.)
 
          alba_client # with_osd
            ~osd_id:source_osd
-           (fun osd_client -> osd_client # get_option key)
+           (fun osd_client ->
+            osd_client # get_option
+                       Osd.Low
+                       key)
          >>= function
          | None -> Lwt.fail (Exn NotEnoughFragments)
          | Some packed_fragment ->
@@ -208,7 +211,9 @@ class client ?(retry_timeout = 60.)
                 ~namespace_id ~object_id ~version_id:version_id0
                 ~chunk_id ~fragment_id
             in
-            osd_client # apply_sequence [] [Osd.Update.delete_string key]
+            osd_client # apply_sequence
+                       Osd.Low
+                       [] [Osd.Update.delete_string key]
             >>= fun s ->
             match s with
             | Osd.Ok    -> Lwt.return ()
@@ -342,7 +347,9 @@ class client ?(retry_timeout = 60.)
         alba_client # with_osd
           ~osd_id
           (fun osd_client ->
-             osd_client # apply_sequence [] upds >>= function
+           osd_client # apply_sequence
+                      Osd.Low
+                      [] upds >>= function
              | Osd.Ok -> Lwt.return ()
              | Osd.Exn x ->
                Lwt_log.warning_f "%s: deletes should never fail"
@@ -428,7 +435,9 @@ class client ?(retry_timeout = 60.)
         alba_client # with_osd
           ~osd_id
           (fun client ->
-             client # range ~first ~finc ~last ~reverse:false ~max:100)
+           client # range
+                  Osd.Low
+                  ~first ~finc ~last ~reverse:false ~max:100)
         >>= fun ((cnt, keys), has_more) ->
 
         (* TODO could optimize here by grouping together per object_id first *)
@@ -441,7 +450,9 @@ class client ?(retry_timeout = 60.)
                alba_client # with_osd
                  ~osd_id
                  (fun client ->
-                    client # apply_sequence [] [ Osd.Update.delete gc_tag_key; ]
+                  client # apply_sequence
+                         Osd.Low
+                         [] [ Osd.Update.delete gc_tag_key; ]
                     >>= fun _success ->
                     (* don't care if it succeeded or not *)
                     Lwt.return ()) in
@@ -473,7 +484,7 @@ class client ?(retry_timeout = 60.)
                alba_client # with_osd
                  ~osd_id
                  (fun client ->
-                    client # apply_sequence asserts upds >>= fun _succes ->
+                    client # apply_sequence Osd.Low asserts upds >>= fun _succes ->
                     (* don't care if it succeeded or not *)
                     Lwt.return ()) in
              alba_client # with_nsm_client'
@@ -938,10 +949,12 @@ class client ?(retry_timeout = 60.)
              in
              let rec inner () =
                client # range
+                 Osd.Low
                  ~first:namespace_prefix' ~finc:true
                  ~last:namespace_next_prefix
                  ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
                client # apply_sequence
+                 Osd.Low
                  []
                  (List.map
                     (fun k -> Osd.Update.delete k)
