@@ -31,6 +31,48 @@ let verify_and_maybe_repair_object
 
   let osd_access = alba_client # osd_access in
 
+  let verify =
+    if verify_checksum
+    then
+      fun osd key ~chunk_id ~fragment_id ->
+      osd # multi_get [ key ] >>= function
+      | [ None ] -> Lwt.return `Missing
+      | [ Some f ] ->
+         let checksum = Layout.index manifest.fragment_checksums chunk_id fragment_id in
+         let fragment_data' = Slice.to_bigstring f in
+         Fragment_helper.verify fragment_data' checksum
+         >>= fun checksum_valid ->
+         Lwt_bytes.unsafe_destroy fragment_data';
+         Lwt.return
+           (if checksum_valid
+            then `Ok
+            else `ChecksumMismatch)
+      | _ -> assert false
+    else
+      fun osd key ~chunk_id ~fragment_id ->
+      osd # multi_exists [ key ] >>= function
+      | [ true; ] -> Lwt.return `Ok
+      | [ false; ] -> Lwt.return `Missing
+      | _ -> assert false
+  in
+
+  let verify ~osd_id ~chunk_id ~fragment_id ~version_id =
+    let key_string =
+      Osd_keys.AlbaInstance.fragment
+        ~namespace_id
+        ~object_id ~version_id
+        ~chunk_id ~fragment_id
+    in
+    let key = Slice.wrap_string key_string in
+    Lwt.catch
+      (fun () ->
+       osd_access # with_osd
+         ~osd_id
+         (fun osd -> verify osd key ~chunk_id ~fragment_id))
+      (fun exn ->
+       Lwt.return `Unavailable)
+  in
+
   Lwt_list.mapi_s
     (fun chunk_id chunk_location ->
      Lwt_list.mapi_p
@@ -38,42 +80,7 @@ let verify_and_maybe_repair_object
         match location with
         | (None, _) -> Lwt.return `NoneOsd
         | (Some osd_id, version_id) ->
-
-           let key_string =
-             Osd_keys.AlbaInstance.fragment
-               ~namespace_id
-               ~object_id ~version_id
-               ~chunk_id ~fragment_id
-           in
-           let key = Slice.wrap_string key_string in
-
-           Lwt.catch
-             (fun () ->
-              osd_access # with_osd
-                ~osd_id
-                (fun osd ->
-                 if verify_checksum
-                 then
-                   osd # multi_get [ key ] >>= function
-                   | [ None ] -> Lwt.return `Missing
-                   | [ Some f ] ->
-                      let checksum = Layout.index manifest.fragment_checksums chunk_id fragment_id in
-                      let fragment_data' = Slice.to_bigstring f in
-                      Fragment_helper.verify fragment_data' checksum
-                      >>= fun checksum_valid ->
-                      Lwt_bytes.unsafe_destroy fragment_data';
-                      Lwt.return
-                        (if checksum_valid
-                         then `Ok
-                         else `ChecksumMismatch)
-                   | _ -> assert false
-                 else
-                   osd # multi_exists [ key ] >>= function
-                   | [ true; ] -> Lwt.return `Ok
-                   | [ false; ] -> Lwt.return `Missing
-                   | _ -> assert false))
-             (fun exn ->
-              Lwt.return `Unavailable))
+           verify ~osd_id ~chunk_id ~fragment_id ~version_id)
        chunk_location)
     manifest.Manifest.fragment_locations >>= fun results ->
 
