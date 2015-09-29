@@ -522,7 +522,7 @@ let alba_add_osd_cmd =
               " Note: this is for development purposes only."
          )
 
-let alba_rewrite_namespace cfg_file namespace name factor =
+let alba_add_iter_namespace_item cfg_file namespace name factor action =
   let t () =
     with_albamgr_client
       cfg_file ~attempts:1
@@ -534,17 +534,22 @@ let alba_rewrite_namespace cfg_file namespace name factor =
           let namespace_id = namespace_info.Namespace.id in
           client # add_work_items
                  [ Work.(IterNamespace
-                           (Rewrite,
+                           (action,
                             namespace_id,
                             name,
                             factor)) ])
   in
   lwt_cmd_line false t
 
+let alba_rewrite_namespace cfg_file namespace name factor =
+  alba_add_iter_namespace_item
+    cfg_file namespace name factor
+    Albamgr_protocol.Protocol.Work.Rewrite
+
 let job_name p =
   Arg.(required
        & pos p (some string) None
-       & info [] ~docv:"the name of the job")
+       & info [] ~docv:"JOB_NAME")
 
 let alba_rewrite_namespace_cmd =
   Term.(pure alba_rewrite_namespace
@@ -557,6 +562,34 @@ let alba_rewrite_namespace_cmd =
   Term.info
     "rewrite-namespace"
     ~doc:"rewrite all objects in the specified namespace"
+
+
+let alba_verify_namespace
+      cfg_file namespace name factor
+      no_verify_checksum no_repair_osd_unavailable =
+  alba_add_iter_namespace_item
+    cfg_file namespace name factor
+    (let open Albamgr_protocol.Protocol.Work in
+     Verify { checksum = not no_verify_checksum;
+              repair_osd_unavailable = not no_repair_osd_unavailable; })
+
+let alba_verify_namespace_cmd =
+  Term.(pure alba_verify_namespace
+        $ alba_cfg_file
+        $ namespace 0
+        $ job_name 1
+        $ Arg.(value
+               & opt int 1
+               & info ["factor"] ~docv:"specifies into how many pieces the job should be divided")
+        $ Arg.(value
+               & flag
+               & info ["no-verify-checksum"] ~docv:"flag to specify checksums should not be verified")
+        $ Arg.(value
+               & flag
+               & info ["no-repair-osd-unavailable"] ~docv:"flag to specify that fragments on unavailable osds should not be repaired")),
+  Term.info
+    "verify-namespace"
+    ~doc:"verify all objects in the specified namespace"
 
 let alba_show_job_progress cfg_file name =
   let t () =
@@ -630,6 +663,7 @@ let cmds = [
   alba_list_work_cmd;
 
   alba_rewrite_namespace_cmd;
+  alba_verify_namespace_cmd;
   alba_show_job_progress_cmd;
   alba_clear_job_progress_cmd;
 ]

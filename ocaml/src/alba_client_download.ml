@@ -14,6 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Lwt_bytes2
+open Slice
+open Alba_statistics
+open Osd_access
 open Lwt.Infix
 
 let get_object_manifest'
@@ -34,3 +38,132 @@ let get_object_manifest'
     namespace_id object_name
     lookup_on_nsm_host
     ~consistent_read ~should_cache
+
+
+(* consumers of this method are responsible for freeing
+ * the returned fragment bigstring
+ *)
+let download_fragment
+      (osd_access : osd_access)
+      ~location
+      ~namespace_id
+      ~object_id ~object_name
+      ~chunk_id ~fragment_id
+      ~replication
+      ~fragment_checksum
+      decompress
+      ~encryption
+      fragment_cache
+  =
+  let module E = Prelude.Error.Lwt in
+  let (>>==) = E.bind in
+
+  let osd_id_o, version_id = location in
+
+  (match osd_id_o with
+   | None -> E.fail `NoneOsd
+   | Some osd_id -> E.return osd_id)
+  >>== fun osd_id ->
+
+  let t0_fragment = Unix.gettimeofday () in
+
+  let key_string =
+    Osd_keys.AlbaInstance.fragment
+      ~namespace_id
+      ~object_id ~version_id
+      ~chunk_id ~fragment_id
+  in
+  let key = Slice.wrap_string key_string in
+
+  let retrieve key =
+    fragment_cache # lookup
+                   namespace_id key_string
+    >>= function
+    | None ->
+       begin
+         Lwt_log.debug_f "fragment not in cache, trying osd:%li" osd_id
+         >>= fun () ->
+
+         Lwt.catch
+           (fun () ->
+            osd_access # with_osd
+                       ~osd_id
+                       (fun device_client ->
+                        device_client # get_option key
+                        >>= E.return))
+           (let open Asd_protocol.Protocol in
+            function
+            | Error.Exn err -> E.fail (`AsdError err)
+            | exn -> E.fail (`AsdExn exn))
+         >>== function
+         | None ->
+            let msg =
+              Printf.sprintf
+                "Detected missing fragment namespace_id=%li object_id=%S osd_id=%li (chunk,fragment,version)=(%i,%i,%i)"
+                namespace_id object_id osd_id
+                chunk_id fragment_id version_id
+            in
+            Lwt_log.warning msg >>= fun () ->
+            E.fail `FragmentMissing
+         | Some (data:Slice.t) ->
+            osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
+            state.read <- Unix.gettimeofday () :: state.read;
+            Lwt.ignore_result
+              (fragment_cache # add
+                              namespace_id key_string
+                              (Slice.get_string_unsafe data)
+              );
+            let hit_or_mis = false in
+            E.return (hit_or_mis, data)
+       end
+    | Some data ->
+       let hit_or_mis = true in
+       E.return (hit_or_mis, Slice.wrap_string data)
+  in
+
+  E.with_timing (fun () -> retrieve key)
+  >>== fun (t_retrieve, (hit_or_miss, fragment_data)) ->
+
+  let fragment_data' = Slice.to_bigstring fragment_data in
+
+  E.with_timing
+    (fun () ->
+     Fragment_helper.verify fragment_data' fragment_checksum
+     >>= E.return)
+  >>== fun (t_verify, checksum_valid) ->
+
+  (if checksum_valid
+   then E.return ()
+   else
+     begin
+       Lwt_bytes.unsafe_destroy fragment_data';
+       E.fail `ChecksumMismatch
+     end) >>== fun () ->
+
+  E.with_timing
+    (fun () ->
+     Fragment_helper.maybe_decrypt
+       encryption
+       ~object_id ~chunk_id ~fragment_id
+       ~ignore_fragment_id:replication
+       fragment_data'
+     >>= E.return)
+  >>== fun (t_decrypt, maybe_decrypted) ->
+
+  E.with_timing
+    (fun () ->
+     decompress ~release_input:true maybe_decrypted
+     >>= E.return)
+  >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
+
+  let t_fragment = Statistics.({
+                                  osd_id;
+                                  retrieve = t_retrieve;
+                                  hit_or_miss;
+                                  verify = t_verify;
+                                  decrypt = t_decrypt;
+                                  decompress = t_decompress;
+                                  total = Unix.gettimeofday () -. t0_fragment;
+                                }) in
+
+  E.return (t_fragment, maybe_decompressed)

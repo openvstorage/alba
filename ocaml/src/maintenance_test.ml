@@ -33,7 +33,6 @@ let with_nice_error_log f =
 
 let test_rebalance_one () =
   let test_name = "test_rebalance_one" in
-  (*let preset_name = test_name in*)
   let namespace = test_name in
   let object_name = namespace in
   let open Nsm_model in
@@ -443,9 +442,10 @@ let test_rewrite_namespace () =
          (fun acc (i, p) ->
           let end_key = get_start_key (i+1) cnt in
           match p with
-          | Progress.Rewrite (c, end_key') ->
-             assert (end_key = end_key');
-             acc + (Int64.to_int c))
+          | Progress.Rewrite { Progress.count; next; } ->
+             assert (end_key = next);
+             acc + (Int64.to_int count)
+          | _ -> assert false)
          0
          progresses
      in
@@ -460,6 +460,138 @@ let test_rewrite_namespace () =
 
      Lwt.return ())
 
+let test_verify_namespace () =
+  let test_name = "test_verify_namespace" in
+  test_with_alba_client
+    (fun alba_client ->
+
+     let preset_name = test_name in
+     let preset' =
+       let open Albamgr_protocol.Protocol in
+       Preset.({ _DEFAULT with policies = [ (5,4,8,3); ]; }) in
+     alba_client # mgr_access # create_preset preset_name preset' >>= fun () ->
+
+     let namespace = test_name in
+     alba_client # create_namespace
+                 ~preset_name:(Some preset_name)
+                 ~namespace () >>= fun namespace_id ->
+
+     let open Nsm_model in
+
+     let object_name = "abc" in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data:"efg"
+                 ~checksum_o:None
+                 ~allow_overwrite:NoPrevious >>= fun (mf, _) ->
+
+     let object_id = mf.Manifest.object_id in
+
+     (* remove a fragment *)
+     let locations = List.hd_exn (mf.Manifest.fragment_locations) in
+     let victim_osd_o, version0 = List.hd_exn locations in
+     let victim_osd = Option.get_some victim_osd_o in
+     Alba_test.delete_fragment
+       alba_client namespace_id object_id
+       (victim_osd, 0)
+       0 0
+     >>= fun () ->
+
+     (* overwrite a fragment with garbage (to create a checksum mismatch) *)
+     begin
+       let osd_id_o, version_id = List.nth_exn locations 1 in
+       let osd_id = Option.get_some osd_id_o in
+       alba_client # with_osd
+         ~osd_id
+         (fun osd ->
+          osd # apply_sequence
+              []
+              [ Osd.Update.set_string
+                  (Osd_keys.AlbaInstance.fragment
+                     ~namespace_id
+                     ~object_id ~version_id
+                     ~chunk_id:0
+                     ~fragment_id:1)
+                  (get_random_string 39)
+                  Checksum.NoChecksum
+                  false; ] >>= function
+          | Osd.Ok -> Lwt.return ()
+          | _ -> assert false)
+     end >>= fun () ->
+
+     let open Albamgr_protocol.Protocol in
+     let name = "name" in
+     let cnt = 10 in
+     alba_client # mgr_access # add_work_items
+                 [ Work.(IterNamespace
+                           (Verify
+                              { checksum = true;
+                                repair_osd_unavailable = true; },
+                            namespace_id,
+                            name,
+                            cnt)) ] >>= fun () ->
+
+     Alba_test.wait_for_work alba_client >>= fun () ->
+     Alba_test.wait_for_work alba_client >>= fun () ->
+
+     alba_client # with_nsm_client'
+                 ~namespace_id
+                 (fun client ->
+                  client # get_object_manifest_by_name object_name)
+     >>= fun mfo ->
+     let mf = Option.get_some mfo in
+     assert (mf.Manifest.version_id = 1);
+
+     (* missing fragment *)
+     assert (mf.Manifest.fragment_locations
+             |> List.hd_exn
+             |> List.hd_exn
+             |> snd
+             = 1);
+
+     (* checksum mismatch fragment *)
+     assert (mf.Manifest.fragment_locations
+             |> List.hd_exn
+             |> fun l -> List.nth_exn l 1
+             |> snd
+             = 1);
+
+     alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
+     assert (cnt = cnt');
+     let objects_verified,
+         fragments_detected_missing,
+         fragments_osd_unavailable,
+         fragments_checksum_mismatch
+       =
+       List.fold_left
+         (fun (objects_verified,
+               fragments_detected_missing',
+               fragments_osd_unavailable',
+               fragments_checksum_mismatch')
+              (i, p) ->
+          let end_key = get_start_key (i+1) cnt in
+          match p with
+          | Progress.Verify ({ Progress.count; next; },
+                             { Progress.fragments_detected_missing;
+                               fragments_osd_unavailable;
+                               fragments_checksum_mismatch })->
+             assert (end_key = next);
+             objects_verified + Int64.to_int count,
+             fragments_detected_missing' + Int64.to_int fragments_detected_missing,
+             fragments_osd_unavailable' + Int64.to_int fragments_osd_unavailable,
+             fragments_checksum_mismatch' + Int64.to_int fragments_checksum_mismatch
+          | _ -> assert false)
+         (0, 0, 0, 0)
+         progresses
+     in
+     assert (objects_verified = 1);
+     assert (fragments_detected_missing = 1);
+     assert (fragments_osd_unavailable = 0);
+     assert (fragments_checksum_mismatch = 1);
+
+     Lwt.return ())
+
 
 open OUnit
 
@@ -470,4 +602,5 @@ let suite = "maintenance_test" >:::[
     "test_repair_orange" >:: test_repair_orange;
     "test_repair_orange2" >:: test_repair_orange2;
     "test_rewrite_namespace" >:: test_rewrite_namespace;
+    "test_verify_namespace" >:: test_verify_namespace;
 ]

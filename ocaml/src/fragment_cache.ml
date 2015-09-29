@@ -23,10 +23,7 @@ module KV = Rocks_key_value_store
 class type cache = object
     method clear_all : unit -> unit Lwt.t
     method add : int32 -> string -> Bytes.t -> unit Lwt.t
-    method lookup :
-             int32 -> string
-             -> (Lwt_unix.file_descr -> len:int -> 'a Lwt.t)
-             -> 'a option Lwt.t
+    method lookup : int32 -> string -> bytes option Lwt.t
 
     method drop : int32 -> unit Lwt.t
     method get_count : unit -> int64
@@ -37,7 +34,7 @@ end
 class no_cache = object(self :# cache)
     method clear_all () = Lwt.return ()
     method add    bid oid blob = Lwt.return ()
-    method lookup bid oid f    = Lwt.return None
+    method lookup bid oid      = Lwt.return None
     method drop   bid          = Lwt.return ()
     method get_count () = 0L
     method get_total_size () = 0L
@@ -228,7 +225,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
          Lwt_extra2.write_all fd_out fragment 0 fragment_l
         )
     in
-    Alba_statistics.Statistics.with_timing_lwt _inner  >>= fun (took,()) ->
+    with_timing_lwt _inner  >>= fun (took,()) ->
     Lwt_log.debug_f "_write_blob path:%s took:%f" path took
   in
 
@@ -319,7 +316,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
             Lwt.return ())
         )
 
-    method lookup bid oid f =
+    method lookup bid oid =
 
       Hashtbl.remove _dropping bid;
 
@@ -383,7 +380,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         (fun () ->
          Lwt_mutex.with_lock
            _mutex
-           (fun () -> _lookup bid oid f )
+           (fun () -> _lookup bid oid read_it)
         )
         (fun exn ->
          Lwt_log.warning ~exn "the cache exploded. returning None" >>= fun () ->
@@ -995,7 +992,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
              )
           )
       in
-      Alba_statistics.Statistics.with_timing_lwt
+      with_timing_lwt
         (fun () ->
          Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
          Lwt_mutex.with_lock _mutex _add

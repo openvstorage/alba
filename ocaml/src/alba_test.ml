@@ -953,7 +953,7 @@ let test_missing_corrupted_fragment () =
       (alba_client (* : Alba_client.alba_client *))
       ~namespace_id
       ~object_id ~object_name
-      ~chunk_id ~fragment_id ~version_id =
+      ~chunk_id ~fragment_id ~location =
     Lwt.ignore_result
       (Lwt_extra2.ignore_errors
          (fun () ->
@@ -961,7 +961,7 @@ let test_missing_corrupted_fragment () =
                    ~namespace_id ~object_id
                    ~object_name
                    ~chunk_id
-                   ~fragment_id ~version_id))
+                   ~fragment_id ~version_id:(snd location)))
   in
   test_with_alba_client
     ~bad_fragment_callback
@@ -1746,9 +1746,10 @@ let test_stale_manifest_download () =
                        ~should_cache:false
           >>= fun (_, manifest_o) ->
           let manifest = Option.get_some manifest_o in
-          maintenance_client # repair_object_rewrite
-                             ~namespace_id
-                             ~manifest >>= fun () ->
+          Repair.rewrite_object
+            (alba_client2 # get_base_client)
+            ~namespace_id
+            ~manifest >>= fun () ->
           maintenance_client # clean_obsolete_keys_namespace
                              ~once:true ~namespace_id >>= fun () ->
           Lwt.return ())

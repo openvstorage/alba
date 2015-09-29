@@ -20,8 +20,6 @@ module AsdStatistics = struct
     module G = Statistics_collection.Generic
     type t = G.t
     let section = Alba_statistics.Statistics.section
-    let with_timing = G.with_timing
-    let with_timing_lwt = G.with_timing_lwt
 
     let new_delta t code delta = G.new_delta t code delta
 

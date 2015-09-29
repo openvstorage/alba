@@ -1333,17 +1333,23 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                                  Llio.raw_string_to
                                  Llio.int_to)
                               (name, i) in
+                 let progress =
+                   let open Progress in
+                   match action with
+                   | Rewrite ->
+                      (Rewrite { count = 0L; next = Some start; })
+                   | Verify _ ->
+                      (Verify ({ count = 0L; next = Some start; },
+                               { fragments_detected_missing  = 0L;
+                                 fragments_osd_unavailable   = 0L;
+                                 fragments_checksum_mismatch = 0L; })) in
                  Work.IterNamespaceLeaf
                    (action,
                     namespace_id,
                     name,
                     range),
-                 match action with
-                 | Rewrite ->
-                    Update.Set (Keys.progress name,
-                                serialize
-                                  Progress.to_buffer
-                                  (Progress.Rewrite (0L, Some start)))
+                 Update.Set (Keys.progress name,
+                             serialize Progress.to_buffer progress)
                 )
                 (Int.range 0 cnt)
             in
@@ -1751,7 +1757,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           Lwt.catch
             (fun () ->
              let (delta,(res,res_serializer)) =
-               Statistics.with_timing
+               with_timing
                (fun () ->
                 let req = read_query_i r req_buf in
                 let res = handle_query r req in
@@ -1783,7 +1789,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             | cnt ->
                Lwt.catch
                  (fun () ->
-                  Statistics.with_timing_lwt
+                  with_timing_lwt
                     (fun () ->
                      handle_update r req >>= fun (res, upds) ->
                      backend # push_update

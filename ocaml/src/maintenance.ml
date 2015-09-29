@@ -16,7 +16,6 @@ limitations under the License.
 
 open Prelude
 open Slice
-open Lwt_bytes2
 open Recovery_info
 open Lwt.Infix
 
@@ -226,161 +225,6 @@ class client ?(retry_timeout = 60.)
       Lwt.return object_location_movements
 
 
-    method repair_object_generic
-             ~namespace_id
-             ~manifest
-             ~problem_osds
-             ~problem_fragments
-      =
-      let open Nsm_model in
-      Lwt_log.debug_f "_repair_object_generic ~namespace_id:%li ~manifest:%s ~problem_osds:%s ~problem_fragments:%s"
-                      namespace_id (Manifest.show manifest)
-                      ([%show : int32 list] (Int32Set.elements problem_osds))
-                      ([%show : (int * int) list] problem_fragments)
-      >>= fun () ->
-
-      let object_name = manifest.Manifest.name in
-      let object_id = manifest.Manifest.object_id in
-
-      let locations = manifest.Manifest.fragment_locations in
-      let fragment_checksums = manifest.Manifest.fragment_checksums in
-      let fragment_info =
-        Layout.combine
-          locations
-          fragment_checksums
-      in
-
-      alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
-      alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
-
-      let fragment_checksum_algo =
-        preset.Albamgr_protocol.Protocol.Preset.fragment_checksum_algo in
-
-      let es, compression = match manifest.Manifest.storage_scheme with
-        | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
-      let enc = manifest.Manifest.encrypt_info in
-      let encryption = Albamgr_protocol.Protocol.Preset.get_encryption preset enc in
-      let decompress = Fragment_helper.maybe_decompress compression in
-      let k, m, w = match es with
-        | Encoding_scheme.RSVM (k, m, w) -> k, m, w in
-      let w' = Encoding_scheme.w_as_int w in
-
-      let version_id = manifest.Manifest.version_id + 1 in
-
-      Lwt_list.map_s
-        (fun (chunk_id, chunk_location) ->
-
-           alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache' ->
-
-           let _, ok_fragments, fragments_to_be_repaired =
-             List.fold_left
-               (fun (fragment_id, ok_fragments, to_be_repaireds)
-                 ((fragment_osd_id_o, fragment_version_id), fragment_checksum) ->
-                 let ok_fragments', to_be_repaireds' =
-                   if List.mem (chunk_id, fragment_id) problem_fragments ||
-                      (match fragment_osd_id_o with
-                       | None -> false
-                       | Some osd_id -> Int32Set.mem osd_id problem_osds)
-                   then
-                     ok_fragments,
-                     (fragment_id, fragment_checksum) :: to_be_repaireds
-                   else
-                     fragment_osd_id_o :: ok_fragments,
-                     to_be_repaireds in
-                 fragment_id + 1, ok_fragments', to_be_repaireds')
-               (0, [], [])
-               chunk_location in
-           if fragments_to_be_repaired = []
-           then Lwt.return (chunk_id, [])
-           else begin
-             alba_client # download_chunk
-               ~namespace_id
-               ~object_id
-               ~object_name
-               chunk_location
-               ~chunk_id
-               ~encryption
-               decompress
-               k m w'
-             >>= fun (data_fragments, coding_fragments, t_chunk) ->
-
-             let all_fragments = List.append data_fragments coding_fragments in
-             Lwt.finalize
-               (fun () ->
-                Maintenance_helper.upload_missing_fragments
-                  alba_client
-                  osds_info_cache'
-                  ok_fragments
-                  all_fragments
-                  fragments_to_be_repaired
-                  ~namespace_id
-                  manifest
-                  ~chunk_id ~version_id ~gc_epoch
-                  locations
-                  compression encryption
-                  fragment_checksum_algo
-                  ~is_replication:(k=1))
-               (fun () ->
-                List.iter
-                  Lwt_bytes.unsafe_destroy
-                  all_fragments;
-                Lwt.return ())
-             >>= fun updated_locations ->
-
-             Lwt.return (chunk_id, updated_locations)
-           end)
-        (List.mapi (fun i lc -> i, lc) fragment_info)
-      >>= fun updated_locations ->
-
-      let updated_object_locations =
-        List.fold_left
-          (fun acc (chunk_id, updated_locations) ->
-             let updated_chunk_locations =
-               List.map
-                 (fun (fragment_id, device_id) ->
-                    (chunk_id, fragment_id, device_id))
-                 updated_locations in
-             List.rev_append updated_chunk_locations acc)
-          []
-          updated_locations
-      in
-
-      Lwt.return (updated_object_locations, gc_epoch, version_id)
-
-    method private _repair_object_generic
-      ~namespace_id
-      ~manifest
-      ~problem_osds
-      ~problem_fragments =
-      self # repair_object_generic
-        ~namespace_id
-        ~manifest
-        ~problem_osds
-        ~problem_fragments
-      >>= fun (updated_object_locations, gc_epoch, version_id) ->
-
-      let open Nsm_model in
-      let object_name = manifest.Manifest.name in
-      let object_id = manifest.Manifest.object_id in
-
-      alba_client # with_nsm_client'
-        ~namespace_id
-        (fun client ->
-           client # update_manifest
-             ~object_name
-             ~object_id
-             (List.map
-                (fun (c,f,o) -> c,f,Some o)
-                updated_object_locations)
-             ~gc_epoch ~version_id)
-      >>= fun () ->
-      Lwt_log.debug_f
-        "updated_manifest ~namespace_id:%li ~object_id:%S ~updated_object_locations:%s"
-        namespace_id object_id
-        ([%show : (int *int * int32) list] updated_object_locations)
-      >>= fun () ->
-      Lwt.return ()
-
     method decommission_device
         ?(deterministic=false)
         ~namespace_id
@@ -406,11 +250,12 @@ class client ?(retry_timeout = 60.)
         (fun manifest ->
          Lwt.catch
            (fun () ->
-            self # _repair_object_generic
-                 ~namespace_id
-                 ~manifest
-                 ~problem_fragments:[]
-                 ~problem_osds:(Int32Set.of_list [ osd_id ]))
+            Repair.repair_object_generic_and_update_manifest
+              alba_client
+              ~namespace_id
+              ~manifest
+              ~problem_fragments:[]
+              ~problem_osds:(Int32Set.of_list [ osd_id ]))
            (fun exn ->
             let open Nsm_model.Manifest in
             Lwt_log.info_f
@@ -420,9 +265,10 @@ class client ?(retry_timeout = 60.)
             Lwt_extra2.ignore_errors
               ~logging:true
               (fun () ->
-               self # repair_object_rewrite
-                    ~namespace_id
-                    ~manifest))
+               Repair.rewrite_object
+                 alba_client
+                 ~namespace_id
+                 ~manifest))
         )
         manifests >>= fun () ->
 
@@ -785,43 +631,19 @@ class client ?(retry_timeout = 60.)
         begin
           alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
 
-          self # _repair_object_generic
-               ~namespace_id
-               ~manifest
-               ~problem_fragments
-               ~problem_osds
+          Repair.repair_object_generic_and_update_manifest
+            alba_client
+            ~namespace_id
+            ~manifest
+            ~problem_fragments
+            ~problem_osds
         end
       else
-        self # repair_object_rewrite
-             ~namespace_id
-             ~manifest
+        Repair.rewrite_object
+          alba_client
+          ~namespace_id
+          ~manifest
 
-    method repair_object_rewrite
-             ~namespace_id ~manifest =
-      let open Nsm_model in
-
-      Lwt_log.debug_f
-        "Repairing %s in namespace %li"
-        (Manifest.show manifest) namespace_id
-      >>= fun () ->
-
-      let object_reader =
-        new Object_reader2.object_reader
-            alba_client
-            namespace_id manifest in
-
-      let object_name = manifest.Manifest.name in
-      let checksum_o = Some manifest.Manifest.checksum in
-      let allow_overwrite = PreviousObjectId manifest.Manifest.object_id in
-
-      alba_client # upload_object'
-        ~namespace_id
-        ~object_name
-        ~object_reader
-        ~checksum_o
-        ~allow_overwrite >>= fun _ ->
-
-      Lwt.return ()
 
     method rebalance_namespace
              ?delay
@@ -1040,7 +862,7 @@ class client ?(retry_timeout = 60.)
             if cnt > 0
             then
               Lwt_list.iter_s
-                (fun manifest -> self # repair_object_rewrite ~namespace_id ~manifest)
+                (fun manifest -> Repair.rewrite_object alba_client ~namespace_id ~manifest)
                 objs >>= fun () ->
               Lwt.return true
             else
@@ -1214,18 +1036,16 @@ class client ?(retry_timeout = 60.)
           | None -> Lwt.return ()
           | Some p ->
              let open Albamgr_protocol.Protocol in
-             match p, action with
-             | Progress.Rewrite (count, next), Work.Rewrite ->
-                let fetch ~first ~last =
-                  alba_client # with_nsm_client'
-                              ~namespace_id
-                              (fun client ->
-                               client # list_objects_by_id
-                                      ~first ~finc:true
-                                      ~last
-                                      ~max:100 ~reverse:false)
-                in
-
+             let fetch ~first ~last =
+               alba_client # with_nsm_client'
+                           ~namespace_id
+                           (fun client ->
+                            client # list_objects_by_id
+                                   ~first ~finc:true
+                                   ~last
+                                   ~max:100 ~reverse:false)
+             in
+             let get_next_batch { Progress.count; next; } =
                 (match next, last with
                  | None, _ -> Lwt.return ((0,[]), false)
                  | Some next, None -> fetch ~first:next ~last:None
@@ -1233,26 +1053,8 @@ class client ?(retry_timeout = 60.)
                     if next >= last
                     then Lwt.return ((0,[]), false)
                     else fetch ~first:next ~last:(Some (last, false)))
-
-                >>= fun ((cnt, objs), has_more) ->
-
-                Lwt_list.iter_s
-                  (fun manifest ->
-                   Lwt.catch
-                     (fun () ->
-                      self # repair_object_rewrite
-                           ~namespace_id
-                           ~manifest)
-                     (let open Nsm_model.Err in
-                      function
-                      | Nsm_exn (Overwrite_not_allowed, _) ->
-                        (* ignore this one ... the object was overwritten
-                         * already in the meantime, which is just fine for us
-                         *)
-                        Lwt.return ()
-                      | exn -> Lwt.fail exn))
-                  objs >>= fun () ->
-
+             in
+             let get_update_progress_base { Progress.count; _; } ((cnt, objs), has_more) =
                 let next =
                   if has_more
                   then Option.map
@@ -1260,19 +1062,81 @@ class client ?(retry_timeout = 60.)
                          (List.last objs)
                   else last
                 in
-                let po = (Some (Progress.Rewrite
-                                   (Int64.(add count (of_int cnt)),
-                                    next)))
+                { Progress.count = Int64.(add count (of_int cnt));
+                  next; }
+             in
+             let update_progress_and_maybe_continue new_p has_more =
+               let po = Some new_p in
+               alba_client # mgr_access # update_progress
+                           name p po >>= fun () ->
+
+               if not (filter work_id)
+               then Lwt.fail NotMyTask
+               else if has_more
+               then inner po
+               else Lwt.return ()
+             in
+
+             match p, action with
+             | Progress.Rewrite pb, Work.Rewrite ->
+
+                get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
+
+                Lwt_list.iter_s
+                  (fun manifest ->
+                   Repair.rewrite_object
+                     alba_client
+                     ~namespace_id
+                     ~manifest)
+                  objs >>= fun () ->
+
+                let new_p = Progress.Rewrite (get_update_progress_base pb batch) in
+
+                update_progress_and_maybe_continue
+                  new_p
+                  has_more
+             | Progress.Verify (pb,
+                                { Progress.fragments_detected_missing;
+                                  fragments_osd_unavailable;
+                                  fragments_checksum_mismatch }),
+               Work.Verify { checksum; repair_osd_unavailable; } ->
+                get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
+
+                Lwt_list.map_s
+                  (Verify.verify_and_maybe_repair_object
+                     alba_client
+                     ~namespace_id
+                     ~verify_checksum:checksum
+                     ~repair_osd_unavailable)
+                  objs >>= fun res ->
+
+                let fragments_detected_missing,
+                    fragments_osd_unavailable,
+                    fragments_checksum_mismatch =
+                  List.fold_left
+                    (fun (a,b,c) (a',b',c') ->
+                     let open Int64 in
+                     add a (of_int a'),
+                     add b (of_int b'),
+                     add c (of_int c'))
+                    (fragments_detected_missing,
+                     fragments_osd_unavailable,
+                     fragments_checksum_mismatch)
+                    res
                 in
 
-                alba_client # mgr_access # update_progress
-                            name p po >>= fun () ->
+                let new_p = Progress.Verify
+                              (get_update_progress_base pb batch,
+                               { Progress.fragments_detected_missing;
+                                 fragments_osd_unavailable;
+                                 fragments_checksum_mismatch; }) in
 
-                if not (filter work_id)
-                then Lwt.fail NotMyTask
-                else if has_more
-                then inner po
-                else Lwt.return ()
+                update_progress_and_maybe_continue
+                  new_p
+                  has_more
+             | _, Work.Rewrite
+             | _, Work.Verify _ ->
+                Lwt.fail_with "badly set up IterNamespace task!"
         in
         alba_client # mgr_access # get_progress name >>= fun po ->
         inner po
@@ -1324,7 +1188,7 @@ class client ?(retry_timeout = 60.)
                  Lwt.return ()
                | `Retry ->
                  Lwt_unix.sleep backoff >>= fun () ->
-                 inner (backoff *. 1.5)
+                 inner (min (backoff *. 1.5) 120.)
              in
              Lwt.finalize
                (fun () -> inner 1.0)

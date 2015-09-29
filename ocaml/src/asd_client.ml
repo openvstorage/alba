@@ -40,7 +40,7 @@ class client fd ic id =
         Lwt_log.debug_f
           "asd_client %s: %s"
           id descr >>= fun () ->
-        Alba_statistics.Statistics.with_timing_lwt
+        with_timing_lwt
           (fun () ->
            let s =
              serialize_with_length
@@ -61,7 +61,7 @@ class client fd ic id =
         Lwt_log.debug_f
           "asd_client %s: %s"
           id descr >>= fun () ->
-        Alba_statistics.Statistics.with_timing_lwt
+        with_timing_lwt
           (fun () ->
            let s =
              serialize_with_length

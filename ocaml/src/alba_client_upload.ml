@@ -149,7 +149,7 @@ let upload_chunk
             t_hash,
             checksum)),
           osd_id_o) ->
-     Statistics.with_timing_lwt
+     with_timing_lwt
        (fun () ->
         match osd_id_o with
         | None -> Lwt.return ()
@@ -315,14 +315,14 @@ let upload_object''
       let t0_chunk = Unix.gettimeofday () in
       let chunk_size' = min desired_chunk_size (object_length - total_size) in
       Lwt_log.debug_f "chunk_size' = %i" chunk_size' >>= fun () ->
-      Statistics.with_timing_lwt
+      with_timing_lwt
         (fun () -> object_reader # read chunk_size' chunk)
       >>= fun (read_data_time, ()) ->
 
       let total_size' = total_size + chunk_size' in
       let has_more = total_size' < object_length in
 
-      Statistics.with_timing_lwt
+      with_timing_lwt
         (fun () ->
          object_hash # update_lwt_bytes_detached chunk 0 chunk_size')
       >>= fun (hash_time', ()) ->
@@ -463,7 +463,7 @@ let upload_object''
            ~manifest
            ~gc_epoch
   in
-  Statistics.with_timing_lwt
+  with_timing_lwt
     (fun () ->
      Lwt.catch
        store_manifest

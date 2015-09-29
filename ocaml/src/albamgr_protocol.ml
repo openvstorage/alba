@@ -554,14 +554,27 @@ module Protocol = struct
   module Work = struct
     type id = Int32.t
 
+    type verify_params = {
+        checksum : bool;
+        repair_osd_unavailable : bool;
+      } [@@deriving show]
     type action =
       | Rewrite
+      | Verify of verify_params
     [@@deriving show]
     let action_to_buffer buf = function
       | Rewrite -> Llio.int8_to buf 1
+      | Verify { checksum; repair_osd_unavailable; } ->
+         Llio.int8_to buf 2;
+         Llio.bool_to buf checksum;
+         Llio.bool_to buf repair_osd_unavailable
     let action_from_buffer buf =
       match Llio.int8_from buf with
       | 1 -> Rewrite
+      | 2 ->
+         let checksum = Llio.bool_from buf in
+         let repair_osd_unavailable = Llio.bool_from buf in
+         Verify { checksum; repair_osd_unavailable; }
       | k -> raise_bad_tag "Work.action" k
 
     type range = string * string option [@@deriving show]
@@ -707,22 +720,62 @@ module Protocol = struct
   end
 
   module Progress = struct
+    type base = {
+        count : int64;
+        next : string option;
+      } [@@deriving show]
+    let base_to_buffer buf { count; next; } =
+      Llio.int64_to buf count;
+      Llio.string_option_to buf next
+    let base_from_buffer buf =
+      let count = Llio.int64_from buf in
+      let next = Llio.string_option_from buf in
+      { count; next }
+
+    type verify_params = {
+        fragments_detected_missing  : int64;
+        fragments_osd_unavailable   : int64;
+        fragments_checksum_mismatch : int64;
+    } [@@deriving show]
+    let verify_params_to_buffer
+          buf
+          { fragments_detected_missing;
+            fragments_osd_unavailable;
+            fragments_checksum_mismatch; } =
+      Llio.int64_to buf fragments_detected_missing;
+      Llio.int64_to buf fragments_osd_unavailable;
+      Llio.int64_to buf fragments_checksum_mismatch
+    let verify_params_from_buffer buf =
+      let fragments_detected_missing = Llio.int64_from buf in
+      let fragments_osd_unavailable = Llio.int64_from buf in
+      let fragments_checksum_mismatch = Llio.int64_from buf in
+      { fragments_detected_missing;
+        fragments_osd_unavailable;
+        fragments_checksum_mismatch }
+
     type t =
-      | Rewrite of int64 * string option
+      | Rewrite of base
+      | Verify of base * verify_params
     [@@deriving show]
 
     let to_buffer buf = function
-      | Rewrite (count, next) ->
+      | Rewrite b ->
         Llio.int8_to buf 1;
-        Llio.int64_to buf count;
-        Llio.string_option_to buf next
+        base_to_buffer buf b
+      | Verify (b, v) ->
+        Llio.int8_to buf 2;
+        base_to_buffer buf b;
+        verify_params_to_buffer buf v
 
     let from_buffer buf =
       match Llio.int8_from buf with
       | 1 ->
-         let count = Llio.int64_from buf in
-         let next = Llio.string_option_from buf in
-         Rewrite (count, next)
+         let b = base_from_buffer buf in
+         Rewrite b
+      | 2 ->
+         let b = base_from_buffer buf in
+         let v = verify_params_from_buffer buf in
+         Verify (b, v)
       | k -> raise_bad_tag "Progress" k
 
     module Update = struct

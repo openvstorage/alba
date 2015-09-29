@@ -21,7 +21,6 @@ open Asd_protocol
 open Slice
 open Checksum
 open Asd_statistics
-open Alba_statistics
 open Lwt_buffer
 
 let blob_threshold = 16 * 1024
@@ -193,7 +192,7 @@ module DirectoryInfo = struct
 
   let write_blob t fnr blob =
     Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->
-    Statistics.with_timing_lwt
+    with_timing_lwt
       (fun () ->
          let dir, _, file_path = get_file_dir_name_path t fnr in
          ensure_dir_exists t dir >>= fun () ->
@@ -859,7 +858,7 @@ let asd_protocol
     let buf = Llio.make_buffer req_s 0 in
     let code = Llio.int32_from buf in
     let command = Protocol.code_to_command code in
-    Statistics.with_timing_lwt
+    with_timing_lwt
       (fun () -> handle_request buf command)
     >>= fun (delta, ()) ->
     Statistics_collection.Generic.new_delta stats code delta;
@@ -1022,7 +1021,7 @@ let run_server
      then begin
        let waiters_len = List.length waiters in
        Lwt_log.debug_f "Starting syncfs for %i waiters" waiters_len >>= fun () ->
-       Statistics.with_timing_lwt
+       with_timing_lwt
          (fun () -> Syncfs.lwt_syncfs fs_fd) >>= fun (t_syncfs, rc) ->
        assert (rc = 0);
        let logger =

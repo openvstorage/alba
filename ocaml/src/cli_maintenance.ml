@@ -274,7 +274,6 @@ let alba_rewrite_object
     with_alba_client
       cfg_file
       (fun client ->
-         let maintenance_client = new Maintenance.client (client # get_base_client) in
          client # nsm_host_access # with_namespace_id ~namespace
            (fun namespace_id ->
               client # nsm_host_access # get_nsm_by_id ~namespace_id
@@ -285,7 +284,8 @@ let alba_rewrite_object
                 Lwt.fail_with
                   "No object with the specified name could be found"
               | Some manifest ->
-                maintenance_client # repair_object_rewrite
+                Repair.rewrite_object
+                  (client # get_base_client)
                   ~namespace_id
                   ~manifest))
   in
