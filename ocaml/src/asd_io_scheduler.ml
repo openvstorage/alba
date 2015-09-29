@@ -18,6 +18,7 @@ open Prelude
 open Lwt_buffer
 open Lwt.Infix
 
+(* performs some IO and returns how costly it was *)
 type 'a io = unit -> ('a * int) Lwt.t
 
 type 'a io_with_waiter = 'a Lwt.u * 'a io
