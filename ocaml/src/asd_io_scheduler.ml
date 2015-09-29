@@ -18,10 +18,7 @@ open Prelude
 open Lwt_buffer
 open Lwt.Infix
 
-type 'a io = {
-    perform : unit -> 'a Lwt.t;
-    cost    : int;
-  }
+type 'a io = unit -> ('a * int) Lwt.t
 
 type 'a io_with_waiter = 'a Lwt.u * 'a io
 type output = unit  io_with_waiter
@@ -70,14 +67,14 @@ let rec _harvest_from_buffer buffer acc cost threshold =
       Lwt_buffer.take buffer >>= fun (waiter, item) ->
       Lwt.catch
         (fun () ->
-         item.perform () >>= fun res ->
-         Lwt.return (`Ok res))
+         item () >>= fun (res, cost) ->
+         Lwt.return (`Ok res, cost))
         (fun exn ->
-         Lwt.return (`Exn exn)) >>= fun res ->
+         Lwt.return (`Exn exn, 1000)) >>= fun (res, cost') ->
       _harvest_from_buffer
         buffer
         ((waiter, res) :: acc)
-        (item.cost + cost)
+        (cost + cost')
         threshold
     end
 

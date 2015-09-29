@@ -298,19 +298,35 @@ module Protocol = struct
 
   type has_more = bool
 
+  type priority = Asd_io_scheduler.priority =
+                | High
+                | Low
+  let priority_from_buffer buf =
+    match Llio.int8_from buf with
+    | 1 -> High
+    | 2 -> Low
+    | k -> raise_bad_tag "Asd_protocol.Priority" k
+  let priority_to_buffer buf prio =
+    Llio.int8_to
+      buf
+      (match prio with
+       | High -> 1
+       | Low -> 2)
+  let maybe_priority_from_buffer = maybe_from_buffer priority_from_buffer High
+
   type ('request, 'response) query =
-    | Range : (range_request, key counted_list_more) query
-    | MultiGet : (key list, (value * Checksum.t) option list) query
-    | RangeEntries : (range_request, (key * value * checksum) counted_list_more)
+    | Range : (range_request * priority, key counted_list_more) query
+    | MultiGet : (key list * priority, (value * Checksum.t) option list) query
+    | RangeEntries : (range_request * priority, (key * value * checksum) counted_list_more)
                        query
     | Statistics: (bool, AsdStatistics.t) query
     | GetVersion: (unit, (int * int * int *string)) query
-    | MultiGet2 : (key list, Value.t option list) query
-    | MultiExists: (key list, bool list) query
+    | MultiGet2 : (key list * priority, Value.t option list) query
+    | MultiExists: (key list * priority, bool list) query
   [@deriving show]
 
   type ('request, 'response) update =
-    | Apply : (Assert.t list * Update.t list, unit) update
+    | Apply : (Assert.t list * Update.t list * priority, unit) update
     | SetFull: (bool, unit) update
 
   type t =
@@ -349,23 +365,47 @@ module Protocol = struct
 
   let query_request_serializer : type req res. (req, res) query -> req Llio.serializer
     = function
-      | Range -> rr_to
-      | RangeEntries -> rr_to
-      | MultiGet -> Llio.list_to Slice.to_buffer
-      | MultiGet2 -> Llio.list_to Slice.to_buffer
+      | Range -> Llio.pair_to rr_to priority_to_buffer
+      | RangeEntries -> Llio.pair_to rr_to priority_to_buffer
+      | MultiGet ->
+         Llio.pair_to
+           (Llio.list_to Slice.to_buffer)
+           priority_to_buffer
+      | MultiGet2 -> 
+         Llio.pair_to
+           (Llio.list_to Slice.to_buffer)
+           priority_to_buffer
       | Statistics -> Llio.bool_to
       | GetVersion -> Llio.unit_to
-      | MultiExists -> Llio.list_to Slice.to_buffer
+      | MultiExists ->
+         Llio.pair_to
+           (Llio.list_to Slice.to_buffer)
+           priority_to_buffer
 
   let query_request_deserializer : type req res. (req, res) query -> req Llio.deserializer
     = function
-      | Range -> rr_from
-      | RangeEntries -> rr_from
-      | MultiGet -> Llio.list_from Slice.from_buffer
-      | MultiGet2 -> Llio.list_from Slice.from_buffer
-      | Statistics -> Llio.bool_from
-      | GetVersion -> Llio.unit_from
-      | MultiExists -> Llio.list_from Slice.from_buffer
+    | Range ->
+       Llio.pair_from
+         rr_from
+         maybe_priority_from_buffer
+    | RangeEntries ->
+       Llio.pair_from
+         rr_from
+         maybe_priority_from_buffer
+    | MultiGet ->
+       Llio.pair_from
+         (Llio.list_from Slice.from_buffer)
+         maybe_priority_from_buffer
+    | MultiGet2 ->
+       Llio.pair_from
+         (Llio.list_from Slice.from_buffer)
+         maybe_priority_from_buffer
+    | Statistics -> Llio.bool_from
+    | GetVersion -> Llio.unit_from
+    | MultiExists ->
+       Llio.pair_from
+         (Llio.list_from Slice.from_buffer)
+         maybe_priority_from_buffer
 
   let query_response_serializer : type req res. (req, res) query -> res Llio.serializer
     = function
@@ -423,9 +463,10 @@ module Protocol = struct
 
   let update_request_serializer : type req res. (req, res) update -> req Llio.serializer
     = function
-      | Apply -> fun buf (asserts, updates) ->
+      | Apply -> fun buf (asserts, updates, prio) ->
         Llio.list_to Assert.to_buffer buf asserts;
-        Llio.list_to Update.to_buffer buf updates
+        Llio.list_to Update.to_buffer buf updates;
+        priority_to_buffer buf prio
       | SetFull -> fun buf full ->
         Llio.bool_to buf full
 
@@ -435,7 +476,8 @@ module Protocol = struct
         Lwt_log.ign_debug "Apply deser";
         let asserts = Llio.list_from Assert.from_buffer buf in
         let updates = Llio.list_from Update.from_buffer buf in
-        (asserts, updates)
+        let prio    = maybe_priority_from_buffer buf in
+        (asserts, updates, prio)
       | SetFull -> fun buf ->
         Lwt_log.ign_debug "SetFull deser";
         Llio.bool_from buf

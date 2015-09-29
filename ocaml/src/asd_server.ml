@@ -298,109 +298,161 @@ let key_exists kv key = (get_value_option kv key) <> None
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
+                         Asd_io_scheduler.t ->
                          DirectoryInfo.t ->
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
                          req ->
-                         (res * (Lwt_unix.file_descr ->
-                                 unit Lwt.t)) Lwt.t
-  = fun kv dir_info stats ->
+                         (string * (Lwt_unix.file_descr ->
+                                    unit Lwt.t)) Lwt.t
+  = fun kv io_sched dir_info stats q ->
     let open Protocol in
-    let return x = Lwt.return (x, fun _ -> Lwt.return_unit) in
-    function
-    | Range -> fun { first; finc; last; reverse; max; } ->
-      let (count, keys), have_more =
-        Rocks_key_value_store.range
-          kv
-          ~first:(Keys.key_with_public_prefix first) ~finc
-          ~last:(match last with
-                 | None -> Keys.public_key_next_prefix
-                 | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
-          ~reverse
-          ~max:(cap_max ~max ())
-      in
-      return
-        ((count, List.map Keys.string_chop_prefix keys),
-         have_more)
-    | RangeEntries -> fun { first; finc; last; reverse; max; } ->
-      let (cnt, is), has_more =
-        Rocks_key_value_store.map_range
-          kv
-          ~first:(Keys.key_with_public_prefix first) ~finc
-          ~last:(match last with
-                 | None -> Keys.public_key_next_prefix
-                 | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
-          ~reverse
-          ~max:(cap_max ~max ())
-          (fun cur key ->
-           Keys.string_chop_prefix key,
-           deserialize Value.from_buffer (Rocks_key_value_store.cur_get_value cur)
-          )
-      in
+    let serialize res =
+      let res_buf = Buffer.create 20 in
+      Llio.int_to res_buf 0;
+      Protocol.query_response_serializer q res_buf res;
+      Buffer.contents res_buf
+    in
+    let return'' ~cost (res, write_extra) =
+      Lwt.return ((serialize res, write_extra), cost) in
+    let return ~cost res = return'' ~cost (res, fun _ -> Lwt.return_unit) in
+    let return' res = Lwt.return (serialize res, fun _ -> Lwt.return_unit) in
+    match q with
+    | Range -> fun ({ first; finc; last; reverse; max; }, prio) ->
+      perform_read
+        io_sched
+        prio
+        (fun () ->
+         let max = cap_max ~max () in
+         let (count, keys), have_more =
+           Rocks_key_value_store.range
+             kv
+             ~first:(Keys.key_with_public_prefix first) ~finc
+             ~last:(match last with
+                    | None -> Keys.public_key_next_prefix
+                    | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
+             ~reverse
+             ~max
+         in
+         return
+           ~cost:(max * 200)
+           ((count, List.map Keys.string_chop_prefix keys),
+            have_more))
+    | RangeEntries -> fun ({ first; finc; last; reverse; max; }, prio) ->
+      perform_read
+        io_sched
+        prio
+        (fun () ->
+         let (cnt, is), has_more =
+           Rocks_key_value_store.map_range
+             kv
+             ~first:(Keys.key_with_public_prefix first) ~finc
+             ~last:(match last with
+                    | None -> Keys.public_key_next_prefix
+                    | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
+             ~reverse
+             ~max:(cap_max ~max ())
+             (fun cur key ->
+              Keys.string_chop_prefix key,
+              deserialize Value.from_buffer (Rocks_key_value_store.cur_get_value cur)
+             )
+         in
 
-      Lwt_list.map_p
-        (fun (k, vt) ->
-         Value.get_blob_from_value dir_info vt >>= fun blob ->
-         Lwt.return (k, blob, fst vt))
-        is >>= fun blobs ->
+         Lwt_list.map_p
+           (fun (k, vt) ->
+            Value.get_blob_from_value dir_info vt >>= fun blob ->
+            Lwt.return (k, blob, fst vt))
+           is >>= fun blobs ->
 
-      return ((cnt, blobs),
-              has_more)
-    | MultiGet -> fun keys ->
-      Lwt_log.ign_debug_f "MultiGet for %s" ([%show: Slice.t list] keys);
-      (* first determine atomically which are the relevant Value.t's *)
-      List.map
-        (fun k -> get_value_option kv k)
-        keys |>
-        (* then get all the blobs from the file system concurrently *)
-        Lwt_list.map_p
-          (function
-            | None -> Lwt.return None
-            | Some v ->
-               Value.get_blob_from_value dir_info v >>= fun b ->
-               Lwt.return (Some (b, Value.get_cs v))) >>= fun res ->
-      return res
-    | MultiGet2 -> fun keys ->
-      Lwt_log.ign_debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys);
-      (* first determine atomically which are the relevant Value.t's *)
-      let write_laters = ref [] in
-      let res =
-        List.map
-          (fun k ->
-           get_value_option kv k
-           |> Option.map
-                (fun (cs, blob) ->
-                 let b = match blob with
-                   | Value.Direct s -> Asd_protocol.Value.Direct s
-                   | Value.OnFs (fnr, size) ->
-                      write_laters := (fnr, size) :: !write_laters;
-                      Asd_protocol.Value.Later size in
-                 b, cs))
-          keys
-      in
+         return
+           ~cost:(List.fold_left
+                    (fun acc (_, blob, _) -> acc + 200 + Slice.length blob)
+                    0
+                    blobs)
+           ((cnt, blobs),
+            has_more))
+    | MultiGet -> fun (keys, prio) ->
+      perform_read
+        io_sched
+        prio
+        (fun () ->
+         Lwt_log.ign_debug_f "MultiGet for %s" ([%show: Slice.t list] keys);
+         (* first determine atomically which are the relevant Value.t's *)
+         List.map
+           (fun k -> get_value_option kv k)
+           keys |>
+           (* then get all the blobs from the file system concurrently *)
+           Lwt_list.map_p
+             (function
+               | None -> Lwt.return None
+               | Some v ->
+                  Value.get_blob_from_value dir_info v >>= fun b ->
+                  Lwt.return (Some (b, Value.get_cs v))) >>= fun res ->
+         return
+           ~cost:(List.fold_left
+                    (fun acc ->
+                     function
+                     | None           -> acc + 200
+                     | Some (blob, _) -> acc + 200 + Slice.length blob)
+                    0
+                    res)
+           res)
+    | MultiGet2 -> fun (keys, prio) ->
+      perform_read
+        io_sched
+        prio
+        (fun () ->
+         Lwt_log.ign_debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys);
+         (* first determine atomically which are the relevant Value.t's *)
+         let write_laters = ref [] in
+         let res =
+           List.map
+             (fun k ->
+              get_value_option kv k
+              |> Option.map
+                   (fun (cs, blob) ->
+                    let b = match blob with
+                      | Value.Direct s -> Asd_protocol.Value.Direct s
+                      | Value.OnFs (fnr, size) ->
+                         write_laters := (fnr, size) :: !write_laters;
+                         Asd_protocol.Value.Later size in
+                    b, cs))
+             keys
+         in
 
-      Lwt.return
-        (res,
-         fun fd ->
-         Lwt_list.iter_s
-           (fun (fnr, size) ->
-            DirectoryInfo.with_blob_fd
-              dir_info fnr
-              (fun blob_fd ->
-               Fsutil.sendfile_all
-                 ~fd_in:blob_fd
-                 ~fd_out:fd
-                 size))
-           (List.rev !write_laters))
-    | Statistics ->fun clear ->
-      begin
-        Asd_statistics.AsdStatistics.snapshot stats clear |> return
-      end
-    | GetVersion -> fun () -> return Alba_version.summary
-    | MultiExists ->
-       fun keys ->
-       List.map (fun k -> key_exists kv k) keys |> return
-
+         return''
+           ~cost:(List.fold_left
+                    (fun acc ->
+                     function
+                     | None           -> acc + 200
+                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Slice.length blob
+                     | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
+                    0
+                    res)
+           (res,
+            fun fd ->
+            Lwt_list.iter_s
+              (fun (fnr, size) ->
+               DirectoryInfo.with_blob_fd
+                 dir_info fnr
+                 (fun blob_fd ->
+                  Fsutil.sendfile_all
+                    ~fd_in:blob_fd
+                    ~fd_out:fd
+                    size))
+              (List.rev !write_laters)))
+    | MultiExists -> fun (keys, prio) ->
+                     perform_read
+                       io_sched prio
+                       (fun () ->
+                        let res = List.map (fun k -> key_exists kv k) keys in
+                        return
+                          ~cost:(200 * List.length keys)
+                          res)
+    | Statistics -> fun clear ->
+                    Asd_statistics.AsdStatistics.snapshot stats clear |> return'
+    | GetVersion -> fun () ->
+                    return' Alba_version.summary
 
 
 exception ConcurrentModification
@@ -417,7 +469,7 @@ let cleanup_files_to_delete ignore_unlink_error io_sched kv dir_info fnrs =
          Lwt_extra2.unlink ~may_not_exist:ignore_unlink_error path)
       fnrs >>= fun () ->
 
-    perform_write io_sched Low { perform = Lwt.return; cost = 4000; } >>= fun () ->
+    perform_write io_sched Low (fun () -> Lwt.return ((), 0)) >>= fun () ->
 
     List.iter
       (fun fnr ->
@@ -465,7 +517,7 @@ let execute_update : type req res.
         ~mgmt ~get_next_fnr ->
     let open Protocol in
     function
-    | Apply -> fun (asserts, upds) ->
+    | Apply -> fun (asserts, upds, prio) ->
       begin
         Lwt_log.debug_f
           "Apply with asserts = %s & upds = %s"
@@ -546,7 +598,6 @@ let execute_update : type req res.
           in
 
           let immediate_upds_promise =
-            let need_syncfs = ref false in
             Lwt_list.map_p
               (function
                 | Update.Set (key, Some (v, c, _)) ->
@@ -560,14 +611,13 @@ let execute_update : type req res.
                           (fun () ->
                            perform_write
                              io_sched
-                             High (* TODO get from request *)
-                             { perform = (fun () ->
-                                          DirectoryInfo.write_blob dir_info fnr v);
-                               cost = 4000 + Slice.length v; })
+                             prio
+                             (fun () ->
+                              DirectoryInfo.write_blob dir_info fnr v >>= fun () ->
+                              Lwt.return ((), 4000 + Slice.length v)))
                           (fun () ->
                            Lwt.wakeup fnr_release ();
                            Lwt.return ()) >>= fun () ->
-                        need_syncfs := true;
                         Lwt.return (Value.OnFs (fnr, blob_length))
                       end) >>= fun value ->
                    let value' =
@@ -736,8 +786,11 @@ let execute_update : type req res.
                      try_apply_immediate
                        none_asserts some_asserts
                        immediate_updates in
-                   perform_write io_sched High { perform = Lwt.return;
-                                                 cost = 1000; } >>= fun () ->
+                   perform_write
+                     io_sched
+                     High
+                     (fun () -> Lwt.return ((), 1000))
+                   >>= fun () ->
                    Lwt.ignore_result
                      (cleanup_files_to_delete false io_sched kv dir_info files_to_be_deleted);
                    Lwt.return `Succeeded)
@@ -824,16 +877,7 @@ let asd_protocol
        begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
-                perform_read
-                  io_sched
-                  High          (* TODO get from request *)
-                  { perform = (fun () ->
-                               execute_query kv dir_info stats q req >>= fun (res, write_extra) ->
-                               return_result
-                                 ~write_extra
-                                 (Protocol.query_response_serializer q) res);
-                    (* TODO cost *)
-                    cost = 1_000_000 }
+                execute_query kv io_sched dir_info stats q req
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update

@@ -502,6 +502,11 @@ let serialize_with_length ?buf_size serializer a =
   set32_prim res 0 (Int32.of_int len);
   res
 
+let maybe_from_buffer a_from default buf =
+  if Llio.buffer_done buf
+  then default
+  else a_from buf
+
 let get_start_key i n =
   if i < 0 || i > n
   then failwith "bad input for get_start_key";

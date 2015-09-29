@@ -78,6 +78,9 @@ class client fd ic id =
 
     val mutable supports_multiget2 = None
     method multi_get keys =
+      let old_multiget () =
+        self # query MultiGet (keys, High) (* TODO *)
+      in
       match supports_multiget2 with
       | None ->
          (* try multiget2, if it succeeds the asd supports it *)
@@ -89,16 +92,17 @@ class client fd ic id =
            (function
              | Error.Exn Error.Unknown_operation ->
                 supports_multiget2 <- Some false;
-                self # query MultiGet keys
+                old_multiget ()
              | exn ->
                 Lwt.fail exn)
       | Some true ->
          self # multi_get2 keys
       | Some false ->
-         self # query MultiGet keys
+         old_multiget ()
 
     method multi_get2 keys =
-      self # query MultiGet2 keys >>= fun res ->
+      (* TODO *)
+      self # query MultiGet2 (keys, High) >>= fun res ->
       Lwt_list.map_s
         (let open Value in
          function
@@ -152,7 +156,7 @@ class client fd ic id =
            (Option.map (fun (slice, cs) -> Slice.get_string_unsafe slice, cs))
            res)
 
-    method multi_exists keys = self # query MultiExists keys
+    method multi_exists keys = self # query MultiExists (keys, High) (* TODO *)
 
     method get key =
       self # multi_get [ key ] >>= fun res ->
@@ -166,28 +170,28 @@ class client fd ic id =
 
     method set key value assertable ?(cs = Checksum.Checksum.NoChecksum) () =
       let u = Update.set key value cs assertable in
-      self # update Apply ([], [u]) >>= fun _ ->
+      self # apply_sequence [] [u] >>= fun _ ->
       Lwt.return ()
 
     method set_string ?(cs = Checksum.Checksum.NoChecksum)
              key value assertable
       =
       let u = Update.set_string key value cs assertable in
-      self # update Apply ([], [u]) >>= fun _ ->
+      self # apply_sequence [] [u] >>= fun _ ->
       Lwt.return ()
 
     method delete key =
-      self # update Apply ([], [ Update.delete key ]) >>= fun _ ->
+      self # apply_sequence [] [ Update.delete key ] >>= fun _ ->
       Lwt.return ()
 
     method delete_string key =
-      self # update Apply ([], [ Update.delete_string key ]) >>= fun _ ->
+      self # apply_sequence [] [ Update.delete_string key ] >>= fun _ ->
       Lwt.return ()
 
     method range ~first ~finc ~last ~reverse ~max =
       self # query
         Range
-        { first; finc; last; reverse; max }
+        ({ first; finc; last; reverse; max }, High) (* TODO *)
 
     method range_all ?(max = -1) () =
       list_all_x
@@ -205,10 +209,10 @@ class client fd ic id =
     method range_entries ~first ~finc ~last ~reverse ~max =
       self # query
         RangeEntries
-        { first; finc; last; reverse; max; }
+        ({ first; finc; last; reverse; max; }, High) (* TODO *)
 
     method apply_sequence asserts updates =
-      self # update Apply (asserts, updates)
+      self # update Apply (asserts, updates, High) (* TODO *)
 
     method statistics clear =
       self # query Statistics clear
