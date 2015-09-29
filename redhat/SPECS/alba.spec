@@ -2,7 +2,7 @@
 
 Summary: Alba
 Name: alba
-Version: 0.6.20
+Version: 0.7.0
 Release: 1%{?dist}
 License: Proprietary license
 ExclusiveArch: x86_64
@@ -48,6 +48,8 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
+* Tue Sep 29 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.7.0
+- Create Alba 0.7.0 RPM package
 * Tue Sep 22 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.20
 - Create Alba 0.6.20 RPM package
 * Wed Sep 16 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.19
