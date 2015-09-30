@@ -498,6 +498,14 @@ let run_server hosts port
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());
+              (let rec log_stats () =
+                 Lwt_unix.sleep 60. >>= fun () ->
+                 Lwt_log.info_f
+                   "stats:\n%s%!"
+                   (ProxyStatistics.show stats) >>= fun () ->
+                 log_stats ()
+               in
+               log_stats ());
             ])
     )
     (fun exn ->
