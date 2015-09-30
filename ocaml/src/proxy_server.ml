@@ -211,8 +211,16 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            let open Nsm_model.Manifest in
            Lwt.return (manifest.size, manifest.checksum)
        end
-    | ReadObjectsSlices -> fun stats (namespace, objects_slices, consistent_read) ->
-      read_objects_slices namespace objects_slices ~consistent_read
+    | ReadObjectsSlices ->
+       fun stats (namespace, objects_slices, consistent_read) ->
+       with_timing_lwt
+         (fun () -> read_objects_slices namespace objects_slices ~consistent_read)
+       >>= fun (delay, bytes ) ->
+       let total_length = Bytes.length bytes in
+       let n_slices = List.length objects_slices in
+       ProxyStatistics.new_read_object_slices stats namespace total_length n_slices delay;
+       Lwt.return bytes
+
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
