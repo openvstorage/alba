@@ -46,7 +46,8 @@ module Stat = struct
       (* http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm *)
       let m2' = old.m2 +. diff *. (delta -. avg') in
       let var' = if n' < 2L then 0.0 else m2' /. old_nf in
-      let exp_avg' = (old.exp_avg +. delta) *. alpha in
+      let alpha_c = 1.0 -. alpha in
+      let exp_avg' = old.exp_avg *. alpha +. delta *. alpha_c in
       let min' = min old.min delta in
       let max' = max old.max delta in
       { n = n';
