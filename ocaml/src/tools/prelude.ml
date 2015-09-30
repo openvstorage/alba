@@ -505,7 +505,10 @@ let serialize_with_length ?buf_size serializer a =
 let maybe_from_buffer a_from default buf =
   if Llio.buffer_done buf
   then default
-  else a_from buf
+  else
+    let res = a_from buf in
+    assert (Llio.buffer_done buf);
+    res
 
 let get_start_key i n =
   if i < 0 || i > n

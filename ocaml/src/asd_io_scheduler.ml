@@ -105,15 +105,28 @@ let run t ~fsync ~fs_fd =
 
     begin
       (* batch up writes *)
+      let write_batch_cost = 10_000_000 in
+      let write_batch_reserved_for_high_prio = 7_000_000 in
+
+      (* first fill reserved slot with high prio writes *)
       _harvest_from_buffer
         t.high_prio_writes
-        [] 0 7_000_000 >>= fun (res, cost) ->
+        [] 0 write_batch_reserved_for_high_prio
+      >>= fun (res, cost) ->
+
+      (* next fill up the rest with low prio writes *)
       _harvest_from_buffer
         t.low_prio_writes
-        res cost 10_000_000 >>= fun (res, cost) ->
+        res cost write_batch_cost
+      >>= fun (res, cost) ->
+
+      (* finally if the batch is not yet full add some
+       * more high prio writes *)
       _harvest_from_buffer
         t.high_prio_writes
-        res cost 10_000_000 >>= fun (res, _) ->
+        res cost write_batch_cost
+      >>= fun (res, _) ->
+
       (if fsync
        then begin
            let waiters_len = List.length res in
