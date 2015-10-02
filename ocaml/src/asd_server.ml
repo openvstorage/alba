@@ -307,16 +307,17 @@ let execute_query : type req res.
                                     unit Lwt.t)) Lwt.t
   = fun kv io_sched dir_info stats q ->
     let open Protocol in
-    let serialize res =
-      let res_buf = Buffer.create 20 in
-      Llio.int_to res_buf 0;
-      Protocol.query_response_serializer q res_buf res;
-      Buffer.contents res_buf
+    let serialize_with_length res =
+      serialize_with_length
+        (Llio.pair_to
+           Llio.int_to
+           (Protocol.query_response_serializer q))
+        (0, res)
     in
     let return'' ~cost (res, write_extra) =
-      Lwt.return ((serialize res, write_extra), cost) in
+      Lwt.return ((serialize_with_length res, write_extra), cost) in
     let return ~cost res = return'' ~cost (res, fun _ -> Lwt.return_unit) in
-    let return' res = Lwt.return (serialize res, fun _ -> Lwt.return_unit) in
+    let return' res = Lwt.return (serialize_with_length res, fun _ -> Lwt.return_unit) in
     match q with
     | Range -> fun ({ first; finc; last; reverse; max; }, prio) ->
       perform_read
