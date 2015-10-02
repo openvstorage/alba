@@ -131,14 +131,10 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~osd_connection_pool_size
         ~osd_timeout
         (fun client ->
-           let coordinator =
-             Maintenance_coordination.make_maintenance_coordinator
-               (client # mgr_access)
-           in
-           coordinator # init;
            let maintenance_client =
-             new Maintenance.client ~flavour ~coordinator (client # get_base_client)
+             new Maintenance.client ~flavour (client # get_base_client)
            in
+           let coordinator = maintenance_client # get_coordinator in
            Lwt.catch
              (fun () ->
 

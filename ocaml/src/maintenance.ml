@@ -33,26 +33,48 @@ exception NotMyTask
 
 class client ?(retry_timeout = 60.)
              ?(flavour = ALL_IN_ONE)
-             ?coordinator
              (alba_client : Alba_base_client.client)
 
   =
-
-  let coordinator = match coordinator with
-    | Some c -> c
-    | None ->
-       let c =
-         Maintenance_coordination.make_maintenance_coordinator
-           (alba_client # mgr_access)
-       in
-       c # init;
-       c
+  let coordinator =
+    let open Maintenance_coordination in
+    make_maintenance_coordinator
+      (alba_client # mgr_access)
+      ~lease_name:maintenance_lease_name
+      ~lease_timeout:maintenance_lease_timeout
+      ~registration_prefix:maintenance_registration_prefix
+  in
+  let rebalance_coordinator =
+    let open Maintenance_coordination in
+    make_maintenance_coordinator
+      (alba_client # mgr_access)
+      ~lease_name:rebalance_lease_name
+      ~lease_timeout:rebalance_lease_timeout
+      ~registration_prefix:rebalance_registration_prefix
+  in
+  let () =
+    match flavour with
+    | ALL_IN_ONE ->
+       coordinator # init;
+       rebalance_coordinator # init
+    | NO_REBALANCE ->
+       coordinator # init
+    | ONLY_REBALANCE ->
+       rebalance_coordinator # init
   in
   let filter item_id =
     (* item_id could be e.g. namespace_id or work item id *)
-    (Int32.to_int item_id) mod coordinator # get_modulo = coordinator # get_remainder
+    let remainder = (Int32.to_int item_id) mod coordinator # get_modulo
+    in remainder = coordinator # get_remainder
+  in
+  let filter_rebalance item_id =
+    (* item_id could be e.g. namespace_id or work item id *)
+    let remainder = (Int32.to_int item_id) mod rebalance_coordinator # get_modulo in
+    remainder = rebalance_coordinator # get_remainder
   in
   object(self)
+
+    method get_coordinator = coordinator
 
     method rebalance_object
              ~(namespace_id:int32)
@@ -662,7 +684,7 @@ class client ?(retry_timeout = 60.)
              ?only_once
              ~make_first_reverse
              ~namespace_id () =
-      if filter namespace_id
+      if filter_rebalance namespace_id
       then self # rebalance_namespace'
                 ?delay
                 ?categorize
@@ -747,7 +769,7 @@ class client ?(retry_timeout = 60.)
                let delay' = delay *. 1.5 in
                min 60. (max delay' 1.)
            in
-           if only_once || not (filter namespace_id)
+           if only_once
            then Lwt.return ()
            else
              begin
