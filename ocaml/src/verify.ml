@@ -36,7 +36,7 @@ let verify_and_maybe_repair_object
     then
       fun osd key ~chunk_id ~fragment_id ->
       osd # multi_get
-          (osd_access # get_default_osd_priority)
+          Osd.Low
           [ key ] >>= function
       | [ None ] -> Lwt.return `Missing
       | [ Some f ] ->
@@ -53,7 +53,7 @@ let verify_and_maybe_repair_object
     else
       fun osd key ~chunk_id ~fragment_id ->
       osd # multi_exists
-          (osd_access # get_default_osd_priority)
+          Osd.Low
           [ key ] >>= function
       | [ true; ] -> Lwt.return `Ok
       | [ false; ] -> Lwt.return `Missing
