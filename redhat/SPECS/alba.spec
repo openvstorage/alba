@@ -48,6 +48,8 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
+* Fri Oct 02 2015 Jan Doms <jan.doms@openvstorage.com> - 0.6.21
+- Create Alba 0.6.21 RPM package
 * Tue Sep 29 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.7.0
 - Create Alba 0.7.0 RPM package
 * Tue Sep 22 2015 Romain Slootmaekers <romain.slootmaekers@cloudfounders.com> - 0.6.20
