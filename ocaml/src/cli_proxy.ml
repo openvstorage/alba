@@ -288,7 +288,7 @@ let proxy_list_objects host port namespace
     client # list_object ~namespace ~first ~finc ~last ~max ~reverse >>=
       fun (obj, hmore) ->
       Lwt_io.printl
-                         ([%show: (int * string list) * bool] (obj, hmore)))
+        ([%show: (int * string list) * bool] (obj, hmore)))
 
 let proxy_list_objects_cmd =
   Term.(pure proxy_list_objects $ host $ port 10000 $ namespace 0 $ first $

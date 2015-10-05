@@ -89,7 +89,9 @@ let download_fragment
             osd_access # with_osd
                        ~osd_id
                        (fun device_client ->
-                        device_client # get_option key
+                        device_client # get_option
+                                      (osd_access # get_default_osd_priority)
+                                      key
                         >>= E.return))
            (let open Asd_protocol.Protocol in
             function

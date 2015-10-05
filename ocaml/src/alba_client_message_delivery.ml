@@ -69,7 +69,9 @@ type dest msg.
            ~osd_id
            (fun client ->
             let module DK = Osd_keys.AlbaInstance in
-            client # get_option (Slice.wrap_string DK.next_msg_id)
+            client # get_option
+                   (osd_access # get_default_osd_priority)
+                   (Slice.wrap_string DK.next_msg_id)
             >>= fun next_id_so ->
             let next_id = match next_id_so with
               | None -> 0l
@@ -105,6 +107,7 @@ type dest msg.
                     next_id_so :: asserts
                 in
                 client # apply_sequence
+                       (osd_access # get_default_osd_priority)
                        asserts'
                        (bump_msg_id :: upds)
                 >>=

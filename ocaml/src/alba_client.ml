@@ -399,6 +399,7 @@ let with_client albamgr_client_cfg
                 ?(nsm_host_connection_pool_size = 10)
                 ?(osd_connection_pool_size = 10)
                 ?(osd_timeout = 2.)
+                ?(default_osd_priority = Osd.Low)
                 f
   =
   begin
@@ -428,6 +429,7 @@ let with_client albamgr_client_cfg
                         ~nsm_host_connection_pool_size
                         ~osd_connection_pool_size
                         ~osd_timeout
+                        ~default_osd_priority
   in
   let client = new alba_client base_client in
   Lwt.finalize

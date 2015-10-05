@@ -506,6 +506,7 @@ let test_verify_namespace () =
          ~osd_id
          (fun osd ->
           osd # apply_sequence
+              Osd.High
               []
               [ Osd.Update.set_string
                   (Osd_keys.AlbaInstance.fragment

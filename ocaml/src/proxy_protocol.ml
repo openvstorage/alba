@@ -54,6 +54,10 @@ module ProxyStatistics = struct
         mutable manifest_stale : int;
         mutable fragment_cache_hits: int;
         mutable fragment_cache_misses:int;
+
+        mutable partial_read_size: stat;
+        mutable partial_read_count: stat;
+        mutable partial_read_time : stat;
       }[@@ deriving show, yojson]
 
     let ns_make () =
@@ -64,6 +68,10 @@ module ProxyStatistics = struct
         manifest_stale = 0;
         fragment_cache_hits = 0;
         fragment_cache_misses = 0;
+
+        partial_read_size  = Stat.make ();
+        partial_read_count = Stat.make ();
+        partial_read_time  = Stat.make ()
       }
 
     let ns_to buf t =
@@ -73,7 +81,11 @@ module ProxyStatistics = struct
       Llio.int_to buf t.manifest_from_nsm;
       Llio.int_to buf t.manifest_stale;
       Llio.int_to buf t.fragment_cache_hits;
-      Llio.int_to buf t.fragment_cache_misses
+      Llio.int_to buf t.fragment_cache_misses;
+
+      Stat.stat_to buf t.partial_read_size;
+      Stat.stat_to buf t.partial_read_count;
+      Stat.stat_to buf t.partial_read_time
 
     let ns_from buf =
       let upload   = Stat.stat_from buf in
@@ -83,13 +95,30 @@ module ProxyStatistics = struct
       let manifest_stale     = Llio.int_from buf in
       let fragment_cache_hits    = Llio.int_from buf in
       let fragment_cache_misses  = Llio.int_from buf in
+      (* trick to be able to work with <= 0.6.20 proxies *)
+      let (partial_read_size,
+           partial_read_count,
+           partial_read_time)
+        = if Llio.buffer_done buf
+          then let r = Stat.make () in
+               r,r,r
+          else
+            let s = Stat.stat_from buf in
+            let c = Stat.stat_from buf in
+            let t = Stat.stat_from buf in
+            s,c,t
+      in
 
       { upload ; download;
         manifest_cached;
         manifest_from_nsm;
         manifest_stale;
         fragment_cache_hits;
-        fragment_cache_misses }
+        fragment_cache_misses;
+        partial_read_size;
+        partial_read_count;
+        partial_read_time;
+      }
 
     type t = {
         mutable creation:timestamp;
@@ -159,6 +188,12 @@ module ProxyStatistics = struct
                 ns_stats.fragment_cache_misses + fg_misses
      in
      ns_stats.download <- _update ns_stats.download delta
+
+   let new_read_object_slices t ns total_length n_slices took =
+     let ns_stats = find t ns in
+     ns_stats.partial_read_size  <- _update ns_stats.partial_read_size  (float total_length);
+     ns_stats.partial_read_count <- _update ns_stats.partial_read_count (float n_slices);
+     ns_stats.partial_read_time  <- _update ns_stats.partial_read_time  took
 
 end
 

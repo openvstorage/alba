@@ -211,8 +211,16 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            let open Nsm_model.Manifest in
            Lwt.return (manifest.size, manifest.checksum)
        end
-    | ReadObjectsSlices -> fun stats (namespace, objects_slices, consistent_read) ->
-      read_objects_slices namespace objects_slices ~consistent_read
+    | ReadObjectsSlices ->
+       fun stats (namespace, objects_slices, consistent_read) ->
+       with_timing_lwt
+         (fun () -> read_objects_slices namespace objects_slices ~consistent_read)
+       >>= fun (delay, bytes ) ->
+       let total_length = Bytes.length bytes in
+       let n_slices = List.length objects_slices in
+       ProxyStatistics.new_read_object_slices stats namespace total_length n_slices delay;
+       Lwt.return bytes
+
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
@@ -474,6 +482,7 @@ let run_server hosts port
          ~nsm_host_connection_pool_size
          ~osd_connection_pool_size
          ~osd_timeout
+         ~default_osd_priority:Osd.High
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ());
@@ -497,6 +506,14 @@ let run_server hosts port
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());
+              (let rec log_stats () =
+                 Lwt_unix.sleep 60. >>= fun () ->
+                 Lwt_log.info_f
+                   "stats:\n%s%!"
+                   (ProxyStatistics.show stats) >>= fun () ->
+                 log_stats ()
+               in
+               log_stats ());
             ])
     )
     (fun exn ->

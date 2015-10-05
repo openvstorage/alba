@@ -8,6 +8,20 @@ let test_coordinator_master () =
      let lease_name = test_name in
      let registration_prefix = test_name in
      let lease_timeout = 0.2 in
+
+     (* create a coordinator that we don't initialize
+      * to see that it has no influence on the other
+      * coordinators which do are initialized
+      *)
+     let c0 = new coordinator
+                 (client#mgr_access)
+                 ~name:"c1"
+                 ~lease_name
+                 ~lease_timeout
+                 ~registration_prefix
+     in
+     assert (not (c0 # is_master));
+
      let c1 = new coordinator
                   (client#mgr_access)
                   ~name:"c1"
@@ -56,6 +70,19 @@ let test_coordinator_participants () =
      let lease_name = test_name in
      let registration_prefix = test_name in
      let lease_timeout = 0.2 in
+
+     (* create a coordinator that we don't initialize
+      * to see that it has no influence on the other
+      * coordinators which do are initialized
+      *)
+     let _ = new coordinator
+                 (client#mgr_access)
+                 ~name:"c1"
+                 ~lease_name
+                 ~lease_timeout
+                 ~registration_prefix
+     in
+
      let c1 = new coordinator
                   (client#mgr_access)
                   ~name:"c1"

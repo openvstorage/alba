@@ -25,7 +25,7 @@ module Config = struct
     albamgr_connection_pool_size : (int [@default 10]);
     nsm_host_connection_pool_size : (int [@default 10]);
     osd_connection_pool_size : (int [@default 10]);
-    osd_timeout : float [@default 2.];
+    osd_timeout : float [@default 30.];
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
@@ -131,14 +131,10 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~osd_connection_pool_size
         ~osd_timeout
         (fun client ->
-           let coordinator =
-             Maintenance_coordination.make_maintenance_coordinator
-               (client # mgr_access)
-           in
-           coordinator # init;
            let maintenance_client =
-             new Maintenance.client ~flavour ~coordinator (client # get_base_client)
+             new Maintenance.client ~flavour (client # get_base_client)
            in
+           let coordinator = maintenance_client # get_coordinator in
            Lwt.catch
              (fun () ->
 
