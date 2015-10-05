@@ -81,6 +81,7 @@ let upload_packed_fragment_data
          ~osd_id
          (fun client ->
           client # apply_sequence
+                 (osd_access # get_default_osd_priority)
                  [ assert_namespace_active; ]
                  [ set_data;
                    set_recovery_info;
@@ -501,7 +502,9 @@ let upload_object''
                             ~chunk_id
                             ~fragment_id)
                      in
-                     osd # apply_sequence [] [ remove_gc_tag; ] >>= fun _ ->
+                     osd # apply_sequence
+                         (osd_access # get_default_osd_priority)
+                         [] [ remove_gc_tag; ] >>= fun _ ->
                      Lwt.return ()))
               chunk_locs)
            locations)

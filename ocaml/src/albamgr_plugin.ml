@@ -186,6 +186,27 @@ module Statistics =
 
 let statistics = Statistics_collection.Generic.make ()
 
+let maybe_activate_reporting =
+  let is_active = ref false in
+  fun () ->
+  begin
+    if !is_active
+    then ()
+    else
+      let rec inner () =
+        Lwt_unix.sleep 60. >>= fun() ->
+        Lwt_log.info_f
+          "stats:\n%s%!"
+          (Statistics.show statistics)
+        >>= fun () ->
+        inner ()
+      in
+      is_active := true;
+      Lwt_log.ign_info "activated mgr statistics reporting";
+      Lwt.ignore_result (inner ())
+  end
+
+
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
   Llio.output_int32 oc 0l >>= fun () ->
@@ -204,6 +225,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | Some id ->
       Lwt.return id
   end >>= fun alba_id ->
+
+  let () = maybe_activate_reporting () in
 
   (* ensure the current version is stored in the database *)
   let get_version () =
@@ -1847,16 +1870,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
   inner ()
 
-let () =
-  let rec inner () =
-    Lwt_unix.sleep 60. >>= fun() ->
-    Lwt_log.info_f
-      "stats:\n%s%!"
-      (Statistics.show statistics)
-    >>= fun () ->
-    inner ()
-  in
-  Lwt.ignore_result (inner ())
+
+
 
 let () = HookRegistry.register "albamgr" albamgr_user_hook
 let () = Log_plugin.register ()

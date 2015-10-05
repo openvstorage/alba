@@ -27,7 +27,7 @@ let deletes (client: Osd.osd) n value_size period prefix =
     let key_slice = Slice.wrap_string key in
     let delete = Update.Set (key_slice, None) in
     let updates = [delete] in
-    client # apply_sequence [] updates >>= fun _result ->
+    client # apply_sequence Osd.High [] updates >>= fun _result ->
     Lwt.return ()
   in
   measured_loop do_one n >>= fun r ->
@@ -40,7 +40,7 @@ let gets (client: Osd.osd) n value_size period prefix =
     let key = gen () in
     let open Slice in
     let key_slice = Slice.wrap_string key in
-    client # get_option key_slice >>= fun _value ->
+    client # get_option Osd.High key_slice >>= fun _value ->
     let () =
       match _value with
       | None   -> failwith (Printf.sprintf "db[%s] = None?" key)
@@ -77,7 +77,7 @@ let sets (client:Osd.osd) n value_size period prefix =
 
     in
     let updates = [set] in
-    client # apply_sequence [] updates >>= fun _result ->
+    client # apply_sequence Osd.High [] updates >>= fun _result ->
     Lwt.return ()
   in
   measured_loop do_one n >>= fun r ->

@@ -168,6 +168,27 @@ let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (
 
 let statistics = Protocol.NSMHStatistics.make ()
 
+let maybe_activate_reporting =
+  let is_active = ref false in
+  fun () ->
+  begin
+    if !is_active
+    then ()
+    else
+      let rec inner () =
+        Lwt_unix.sleep 60. >>= fun() ->
+       Lwt_log.info_f
+          "stats:\n%s%!"
+          (Protocol.NSMHStatistics.show statistics)
+        >>= fun () ->
+        inner ()
+      in
+      is_active := true;
+      Lwt_log.ign_info "activated nsm host statistics reporting";
+      Lwt.ignore_result (inner ())
+  end
+
+
 let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.query -> i -> o =
   fun db tag req ->
   let open Nsm_host_protocol.Protocol in
@@ -289,6 +310,8 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       Lwt.return ()
   end >>= fun () ->
   let get_version () = Option.get_some (get_version ()) in
+
+  let () = maybe_activate_reporting () in
 
   (* this is the only supported version for now
      we want to ensure here that no old version
@@ -426,16 +449,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
   inner ()
 
-let () =
-  let rec inner () =
-    Lwt_unix.sleep 60. >>= fun() ->
-    Lwt_log.info_f
-      "stats:\n%s%!"
-      (Protocol.NSMHStatistics.show statistics)
-    >>= fun () ->
-    inner ()
-  in
-  Lwt.ignore_result (inner ())
+
 
 let () = HookRegistry.register "nsm_host" nsm_host_user_hook
 let () = Arith64.register()

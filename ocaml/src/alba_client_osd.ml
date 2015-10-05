@@ -41,10 +41,10 @@ let claim_osd mgr_access osd_access ~long_id =
          wrap_string IRK.next_alba_instance
        in
        let no_checksum = Checksum.NoChecksum in
-       osd # get_option next_alba_instance'
+       osd # get_option Osd.High next_alba_instance'
        >>= function
        | Some _ ->
-          osd # get_exn (wrap_string (IRK.instance_log_key 0l))
+          osd # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
           >>= fun alba_id' ->
           let u_alba_id' = get_string_unsafe alba_id' in
           if u_alba_id' = alba_id
@@ -60,6 +60,7 @@ let claim_osd mgr_access osd_access ~long_id =
           let open Osd in
 
           osd # apply_sequence
+              Osd.High
               [ Assert.none next_alba_instance';
                 Assert.none_string instance_log_key;
                 Assert.none_string instance_index_key; ]
@@ -80,8 +81,9 @@ let claim_osd mgr_access osd_access ~long_id =
             | Ok -> Lwt.return `Continue
             | _  ->
                begin
-                 osd # get_exn (
-                       wrap_string (IRK.instance_log_key 0l))
+                 osd # get_exn
+                     Osd.High
+                     (wrap_string (IRK.instance_log_key 0l))
                  >>= fun alba_id'slice ->
                  let alba_id' = get_string_unsafe alba_id'slice in
                  let r =

@@ -65,6 +65,7 @@ let osd_multi_get osd_id cfg_file keys unescape =
               Lwt_list.map_s
                 (fun key ->
                    osd # get_option
+                     Osd.High
                      (Slice.wrap_string (if unescape
                       then Scanf.unescaped key
                       else key)))
@@ -93,6 +94,7 @@ let osd_range osd_id cfg_file =
          client # with_osd ~osd_id
            (fun osd ->
               osd # range
+                Osd.High
                 ~first ~finc:true
                 ~last:None
                 ~reverse:false ~max:(-1) >>= fun ((cnt, keys_s), has_more) ->

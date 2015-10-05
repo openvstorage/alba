@@ -160,6 +160,10 @@ let maintenance_lease_timeout = 20.
 let maintenance_lease_name = "maintenance"
 let maintenance_registration_prefix = "maintenance"
 
+let rebalance_lease_timeout = maintenance_lease_timeout
+let rebalance_lease_name = "rebalance"
+let rebalance_registration_prefix = "rebalance"
+
 let make_maintenance_coordinator mgr_access =
   let name = Uuidm.v4_gen (Random.State.make_self_init ()) ()
              |> Uuidm.to_string
@@ -167,7 +171,3 @@ let make_maintenance_coordinator mgr_access =
   new coordinator
       mgr_access
       ~name
-      ~lease_name:maintenance_lease_name
-      ~lease_timeout:maintenance_lease_timeout
-      ~registration_prefix:maintenance_registration_prefix
-
