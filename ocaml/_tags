@@ -21,6 +21,8 @@ true: package(uuidm)
 true: package(core_kernel)
 true: use_rocks
 true: package(kinetic-client)
+true: ppx_lwt
+
 "src/alba.native" : use_Jerasure, use_gcrypt, use_isal
 "src/disk_failure_tests.native": use_Jerasure, use_gcrypt, use_isal
 "src/kinetic_client_test.native": use_Jerasure, use_gcrypt, use_isal
