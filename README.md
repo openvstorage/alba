@@ -35,6 +35,10 @@ Building Alba
 -------------
 see [COMPILING](./COMPILING.md)
 
+Installing Alba
+---------------
+You need the Alba binary on all machines you want to run an alba component. We provide debian and redhat packages
+
 Playing Around
 --------------
 Developers can set up an alba environment on their local machine using the available fabric scripts:
