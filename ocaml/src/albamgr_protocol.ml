@@ -519,7 +519,7 @@ module Protocol = struct
 
     module Update = struct
       type t = {
-        policies' [@key "policies"] : (Policy.policy list option [@default None]);
+        policies' : (Policy.policy list option [@default None]) [@key "policies"];
       } [@@deriving show, yojson]
 
       let make ?policies' () = { policies'; }

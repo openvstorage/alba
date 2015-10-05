@@ -196,7 +196,7 @@ module Preset = struct
 
   type fragment_encryption =
     | NO_ENCRYPTION [@name "none"]
-    | AES_CBC_256   [@name "aes-cbc-256"] of string
+    | AES_CBC_256   of string [@name "aes-cbc-256"]
   [@@deriving yojson]
 
   type t = {
