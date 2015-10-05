@@ -287,7 +287,7 @@ let proxy_list_objects host port namespace
    (fun client ->
     client # list_object ~namespace ~first ~finc ~last ~max ~reverse >>=
       fun (obj, hmore) ->
-      let open Std in  Lwt_io.printl
+      Lwt_io.printl
                          ([%show: (int * string list) * bool] (obj, hmore)))
 
 let proxy_list_objects_cmd =
