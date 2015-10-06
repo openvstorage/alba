@@ -237,7 +237,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | OsdView ->
        fun stats () ->
        let info = alba_client # osd_access # osds_info_cache  in
-       let r =
+       let state_info =
          Hashtbl.fold
            (fun osd_id ((osd:Albamgr_protocol.Protocol.Osd.t),
                         (state:Osd_state.t)) (c,acc) ->
@@ -248,7 +248,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            )
            info (0,[])
        in
-       Lwt.return r
+       let claim_info = alba_client # osd_access # get_osd_claim_info in
+       let claim_info = (StringMap.cardinal claim_info, StringMap.bindings claim_info) in
+       Lwt.return (claim_info, state_info)
 
   in
   let return_err_response ?msg err =

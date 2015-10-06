@@ -19,8 +19,6 @@ open Remotes
 open Checksum
 open Slice
 open Lwt.Infix
-open Osd_state
-
 let large_value = lazy (String.make (512*1024) 'a')
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -171,6 +169,7 @@ class osd_access
 
     method osds_info_cache = osds_info_cache
 
+    method get_osd_claim_info = !osd_long_id_claim_info
     method osd_timeout = osd_timeout
 
     method osds_to_osds_info_cache osds =

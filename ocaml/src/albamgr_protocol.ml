@@ -306,7 +306,10 @@ module Protocol = struct
         | 2 -> AnotherAlba (Llio.string_from buf)
         | 3 -> Available
         | k -> raise_bad_tag "Osd.ClaimInfo" k
+
+      let deser = from_buffer,to_buffer
     end
+
 
     let from_buffer_with_claim_info = Llio.pair_from ClaimInfo.from_buffer from_buffer
     let to_buffer_with_claim_info = Llio.pair_to ClaimInfo.to_buffer to_buffer
