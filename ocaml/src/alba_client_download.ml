@@ -109,7 +109,7 @@ let download_fragment
             E.fail `FragmentMissing
          | Some (data:Slice.t) ->
             osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
-            state.read <- Unix.gettimeofday () :: state.read;
+            Osd_state.add_read state;
             Lwt.ignore_result
               (fragment_cache # add
                               namespace_id key_string

@@ -234,6 +234,22 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          Lwt.return stopped
        end
     | GetVersion -> fun stats () -> Lwt.return Alba_version.summary
+    | OsdView ->
+       fun stats () ->
+       let info = alba_client # osd_access # osds_info_cache  in
+       let r =
+         Hashtbl.fold
+           (fun osd_id ((osd:Albamgr_protocol.Protocol.Osd.t),
+                        (state:Osd_state.t)) (c,acc) ->
+            let c' = c+1
+            and acc' = (osd_id, state) :: acc
+            in
+            (c',acc')
+           )
+           info (0,[])
+       in
+       Lwt.return r
+
   in
   let return_err_response ?msg err =
     let res_s =

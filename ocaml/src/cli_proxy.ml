@@ -309,6 +309,25 @@ let proxy_get_version_cmd =
   ),
   Term.info "proxy-get-version" ~doc:"the proxy's version info"
 
+
+let proxy_osd_view host port =
+  proxy_client_cmd_line
+    host port
+    (fun client ->
+     client # osd_view >>= fun (c,items) ->
+     Lwt_io.printlf "%i entries:" c >>= fun () ->
+     let sorted = List.sort (fun (id0,_) (id1,_) -> Int32.compare id0 id1) items in
+     Lwt_list.iter_s
+       (fun (osd_id, state) ->
+        Lwt_io.printlf "%li:%s" osd_id (Osd_state.show state)
+       )
+       sorted
+    )
+
+let proxy_osd_view_cmd =
+  Term.(pure proxy_osd_view $ host $ port 10000),
+  Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
+
 let proxy_bench host port
                 (n:int) file_name (power:int)
                 prefix (slice_size:int) namespace_name
@@ -367,5 +386,6 @@ let cmds = [
   proxy_delete_namespace_cmd;
   proxy_list_objects_cmd;
   proxy_get_version_cmd;
-  proxy_bench_cmd
+  proxy_bench_cmd;
+  proxy_osd_view_cmd;
 ]
