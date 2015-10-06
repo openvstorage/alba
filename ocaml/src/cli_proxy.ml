@@ -316,10 +316,14 @@ let proxy_osd_view host port =
     (fun client ->
      client # osd_view >>= fun (c,items) ->
      Lwt_io.printlf "%i entries:" c >>= fun () ->
-     let sorted = List.sort (fun (id0,_) (id1,_) -> Int32.compare id0 id1) items in
+     let sorted = List.sort (fun (id0,_,_) (id1,_,_) -> Int32.compare id0 id1) items in
      Lwt_list.iter_s
-       (fun (osd_id, state) ->
-        Lwt_io.printlf "%li:%s" osd_id (Osd_state.show state)
+       (fun (osd_id, info,state) ->
+        Lwt_io.printlf "%li:\n\t%s\n\t%s"
+                       osd_id
+                       (Albamgr_protocol.Protocol.Osd.show info)
+                       (Osd_state.show state)
+
        )
        sorted
     )

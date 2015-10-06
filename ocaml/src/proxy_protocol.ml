@@ -270,7 +270,9 @@ module Protocol = struct
     | DropCache : (Namespace.name, unit) request
     | ProxyStatistics : (bool, ProxyStatistics.t) request
     | GetVersion : (unit, (int * int * int * string)) request
-    | OsdView : (unit, (Albamgr_protocol.Protocol.Osd.id * Osd_state.t) Std.counted_list) request
+    | OsdView : (unit, (Albamgr_protocol.Protocol.Osd.id
+                        * Albamgr_protocol.Protocol.Osd.t
+                        * Osd_state.t) Std.counted_list) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -413,5 +415,8 @@ module Protocol = struct
                       Deser.string
     | OsdView ->
        let deser_int32 = Llio.int32_from, Llio.int32_to in
-       Deser.counted_list (Deser.tuple2 deser_int32 Osd_state.deser_state)
+       let deser_osd   = Albamgr_protocol.Protocol.Osd.from_buffer,
+                         Albamgr_protocol.Protocol.Osd.to_buffer
+       in
+       Deser.counted_list (Deser.tuple3 deser_int32 deser_osd Osd_state.deser_state)
 end

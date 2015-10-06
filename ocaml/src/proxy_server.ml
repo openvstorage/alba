@@ -242,7 +242,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            (fun osd_id ((osd:Albamgr_protocol.Protocol.Osd.t),
                         (state:Osd_state.t)) (c,acc) ->
             let c' = c+1
-            and acc' = (osd_id, state) :: acc
+            and acc' = (osd_id, osd, state) :: acc
             in
             (c',acc')
            )
