@@ -688,7 +688,7 @@ let test_discover_claimed () =
        Asd_test.with_asd_client test_name 8230
          (fun asd ->
           alba_client # osd_access # seen
-              ~check_claimed:(fun () -> true)
+              ~check_claimed:(fun id -> true)
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = test_name;
                                     extras = Some({
@@ -777,7 +777,7 @@ let test_change_osd_ip_port () =
 
        Lwt.ignore_result
          (client # discover_osds
-                 ~check_claimed:(fun () -> true)
+                 ~check_claimed:(fun id -> true)
                  ~check_claimed_delay:0.1 ());
 
        Asd_test.with_asd_client
@@ -1138,7 +1138,7 @@ let test_disk_churn () =
            Asd_test.with_asd_client asd_name asd_port
              (fun asd ->
                 alba_client # osd_access # seen
-                  ~check_claimed:(fun () -> true)
+                  ~check_claimed:(fun id -> true)
                   ~check_claimed_delay:1.
                   Discovery.(Good("", { id = asd_name;
                                         extras = Some({
@@ -1492,7 +1492,7 @@ let test_add_disk () =
        Asd_test.with_asd_client asd_name asd_port
          (fun asd ->
             alba_client # osd_access # seen
-              ~check_claimed:(fun () -> true)
+              ~check_claimed:(fun id -> true)
               ~check_claimed_delay:1.
               Discovery.(Good("", { id = asd_name;
                                     extras = Some({

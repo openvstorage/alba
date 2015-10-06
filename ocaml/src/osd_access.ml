@@ -247,7 +247,7 @@ class osd_access
       else Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
 
 
-    method seen ?(check_claimed=fun() -> false) ?(check_claimed_delay=60.) =
+    method seen ?(check_claimed=fun id -> false) ?(check_claimed_delay=60.) =
       let open Discovery in
       function
       | Bad s ->
@@ -271,12 +271,6 @@ class osd_access
          in
 
         let claimed = StringMap.mem (id:string) !osd_long_id_claim_info in
-        let claimed_set_s =
-          StringMap.fold (fun k v acc -> acc ^ " " ^ k) !osd_long_id_claim_info "" in
-
-        Lwt_log.ign_debug_f "propagate? seen: %s claimed:%b {%s}"
-                            id claimed claimed_set_s;
-
         if claimed
          then begin
              let open Osd.ClaimInfo in
@@ -288,7 +282,6 @@ class osd_access
 
                 get_osd_info ~osd_id >>= fun (osd_info, osd_state') ->
                 let ips', port' = Osd.get_ips_port osd_info.Osd.kind in
-                Lwt_log.ign_debug_f "propagate... replace %li" osd_id;
                 let () = Osd_state.add_json osd_state' json in
                 Hashtbl.replace
                   osds_info_cache
@@ -309,10 +302,10 @@ class osd_access
                    end else
                    Lwt.return ())
            end
-         else if check_claimed ()
+         else if check_claimed id
          then begin
 
-             Lwt_log.debug_f "propagate... seen:%s check_claimed()" id >>= fun () ->
+            Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
              let osd_info =
                Osd.({
                        kind;
@@ -399,7 +392,7 @@ class osd_access
                              Lwt.return `StopAndRemove) >>= function
                           | `Continue ->
                              Lwt_extra2.sleep_approx check_claimed_delay >>= fun () ->
-                             if check_claimed ()
+                             if check_claimed id
                              then inner ()
                              else
                                begin
