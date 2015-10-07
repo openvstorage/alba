@@ -28,12 +28,15 @@ class osd_access
         ~osd_timeout
         ~default_osd_priority
   =
+  let osd_long_id_claim_info = ref StringMap.empty in
+
   let osds_info_cache =
     let open Albamgr_protocol.Protocol in
     (Hashtbl.create 3
      : (Osd.id,
         Osd.t * Osd_state.t) Hashtbl.t) in
   let get_osd_info ~osd_id =
+    let open Albamgr_protocol.Protocol in
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
     with Not_found ->
       mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
@@ -44,6 +47,13 @@ class osd_access
       let osd_state = Osd_state.make () in
       let info' = (osd_info, osd_state) in
       Hashtbl.replace osds_info_cache osd_id info';
+      let long_id = let open Osd in
+                    Nsm_model.OsdInfo.get_long_id osd_info.kind
+      in
+      osd_long_id_claim_info :=
+        StringMap.add
+          long_id (Osd.ClaimInfo.ThisAlba osd_id)
+          !osd_long_id_claim_info;
       Lwt.return info'
   in
 
@@ -155,7 +165,7 @@ class osd_access
         Lwt.return ()
       end
   in
-  let osd_long_id_claim_info = ref StringMap.empty in
+
   object
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -221,9 +231,7 @@ class osd_access
         (long_id, update)
       in
       let propagate () =
-        Lwt_log.debug_f "propagate %i osds" (Hashtbl.length osds_info_cache)>>= fun () ->
         let updates =
-
           Hashtbl.fold
             (fun k v acc ->
              let osd_info, osd_state = v in
@@ -239,6 +247,7 @@ class osd_access
             osds_info_cache
             []
         in
+        Lwt_log.debug_f "propagate %i updates" (List.length updates)>>= fun () ->
         mgr_access # update_osds updates
       in
       if run_once

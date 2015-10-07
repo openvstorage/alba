@@ -163,7 +163,7 @@ module Pool = struct
         >>= fun (kin, closer) ->
         Lwt.return (kin, closer)
 
-    let use_osd t ~osd_id f =
+    let use_osd t ~(osd_id:int32) f =
       let pool =
         try Hashtbl.find t.pools osd_id
         with Not_found ->
