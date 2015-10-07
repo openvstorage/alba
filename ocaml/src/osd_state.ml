@@ -47,12 +47,19 @@ let add_error t exn =
   let e = ts,msg in
   t.errors <- e :: t.errors
 
+let _head xs = Prelude.List.take 10 xs
+
 let add_write t =
   let ts = Unix.gettimeofday () in
-  t.write <- ts :: t.write
+  t.write <- _head (ts :: t.write)
 
 let add_read t =
-  t.read <- Unix.gettimeofday () :: t.read
+  let ts = Unix.gettimeofday () in
+  t.read <- _head (ts :: t.read)
+
+let add_seen t =
+  let ts = Unix.gettimeofday () in
+  t.seen <- _head (ts:: t.seen)
 
 let add_json t json =
   t.json <- Some json

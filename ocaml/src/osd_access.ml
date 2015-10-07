@@ -291,13 +291,14 @@ class osd_access
                 get_osd_info ~osd_id >>= fun (osd_info, osd_state') ->
                 let ips', port' = Osd.get_ips_port osd_info.Osd.kind in
                 let () = Osd_state.add_json osd_state' json in
+                let () = Osd_state.add_seen osd_state' in
                 Hashtbl.replace
                   osds_info_cache
                   osd_id
                   (Osd.({ osd_info with
                           kind;
                           total; used;
-                          seen = Unix.gettimeofday () :: osd_info.seen;
+                          seen = List.take 10 (Unix.gettimeofday () :: osd_info.seen);
                         }),
                    osd_state');
 
