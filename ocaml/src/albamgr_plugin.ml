@@ -36,6 +36,8 @@ module Keys = struct
 
   let progress name = "/alba/progress/" ^ name
 
+  let maintenance_config = "/alba/maintenance_config"
+
   module Nsm_host = struct
     (* this maps to some info about the nsmhost *)
     let info_prefix = "/alba/nsm_host/info/"
@@ -270,7 +272,34 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             Lwt.return ()
           | exn -> Lwt.fail exn)
     | Some _ ->
-      Lwt.return ()
+      Lwt.return_unit
+  end >>= fun () ->
+
+  begin
+    match db # get Keys.maintenance_config with
+    | None ->
+       Lwt.catch
+         (fun () ->
+          backend # push_update
+                  (Update.Sequence
+                     [ Update.Assert (Keys.maintenance_config, None);
+                       Update.Set (Keys.maintenance_config,
+                                   let open Maintenance_config in
+                                   serialize
+                                     to_buffer
+                                     { enable_auto_repair = true;
+                                       auto_repair_timeout_seconds = 60. *. 15.;
+                                       enable_rebalance = true; }); ])
+          >>= fun _ ->
+          Lwt.return ())
+         (function
+           | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+              (* maintenance_config key should be present *)
+              ignore ((db # get_exn Keys.maintenance_config) : string);
+              Lwt.return ()
+           | exn -> Lwt.fail exn)
+    | Some _ ->
+       Lwt.return_unit
   end >>= fun () ->
 
   (* this is the only supported version for now
@@ -849,6 +878,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        i, deserialize Progress.from_buffer (KV.cur_get_value cur)
       )
     |> fst
+  in
+
+  let get_maintenance_config () =
+    let s = db # get_exn Keys.maintenance_config in
+    let cfg = deserialize Maintenance_config.from_buffer s in
+    s, cfg
   in
 
   let handle_update
@@ -1562,6 +1597,15 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                                                   (serialize Progress.to_buffer)
                                                   new_o); ]
       end
+    | UpdateMaintenanceConfig ->
+      fun update ->
+      let s, cfg = get_maintenance_config () in
+      let new_cfg = Maintenance_config.Update.apply cfg update in
+      Lwt.return
+        (new_cfg,
+         [ Update.Assert (Keys.maintenance_config, Some s);
+           Update.Set    (Keys.maintenance_config,
+                          serialize Maintenance_config.to_buffer new_cfg); ])
   in
 
   let handle_query : type i o. (i, o) query -> i -> o = function
@@ -1755,6 +1799,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       let _, _, p = get_progress name in
       p
     | GetProgressForPrefix -> get_progress_for_prefix
+    | GetMaintenanceConfig ->
+      fun () ->
+      let _, cfg = get_maintenance_config () in
+      cfg
   in
 
 

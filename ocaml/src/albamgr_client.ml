@@ -416,6 +416,16 @@ class client (client : basic_client) =
       client # update
         UpdateProgress
         (name, Progress.Update.CAS (old, new_o))
+
+    method get_maintenance_config =
+      client # query
+        GetMaintenanceConfig
+        ()
+
+    method update_maintenance_config u =
+      client # update
+        UpdateMaintenanceConfig
+        u
   end
 
 class single_connection_client (ic, oc) =

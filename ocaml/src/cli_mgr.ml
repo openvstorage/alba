@@ -641,6 +641,27 @@ let alba_clear_job_progress_cmd =
     "clear-job-progress"
     ~doc:"clear progress of a certain job"
 
+let alba_get_maintenance_config cfg_file to_json =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # get_maintenance_config >>= fun cfg ->
+       if to_json
+       then
+         print_result cfg Maintenance_config.to_yojson
+       else
+         Lwt_io.printlf
+           "Maintenance config = %s"
+           (Maintenance_config.show cfg))
+  in
+  lwt_cmd_line to_json t
+
+let alba_get_maintenance_config_cmd =
+  Term.(pure alba_get_maintenance_config
+        $ alba_cfg_file
+        $ to_json),
+  Term.info "get-maintenance-config" ~doc:"get the maintenance config from the albamgr"
 
 let cmds = [
   alba_list_namespaces_by_id_cmd;
@@ -666,4 +687,6 @@ let cmds = [
   alba_verify_namespace_cmd;
   alba_show_job_progress_cmd;
   alba_clear_job_progress_cmd;
+
+  alba_get_maintenance_config_cmd;
 ]
