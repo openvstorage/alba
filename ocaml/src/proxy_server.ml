@@ -475,17 +475,6 @@ let run_server hosts port
   in
 
 
-  let check_once_per_osd =
-    let checked = ref StringSet.empty in
-    fun id ->
-    if  StringSet.mem id !checked
-    then false
-    else
-      let () = checked := StringSet.add id !checked in
-      true
-  in
-
-
   Lwt.catch
     (fun () ->
        let bad_fragment_callback
@@ -515,7 +504,7 @@ let run_server hosts port
          ~default_osd_priority:Osd.High
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # discover_osds ~check_claimed:check_once_per_osd ());
+            [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());
               (alba_client # osd_access # propagate_osd_info ());
               (refresh_albamgr_cfg
                  ~loop:true
