@@ -215,7 +215,7 @@ class osd_access
         and long_id = get_long_id osd_info.kind
         and total'  = osd_info.total
         and used'   = osd_info.used
-        and seen'   = most_recent osd_info.seen
+        and seen'   = most_recent osd_state.seen
         and read'   = most_recent osd_state.read
         and write'  = most_recent osd_state.write
         and errors' = most_recent osd_state.errors
@@ -247,8 +247,13 @@ class osd_access
             osds_info_cache
             []
         in
-        Lwt_log.debug_f "propagate %i updates" (List.length updates)>>= fun () ->
-        mgr_access # update_osds updates
+        let n_updates = List.length updates in
+        if n_updates > 0
+        then
+          Lwt_log.debug_f "propagate %i updates" n_updates >>= fun () ->
+          mgr_access # update_osds updates
+        else
+          Lwt.return_unit
       in
       if run_once
       then propagate ()
@@ -298,7 +303,6 @@ class osd_access
                   (Osd.({ osd_info with
                           kind;
                           total; used;
-                          seen = List.take 10 (Unix.gettimeofday () :: osd_info.seen);
                         }),
                    osd_state');
 
