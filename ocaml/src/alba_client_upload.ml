@@ -92,7 +92,7 @@ let upload_packed_fragment_data
   osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
   match apply_result with
   | Osd_sec.Ok ->
-     state.write <- Unix.gettimeofday () :: state.write;
+     Osd_state.add_write state;
      Lwt.return ()
   | Osd_sec.Exn exn ->
      let open Asd_protocol.Protocol in
@@ -563,7 +563,7 @@ let upload_object'
      let open Nsm_model in
      let timestamp = match exn with
        | Err.Nsm_exn (Err.Old_timestamp, payload) ->
-          (* if the upload failed due to the timestamp being not 
+          (* if the upload failed due to the timestamp being not
              recent enough we should retry with a more recent one...
 
              (ideally we should only overwrite the recovery info,

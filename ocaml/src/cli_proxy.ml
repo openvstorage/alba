@@ -309,6 +309,38 @@ let proxy_get_version_cmd =
   ),
   Term.info "proxy-get-version" ~doc:"the proxy's version info"
 
+
+let proxy_osd_view host port =
+  proxy_client_cmd_line
+    host port
+    (fun client ->
+     client # osd_view >>= fun (claim,state_info) ->
+     let ci,items = state_info in
+     let cc,claims = claim in
+     Lwt_io.printlf "claiminfo: %i items" cc >>= fun () ->
+     Lwt_list.iter_s
+       (fun (id, info) ->
+        Lwt_io.printlf "%s:%s" id ([%show: Albamgr_protocol.Protocol.Osd.ClaimInfo.t ] info)
+       ) claims
+
+     >>= fun () ->
+     Lwt_io.printlf "osd_info, state: %i entries:" ci >>= fun () ->
+     let sorted = List.sort (fun (id0,_,_) (id1,_,_) -> Int32.compare id0 id1) items in
+     Lwt_list.iter_s
+       (fun (osd_id, info,state) ->
+        Lwt_io.printlf "%li:\n\t%s\n\t%s"
+                       osd_id
+                       (Albamgr_protocol.Protocol.Osd.show info)
+                       (Osd_state.show state)
+
+       )
+       sorted
+    )
+
+let proxy_osd_view_cmd =
+  Term.(pure proxy_osd_view $ host $ port 10000),
+  Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
+
 let proxy_bench host port
                 (n:int) file_name (power:int)
                 prefix (slice_size:int) namespace_name
@@ -367,5 +399,6 @@ let cmds = [
   proxy_delete_namespace_cmd;
   proxy_list_objects_cmd;
   proxy_get_version_cmd;
-  proxy_bench_cmd
+  proxy_bench_cmd;
+  proxy_osd_view_cmd;
 ]

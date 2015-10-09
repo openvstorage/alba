@@ -270,6 +270,10 @@ module Protocol = struct
     | DropCache : (Namespace.name, unit) request
     | ProxyStatistics : (bool, ProxyStatistics.t) request
     | GetVersion : (unit, (int * int * int * string)) request
+    | OsdView : (unit, (string * Albamgr_protocol.Protocol.Osd.ClaimInfo.t) Std.counted_list
+                       * (Albamgr_protocol.Protocol.Osd.id
+                          * Albamgr_protocol.Protocol.Osd.t
+                          * Osd_state.t) Std.counted_list) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -286,7 +290,8 @@ module Protocol = struct
                       14, Wrap InvalidateCache, "InvalidateCache";
                       15, Wrap ProxyStatistics, "ProxyStatistics";
                       16, Wrap DropCache, "DropCache";
-                      17, Wrap GetVersion, "GetVersion"
+                      17, Wrap GetVersion, "GetVersion";
+                      18, Wrap OsdView,    "OsdView";
                     ]
 
   module Error = struct
@@ -386,6 +391,7 @@ module Protocol = struct
     | DropCache -> Deser.string
     | ProxyStatistics -> Deser.bool
     | GetVersion -> Deser.unit
+    | OsdView    -> Deser.unit
 
 
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
@@ -408,4 +414,15 @@ module Protocol = struct
                       Deser.int
                       Deser.int
                       Deser.string
+    | OsdView ->
+       let deser_info = Albamgr_protocol.Protocol.Osd.ClaimInfo.deser in
+       let deser_claim = Deser.counted_list (Deser.tuple2 Deser.string deser_info) in
+       let deser_int32 = Llio.int32_from, Llio.int32_to in
+       let deser_osd   = Albamgr_protocol.Protocol.Osd.from_buffer,
+                         Albamgr_protocol.Protocol.Osd.to_buffer
+       in
+       Deser.tuple2
+         deser_claim
+         (Deser.counted_list
+            (Deser.tuple3 deser_int32 deser_osd Osd_state.deser_state))
 end

@@ -99,6 +99,8 @@ class proxy_client (ic, oc) =
       = self # request ListNamespaces
              RangeQueryArgs.{ first; finc; last; max; reverse; }
 
+    method osd_view = self # request OsdView ()
+
   end
 
 let _prologue oc magic version =
