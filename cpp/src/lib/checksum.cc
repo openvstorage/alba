@@ -51,6 +51,9 @@ namespace alba{
           }
           }
         }
+        // g++ issues bogus:
+        // warning: control reaches end of non-void function [-Wreturn-type]
+        return false;
     }
 
     std::ostream& operator<<(std::ostream& os, const algo_t& algo){
