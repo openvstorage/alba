@@ -79,6 +79,7 @@ class client ?(retry_timeout = 60.)
     val mutable maintenance_config =
       Maintenance_config.({ enable_auto_repair = false;
                             auto_repair_timeout_seconds = 1.;
+                            auto_repair_disabled_nodes = [];
                             enable_rebalance = false; })
 
     method get_maintenance_config = maintenance_config
@@ -133,6 +134,7 @@ class client ?(retry_timeout = 60.)
                 | (ThisAlba osd_id, osd_info) ->
                    if not (Automatic_repair.recent_enough past_date osd_info.write
                            && Automatic_repair.recent_enough past_date osd_info.write)
+                      && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
                    then Hashtbl.replace maybe_dead_osds osd_id ()
                    else Hashtbl.remove maybe_dead_osds osd_id
                 | (AnotherAlba _, _)
