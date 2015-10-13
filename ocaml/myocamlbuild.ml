@@ -141,6 +141,9 @@ let _ = dispatch &
                      A"-ccopt"; A"-ggdb3";
                      A"-ccopt"; A"-O2";
                   ]);
+             flag ["ocaml"; "compile"; "ppx_lwt"] &
+               (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
+               S [A "-ppx"; A "ppx_lwt -log";];
 
              flag ["link";"ocaml";"use_rocks"]
                   (S[A"-cclib";A"-lrocksdb"]);

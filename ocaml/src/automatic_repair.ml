@@ -56,7 +56,7 @@ let periodic_load_osds
                                      false ])
                 >>= function
                 | Osd.Ok ->
-                   let open Osd_access in
+                   let open Osd_state in
                    osd_state.write <- Unix.gettimeofday () :: osd_state.write;
                    Lwt.return ()
                 | Osd.Exn _ ->
@@ -80,7 +80,7 @@ let periodic_load_osds
                                  [ Slice.wrap_string Osd_keys.test_key; ])
                 >>= function
                 | [ Some _ ] ->
-                   let open Osd_access in
+                   let open Osd_state in
                    osd_state.read <- Unix.gettimeofday () :: osd_state.read;
                    Lwt.return ()
                 | _ -> Lwt.return ())

@@ -19,24 +19,6 @@ open Remotes
 open Checksum
 open Slice
 open Lwt.Infix
-
-type osd_state = {
-  mutable disqualified : bool;
-  mutable write : float list;
-  mutable read : float list;
-  mutable seen : float list;
-  mutable errors : (float * string) list;
-  mutable json: string option;
-}
-
-let reset osd_state =
-  osd_state.read <- [];
-  osd_state.write <- [];
-  osd_state.errors <- [];
-  osd_state.seen <- [];
-  osd_state.json <- None
-
-
 let large_value = lazy (String.make (512*1024) 'a')
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -46,12 +28,15 @@ class osd_access
         ~osd_timeout
         ~default_osd_priority
   =
+  let osd_long_id_claim_info = ref StringMap.empty in
+
   let osds_info_cache =
     let open Albamgr_protocol.Protocol in
     (Hashtbl.create 3
      : (Osd.id,
-        Osd.t * osd_state) Hashtbl.t) in
+        Osd.t * Osd_state.t) Hashtbl.t) in
   let get_osd_info ~osd_id =
+    let open Albamgr_protocol.Protocol in
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
     with Not_found ->
       mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
@@ -59,16 +44,16 @@ class osd_access
         | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
         | Some info -> info
       in
-      let osd_state = {
-          disqualified = false;
-          write = [];
-          read = [];
-          seen = [];
-          errors = [];
-          json = None;
-        } in
+      let osd_state = Osd_state.make () in
       let info' = (osd_info, osd_state) in
       Hashtbl.replace osds_info_cache osd_id info';
+      let long_id = let open Osd in
+                    Nsm_model.OsdInfo.get_long_id osd_info.kind
+      in
+      osd_long_id_claim_info :=
+        StringMap.add
+          long_id (Osd.ClaimInfo.ThisAlba osd_id)
+          !osd_long_id_claim_info;
       Lwt.return info'
   in
 
@@ -103,10 +88,6 @@ class osd_access
        | Exn Assert_failed _ -> false
        | _ -> true
      in
-     if add_to_errors
-     then state.errors <- (Unix.gettimeofday (),
-                           Printexc.to_string exn) :: state.errors;
-
      let should_invalidate_pool =
        match exn with
        | Asd_client.BadLongId _
@@ -121,7 +102,10 @@ class osd_access
      then Pool.Osd.invalidate osds_pool ~osd_id;
 
      (if add_to_errors || should_invalidate_pool
-      then disqualify ~osd_id
+      then begin
+          Osd_state.add_error state exn;
+          disqualify ~osd_id
+        end
       else Lwt.return ()) >>= fun () ->
 
      Lwt_log.debug_f ~exn "Exception in with_osd_from_pool osd_id=%li" osd_id >>= fun () ->
@@ -165,23 +149,23 @@ class osd_access
          Lwt.return ()
     in
     get_osd_info ~osd_id >>= fun (_, state) ->
-    if state.disqualified
+    if state.Osd_state.disqualified
     then Lwt.return ()
     else begin
-        state.disqualified <- true;
+        Osd_state.disqualify state true;
         Lwt_log.info_f "Disqualifying osd %li" osd_id >>= fun () ->
         (* start loop to get it requalified... *)
         Lwt.async
           (fun () ->
            inner 1. >>= fun () ->
            Lwt_log.info_f "Requalified osd %li" osd_id >>= fun () ->
-           state.disqualified <- false;
-           state.write <- Unix.gettimeofday() :: state.write;
+           Osd_state.disqualify state false;
+           Osd_state.add_write state;
            Lwt.return ());
         Lwt.return ()
       end
   in
-  let osd_long_id_claim_info = ref StringMap.empty in
+
   object
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -195,6 +179,7 @@ class osd_access
 
     method osds_info_cache = osds_info_cache
 
+    method get_osd_claim_info = !osd_long_id_claim_info
     method osd_timeout = osd_timeout
 
     method osds_to_osds_info_cache osds =
@@ -204,13 +189,8 @@ class osd_access
          let open Albamgr_protocol.Protocol in
          get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
          let osd_ok =
-           not osd_state.disqualified &&
-             not osd_info.Osd.decommissioned &&
-               (match osd_state.write, osd_state.errors with
-               | [], [] -> true
-                | [], _ -> false
-                | _, [] -> true
-                | write_time::_, (error_time, _)::_ -> write_time > error_time)
+           not osd_info.Osd.decommissioned
+           && Osd_state.osd_ok osd_state
          in
          if osd_ok
          then Hashtbl.add
@@ -223,19 +203,19 @@ class osd_access
 
     method propagate_osd_info ?(run_once=false) () : unit Lwt.t =
       let open Albamgr_protocol.Protocol in
-      let make_update (id:Osd.id) (osd_info:Osd.t) (osd_state:osd_state) =
+      let make_update (id:Osd.id) (osd_info:Osd.t) (osd_state:Osd_state.t) =
         let n = 10 in
         let most_recent xs =
           let my_compare x y = ~-(compare x y) in
           List.merge_head ~compare:my_compare [] xs n
         in
-        let open Osd in
-        let ips', port' =
-          get_ips_port osd_info.kind
+        let open Osd_state in
+        let open Nsm_model.OsdInfo in
+        let ips', port' = get_ips_port osd_info.kind
         and long_id = get_long_id osd_info.kind
         and total'  = osd_info.total
         and used'   = osd_info.used
-        and seen'   = most_recent osd_info.seen
+        and seen'   = most_recent osd_state.seen
         and read'   = most_recent osd_state.read
         and write'  = most_recent osd_state.write
         and errors' = most_recent osd_state.errors
@@ -256,25 +236,31 @@ class osd_access
             (fun k v acc ->
              let osd_info, osd_state = v in
              let acc' =
-               if osd_state.json = None (* these had no update, so skip *)
+               if osd_state.Osd_state.json = None (* these had no update, so skip *)
                then acc
                else
                  let update = make_update k osd_info osd_state in
                  update :: acc
              in
-             let () = reset osd_state in
+             let () = Osd_state.reset osd_state in
              acc')
             osds_info_cache
             []
         in
-        mgr_access # update_osds updates
+        let n_updates = List.length updates in
+        if n_updates > 0
+        then
+          Lwt_log.debug_f "propagate %i updates" n_updates >>= fun () ->
+          mgr_access # update_osds updates
+        else
+          Lwt.return_unit
       in
       if run_once
       then propagate ()
       else Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
 
 
-    method seen ?(check_claimed=fun() -> false) ?(check_claimed_delay=60.) =
+    method seen ?(check_claimed=fun id -> false) ?(check_claimed_delay=60.) =
       let open Discovery in
       function
       | Bad s ->
@@ -297,7 +283,8 @@ class osd_access
               used
          in
 
-         if StringMap.mem id !osd_long_id_claim_info
+        let claimed = StringMap.mem (id:string) !osd_long_id_claim_info in
+        if claimed
          then begin
              let open Osd.ClaimInfo in
              match StringMap.find id !osd_long_id_claim_info with
@@ -308,15 +295,14 @@ class osd_access
 
                 get_osd_info ~osd_id >>= fun (osd_info, osd_state') ->
                 let ips', port' = Osd.get_ips_port osd_info.Osd.kind in
-
-                let () = osd_state'.json <- Some json in
+                let () = Osd_state.add_json osd_state' json in
+                let () = Osd_state.add_seen osd_state' in
                 Hashtbl.replace
                   osds_info_cache
                   osd_id
                   (Osd.({ osd_info with
                           kind;
                           total; used;
-                          seen = Unix.gettimeofday () :: osd_info.seen;
                         }),
                    osd_state');
 
@@ -329,9 +315,10 @@ class osd_access
                    end else
                    Lwt.return ())
            end
-         else if check_claimed ()
+         else if check_claimed id
          then begin
 
+            Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
              let osd_info =
                Osd.({
                        kind;
@@ -418,7 +405,7 @@ class osd_access
                              Lwt.return `StopAndRemove) >>= function
                           | `Continue ->
                              Lwt_extra2.sleep_approx check_claimed_delay >>= fun () ->
-                             if check_claimed ()
+                             if check_claimed id
                              then inner ()
                              else
                                begin

@@ -615,7 +615,7 @@ let test_automatic_repair () =
        test_name port
        (fun asd ->
         alba_client # osd_access # seen
-                    ~check_claimed:(fun () -> true)
+                    ~check_claimed:(fun _ -> true)
                     ~check_claimed_delay:1.
                     Discovery.(Good("",
                                     { id = test_name;
