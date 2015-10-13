@@ -663,6 +663,57 @@ let alba_get_maintenance_config_cmd =
         $ to_json),
   Term.info "get-maintenance-config" ~doc:"get the maintenance config from the albamgr"
 
+let alba_update_maintenance_config
+      cfg_file
+      enable_auto_repair'
+      auto_repair_timeout_seconds'
+      auto_repair_add_disabled_nodes
+      auto_repair_remove_disabled_nodes
+      enable_rebalance'
+  =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1
+      (fun client ->
+       client # update_maintenance_config
+              Maintenance_config.Update.({ enable_auto_repair';
+                                           auto_repair_timeout_seconds';
+                                           auto_repair_add_disabled_nodes;
+                                           auto_repair_remove_disabled_nodes;
+                                           enable_rebalance';
+                                         }) >>= fun maintenance_config ->
+       Lwt_io.printlf
+         "Maintenance config now is %s"
+         (Maintenance_config.show maintenance_config))
+  in
+  lwt_cmd_line false t
+
+let alba_update_maintenance_config_cmd =
+  Term.(pure alba_update_maintenance_config
+        $ alba_cfg_file
+        $ Arg.(value
+               & vflag None
+                       [ (Some true,
+                          info ["enable-auto-repair"]);
+                         (Some false,
+                          info ["disable-auto-repair"]); ])
+        $ Arg.(value
+               & opt (some float) None
+               & info ["auto-repair-timeout-seconds"])
+        $ Arg.(value
+               & opt_all string []
+               & info ["auto-repair-add-disabled-node"])
+        $ Arg.(value
+               & opt_all string []
+               & info ["auto-repair-remove-disabled-node"])
+        $ Arg.(value
+               & vflag None
+                       [ (Some true,
+                          info ["enable-rebalance"]);
+                         (Some false,
+                          info ["disable-rebalance"]); ])),
+  Term.info "update-maintenance-config" ~doc:"update the maintenance config"
+
 let cmds = [
   alba_list_namespaces_by_id_cmd;
 
@@ -689,4 +740,5 @@ let cmds = [
   alba_clear_job_progress_cmd;
 
   alba_get_maintenance_config_cmd;
+  alba_update_maintenance_config_cmd;
 ]
