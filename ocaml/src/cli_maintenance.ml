@@ -47,11 +47,21 @@ let rec upload_albamgr_cfg albamgr_cfg (client : Alba_client.alba_client) =
 
 
 
+type deprecated =
+  | Default
+  | Custom of string
+
 let alba_maintenance cfg_file modulo remainder flavour =
   if modulo <> None
-  then Lwt_log.ign_warning "modulo was deprecated, and won't be used";
+  then Lwt_log.ign_warning "modulo was deprecated and won't be used";
   if remainder <> None
-  then Lwt_log.ign_warning "remainder was deprecated, and won't be used";
+  then Lwt_log.ign_warning "remainder was deprecated and won't be used";
+
+  let () =
+    match flavour with
+    | Default -> ()
+    | Custom s -> Lwt_log.ign_warning_f "option --%s was deprecated and won't be used" s
+  in
 
   let read_cfg () =
     Lwt_extra2.read_file cfg_file >>= fun txt ->
@@ -132,7 +142,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~osd_timeout
         (fun client ->
            let maintenance_client =
-             new Maintenance.client ~flavour (client # get_base_client)
+             new Maintenance.client (client # get_base_client)
            in
            let coordinator = maintenance_client # get_coordinator in
            Lwt.catch
@@ -148,7 +158,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
 
                 (* upload current config at maintenance startup *)
                 Lwt.ignore_result (upload_albamgr_cfg albamgr_cfg client);
-                let base_threads () =
+                let maintenance_threads =
                   [
                     (Lwt_extra2.make_fuse_thread ());
                     (maintenance_client # deliver_all_messages
@@ -157,31 +167,17 @@ let alba_maintenance cfg_file modulo remainder flavour =
                             ~check_claimed:(fun id -> coordinator # is_master) ());
                     (client # osd_access # propagate_osd_info ());
                     (maintenance_client # refresh_maintenance_config);
+                    (maintenance_client # do_work ());
+                    (maintenance_client # maintenance_for_all_namespaces);
+                    (maintenance_client # repair_osds);
+                    (maintenance_client # failure_detect_all_osds);
+                    (Mem_stats.reporting_t
+                       ~section:Lwt_log.Section.main
+                       ());
                   ]
                 in
 
-                let reporting_t =
-                  Mem_stats.reporting_t
-                    ~section:Lwt_log.Section.main
-                    ()
-                in
-
-                let maintenance_threads =
-                  let open Maintenance in
-                  match flavour with
-                  | NO_REBALANCE  (* handled inside maintenance client itself *)
-                  | ALL_IN_ONE ->
-                     (maintenance_client # do_work ())
-                     :: (maintenance_client # maintenance_for_all_namespaces)
-                     :: (maintenance_client # repair_osds)
-                     :: (maintenance_client # failure_detect_all_osds)
-                     :: base_threads ()
-                  | ONLY_REBALANCE ->
-                     (maintenance_client # maintenance_for_all_namespaces)
-                     :: base_threads ()
-                in
-                let threads = reporting_t :: maintenance_threads in
-                Lwt.pick threads
+                Lwt.pick maintenance_threads
 
              )
              (fun exn ->
@@ -207,20 +203,19 @@ let alba_maintenance_cmd =
          & info ["modulo"] ~docv:"MODULO (obsolete)" ~doc)
   in
   let flavour =
-    let open Maintenance in
     Arg.(value
-         & vflag ALL_IN_ONE
-                 [(ALL_IN_ONE,
+         & vflag Default
+                 [(Custom "all-in-one",
                    info ["all-in-one"]
-                        ~doc:"run all maintenance (including rebalancing)"
+                        ~doc:"run all maintenance (including rebalancing) (obsolete)"
                   );
-                  (ONLY_REBALANCE,
+                  (Custom "only-rebalance",
                    info ["only-rebalance"]
-                        ~doc:"only run rebalance"
+                        ~doc:"only run rebalance (obsolete)"
                   );
-                  (NO_REBALANCE,
+                  (Custom "no-rebalance",
                    info ["no-rebalance"]
-                        ~doc:"run all maintence except rebalance"
+                        ~doc:"run all maintence except rebalance (obsolete)"
                   )
                  ]
     )

@@ -23,16 +23,9 @@ open Lwt.Infix
 let gc_grace_period = Nsm_host_access.gc_grace_period
 type namespace_id = Albamgr_protocol.Protocol.Namespace.id
 
-type flavour =
-  | ALL_IN_ONE
-  | NO_REBALANCE
-  | ONLY_REBALANCE
-  [@@deriving show]
-
 exception NotMyTask
 
 class client ?(retry_timeout = 60.)
-             ?(flavour = ALL_IN_ONE)
              (alba_client : Alba_base_client.client)
 
   =
@@ -44,33 +37,11 @@ class client ?(retry_timeout = 60.)
       ~lease_timeout:maintenance_lease_timeout
       ~registration_prefix:maintenance_registration_prefix
   in
-  let rebalance_coordinator =
-    let open Maintenance_coordination in
-    make_maintenance_coordinator
-      (alba_client # mgr_access)
-      ~lease_name:rebalance_lease_name
-      ~lease_timeout:rebalance_lease_timeout
-      ~registration_prefix:rebalance_registration_prefix
-  in
-  let () =
-    match flavour with
-    | ALL_IN_ONE ->
-       coordinator # init;
-       rebalance_coordinator # init
-    | NO_REBALANCE ->
-       coordinator # init
-    | ONLY_REBALANCE ->
-       rebalance_coordinator # init
-  in
+  let () = coordinator # init in
   let filter item_id =
     (* item_id could be e.g. namespace_id or work item id *)
     let remainder = (Int32.to_int item_id) mod coordinator # get_modulo
     in remainder = coordinator # get_remainder
-  in
-  let filter_rebalance item_id =
-    (* item_id could be e.g. namespace_id or work item id *)
-    let remainder = (Int32.to_int item_id) mod rebalance_coordinator # get_modulo in
-    remainder = rebalance_coordinator # get_remainder
   in
   object(self)
 
@@ -765,7 +736,7 @@ class client ?(retry_timeout = 60.)
              ?only_once
              ~make_first_reverse
              ~namespace_id () =
-      if filter_rebalance namespace_id
+      if maintenance_config.Maintenance_config.enable_rebalance && filter namespace_id
       then self # rebalance_namespace'
                 ?delay
                 ?categorize
@@ -1444,7 +1415,7 @@ class client ?(retry_timeout = 60.)
              Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
              run_until_removed (msg, f)
          in
-         let core_tasks =
+         let tasks =
            [
                "clean obsolete fragments",
                (fun () ->
@@ -1457,20 +1428,12 @@ class client ?(retry_timeout = 60.)
                      ~namespace_id);
                "repair by policy",
                (fun () -> self # repair_by_policy_namespace ~namespace_id);
+               "rebalance",
+               (fun () -> self # rebalance_namespace
+                               ~make_first_reverse:(fun () -> get_random_string 32,
+                                                              Random.bool ())
+                               ~namespace_id ());
              ]
-         in
-         let rebalance =
-           "rebalance",
-           fun () -> self # rebalance_namespace
-                          ~make_first_reverse:(fun () -> get_random_string 32,
-                                                         Random.bool ())
-                          ~namespace_id ()
-         in
-         let tasks =
-           match flavour with
-           |ALL_IN_ONE     -> rebalance :: core_tasks
-           |NO_REBALANCE   -> core_tasks
-           |ONLY_REBALANCE -> [rebalance]
          in
          Lwt.join (List.map run_until_removed tasks)
       )
