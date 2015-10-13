@@ -295,22 +295,27 @@ class client ?(retry_timeout = 60.)
         ~namespace_id
         ~osd_id ()
       =
-      Lwt_log.debug_f "Decommissioning osd %li" osd_id >>= fun () ->
-
-      alba_client # with_nsm_client'
-        ~namespace_id
-        (fun client ->
-           let first, reverse =
+      Lwt_log.debug_f
+        "Decommissioning osd %li namespace_id:%li"
+        osd_id namespace_id
+      >>= fun () ->
+      let first, reverse =
              if deterministic
              then "", false
              else get_random_string 32, Random.bool ()
-           in
+      in
+      alba_client # with_nsm_client'
+        ~namespace_id
+        (fun client ->
            client # list_device_objects
              ~osd_id
              ~first ~finc:true ~last:None
              ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
-
+      Lwt_log.debug_f
+        "Decommissioning osd:%li namespace_id:%li first:%S ~reverse:%b cnt:%i, has_more:%b"
+        osd_id namespace_id first reverse cnt has_more
+      >>= fun () ->
       Lwt_list.iter_s
         (fun manifest ->
          Lwt.catch
