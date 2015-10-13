@@ -30,7 +30,7 @@ let periodic_load_osds
       (maintenance_config.Maintenance_config.auto_repair_timeout_seconds
        /. 2.) in
   let open Albamgr_protocol.Protocol.Osd in
-  Lwt_list.iter_p
+  let do_one =
     (let open ClaimInfo in
      function
      | (ThisAlba osd_id, osd_info) ->
@@ -43,6 +43,7 @@ let periodic_load_osds
            begin
              Lwt.catch
                (fun () ->
+                Lwt_log.debug_f "Write load on %li" osd_id >>= fun () ->
                 alba_client # with_osd
                             ~osd_id
                             (fun osd ->
@@ -72,6 +73,7 @@ let periodic_load_osds
            begin
              Lwt.catch
                (fun () ->
+                Lwt_log.debug_f "Read load on %li" osd_id >>= fun () ->
                 alba_client # with_osd
                             ~osd_id
                             (fun osd ->
@@ -91,4 +93,9 @@ let periodic_load_osds
            Lwt.return ())
      | (AnotherAlba _, _)
      | (Available, _) -> Lwt.return ())
+  in
+  Lwt_list.iter_p
+    (fun o ->
+     Lwt_extra2.ignore_errors
+       (fun () -> do_one o))
     osds

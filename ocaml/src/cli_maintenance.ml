@@ -156,6 +156,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
                     (client # get_base_client # discover_osds
                             ~check_claimed:(fun id -> coordinator # is_master) ());
                     (client # osd_access # propagate_osd_info ());
+                    (maintenance_client # refresh_maintenance_config);
                   ]
                 in
 

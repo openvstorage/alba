@@ -645,7 +645,7 @@ let test_automatic_repair () =
                        ~allow_overwrite:Nsm_model.NoPrevious
            >>= fun (mf, _) ->
            Lwt.return ())
-          (Int.range 0 20) >>= fun () ->
+          (Int.range 0 5) >>= fun () ->
 
         get_osd_has_objects ~osd_id >>= fun has_objects ->
         assert has_objects;
@@ -654,7 +654,7 @@ let test_automatic_repair () =
      alba_client # mgr_access # update_maintenance_config
                  Maintenance_config.Update.(
        { enable_auto_repair' = Some true;
-         auto_repair_timeout_seconds' = Some 1.;
+         auto_repair_timeout_seconds' = Some 10.;
          auto_repair_add_disabled_nodes = [];
          auto_repair_remove_disabled_nodes = [];
          enable_rebalance' = None;
@@ -662,15 +662,19 @@ let test_automatic_repair () =
 
      let maintenance_client =
        new Maintenance.client
-           ~retry_timeout:1.
+           ~retry_timeout:2.
            (alba_client # get_base_client)
      in
 
      Lwt.async
        (fun () ->
         Lwt.join
-          [ maintenance_client # failure_detect_all_osds;
-            maintenance_client # repair_osds; ]);
+          [ maintenance_client # refresh_maintenance_config;
+            alba_client # osd_access # propagate_osd_info ~delay:2. ();
+            (Lwt_unix.sleep 1. >>= fun () ->
+             Lwt.join
+               [ maintenance_client # failure_detect_all_osds;
+                 maintenance_client # repair_osds; ]); ]);
 
      Lwt_log.debug_f "cucu1" >>= fun () ->
 
@@ -678,21 +682,21 @@ let test_automatic_repair () =
        maintenance_client # should_repair ~osd_id >>= function
        | true -> Lwt.return ()
        | false ->
-          Lwt_unix.sleep 0.1 >>= fun () ->
+          Lwt_unix.sleep 1. >>= fun () ->
           wait_until_detected ()
      in
-     Lwt_unix.with_timeout  10. wait_until_detected >>= fun () ->
+     Lwt_unix.with_timeout 15. wait_until_detected >>= fun () ->
 
      Lwt_log.debug_f "cucu2" >>= fun () ->
 
      let rec wait_until_repaired () =
        get_osd_has_objects ~osd_id >>= function
        | true ->
-          Lwt_unix.sleep 0.1 >>= fun () ->
+          Lwt_unix.sleep 1. >>= fun () ->
           wait_until_repaired ()
        | false -> Lwt.return ()
      in
-     Lwt_unix.with_timeout 10. wait_until_repaired
+     Lwt_unix.with_timeout 20. wait_until_repaired
     )
 
 
