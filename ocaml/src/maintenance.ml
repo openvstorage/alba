@@ -91,7 +91,7 @@ class client ?(retry_timeout = 60.)
          alba_client # mgr_access # get_maintenance_config >>= fun cfg ->
          maintenance_config <- cfg;
          Lwt.return_unit)
-        60.
+        retry_timeout
 
     val maybe_dead_osds = Hashtbl.create 3
     method should_repair ~osd_id =
@@ -145,7 +145,7 @@ class client ?(retry_timeout = 60.)
            end
          else
            Lwt.return ())
-        60.
+        retry_timeout
 
     method rebalance_object
              ~(namespace_id:int32)

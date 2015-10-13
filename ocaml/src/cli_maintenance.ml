@@ -173,6 +173,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
                      (maintenance_client # do_work ())
                      :: (maintenance_client # maintenance_for_all_namespaces)
                      :: (maintenance_client # repair_osds)
+                     :: (maintenance_client # failure_detect_all_osds)
                      :: base_threads ()
                   | ONLY_REBALANCE ->
                      (maintenance_client # maintenance_for_all_namespaces)
