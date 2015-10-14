@@ -696,7 +696,7 @@ let test_automatic_repair () =
           wait_until_repaired ()
        | false -> Lwt.return ()
      in
-     Lwt_unix.with_timeout 60. wait_until_repaired
+     Lwt_unix.with_timeout 90. wait_until_repaired
     )
 
 
