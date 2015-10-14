@@ -842,6 +842,7 @@ module Protocol = struct
     | GetParticipants : (string, (string * int) counted_list) query
     | GetProgress : (string, Progress.t option) query
     | GetProgressForPrefix : (string, (int * Progress.t) counted_list) query
+    | GetMaintenanceConfig : (unit, Maintenance_config.t) query
 
   type ('i, 'o) update =
     | AddNsmHost : (Nsm_host.id * Nsm_host.t, unit) update
@@ -868,6 +869,7 @@ module Protocol = struct
     | RegisterParticipant : (string * (string * int), unit) update
     | RemoveParticipant : (string * (string * int), unit) update
     | UpdateProgress : (string * Progress.Update.t, unit) update
+    | UpdateMaintenanceConfig : (Maintenance_config.Update.t, Maintenance_config.t) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -898,6 +900,7 @@ module Protocol = struct
     | GetParticipants -> Llio.string_from
     | GetProgress -> Llio.string_from
     | GetProgressForPrefix -> Llio.string_from
+    | GetMaintenanceConfig -> Llio.unit_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -927,6 +930,7 @@ module Protocol = struct
     | GetParticipants -> Llio.string_to
     | GetProgress -> Llio.string_to
     | GetProgressForPrefix -> Llio.string_to
+    | GetMaintenanceConfig -> Llio.unit_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -1003,6 +1007,7 @@ module Protocol = struct
          (Llio.pair_from
             Llio.int_from
             Progress.from_buffer)
+    | GetMaintenanceConfig -> Maintenance_config.from_buffer
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -1080,6 +1085,7 @@ module Protocol = struct
         (Llio.pair_to
            Llio.int_to
            Progress.to_buffer)
+    | GetMaintenanceConfig -> Maintenance_config.to_buffer
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -1141,6 +1147,7 @@ module Protocol = struct
            Llio.string_from
            Llio.int_from)
     | UpdateProgress -> Llio.pair_from Llio.string_from Progress.Update.from_buffer
+    | UpdateMaintenanceConfig -> Maintenance_config.Update.from_buffer
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -1196,6 +1203,7 @@ module Protocol = struct
            Llio.string_to
            Llio.int_to)
     | UpdateProgress -> Llio.pair_to Llio.string_to Progress.Update.to_buffer
+    | UpdateMaintenanceConfig -> Maintenance_config.Update.to_buffer
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -1223,6 +1231,7 @@ module Protocol = struct
     | RegisterParticipant ->Llio.unit_from
     | RemoveParticipant ->  Llio.unit_from
     | UpdateProgress     -> Llio.unit_from
+    | UpdateMaintenanceConfig -> Maintenance_config.from_buffer
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
     | UpdateNsmHost   -> Llio.unit_to
@@ -1248,6 +1257,7 @@ module Protocol = struct
     | RegisterParticipant ->Llio.unit_to
     | RemoveParticipant ->  Llio.unit_to
     | UpdateProgress     -> Llio.unit_to
+    | UpdateMaintenanceConfig -> Maintenance_config.to_buffer
 
 
   type request =
@@ -1313,6 +1323,9 @@ module Protocol = struct
                       Wrap_q GetProgress, 61l, "GetProgress";
                       Wrap_u UpdateProgress, 62l, "UpdateProgress";
                       Wrap_q GetProgressForPrefix, 63l, "GetProgressForPrefix";
+
+                      Wrap_q GetMaintenanceConfig, 64l, "GetMaintenanceConfig";
+                      Wrap_u UpdateMaintenanceConfig, 65l, "UpdateMaintenanceConfig";
                     ]
 
 

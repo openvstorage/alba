@@ -201,7 +201,7 @@ class osd_access
         osds >>= fun () ->
       Lwt.return res
 
-    method propagate_osd_info ?(run_once=false) () : unit Lwt.t =
+    method propagate_osd_info ?(run_once=false) ?(delay=20.) () : unit Lwt.t =
       let open Albamgr_protocol.Protocol in
       let make_update (id:Osd.id) (osd_info:Osd.t) (osd_state:Osd_state.t) =
         let n = 10 in
@@ -219,13 +219,13 @@ class osd_access
         and read'   = most_recent osd_state.read
         and write'  = most_recent osd_state.write
         and errors' = most_recent osd_state.errors
-        and other'  = osd_state.json |> Option.get_some
+        and other'  = osd_state.json
         in
         let update = Osd.Update.make
                        ~ips' ~port'
                        ~total' ~used' ~seen'
                        ~read' ~write' ~errors'
-                       ~other'
+                       ?other'
                        ()
         in
         (long_id, update)
@@ -236,11 +236,9 @@ class osd_access
             (fun k v acc ->
              let osd_info, osd_state = v in
              let acc' =
-               if osd_state.Osd_state.json = None (* these had no update, so skip *)
-               then acc
-               else
-                 let update = make_update k osd_info osd_state in
-                 update :: acc
+               (* TODO filter out those that accumulated no updates *)
+               let update = make_update k osd_info osd_state in
+               update :: acc
              in
              let () = Osd_state.reset osd_state in
              acc')
@@ -257,7 +255,7 @@ class osd_access
       in
       if run_once
       then propagate ()
-      else Lwt_extra2.run_forever "propagate_osd_info" propagate 20.
+      else Lwt_extra2.run_forever "propagate_osd_info" propagate delay
 
 
     method seen ?(check_claimed=fun id -> false) ?(check_claimed_delay=60.) =

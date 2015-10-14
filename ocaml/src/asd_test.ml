@@ -48,16 +48,17 @@ let with_asd_client ?(is_restart=false) test_name port f =
   let asd_id = Some test_name in
   let t =
     Lwt.pick
-      [ Asd_server.run_server
-          [] port path
-          ~asd_id
-          ~node_id:"bla"
-          ~slow:false
-          ~fsync:false
-          ~buffer_size:(768*1024)
-          ~rocksdb_max_open_files:256
-          ~limit:90L
-          ~multicast:(Some 10.0);
+      [ (Asd_server.run_server
+           [] port path
+           ~asd_id
+           ~node_id:"bla"
+           ~slow:false
+           ~fsync:false
+           ~buffer_size:(768*1024)
+           ~rocksdb_max_open_files:256
+           ~limit:90L
+           ~multicast:(Some 10.0) >>= fun () ->
+         Lwt.fail_with "Asd server stopped!");
         begin
           Lwt_unix.with_timeout
             5.

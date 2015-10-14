@@ -23,16 +23,9 @@ open Lwt.Infix
 let gc_grace_period = Nsm_host_access.gc_grace_period
 type namespace_id = Albamgr_protocol.Protocol.Namespace.id
 
-type flavour =
-  | ALL_IN_ONE
-  | NO_REBALANCE
-  | ONLY_REBALANCE
-  [@@deriving show]
-
 exception NotMyTask
 
 class client ?(retry_timeout = 60.)
-             ?(flavour = ALL_IN_ONE)
              (alba_client : Alba_base_client.client)
 
   =
@@ -44,37 +37,82 @@ class client ?(retry_timeout = 60.)
       ~lease_timeout:maintenance_lease_timeout
       ~registration_prefix:maintenance_registration_prefix
   in
-  let rebalance_coordinator =
-    let open Maintenance_coordination in
-    make_maintenance_coordinator
-      (alba_client # mgr_access)
-      ~lease_name:rebalance_lease_name
-      ~lease_timeout:rebalance_lease_timeout
-      ~registration_prefix:rebalance_registration_prefix
-  in
-  let () =
-    match flavour with
-    | ALL_IN_ONE ->
-       coordinator # init;
-       rebalance_coordinator # init
-    | NO_REBALANCE ->
-       coordinator # init
-    | ONLY_REBALANCE ->
-       rebalance_coordinator # init
-  in
+  let () = coordinator # init in
   let filter item_id =
     (* item_id could be e.g. namespace_id or work item id *)
     let remainder = (Int32.to_int item_id) mod coordinator # get_modulo
     in remainder = coordinator # get_remainder
   in
-  let filter_rebalance item_id =
-    (* item_id could be e.g. namespace_id or work item id *)
-    let remainder = (Int32.to_int item_id) mod rebalance_coordinator # get_modulo in
-    remainder = rebalance_coordinator # get_remainder
-  in
   object(self)
 
     method get_coordinator = coordinator
+
+    val mutable maintenance_config =
+      Maintenance_config.({ enable_auto_repair = false;
+                            auto_repair_timeout_seconds = 1.;
+                            auto_repair_disabled_nodes = [];
+                            enable_rebalance = false; })
+
+    method get_maintenance_config = maintenance_config
+
+    method refresh_maintenance_config : unit Lwt.t =
+      Lwt_extra2.run_forever
+        "refresh_maintenance_config"
+        (fun () ->
+         alba_client # mgr_access # get_maintenance_config >>= fun cfg ->
+         maintenance_config <- cfg;
+         Lwt.return_unit)
+        retry_timeout
+
+    val maybe_dead_osds = Hashtbl.create 3
+    method should_repair ~osd_id =
+      alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+      Lwt.return ((maintenance_config.Maintenance_config.enable_auto_repair
+                   && Hashtbl.mem maybe_dead_osds osd_id)
+                  || osd_info.Albamgr_protocol.Protocol.Osd.decommissioned)
+
+    method failure_detect_all_osds : unit Lwt.t =
+      Lwt_extra2.run_forever
+        "failure_detect_all_osds"
+        (fun () ->
+         if maintenance_config.Maintenance_config.enable_auto_repair
+         then
+           begin
+             alba_client # mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
+
+             (* failure detecting already decommissioned osds isn't that useful *)
+             let osds =
+               List.filter
+                 (fun (_, osd_info) -> not osd_info.Albamgr_protocol.Protocol.Osd.decommissioned)
+                 osds
+             in
+
+             Lwt.async
+               (fun () ->
+                Automatic_repair.periodic_load_osds
+                  alba_client
+                  maintenance_config
+                  osds);
+
+             let past_date =
+               Unix.gettimeofday () -.
+                 maintenance_config.Maintenance_config.auto_repair_timeout_seconds
+             in
+             List.iter
+               (fun (osd_id, osd_info) ->
+                let open Albamgr_protocol.Protocol.Osd in
+                if not (Automatic_repair.recent_enough past_date osd_info.write
+                        && Automatic_repair.recent_enough past_date osd_info.write)
+                   && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
+                then Hashtbl.replace maybe_dead_osds osd_id ()
+                else Hashtbl.remove maybe_dead_osds osd_id)
+               osds;
+
+             Lwt.return ()
+           end
+         else
+           Lwt.return ())
+        retry_timeout
 
     method rebalance_object
              ~(namespace_id:int32)
@@ -299,7 +337,8 @@ class client ?(retry_timeout = 60.)
         )
         manifests >>= fun () ->
 
-      if has_more
+      self # should_repair ~osd_id >>= fun should_repair ->
+      if has_more && should_repair
       then self # decommission_device ~deterministic ~namespace_id ~osd_id ()
       else Lwt.return ()
 
@@ -320,19 +359,28 @@ class client ?(retry_timeout = 60.)
       let rec inner () =
         alba_client # mgr_access # list_all_decommissioning_osds >>= fun (_, osds) ->
 
+        let ensure_repair_thread osd_id =
+          if not (Hashtbl.mem threads osd_id)
+          then begin
+              Hashtbl.add threads osd_id ();
+              Lwt.async
+                (fun () ->
+                 Lwt_extra2.ignore_errors
+                   (fun () -> self # repair_osd ~osd_id) >>= fun () ->
+                 Hashtbl.remove threads osd_id;
+                 Lwt.return ())
+            end
+        in
+
         List.iter
-          (fun (osd_id, _) ->
-             if not (Hashtbl.mem threads osd_id)
-             then begin
-               Hashtbl.add threads osd_id ();
-               Lwt.async
-                 (fun () ->
-                    Lwt_extra2.ignore_errors
-                      (fun () -> self # repair_osd ~osd_id) >>= fun () ->
-                    Hashtbl.remove threads osd_id;
-                    Lwt.return ())
-             end)
+          (fun (osd_id, _) -> ensure_repair_thread osd_id)
           osds;
+
+        if maintenance_config.Maintenance_config.enable_auto_repair
+        then
+          Hashtbl.iter
+            (fun osd_id () -> ensure_repair_thread osd_id)
+            maybe_dead_osds;
 
         Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
         inner ()
@@ -684,7 +732,7 @@ class client ?(retry_timeout = 60.)
              ?only_once
              ~make_first_reverse
              ~namespace_id () =
-      if filter_rebalance namespace_id
+      if maintenance_config.Maintenance_config.enable_rebalance && filter namespace_id
       then self # rebalance_namespace'
                 ?delay
                 ?categorize
@@ -1363,7 +1411,7 @@ class client ?(retry_timeout = 60.)
              Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
              run_until_removed (msg, f)
          in
-         let core_tasks =
+         let tasks =
            [
                "clean obsolete fragments",
                (fun () ->
@@ -1376,20 +1424,12 @@ class client ?(retry_timeout = 60.)
                      ~namespace_id);
                "repair by policy",
                (fun () -> self # repair_by_policy_namespace ~namespace_id);
+               "rebalance",
+               (fun () -> self # rebalance_namespace
+                               ~make_first_reverse:(fun () -> get_random_string 32,
+                                                              Random.bool ())
+                               ~namespace_id ());
              ]
-         in
-         let rebalance =
-           "rebalance",
-           fun () -> self # rebalance_namespace
-                          ~make_first_reverse:(fun () -> get_random_string 32,
-                                                         Random.bool ())
-                          ~namespace_id ()
-         in
-         let tasks =
-           match flavour with
-           |ALL_IN_ONE     -> rebalance :: core_tasks
-           |NO_REBALANCE   -> core_tasks
-           |ONLY_REBALANCE -> [rebalance]
          in
          Lwt.join (List.map run_until_removed tasks)
       )

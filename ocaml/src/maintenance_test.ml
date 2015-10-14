@@ -593,6 +593,112 @@ let test_verify_namespace () =
 
      Lwt.return ())
 
+let test_automatic_repair () =
+  let test_name = "test_automatic_repair" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+
+     let get_osd_has_objects ~osd_id =
+       alba_client # get_base_client # with_nsm_client
+                   ~namespace
+                   (fun nsm ->
+                    nsm # list_device_objects ~osd_id
+                        ~first:"" ~finc:true
+                        ~last:None ~max:1 ~reverse:false)
+       >>= fun ((cnt, _), _) ->
+       Lwt.return (cnt = 1)
+     in
+
+     let port = 8980 in
+     Asd_test.with_asd_client
+       test_name port
+       (fun asd ->
+        alba_client # osd_access # seen
+                    ~check_claimed:(fun _ -> true)
+                    ~check_claimed_delay:1.
+                    Discovery.(Good("",
+                                    { id = test_name;
+                                      extras =
+                                        Some({ node_id = "bla";
+                                               version = "AsdV1";
+                                               total = 1L;
+                                               used = 1L;
+                                             });
+                                      ips = ["::1"];
+                                      port; })) >>= fun () ->
+        alba_client # claim_osd ~long_id:test_name >>= fun osd_id ->
+
+        alba_client # create_namespace
+                    ~namespace
+                    ~preset_name:None () >>= fun namespace_id ->
+
+        wait_for_namespace_osds alba_client namespace_id 13 >>= fun () ->
+
+        Lwt_list.iter_p
+          (fun i ->
+           alba_client # get_base_client # upload_object_from_string
+                       ~namespace
+                       ~object_name:(string_of_int i)
+                       ~object_data:"fsdioap"
+                       ~checksum_o:None
+                       ~allow_overwrite:Nsm_model.NoPrevious
+           >>= fun (mf, _) ->
+           Lwt.return ())
+          (Int.range 0 5) >>= fun () ->
+
+        get_osd_has_objects ~osd_id >>= fun has_objects ->
+        assert has_objects;
+        Lwt.return osd_id) >>= fun osd_id ->
+
+     alba_client # mgr_access # update_maintenance_config
+                 Maintenance_config.Update.(
+       { enable_auto_repair' = Some true;
+         auto_repair_timeout_seconds' = Some 10.;
+         auto_repair_add_disabled_nodes = [];
+         auto_repair_remove_disabled_nodes = [];
+         enable_rebalance' = None;
+       }) >>= fun _ ->
+
+     let maintenance_client =
+       new Maintenance.client
+           ~retry_timeout:2.
+           (alba_client # get_base_client)
+     in
+
+     Lwt.async
+       (fun () ->
+        Lwt.join
+          [ maintenance_client # refresh_maintenance_config;
+            alba_client # osd_access # propagate_osd_info ~delay:2. ();
+            (Lwt_unix.sleep 1. >>= fun () ->
+             Lwt.join
+               [ maintenance_client # failure_detect_all_osds;
+                 maintenance_client # repair_osds; ]); ]);
+
+     Lwt_log.debug_f "cucu1" >>= fun () ->
+
+     let rec wait_until_detected () =
+       maintenance_client # should_repair ~osd_id >>= function
+       | true -> Lwt.return ()
+       | false ->
+          Lwt_unix.sleep 1. >>= fun () ->
+          wait_until_detected ()
+     in
+     Lwt_unix.with_timeout 30. wait_until_detected >>= fun () ->
+
+     Lwt_log.debug_f "cucu2" >>= fun () ->
+
+     let rec wait_until_repaired () =
+       get_osd_has_objects ~osd_id >>= function
+       | true ->
+          Lwt_unix.sleep 1. >>= fun () ->
+          wait_until_repaired ()
+       | false -> Lwt.return ()
+     in
+     Lwt_unix.with_timeout 60. wait_until_repaired
+    )
+
 
 open OUnit
 
@@ -604,4 +710,5 @@ let suite = "maintenance_test" >:::[
     "test_repair_orange2" >:: test_repair_orange2;
     "test_rewrite_namespace" >:: test_rewrite_namespace;
     "test_verify_namespace" >:: test_verify_namespace;
+    "test_automatic_repair" >:: test_automatic_repair;
 ]
