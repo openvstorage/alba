@@ -342,15 +342,26 @@ let proxy_osd_view_cmd =
   Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
 
 let proxy_bench host port
-                (n:int) file_name (power:int)
+                n_clients (n:int) file_name (power:int)
                 prefix (slice_size:int) namespace_name
+                scenarios
   =
   lwt_cmd_line
     false
-    (fun () -> Proxy_bench.bench host port n file_name power prefix slice_size namespace_name)
-
+    (fun () ->
+     Proxy_bench.do_scenarios
+       host port
+       n_clients n
+       file_name power prefix slice_size namespace_name
+       scenarios)
 
 let proxy_bench_cmd =
+  let n_clients default =
+    let doc = "number of concurrent clients for the benchmark" in
+    Arg.(value
+         & opt int default
+         & info ["n-clients"] ~docv:"N_CLIENTS" ~doc)
+  in
   let n default =
     let doc = "do runs (writes,reads,partial_reads,...) of $(docv) iterations" in
     Arg.(value
@@ -378,16 +389,34 @@ let proxy_bench_cmd =
          & info ["slice-size"] ~docv:"SLICE_SIZE"  ~doc
     )
   in
+  let scenarios =
+    Arg.(let open Proxy_bench in
+         value
+         & opt_all
+             (enum
+                [ "writes", do_writes;
+                  "reads", do_reads;
+                  "partial-reads", do_partial_reads;
+                  "deletes", do_deletes; ])
+             [ do_writes;
+               do_reads;
+               do_partial_reads;
+               do_deletes; ]
+         & info [ "scenario" ])
+  in
   Term.(pure proxy_bench
         $ host $ port 10000
+        $ n_clients 1
         $ n 10000
         $ file_upload 1
         $ power 4
         $ prefix ""
         $ slice_size 4096
         $ namespace 0
+        $ scenarios
   ),
   Term.info "proxy-bench" ~doc:"simple proxy benchmark"
+
 let cmds = [
   proxy_start_cmd;
   proxy_list_namespaces_cmd;

@@ -32,7 +32,7 @@ let deletes (client: Osd.osd) n value_size period prefix =
     let updates = [delete] in
     client # apply_sequence Osd.High [] updates >>= maybe_fail
   in
-  measured_loop do_one n >>= fun r ->
+  measured_loop (make_progress (n/100)) do_one n >>= fun r ->
   report "deletes" r
 
 
@@ -50,7 +50,7 @@ let gets (client: Osd.osd) n value_size period prefix =
     in
     Lwt.return ()
   in
-  measured_loop do_one n >>= fun r ->
+  measured_loop (make_progress (n/100)) do_one n >>= fun r ->
   report "gets" r
 
 let sets (client:Osd.osd) n value_size period prefix =
@@ -81,7 +81,7 @@ let sets (client:Osd.osd) n value_size period prefix =
     let updates = [set] in
     client # apply_sequence Osd.High [] updates >>= maybe_fail
   in
-  measured_loop do_one n >>= fun r ->
+  measured_loop (make_progress (n/100)) do_one n >>= fun r ->
   report "sets" r
 
 

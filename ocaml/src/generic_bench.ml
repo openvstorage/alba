@@ -7,9 +7,14 @@ let report name (d,speed, latency, min_d, max_d) =
   Lwt_io.printlf "\tmin: %fms" (min_d *. 1000.0) >>= fun () ->
   Lwt_io.printlf "\tmax: %fms" (max_d *. 1000.0)
 
-let progress t0 step i =
+let make_progress step =
+  let cnt = ref 0 in
   let row = 10 * step in
-  if i mod step = 0 && i <> 0
+  let t0 = Unix.gettimeofday () in
+  fun () ->
+  incr cnt;
+  let i = !cnt in
+  if i mod step = 0
   then
     Lwt_io.printf "%16i" i >>= fun () ->
     if (i mod row = 0 )
@@ -21,17 +26,16 @@ let progress t0 step i =
     else Lwt.return ()
   else Lwt.return ()
 
-let measured_loop f n =
+let measured_loop progress f n =
   let t0 = Unix.gettimeofday () in
-  let step = n / 100 in
   let rec loop min_d max_d i =
     if i = n
     then Lwt.return (min_d, max_d)
     else
-      progress t0 step i >>= fun () ->
       let t1 = Unix.gettimeofday() in
       f i >>= fun () ->
       let t2 = Unix.gettimeofday() in
+      progress () >>= fun () ->
       let d = t2 -. t1 in
       let min_d' = min d min_d
       and max_d' = max d max_d
