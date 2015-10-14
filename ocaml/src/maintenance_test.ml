@@ -685,7 +685,7 @@ let test_automatic_repair () =
           Lwt_unix.sleep 1. >>= fun () ->
           wait_until_detected ()
      in
-     Lwt_unix.with_timeout 15. wait_until_detected >>= fun () ->
+     Lwt_unix.with_timeout 30. wait_until_detected >>= fun () ->
 
      Lwt_log.debug_f "cucu2" >>= fun () ->
 
@@ -696,7 +696,7 @@ let test_automatic_repair () =
           wait_until_repaired ()
        | false -> Lwt.return ()
      in
-     Lwt_unix.with_timeout 20. wait_until_repaired
+     Lwt_unix.with_timeout 60. wait_until_repaired
     )
 
 
