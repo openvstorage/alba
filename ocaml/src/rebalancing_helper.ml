@@ -163,18 +163,18 @@ let plan_move cache (too_low,ok, too_high) manifest
 
  let get_some_manifests
        (alba_client:Alba_base_client.client)
-       ~make_first_reverse
+       ~make_first_last_reverse
        ~namespace_id
        osd_id
    =
    let open Lwt.Infix in
-   let first,reverse = make_first_reverse() in
+   let first, last, reverse = make_first_last_reverse() in
    alba_client # with_nsm_client' ~namespace_id
      (fun nsm_client ->
       nsm_client # list_device_objects
        ~osd_id
        ~first ~finc:true
-       ~last:None ~reverse
+       ~last  ~reverse
        ~max:100
      )
    >>= fun (r, has_more) ->
