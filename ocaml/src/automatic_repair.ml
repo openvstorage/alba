@@ -30,11 +30,7 @@ let periodic_load_osds
       (maintenance_config.Maintenance_config.auto_repair_timeout_seconds
        /. 2.) in
   let open Albamgr_protocol.Protocol.Osd in
-  let do_one =
-    (let open ClaimInfo in
-     function
-     | (ThisAlba osd_id, osd_info) ->
-
+  let do_one (osd_id, osd_info) =
         alba_client # osd_access # get_osd_info ~osd_id
         >>= fun (_, osd_state) ->
 
@@ -89,8 +85,6 @@ let periodic_load_osds
            end
          else
            Lwt.return ())
-     | (AnotherAlba _, _)
-     | (Available, _) -> Lwt.return ())
   in
   Lwt_list.iter_p
     (fun o ->

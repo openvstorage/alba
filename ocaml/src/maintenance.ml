@@ -78,7 +78,7 @@ class client ?(retry_timeout = 60.)
          if maintenance_config.Maintenance_config.enable_auto_repair
          then
            begin
-             alba_client # mgr_access # list_all_osds >>= fun (_, osds) ->
+             alba_client # mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
 
              (* failure detecting already decommissioned osds isn't that useful *)
              let osds =
@@ -99,17 +99,13 @@ class client ?(retry_timeout = 60.)
                  maintenance_config.Maintenance_config.auto_repair_timeout_seconds
              in
              List.iter
-               (let open Albamgr_protocol.Protocol.Osd in
-                let open ClaimInfo in
-                function
-                | (ThisAlba osd_id, osd_info) ->
-                   if not (Automatic_repair.recent_enough past_date osd_info.write
-                           && Automatic_repair.recent_enough past_date osd_info.write)
-                      && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
-                   then Hashtbl.replace maybe_dead_osds osd_id ()
-                   else Hashtbl.remove maybe_dead_osds osd_id
-                | (AnotherAlba _, _)
-                | (Available, _) -> ())
+               (fun (osd_id, osd_info) ->
+                let open Albamgr_protocol.Protocol.Osd in
+                if not (Automatic_repair.recent_enough past_date osd_info.write
+                        && Automatic_repair.recent_enough past_date osd_info.write)
+                   && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
+                then Hashtbl.replace maybe_dead_osds osd_id ()
+                else Hashtbl.remove maybe_dead_osds osd_id)
                osds;
 
              Lwt.return ()
