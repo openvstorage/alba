@@ -299,17 +299,21 @@ class client ?(retry_timeout = 60.)
         "Decommissioning osd %li namespace_id:%li"
         osd_id namespace_id
       >>= fun () ->
-      let first, reverse =
-             if deterministic
-             then "", false
-             else get_random_string 32, Random.bool ()
+      let first, last, reverse =
+        if deterministic
+        then "", None, false
+        else let reverse = Random.bool ()
+             and border = get_random_string 32 in
+             if reverse
+             then ""    , Some (border,true), true
+             else border, None              , false
       in
       alba_client # with_nsm_client'
         ~namespace_id
         (fun client ->
            client # list_device_objects
              ~osd_id
-             ~first ~finc:true ~last:None
+             ~first ~finc:true ~last
              ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
       Lwt_log.debug_f
