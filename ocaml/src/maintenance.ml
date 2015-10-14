@@ -80,7 +80,7 @@ class client ?(retry_timeout = 60.)
            begin
              alba_client # mgr_access # list_all_osds >>= fun (_, osds) ->
 
-             (* failure detecting already decommissioned osds isn't that usefull *)
+             (* failure detecting already decommissioned osds isn't that useful *)
              let osds =
                List.filter
                  (fun (_, osd_info) -> not osd_info.Albamgr_protocol.Protocol.Osd.decommissioned)
