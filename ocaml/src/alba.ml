@@ -652,7 +652,7 @@ let unit_tests produce_xml alba_cfg_file only_test =
     | RTodo _::_ ->
        1
   in
-  let _my_run only_test suite =
+  let _my_run only_test suite produce_xml =
     let open OUnit in
     let nsuite =
       if only_test = []
@@ -667,15 +667,15 @@ let unit_tests produce_xml alba_cfg_file only_test =
                            " lead to no test")
         end
     in
-    run_test_tt ~verbose:true nsuite
+    if produce_xml
+    then OUnit_XML.run_suite_producing_xml nsuite "testresults.xml"
+    else run_test_tt ~verbose:true nsuite
+
+
   in
   let suite = Test.suite in
   Printf.printf "%s\n" ([%show: string array] Sys.argv);
-  let results =
-    if produce_xml
-    then OUnit_XML.run_suite_producing_xml suite "testresults.xml"
-    else _my_run only_test suite
-  in
+  let results = _my_run only_test suite produce_xml in
   let rc = rc_of results in
   exit rc
 
