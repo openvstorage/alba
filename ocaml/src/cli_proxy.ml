@@ -344,7 +344,7 @@ let proxy_osd_view_cmd =
 let proxy_bench host port
                 n_clients (n:int) file_name (power:int)
                 prefix (slice_size:int) namespace_name
-                scenarios
+                scenarios robust
   =
   lwt_cmd_line
     false
@@ -353,7 +353,19 @@ let proxy_bench host port
        host port
        n_clients n
        file_name power prefix slice_size namespace_name
-       scenarios)
+       (let open Proxy_bench in
+        List.map
+          (function
+            | `Writes -> do_writes ~robust
+            | `Reads  -> do_reads
+            | `Partial_reads -> do_partial_reads
+            | `Deletes -> do_deletes)
+          (if scenarios = []
+           then [ `Writes;
+                  `Reads;
+                  `Partial_reads;
+                  `Deletes; ]
+           else scenarios)))
 
 let proxy_bench_cmd =
   let n_clients default =
@@ -390,18 +402,14 @@ let proxy_bench_cmd =
     )
   in
   let scenarios =
-    Arg.(let open Proxy_bench in
-         value
+    Arg.(value
          & opt_all
              (enum
-                [ "writes", do_writes;
-                  "reads", do_reads;
-                  "partial-reads", do_partial_reads;
-                  "deletes", do_deletes; ])
-             [ do_writes;
-               do_reads;
-               do_partial_reads;
-               do_deletes; ]
+                [ "writes", `Writes;
+                  "reads", `Reads;
+                  "partial-reads", `Partial_reads;
+                  "deletes", `Deletes; ])
+             []
          & info [ "scenario" ])
   in
   Term.(pure proxy_bench
@@ -414,6 +422,9 @@ let proxy_bench_cmd =
         $ slice_size 4096
         $ namespace 0
         $ scenarios
+        $ Arg.(value
+               & flag
+               & info ["robust"] ~docv:"robust writes (with retry loop)")
   ),
   Term.info "proxy-bench" ~doc:"simple proxy benchmark"
 

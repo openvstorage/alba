@@ -4,17 +4,40 @@ open Lwt.Infix
 open Generic_bench
 
 
-let do_writes (client:proxy_client) progress n input_file period prefix (_:int) namespace =
+let do_writes ~robust (client:proxy_client) progress n input_file period prefix _ namespace =
   let gen = make_key period prefix in
   let do_one i =
     let object_name = gen () in
-    client # write_object_fs
-           ~namespace
-           ~object_name
-           ~input_file
-           ~allow_overwrite:false ()
+    Lwt.catch
+      (fun () ->
+       client # write_object_fs
+              ~namespace
+              ~object_name
+              ~input_file
+              ~allow_overwrite:false ())
+      (fun exn ->
+       let rec inner delay =
+         Lwt.catch
+           (fun () ->
+            client # write_object_fs
+                   ~namespace
+                   ~object_name
+                   ~input_file
+                   ~allow_overwrite:true () >>= fun () ->
+            Lwt.return `Continue)
+           (fun exn ->
+            Lwt.return `Retry) >>= function
+         | `Continue ->
+            Lwt.return ()
+         | `Retry ->
+            Lwt_unix.sleep delay >>= fun () ->
+            inner (min 60. (delay *. 1.5))
+       in
+       if robust
+       then inner 1.
+       else Lwt.fail exn)
   in
-  Lwt_io.printlf "writes:" >>= fun () ->
+  Lwt_io.printlf "writes (robust=%b):" robust >>= fun () ->
   measured_loop progress do_one n >>= fun r ->
   report "writes" r
 
