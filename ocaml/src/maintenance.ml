@@ -43,6 +43,14 @@ class client ?(retry_timeout = 60.)
     let remainder = (Int32.to_int item_id) mod coordinator # get_modulo
     in remainder = coordinator # get_remainder
   in
+  let make_first_last_reverse () =
+    let reverse = Random.bool ()
+    and border = get_random_string 32 in
+    if reverse
+    then ""    , Some (border,true), true
+    else border, None              , false
+  in
+
   object(self)
 
     method get_coordinator = coordinator
@@ -295,22 +303,27 @@ class client ?(retry_timeout = 60.)
         ~namespace_id
         ~osd_id ()
       =
-      Lwt_log.debug_f "Decommissioning osd %li" osd_id >>= fun () ->
-
+      Lwt_log.debug_f
+        "Decommissioning osd %li namespace_id:%li"
+        osd_id namespace_id
+      >>= fun () ->
+      let first, last, reverse =
+        if deterministic
+        then "", None, false
+        else make_first_last_reverse ()
+      in
       alba_client # with_nsm_client'
         ~namespace_id
         (fun client ->
-           let first, reverse =
-             if deterministic
-             then "", false
-             else get_random_string 32, Random.bool ()
-           in
            client # list_device_objects
              ~osd_id
-             ~first ~finc:true ~last:None
+             ~first ~finc:true ~last
              ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
-
+      Lwt_log.debug_f
+        "Decommissioning osd:%li namespace_id:%li first:%S ~reverse:%b cnt:%i, has_more:%b"
+        osd_id namespace_id first reverse cnt has_more
+      >>= fun () ->
       Lwt_list.iter_s
         (fun manifest ->
          Lwt.catch
@@ -730,14 +743,14 @@ class client ?(retry_timeout = 60.)
              ?delay
              ?categorize
              ?only_once
-             ~make_first_reverse
+             ~make_first_last_reverse
              ~namespace_id () =
       if maintenance_config.Maintenance_config.enable_rebalance && filter namespace_id
       then self # rebalance_namespace'
                 ?delay
                 ?categorize
                 ?only_once
-                ~make_first_reverse
+                ~make_first_last_reverse
                 ~namespace_id ()
       else Lwt.return ()
 
@@ -745,7 +758,7 @@ class client ?(retry_timeout = 60.)
              ?(delay=0.)
              ?(categorize = Rebalancing_helper.categorize)
              ?(only_once = false)
-             ~make_first_reverse
+             ~make_first_last_reverse
              ~namespace_id () =
       alba_client # get_namespace_osds_info_cache ~namespace_id
       >>= fun cache ->
@@ -773,7 +786,7 @@ class client ?(retry_timeout = 60.)
            in
            Rebalancing_helper.get_some_manifests
              alba_client
-             ~make_first_reverse
+             ~make_first_last_reverse
              ~namespace_id
              random_osd
            >>= fun (n, manifests) ->
@@ -825,7 +838,7 @@ class client ?(retry_timeout = 60.)
                self # rebalance_namespace
                     ~delay
                     ~categorize
-                    ~make_first_reverse
+                    ~make_first_last_reverse
                     ~namespace_id ()
              end
          end
@@ -1426,8 +1439,7 @@ class client ?(retry_timeout = 60.)
                (fun () -> self # repair_by_policy_namespace ~namespace_id);
                "rebalance",
                (fun () -> self # rebalance_namespace
-                               ~make_first_reverse:(fun () -> get_random_string 32,
-                                                              Random.bool ())
+                               ~make_first_last_reverse
                                ~namespace_id ());
              ]
          in

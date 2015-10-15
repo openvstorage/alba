@@ -18,6 +18,9 @@ open Asd_protocol
 open Lwt
 open Generic_bench
 
+let maybe_fail = function
+  | Osd.Ok -> Lwt.return_unit
+  | Osd.Exn e -> Osd.Error.lwt_fail e
 
 let deletes (client: Osd.osd) n value_size period prefix =
   let gen = make_key period prefix in
@@ -27,8 +30,7 @@ let deletes (client: Osd.osd) n value_size period prefix =
     let key_slice = Slice.wrap_string key in
     let delete = Update.Set (key_slice, None) in
     let updates = [delete] in
-    client # apply_sequence Osd.High [] updates >>= fun _result ->
-    Lwt.return ()
+    client # apply_sequence Osd.High [] updates >>= maybe_fail
   in
   measured_loop do_one n >>= fun r ->
   report "deletes" r
@@ -77,8 +79,7 @@ let sets (client:Osd.osd) n value_size period prefix =
 
     in
     let updates = [set] in
-    client # apply_sequence Osd.High [] updates >>= fun _result ->
-    Lwt.return ()
+    client # apply_sequence Osd.High [] updates >>= maybe_fail
   in
   measured_loop do_one n >>= fun r ->
   report "sets" r
