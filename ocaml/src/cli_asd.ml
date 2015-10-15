@@ -131,18 +131,22 @@ let run_with_asd_client' host port asd_id f =
        host port asd_id
        f)
 
+let with_osd_client
+      ips port osd_id f =
+  Discovery.get_kind buffer_pool ips port >>= function
+  | None -> failwith "what kind is this?"
+  | Some k ->
+     Remotes.Pool.Osd.factory buffer_pool k >>= fun (client, closer) ->
+     Lwt.finalize
+       (fun () -> f client)
+       closer
+
 let run_with_osd_client'
       (ips:string list)
       (port:int) osd_id f =
     lwt_cmd_line
       false
-      (fun () ->
-       Discovery.get_kind buffer_pool ips port >>= function
-       | None -> failwith "what kind is this?"
-       | Some k ->
-          Remotes.Pool.Osd.factory buffer_pool k >>= fun (client, closer) ->
-          Lwt.finalize (fun () ->f client) closer
-      )
+      (fun () -> with_osd_client ips port osd_id f)
 
 let asd_set host port asd_id key value =
   run_with_asd_client'
@@ -271,15 +275,30 @@ let asd_range_cmd =
   in
   asd_range_t, info
 
-let osd_bench host port osd_id n value_size power prefix =
-  run_with_osd_client'
-    host port osd_id
-    (fun client ->
-     Osd_bench.do_all
-       client n value_size power prefix
-    )
+let osd_bench host port osd_id
+              n_clients n
+              value_size power prefix
+              scenarios
+  =
+  lwt_cmd_line
+    false
+    (fun () ->
+     Osd_bench.do_scenarios
+       (fun f ->
+        with_osd_client
+          host port osd_id
+          f)
+       n_clients n
+       value_size power prefix
+       scenarios)
 
 let osd_bench_cmd =
+  let n_clients default =
+    let doc = "number of concurrent clients for the benchmark" in
+    Arg.(value
+         & opt int default
+         & info ["n-clients"] ~docv:"N_CLIENTS" ~doc)
+  in
   let n default =
     let doc = "do runs (gets,sets,...) of $(docv) iterations" in
     Arg.(value
@@ -308,12 +327,27 @@ let osd_bench_cmd =
            & info ["prefix"] ~docv:"prefix" ~doc
     )
   in
+  let scenarios =
+    Arg.(let open Osd_bench in
+         value
+         & opt_all
+             (enum
+                [ "sets", sets;
+                  "gets", gets;
+                  "deletes", deletes; ])
+             [ sets;
+               gets;
+               deletes; ]
+         & info [ "scenario" ])
+  in
   let osd_bench_t = Term.(pure osd_bench
                           $ hosts $ port 10000 $ lido
+                          $ n_clients 1
                           $ n 10000
                           $ value_size 16384
                           $ power 4
                           $ prefix ""
+                          $ scenarios
                     )
   in
   let info =
