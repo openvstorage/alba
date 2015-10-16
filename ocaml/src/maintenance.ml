@@ -25,6 +25,54 @@ type namespace_id = Albamgr_protocol.Protocol.Namespace.id
 
 exception NotMyTask
 
+
+
+module MStats = struct
+  let section = Lwt_log.Section.make "mstats"
+
+  type tag =
+    | REBALANCE
+    | REPAIR_GENERIC_TIME
+    | REPAIR_GENERIC_COUNT
+    | REWRITE_OBJECT
+    | CLEAN_OBSOLETE
+
+  let int32_of, name_of, name_of_i32 =
+    let mapping = [
+      (REBALANCE,0l, "Rebalance");
+      (REPAIR_GENERIC_TIME,1l,"Repair_generic_time");
+      (REPAIR_GENERIC_COUNT,2l,"Repair_generic_count");
+      (REWRITE_OBJECT,3l, "Rewrite_object");
+      (CLEAN_OBSOLETE, 4l, "Clean_obsolete");
+    ]
+    in
+    let i32 = Hashtbl.create 16 in
+    let nms = Hashtbl.create 16 in
+    let ton = Hashtbl.create 16 in
+    List.iter
+      (fun (t,i,n) ->
+       Hashtbl.add i32 t i;
+       Hashtbl.add nms t n;
+       Hashtbl.add ton i n;
+      ) mapping;
+    Hashtbl.find i32,
+    Hashtbl.find nms,
+    Hashtbl.find ton
+
+  open Statistics_collection
+  let stats = ref (Generic.make ())
+
+  let new_delta tag delta =
+    let i32 = int32_of tag in
+    Generic.new_delta !stats i32 delta
+
+  let show_stats () =
+    Generic.show_inner !stats name_of_i32
+
+  let stop () = Generic.stop !stats
+end
+
+
 class client ?(retry_timeout = 60.)
              (alba_client : Alba_base_client.client)
 
@@ -51,6 +99,33 @@ class client ?(retry_timeout = 60.)
     else border, None              , false
   in
 
+
+  let _timed_repair_object_generic_and_update_manifest
+        ~namespace_id ~manifest ~problem_fragments ~problem_osds
+    =
+    Prelude.with_timing_lwt
+      (fun () ->
+       Repair.repair_object_generic_and_update_manifest
+         alba_client
+         ~namespace_id
+         ~manifest
+         ~problem_fragments
+         ~problem_osds
+      )
+    >>= fun (delta,()) ->
+    MStats.new_delta MStats.REPAIR_GENERIC_TIME delta;
+    MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int32Set.cardinal problem_osds |> float);
+    Lwt.return_unit
+  in
+  let _timed_rewrite_object ~namespace_id ~manifest =
+    Prelude.with_timing_lwt
+      (fun () ->
+       Repair.rewrite_object alba_client ~namespace_id ~manifest)
+    >>= fun (delta,()) ->
+    MStats.new_delta MStats.REWRITE_OBJECT delta;
+    Lwt.return_unit
+
+  in
   object(self)
 
     method get_coordinator = coordinator
@@ -295,7 +370,9 @@ class client ?(retry_timeout = 60.)
            )
         ) object_location_movements
       >>= fun () ->
-      Lwt.return object_location_movements
+        let size = List.length object_location_movements in
+        let () = MStats.new_delta MStats.REBALANCE (float size) in
+        Lwt.return object_location_movements
 
 
     method decommission_device
@@ -328,12 +405,12 @@ class client ?(retry_timeout = 60.)
         (fun manifest ->
          Lwt.catch
            (fun () ->
-            Repair.repair_object_generic_and_update_manifest
-              alba_client
+            _timed_repair_object_generic_and_update_manifest
               ~namespace_id
               ~manifest
               ~problem_fragments:[]
-              ~problem_osds:(Int32Set.of_list [ osd_id ]))
+              ~problem_osds:(Int32Set.of_list [ osd_id ])
+           )
            (fun exn ->
             let open Nsm_model.Manifest in
             Lwt_log.info_f
@@ -342,11 +419,8 @@ class client ?(retry_timeout = 60.)
               osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
             Lwt_extra2.ignore_errors
               ~logging:true
-              (fun () ->
-               Repair.rewrite_object
-                 alba_client
-                 ~namespace_id
-                 ~manifest))
+              (fun () -> _timed_rewrite_object ~namespace_id ~manifest)
+           )
         )
         manifests >>= fun () ->
 
@@ -426,28 +500,31 @@ class client ?(retry_timeout = 60.)
           "Cleaning obsolete keys for osd_id=%li %S"
           osd_id
           ([%show : string list] keys_to_be_deleted) >>= fun () ->
-
-        alba_client # with_osd
-          ~osd_id
-          (fun osd_client ->
-           osd_client # apply_sequence
-                      Osd.Low
-                      [] upds >>= function
-             | Osd.Ok -> Lwt.return ()
-             | Osd.Exn x ->
-               Lwt_log.warning_f "%s: deletes should never fail"
-                 ([%show : Osd.Error.t] x)
-               >>= fun () ->
-               assert false;
+        Prelude.with_timing_lwt
+          (fun () ->
+           alba_client # with_osd
+                       ~osd_id
+                       (fun osd_client ->
+                        osd_client # apply_sequence
+                                   Osd.Low
+                                   [] upds >>= function
+                        | Osd.Ok -> Lwt.return ()
+                        | Osd.Exn x ->
+                           Lwt_log.warning_f "%s: deletes should never fail"
+                                             ([%show : Osd.Error.t] x)
+                           >>= fun () ->
+                           assert false;
+                       )
+           >>= fun () ->
+           alba_client # with_nsm_client'
+                       ~namespace_id
+                       (fun nsm_client ->
+                        nsm_client # mark_keys_deleted
+                                   ~osd_id
+                                   ~keys:keys_to_be_deleted)
           )
-        >>= fun () ->
-
-        alba_client # with_nsm_client'
-          ~namespace_id
-          (fun nsm_client ->
-             nsm_client # mark_keys_deleted
-               ~osd_id
-               ~keys:keys_to_be_deleted) >>= fun () ->
+        >>= fun (delta,()) ->
+        MStats.new_delta MStats.CLEAN_OBSOLETE delta;
 
         if has_more && filter namespace_id
         then self # clean_device_obsolete_keys ~namespace_id ~osd_id
@@ -724,19 +801,14 @@ class client ?(retry_timeout = 60.)
       then
         begin
           alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
-
-          Repair.repair_object_generic_and_update_manifest
-            alba_client
+          _timed_repair_object_generic_and_update_manifest
             ~namespace_id
             ~manifest
             ~problem_fragments
             ~problem_osds
         end
       else
-        Repair.rewrite_object
-          alba_client
-          ~namespace_id
-          ~manifest
+        _timed_rewrite_object ~namespace_id ~manifest
 
 
     method rebalance_namespace
@@ -1308,6 +1380,20 @@ class client ?(retry_timeout = 60.)
              Lwt.ignore_result (t ())
            end)
         work_items
+
+
+    method report_stats (delay:float) : unit Lwt.t =
+      let msg = "problem with stats?"
+      and section = MStats.section
+      in
+      let f () =
+        MStats.stop ();
+        Lwt_log.debug_f
+          ~section
+          "statistics:%s"
+          (MStats.show_stats ())
+      in
+      Lwt_extra2.run_forever msg f delay
 
 
   method do_work ?(once = false) () : unit Lwt.t =

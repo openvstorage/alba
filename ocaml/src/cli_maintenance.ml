@@ -174,6 +174,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
                     (Mem_stats.reporting_t
                        ~section:Lwt_log.Section.main
                        ());
+                    (maintenance_client # report_stats 60. )
                   ]
                 in
 
