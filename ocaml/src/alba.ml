@@ -21,7 +21,8 @@ open Slice
 open Cli_common
 
 let () =
-  Lwt_engine.set (new Lwt_engine.select);
+  (*Lwt_engine.set (new Lwt_engine.select);*)
+  Lwt_engine.set (new Lwt_engine.libev);
   Lwt.async_exception_hook :=
     (fun exn -> Lwt_log.ign_info_f ~exn "Caught async exception")
 
