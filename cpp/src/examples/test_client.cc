@@ -115,18 +115,18 @@ int main(int argc, const char *argv[]) {
   bool consistent_read_b = vm["consistent-read"].as<bool>();
   using namespace alba::proxy_client;
   auto timeout = boost::posix_time::seconds(5);
-  consistent_read consistent_read =
+  consistent_read _consistent_read =
       consistent_read_b
       ? consistent_read::T
       : consistent_read::F;
-  should_cache should_cache = should_cache::T;
+  should_cache _should_cache = should_cache::T;
 
   if ("download-object" == command) {
     string ns = getRequiredStringArg(vm, "namespace");
     string name = getRequiredStringArg(vm, "name");
     string file = getRequiredStringArg(vm, "file");
     Proxy_client client(hostname, port, timeout);
-    client.read_object_fs(ns, name, file, consistent_read, should_cache);
+    client.read_object_fs(ns, name, file, _consistent_read, _should_cache);
   } else if ("download-object-partial" == command) {
     string ns = getRequiredStringArg(vm, "namespace");
     string name = getRequiredStringArg(vm, "name");
@@ -137,7 +137,7 @@ int main(int argc, const char *argv[]) {
     auto buf = std::unique_ptr<unsigned char>(new unsigned char[length]);
     alba::proxy_protocol::SliceDescriptor slice{buf.get(), offset, length};
     alba::proxy_protocol::ObjectSlices object_slices{name, {slice}};
-    client.read_objects_slices(ns, {object_slices}, consistent_read);
+    client.read_objects_slices(ns, {object_slices}, _consistent_read);
     std::ofstream fout(file);
     fout.write((char *)buf.get(), length);
   } else if ("upload-object" == command) {
@@ -175,7 +175,7 @@ int main(int argc, const char *argv[]) {
     try {
       uint64_t size;
       alba::Checksum *checksum;
-      std::tie(size, checksum) = client.get_object_info(ns, name, consistent_read, should_cache);
+      std::tie(size, checksum) = client.get_object_info(ns, name, _consistent_read, _should_cache);
       cout << "size = " << size << "\n checksum = " << *checksum;
       delete checksum;
     } catch (alba::proxy_client::proxy_exception &e) {

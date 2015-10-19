@@ -72,8 +72,11 @@ TEST(proxy_client, list_objects) {
   }
   cout << " ]" << endl;
   cout << has_more << endl;
+  cout << "size ok?" << endl;
   EXPECT_EQ(0, objects.size());
+  cout << "has_more ok?" << endl;
   EXPECT_EQ(false, BooleanEnumTrue(has_more));
+  cout << "end of test" << endl;
 }
 
 TEST(proxy_client, list_namespaces) {
@@ -117,6 +120,7 @@ TEST(proxy_client, get_object_info) {
 
   client.write_object_fs(NAMESPACE, name, file,
                          proxy_client::allow_overwrite::T, checksum);
+  delete checksum;
 }
 
 TEST(proxy_client, get_proxy_version) {
