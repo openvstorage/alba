@@ -40,31 +40,78 @@ class osd_access
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
     with Not_found ->
       mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
-      let osd_info = match osd_o with
-        | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
-        | Some info -> info
-      in
-      let osd_state = Osd_state.make () in
-      let info' = (osd_info, osd_state) in
-      Hashtbl.replace osds_info_cache osd_id info';
-      let long_id = let open Osd in
-                    Nsm_model.OsdInfo.get_long_id osd_info.kind
-      in
-      osd_long_id_claim_info :=
-        StringMap.add
-          long_id (Osd.ClaimInfo.ThisAlba osd_id)
-          !osd_long_id_claim_info;
-      Lwt.return info'
+      if not (Hashtbl.mem osds_info_cache osd_id)
+      then
+        begin
+          let osd_info = match osd_o with
+            | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
+            | Some info -> info
+          in
+          let osd_state = Osd_state.make () in
+          let info' = (osd_info, osd_state) in
+          Hashtbl.replace osds_info_cache osd_id info';
+          let long_id = let open Osd in
+                        Nsm_model.OsdInfo.get_long_id osd_info.kind
+          in
+          osd_long_id_claim_info :=
+            StringMap.add
+              long_id (Osd.ClaimInfo.ThisAlba osd_id)
+              !osd_long_id_claim_info;
+
+          (* TODO restructure code so we can use
+           * the osds connection pool here
+           *)
+          Lwt_extra2.run_forever
+            "refresh_osd_total_used"
+            (fun () ->
+             Pool.Osd.factory
+               osd_buffer_pool
+               (Hashtbl.find osds_info_cache osd_id |> fst).Osd.kind
+             >>= fun (osd, closer) ->
+             Lwt.finalize
+               (fun () ->
+                (* TODO refresh total/used osd *)
+                Lwt.return ())
+               closer)
+            60.
+          |> Lwt.ignore_result
+        end;
+      Lwt.return (Hashtbl.find osds_info_cache osd_id)
   in
 
   let osds_pool =
     Pool.Osd.make
       ~size:osd_connection_pool_size
       (fun osd_id ->
-         get_osd_info ~osd_id >>= fun (osd_info, _) ->
-         let open Albamgr_protocol.Protocol in
-         Lwt.return osd_info.Osd.kind)
+       get_osd_info ~osd_id >>= fun (osd_info, _) ->
+       let open Albamgr_protocol.Protocol in
+       (* TODO hier al mergen met osd_state.ips/port info?
+        * -> kan het sneller maken voor clients die wel nog
+        *    discovery info zien binnenkomen
+        *)
+       Lwt.return osd_info.Osd.kind)
       osd_buffer_pool
+  in
+
+  (* TODO hoe weet/leert proxy dat node decommissioned is?
+   * - wanneer wordt osd_info geupdate??
+   *)
+
+  let refresh_osd_info ~osd_id =
+    Lwt.catch
+      (fun () ->
+       mgr_access # get_osd_by_osd_id ~osd_id >>= function
+       | None -> assert false
+       | Some osd_info' ->
+          let osd_info, osd_state = Hashtbl.find osds_info_cache osd_id in
+          Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state);
+          let open Albamgr_protocol.Protocol.Osd in
+          Lwt.return (osd_info.kind <> osd_info'.kind))
+      (fun exn ->
+       (* TODO dispatch refresh loopke
+        * - maar wel maximum 1 zo'n loopke!
+        *)
+       Lwt.fail exn)
   in
 
   let rec with_osd_from_pool
@@ -98,18 +145,30 @@ class osd_access
        | exn ->
           false
      in
-     if should_invalidate_pool
-     then Pool.Osd.invalidate osds_pool ~osd_id;
 
-     (if add_to_errors || should_invalidate_pool
-      then begin
-          Osd_state.add_error state exn;
-          disqualify ~osd_id
+     (if should_invalidate_pool
+      then
+        begin
+          Pool.Osd.invalidate osds_pool ~osd_id;
+          refresh_osd_info ~osd_id
         end
-      else Lwt.return ()) >>= fun () ->
+      else
+        Lwt.return false)
+     >>= fun should_retry ->
 
-     Lwt_log.debug_f ~exn "Exception in with_osd_from_pool osd_id=%li" osd_id >>= fun () ->
-     Lwt.fail exn)
+     if should_retry
+     then with_osd_from_pool ~osd_id f
+     else
+       (if add_to_errors || should_invalidate_pool
+        then
+          begin
+            Osd_state.add_error state exn;
+            disqualify ~osd_id
+          end
+        else Lwt.return ())
+       >>= fun () ->
+       Lwt_log.debug_f ~exn "Exception in with_osd_from_pool osd_id=%li" osd_id >>= fun () ->
+       Lwt.fail exn)
   and disqualify ~osd_id =
     let rec inner delay =
       Lwt.catch
@@ -211,10 +270,11 @@ class osd_access
         in
         let open Osd_state in
         let open Nsm_model.OsdInfo in
-        let ips', port' = get_ips_port osd_info.kind
-        and long_id = get_long_id osd_info.kind
-        and total'  = osd_info.total
-        and used'   = osd_info.used
+        let long_id = get_long_id osd_info.kind
+        and ips'    = osd_state.ips
+        and port'   = osd_state.port
+        and total'  = osd_state.total
+        and used'   = osd_state.used
         and seen'   = most_recent osd_state.seen
         and read'   = most_recent osd_state.read
         and write'  = most_recent osd_state.write
@@ -222,10 +282,10 @@ class osd_access
         and other'  = osd_state.json
         in
         let update = Osd.Update.make
-                       ~ips' ~port'
-                       ~total' ~used' ~seen'
-                       ~read' ~write' ~errors'
+                       ?ips' ?port'
+                       ?total' ?used'
                        ?other'
+                       ~seen' ~read' ~write' ~errors'
                        ()
         in
         (long_id, update)
@@ -267,23 +327,10 @@ class osd_access
 
          let open Albamgr_protocol.Protocol in
 
-         let node_id, kind, total, used =
-           match extras with
-           | None ->
-              id,
-              Osd.Kinetic (ips, port, id),
-              Int64.shift_left 1L 42 (* 4TB*),
-              Int64.shift_left 1L 41 (* TODO: half full? *)
-           | Some { node_id; version; total; used } ->
-              node_id,
-              Osd.Asd (ips, port, id),
-              total,
-              used
-         in
-
-        let claimed = StringMap.mem (id:string) !osd_long_id_claim_info in
-        if claimed
-         then begin
+         let claimed = StringMap.mem (id:string) !osd_long_id_claim_info in
+         if claimed
+         then
+           begin
              let open Osd.ClaimInfo in
              match StringMap.find id !osd_long_id_claim_info with
              | AnotherAlba _
@@ -291,32 +338,38 @@ class osd_access
                 Lwt.return ()
              | ThisAlba osd_id ->
 
-                get_osd_info ~osd_id >>= fun (osd_info, osd_state') ->
-                let ips', port' = Osd.get_ips_port osd_info.Osd.kind in
-                let () = Osd_state.add_json osd_state' json in
-                let () = Osd_state.add_seen osd_state' in
-                Hashtbl.replace
-                  osds_info_cache
-                  osd_id
-                  (Osd.({ osd_info with
-                          kind;
-                          total; used;
-                        }),
-                   osd_state');
+                get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
+                Osd_state.add_ips_port osd_state ips port;
+                (match extras with
+                 | None -> ()
+                 | Some { total; used; _; } ->
+                    Osd_state.add_total_used osd_state total used);
+                Osd_state.add_json osd_state json;
+                Osd_state.add_seen osd_state;
 
-                (* TODO compare ips as a set? (such that ordering doesn't matter) *)
-                (if ips' <> ips || port' <> port
-                 then begin
-                     Lwt_log.info_f "Asd now has new ips/port -> invalidating connection pool" >>= fun () ->
-                     Pool.Osd.invalidate osds_pool ~osd_id;
-                     Lwt.return ()
-                   end else
-                   Lwt.return ())
+                Lwt.return ()
            end
          else if check_claimed id
-         then begin
+         then
+           begin
+             Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
 
-            Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
+             (match extras with
+              | None ->
+                 (* TODO fetch total/used from kinetic drive! *)
+                 Lwt.return
+                   (id,
+                    Osd.Kinetic (ips, port, id),
+                    Int64.shift_left 1L 42,
+                    Int64.shift_left 1L 41)
+              | Some { node_id; version; total; used; } ->
+                 Lwt.return
+                   (node_id,
+                    Osd.Asd (ips, port, id),
+                    total,
+                    used))
+             >>= fun (node_id, kind, total, used) ->
+
              let osd_info =
                Osd.({
                        kind;
