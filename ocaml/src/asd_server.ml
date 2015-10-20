@@ -295,6 +295,22 @@ let get_value_option kv key =
 
 let key_exists kv key = (get_value_option kv key) <> None
 
+module Net_fd = struct
+  include Net_fd
+  (*
+    we don't want this to end up in the arakoon plugins,
+    where it isn't needed, used and pulls along cstruct
+    and friends
+   *)
+  let sendfile_all ~fd_in ~(fd_out:t) size =
+    match fd_out with
+    | Plain fd ->
+       Fsutil.sendfile_all
+         ~fd_in
+         ~fd_out:fd
+         size
+
+end
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
@@ -303,8 +319,7 @@ let execute_query : type req res.
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
                          req ->
-                         (string * (Lwt_unix.file_descr ->
-                                    unit Lwt.t)) Lwt.t
+                         (string * (Net_fd.t -> unit Lwt.t)) Lwt.t
   = fun kv io_sched dir_info stats q ->
     let open Protocol in
     let serialize_with_length res =
@@ -431,16 +446,17 @@ let execute_query : type req res.
                     0
                     res)
            (res,
-            fun fd ->
+            fun nfd ->
             Lwt_list.iter_s
               (fun (fnr, size) ->
                DirectoryInfo.with_blob_fd
                  dir_info fnr
                  (fun blob_fd ->
-                  Fsutil.sendfile_all
+                  Net_fd.sendfile_all
                     ~fd_in:blob_fd
-                    ~fd_out:fd
-                    size))
+                    ~fd_out:nfd
+                    size)
+              )
               (List.rev !write_laters)))
     | MultiExists -> fun (keys, prio) ->
                      perform_read
@@ -840,11 +856,13 @@ let check_asd_id kv asd_id =
     else failwith (Printf.sprintf "asd id mismatch: %s <> %s" asd_id asd_id')
 
 
+let done_writing (nfd:Net_fd.t) = Lwt.return_unit
+
 let asd_protocol
       kv ~release_fnr ~slow io_sched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
-      fd ic
+      nfd ic
   =
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
   let handle_request buf command =
@@ -854,7 +872,7 @@ let asd_protocol
      *)
 
     let return_result
-          ?(write_extra=fun _ -> Lwt.return ())
+          ?(write_extra=done_writing)
           serializer res =
       let res_s =
         serialize_with_length
@@ -871,7 +889,7 @@ let asd_protocol
           Protocol.Error.serialize
           error
       in
-      Lwt.return (res, fun _ -> Lwt.return ())
+      Lwt.return (res, done_writing)
     in
     Lwt.catch
       (fun () ->
@@ -903,8 +921,8 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    Lwt_extra2.write_all' fd res >>= fun () ->
-    write_extra fd
+    Net_fd.write_all res nfd >>= fun () ->
+    write_extra nfd
   in
   let rec inner () =
     Llio.input_string ic >>= fun req_s ->
@@ -954,17 +972,18 @@ let asd_protocol
           Error.serialize rbuf err;
           Lwt_log.debug msg >>= fun () ->
           let bytes_back = Buffer.contents rbuf  in
-          Lwt_extra2.write_all' fd bytes_back
+          Net_fd.write_all bytes_back nfd
         else
           begin
             Llio.input_string_option ic >>= fun lido ->
-            Lwt_extra2.write_all'
-              fd
+            Net_fd.write_all
               (serialize
                  (Llio.pair_to
                     Llio.int32_to
                     Llio.string_to)
-                 (0l, asd_id))
+                 (0l, asd_id)
+              )
+              nfd
             >>= fun () ->
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()
@@ -1216,11 +1235,11 @@ let run_server
 
   let server_t =
     let buffer_pool = Buffer_pool.create ~buffer_size in
-    let protocol fd =
+    let protocol nfd =
       Buffer_pool.with_buffer
         buffer_pool
         (fun buffer ->
-         let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
+         let ic = Net_fd.make_ic ~buffer nfd in
          asd_protocol
            kv
            ~release_fnr:(fun fnr -> advancer # release fnr)
@@ -1230,7 +1249,7 @@ let run_server
            stats
            ~mgmt
            ~get_next_fnr
-           asd_id fd ic)
+           asd_id nfd ic)
     in
     Networking2.make_server hosts port protocol
   in

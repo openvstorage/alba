@@ -33,10 +33,11 @@ let connect_with ip port =
     Lwt_unix.socket
       (Unix.domain_of_sockaddr address)
       Unix.SOCK_STREAM 0 in
+  let r = Net_fd.wrap fd in
   Lwt.catch
     (fun () ->
      Lwt_unix.connect fd address >>= fun () ->
-     Lwt.return (fd, fun () -> Lwt_unix.close fd))
+     Lwt.return (r , fun () -> Lwt_unix.close fd))
     (fun exn ->
      Lwt_unix.close fd >>= fun () ->
      Lwt.fail exn)
@@ -98,10 +99,10 @@ let to_connection ~in_buffer ~out_buffer fd =
   (ic,oc)
 
 let first_connection' ?close_msg buffer_pool ips port =
-  first_connection ips port >>= fun (fd, closer) ->
+  first_connection ips port >>= fun (nfd, closer) ->
   let in_buffer = Buffer_pool.get_buffer buffer_pool in
   let out_buffer = Buffer_pool.get_buffer buffer_pool in
-  let conn = to_connection fd ~in_buffer ~out_buffer in
+  let conn = Net_fd.to_connection nfd ~in_buffer ~out_buffer in
   let closer () =
     (match close_msg with
      | None -> Lwt.return ()
@@ -110,7 +111,7 @@ let first_connection' ?close_msg buffer_pool ips port =
     Buffer_pool.return_buffer buffer_pool out_buffer;
     closer ()
   in
-  Lwt.return (fd, conn, closer)
+  Lwt.return (nfd, conn, closer)
 
 let make_server hosts port protocol =
   let server_loop socket_address =
@@ -120,14 +121,15 @@ let make_server hosts port protocol =
     Lwt_unix.bind listening_socket socket_address;
     Lwt_unix.listen listening_socket 1024;
     let rec inner () =
-      Lwt_unix.accept listening_socket >>= fun (fd, cl_socket_address) ->
+      Lwt_unix.accept listening_socket >>= fun (_fd, cl_socket_address) ->
+      let nfd = Net_fd.wrap _fd in
       Lwt_log.info "Got new client connection" >>= fun () ->
       Lwt.ignore_result
         begin
           Lwt.finalize
             (fun () ->
                Lwt.catch
-                 (fun () -> protocol fd)
+                 (fun () -> protocol nfd)
                  (function
                    | End_of_file ->
                      Lwt_log.debug_f "End_of_file from client connection"
@@ -138,7 +140,7 @@ let make_server hosts port protocol =
                  ))
             (fun () ->
                Lwt.catch
-                 (fun () -> Lwt_unix.close fd)
+                 (fun () -> Net_fd.close nfd)
                  (fun exn ->
                     Lwt_log.debug_f
                       "exception occurred during close of client connection: %s"

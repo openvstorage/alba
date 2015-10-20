@@ -77,7 +77,7 @@ let write_albamgr_cfg albamgr_cfg destination =
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (stats: ProxyStatistics.t)
-                   fd ic =
+                   (nfd:Net_fd.t) ic =
   let execute_request : type i o. (i, o) Protocol.request ->
                              ProxyStatistics.t ->
                              i -> o Lwt.t
@@ -376,7 +376,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           Lwt_log.info_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
           return_err_response Protocol.Error.Unknown)
     >>= fun res ->
-    Lwt_extra2.write_all' fd res
+    Net_fd.write_all res nfd
   in
   let rec inner () =
     Llio.input_string ic >>= fun req_s ->
@@ -404,7 +404,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     Protocol.version version
         in
         return_err_response ~msg err >>= fun res ->
-        Lwt_extra2.write_all' fd res
+        Net_fd.write_all res nfd
     end
   else Lwt.return ()
 
@@ -516,12 +516,12 @@ let run_server hosts port
                let buffer_pool = Buffer_pool.create ~buffer_size in
                Networking2.make_server
                  hosts port
-                 (fun fd ->
+                 (fun nfd ->
                   Buffer_pool.with_buffer
                     buffer_pool
                     (fun buffer ->
-                     let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
-                     proxy_protocol alba_client stats fd ic)));
+                     let ic = Net_fd.make_ic ~buffer nfd in
+                     proxy_protocol alba_client stats nfd ic)));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());

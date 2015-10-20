@@ -20,7 +20,7 @@ open Slice
 open Asd_protocol
 open Protocol
 
-class client fd ic id =
+class client (fd:Net_fd.t) ic id =
   let read_response deserializer =
     Llio.input_string ic >>= fun res_s ->
     let res_buf = Llio.make_buffer res_s 0 in
@@ -50,7 +50,7 @@ class client fd ic id =
                (command_to_code (Wrap_query command),
                 req)
            in
-           Lwt_extra2.write_all' fd s >>= fun () ->
+           Net_fd.write_all s fd >>= fun () ->
            read_response (query_response_deserializer command)) >>= fun (t, r) ->
         Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
         Lwt.return r
@@ -71,7 +71,7 @@ class client fd ic id =
                (command_to_code (Wrap_update command),
                 req)
            in
-           Lwt_extra2.write_all' fd s >>= fun () ->
+           Net_fd.write_all s fd >>= fun () ->
            read_response (update_response_deserializer command)) >>= fun (t, r) ->
         Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
         Lwt.return r
@@ -129,9 +129,7 @@ class client fd ic id =
                      assert (0 = Lwt_io.buffered ic);
 
                      let remaining = size - read in
-                     Lwt_extra2.read_all
-                       fd target
-                       read remaining
+                     Net_fd.read_all target read remaining fd
                      >>= fun read' ->
                      if read' = remaining
                      then Lwt.return ()
@@ -249,9 +247,9 @@ let _prologue_response ic lido =
 
 let make_client buffer_pool ips port (lido:string option) =
   Networking2.first_connection ips port
-  >>= fun (fd, closer) ->
+  >>= fun (nfd, closer) ->
   let buffer = Buffer_pool.get_buffer buffer_pool in
-  let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
+  let ic = Net_fd.make_ic ~buffer nfd in
   let closer () =
     Buffer_pool.return_buffer buffer_pool buffer;
     closer ()
@@ -260,9 +258,9 @@ let make_client buffer_pool ips port (lido:string option) =
     (fun () ->
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
-       Lwt_extra2.write_all' fd prologue_bytes >>= fun () ->
+       Net_fd.write_all prologue_bytes nfd >>= fun () ->
        _prologue_response ic lido >>= fun long_id ->
-       let client = new client fd ic long_id in
+       let client = new client nfd ic long_id in
        Lwt.return (client, closer)
     )
     (fun exn ->
