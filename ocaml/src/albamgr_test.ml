@@ -15,14 +15,17 @@ limitations under the License.
 *)
 
 open Prelude
-open Albamgr_client
 open Lwt
 open Albamgr_protocol.Protocol
 
 let host = "127.0.0.1"
 let hosts = [ host ]
 let ccfg_ref = ref None
+
 let get_ccfg () = Option.get_some (!ccfg_ref)
+
+let _tls_config_ref = ref None
+let get_tls_config () = !_tls_config_ref
 
 let assert_throws e msg f =
   Lwt.catch
@@ -37,11 +40,11 @@ let assert_throws e msg f =
       | exn -> Lwt.fail exn)
 
 let test_with_albamgr f =
-  Lwt_main.run begin
-    with_client'
-      (get_ccfg ())
-      f
-  end
+  let ccfg = get_ccfg () in
+  let tls_config = !_tls_config_ref in
+  Lwt_main.run
+    (Albamgr_client.with_client' ccfg ~tls_config f)
+
 
 let test_add_namespace () =
   test_with_albamgr

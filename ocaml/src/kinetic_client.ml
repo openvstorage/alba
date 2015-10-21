@@ -336,7 +336,7 @@ let make_client buffer_pool ips port (kinetic_id:string) =
   let () = incr _client_id in
   Networking2.first_connection'
     buffer_pool
-    ips port
+    ips port ~tls_config:None
     ~close_msg:"closing kinetic client"
   >>= fun (fd, conn, closer) ->
   Lwt.catch

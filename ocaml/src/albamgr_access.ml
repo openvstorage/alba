@@ -19,12 +19,14 @@ open Remotes
 class basic_mgr_pooled
         buffer_pool
         ~albamgr_connection_pool_size
-        ~albamgr_client_cfg =
+        ~albamgr_client_cfg
+        ~tls_config
+  =
 
   let albamgr_pool =
     Pool.Albamgr.make
       ~size:albamgr_connection_pool_size
-      albamgr_client_cfg
+      albamgr_client_cfg tls_config
       buffer_pool
   in
   let with_basic_albamgr_from_pool f =

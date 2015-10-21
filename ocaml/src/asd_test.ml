@@ -238,7 +238,7 @@ let test_protocol_version port () =
   let protocol_test port =
     Lwt.catch
       (fun () ->
-       Networking2.first_connection' buffer_pool ["::1"] port
+       Networking2.first_connection' buffer_pool ["::1"] port ~tls_config:None
        >>= fun (_, (ic,oc), closer) ->
        Lwt.finalize
          (fun () ->

@@ -5,4 +5,11 @@
     "nsm_host_connection_pool_size" : 10, // optional, default 10
     "osd_connection_pool_size" : 10, // optional, default 10
     "osd_timeout" : 2.0 //optional, default 2.0
+
+    // tls client config:
+    , "tls_client" : {
+        "ca_cert" : "/tmp/arakoon/cacert.pem",
+        "cert"    : "/tmp/arakoon/my_client/my_client.pem",
+        "key"     : "/tmp/arakoon/my_client/my_client.key",
+    }
 }

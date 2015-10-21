@@ -42,12 +42,14 @@ class client
     ~osd_connection_pool_size
     ~osd_timeout
     ~default_osd_priority
+    ~tls_config
   =
 
   let nsm_host_access =
     new nsm_host_access
         mgr_access
         nsm_host_connection_pool_size
+        ~tls_config
         default_buffer_pool
   in
 

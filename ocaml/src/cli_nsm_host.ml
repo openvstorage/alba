@@ -2,10 +2,11 @@ open Cli_common
 open Cmdliner
 open Lwt.Infix
 
-let nsm_host_statistics cfg_file clear nsm_host =
+let nsm_host_statistics cfg_file tls_config clear nsm_host =
   let t () =
     with_alba_client
       cfg_file
+      tls_config
       (fun client ->
        client # nsm_host_access # statistics nsm_host clear >>= fun statistics ->
        Lwt_io.printlf "%s" (Nsm_host_protocol.Protocol.NSMHStatistics.show statistics)
@@ -16,6 +17,7 @@ let nsm_host_statistics cfg_file clear nsm_host =
 let nsm_host_statistics_cmd =
   Term.(pure nsm_host_statistics
         $ alba_cfg_file
+        $ tls_config
         $ clear
         $ nsm_host 0
   ),
@@ -24,10 +26,11 @@ let nsm_host_statistics_cmd =
     ~doc:"namespace hosts' statistics"
 
 
-let list_device_objects cfg_file osd_id namespace_id first finc max reverse compact =
+let list_device_objects cfg_file tls_config osd_id namespace_id first finc max reverse compact =
   let t () =
     with_alba_client
       cfg_file
+      tls_config
       (fun alba_client ->
        alba_client # with_nsm_client'
          ~namespace_id
@@ -69,6 +72,7 @@ let list_device_objects_cmd =
   let reverse = make_opt_bool "reverse" in
   Term.(pure list_device_objects
         $ alba_cfg_file
+        $ tls_config
         $ osd_id 0l
         $ namespace_id 0l
         $ first $ finc

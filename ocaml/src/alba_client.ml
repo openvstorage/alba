@@ -400,6 +400,7 @@ let with_client albamgr_client_cfg
                 ?(osd_connection_pool_size = 10)
                 ?(osd_timeout = 2.)
                 ?(default_osd_priority = Osd.Low)
+                ~tls_config
                 f
   =
   begin
@@ -419,6 +420,7 @@ let with_client albamgr_client_cfg
       (new basic_mgr_pooled
         ~albamgr_connection_pool_size
         ~albamgr_client_cfg
+        ~tls_config
         default_buffer_pool)
   in
   let base_client = new Alba_base_client.client
@@ -430,6 +432,7 @@ let with_client albamgr_client_cfg
                         ~osd_connection_pool_size
                         ~osd_timeout
                         ~default_osd_priority
+                        ~tls_config
   in
   let client = new alba_client base_client in
   Lwt.finalize

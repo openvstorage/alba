@@ -110,19 +110,25 @@ let wrap_around (client:Arakoon_client.client) =
     >>= fun ()->
     Lwt.fail_with "the nsm host user function could not be found"
 
-let make_client buffer_pool cfg =
+let make_client buffer_pool ccfg =
+  let tls_config =
+    let open Arakoon_client_config in
+    ccfg.ssl_cfg |> Option.map Tls.of_ssl_cfg
+  in
   let open Client_helper in
-  find_master' ~tls:None cfg >>= function
+  Lwt_log.debug_f "Nsm_host_client.make_client" >>= fun () ->
+  let tls = Tls.to_context tls_config in
+  find_master' ~tls ccfg >>= function
   | MasterLookupResult.Found (m, ncfg) ->
     let open Arakoon_client_config in
     Networking2.first_connection'
       buffer_pool
-      ncfg.ips ncfg.port
+      ncfg.ips ncfg.port ~tls_config
       ~close_msg:"closing nsm_host"
     >>= fun (fd, conn, closer) ->
     Lwt.catch
       (fun () ->
-         Arakoon_remote_client.make_remote_client cfg.cluster_id conn >>= fun client ->
+         Arakoon_remote_client.make_remote_client ccfg.cluster_id conn >>= fun client ->
          wrap_around client)
       (fun exn ->
          closer () >>= fun () ->
@@ -131,13 +137,15 @@ let make_client buffer_pool cfg =
   | r -> Lwt.fail (Client_helper.MasterLookupResult.Error r)
 
 
-let with_client cfg f =
+let with_client cfg tls_config f =
+  let ccfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg in
+  let tls = Tls.to_context tls_config in
   let open Nsm_model in
   Lwt.catch
     (fun () ->
        Client_helper.with_master_client'
-         ~tls:None
-         (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg cfg)
+         ~tls
+         ccfg
          (fun client ->
             wrap_around client >>= fun wc ->
             f wc))

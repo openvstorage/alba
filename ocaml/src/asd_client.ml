@@ -246,7 +246,7 @@ let _prologue_response ic lido =
 
 
 let make_client buffer_pool ips port (lido:string option) =
-  Networking2.first_connection ips port
+  Networking2.first_connection ips port ~tls_config:None
   >>= fun (nfd, closer) ->
   let buffer = Buffer_pool.get_buffer buffer_pool in
   let ic = Net_fd.make_ic ~buffer nfd in

@@ -52,6 +52,7 @@ let _easiest_upload () =
 
   Alba_client.with_client
     (ref cfg)
+    ~tls_config:None
     (fun alba_client ->
 
      alba_client # mgr_access # list_all_claimed_osds >>= fun (n, osds) ->

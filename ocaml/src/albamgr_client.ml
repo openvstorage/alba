@@ -486,13 +486,23 @@ let wrap_around' ara_c =
   Lwt.return (new client c)
 
 let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
+  Lwt_log.debug_f "make_client!" >>= fun () ->
   let open Client_helper in
-  find_master' ~tls:None ccfg >>= function
+  let tls_config =
+    let open Arakoon_client_config in
+    ccfg.ssl_cfg |> Option.map Tls.of_ssl_cfg
+  in
+  let tls =
+      Tls.to_context tls_config
+  in
+  Lwt_log.debug_f "Albamgr_client.make_client :%s " ([%show : Tls.t option] tls_config)
+  >>= fun () ->
+  find_master' ~tls ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->
      let open Arakoon_client_config in
      Networking2.first_connection'
        buffer_pool
-       ncfg.ips ncfg.port
+       ncfg.ips ncfg.port ~tls_config
        ~close_msg:"closing albamgr"
      >>= fun (fd, conn, closer) ->
      Lwt.catch
@@ -519,13 +529,17 @@ let _msg_of_exception = function
      Printf.sprintf "%s: %s" (Arakoon_exc.string_of_rc rc) msg
   | exn -> Printexc.to_string exn
 
-let _with_client ~attempts cfg f =
+let _with_client ~attempts cfg tls_config f =
+  let ccfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg in
+  let tls = Tls.to_context tls_config in
   let attempt_it () =
     Lwt.catch
       (fun () ->
+       Lwt_log.debug_f "_with_client: tls_config=%s" ([%show : Tls.t option] tls_config)
+       >>= fun () ->
        Client_helper.with_master_client'
-         ~tls:None
-         (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg cfg)
+         ~tls
+         ccfg
          (fun c -> wrap_around c >>= fun wc -> f wc)
        >>= fun r ->
        Lwt.return (`Success r)
@@ -553,7 +567,7 @@ let _with_client ~attempts cfg f =
        end
   in loop attempts 1.0
 
-let with_client' ?(attempts=1) cfg f =
+let with_client' ?(attempts=1) cfg ~tls_config f =
   _with_client ~attempts
-    cfg
+    cfg tls_config
     (fun c -> f (new client c))

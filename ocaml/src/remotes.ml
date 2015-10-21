@@ -23,9 +23,10 @@ module Pool = struct
     type t = (Albamgr_client.single_connection_client *
               (unit -> unit Lwt.t)) Lwt_pool2.t
 
-    let make ~size cfg buffer_pool =
+    let make ~size cfg tls_config buffer_pool =
       let factory () =
-        let ccfg = Arakoon_config.to_arakoon_client_cfg !cfg in
+        let ccfg = Arakoon_config.to_arakoon_client_cfg tls_config !cfg in
+        let tls = Tls.to_context tls_config in
         Lwt.catch
           (fun () -> Albamgr_client.make_client buffer_pool ccfg)
           (let open Client_helper in
@@ -34,7 +35,7 @@ module Pool = struct
             | Error (Unknown_node (_master, (node', cfg'))) ->
               let cluster_id = fst !cfg in
               with_client'
-                ~tls:None
+                ~tls
                 cfg' cluster_id
                 (fun arakoon ->
                    Albamgr_client.wrap_around' arakoon >>= fun mgr ->
@@ -43,7 +44,7 @@ module Pool = struct
                    Lwt.return ()) >>= fun () ->
               Albamgr_client.make_client
                 buffer_pool
-                (Arakoon_config.to_arakoon_client_cfg !cfg)
+                (Arakoon_config.to_arakoon_client_cfg tls_config !cfg)
             | exn ->
               Lwt.fail exn)
         >>= fun (c, node_name, closer) ->
@@ -71,18 +72,21 @@ module Pool = struct
     open Albamgr_protocol.Protocol
     type nsm_pool =
         (Nsm_host_client.single_connection_client *
-         (unit -> unit Lwt.t)) Lwt_pool2.t
+           (unit -> unit Lwt.t)) Lwt_pool2.t
+
     type t = {
       get_nsm_host_config : Nsm_host.id -> Nsm_host.t Lwt.t;
       pools : (Nsm_host.id, nsm_pool) Hashtbl.t;
+      tls_config : Tls.t option;
       pool_size : int;
       buffer_pool : Buffer_pool.t;
     }
 
-    let make ~size get_nsm_host_config buffer_pool =
+    let make ~size get_nsm_host_config ~tls_config buffer_pool =
       let pools = Hashtbl.create 0 in
       { get_nsm_host_config;
         pools;
+        tls_config;
         buffer_pool;
         pool_size = size;
       }
@@ -102,9 +106,10 @@ module Pool = struct
                  >>= fun nsm ->
                  match nsm.Nsm_host.kind with
                  | Nsm_host.Arakoon cfg ->
+                    let ccfg = Arakoon_config.to_arakoon_client_cfg t.tls_config cfg in
                     Nsm_host_client.make_client
-                      t.buffer_pool
-                      (Arakoon_config.to_arakoon_client_cfg cfg))
+                      t.buffer_pool ccfg
+                      )
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools nsm_host_id p;

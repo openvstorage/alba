@@ -323,7 +323,7 @@ let osd_bench_cmd =
   in
   osd_bench_t, info
 
-let asd_statistics hosts port_o asd_id to_json config_o clear =
+let asd_statistics hosts port_o asd_id to_json config_o tls_config clear =
   let open Asd_statistics in
   let _inner =
     (fun (client:Asd_client.client) ->
@@ -351,7 +351,7 @@ let asd_statistics hosts port_o asd_id to_json config_o clear =
      begin
        let t () =
          with_alba_client
-           cfg_file
+           cfg_file tls_config
            (
              (*(fun alba_client -> client # with_osd osd_id _inner) *)
             fun alba_client ->
@@ -401,6 +401,7 @@ let asd_statistics_cmd =
                 $ lido
                 $ to_json
                 $ config_o
+                $ tls_config
                 $ clear
           )
   in

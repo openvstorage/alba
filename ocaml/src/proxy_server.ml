@@ -455,6 +455,7 @@ let run_server hosts port
                ~osd_connection_pool_size
                ~osd_timeout
                ~albamgr_cfg_file
+               ~tls_config
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -502,6 +503,7 @@ let run_server hosts port
          ~osd_connection_pool_size
          ~osd_timeout
          ~default_osd_priority:Osd.High
+         ~tls_config
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());

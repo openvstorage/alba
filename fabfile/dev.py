@@ -70,31 +70,41 @@ def run_tests_cpp(xml=False, kind=default_kind,
     where(cmd)
 
 @task
-def run_tests_ocaml(xml=False, kind = default_kind, dump = None, filter = None):
+def run_tests_ocaml(xml=False,tls = False,
+                    kind = default_kind,
+                    dump = None,
+                    filter = None):
+    tls = eval(tls)
     alba.demo_kill()
-    alba.arakoon_start()
-    alba.wait_for_master()
+    alba.arakoon_start(tls = tls)
+    alba.wait_for_master(tls = tls)
 
-    alba.maintenance_start()
-    alba.proxy_start()
-    alba.nsm_host_register_default()
+    alba.maintenance_start(tls = tls)
+    alba.proxy_start(tls = tls)
+    alba.nsm_host_register_default(tls = tls)
 
     alba.start_osds(kind, N, False)
 
-    alba.claim_local_osds(N)
+    alba.claim_local_osds(N, tls = tls)
 
     where = local
     where("rm -rf /tmp/alba/ocaml/")
 
-    cmd = "./ocaml/alba.native unit-tests"
+    cmd = ["./ocaml/alba.native", "unit-tests"]
     if xml:
-        cmd = cmd + " --xml=true"
+        cmd.append(" --xml=true")
     if filter:
-        cmd = cmd + " --only-test=%s" % filter
-    if dump:
-        cmd = cmd + " > %s" % dump
+        cmd.append(" --only-test=%s" % filter)
 
-    where(cmd)
+    if tls:
+        alba._extend_alba_tls(cmd)
+
+    print cmd
+    cmd_line = ' '.join(cmd)
+    if dump:
+        cmd_line += " > %s" % dump
+
+    where(cmd_line)
 
 
 @task
@@ -140,9 +150,9 @@ def run_tests_disk_failures(xml=False):
     where(cmd)
 
 @task
-def run_tests_stress(kind = default_kind, xml = False):
+def run_tests_stress(kind = default_kind, xml = False, tls = False):
     alba.demo_kill()
-    alba.demo_setup(kind)
+    alba.demo_setup(kind = kind, tls = tls)
     time.sleep(1)
     where = local
     #

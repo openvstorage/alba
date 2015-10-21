@@ -32,6 +32,7 @@ build-nsm-plugin: build-cmxs
 	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/net_fd.cmx \
+	_build/src/tools/tls.cmx \
 	_build/src/tools/networking2.cmx \
 	_build/src/tools/checksum.cmx \
 	_build/src/tools/alba_compression.cmx \
@@ -62,6 +63,7 @@ build-mgr-plugin: build-alba
 	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/net_fd.cmx \
+	_build/src/tools/tls.cmx \
 	_build/src/tools/networking2.cmx \
 	_build/src/tools/checksum.cmx \
 	_build/src/tools/alba_compression.cmx \

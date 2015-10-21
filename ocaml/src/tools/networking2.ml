@@ -27,24 +27,61 @@ let string_of_address = function
        (Unix.string_of_inet_addr addr) port
   | Unix.ADDR_UNIX s -> Printf.sprintf "ADDR_UNIX %s" s
 
-let connect_with ip port =
+let connect_with ip port ~tls_config =
+  Lwt_log.debug_f
+    "connect_with : %s %i %s" ip port ([%show: Tls.t option] tls_config)
+  >>= fun () ->
   let address = make_address ip port in
   let fd =
     Lwt_unix.socket
       (Unix.domain_of_sockaddr address)
-      Unix.SOCK_STREAM 0 in
-  let r = Net_fd.wrap fd in
-  Lwt.catch
-    (fun () ->
-     Lwt_unix.connect fd address >>= fun () ->
-     Lwt.return (r , fun () -> Lwt_unix.close fd))
-    (fun exn ->
-     Lwt_unix.close fd >>= fun () ->
-     Lwt.fail exn)
+      Unix.SOCK_STREAM 0
+  in
+  match Tls.to_context tls_config with
+  | None ->
+     Lwt.catch
+       (fun () ->
+        Lwt_unix.connect fd address >>= fun () ->
+        let r = Net_fd.wrap fd in
+        Lwt.return (r , fun () -> Lwt_unix.close fd)
+       )
+       (fun exn ->
+        Lwt_unix.close fd >>= fun () ->
+        Lwt.fail exn)
+  | Some ctx ->
+     begin
+       Lwt.catch
+         (fun () ->
+          Lwt_unix.connect fd address >>= fun () ->
+          Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
+          let r = Net_fd.wrap_ssl lwt_s in
+          Lwt.return (r, fun () -> Lwt_unix.close fd)
+         )
+         (fun exn ->
+          Lwt_unix.close fd >>= fun () ->
+          begin
+            match exn with
+              | Ssl.Connection_error e ->
+                 Lwt_log.debug_f ~exn "e:%S" (Ssl.get_error_string ())
+              | _ -> Lwt.return_unit
+          end
+          >>= fun () ->
+          Lwt.fail exn)
+     end
+
+let with_connection ip port ~tls_config ~buffer_pool f =
+  connect_with ip port ~tls_config >>= fun(nfd, closer) ->
+  let in_buffer = Buffer_pool.get_buffer buffer_pool in
+  let out_buffer = Buffer_pool.get_buffer buffer_pool in
+  let conn = Net_fd.to_connection ~in_buffer ~out_buffer nfd in
+  Lwt.finalize
+    (fun () -> f conn)
+    closer
+
 
 exception No_connection
 
-let first_connection ips port =
+let first_connection ips port ~tls_config =
   let count = List.length ips in
   let res = Lwt_mvar.create_empty () in
   let err = Lwt_mvar.create None in
@@ -53,7 +90,7 @@ let first_connection ips port =
   let f' ip =
     Lwt.catch
       (fun () ->
-         connect_with ip port >>= fun (fd, closer) ->
+         connect_with ip port ~tls_config >>= fun (fd, closer) ->
          if Lwt_mutex.is_locked l
          then closer ()
          else begin
@@ -98,8 +135,8 @@ let to_connection ~in_buffer ~out_buffer fd =
   and oc = Lwt_io.of_fd ~buffer:out_buffer ~mode:Lwt_io.output fd in
   (ic,oc)
 
-let first_connection' ?close_msg buffer_pool ips port =
-  first_connection ips port >>= fun (nfd, closer) ->
+let first_connection' ?close_msg buffer_pool ips port ~tls_config =
+  first_connection ips port ~tls_config >>= fun (nfd, closer) ->
   let in_buffer = Buffer_pool.get_buffer buffer_pool in
   let out_buffer = Buffer_pool.get_buffer buffer_pool in
   let conn = Net_fd.to_connection nfd ~in_buffer ~out_buffer in

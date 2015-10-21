@@ -58,6 +58,18 @@ env = {
 arakoon_nodes = ["arakoon_0", "arakoon_1", "witness_0"]
 arakoon_config_file = "%s/cfg/test.ini" % cwd
 
+_arakoon_root = '/tmp/arakoon'
+
+TLS = {
+    'arakoon_config_file' : "%s/cfg/test_tls.ini" % cwd,
+    'root_dir' : _arakoon_root,
+}
+
+for node in arakoon_nodes:
+    TLS[node] = '%s/%s' % (_arakoon_root, node)
+
+
+
 namespace = "demo"
 
 N = 12

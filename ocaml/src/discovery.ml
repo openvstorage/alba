@@ -245,7 +245,8 @@ let get_kind buffer_pool ips port =
     Lwt_log.debug_f "%s %i is a kinetic?" (List.hd_exn ips) port >>= fun () ->
     Lwt.catch
       (fun () ->
-       Networking2.first_connection' buffer_pool ips port >>= fun (fd, conn, closer) ->
+       Networking2.first_connection' buffer_pool ips port ~tls_config:None
+       >>= fun (fd, conn, closer) ->
        Lwt.finalize
            (fun () ->
             Lwt_unix.with_timeout

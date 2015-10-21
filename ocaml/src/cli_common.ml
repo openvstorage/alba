@@ -248,6 +248,42 @@ let max =
 let reverse =
   Arg.(value & opt bool false & info["reverse"] ~doc:"")
 
+let tls_arg =
+  let t3sss = let open Arg in (t3 string string string)
+  in
+  Arg.(value
+       & opt (some t3sss) None
+       & info ["tls"] ~doc:""
+  )
+
+
+let tls_config =
+  let open Arg in
+  let (tls: Tls.t Arg.converter) =
+    let pa,pr = (t3 string string string) in
+    let parser  =
+      begin
+        fun s ->
+        match pa s with
+        | `Ok cck -> `Ok (Tls.make cck)
+        | `Error x -> `Error x
+      end
+    and printer = (fun fmt tls -> Format.pp_print_string fmt (Tls.show tls))
+    in (parser, printer)
+
+  in
+  Arg.(value
+       & opt (some tls) None
+       & info ["tls"] ~doc:""
+  )
+
+
+(*let of_tls_arg = function
+  | None -> None
+  | Some (ca_cert,cert,key) ->
+     let open Tls in
+     Some {ca_cert; cert;key}
+ *)
 
 let verify_log_level log_level =
   let levels = [ "debug"; "info"; "notice"; "warning"; "error"; "fatal"; ] in
@@ -267,16 +303,16 @@ let to_level =
   | "fatal" -> Fatal
   | log_level -> failwith (Printf.sprintf "unknown log level %s" log_level)
 
-let with_alba_client cfg_file f =
+let with_alba_client cfg_file tls_config f =
   Alba_client.with_client
     (ref (Albamgr_protocol.Protocol.Arakoon_config.from_config_file cfg_file))
+    ~tls_config
     f
 
-let with_albamgr_client ~attempts cfg_file f =
+let with_albamgr_client ~attempts cfg_file tls_config f =
   let cfg =
     Albamgr_protocol.Protocol.Arakoon_config.from_config_file
       cfg_file
   in
   Albamgr_client.with_client' ~attempts
-    cfg
-    f
+    cfg ~tls_config f

@@ -28,11 +28,13 @@ module Protocol = struct
     type node_client_cfg = { ips : string list;
                              port : int; }
     [@@deriving show]
-    type t = cluster_id * (node_name, node_client_cfg) Hashtbl.t
+    type t = cluster_id *  (node_name, node_client_cfg) Hashtbl.t
 
-    let show (cluster_id, cfgs) =
-      Printf.sprintf "cluster_id = %s , %s"
+    let show ((cluster_id,  cfgs):t) =
+      Printf.sprintf
+        "cluster_id = %s , %s"
         cluster_id
+        (*([%show : Tls.t option] tlso)*)
         ([%show : (string * node_client_cfg) list]
            (Hashtbl.fold (fun k v acc -> (k,v) :: acc) cfgs []))
     let pp formatter t =
@@ -84,7 +86,7 @@ module Protocol = struct
         node_names;
       (cluster_id, node_cfgs)
 
-    let to_arakoon_client_cfg ((cluster_id, cfgs) : t) =
+    let to_arakoon_client_cfg tlso ((cluster_id, cfgs) : t) : Arakoon_client_config.t =
       {
         Arakoon_client_config.cluster_id;
         node_cfgs =
@@ -95,7 +97,7 @@ module Protocol = struct
                   port = cfg.port }) :: acc)
             cfgs
             [];
-        ssl_cfg = None;
+        ssl_cfg = (Option.map Tls.to_ssl_cfg tlso);
       }
   end
 

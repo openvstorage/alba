@@ -36,17 +36,14 @@ RUN apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
 
 RUN useradd jenkins -u 1001 -g root
 
-RUN wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
-RUN sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
-
 RUN pip install fabric junit-xml
 
 RUN mkdir /home/alba
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
-RUN sh ./opam_installer.sh /usr/local/bin 4.02.1
+RUN sh ./opam_installer.sh /usr/local/bin 4.02.3
 
 ENV opam_env='opam config env --root=/home/alba/OPAM'
-RUN opam init --root=/home/alba/OPAM --comp 4.02.1
+RUN opam init --root=/home/alba/OPAM --comp 4.02.3
 RUN eval `${opam_env}` && opam install -y \
         ocamlfind \
         ssl \
@@ -54,7 +51,7 @@ RUN eval `${opam_env}` && opam install -y \
         snappy \
         sexplib \
         bisect \
-        lwt.2.5.0 \
+        lwt \
         camltc \
         cstruct \
         ctypes \
@@ -62,8 +59,8 @@ RUN eval `${opam_env}` && opam install -y \
         uuidm \
         zarith \
         mirage-no-xen.1 \
-        quickcheck.1.0.2 \
-        nocrypto.0.5.1 \
+        quickcheck \
+        nocrypto \
         cmdliner \
         conf-libev \
         depext \
@@ -86,7 +83,7 @@ RUN cd /usr/src/gtest \
         && mv libg* /usr/lib/
 
 
-RUN eval `${opam_env}` && opam install -y arakoon.1.8.8
+RUN eval `${opam_env}` && opam install -y arakoon.1.8.10
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
 RUN cd /home/alba && git clone https://github.com/openvstorage/alba.git
