@@ -844,6 +844,7 @@ let check_asd_id kv asd_id =
 
 
 let asd_protocol
+      ?cancel
       kv ~release_fnr ~slow io_sched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
@@ -910,7 +911,14 @@ let asd_protocol
     write_extra fd
   in
   let rec inner () =
-    Llio.input_string ic >>= fun req_s ->
+    (match cancel with
+     | None -> Llio.input_string ic
+     | Some cancel ->
+        Lwt.choose
+          [ (Lwt_condition.wait cancel >>= fun () ->
+             Lwt.fail Lwt.Canceled);
+            Llio.input_string ic; ])
+    >>= fun req_s ->
     let buf = Llio.make_buffer req_s 0 in
     let code = Llio.int32_from buf in
     let command = Protocol.code_to_command code in
@@ -1009,6 +1017,7 @@ class check_garbage_from_advancer check_garbage_from kv =
   end
 
 let run_server
+      ?cancel
       hosts port path
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1225,6 +1234,7 @@ let run_server
         (fun buffer ->
          let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
          asd_protocol
+           ?cancel
            kv
            ~release_fnr:(fun fnr -> advancer # release fnr)
            ~slow
@@ -1235,7 +1245,7 @@ let run_server
            ~get_next_fnr
            asd_id fd ic)
     in
-    Networking2.make_server hosts port protocol
+    Networking2.make_server ?cancel hosts port protocol
   in
 
   let reporting_t =
