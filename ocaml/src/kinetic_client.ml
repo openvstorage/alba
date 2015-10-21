@@ -323,6 +323,10 @@ class kinetic_client cid session conn =
     method set_full full =
       Lwt.fail_with "Kinetic_client: `set_full` is not implemented"
     method get_long_id = cid
+
+    method get_disk_usage =
+      (* TODO real implementation *)
+      Lwt.return (Int64.shift_left 1L 41, Int64.shift_left 1L 42)
   end
 
 let _client_id = ref 0

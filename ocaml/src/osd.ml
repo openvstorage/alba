@@ -71,4 +71,5 @@ class type osd = object
   method set_full : bool -> unit Lwt.t
   method get_version : (int * int * int * string) Lwt.t
   method get_long_id : string
+  method get_disk_usage : (int64 * int64) Lwt.t
 end

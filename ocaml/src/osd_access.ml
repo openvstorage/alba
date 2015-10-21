@@ -70,7 +70,8 @@ class osd_access
              >>= fun (osd, closer) ->
              Lwt.finalize
                (fun () ->
-                (* TODO refresh total/used osd *)
+                osd # get_disk_usage >>= fun (used, total) ->
+                Osd_state.add_used_total osd_state used total;
                 Lwt.return ())
                closer)
             60.
@@ -342,8 +343,8 @@ class osd_access
                 Osd_state.add_ips_port osd_state ips port;
                 (match extras with
                  | None -> ()
-                 | Some { total; used; _; } ->
-                    Osd_state.add_total_used osd_state total used);
+                 | Some { used; total; _; } ->
+                    Osd_state.add_used_total osd_state used total);
                 Osd_state.add_json osd_state json;
                 Osd_state.add_seen osd_state;
 
@@ -356,19 +357,20 @@ class osd_access
 
              (match extras with
               | None ->
-                 (* TODO fetch total/used from kinetic drive! *)
+                 let kind = Osd.Kinetic (ips, port, id) in
+                 Pool.Osd.factory osd_buffer_pool kind >>= fun (osd, closer) ->
+                 Lwt.finalize
+                   (fun () -> osd # get_disk_usage)
+                   closer >>= fun (used, total) ->
                  Lwt.return
-                   (id,
-                    Osd.Kinetic (ips, port, id),
-                    Int64.shift_left 1L 42,
-                    Int64.shift_left 1L 41)
+                   (id, kind,
+                    used, total)
               | Some { node_id; version; total; used; } ->
                  Lwt.return
                    (node_id,
                     Osd.Asd (ips, port, id),
-                    total,
-                    used))
-             >>= fun (node_id, kind, total, used) ->
+                    used, total))
+             >>= fun (node_id, kind, used, total) ->
 
              let osd_info =
                Osd.({
@@ -376,7 +378,7 @@ class osd_access
                        decommissioned = false;
                        node_id;
                        other = json;
-                       total; used;
+                       used; total;
                        seen = [ Unix.gettimeofday (); ];
                        read = [];
                        write = [];

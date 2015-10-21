@@ -300,12 +300,13 @@ let execute_query : type req res.
                          Rocks_key_value_store.t ->
                          Asd_io_scheduler.t ->
                          DirectoryInfo.t ->
+                         AsdMgmt.t ->
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
                          req ->
                          (string * (Lwt_unix.file_descr ->
                                     unit Lwt.t)) Lwt.t
-  = fun kv io_sched dir_info stats q ->
+  = fun kv io_sched dir_info mgmt stats q ->
     let open Protocol in
     let serialize_with_length res =
       serialize_with_length
@@ -454,7 +455,9 @@ let execute_query : type req res.
                     Asd_statistics.AsdStatistics.snapshot stats clear |> return'
     | GetVersion -> fun () ->
                     return' Alba_version.summary
-
+    | GetDiskUsage ->
+       fun () ->
+       return' !(mgmt.AsdMgmt.latest_disk_usage)
 
 exception ConcurrentModification
 
@@ -878,7 +881,7 @@ let asd_protocol
        begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
-                execute_query kv io_sched dir_info stats q req
+                execute_query kv io_sched dir_info mgmt stats q req
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update

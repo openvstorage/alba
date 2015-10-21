@@ -77,9 +77,9 @@ let add_ips_port t ips port =
   t.ips <- Some ips;
   t.port <- Some port
 
-let add_total_used t total used =
-  t.total <- Some total;
-  t.used <- Some used
+let add_used_total t total used =
+  t.used <- Some used;
+  t.total <- Some total
 
 let add_json t json =
   t.json <- Some json

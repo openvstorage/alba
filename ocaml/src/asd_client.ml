@@ -219,8 +219,12 @@ class client fd ic id =
 
     method set_full full =
       self # update SetFull full
+
     method get_version () =
       self # query GetVersion ()
+
+    method get_disk_usage () =
+      self # query GetDiskUsage ()
   end
 
 exception BadLongId of string * string
@@ -326,4 +330,5 @@ class asd_osd (asd_id : string) (asd : client) =
 
   method get_version = asd # get_version ()
   method get_long_id = asd_id
+  method get_disk_usage = asd # get_disk_usage ()
 end
