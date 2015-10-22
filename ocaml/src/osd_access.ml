@@ -67,8 +67,8 @@ class osd_access
              >>= fun (osd, closer) ->
              Lwt.finalize
                (fun () ->
-                osd # get_disk_usage >>= fun (used, total) ->
-                Osd_state.add_used_total osd_state used total;
+                osd # get_disk_usage >>= fun disk_usage ->
+                Osd_state.add_disk_usage osd_state disk_usage;
                 Lwt.return ())
                closer)
             60.
@@ -326,7 +326,7 @@ class osd_access
                 (match extras with
                  | None -> ()
                  | Some { used; total; _; } ->
-                    Osd_state.add_used_total osd_state used total);
+                    Osd_state.add_disk_usage osd_state (used, total));
                 Osd_state.add_json osd_state json;
                 Osd_state.add_seen osd_state;
 
