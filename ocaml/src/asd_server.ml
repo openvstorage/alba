@@ -914,7 +914,7 @@ let asd_protocol
     (match cancel with
      | None -> Llio.input_string ic
      | Some cancel ->
-        Lwt.choose
+        Lwt.pick
           [ (Lwt_condition.wait cancel >>= fun () ->
              Lwt.fail Lwt.Canceled);
             Llio.input_string ic; ])
