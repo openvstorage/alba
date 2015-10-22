@@ -118,7 +118,11 @@ let first_connection' ?close_msg buffer_pool ips port =
 let make_server ?(cancel = Lwt_condition.create ()) hosts port protocol =
   let server_loop socket_address =
     let rec inner listening_socket =
-      Lwt_unix.accept listening_socket >>= fun (fd, cl_socket_address) ->
+      Lwt.pick
+        [ Lwt_unix.accept listening_socket;
+          (Lwt_condition.wait cancel >>= fun () ->
+           Lwt.fail Lwt.Canceled); ]
+      >>= fun (fd, cl_socket_address) ->
       Lwt_log.info "Got new client connection" >>= fun () ->
       Lwt.ignore_result
         begin
@@ -151,10 +155,7 @@ let make_server ?(cancel = Lwt_condition.create ()) hosts port protocol =
        Lwt_unix.setsockopt listening_socket Unix.SO_REUSEADDR true;
        Lwt_unix.bind listening_socket socket_address;
        Lwt_unix.listen listening_socket 1024;
-       Lwt.choose
-         [ inner listening_socket;
-           (Lwt_condition.wait cancel >>= fun () ->
-            Lwt.fail Lwt.Canceled); ])
+       inner listening_socket)
       (fun () ->
        Lwt_log.info_f "Closing listening socket on port %i" port >>= fun () ->
        Lwt_unix.close listening_socket)
