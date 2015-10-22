@@ -112,8 +112,8 @@ let to_buffer buf t =
   Llio.option_to Llio.string_to buf t.json;
   Llio.option_to (Llio.list_to Llio.string_to) buf t.ips;
   Llio.option_to Llio.int_to buf t.port;
-  Llio.option_to Llio.int64_to buf t.total;
-  Llio.option_to Llio.int64_to buf t.used
+  Llio.option_to Llio.int64_to buf t.used;
+  Llio.option_to Llio.int64_to buf t.total
 
 let from_buffer buf =
   let ser_version = Llio.int8_from buf in
@@ -126,18 +126,10 @@ let from_buffer buf =
   let errors = l (Llio.pair_from f Llio.string_from) buf in
   let seen = l f buf in
   let json = Llio.option_from Llio.string_from buf in
-  let ips,
-      port,
-      total,
-      used = maybe_from_buffer
-               (Llio.tuple4_from
-                  (Llio.option_from (Llio.list_from Llio.string_from))
-                  (Llio.option_from Llio.int_from)
-                  (Llio.option_from Llio.int64_from)
-                  (Llio.option_from Llio.int64_from))
-               (None, None, None, None)
-               buf
-  in
+  let ips = Llio.option_from (Llio.list_from Llio.string_from) buf in
+  let port = Llio.option_from Llio.int_from buf in
+  let used = Llio.option_from Llio.int64_from buf in
+  let total = Llio.option_from Llio.int64_from buf in
   { disqualified;
     read; write; errors; seen;
     ips; port;
