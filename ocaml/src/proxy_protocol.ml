@@ -124,12 +124,19 @@ module ProxyStatistics = struct
         mutable creation:timestamp;
         mutable period: float;
         mutable ns_stats : (string, ns_t) H.t;
-      }[@@deriving show, yojson]
+      } [@@deriving show, yojson]
+
+    type t' = {
+        t : t;
+        changed_ns_stats : (string, unit) Hashtbl.t;
+      }
 
     let make () =
       let creation = Unix.gettimeofday () in
-      { creation; period = 0.0;
-        ns_stats = [];
+      { t = { creation; period = 0.0;
+              ns_stats = [];
+            };
+        changed_ns_stats = Hashtbl.create 3;
       }
 
     let to_buffer buf t =
@@ -151,19 +158,38 @@ module ProxyStatistics = struct
 
     let stop t = t.period <- Unix.gettimeofday() -. t.creation
 
-    let clone t = { t with creation = t.creation}
+    let clone t = { t.t with creation = t.t.creation }
 
     let clear t =
-      t.creation <- Unix.gettimeofday ();
-      t.period <- 0.0;
-      t.ns_stats <- []
+      Hashtbl.clear t.changed_ns_stats;
+      t.t.creation <- Unix.gettimeofday ();
+      t.t.period <- 0.0;
+      t.t.ns_stats <- []
 
     let find t ns =
-     try H.find t.ns_stats ns
-     with Not_found ->
-       let v = ns_make () in
-       let () = t.ns_stats <- H.add t.ns_stats ns v in
-       v
+      Hashtbl.replace t.changed_ns_stats ns ();
+      try H.find t.t.ns_stats ns
+      with Not_found ->
+        let v = ns_make () in
+        let () = t.t.ns_stats <- H.add t.t.ns_stats ns v in
+        v
+
+    let show' ~only_changed t =
+      show
+        (if only_changed
+         then
+           { t.t with
+             ns_stats =
+               List.filter
+                 (fun (namespace, _) -> Hashtbl.mem t.changed_ns_stats namespace)
+                 t.t.ns_stats
+           }
+         else t.t)
+
+    let clear_ns_stats_changed t =
+      let r = Hashtbl.length t.changed_ns_stats in
+      Hashtbl.clear t.changed_ns_stats;
+      r
 
    let new_upload t ns delta =
      let ns_stats = find t ns in

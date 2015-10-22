@@ -76,10 +76,10 @@ let write_albamgr_cfg albamgr_cfg destination =
   Lwt_unix.rename tmp destination
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
-                   (stats: ProxyStatistics.t)
+                   (stats: ProxyStatistics.t')
                    fd ic =
   let execute_request : type i o. (i, o) Protocol.request ->
-                             ProxyStatistics.t ->
+                             ProxyStatistics.t' ->
                              i -> o Lwt.t
                           =
     let open Protocol in
@@ -526,10 +526,11 @@ let run_server hosts port
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());
               (let rec log_stats () =
-                 Lwt_unix.sleep 60. >>= fun () ->
                  Lwt_log.info_f
                    "stats:\n%s%!"
-                   (ProxyStatistics.show stats) >>= fun () ->
+                   (ProxyStatistics.show' ~only_changed:true stats) >>= fun () ->
+                 let cnt = ProxyStatistics.clear_ns_stats_changed stats in
+                 Lwt_unix.sleep (max 60. (6 * cnt |> float)) >>= fun () ->
                  log_stats ()
                in
                log_stats ());

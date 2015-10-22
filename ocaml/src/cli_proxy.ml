@@ -342,15 +342,38 @@ let proxy_osd_view_cmd =
   Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
 
 let proxy_bench host port
-                (n:int) file_name (power:int)
+                n_clients (n:int) file_name (power:int)
                 prefix (slice_size:int) namespace_name
+                scenarios robust
   =
   lwt_cmd_line
     false
-    (fun () -> Proxy_bench.bench host port n file_name power prefix slice_size namespace_name)
-
+    (fun () ->
+     Proxy_bench.do_scenarios
+       host port
+       n_clients n
+       file_name power prefix slice_size namespace_name
+       (let open Proxy_bench in
+        List.map
+          (function
+            | `Writes -> do_writes ~robust
+            | `Reads  -> do_reads
+            | `Partial_reads -> do_partial_reads
+            | `Deletes -> do_deletes)
+          (if scenarios = []
+           then [ `Writes;
+                  `Reads;
+                  `Partial_reads;
+                  `Deletes; ]
+           else scenarios)))
 
 let proxy_bench_cmd =
+  let n_clients default =
+    let doc = "number of concurrent clients for the benchmark" in
+    Arg.(value
+         & opt int default
+         & info ["n-clients"] ~docv:"N_CLIENTS" ~doc)
+  in
   let n default =
     let doc = "do runs (writes,reads,partial_reads,...) of $(docv) iterations" in
     Arg.(value
@@ -378,16 +401,33 @@ let proxy_bench_cmd =
          & info ["slice-size"] ~docv:"SLICE_SIZE"  ~doc
     )
   in
+  let scenarios =
+    Arg.(value
+         & opt_all
+             (enum
+                [ "writes", `Writes;
+                  "reads", `Reads;
+                  "partial-reads", `Partial_reads;
+                  "deletes", `Deletes; ])
+             []
+         & info [ "scenario" ])
+  in
   Term.(pure proxy_bench
         $ host $ port 10000
+        $ n_clients 1
         $ n 10000
         $ file_upload 1
         $ power 4
         $ prefix ""
         $ slice_size 4096
         $ namespace 0
+        $ scenarios
+        $ Arg.(value
+               & flag
+               & info ["robust"] ~docv:"robust writes (with retry loop)")
   ),
   Term.info "proxy-bench" ~doc:"simple proxy benchmark"
+
 let cmds = [
   proxy_start_cmd;
   proxy_list_namespaces_cmd;

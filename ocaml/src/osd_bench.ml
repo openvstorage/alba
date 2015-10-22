@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
 open Asd_protocol
 open Lwt
 open Generic_bench
@@ -22,7 +23,7 @@ let maybe_fail = function
   | Osd.Ok -> Lwt.return_unit
   | Osd.Exn e -> Osd.Error.lwt_fail e
 
-let deletes (client: Osd.osd) n value_size period prefix =
+let deletes (client: Osd.osd) progress n value_size period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let key = gen () in
@@ -32,11 +33,11 @@ let deletes (client: Osd.osd) n value_size period prefix =
     let updates = [delete] in
     client # apply_sequence Osd.High [] updates >>= maybe_fail
   in
-  measured_loop do_one n >>= fun r ->
+  measured_loop progress do_one n >>= fun r ->
   report "deletes" r
 
 
-let gets (client: Osd.osd) n value_size period prefix =
+let gets (client: Osd.osd) progress n value_size period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let key = gen () in
@@ -50,10 +51,10 @@ let gets (client: Osd.osd) n value_size period prefix =
     in
     Lwt.return ()
   in
-  measured_loop do_one n >>= fun r ->
+  measured_loop progress do_one n >>= fun r ->
   report "gets" r
 
-let sets (client:Osd.osd) n value_size period prefix =
+let sets (client:Osd.osd) progress n value_size period prefix =
   let gen = make_key period prefix in
   (* TODO: this affects performance as there is compression going
      on inside the database
@@ -81,21 +82,29 @@ let sets (client:Osd.osd) n value_size period prefix =
     let updates = [set] in
     client # apply_sequence Osd.High [] updates >>= maybe_fail
   in
-  measured_loop do_one n >>= fun r ->
+  measured_loop progress do_one n >>= fun r ->
   report "sets" r
 
-
-let do_all client n value_size power prefix=
-  let scenario = [
-      sets;
-      gets;
-      deletes;
-    ]
-  in
+let do_scenarios
+      with_client
+      n_clients n
+      value_size power prefix
+      scenarios
+  =
   let period = period_of_power power in
   Lwt_list.iter_s
-    (fun which ->
-     which client
-           n value_size period prefix
-    )
-    scenario
+    (fun scenario ->
+     let progress = make_progress (n/100) in
+     Lwt_list.iter_p
+       (fun i ->
+        with_client
+          (fun client ->
+           scenario
+             client
+             progress
+             (n/n_clients)
+             value_size
+             period
+             (Printf.sprintf "%s_%i" prefix i)))
+       (Int.range 0 n_clients))
+    scenarios

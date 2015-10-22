@@ -128,6 +128,8 @@ let run t ~fsync ~fs_fd =
       >>= fun (res, _) ->
 
       (if fsync
+          (* no need to sync if there are no waiters! *)
+          && res <> []
        then begin
            let waiters_len = List.length res in
            Lwt_log.debug_f "Starting syncfs for %i waiters" waiters_len >>= fun () ->
