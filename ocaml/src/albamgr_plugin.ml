@@ -504,7 +504,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~first ~finc ~last ~max ~reverse
         (fun cur key ->
            let preset_name = key in
-           let preset = deserialize Preset.from_buffer (KV.cur_get_value cur) in
+           let preset = deserialize (Preset.from_buffer ~preset_name) (KV.cur_get_value cur) in
            let in_use =
              let (cnt, _), _ = list_preset_namespaces ~preset_name ~max:1 in
              cnt > 0
@@ -1207,7 +1207,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           in
           let preset = match db # get (Keys.Preset.prefix ^ preset_name) with
             | None -> Error.failwith Error.Preset_does_not_exist
-            | Some p -> deserialize Preset.from_buffer p
+            | Some p -> deserialize (Preset.from_buffer ~preset_name) p
           in
 
           let osd_ids =
@@ -1493,7 +1493,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | None -> Error.failwith Error.Preset_does_not_exist
         | Some v -> v
       end in
-      let preset = deserialize Preset.from_buffer preset_v in
+      let preset = deserialize (Preset.from_buffer ~preset_name) preset_v in
 
       let current_osd_ids = match preset.Preset.osds with
         | Preset.All -> Error.failwith Error.Unknown
@@ -1546,7 +1546,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | None -> Error.failwith Error.Preset_does_not_exist
         | Some v -> v
       end in
-      let preset = deserialize Protocol.Preset.from_buffer preset_v in
+      let preset = deserialize (Protocol.Preset.from_buffer ~preset_name) preset_v in
       let preset' = Protocol.Preset.Update.apply preset preset_update in
       return_upds [
           Update.Assert (preset_key, Some preset_v);

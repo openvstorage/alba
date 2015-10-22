@@ -429,6 +429,7 @@ module Protocol = struct
       object_checksum : object_checksum;
       fragment_checksum_algo : Checksum.Checksum.algo;
       fragment_encryption : Encryption.Encryption.t;
+      alias : string;
     }
     [@@deriving show]
 
@@ -463,8 +464,9 @@ module Protocol = struct
       object_checksum_to_buffer buf t.object_checksum;
       Checksum.Checksum.Algo.to_buffer buf t.fragment_checksum_algo;
       Encryption.Encryption.to_buffer buf t.fragment_encryption
+    (* TODO alias to buffer *)
 
-    let from_buffer buf =
+    let from_buffer ~preset_name buf =
       let ser_version = Llio.int8_from buf in
       assert (ser_version = 1);
       let w = Nsm_model.Encoding_scheme.w_from_buffer buf in
@@ -478,10 +480,18 @@ module Protocol = struct
       let object_checksum = object_checksum_from_buffer buf in
       let fragment_checksum_algo = Checksum.Checksum.Algo.from_buffer buf in
       let fragment_encryption = Encryption.Encryption.from_buffer buf in
+      (* TODO hmm, da werkt nie binnen context van (bvb) list-presets call
+       * dus er moeten allemaal nieuwe calls naastkomen??
+       * of er moet een preset' type komen, dat combinatie is van vorige preset
+       * type + changeable alias
+       *)
+      let alias = maybe_from_buffer Llio.string_from preset_name buf in
       { w; policies;
         fragment_size; osds; compression;
         object_checksum; fragment_checksum_algo;
-        fragment_encryption; }
+        fragment_encryption;
+        alias;
+      }
 
     let get_encryption t encrypt_info =
       let open Nsm_model in
@@ -518,20 +528,26 @@ module Protocol = struct
           });
         fragment_checksum_algo = Checksum.Checksum.Algo.CRC32c;
         fragment_encryption = Encryption.Encryption.NoEncryption;
+        alias = "default";
         }
 
     module Update = struct
       type t = {
         policies' : (Policy.policy list option [@default None]) [@key "policies"];
+        alias' : string option;
       } [@@deriving show, yojson]
 
-      let make ?policies' () = { policies'; }
+      let make ?policies' ?alias' () = { policies'; alias'; }
 
       let apply preset t =
         { preset with
           policies = (Option.get_some_default
                         preset.policies
-                        t.policies'); }
+                        t.policies');
+          alias = (Option.get_some_default
+                     preset.alias
+                     t.alias');
+        }
 
       let from_buffer buf =
         let ser_version = Llio.int8_from buf in
@@ -542,7 +558,8 @@ module Protocol = struct
                Policy.from_buffer)
             buf
         in
-        { policies' }
+        let alias' = maybe_from_buffer (Llio.option_from Llio.string_from) None buf in
+        { policies'; alias'; }
 
       let to_buffer buf t =
         let ser_version = 1 in
@@ -550,7 +567,8 @@ module Protocol = struct
         Llio.option_to
           (Llio.list_to Policy.to_buffer)
           buf
-          t.policies'
+          t.policies';
+        Llio.option_to Llio.string_to buf t.alias'
     end
   end
 
@@ -966,12 +984,13 @@ module Protocol = struct
         (Llio.pair_from Llio.int32_from Work.from_buffer)
     | GetAlbaId -> Llio.string_from
     | ListPresets ->
-      counted_list_more_from
-        (Llio.tuple4_from
-           Llio.string_from
-           Preset.from_buffer
-           Llio.bool_from
-           Llio.bool_from)
+       counted_list_more_from
+         (fun buf ->
+          let preset_name = Llio.string_from buf in
+          let preset = Preset.from_buffer ~preset_name buf in
+          let is_default = Llio.bool_from buf in
+          let in_use = Llio.bool_from buf in
+          preset_name, preset, is_default, in_use)
     | GetClientConfig ->
       Arakoon_config.from_buffer
     | ListNamespacesById ->
@@ -1119,7 +1138,11 @@ module Protocol = struct
     | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
     | AddWork -> Llio.counted_list_from Work.from_buffer
     | MarkWorkCompleted -> Llio.int32_from
-    | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
+    | CreatePreset ->
+       fun buf ->
+       let preset_name = Llio.string_from buf in
+       let preset = Preset.from_buffer ~preset_name buf in
+       preset_name, preset
     | DeletePreset -> Llio.string_from
     | SetDefaultPreset -> Llio.string_from
     | AddOsdsToPreset ->

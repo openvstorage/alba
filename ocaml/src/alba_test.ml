@@ -1669,11 +1669,16 @@ let test_update_policies () =
 
      assert_k_m mf1 2 1;
 
+     let new_alias = "new alias" in
      alba_client # mgr_access # update_preset
                  preset_name
-                 Preset.Update.({ policies' = Some [ (5,4,8,3); ]; }) >>= fun () ->
+                 Preset.Update.({ policies' = Some [ (5,4,8,3); ];
+                                  alias' = Some new_alias; }) >>= fun () ->
 
-     alba_client # get_base_client # get_preset_cache # refresh ~preset_name >>= fun () ->
+     let preset_cache = alba_client # get_base_client # get_preset_cache in
+     preset_cache # refresh ~preset_name >>= fun () ->
+     preset_cache # get ~preset_name >>= fun preset ->
+     assert (preset.Preset.alias = new_alias);
 
      alba_client # get_base_client # upload_object_from_string
                  ~namespace

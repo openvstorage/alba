@@ -210,6 +210,7 @@ module Preset = struct
     object_checksum : object_checksum;
     fragment_encryption : fragment_encryption;
     in_use : (bool [@default true]);
+    alias : (string option [@default None]);
   } [@@deriving yojson]
 
   type t_list = t list [@@deriving yojson]
@@ -237,6 +238,7 @@ module Preset = struct
          | AlgoWithKey (AES (CBC, L256), key) -> AES_CBC_256 (HexString.show key)
          | NoEncryption -> NO_ENCRYPTION);
       in_use;
+      alias = Some preset.alias;
     }
 
   let to_preset
@@ -244,6 +246,7 @@ module Preset = struct
       fragment_size; osds;
       compression; object_checksum;
       fragment_checksum; fragment_encryption;
+      alias;
     }
     =
     let open Albamgr_protocol.Protocol.Preset in
@@ -273,6 +276,7 @@ module Preset = struct
         object_checksum;
         osds;
         fragment_encryption;
+        alias = Option.get_some_default name alias;
       }
 end
 
