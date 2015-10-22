@@ -58,9 +58,6 @@ class osd_access
               long_id (Osd.ClaimInfo.ThisAlba osd_id)
               !osd_long_id_claim_info;
 
-          (* TODO restructure code so we can use
-           * the osds connection pool here
-           *)
           Lwt_extra2.run_forever
             "refresh_osd_total_used"
             (fun () ->
@@ -86,33 +83,18 @@ class osd_access
       (fun osd_id ->
        get_osd_info ~osd_id >>= fun (osd_info, _) ->
        let open Albamgr_protocol.Protocol in
-       (* TODO hier al mergen met osd_state.ips/port info?
-        * -> kan het sneller maken voor clients die wel nog
-        *    discovery info zien binnenkomen
-        *)
        Lwt.return osd_info.Osd.kind)
       osd_buffer_pool
   in
 
-  (* TODO hoe weet/leert proxy dat node decommissioned is?
-   * - wanneer wordt osd_info geupdate??
-   *)
-
   let refresh_osd_info ~osd_id =
-    Lwt.catch
-      (fun () ->
-       mgr_access # get_osd_by_osd_id ~osd_id >>= function
-       | None -> assert false
-       | Some osd_info' ->
-          let osd_info, osd_state = Hashtbl.find osds_info_cache osd_id in
-          Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state);
-          let open Albamgr_protocol.Protocol.Osd in
-          Lwt.return (osd_info.kind <> osd_info'.kind))
-      (fun exn ->
-       (* TODO dispatch refresh loopke
-        * - maar wel maximum 1 zo'n loopke!
-        *)
-       Lwt.fail exn)
+    mgr_access # get_osd_by_osd_id ~osd_id >>= function
+    | None -> assert false
+    | Some osd_info' ->
+       let osd_info, osd_state = Hashtbl.find osds_info_cache osd_id in
+       Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state);
+       let open Albamgr_protocol.Protocol.Osd in
+       Lwt.return (osd_info.kind <> osd_info'.kind)
   in
 
   let rec with_osd_from_pool
