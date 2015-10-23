@@ -779,6 +779,9 @@ let test_change_osd_ip_port () =
          (client # discover_osds
                  ~check_claimed:(fun id -> true)
                  ~check_claimed_delay:0.1 ());
+       Lwt.ignore_result
+         (client # osd_access # propagate_osd_info
+                 ~delay:0.1 ());
 
        Asd_test.with_asd_client
          osd_name 16541
@@ -808,8 +811,6 @@ let test_change_osd_ip_port () =
               ~allow_overwrite:Nsm_model.NoPrevious
               ~checksum_o:None >>= fun _ ->
 
-            Lwt_log.debug_f "cucu1" >>= fun () ->
-
             client # download_object_to_string
               ~namespace
               ~object_name
@@ -831,13 +832,19 @@ let test_change_osd_ip_port () =
 
             (* hmm or use with_osd !
                TODO, test with both... *)
-
-            client # download_object_to_string
-              ~namespace
-              ~object_name
-              ~consistent_read:true
-              ~should_cache:true >>= fun _ ->
-            Lwt.return ()
+            let download_obj () =
+              client # download_object_to_string
+                     ~namespace
+                     ~object_name
+                     ~consistent_read:true
+                     ~should_cache:true >>= function
+              | None -> assert false
+              | Some _ -> Lwt.return ()
+            in
+            (* it's ok to fail once while clearing the borked
+             * connection(s) *)
+            Lwt_extra2.ignore_errors download_obj >>= fun () ->
+            download_obj ()
          )
   in
   test_with_alba_client

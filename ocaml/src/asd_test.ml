@@ -46,9 +46,11 @@ let with_asd_client ?(is_restart=false) test_name port f =
     Unix.mkdir path 0o777
   end;
   let asd_id = Some test_name in
+  let cancel = Lwt_condition.create () in
   let t =
     Lwt.pick
       [ (Asd_server.run_server
+           ~cancel
            [] port path
            ~asd_id
            ~node_id:"bla"
@@ -66,7 +68,9 @@ let with_asd_client ?(is_restart=false) test_name port f =
           Asd_client.with_client
             buffer_pool
             [ "::1" ] port (Some test_name)
-            f
+            f >>= fun r ->
+          Lwt_condition.broadcast cancel ();
+          Lwt.return r
         end; ]
   in
   t
