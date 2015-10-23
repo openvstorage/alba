@@ -30,7 +30,8 @@ OPAM_DEPENDS="ocamlfind \
          cmdliner \
          ppx_deriving ppx_deriving_yojson \
          sexplib.112.35.00 \
-         core_kernel.112.35.00
+         core_kernel.112.35.00 \
+         cohttp
 "
 
 export OPAMYES=1
