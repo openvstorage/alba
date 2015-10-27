@@ -24,8 +24,9 @@ module Osd = struct
     alba_id : string option;
     ips : Osd.ip list;
     port : Osd.port;
-    node_id : Osd.node_id;
     kind : string;
+    decommissioned : bool;
+    node_id : Osd.node_id;
     long_id : Osd.long_id;
     total: int64;
     used : int64;
@@ -58,6 +59,7 @@ module Osd = struct
     in
     { id; alba_id;
       kind = k; ips; port; node_id; long_id;
+      decommissioned;
       total; used;
       seen; read; write; errors;
     }
