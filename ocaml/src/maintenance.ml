@@ -1093,10 +1093,10 @@ class client ?(retry_timeout = 60.)
                | None -> None
                | Some (p,b) -> Some (Slice.wrap_string p, b)
              in
-             let rec inner () =
+             let rec inner (first, finc) =
                client # range
                  Osd.Low
-                 ~first:namespace_prefix' ~finc:true
+                 ~first ~finc
                  ~last:namespace_next_prefix
                  ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
                client # apply_sequence
@@ -1108,10 +1108,10 @@ class client ?(retry_timeout = 60.)
                if not (filter work_id)
                then Lwt.fail NotMyTask
                else if has_more
-               then inner ()
+               then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
                else Lwt.return ()
              in
-             inner ())
+             inner (namespace_prefix', true))
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->
