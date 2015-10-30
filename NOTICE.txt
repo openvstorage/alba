@@ -1,8 +1,8 @@
-                     Open vStorage
-          Copyright 2013-2014 Open vStorage NV
+                     iNuron
+          Copyright 2013-2014 iNuron NV
 
         This product includes software developed at
-      Open vStorage NV (https://www.openvstorage.com/).
+      iNuron NV (https://www.openvstorage.com/).
 
 
 This product includes and/or uses software developed by third parties. This
