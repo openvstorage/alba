@@ -415,7 +415,6 @@ let asd_statistics hosts port_o asd_id to_json config_o clear =
   | Some port,_ -> from_asd hosts port asd_id
 
 let asd_statistics_cmd =
-  let doc = "$(docv)" in
   let port_o =
     Arg.(value
          & opt (some int) None
@@ -438,7 +437,7 @@ let asd_statistics_cmd =
                 $ clear
           )
   in
-  let info = Term.info "asd-statistics" ~doc in
+  let info = Term.info "asd-statistics" ~doc:"get statistics from the asd" in
   t, info
 
 

@@ -79,12 +79,11 @@ let osd_multi_get osd_id cfg_file keys unescape =
   lwt_cmd_line false t
 
 let osd_multi_get_cmd =
-  let doc = "$(docv)" in
   let keys = Arg.(non_empty &
                  pos_all string [] &
-                 info [] ~docv:"KEYS" ~doc) in
+                 info [] ~docv:"KEYS" ~doc:"$(docv)") in
   Term.(pure osd_multi_get $ osd_id $ alba_cfg_file $ keys $ unescape),
-  Term.info "osd-multi-get" ~doc
+  Term.info "osd-multi-get" ~doc:"multi get on an OSD"
 
 let osd_range osd_id cfg_file =
   let t () =
@@ -784,6 +783,7 @@ let () =
         Cli_mgr.cmds;
         Cli_messages.cmds;
         Cli_nsm_host.cmds;
+        Cli_bench.cmds;
         cmds1; ]
   in
   match Term.eval_choice default_cmd cmds with

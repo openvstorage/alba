@@ -1,20 +1,21 @@
 open Prelude
-open Proxy_client
 open Lwt.Infix
 open Generic_bench
 
 
-let do_writes ~robust (client:proxy_client) progress n input_file period prefix _ namespace =
+let do_writes ~robust client progress n input_file period prefix _ namespace =
   let gen = make_key period prefix in
   let do_one i =
     let object_name = gen () in
+    let checksum : Checksum.Checksum.t option option = None in
     Lwt.catch
       (fun () ->
        client # write_object_fs
               ~namespace
               ~object_name
               ~input_file
-              ~allow_overwrite:false ())
+              ~allow_overwrite:false
+              ?checksum ())
       (fun exn ->
        let rec inner delay =
          Lwt.catch
@@ -23,7 +24,8 @@ let do_writes ~robust (client:proxy_client) progress n input_file period prefix 
                    ~namespace
                    ~object_name
                    ~input_file
-                   ~allow_overwrite:true () >>= fun () ->
+                   ~allow_overwrite:true
+                   ?checksum () >>= fun () ->
             Lwt.return `Continue)
            (fun exn ->
             Lwt.return `Retry) >>= function
@@ -42,7 +44,7 @@ let do_writes ~robust (client:proxy_client) progress n input_file period prefix 
   report "writes" r
 
 let do_reads
-      (client:proxy_client)
+      client
       progress n _ period prefix
       (_:int) namespace =
   let gen = make_key period prefix in
@@ -61,7 +63,7 @@ let do_reads
   report "reads" r
 
 let do_partial_reads
-      (client:proxy_client)
+      client
       progress n _ period prefix
       (slice_size:int) namespace =
   let gen = make_key period prefix in
@@ -80,7 +82,7 @@ let do_partial_reads
   report "partial reads" r
 
 let do_deletes
-      (client:proxy_client)
+      client
       progress n _ period prefix
       (_:int) namespace =
   let gen = make_key period prefix in
