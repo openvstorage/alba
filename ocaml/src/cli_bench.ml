@@ -65,6 +65,11 @@ let scenarios =
                       "choose which scenario to run, valid values are %s"
                       ([%show : string list] (List.map fst scns))))
 
+let robust =
+  Arg.(value
+       & flag
+       & info ["robust"] ~docv:"robust writes (with retry loop)")
+
 let map_scenarios scenarios robust =
   let open Proxy_bench in
   List.map
@@ -105,13 +110,11 @@ let proxy_bench_cmd =
         $ slice_size 4096
         $ namespace 0
         $ scenarios
-        $ Arg.(value
-               & flag
-               & info ["robust"] ~docv:"robust writes (with retry loop)")
+        $ robust
   ),
   Term.info "proxy-bench" ~doc:"simple proxy benchmark"
 
-let alba_bench albamgr_cfg
+let alba_bench alba_cfg_file
                n_clients n file_name power
                prefix slice_size namespace
                scenarios robust
@@ -120,11 +123,28 @@ let alba_bench albamgr_cfg
     false
     (fun () ->
      Alba_bench.do_scenarios
-       albamgr_cfg
+       (ref
+          (Albamgr_protocol.Protocol.Arakoon_config.from_config_file
+             alba_cfg_file))
        n_clients n
        file_name power prefix slice_size namespace
        (map_scenarios scenarios robust))
 
+let alba_bench_cmd =
+  Term.(pure alba_bench
+        $ alba_cfg_file
+        $ n_clients 1
+        $ n 10000
+        $ file_upload 1
+        $ power 4
+        $ prefix ""
+        $ slice_size 4096
+        $ namespace 0
+        $ scenarios
+        $ robust),
+  Term.info "alba-bench" ~doc:"simple alba benchmark"
+
 let cmds = [
     proxy_bench_cmd;
+    alba_bench_cmd;
   ]
