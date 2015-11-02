@@ -60,7 +60,7 @@ def run_tests_cpp(xml=False, kind=default_kind,
 
     where = local
     where("rm -rf /tmp/alba/ocaml/")
-    cmd = "./cpp/bin/unit_tests.out"
+    cmd = "LD_LIBRARY_PATH=./cpp/lib ./cpp/bin/unit_tests.out"
     if xml:
         cmd = cmd + " --gtest_output=xml:gtestresults.xml"
     if valgrind:
