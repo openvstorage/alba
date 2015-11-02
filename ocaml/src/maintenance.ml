@@ -568,27 +568,27 @@ class client ?(retry_timeout = 60.)
           inner ()
         end
 
-    method garbage_collect_device ~osd_id ~namespace_id ~gc_epoch =
+    method garbage_collect_device
+             ~osd_id
+             ~namespace_id
+             ~gc_epoch
+      =
       let open Osd_keys in
       let open Slice in
-      let first = wrap_string (AlbaInstance.gc_epoch_tag
-          ~namespace_id ~gc_epoch:0L
-          ~object_id:"" ~version_id:0
-          ~chunk_id:0 ~fragment_id:0) in
-      let finc = true in
       let last =
         let l = AlbaInstance.gc_epoch_tag
             ~namespace_id ~gc_epoch:(Int64.succ gc_epoch)
             ~object_id:"" ~version_id:0
             ~chunk_id:0 ~fragment_id:0 in
         Some (wrap_string l, false) in
-      let rec inner () =
+      let rec inner first =
         alba_client # with_osd
           ~osd_id
           (fun client ->
            client # range
                   Osd.Low
-                  ~first ~finc ~last ~reverse:false ~max:100)
+                  ~first ~finc:true ~last
+                  ~reverse:false ~max:100)
         >>= fun ((cnt, keys), has_more) ->
 
         (* TODO could optimize here by grouping together per object_id first *)
@@ -656,10 +656,16 @@ class client ?(retry_timeout = 60.)
                else cleanup_fragment ())
           keys >>= fun () ->
         if has_more && filter namespace_id
-        then inner ()
+        then inner (List.last keys |> Option.get_some_default first)
         else Lwt.return ()
       in
-      inner ()
+      let first =
+        wrap_string (AlbaInstance.gc_epoch_tag
+                       ~namespace_id ~gc_epoch:0L
+                       ~object_id:"" ~version_id:0
+                       ~chunk_id:0 ~fragment_id:0)
+      in
+      inner first
 
     method garbage_collect_namespace ?(once=false) ~namespace_id ~grace_period =
 
@@ -748,8 +754,8 @@ class client ?(retry_timeout = 60.)
                   end
                 else
                   Lwt.return_unit) >>= fun () ->
-              Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
-              inner ()
+              Lwt_extra2.sleep_approx (15. *. retry_timeout) >>=
+              inner
           in
           inner ()
         end
