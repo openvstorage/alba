@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -283,28 +283,19 @@ class client ?(retry_timeout = 60.)
            (List.nth_exn manifest.fragment_packed_sizes chunk_id)
            (List.nth_exn manifest.fragment_checksums chunk_id)
          >>= fun recovery_info_slice ->
-         let key_string =
-           Osd_keys.AlbaInstance.fragment
-             ~namespace_id
-             ~object_id ~version_id:version
-             ~chunk_id ~fragment_id
-         in
-         let key = Slice.wrap_string key_string in
-         let open Alba_client_errors.Error in
-         Lwt_log.debug_f
-           "chunk %i: fetching fragment %i from osd_id:%li"
-           chunk_id fragment_id source_osd
-         >>= fun () ->
 
-         alba_client # with_osd
-           ~osd_id:source_osd
-           (fun osd_client ->
-            osd_client # get_option
-                       Osd.Low
-                       key)
-         >>= function
-         | None -> Lwt.fail (Exn NotEnoughFragments)
-         | Some packed_fragment ->
+         let open Alba_client_errors.Error in
+
+         Alba_client_download.download_packed_fragment
+           (alba_client # osd_access)
+           ~location:(List.nth_exn chunk_location fragment_id |> fst)
+           ~namespace_id
+           ~object_id ~object_name
+           ~chunk_id ~fragment_id
+           (alba_client # get_fragment_cache) >>= function
+         | Prelude.Error.Error x ->
+            Lwt.fail (Exn NotEnoughFragments)
+         | Prelude.Error.Ok (_, _, packed_fragment) ->
             Fragment_helper.verify' packed_fragment fragment_checksum
             >>= fun checksum_valid ->
             if not checksum_valid
@@ -577,27 +568,27 @@ class client ?(retry_timeout = 60.)
           inner ()
         end
 
-    method garbage_collect_device ~osd_id ~namespace_id ~gc_epoch =
+    method garbage_collect_device
+             ~osd_id
+             ~namespace_id
+             ~gc_epoch
+      =
       let open Osd_keys in
       let open Slice in
-      let first = wrap_string (AlbaInstance.gc_epoch_tag
-          ~namespace_id ~gc_epoch:0L
-          ~object_id:"" ~version_id:0
-          ~chunk_id:0 ~fragment_id:0) in
-      let finc = true in
       let last =
         let l = AlbaInstance.gc_epoch_tag
             ~namespace_id ~gc_epoch:(Int64.succ gc_epoch)
             ~object_id:"" ~version_id:0
             ~chunk_id:0 ~fragment_id:0 in
         Some (wrap_string l, false) in
-      let rec inner () =
+      let rec inner first =
         alba_client # with_osd
           ~osd_id
           (fun client ->
            client # range
                   Osd.Low
-                  ~first ~finc ~last ~reverse:false ~max:100)
+                  ~first ~finc:true ~last
+                  ~reverse:false ~max:100)
         >>= fun ((cnt, keys), has_more) ->
 
         (* TODO could optimize here by grouping together per object_id first *)
@@ -665,10 +656,16 @@ class client ?(retry_timeout = 60.)
                else cleanup_fragment ())
           keys >>= fun () ->
         if has_more && filter namespace_id
-        then inner ()
+        then inner (List.last keys |> Option.get_some_default first)
         else Lwt.return ()
       in
-      inner ()
+      let first =
+        wrap_string (AlbaInstance.gc_epoch_tag
+                       ~namespace_id ~gc_epoch:0L
+                       ~object_id:"" ~version_id:0
+                       ~chunk_id:0 ~fragment_id:0)
+      in
+      inner first
 
     method garbage_collect_namespace ?(once=false) ~namespace_id ~grace_period =
 
@@ -757,8 +754,8 @@ class client ?(retry_timeout = 60.)
                   end
                 else
                   Lwt.return_unit) >>= fun () ->
-              Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
-              inner ()
+              Lwt_extra2.sleep_approx (15. *. retry_timeout) >>=
+              inner
           in
           inner ()
         end
@@ -1102,10 +1099,10 @@ class client ?(retry_timeout = 60.)
                | None -> None
                | Some (p,b) -> Some (Slice.wrap_string p, b)
              in
-             let rec inner () =
+             let rec inner (first, finc) =
                client # range
                  Osd.Low
-                 ~first:namespace_prefix' ~finc:true
+                 ~first ~finc
                  ~last:namespace_next_prefix
                  ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
                client # apply_sequence
@@ -1117,10 +1114,10 @@ class client ?(retry_timeout = 60.)
                if not (filter work_id)
                then Lwt.fail NotMyTask
                else if has_more
-               then inner ()
+               then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
                else Lwt.return ()
              in
-             inner ())
+             inner (namespace_prefix', true))
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->

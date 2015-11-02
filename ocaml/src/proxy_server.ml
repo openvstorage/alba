@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,49 +75,50 @@ let write_albamgr_cfg albamgr_cfg destination =
        Lwt_unix.fsync fd) >>= fun () ->
   Lwt_unix.rename tmp destination
 
+let read_objects_slices
+      (alba_client : Alba_client.alba_client)
+      namespace objects_slices ~consistent_read =
+  let total_length, objects_slices =
+    List.fold_left
+      (fun (offset, acc) (object_name, object_slices) ->
+       let offset' =
+         List.fold_left
+           (fun offset (_, slice_length) -> offset + slice_length)
+           offset
+           object_slices
+       in
+       offset', (offset, object_name, object_slices) :: acc)
+      (0, [])
+      objects_slices
+  in
+
+  let res = Bytes.create total_length in
+
+  Lwt_list.iter_p
+    (fun (offset, object_name, object_slices) ->
+     alba_client # download_object_slices
+                 ~namespace
+                 ~object_name
+                 ~object_slices
+                 ~consistent_read
+                 (fun dest_off src off len ->
+                  Lwt_bytes.blit_to_bytes src off res (offset + dest_off) len;
+                  Lwt.return ()) >>= function
+     | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
+     | Some _ -> Lwt.return ())
+    objects_slices >>= fun () ->
+
+  Lwt.return res
+
 let proxy_protocol (alba_client : Alba_client.alba_client)
-                   (stats: ProxyStatistics.t)
+                   (stats: ProxyStatistics.t')
                    (nfd:Net_fd.t) ic =
+
   let execute_request : type i o. (i, o) Protocol.request ->
-                             ProxyStatistics.t ->
+                             ProxyStatistics.t' ->
                              i -> o Lwt.t
                           =
     let open Protocol in
-    let read_objects_slices namespace objects_slices ~consistent_read =
-      begin
-        let total_length, objects_slices =
-          List.fold_left
-            (fun (offset, acc) (object_name, object_slices) ->
-             let offset' =
-               List.fold_left
-                 (fun offset (_, slice_length) -> offset + slice_length)
-                 offset
-                 object_slices
-             in
-             offset', (offset, object_name, object_slices) :: acc)
-            (0, [])
-            objects_slices
-        in
-
-        let res = Bytes.create total_length in
-
-        Lwt_list.iter_p
-          (fun (offset, object_name, object_slices) ->
-           alba_client # download_object_slices
-                       ~namespace
-                       ~object_name
-                       ~object_slices
-                       ~consistent_read
-                       (fun dest_off src off len ->
-                        Lwt_bytes.blit_to_bytes src off res (offset + dest_off) len;
-                        Lwt.return ()) >>= function
-           | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-           | Some _ -> Lwt.return ())
-          objects_slices >>= fun () ->
-
-        Lwt.return res
-      end
-    in
     function
     | ListNamespaces -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
       (* TODO only return namespaces which are active? hmm, maybe creating too... *)
@@ -214,7 +215,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | ReadObjectsSlices ->
        fun stats (namespace, objects_slices, consistent_read) ->
        with_timing_lwt
-         (fun () -> read_objects_slices namespace objects_slices ~consistent_read)
+         (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
        >>= fun (delay, bytes ) ->
        let total_length = Bytes.length bytes in
        let n_slices = List.length objects_slices in
@@ -528,10 +529,11 @@ let run_server hosts port
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());
               (let rec log_stats () =
-                 Lwt_unix.sleep 60. >>= fun () ->
                  Lwt_log.info_f
                    "stats:\n%s%!"
-                   (ProxyStatistics.show stats) >>= fun () ->
+                   (ProxyStatistics.show' ~only_changed:true stats) >>= fun () ->
+                 let cnt = ProxyStatistics.clear_ns_stats_changed stats in
+                 Lwt_unix.sleep (max 60. (6 * cnt |> float)) >>= fun () ->
                  log_stats ()
                in
                log_stats ());

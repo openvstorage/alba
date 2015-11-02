@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,4 +71,5 @@ class type osd = object
   method set_full : bool -> unit Lwt.t
   method get_version : (int * int * int * string) Lwt.t
   method get_long_id : string
+  method get_disk_usage : (int64 * int64) Lwt.t
 end

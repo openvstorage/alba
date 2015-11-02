@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -125,9 +125,11 @@ let run t ~fsync ~fs_fd =
       _harvest_from_buffer
         t.high_prio_writes
         res cost write_batch_cost
-      >>= fun (res, _) ->
+      >>= fun (res, cost) ->
 
       (if fsync
+          (* no need to sync if there are no waiters! *)
+          && res <> []
        then begin
            let waiters_len = List.length res in
            Lwt_log.debug_f "Starting syncfs for %i waiters" waiters_len >>= fun () ->
@@ -139,7 +141,7 @@ let run t ~fsync ~fs_fd =
              else if t_syncfs < 4.0 then Lwt_log.info_f
              else Lwt_log.warning_f
            in
-           logger "syncfs took %f for %i waiters" t_syncfs waiters_len
+           logger "syncfs took %f for %i waiters, cost %i" t_syncfs waiters_len cost
          end else
          Lwt.return_unit)
       >>= fun () ->

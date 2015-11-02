@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,11 @@ type t = {
   mutable read : timestamp list;
   mutable seen : timestamp list;
   mutable errors : (timestamp * string) list;
-  mutable json: string option;
+  mutable ips   : string list option;
+  mutable port  : int option;
+  mutable json  : string option;
+  mutable total : int64 option;
+  mutable used  : int64 option;
   }[@@deriving show]
 
 let reset osd_state =
@@ -30,7 +34,11 @@ let reset osd_state =
   osd_state.write <- [];
   osd_state.errors <- [];
   osd_state.seen <- [];
-  osd_state.json <- None
+  osd_state.ips <- None;
+  osd_state.port <- None;
+  osd_state.json <- None;
+  osd_state.total <- None;
+  osd_state.used <- None
 
 let make () = {
     disqualified = false;
@@ -38,7 +46,11 @@ let make () = {
     read = [];
     errors = [];
     seen = [];
+    ips = None;
+    port = None;
     json = None;
+    total = None;
+    used = None;
   }
 
 let add_error t exn =
@@ -60,6 +72,14 @@ let add_read t =
 let add_seen t =
   let ts = Unix.gettimeofday () in
   t.seen <- _head (ts:: t.seen)
+
+let add_ips_port t ips port =
+  t.ips <- Some ips;
+  t.port <- Some port
+
+let add_disk_usage t (used, total) =
+  t.used <- Some used;
+  t.total <- Some total
 
 let add_json t json =
   t.json <- Some json
@@ -89,7 +109,11 @@ let to_buffer buf t =
   l f buf t.write;
   l (Llio.pair_to f Llio.string_to) buf t.errors;
   l f buf t.seen;
-  Llio.option_to Llio.string_to buf t.json
+  Llio.option_to Llio.string_to buf t.json;
+  Llio.option_to (Llio.list_to Llio.string_to) buf t.ips;
+  Llio.option_to Llio.int_to buf t.port;
+  Llio.option_to Llio.int64_to buf t.used;
+  Llio.option_to Llio.int64_to buf t.total
 
 let from_buffer buf =
   let ser_version = Llio.int8_from buf in
@@ -102,6 +126,15 @@ let from_buffer buf =
   let errors = l (Llio.pair_from f Llio.string_from) buf in
   let seen = l f buf in
   let json = Llio.option_from Llio.string_from buf in
-  { disqualified;read;write;errors;seen; json}
+  let ips = Llio.option_from (Llio.list_from Llio.string_from) buf in
+  let port = Llio.option_from Llio.int_from buf in
+  let used = Llio.option_from Llio.int64_from buf in
+  let total = Llio.option_from Llio.int64_from buf in
+  { disqualified;
+    read; write; errors; seen;
+    ips; port;
+    json;
+    total; used;
+  }
 
 let deser_state = from_buffer, to_buffer

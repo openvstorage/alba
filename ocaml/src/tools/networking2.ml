@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,6 +82,9 @@ let with_connection ip port ~tls_config ~buffer_pool f =
 exception No_connection
 
 let first_connection ips port ~tls_config =
+  Lwt_log.debug_f
+    "connecting with ips=%s port=%i"
+    ([%show : string list] ips) port >>= fun () ->
   let count = List.length ips in
   let res = Lwt_mvar.create_empty () in
   let err = Lwt_mvar.create None in
@@ -150,15 +153,14 @@ let first_connection' ?close_msg buffer_pool ips port ~tls_config =
   in
   Lwt.return (nfd, conn, closer)
 
-let make_server hosts port protocol =
+let make_server ?(cancel = Lwt_condition.create ()) hosts port protocol =
   let server_loop socket_address =
-    let domain = Unix.domain_of_sockaddr socket_address in
-    let listening_socket = Lwt_unix.socket domain Unix.SOCK_STREAM 0 in
-    Lwt_unix.setsockopt listening_socket Unix.SO_REUSEADDR true;
-    Lwt_unix.bind listening_socket socket_address;
-    Lwt_unix.listen listening_socket 1024;
-    let rec inner () =
-      Lwt_unix.accept listening_socket >>= fun (_fd, cl_socket_address) ->
+    let rec inner listening_socket =
+      Lwt.pick
+        [ Lwt_unix.accept listening_socket;
+          (Lwt_condition.wait cancel >>= fun () ->
+           Lwt.fail Lwt.Canceled); ]
+      >>= fun (_fd, cl_socket_address) ->
       let nfd = Net_fd.wrap _fd in
       Lwt_log.info "Got new client connection" >>= fun () ->
       Lwt.ignore_result
@@ -184,8 +186,18 @@ let make_server hosts port protocol =
                       (Printexc.to_string exn)
                  ))
         end;
-      inner () in
-    inner ()
+      inner listening_socket in
+    let domain = Unix.domain_of_sockaddr socket_address in
+    let listening_socket = Lwt_unix.socket domain Unix.SOCK_STREAM 0 in
+    Lwt.finalize
+      (fun () ->
+       Lwt_unix.setsockopt listening_socket Unix.SO_REUSEADDR true;
+       Lwt_unix.bind listening_socket socket_address;
+       Lwt_unix.listen listening_socket 1024;
+       inner listening_socket)
+      (fun () ->
+       Lwt_log.info_f "Closing listening socket on port %i" port >>= fun () ->
+       Lwt_unix.close listening_socket)
   in
   let addresses =
     List.map

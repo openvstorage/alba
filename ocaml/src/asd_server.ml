@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -316,11 +316,13 @@ let execute_query : type req res.
                          Rocks_key_value_store.t ->
                          Asd_io_scheduler.t ->
                          DirectoryInfo.t ->
+                         AsdMgmt.t ->
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
                          req ->
                          (string * (Net_fd.t -> unit Lwt.t)) Lwt.t
-  = fun kv io_sched dir_info stats q ->
+  = fun kv io_sched dir_info mgmt stats q ->
+
     let open Protocol in
     let serialize_with_length res =
       serialize_with_length
@@ -470,7 +472,9 @@ let execute_query : type req res.
                     Asd_statistics.AsdStatistics.snapshot stats clear |> return'
     | GetVersion -> fun () ->
                     return' Alba_version.summary
-
+    | GetDiskUsage ->
+       fun () ->
+       return' !(mgmt.AsdMgmt.latest_disk_usage)
 
 exception ConcurrentModification
 
@@ -859,6 +863,7 @@ let check_asd_id kv asd_id =
 let done_writing (nfd:Net_fd.t) = Lwt.return_unit
 
 let asd_protocol
+      ?cancel
       kv ~release_fnr ~slow io_sched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
@@ -896,7 +901,7 @@ let asd_protocol
        begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
-                execute_query kv io_sched dir_info stats q req
+                execute_query kv io_sched dir_info mgmt stats q req
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update
@@ -925,7 +930,14 @@ let asd_protocol
     write_extra nfd
   in
   let rec inner () =
-    Llio.input_string ic >>= fun req_s ->
+    (match cancel with
+     | None -> Llio.input_string ic
+     | Some cancel ->
+        Lwt.pick
+          [ (Lwt_condition.wait cancel >>= fun () ->
+             Lwt.fail Lwt.Canceled);
+            Llio.input_string ic; ])
+    >>= fun req_s ->
     let buf = Llio.make_buffer req_s 0 in
     let code = Llio.int32_from buf in
     let command = Protocol.code_to_command code in
@@ -1025,6 +1037,7 @@ class check_garbage_from_advancer check_garbage_from kv =
   end
 
 let run_server
+      ?cancel
       hosts port path
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1241,6 +1254,7 @@ let run_server
         (fun buffer ->
          let ic = Net_fd.make_ic ~buffer nfd in
          asd_protocol
+           ?cancel
            kv
            ~release_fnr:(fun fnr -> advancer # release fnr)
            ~slow
@@ -1251,7 +1265,7 @@ let run_server
            ~get_next_fnr
            asd_id nfd ic)
     in
-    Networking2.make_server hosts port protocol
+    Networking2.make_server ?cancel hosts port protocol
   in
 
   let reporting_t =

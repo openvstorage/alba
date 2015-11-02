@@ -1,5 +1,5 @@
 (*
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -323,6 +323,7 @@ module Protocol = struct
     | GetVersion: (unit, (int * int * int *string)) query
     | MultiGet2 : (key list * priority, Value.t option list) query
     | MultiExists: (key list * priority, bool list) query
+    | GetDiskUsage : (unit, (int64 * int64)) query
   [@deriving show]
 
   type ('request, 'response) update =
@@ -342,6 +343,7 @@ module Protocol = struct
                       Wrap_query GetVersion,   7l, "GetVersion";
                       Wrap_query MultiGet2,    8l, "MultiGet2";
                       Wrap_query MultiExists,  9l, "MultiExists";
+                      Wrap_query GetDiskUsage, 10l, "GetDiskUsage";
                     ]
 
   let wrap_unknown_operation f =
@@ -381,6 +383,7 @@ module Protocol = struct
          Llio.pair_to
            (Llio.list_to Slice.to_buffer)
            priority_to_buffer
+      | GetDiskUsage -> Llio.unit_to
 
   let query_request_deserializer : type req res. (req, res) query -> req Llio.deserializer
     = function
@@ -406,6 +409,7 @@ module Protocol = struct
        Llio.pair_from
          (Llio.list_from Slice.from_buffer)
          maybe_priority_from_buffer
+    | GetDiskUsage -> Llio.unit_from
 
   let query_response_serializer : type req res. (req, res) query -> res Llio.serializer
     = function
@@ -433,6 +437,10 @@ module Protocol = struct
            Llio.int_to
            Llio.string_to)
       | MultiExists -> Llio.list_to Llio.bool_to
+      | GetDiskUsage ->
+         Llio.pair_to
+           Llio.int64_to
+           Llio.int64_to
 
   let query_response_deserializer : type req res. (req, res) query -> res Llio.deserializer
     = function
@@ -460,6 +468,10 @@ module Protocol = struct
                          Llio.string_from
                       )
       | MultiExists -> Llio.list_from Llio.bool_from
+      | GetDiskUsage ->
+         Llio.pair_from
+           Llio.int64_from
+           Llio.int64_from
 
   let update_request_serializer : type req res. (req, res) update -> req Llio.serializer
     = function

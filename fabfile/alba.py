@@ -1,5 +1,5 @@
 """
-Copyright 2015 Open vStorage NV
+Copyright 2015 iNuron NV
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -311,7 +311,7 @@ def create_namespace(namespace, abm_cfg = arakoon_config_file, tls = False):
         abm_cfg
     ]
     if tls:
-        alba._extend_alba_tls(cmd)
+        _extend_alba_tls(cmd)
 
     cmd_line = ' '.join(cmd)
     where = local
