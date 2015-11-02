@@ -283,28 +283,19 @@ class client ?(retry_timeout = 60.)
            (List.nth_exn manifest.fragment_packed_sizes chunk_id)
            (List.nth_exn manifest.fragment_checksums chunk_id)
          >>= fun recovery_info_slice ->
-         let key_string =
-           Osd_keys.AlbaInstance.fragment
-             ~namespace_id
-             ~object_id ~version_id:version
-             ~chunk_id ~fragment_id
-         in
-         let key = Slice.wrap_string key_string in
-         let open Alba_client_errors.Error in
-         Lwt_log.debug_f
-           "chunk %i: fetching fragment %i from osd_id:%li"
-           chunk_id fragment_id source_osd
-         >>= fun () ->
 
-         alba_client # with_osd
-           ~osd_id:source_osd
-           (fun osd_client ->
-            osd_client # get_option
-                       Osd.Low
-                       key)
-         >>= function
-         | None -> Lwt.fail (Exn NotEnoughFragments)
-         | Some packed_fragment ->
+         let open Alba_client_errors.Error in
+
+         Alba_client_download.download_packed_fragment
+           (alba_client # osd_access)
+           ~location:(List.nth_exn chunk_location fragment_id |> fst)
+           ~namespace_id
+           ~object_id ~object_name
+           ~chunk_id ~fragment_id
+           (alba_client # get_fragment_cache) >>= function
+         | Prelude.Error.Error x ->
+            Lwt.fail (Exn NotEnoughFragments)
+         | Prelude.Error.Ok (_, _, packed_fragment) ->
             Fragment_helper.verify' packed_fragment fragment_checksum
             >>= fun checksum_valid ->
             if not checksum_valid
@@ -1102,10 +1093,10 @@ class client ?(retry_timeout = 60.)
                | None -> None
                | Some (p,b) -> Some (Slice.wrap_string p, b)
              in
-             let rec inner () =
+             let rec inner (first, finc) =
                client # range
                  Osd.Low
-                 ~first:namespace_prefix' ~finc:true
+                 ~first ~finc
                  ~last:namespace_next_prefix
                  ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
                client # apply_sequence
@@ -1117,10 +1108,10 @@ class client ?(retry_timeout = 60.)
                if not (filter work_id)
                then Lwt.fail NotMyTask
                else if has_more
-               then inner ()
+               then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
                else Lwt.return ()
              in
-             inner ())
+             inner (namespace_prefix', true))
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->

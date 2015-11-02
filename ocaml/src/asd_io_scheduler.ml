@@ -125,7 +125,7 @@ let run t ~fsync ~fs_fd =
       _harvest_from_buffer
         t.high_prio_writes
         res cost write_batch_cost
-      >>= fun (res, _) ->
+      >>= fun (res, cost) ->
 
       (if fsync
           (* no need to sync if there are no waiters! *)
@@ -141,7 +141,7 @@ let run t ~fsync ~fs_fd =
              else if t_syncfs < 4.0 then Lwt_log.info_f
              else Lwt_log.warning_f
            in
-           logger "syncfs took %f for %i waiters" t_syncfs waiters_len
+           logger "syncfs took %f for %i waiters, cost %i" t_syncfs waiters_len cost
          end else
          Lwt.return_unit)
       >>= fun () ->

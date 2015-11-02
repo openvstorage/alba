@@ -39,24 +39,17 @@ let get_object_manifest'
     lookup_on_nsm_host
     ~consistent_read ~should_cache
 
+module E = Prelude.Error.Lwt
+let (>>==) = E.bind
 
-(* consumers of this method are responsible for freeing
- * the returned fragment bigstring
- *)
-let download_fragment
+let download_packed_fragment
       (osd_access : osd_access)
       ~location
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
-      ~replication
-      ~fragment_checksum
-      decompress
-      ~encryption
       fragment_cache
   =
-  let module E = Prelude.Error.Lwt in
-  let (>>==) = E.bind in
 
   let osd_id_o, version_id = location in
 
@@ -65,7 +58,11 @@ let download_fragment
    | Some osd_id -> E.return osd_id)
   >>== fun osd_id ->
 
-  let t0_fragment = Unix.gettimeofday () in
+  Lwt_log.debug_f
+    "object (%S, %S) chunk %i: fetching fragment %i"
+    object_id object_name
+    chunk_id fragment_id
+  >>= fun () ->
 
   let key_string =
     Osd_keys.AlbaInstance.fragment
@@ -116,15 +113,42 @@ let download_fragment
                               (Slice.get_string_unsafe data)
               );
             let hit_or_mis = false in
-            E.return (hit_or_mis, data)
+            E.return (osd_id, hit_or_mis, data)
        end
     | Some data ->
        let hit_or_mis = true in
-       E.return (hit_or_mis, Slice.wrap_string data)
+       E.return (osd_id, hit_or_mis, Slice.wrap_string data)
   in
+  retrieve key
 
-  E.with_timing (fun () -> retrieve key)
-  >>== fun (t_retrieve, (hit_or_miss, fragment_data)) ->
+(* consumers of this method are responsible for freeing
+ * the returned fragment bigstring
+ *)
+let download_fragment
+      (osd_access : osd_access)
+      ~location
+      ~namespace_id
+      ~object_id ~object_name
+      ~chunk_id ~fragment_id
+      ~replication
+      ~fragment_checksum
+      decompress
+      ~encryption
+      fragment_cache
+  =
+
+  let t0_fragment = Unix.gettimeofday () in
+
+  E.with_timing
+    (fun () ->
+     download_packed_fragment
+       osd_access
+       ~location
+       ~namespace_id
+       ~object_id ~object_name
+       ~chunk_id ~fragment_id
+       fragment_cache)
+  >>== fun (t_retrieve, (osd_id, hit_or_miss, fragment_data)) ->
 
   let fragment_data' = Slice.to_bigstring fragment_data in
 
