@@ -285,6 +285,20 @@ let tls_config =
      Some {ca_cert; cert;key}
  *)
 
+let produce_xml default =
+  let doc = "produce xml in ./testresults.xml. $(docv): bool" in
+  Arg.(value
+       & opt bool default
+       & info ["xml"] ~docv:"XML" ~doc)
+
+
+let only_test =
+  Arg.(value
+       & opt_all string []
+       & info ["only-test"] ~docv:"ONLY-TEST" ~doc:"limit tests to filter:$(docv)"
+  )
+
+
 let verify_log_level log_level =
   let levels = [ "debug"; "info"; "notice"; "warning"; "error"; "fatal"; ] in
   if not (List.mem log_level levels)

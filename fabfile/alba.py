@@ -581,8 +581,8 @@ def demo_setup(kind = default_kind,
 
 
 @task
-def smoke_test(sudo = False):
-    m = arakoon_who_master()
+def smoke_test(sudo = False, tls = False):
+    m = arakoon_who_master(tls = tls)
     print "master:", m
     fuser = "fuser"
     centos = False

@@ -47,16 +47,17 @@ def clean():
         where("cd ocaml/ && rm -rf _build")
 
 
-def setup_demo_alba(kind = default_kind):
+def setup_demo_alba(kind = default_kind, tls = False):
     alba.demo_kill()
-    alba.demo_setup()
+    alba.demo_setup(tls = tls)
 
 @task
 def run_tests_cpp(xml=False, kind=default_kind,
                   valgrind = False,
-                  filter = None):
+                  filter = None,
+                  tls = 'False'):
 
-    setup_demo_alba(kind)
+    setup_demo_alba(kind, tls = tls)
 
     where = local
     where("rm -rf /tmp/alba/ocaml/")
@@ -109,9 +110,10 @@ def run_tests_ocaml(xml=False,tls = False,
 
 @task
 def run_tests_voldrv_backend(xml=False, kind = default_kind,
+                             tls = 'False',
                              filter = None, dump = None):
     alba.demo_kill()
-    alba.demo_setup(kind)
+    alba.demo_setup(kind, tls = tls)
     time.sleep(1)
     where = local
     cmd0 = ""
@@ -126,9 +128,10 @@ def run_tests_voldrv_backend(xml=False, kind = default_kind,
     where(cmd)
 
 @task
-def run_tests_voldrv_tests(xml=False, kind = default_kind, dump = None):
+def run_tests_voldrv_tests(xml=False, kind = default_kind,
+                           tls = 'False', dump = None):
     alba.demo_kill()
-    alba.demo_setup(kind)
+    alba.demo_setup(kind, tls = tls)
     time.sleep(1)
     where = local
     cmd = "%s --skip-backend-setup 1 --backend-config-file ./cfg/backend.json --gtest_filter=SimpleVolumeTests/SimpleVolumeTest* --loglevel=error" % env['voldrv_tests']
@@ -139,18 +142,23 @@ def run_tests_voldrv_tests(xml=False, kind = default_kind, dump = None):
     where(cmd)
 
 @task
-def run_tests_disk_failures(xml=False):
+def run_tests_disk_failures(xml=False, tls = 'False'):
     alba.demo_kill()
-    alba.demo_setup()
+    alba.demo_setup(tls = tls)
     time.sleep(1)
     where = local
-    cmd = "%s" % env['failure_tester']
+    cmd = [env['failure_tester']]
     if xml:
-        cmd = cmd + " --xml=true"
-    where(cmd)
+        cmd.append(" --xml=true")
+    if tls:
+        alba._extend_alba_tls(cmd)
+
+    print cmd
+    cmd_s = " ".join(cmd)
+    where(cmd_s)
 
 @task
-def run_tests_stress(kind = default_kind, xml = False, tls = False):
+def run_tests_stress(kind = default_kind, xml = False, tls = 'False'):
     alba.demo_kill()
     alba.demo_setup(kind = kind, tls = tls)
     time.sleep(1)
@@ -172,6 +180,9 @@ def run_tests_stress(kind = default_kind, xml = False, tls = False):
 
     def list_namespaces_cmd():
         cmd = build_cmd('list-namespaces')
+        if tls:
+            alba._extend_alba_tls(cmd)
+
         cmd.append('--to-json')
         cmd.append('2> /dev/null')
         cmd_s = ' '.join(cmd)
@@ -380,9 +391,9 @@ def spreadsheet_my_ass(start=0, end = 13400):
 
 
 @task
-def run_test_asd_start(xml=False):
+def run_test_asd_start(xml=False, tls = 'False'):
     alba.demo_kill()
-    alba.demo_setup()
+    alba.demo_setup(tls = tls)
 
     local("dd if=/dev/urandom of=/tmp/alba/obj bs=1M count=1")
 
@@ -422,30 +433,37 @@ def run_test_asd_start(xml=False):
         'demo', '1', '/tmp/alba/obj2'
     ]))
 
-    alba.smoke_test()
+    alba.smoke_test(tls = tls)
 
     if xml:
         alba.dump_junit_xml()
 
 @task
-def run_test_big_object():
+def run_test_big_object(tls = 'False'):
     alba.demo_kill()
-    alba.demo_setup()
-
-    # create the preset in albamgr
-    local(" ".join([
+    alba.demo_setup(tls = tls)
+    cmd = [
         env['alba_bin'],
         'create-preset', 'preset_no_compression',
         '--config', arakoon_config_file,
-        '< ./cfg/preset_no_compression.json'
-    ]))
 
-    # create new namespace with this preset
-    local(" ".join([
+    ]
+    if tls:
+        alba._extend_alba_tls(cmd)
+
+    cmd.append('< ./cfg/preset_no_compression.json')
+    # create the preset in albamgr
+    local(" ".join(cmd))
+
+    cmd = [
         env['alba_bin'],
         'create-namespace', 'big', 'preset_no_compression',
         '--config', arakoon_config_file
-    ]))
+    ]
+    if tls:
+        alba._extend_alba_tls(cmd)
+    # create new namespace with this preset
+    local(" ".join(cmd))
 
     # upload a big object
     local("truncate -s 2G /tmp/alba/obj")
@@ -467,11 +485,14 @@ def run_test_big_object():
         port = 8000+i
         alba.osd_stop(port)
         long_id = "%i_%i_%s" % (port, 2000, alba.local_nodeid_prefix)
-        local(" ".join([
+        cmd = [
             env['alba_bin'],
             'decommission-osd', '--long-id', long_id,
             '--config', arakoon_config_file
-        ]))
+        ]
+        if tls:
+            alba._extend_alba_tls(cmd)
+        local(" ".join(cmd))
 
     # TODO
     # wait for maintenance process to repair it

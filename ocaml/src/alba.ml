@@ -710,18 +710,7 @@ let unit_tests produce_xml alba_cfg_file tls_config only_test =
 
 
 let unit_tests_cmd =
-  let produce_xml default =
-    let doc = "produce xml in ./testresults.xml. $(docv): bool" in
-    Arg.(value
-         & opt bool default
-         & info ["xml"] ~docv:"XML" ~doc)
-  in
-  let only_test =
-    Arg.(value
-         & opt_all string []
-         & info ["only-test"] ~docv:"ONLY-TEST" ~doc:"limit tests to filter:$(docv)"
-    )
-  in
+
   Term.(pure unit_tests
         $ produce_xml false
         $ alba_cfg_file
