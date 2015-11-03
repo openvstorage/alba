@@ -68,7 +68,8 @@ RUN eval `${opam_env}` && opam install -y \
         kinetic-client \
         tiny_json \
         ppx_deriving_yojson \
-        core_kernel
+        core_kernel \
+        cohttp
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue

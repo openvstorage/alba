@@ -181,11 +181,12 @@ module ProxyStatistics = struct
 
     let find t ns =
       Hashtbl.replace t.changed_ns_stats ns ();
-      try H.find t.t.ns_stats ns
-      with Not_found ->
-        let v = ns_make () in
-        let () = t.t.ns_stats <- H.add t.t.ns_stats ns v in
-        v
+      match H.find t.t.ns_stats ns with
+      | Some v -> v
+      | None ->
+         let v = ns_make () in
+         let () = t.t.ns_stats <- H.add t.t.ns_stats ns v in
+         v
 
     let show' ~only_changed t =
       show

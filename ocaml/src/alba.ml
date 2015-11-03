@@ -736,10 +736,11 @@ let namespace_recovery_agent_cmd =
   ),
   Term.info "namespace-recovery-agent" ~doc:"recover the contents of a namespace from the osds"
 
-let unit_tests produce_xml alba_cfg_file tls_config only_test =
+let unit_tests produce_xml alba_cfg_file keystone_password tls_config only_test =
   Albamgr_test.ccfg_ref :=
     Some (Albamgr_protocol.Protocol.Arakoon_config.from_config_file alba_cfg_file);
   let () = Albamgr_test._tls_config_ref := tls_config in
+  Keystone_test.password := keystone_password;
   let () = install_logger ~channel:Lwt_io.stdout () in
 
   let rec rc_of =
@@ -786,6 +787,9 @@ let unit_tests_cmd =
   Term.(pure unit_tests
         $ produce_xml false
         $ alba_cfg_file
+        $ Arg.(required
+               & opt (some string) None
+               & info ["keystone-password"] ~docv:"keystone password")
         $ tls_config
         $ only_test
   ),

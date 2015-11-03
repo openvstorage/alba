@@ -405,7 +405,7 @@ let test_choose_extra_bug2() =
     let node_id = osd.node_id in
     (extra_id, node_id)
   in
-  let count' = (List.assoc node_id chosen_list) + 1 in
+  let count' = (List.assoc_exn node_id chosen_list) + 1 in
   Printf.printf
     "%li on node:%s => %i osds on that node\n"
     extra_id node_id count';

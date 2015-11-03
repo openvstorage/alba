@@ -72,7 +72,8 @@ RUN eval `${opam_env}` && opam install -y \
         kinetic-client \
         tiny_json \
         ppx_deriving_yojson \
-        core_kernel
+        core_kernel \
+        cohttp
 
 RUN wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
 RUN tar xfzv isa-l-2.14.0.tar.gz

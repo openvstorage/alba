@@ -296,6 +296,11 @@ module List = struct
            end
     in
     (_inner max_n [] x y) |> List.rev
+
+  let assoc_exn = assoc
+  let assoc a l =
+    try Some (assoc_exn a l)
+    with Not_found -> None
 end
 
 module Option = struct
