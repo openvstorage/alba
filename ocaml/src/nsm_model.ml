@@ -369,10 +369,13 @@ module EncryptInfo = struct
     | k ->
       raise_bad_tag "Nsm_model.Encryption" k
 
-  let from_encryption = function
+  let from_encryption namespace = function
     | Encryption.NoEncryption ->
       NoEncryption
     | Encryption.AlgoWithKey (algo, key) ->
+      Encrypted (algo, get_id_for_key key)
+    | Encryption.Keystone (algo, cfg) ->
+      let key = Keystone_encryption_config.get_key cfg namespace in
       Encrypted (algo, get_id_for_key key)
 end
 

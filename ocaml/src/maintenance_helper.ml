@@ -103,9 +103,14 @@ let upload_missing_fragments
   in
 
   let object_id = manifest.Manifest.object_id in
+
+  alba_client # nsm_host_access # get_namespace_info ~namespace_id
+  >>= fun (namespace, _, _, _) ->
+
   RecoveryInfo.make
-    manifest.Manifest.name
-    object_id
+    ~namespace
+    ~object_name:manifest.Manifest.name
+    ~object_id
     object_info_o
     encryption
     (List.nth_exn manifest.Manifest.chunk_sizes chunk_id)

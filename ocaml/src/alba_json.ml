@@ -252,7 +252,8 @@ module Preset = struct
         (let open Encryption in
          match preset.fragment_encryption with
          | AlgoWithKey (AES (CBC, L256), key) -> AES_CBC_256 (HexString.show key)
-         | NoEncryption -> NO_ENCRYPTION);
+         | NoEncryption -> NO_ENCRYPTION
+         | Keystone _ -> failwith "TODO");
       in_use;
     }
 

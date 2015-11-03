@@ -52,7 +52,13 @@ let repair_object_generic
   let es, compression = match manifest.Manifest.storage_scheme with
     | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
   let enc = manifest.Manifest.encrypt_info in
-  let encryption = Albamgr_protocol.Protocol.Preset.get_encryption preset enc in
+
+  begin
+    alba_client # nsm_host_access # get_namespace_info ~namespace_id
+    >>= fun (namespace, _, _, _) ->
+    Lwt.return (Albamgr_protocol.Protocol.Preset.get_encryption preset enc namespace)
+  end >>= fun encryption ->
+
   let decompress = Fragment_helper.maybe_decompress compression in
   let k, m, w = match es with
     | Encoding_scheme.RSVM (k, m, w) -> k, m, w in

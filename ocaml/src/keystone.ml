@@ -26,6 +26,11 @@ let get_json_property (json : Yojson.Safe.json) prop =
   | `Assoc props -> List.assoc prop props
   | _ -> None
 
+(* keystone documentation available at
+- http://docs.openstack.org/developer/keystone/http-api.html#i-have-a-non-python-client
+- http://specs.openstack.org/openstack/keystone-specs/api/v3/identity-api-v3.html
+ *)
+
 class client ~url ?(domain="Default") ~username ~password ~project () =
   let make_uri x = Uri.of_string (url ^ x) in
   let to_headers headers_ =

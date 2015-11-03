@@ -349,6 +349,8 @@ let gather_and_push_objects
 
 
       let open Nsm_model in
+      alba_client # nsm_host_access # get_namespace_info ~namespace_id
+      >>= fun (namespace, _, _, _) ->
       let manifest : Manifest.t =
         Manifest.make
           ~name:object_name
@@ -356,7 +358,7 @@ let gather_and_push_objects
           ~storage_scheme
           ~size
           ~checksum
-          ~encrypt_info:(EncryptInfo.from_encryption encryption)
+          ~encrypt_info:(EncryptInfo.from_encryption namespace encryption)
           ~timestamp
           ~chunk_sizes
           ~fragment_locations
@@ -404,9 +406,12 @@ let gather_and_push_objects
                RecoveryInfo.from_buffer
                Llio.int32_from)
             (Iterator.get_value it) in
+        alba_client # nsm_host_access # get_namespace_info ~namespace_id
+        >>= fun (namespace, _, _, _) ->
         RecoveryInfo.t_to_t'
           recovery_info'
           encryption
+          ~namespace
           ~object_id >>= fun recovery_info ->
 
         let cur = { object_id;

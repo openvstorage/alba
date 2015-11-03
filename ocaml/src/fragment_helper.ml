@@ -75,6 +75,8 @@ let maybe_encrypt
       key Cipher.AES256 Cipher.CBC []
       (fun cipher -> Cipher.encrypt ~iv cipher bs) >>= fun () ->
     Lwt.return (Bigstring_slice.wrap_bigstring bs)
+  | Keystone (AES (CBC, L256) as algo, cfg) ->
+    failwith "TODO"
 
 let maybe_decrypt
     encryption
@@ -98,6 +100,8 @@ let maybe_decrypt
              data 0 (Lwt_bytes.length data)) >>= fun () ->
         Lwt.return (Padding.unpad data)
     end
+  | Keystone (AES (CBC, L256) as algo, cfg) ->
+     failwith "TODO"
 
 let maybe_compress compression fragment_data =
   let open Lwt.Infix in

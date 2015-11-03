@@ -244,9 +244,11 @@ class client ?(retry_timeout = 60.)
       >>= fun gc_epoch ->
 
       let enc = manifest.encrypt_info in
-      let encryption =
-        Albamgr_protocol.Protocol.Preset.get_encryption preset enc
-      in
+
+      alba_client # nsm_host_access # get_namespace_info ~namespace_id
+      >>= fun (namespace, _, _, _) ->
+      let encryption = Albamgr_protocol.Protocol.Preset.get_encryption preset enc namespace in
+
       Lwt_list.map_s
         (fun (chunk_id, chunk_location) ->
          let source_fragment =
@@ -276,8 +278,9 @@ class client ?(retry_timeout = 60.)
          in
 
          RecoveryInfo.make
-           object_name
-           object_id
+           ~namespace
+           ~object_name
+           ~object_id
            object_info_o
            encryption
            (List.nth_exn manifest.chunk_sizes chunk_id)
@@ -535,7 +538,8 @@ class client ?(retry_timeout = 60.)
       if once
       then
         begin
-          alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, devices, _) ->
+          alba_client # nsm_host_access # get_namespace_info ~namespace_id
+          >>= fun (_, _, devices, _) ->
 
           Lwt_list.iter_p
             (fun osd_id -> self # clean_device_obsolete_keys ~namespace_id ~osd_id)
@@ -548,7 +552,8 @@ class client ?(retry_timeout = 60.)
             (if filter namespace_id
              then
                begin
-                 alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
+                 alba_client # nsm_host_access # get_namespace_info ~namespace_id
+                 >>= fun (_, _, osds, _) ->
                  List.iter
                    (fun osd_id ->
                     if not (Hashtbl.mem threads osd_id)
@@ -681,7 +686,7 @@ class client ?(retry_timeout = 60.)
       let bump_epoch () =
         let open Nsm_model in
         alba_client # nsm_host_access # get_namespace_info ~namespace_id
-        >>= fun (_, _, gc_epochs) ->
+        >>= fun (_, _, _, gc_epochs) ->
 
         match GcEpochs.get_latest_valid gc_epochs with
         | None ->
@@ -723,7 +728,7 @@ class client ?(retry_timeout = 60.)
           | None -> Lwt.return ()
           | Some latest_gc_epoch ->
             alba_client # nsm_host_access # get_namespace_info ~namespace_id
-            >>= fun (_, devices, _) ->
+            >>= fun (_, _, devices, _) ->
             Lwt_list.iter_p
               (fun osd_id ->
                  self # garbage_collect_device
@@ -742,7 +747,7 @@ class client ?(retry_timeout = 60.)
                 then
                   begin
                     alba_client # nsm_host_access # get_namespace_info ~namespace_id
-                    >>= fun (_, devices, _) ->
+                    >>= fun (_, _, devices, _) ->
                     List.iter
                       (fun osd_id ->
                        if not (Hashtbl.mem threads osd_id)
@@ -1510,6 +1515,7 @@ class client ?(retry_timeout = 60.)
          wait_until_ns_active current >>= fun ns_info ->
 
          alba_client # nsm_host_access # maybe_update_namespace_info
+           ~namespace
            ~namespace_id
            ns_info >>= fun _ ->
 

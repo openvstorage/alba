@@ -139,7 +139,7 @@ class nsm_host_access
     new Nsm_client.client c namespace_id
   in
 
-  let maybe_update_namespace_info ~namespace_id ns_info =
+  let maybe_update_namespace_info ~namespace ~namespace_id ns_info =
 
     let nsm_host_id =
       let open Albamgr_protocol.Protocol in
@@ -171,7 +171,10 @@ class nsm_host_access
             (fun () ->
                nsm # list_all_active_osds >>= fun (_, osds) ->
                get_gc_epoch () >>= fun gc_epochs ->
-               Hashtbl.replace namespace_id_to_info_cache namespace_id (ns_info, osds, gc_epochs);
+               Hashtbl.replace
+                 namespace_id_to_info_cache
+                 namespace_id
+                 (namespace, ns_info, osds, gc_epochs);
                Lwt.return `Continue)
             (function
               | Error.Albamgr_exn (Error.Namespace_does_not_exist, _)
@@ -191,19 +194,23 @@ class nsm_host_access
         in
         inner ()
       end;
-      Hashtbl.replace namespace_id_to_info_cache namespace_id (ns_info, osds, gc_epochs);
-      Lwt.return (ns_info, osds, gc_epochs)
+      let r = (namespace, ns_info, osds, gc_epochs) in
+      Hashtbl.replace
+        namespace_id_to_info_cache
+        namespace_id
+        r;
+      Lwt.return r
     end
   in
   let get_namespace_info ~namespace_id =
     try Lwt.return (Hashtbl.find namespace_id_to_info_cache namespace_id)
     with Not_found ->
       mgr # get_namespace_by_id ~namespace_id
-      >>= fun (_,namespace_name, namespace_info) ->
-      maybe_update_namespace_info ~namespace_id namespace_info
+      >>= fun (_, namespace, namespace_info) ->
+      maybe_update_namespace_info ~namespace ~namespace_id namespace_info
   in
   let get_gc_epoch ~namespace_id =
-    get_namespace_info ~namespace_id >>= fun (_, _, gc_epochs) ->
+    get_namespace_info ~namespace_id >>= fun (_, _, _, gc_epochs) ->
     let gc_epoch_o = Nsm_model.GcEpochs.get_latest_valid gc_epochs in
     Lwt.return (Option.get_some gc_epoch_o)
   in
@@ -222,7 +229,7 @@ class nsm_host_access
       with Not_found ->
         get_namespace_id_info () >>= fun (namespace_id, ns_info) ->
         Hashtbl.replace namespace_to_id_cache namespace namespace_id;
-        maybe_update_namespace_info ~namespace_id ns_info >>= fun _ ->
+        maybe_update_namespace_info ~namespace ~namespace_id ns_info >>= fun _ ->
         Lwt.return namespace_id
     end >>= fun namespace_id ->
     Lwt.catch
@@ -276,7 +283,7 @@ class nsm_host_access
   in
 
   let refresh_namespace_osds ~namespace_id =
-    get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+    get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
     let nsm = get_nsm'
         ~namespace_id
         ~nsm_host_id:ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id in
@@ -286,14 +293,17 @@ class nsm_host_access
     (* update the cache with the newly found osds *)
     (match Hashtbl.find namespace_id_to_info_cache namespace_id with
      | exception Not_found -> ()
-     | (ns_info, _, gc_epochs) ->
-       Hashtbl.replace namespace_id_to_info_cache namespace_id (ns_info, snd osds, gc_epochs));
+     | (namespace, ns_info, _, gc_epochs) ->
+       Hashtbl.replace
+         namespace_id_to_info_cache
+         namespace_id
+         (namespace, ns_info, snd osds, gc_epochs));
 
     Lwt.return osds
   in
 
   let get_nsm_by_id ~namespace_id =
-    get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+    get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
     let nsm_host_id = ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id in
     let nsm_host_basic = get_basic ~nsm_host_id in
     Lwt.return (new Nsm_client.client nsm_host_basic namespace_id)

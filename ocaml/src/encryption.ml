@@ -65,6 +65,7 @@ module Encryption = struct
   type t =
     | NoEncryption
     | AlgoWithKey of algo * key
+    | Keystone of algo * Keystone_encryption_config.t
   [@@deriving show]
 
   let to_buffer buf = function
@@ -74,6 +75,10 @@ module Encryption = struct
       Llio.int8_to buf 2;
       algo_to_buffer buf algo;
       Llio.string_to buf key
+    | Keystone (algo, c) ->
+      Llio.int8_to buf 3;
+      algo_to_buffer buf algo;
+      Keystone_encryption_config.to_buffer buf c
 
   let from_buffer buf =
     match Llio.int8_from buf with
@@ -82,6 +87,10 @@ module Encryption = struct
       let algo = algo_from_buffer buf in
       let key = Llio.string_from buf in
       AlgoWithKey (algo, key)
+    | 3 ->
+      let algo = algo_from_buffer buf in
+      let c = Keystone_encryption_config.from_buffer buf in
+      Keystone (algo, c)
     | k -> raise_bad_tag "Encryption.t" k
 
   let key_length = function
@@ -91,6 +100,7 @@ module Encryption = struct
     | NoEncryption -> true
     | AlgoWithKey (algo, key) ->
       key_length algo = String.length key
+    | Keystone (AES (CBC, L256), _) -> true
 
   let verify_key_length algo key =
     assert (key_length algo = String.length key)

@@ -61,7 +61,7 @@ class client
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
 
   let get_namespace_osds_info_cache ~namespace_id =
-    nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
+    nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, _, osds, _) ->
     osd_access # osds_to_osds_info_cache osds
   in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
@@ -94,7 +94,7 @@ class client
 
     method get_ns_preset_info ~namespace_id =
       let open Albamgr_protocol.Protocol in
-      nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+      nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
       get_preset_info ~preset_name:ns_info.Namespace.preset_name
 
     method get_namespace_osds_info_cache = get_namespace_osds_info_cache
@@ -508,9 +508,9 @@ class client
                in
 
                let open Albamgr_protocol.Protocol in
-               nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+               nsm_host_access # get_namespace_info ~namespace_id >>= fun (namespace, ns_info, _, _) ->
                get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-               let encryption = Preset.get_encryption preset enc in
+               let encryption = Preset.get_encryption preset enc namespace in
 
                let _, _, intersections_rev =
                  List.fold_left
@@ -789,9 +789,9 @@ class client
       let w' = Encoding_scheme.w_as_int w in
 
       let open Albamgr_protocol.Protocol in
-      nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+      nsm_host_access # get_namespace_info ~namespace_id >>= fun (namespace, ns_info, _, _) ->
       get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-      let encryption = Preset.get_encryption preset enc in
+      let encryption = Preset.get_encryption preset enc namespace in
 
       let open Manifest in
 

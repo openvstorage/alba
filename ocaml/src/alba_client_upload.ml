@@ -101,7 +101,7 @@ let upload_packed_fragment_data
 
 let upload_chunk
       osd_access
-      ~namespace_id
+      ~namespace ~namespace_id
       ~object_id ~object_name
       ~chunk ~chunk_id ~chunk_size
       ~k ~m ~w'
@@ -133,8 +133,9 @@ let upload_chunk
       fragments_with_id
   in
   RecoveryInfo.make
-    object_name
-    object_id
+    ~namespace
+    ~object_name
+    ~object_id
     object_info_o
     encryption
     chunk_size
@@ -206,7 +207,7 @@ let upload_object''
 
   object_reader # reset >>= fun () ->
 
-  nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+  nsm_host_access # get_namespace_info ~namespace_id >>= fun (namespace, ns_info, _, _) ->
   let open Albamgr_protocol in
   get_preset_info ~preset_name:ns_info.Protocol.Namespace.preset_name >>= fun preset ->
 
@@ -254,7 +255,7 @@ let upload_object''
     Storage_scheme.EncodeCompressEncrypt
       (Encoding_scheme.RSVM (k, m, w),
        compression),
-    EncryptInfo.from_encryption encryption
+    EncryptInfo.from_encryption namespace encryption
   in
 
   let object_checksum_algo =
@@ -365,7 +366,7 @@ let upload_object''
         (fun () ->
          upload_chunk
            osd_access
-           ~namespace_id
+           ~namespace ~namespace_id
            ~object_id ~object_name
            ~chunk:chunk' ~chunk_size:chunk_size_with_padding
            ~chunk_id

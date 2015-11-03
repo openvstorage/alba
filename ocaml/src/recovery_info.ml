@@ -98,7 +98,7 @@ module RecoveryInfo = struct
     let payload = Llio.string_from buf in
     { encrypt_info; payload; }
 
-  let t'_to_t t' encryption ~object_id =
+  let t'_to_t t' encryption ~object_id ~namespace =
     let open Lwt.Infix in
     serialize to_buffer' t'
     |> Compressors.Bzip2.compress_string_to_ba
@@ -109,13 +109,13 @@ module RecoveryInfo = struct
          ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
     >>= fun encrypted ->
     let payload = Bigstring_slice.to_string encrypted in
-    let encrypt_info = EncryptInfo.from_encryption encryption in
+    let encrypt_info = EncryptInfo.from_encryption namespace encryption in
     Lwt.return { payload; encrypt_info; }
 
-  let t_to_t' t encryption ~object_id =
+  let t_to_t' t encryption ~object_id ~namespace =
     let open Lwt.Infix in
 
-    let encrypt_info' = EncryptInfo.from_encryption encryption in
+    let encrypt_info' = EncryptInfo.from_encryption namespace encryption in
     assert (encrypt_info' = t.encrypt_info);
 
     Fragment_helper.maybe_decrypt
@@ -129,7 +129,14 @@ module RecoveryInfo = struct
     in
     Lwt.return t'
 
-  let make object_name object_id object_info_o encryption chunk_size fragment_sizes fragment_checksums =
+  let make
+        ~namespace
+        ~object_name ~object_id
+        object_info_o
+        encryption
+        chunk_size
+        fragment_sizes
+        fragment_checksums =
     let open Lwt.Infix in
     (t'_to_t
        { name = object_name;
@@ -138,6 +145,7 @@ module RecoveryInfo = struct
          fragment_checksums;
          object_info_o; }
        encryption
+       ~namespace
        ~object_id) >>= fun recov_info ->
     let recovery_info_slice =
       serialize

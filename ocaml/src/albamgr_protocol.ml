@@ -517,7 +517,7 @@ module Protocol = struct
         object_checksum; fragment_checksum_algo;
         fragment_encryption; }
 
-    let get_encryption t encrypt_info =
+    let get_encryption t encrypt_info namespace =
       let open Nsm_model in
       let open Encryption.Encryption in
       match t.fragment_encryption, encrypt_info with
@@ -531,8 +531,21 @@ module Protocol = struct
           then t.fragment_encryption
           else failwith "encrypted with another key"
         end else failwith "algo mismatch for decryption"
-      | NoEncryption, EncryptInfo.Encrypted _
-      | AlgoWithKey _, EncryptInfo.NoEncryption ->
+      | Keystone (AES (CBC, L256) as algo, cfg), EncryptInfo.Encrypted (algo', id) ->
+        if algo = algo'
+        then
+          begin
+            let key = Keystone_encryption_config.get_key cfg namespace in
+            let id' = EncryptInfo.get_id_for_key key in
+            if id = id'
+            then t.fragment_encryption
+            else failwith "encrypted with another key"
+          end
+        else
+          failwith "algo mismatch for decryption"
+      | NoEncryption,  EncryptInfo.Encrypted _
+      | AlgoWithKey _, EncryptInfo.NoEncryption
+      | Keystone _,    EncryptInfo.NoEncryption ->
         failwith "encryption & enc_info mismatch during decryption"
 
 
