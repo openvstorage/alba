@@ -494,11 +494,13 @@ let alba_add_osd cfg_file tls_config host port node_id to_json attempts =
     | Some n -> n
   in
   let t () =
-    Discovery.get_kind Buffer_pool.default_buffer_pool [host] port >>= function
+    let conn_info = Networking2.make_conn_info [host] port tls_config in
+    Discovery.get_kind Buffer_pool.default_buffer_pool conn_info >>= function
     | None -> Lwt.fail_with "I don't think this is an OSD"
     | Some kind ->
 
-       Remotes.Pool.Osd.factory Buffer_pool.osd_buffer_pool kind >>= fun (osd_client, closer) ->
+       Remotes.Pool.Osd.factory tls_config Buffer_pool.osd_buffer_pool kind
+       >>= fun (osd_client, closer) ->
        Lwt_log.debug_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
        let other = "other?" in
        (* TODO: we guess it's a 4TB drive for now *)

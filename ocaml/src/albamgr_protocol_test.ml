@@ -6,9 +6,10 @@ let test_apply () =
     Update.make ~ips':[] ~port':0 ~used':10L ~total':99L ~seen':seen ()
   in
   let ts = [4.;3.;2.;1.;0.] in
+  let kind = Asd(([],8000, false),"asd") in
   let info =
     make
-      ~kind:(Asd([],8000,"asd"))
+      ~kind
       ~node_id:"node_id" ~other:"" ~total:100L ~used:0L
       ~decommissioned:false
       ~seen:ts
@@ -19,9 +20,10 @@ let test_apply () =
   in
   let u1 = create [6.1;5.1;4.1;3.1;2.1;1.1] in
   let r = Update.apply info u1 in
+  let kind = Asd(([], 0, false),"asd") in
   let expected =
     make
-      ~kind:(Asd([], 0,"asd"))
+      ~kind
       ~node_id:"node_id" ~other:"" ~total:99L ~used:10L
       ~decommissioned:false
       ~seen:[6.1;5.1;4.1;4.0;3.1;3.0;2.1;2.0;1.1;1.0]

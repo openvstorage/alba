@@ -117,13 +117,14 @@ let make_client buffer_pool ccfg =
   in
   let open Client_helper in
   Lwt_log.debug_f "Nsm_host_client.make_client" >>= fun () ->
-  let tls = Tls.to_context tls_config in
+  let tls = Tls.to_client_context tls_config in
   find_master' ~tls ccfg >>= function
   | MasterLookupResult.Found (m, ncfg) ->
-    let open Arakoon_client_config in
+     let open Arakoon_client_config in
+     let conn_info = Networking2.make_conn_info ncfg.ips ncfg.port tls_config in
     Networking2.first_connection'
       buffer_pool
-      ncfg.ips ncfg.port ~tls_config
+      ~conn_info
       ~close_msg:"closing nsm_host"
     >>= fun (fd, conn, closer) ->
     Lwt.catch
@@ -139,7 +140,7 @@ let make_client buffer_pool ccfg =
 
 let with_client cfg tls_config f =
   let ccfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg in
-  let tls = Tls.to_context tls_config in
+  let tls = Tls.to_client_context tls_config in
   let open Nsm_model in
   Lwt.catch
     (fun () ->

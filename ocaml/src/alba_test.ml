@@ -260,7 +260,7 @@ let test_delete_namespace () =
            Lwt_io.printlf "asserting about nsm_host" >>= fun () ->
            let cfg = Albamgr_test.get_ccfg () in
            let tls_config = Albamgr_test.get_tls_config () in
-           let tls = Tls.to_context tls_config in
+           let tls = Tls.to_client_context tls_config in
            Client_helper.with_master_client'
              ~tls
              (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg)
@@ -703,7 +703,9 @@ let test_discover_claimed () =
                                         used = 1L;
                                       });
                                     ips = ["::1"];
-                                    port = 8230; })) >>= fun () ->
+                                    port = 8230;
+                                    tlsPort = Some 8730;
+                                  })) >>= fun () ->
 
             let is_osd_available () =
               alba_client # mgr_access # list_available_osds
@@ -1160,7 +1162,9 @@ let test_disk_churn () =
                                             used = 1L;
                                           });
                                         ips = ["::1"];
-                                        port = asd_port; })) >>= fun () ->
+                                        port = asd_port;
+                                        tlsPort = None;
+                                      })) >>= fun () ->
                 alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
                 with_asds
                   f
@@ -1514,7 +1518,9 @@ let test_add_disk () =
                                         used = 1L;
                                       });
                                     ips = ["::1"];
-                                    port = asd_port; })) >>= fun () ->
+                                    port = asd_port;
+                                    tlsPort = None;
+                                  })) >>= fun () ->
             alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
 
             alba_client # mgr_access # list_namespace_osds
@@ -1584,7 +1590,7 @@ let test_master_switch () =
 
   let rec wait_until_master () =
     let open Client_helper in
-    let tls = Tls.to_context tls_config in
+    let tls = Tls.to_client_context tls_config in
     find_master_loop ~tls cfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
@@ -1595,7 +1601,7 @@ let test_master_switch () =
   in
   let drop_master () =
     let open Client_helper in
-    let tls = Tls.to_context tls_config in
+    let tls = Tls.to_client_context tls_config in
     find_master_loop ~tls cfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->

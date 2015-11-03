@@ -51,13 +51,16 @@ module Osd = struct
       | AnotherAlba alba -> None, Some alba
       | Available -> None, None
     in
-    let k, ips, port, long_id =
+    let k, conn_info, long_id =
       match kind with
-      | Osd.Asd (ips, port, asd_id)    -> "AsdV1", ips, port, asd_id
-      | Osd.Kinetic(ips, port, kin_id) -> "Kinetic3", ips, port, kin_id
+      | Osd.Asd (conn_info, asd_id)    -> "AsdV1", conn_info, asd_id
+      | Osd.Kinetic(conn_info, kin_id) -> "Kinetic3", conn_info, kin_id
     in
+    let ips, port, _ = conn_info in
     { id; alba_id;
-      kind = k; ips; port; node_id; long_id;
+      kind = k;
+      ips; port;
+      node_id; long_id;
       total; used;
       seen; read; write; errors;
     }

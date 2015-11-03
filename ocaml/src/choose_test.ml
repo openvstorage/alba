@@ -34,7 +34,9 @@ let test () =
       else
         let device_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
-        let kind = Osd.Asd (["::1"], 8000 +i, "asd id choose test " ^ (string_of_int i) ) in
+        let kind = Osd.Asd ((["::1"], 8000 +i, false),
+                            "asd id choose test " ^ (string_of_int i) )
+        in
         let d_info =
           Osd.make
             ~node_id ~kind
@@ -90,7 +92,8 @@ let choose_bug () =
     else
       let device_id = Int32.of_int i in
       let node_id = "my node" in
-      let kind = Osd.Asd(["::1"], 8000 + i, "asd id choose bug " ^ string_of_int i) in
+      let conn_info = ["::1"], 8000 + i, false in
+      let kind = Osd.Asd(conn_info, "asd id choose bug " ^ string_of_int i) in
       let d_info =
         Osd.make
           ~node_id ~kind ~decommissioned:false ~other:""
@@ -123,7 +126,8 @@ let choose_forced () =
       else
         let osd_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
-        let kind = Osd.Asd (["::1"], 8000 +i, "osd id choose forced test " ^ (string_of_int i) ) in
+        let conn_info = (["::1"], 8000 +i, false) in
+        let kind = Osd.Asd (conn_info, "osd id choose forced test " ^ (string_of_int i) ) in
         let d_info =
           Osd.make
             ~node_id ~kind
@@ -314,31 +318,31 @@ let test_actually_rebalances () =
   ()
 
 let setup_explicit_info info_list =
-    let make_kind osd_id =
-      Osd.Asd (["::1"],
-               8000 + (Int32.to_int osd_id),
-               "asd id choose test " ^ (Int32.to_string osd_id)
-              )
+  let make_kind osd_id =
+    let conn_info = ["::1"],8000 + (Int32.to_int osd_id), false
+    and asd_id = "asd id choose test " ^ (Int32.to_string osd_id)
     in
-    let info = Hashtbl.create 15 in
-    let () =
-      List.iter
-        (fun (osd_id,node_id) ->
-         let d_info =
-           Osd.make
-             ~node_id
-             ~kind:(make_kind osd_id)
-             ~decommissioned:false
-             ~other:""
-             ~total:_TOTAL ~used:_USED
-             ~seen:[]
-             ~read:[]
-             ~write:[]
-             ~errors:[]
-         in
-         Hashtbl.add info osd_id d_info) info_list
-    in
-    info
+    Osd.Asd (conn_info, asd_id)
+  in
+  let info = Hashtbl.create 15 in
+  let () =
+    List.iter
+      (fun (osd_id,node_id) ->
+       let d_info =
+         Osd.make
+           ~node_id
+           ~kind:(make_kind osd_id)
+           ~decommissioned:false
+           ~other:""
+           ~total:_TOTAL ~used:_USED
+           ~seen:[]
+           ~read:[]
+           ~write:[]
+           ~errors:[]
+       in
+       Hashtbl.add info osd_id d_info) info_list
+  in
+  info
 
 let test_choose_extra_bug () =
   let n = 1

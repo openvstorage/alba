@@ -221,12 +221,13 @@ module Protocol = struct
         =
         let my_compare x y = compare y x in
         let kind =
-          let ips, port = get_ips_port osd.kind in
-          let ips' = Option.get_some_default ips ips' in
+          let ips, port, tls = get_conn_info osd.kind in
+          let ips'  = Option.get_some_default ips ips' in
           let port' = Option.get_some_default port port' in
+          let conn_info' = (ips',port', false) in
           match osd.kind with
-          | Asd (_, _, asd_id) -> Asd (ips', port', asd_id)
-          | Kinetic (_, _, k_id) -> Kinetic (ips', port', k_id)
+          | Asd (_, asd_id)   -> Asd (conn_info', asd_id)
+          | Kinetic (_, k_id) -> Kinetic (conn_info', k_id)
         in
         let max_n = 10 in
         { node_id = osd.node_id;

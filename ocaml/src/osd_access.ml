@@ -27,7 +27,9 @@ class osd_access
         ~osd_connection_pool_size
         ~osd_timeout
         ~default_osd_priority
+        ~tls_config
   =
+  let () = Lwt_log.ign_debug_f "osd_access ... tls_config:%s" ([%show : Tls.t option] tls_config) in
   let osd_long_id_claim_info = ref StringMap.empty in
 
   let osds_info_cache =
@@ -62,7 +64,7 @@ class osd_access
             "refresh_osd_total_used"
             (fun () ->
              Pool.Osd.factory
-               osd_buffer_pool
+               tls_config osd_buffer_pool
                (Hashtbl.find osds_info_cache osd_id |> fst).Osd.kind
              >>= fun (osd, closer) ->
              Lwt.finalize
@@ -85,6 +87,7 @@ class osd_access
        let open Albamgr_protocol.Protocol in
        Lwt.return osd_info.Osd.kind)
       osd_buffer_pool
+      tls_config
   in
 
   let refresh_osd_info ~osd_id =
@@ -224,6 +227,9 @@ class osd_access
     method get_osd_claim_info = !osd_long_id_claim_info
     method osd_timeout = osd_timeout
 
+    method osd_factory osd_info =
+      Pool.Osd.factory tls_config osd_buffer_pool osd_info.Albamgr_protocol.Protocol.Osd.kind
+
     method osds_to_osds_info_cache osds =
       let res = Hashtbl.create 0 in
       Lwt_list.iter_p
@@ -306,7 +312,7 @@ class osd_access
       function
       | Bad s ->
          Lwt_log.info_f "Got 'bad' broadcast message: %s" s
-      | Good (json, { id; extras; ips; port; }) ->
+      | Good (json, { id; extras; ips; port; tlsPort }) ->
 
          let open Albamgr_protocol.Protocol in
 
@@ -336,11 +342,15 @@ class osd_access
          then
            begin
              Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
-
+             let conn_info =
+               match tlsPort with
+               | None -> (ips,port,false)
+               | Some tlsPort -> (ips, tlsPort, true)
+             in
              (match extras with
               | None ->
-                 let kind = Osd.Kinetic (ips, port, id) in
-                 Pool.Osd.factory osd_buffer_pool kind >>= fun (osd, closer) ->
+                 let kind = Osd.Kinetic (conn_info, id) in
+                 Pool.Osd.factory tls_config osd_buffer_pool kind >>= fun (osd, closer) ->
                  Lwt.finalize
                    (fun () -> osd # get_disk_usage)
                    closer >>= fun (used, total) ->
@@ -350,7 +360,7 @@ class osd_access
               | Some { node_id; version; total; used; } ->
                  Lwt.return
                    (node_id,
-                    Osd.Asd (ips, port, id),
+                    Osd.Asd (conn_info, id),
                     used, total))
              >>= fun (node_id, kind, used, total) ->
 
@@ -398,7 +408,7 @@ class osd_access
                         let rec inner () =
                           Lwt.catch
                             (fun () ->
-                             Pool.Osd.factory osd_buffer_pool kind >>= fun (osd, closer) ->
+                             Pool.Osd.factory tls_config osd_buffer_pool kind >>= fun (osd, closer) ->
                              Lwt.finalize
                                (fun () ->
                                 osd # get_option

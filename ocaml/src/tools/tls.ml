@@ -43,24 +43,36 @@ let to_ssl_cfg (t:t) =
     protocol = _PROTOCOL
   }
 
-let to_context =
+let _maybe_init =
   let init = ref false in
-  function
-  | None -> None
-  | Some (t:t) ->
-     let () =
-       if not !init then
+  fun () ->
+  begin
+    if not !init then
          begin
            Ssl_threads.init ();
            Ssl.init ~thread_safe:true ();
            init := true;
            Lwt_log.ign_info "ssl library initialized"
          end
-     in
+  end
+
+let to_client_context = function
+  | None -> None
+  | Some (t:t) ->
+     let () = _maybe_init () in
      let ctx = Typed_ssl.create_client_context _PROTOCOL in
      let () = match
          t.creds with
        | None -> ()
        | Some (cert,key) -> Typed_ssl.use_certificate ctx cert key
      in
+     Some ctx
+
+let to_server_context = function
+  | None -> None
+  | Some cfg ->
+     let open Asd_config.Config in
+     let () = _maybe_init () in
+     let ctx = Typed_ssl.create_server_context _PROTOCOL in
+     let () = Typed_ssl.use_certificate ctx cfg.cert cfg.key in
      Some ctx

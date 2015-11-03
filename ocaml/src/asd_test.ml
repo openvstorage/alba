@@ -23,9 +23,10 @@ let buffer_pool = Buffer_pool.osd_buffer_pool
 let rec wait_asd_connection port asd_id () =
   Lwt.catch
     (fun () ->
+     let conn_info = Networking2.make_conn_info [ "::1" ] port None in
      Asd_client.with_client
        buffer_pool
-       [ "::1" ] port asd_id
+       ~conn_info  asd_id
        (fun client -> Lwt.return `Continue))
     (function
       | exn when Networking2.is_connection_failure_exn exn ->
@@ -59,15 +60,18 @@ let with_asd_client ?(is_restart=false) test_name port f =
            ~buffer_size:(768*1024)
            ~rocksdb_max_open_files:256
            ~limit:90L
+           ~tls:None
+           ~configuredTlsPort:None
            ~multicast:(Some 10.0) >>= fun () ->
          Lwt.fail_with "Asd server stopped!");
         begin
           Lwt_unix.with_timeout
             5.
             (wait_asd_connection port asd_id)>>= fun () ->
+          let conn_info = Networking2.make_conn_info [ "::1" ] port None in
           Asd_client.with_client
             buffer_pool
-            [ "::1" ] port (Some test_name)
+            ~conn_info (Some test_name)
             f >>= fun r ->
           Lwt_condition.broadcast cancel ();
           Lwt.return r
@@ -242,7 +246,8 @@ let test_protocol_version port () =
   let protocol_test port =
     Lwt.catch
       (fun () ->
-       Networking2.first_connection' buffer_pool ["::1"] port ~tls_config:None
+       let conn_info = Networking2.make_conn_info ["::1"] port None in
+       Networking2.first_connection' buffer_pool ~conn_info
        >>= fun (_, (ic,oc), closer) ->
        Lwt.finalize
          (fun () ->
@@ -275,6 +280,8 @@ let test_protocol_version port () =
           ~buffer_size:(768*1024)
           ~rocksdb_max_open_files:256
           ~limit:90L
+          ~tls:None
+          ~configuredTlsPort:None
           ~multicast:(Some 10.0);
         Lwt_unix.with_timeout
           5.

@@ -299,8 +299,8 @@ module Net_fd = struct
   include Net_fd
   (*
     we don't want this to end up in the arakoon plugins,
-    where it isn't needed, used and pulls along cstruct
-    and friends
+    where it's needed nor used
+    and pulls along cstruct and friends
    *)
   let sendfile_all ~fd_in ~(fd_out:t) size =
     match fd_out with
@@ -309,7 +309,32 @@ module Net_fd = struct
          ~fd_in
          ~fd_out:fd
          size
-
+    | SSL(_,socket) ->
+       let buffer = Lwt_bytes.create 4096 in
+       let copy_using buffer =
+         let buffer_size = Lwt_bytes.length buffer in
+          let write_all socket buffer offset length =
+            let write_from_source = Lwt_ssl.write_bytes socket buffer in
+            Lwt_extra2._write_all write_from_source offset length
+          in
+          let rec loop todo =
+            if todo = 0
+            then Lwt.return_unit
+            else
+              begin
+                let step =
+                  if todo <= buffer_size
+                  then todo
+                  else buffer_size
+                in
+                Lwt_bytes.read fd_in        buffer 0 step >>= fun bytes_read ->
+                write_all socket buffer 0 bytes_read >>= fun () ->
+                loop (todo - bytes_read)
+              end
+          in
+          loop size
+       in
+       copy_using buffer
 end
 
 let execute_query : type req res.
@@ -1038,14 +1063,25 @@ class check_garbage_from_advancer check_garbage_from kv =
 
 let run_server
       ?cancel
-      hosts port path
+      (hosts:string list)
+      (port:int)
+      (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
       ~buffer_size
       ~rocksdb_max_open_files
-      ~limit ~multicast =
+      ~limit
+      ~multicast
+      ~tls
+      ~configuredTlsPort
+  =
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision
   >>= fun () ->
+  Lwt_log.debug_f "tls:%s; configuredTlsPort:%s"
+                  ([%show: Asd_config.Config.tls option] tls)
+                  ([%show: int option] configuredTlsPort)
+  >>= fun () ->
+  let ctx = Tls.to_server_context tls in
   let db_path = path ^ "/db" in
   Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
   let kv =
@@ -1245,29 +1281,33 @@ let run_server
     Lwt.return r
   in
   let mgmt = AsdMgmt.make latest_disk_usage limit in
-
-  let server_t =
-    let buffer_pool = Buffer_pool.create ~buffer_size in
-    let protocol nfd =
-      Buffer_pool.with_buffer
-        buffer_pool
-        (fun buffer ->
-         let ic = Net_fd.make_ic ~buffer nfd in
-         asd_protocol
-           ?cancel
-           kv
-           ~release_fnr:(fun fnr -> advancer # release fnr)
-           ~slow
-           io_sched
-           dir_info
-           stats
-           ~mgmt
-           ~get_next_fnr
-           asd_id nfd ic)
-    in
-    Networking2.make_server ?cancel hosts port protocol
+  let buffer_pool = Buffer_pool.create ~buffer_size in
+  let protocol nfd =
+    Buffer_pool.with_buffer
+      buffer_pool
+      (fun buffer ->
+       let ic = Net_fd.make_ic ~buffer nfd in
+       asd_protocol
+         ?cancel
+         kv
+         ~release_fnr:(fun fnr -> advancer # release fnr)
+         ~slow
+         io_sched
+         dir_info
+         stats
+         ~mgmt
+         ~get_next_fnr
+         asd_id nfd ic)
   in
-
+  let server_t = Networking2.make_server ?cancel hosts port ~ctx:None protocol in
+  let maybe_add_tls_server threads =
+      match tls with
+      | None -> threads
+      | Some tls ->
+         let tlsPort = Option.get_some_default (port + 500) configuredTlsPort in
+         let t = Networking2.make_server ?cancel hosts tlsPort ~ctx protocol in
+         t :: threads
+  in
   let reporting_t =
     let section = AsdStatistics.section in
     Mem_stats.reporting_t
@@ -1280,7 +1320,7 @@ let run_server
                Asd_protocol.Protocol.code_to_description))
       ()
   in
-  let threads = [
+  let threads = maybe_add_tls_server [
       server_t;
       (Lwt_extra2.make_fuse_thread ());
       reporting_t;
@@ -1290,8 +1330,13 @@ let run_server
   let threads' = match multicast with
     | None -> threads
     | Some mcast_period ->
+       let tlsPort =
+         match tls with
+         | None   -> None
+         | Some _ -> Some (Option.get_some_default (port + 500) configuredTlsPort)
+       in
        let mcast_t () =
-         Discovery.multicast asd_id node_id hosts port mcast_period
+         Discovery.multicast asd_id node_id hosts port tlsPort mcast_period
                              ~disk_usage
        in
        mcast_t () :: threads

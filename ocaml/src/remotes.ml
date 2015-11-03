@@ -26,7 +26,7 @@ module Pool = struct
     let make ~size cfg tls_config buffer_pool =
       let factory () =
         let ccfg = Arakoon_config.to_arakoon_client_cfg tls_config !cfg in
-        let tls = Tls.to_context tls_config in
+        let tls = Tls.to_client_context tls_config in
         Lwt.catch
           (fun () -> Albamgr_client.make_client buffer_pool ccfg)
           (let open Client_helper in
@@ -145,28 +145,38 @@ module Pool = struct
       get_osd_kind : Osd.id -> Osd.kind Lwt.t;
       pool_size : int;
       buffer_pool : Buffer_pool.t;
+      tls_config: Tls.t option;
     }
 
-    let make ~size get_osd_kind buffer_pool =
+    let make ~size get_osd_kind buffer_pool tls_config =
       let pools = Hashtbl.create 0 in
       { pools;
         get_osd_kind;
         pool_size = size;
         buffer_pool;
+        tls_config
       }
 
-    let factory buffer_pool =
+    let factory tls_config buffer_pool =
       let open Osd in
       function
-      | Asd (ips, port, asd_id) ->
-        Asd_client.make_client buffer_pool ips port (Some asd_id)
-        >>= fun (asd, closer) ->
-        let osd = new Asd_client.asd_osd asd_id asd in
-        Lwt.return (osd, closer)
-      | Kinetic (ips, port, kinetic_id) ->
-        Kinetic_client.make_client buffer_pool ips port kinetic_id
-        >>= fun (kin, closer) ->
-        Lwt.return (kin, closer)
+      | Asd (conn_info', asd_id) ->
+         let () =
+           Lwt_log.ign_debug_f
+             "factory: conn_info':%s"
+             ([%show :Nsm_model.OsdInfo.conn_info] conn_info')
+         in
+         let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
+
+         Asd_client.make_client buffer_pool ~conn_info (Some asd_id)
+         >>= fun (asd, closer) ->
+         let osd = new Asd_client.asd_osd asd_id asd in
+         Lwt.return (osd, closer)
+      | Kinetic (conn_info', kinetic_id) ->
+         let conn_info = Asd_client.conn_info_from conn_info' in
+         Kinetic_client.make_client buffer_pool ~conn_info kinetic_id
+         >>= fun (kin, closer) ->
+         Lwt.return (kin, closer)
 
     let use_osd t ~(osd_id:int32) f =
       let pool =
@@ -178,7 +188,7 @@ module Pool = struct
               ~check:(fun _ exn ->
                   (* TODO some exns shouldn't invalidate the connection *)
                   false)
-              ~factory:(fun () -> t.get_osd_kind osd_id >>= factory t.buffer_pool)
+              ~factory:(fun () -> t.get_osd_kind osd_id >>= factory t.tls_config t.buffer_pool)
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools osd_id p;

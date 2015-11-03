@@ -17,8 +17,6 @@ limitations under the License.
 open Prelude
 open Slice
 open Checksum
-open Remotes
-open Osd_access
 open Lwt.Infix
 
 let claim_osd mgr_access osd_access ~long_id =
@@ -31,7 +29,7 @@ let claim_osd mgr_access osd_access ~long_id =
   (* TODO check claim_info first (eventhough it's not strictly needed) *)
 
   let update_osd () =
-    Pool.Osd.factory osd_buffer_pool osd_info.Albamgr_protocol.Protocol.Osd.kind
+    osd_access # osd_factory osd_info
     >>= fun (osd, closer) ->
     Lwt.finalize
       (fun () ->

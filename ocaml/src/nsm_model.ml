@@ -33,19 +33,23 @@ module OsdInfo = struct
 
   type asd_id = string [@@deriving show, yojson]
   type kinetic_id = string [@@ deriving show, yojson]
+
+  type use_tls  = bool [@@ deriving show]
+  type conn_info = ip list * port * use_tls [@@ deriving show]
+
   type kind =
-    | Asd of ip list * port * asd_id
-    | Kinetic of ip list * port * kinetic_id
+    | Asd     of conn_info * asd_id
+    | Kinetic of conn_info * kinetic_id
                    [@@deriving show]
 
   let get_long_id = function
-    | Asd (_, _, asd_id) -> asd_id
-    | Kinetic (_,_,kinetic_id) -> kinetic_id
+    | Asd (_, asd_id)        -> asd_id
+    | Kinetic (_,kinetic_id) -> kinetic_id
 
-  let get_ips_port = function
-    | Asd (ips, port, _)
-    | Kinetic (ips, port, _) ->
-      ips, port
+  let get_conn_info = function
+    | Asd     (info, _)
+    | Kinetic (info, _) ->
+      info
 
   type t = {
     kind : kind;
@@ -79,18 +83,21 @@ module OsdInfo = struct
         total; used;
         seen; read; write; errors; } =
 
-    let ser_version = 1 in Llio.int8_to buf ser_version;
-
+    let ser_version = 2 in
+    Llio.int8_to buf ser_version;
+    let conn_info_to buf (ips,port,use_tls) =
+      Llio.list_to Llio.string_to buf ips;
+      Llio.int_to buf port;
+      Llio.bool_to buf use_tls
+    in
     let () = match kind with
-      | Asd (ips, port, asd_id) ->
+      | Asd (conn_info, asd_id) ->
         Llio.int8_to buf 1;
-        Llio.list_to Llio.string_to buf ips;
-        Llio.int_to buf port;
+        conn_info_to buf conn_info;
         Llio.string_to buf asd_id;
-      | Kinetic(ips, port, kin_id) ->
+      | Kinetic(conn_info, kin_id) ->
         Llio.int8_to buf 2;
-        Llio.list_to Llio.string_to buf ips;
-        Llio.int_to buf port;
+        conn_info_to buf conn_info;
         Llio.string_to buf kin_id
     in
     Llio.string_to buf node_id;
@@ -108,20 +115,18 @@ module OsdInfo = struct
       buf
       errors
 
-  let from_buffer buf =
-    let ser_version = Llio.int8_from buf in
-    assert (ser_version = 1);
+  let _from_buffer1 buf =
     let kind = match Llio.int8_from buf with
       | 1 ->
         let ips = Llio.list_from Llio.string_from buf in
         let port = Llio.int_from buf in
         let asd_id = Llio.string_from buf in
-        Asd (ips, port, asd_id)
+        Asd ((ips, port,false), asd_id)
       | 2 ->
         let ips = Llio.list_from Llio.string_from buf in
         let port = Llio.int_from buf in
         let kin_id = Llio.string_from buf in
-        Kinetic(ips, port, kin_id)
+        Kinetic((ips, port, false), kin_id)
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in
@@ -141,6 +146,47 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors;
     }
+
+  let _from_buffer2 buf =
+    let kind_v = Llio.int8_from buf in
+    let ips = Llio.list_from Llio.string_from buf in
+    let port = Llio.int_from buf in
+    let use_tls = Llio.bool_from buf in
+    let long_id = Llio.string_from buf in
+    let conn_info = ips,port,use_tls in
+    let kind = match kind_v with
+      | 1 -> Asd (conn_info, long_id)
+      | 2 -> Kinetic(conn_info, long_id)
+      | k -> raise_bad_tag "OsdInfo" k
+    in
+    let node_id = Llio.string_from buf in
+    let decommissioned = Llio.bool_from buf in
+    let other  = Llio.string_from buf in
+    let total  = Llio.int64_from buf in
+    let used   = Llio.int64_from buf in
+    let seen = Llio.list_from Llio.float_from buf in
+    let read = Llio.list_from Llio.float_from buf in
+    let write = Llio.list_from Llio.float_from buf in
+    let errors =
+      Llio.list_from
+        (Llio.pair_from
+           Llio.float_from
+           Llio.string_from)
+        buf in
+    { kind; node_id; decommissioned; other;
+      total; used;
+      seen; read; write; errors;
+    }
+
+
+  let from_buffer buf =
+    let ser_version = Llio.int8_from buf in
+    match ser_version with
+    | 1 -> _from_buffer1 buf
+    | 2 -> _from_buffer2 buf
+    | k -> raise_bad_tag "OsdInfo.ser_version" k
+
+
 
 end
 

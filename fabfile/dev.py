@@ -23,6 +23,7 @@ import sha
 import json
 import hashlib
 
+
 @task
 def check():
     where = local
@@ -71,11 +72,10 @@ def run_tests_cpp(xml=False, kind=default_kind,
     where(cmd)
 
 @task
-def run_tests_ocaml(xml=False,tls = False,
+def run_tests_ocaml(xml=False,tls = 'False',
                     kind = default_kind,
                     dump = None,
                     filter = None):
-    tls = eval(tls)
     alba.demo_kill()
     alba.arakoon_start(tls = tls)
     alba.wait_for_master(tls = tls)
@@ -84,20 +84,20 @@ def run_tests_ocaml(xml=False,tls = False,
     alba.proxy_start(tls = tls)
     alba.nsm_host_register_default(tls = tls)
 
-    alba.start_osds(kind, N, False)
+    alba.start_osds(kind, N, False, tls = tls)
 
-    alba.claim_local_osds(N, tls = tls)
+    alba.claim_local_osds(N, abm_cfg = arakoon_config_file, tls = tls)
 
     where = local
     where("rm -rf /tmp/alba/ocaml/")
 
-    cmd = ["./ocaml/alba.native", "unit-tests"]
+    cmd = [env['alba_bin'], "unit-tests"]
     if xml:
         cmd.append(" --xml=true")
     if filter:
         cmd.append(" --only-test=%s" % filter)
 
-    if tls:
+    if tls == 'True':
         alba._extend_alba_tls(cmd)
 
     print cmd
@@ -106,6 +106,61 @@ def run_tests_ocaml(xml=False,tls = False,
         cmd_line += " > %s" % dump
 
     where(cmd_line)
+
+@task
+def run_tests_cli(xml = False, tls = 'False'):
+    alba.demo_kill()
+    alba.demo_setup(tls = tls)
+
+    port = '8500' if tls =='True' else '8000'
+    host = '::1'
+    where = local
+    def _asd( what, extra ):
+        cmd = [env['alba_bin'],
+               what,
+               '-h', host,
+               '-p', port]
+        cmd.extend(extra)
+        if tls == 'True':
+            alba._extend_alba_tls(cmd)
+        return cmd
+
+    def _run(cmd):
+        cmd_line = ' '.join(cmd)
+        result = where(cmd_line, capture = True)
+        return result
+
+    def test_get_version():
+        cmd = _asd('asd-get-version', [])
+        result = _run(cmd)
+
+        t = eval(result)
+        assert (len(t) == 4)
+
+    def test_get_statistics():
+        cmd = _asd('asd-statistics',['--to-json'])
+        result = _run(cmd)
+        t = json.loads(result)
+
+    def test_asd_crud():
+        k = 'the_key'
+        v = 'the_value'
+        asd_set = _asd('asd-set', [k,v])
+        _run(asd_set)
+
+        asd_get = _asd('asd-multi-get',[k])
+        v_s = _run(asd_get)
+        assert (v_s.find(v) > 0)
+
+        asd_delete = _asd('asd-delete',[k])
+        _run(asd_delete)
+        v_s2 = _run(asd_get)
+        print v_s2
+        assert (v_s2 == '[None]')
+
+    test_get_version()
+    test_get_statistics()
+    test_asd_crud()
 
 
 @task
@@ -150,10 +205,9 @@ def run_tests_disk_failures(xml=False, tls = 'False'):
     cmd = [env['failure_tester']]
     if xml:
         cmd.append(" --xml=true")
-    if tls:
+    if tls == 'True':
         alba._extend_alba_tls(cmd)
 
-    print cmd
     cmd_s = " ".join(cmd)
     where(cmd_s)
 
@@ -180,7 +234,7 @@ def run_tests_stress(kind = default_kind, xml = False, tls = 'False'):
 
     def list_namespaces_cmd():
         cmd = build_cmd('list-namespaces')
-        if tls:
+        if tls == 'True':
             alba._extend_alba_tls(cmd)
 
         cmd.append('--to-json')
@@ -208,7 +262,7 @@ def run_tests_stress(kind = default_kind, xml = False, tls = 'False'):
         alba.dump_junit_xml()
 
 @task
-def run_tests_recovery(xml = False):
+def run_tests_recovery(xml = False, tls = 'False'):
     alba.demo_kill()
 
     # set up separate albamgr & nsm host
@@ -228,7 +282,7 @@ def run_tests_recovery(xml = False):
     N = 3
     alba.start_osds("ASD", N, False)
 
-    alba.claim_local_osds(N, abm_cfg = abm_cfg)
+    alba.claim_local_osds(N, abm_cfg = abm_cfg, tls = tls)
 
     alba.maintenance_stop()
 

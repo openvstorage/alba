@@ -227,6 +227,17 @@ class client (fd:Net_fd.t) ic id =
 
 exception BadLongId of string * string
 
+let conn_info_from ?(tls_config = None) (conn_info':Nsm_model.OsdInfo.conn_info)  =
+  let ips,port, use_tls = conn_info' in
+  let tls_config =
+    match use_tls,tls_config with
+    | false, None   -> None
+    | false, Some _ -> None
+    | true, None    -> failwith "want tls, but no tls_config is None !?"
+    | true, Some _  -> tls_config
+  in
+  Networking2.make_conn_info ips port tls_config
+
 let make_prologue magic version lido =
   let buf = Buffer.create 16 in
   Buffer.add_string buf magic;
@@ -249,8 +260,8 @@ let _prologue_response ic lido =
 
 
 
-let make_client buffer_pool ips port (lido:string option) =
-  Networking2.first_connection ips port ~tls_config:None
+let make_client buffer_pool ~conn_info (lido:string option)  =
+  Networking2.first_connection ~conn_info
   >>= fun (nfd, closer) ->
   let buffer = Buffer_pool.get_buffer buffer_pool in
   let ic = Net_fd.make_ic ~buffer nfd in
@@ -271,12 +282,14 @@ let make_client buffer_pool ips port (lido:string option) =
      closer () >>= fun () ->
      Lwt.fail exn)
 
-let with_client buffer_pool ips port (lido:string option) f =
+let with_client buffer_pool ~conn_info (lido:string option) f =
   (* TODO: validation here? or elsewhere *)
-  if ips = []
-  then failwith "empty ips list for asd_client.with_client";
-
-  make_client buffer_pool ips port lido >>= fun (client, closer) ->
+  let () =
+    match conn_info.Networking2.ips with
+    | [] -> failwith "empty ips list for asd_client.with_client";
+    | _ -> ()
+  in
+  make_client buffer_pool ~conn_info lido >>= fun (client, closer) ->
   Lwt.finalize
     (fun () -> f client)
     closer

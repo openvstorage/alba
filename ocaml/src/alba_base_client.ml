@@ -44,7 +44,7 @@ class client
     ~default_osd_priority
     ~tls_config
   =
-
+  let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
     new nsm_host_access
         mgr_access
@@ -54,7 +54,9 @@ class client
   in
 
   let osd_access =
-    new osd_access mgr_access ~osd_connection_pool_size ~osd_timeout ~default_osd_priority
+    new osd_access mgr_access
+        ~osd_connection_pool_size ~osd_timeout
+        ~default_osd_priority ~tls_config
   in
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
 

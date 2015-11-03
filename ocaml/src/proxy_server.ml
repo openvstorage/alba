@@ -517,8 +517,9 @@ let run_server hosts port
               );
               (let buffer_size = 8192 in
                let buffer_pool = Buffer_pool.create ~buffer_size in
+               let ctx = None in
                Networking2.make_server
-                 hosts port
+                 hosts port ~ctx
                  (fun nfd ->
                   Buffer_pool.with_buffer
                     buffer_pool
