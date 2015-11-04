@@ -56,7 +56,7 @@ let repair_object_generic
   begin
     alba_client # nsm_host_access # get_namespace_info ~namespace_id
     >>= fun (namespace, _, _, _) ->
-    Lwt.return (Albamgr_protocol.Protocol.Preset.get_encryption preset enc namespace)
+    Albamgr_protocol.Protocol.Preset.get_encryption preset enc namespace
   end >>= fun encryption ->
 
   let decompress = Fragment_helper.maybe_decompress compression in

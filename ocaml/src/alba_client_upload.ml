@@ -115,6 +115,7 @@ let upload_chunk
   let t0 = Unix.gettimeofday () in
 
   Fragment_helper.chunk_to_packed_fragments
+    ~namespace
     ~object_id ~chunk_id
     ~chunk ~chunk_size
     ~k ~m ~w'
@@ -250,12 +251,13 @@ let upload_object''
             actual_fragment_count),
            osds_info_cache') ->
 
-  let storage_scheme, encrypt_info =
+  Nsm_model.EncryptInfo.from_encryption namespace encryption
+  >>= fun encrypt_info ->
+  let storage_scheme =
     let open Nsm_model in
     Storage_scheme.EncodeCompressEncrypt
       (Encoding_scheme.RSVM (k, m, w),
-       compression),
-    EncryptInfo.from_encryption namespace encryption
+       compression)
   in
 
   let object_checksum_algo =

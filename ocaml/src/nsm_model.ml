@@ -371,12 +371,14 @@ module EncryptInfo = struct
 
   let from_encryption namespace = function
     | Encryption.NoEncryption ->
-      NoEncryption
+      Lwt.return NoEncryption
     | Encryption.AlgoWithKey (algo, key) ->
-      Encrypted (algo, get_id_for_key key)
+      Lwt.return (Encrypted (algo, get_id_for_key key))
     | Encryption.Keystone (algo, cfg) ->
-      let key = Keystone_encryption_config.get_key cfg namespace in
-      Encrypted (algo, get_id_for_key key)
+      let open Lwt.Infix in
+      Keystone_encryption_config.get_key cfg namespace
+      >>= fun key ->
+      Lwt.return (Encrypted (algo, get_id_for_key key))
 end
 
 module Storage_scheme = struct

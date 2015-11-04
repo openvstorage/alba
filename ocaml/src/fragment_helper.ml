@@ -60,33 +60,38 @@ let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
 
 let maybe_encrypt
     encryption
+    ~namespace
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
     plain =
   let open Encryption in
+  let encrypt algo key =
+    verify_key_length algo key;
+    match algo with
+    | AES (CBC, L256) ->
+       let block_len = block_length algo in
+       let bs = Padding.pad plain block_len in
+       get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
+       Cipher.with_t_lwt
+         key Cipher.AES256 Cipher.CBC []
+         (fun cipher -> Cipher.encrypt ~iv cipher bs) >>= fun () ->
+       Lwt.return (Bigstring_slice.wrap_bigstring bs)
+  in
   match encryption with
   | NoEncryption ->
     Lwt.return plain
-  | AlgoWithKey (AES (CBC, L256) as algo, key) ->
-    verify_key_length algo key;
-    let block_len = block_length algo in
-    let bs = Padding.pad plain block_len in
-    get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
-    Cipher.with_t_lwt
-      key Cipher.AES256 Cipher.CBC []
-      (fun cipher -> Cipher.encrypt ~iv cipher bs) >>= fun () ->
-    Lwt.return (Bigstring_slice.wrap_bigstring bs)
-  | Keystone (AES (CBC, L256) as algo, cfg) ->
-    failwith "TODO"
+  | AlgoWithKey (algo, key) ->
+    encrypt algo key
+  | Keystone (algo, cfg) ->
+    Keystone_encryption_config.get_key cfg namespace >>= fun key ->
+    encrypt algo key
 
 let maybe_decrypt
     encryption
+    ~namespace
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
     data =
   let open Encryption in
-  match encryption with
-  | NoEncryption ->
-    Lwt.return (Bigstring_slice.wrap_bigstring data)
-  | AlgoWithKey (algo, key) ->
+  let decrypt algo key =
     begin match algo with
       | AES (CBC, L256) ->
         Encryption.verify_key_length algo key;
@@ -100,8 +105,15 @@ let maybe_decrypt
              data 0 (Lwt_bytes.length data)) >>= fun () ->
         Lwt.return (Padding.unpad data)
     end
-  | Keystone (AES (CBC, L256) as algo, cfg) ->
-     failwith "TODO"
+  in
+  match encryption with
+  | NoEncryption ->
+    Lwt.return (Bigstring_slice.wrap_bigstring data)
+  | AlgoWithKey (algo, key) ->
+    decrypt algo key
+  | Keystone (algo, cfg) ->
+    Keystone_encryption_config.get_key cfg namespace >>= fun key ->
+    decrypt algo key
 
 let maybe_compress compression fragment_data =
   let open Lwt.Infix in
@@ -147,6 +159,7 @@ let verify' fragment_data checksum =
 
 let pack_fragment
     (fragment : Bigstring_slice.t)
+    ~namespace
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
     compression
     encryption
@@ -157,6 +170,7 @@ let pack_fragment
        maybe_compress compression fragment
        >>= fun compressed ->
        maybe_encrypt
+         ~namespace
          ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
          encryption
          (Bigstring_slice.wrap_bigstring compressed))
@@ -235,6 +249,7 @@ let chunk_to_fragments_ec
   Lwt.return (data_fragments, coding_fragments)
 
 let chunk_to_packed_fragments
+    ~namespace
     ~object_id ~chunk_id
     ~chunk ~chunk_size
     ~k ~m ~w'
@@ -246,6 +261,7 @@ let chunk_to_packed_fragments
       let fragment = Bigstring_slice.wrap_bigstring chunk in
       pack_fragment
         fragment
+        ~namespace
         ~object_id ~chunk_id ~fragment_id:0 ~ignore_fragment_id:true
         compression encryption fragment_checksum_algo
       >>= fun (packed, f1, f2, cs) ->
@@ -273,6 +289,7 @@ let chunk_to_packed_fragments
            (fun fragment_id fragment ->
             pack_fragment
               fragment
+              ~namespace
               ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
               compression encryption fragment_checksum_algo
             >>= fun (packed, f1, f2, cs) ->

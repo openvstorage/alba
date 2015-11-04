@@ -247,7 +247,8 @@ class client ?(retry_timeout = 60.)
 
       alba_client # nsm_host_access # get_namespace_info ~namespace_id
       >>= fun (namespace, _, _, _) ->
-      let encryption = Albamgr_protocol.Protocol.Preset.get_encryption preset enc namespace in
+      Albamgr_protocol.Protocol.Preset.get_encryption preset enc namespace
+      >>= fun encryption ->
 
       Lwt_list.map_s
         (fun (chunk_id, chunk_location) ->

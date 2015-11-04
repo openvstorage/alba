@@ -351,6 +351,9 @@ let gather_and_push_objects
       let open Nsm_model in
       alba_client # nsm_host_access # get_namespace_info ~namespace_id
       >>= fun (namespace, _, _, _) ->
+      EncryptInfo.from_encryption namespace encryption
+      >>= fun encrypt_info ->
+
       let manifest : Manifest.t =
         Manifest.make
           ~name:object_name
@@ -358,7 +361,7 @@ let gather_and_push_objects
           ~storage_scheme
           ~size
           ~checksum
-          ~encrypt_info:(EncryptInfo.from_encryption namespace encryption)
+          ~encrypt_info
           ~timestamp
           ~chunk_sizes
           ~fragment_locations

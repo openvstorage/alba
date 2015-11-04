@@ -128,7 +128,7 @@ let download_packed_fragment
 let download_fragment
       (osd_access : osd_access)
       ~location
-      ~namespace_id
+      ~namespace ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
       ~replication
@@ -169,6 +169,7 @@ let download_fragment
     (fun () ->
      Fragment_helper.maybe_decrypt
        encryption
+       ~namespace
        ~object_id ~chunk_id ~fragment_id
        ~ignore_fragment_id:replication
        fragment_data

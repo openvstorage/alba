@@ -65,4 +65,4 @@ let get_conf () = match !conf with
 let dummy_key = get_random_string 32
 let get_key (t : t) (namespace : string) =
   (* TODO fetch key for this namespace from keystone *)
-  dummy_key
+  Lwt.return dummy_key

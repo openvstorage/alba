@@ -251,10 +251,12 @@ class client
         ~fragment_checksum
         decompress
         ~encryption =
+      nsm_host_access # get_namespace_info ~namespace_id
+      >>= fun (namespace, _, _, _) ->
       Alba_client_download.download_fragment
         osd_access
         ~location
-        ~namespace_id
+        ~namespace ~namespace_id
         ~object_id ~object_name
         ~chunk_id ~fragment_id
         ~replication
@@ -510,7 +512,8 @@ class client
                let open Albamgr_protocol.Protocol in
                nsm_host_access # get_namespace_info ~namespace_id >>= fun (namespace, ns_info, _, _) ->
                get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-               let encryption = Preset.get_encryption preset enc namespace in
+               Preset.get_encryption preset enc namespace
+               >>= fun encryption ->
 
                let _, _, intersections_rev =
                  List.fold_left
@@ -791,7 +794,8 @@ class client
       let open Albamgr_protocol.Protocol in
       nsm_host_access # get_namespace_info ~namespace_id >>= fun (namespace, ns_info, _, _) ->
       get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-      let encryption = Preset.get_encryption preset enc namespace in
+      Preset.get_encryption preset enc namespace
+      >>= fun encryption ->
 
       let open Manifest in
 

@@ -105,21 +105,25 @@ module RecoveryInfo = struct
     |> Bigstring_slice.wrap_bigstring
     |> Fragment_helper.maybe_encrypt
          encryption
+         ~namespace
          ~object_id
          ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
     >>= fun encrypted ->
     let payload = Bigstring_slice.to_string encrypted in
-    let encrypt_info = EncryptInfo.from_encryption namespace encryption in
+    EncryptInfo.from_encryption namespace encryption
+    >>= fun encrypt_info ->
     Lwt.return { payload; encrypt_info; }
 
   let t_to_t' t encryption ~object_id ~namespace =
     let open Lwt.Infix in
 
-    let encrypt_info' = EncryptInfo.from_encryption namespace encryption in
+    EncryptInfo.from_encryption namespace encryption
+    >>= fun encrypt_info' ->
     assert (encrypt_info' = t.encrypt_info);
 
     Fragment_helper.maybe_decrypt
       encryption
+      ~namespace
       ~object_id
       ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
       (Lwt_bytes.of_string t.payload) >>= fun decrypted ->
