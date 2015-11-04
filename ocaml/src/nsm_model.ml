@@ -914,8 +914,8 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              let osd_info = get_osd_info kv osd_id in
              let node_id = osd_info.OsdInfo.node_id in
              let cnt =
-               try Hashtbl.find osds_per_node node_id
-               with Not_found -> 0
+               Hashtbl.find osds_per_node node_id
+               |> Option.get_some_default 0
              in
 
              let cnt' = cnt + 1 in
@@ -1399,14 +1399,13 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                (fun (fragment_id, locs, obsolete_fragments) old_loc ->
                   let loc_index = (chunk_id, fragment_id) in
                   let obsolete_fragments', loc' =
-                    if Hashtbl.mem fragments loc_index
-                    then begin
-                      let new_loc = Hashtbl.find fragments loc_index in
-                      ((loc_index, old_loc)::obsolete_fragments,
-                       new_loc)
-                    end else
-                      (obsolete_fragments,
-                       old_loc)
+                    match Hashtbl.find fragments loc_index with
+                    | Some new_loc ->
+                       (loc_index, old_loc)::obsolete_fragments,
+                       new_loc
+                    | None ->
+                       obsolete_fragments,
+                       old_loc
                   in
                   fragment_id + 1, loc' :: locs, obsolete_fragments')
                (0, [], obsolete_fragments)

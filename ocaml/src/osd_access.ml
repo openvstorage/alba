@@ -55,7 +55,7 @@ class osd_access
         Lwt_extra2.run_forever
             "refresh_osd_total_used"
             (fun () ->
-             let osd_info,osd_state = Hashtbl.find osds_info_cache osd_id in
+             let osd_info,osd_state = Hashtbl.find_exn osds_info_cache osd_id in
              Pool.Osd.factory tls_config osd_buffer_pool osd_info.OsdInfo.kind
              >>= fun (osd, closer) ->
 
@@ -72,7 +72,7 @@ class osd_access
       end
   in
   let get_osd_info ~osd_id =
-    try Lwt.return (Hashtbl.find osds_info_cache osd_id)
+    try Lwt.return (Hashtbl.find_exn osds_info_cache osd_id)
     with Not_found ->
       mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
       let osd_info = match osd_o with
@@ -80,7 +80,7 @@ class osd_access
         | Some info -> info
       in
       add_osd_info ~osd_id  osd_info;
-      Lwt.return (Hashtbl.find osds_info_cache osd_id)
+      Lwt.return (Hashtbl.find_exn osds_info_cache osd_id)
   in
   let osds_pool =
     Pool.Osd.make
@@ -97,10 +97,13 @@ class osd_access
     mgr_access # get_osd_by_osd_id ~osd_id >>= function
     | None -> assert false
     | Some osd_info' ->
-       let osd_info, osd_state = Hashtbl.find osds_info_cache osd_id in
-       Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state);
-       let open Nsm_model.OsdInfo in
-       Lwt.return (osd_info.kind <> osd_info'.kind)
+       (* let open Nsm_model.OsdInfo in *)
+       match Hashtbl.find osds_info_cache osd_id with
+       | None -> Lwt.return false
+       | Some (osd_info, osd_state) ->
+          Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state);
+          let open Nsm_model.OsdInfo in
+          Lwt.return (osd_info.kind <> osd_info'.kind)
   in
 
   let rec with_osd_from_pool

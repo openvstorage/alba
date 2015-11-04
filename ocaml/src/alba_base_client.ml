@@ -371,9 +371,16 @@ class client
         | fragment_id when fragment_id = end_fragment -> acc_fragments, erasures, cnt
         | fragment_id ->
            let fragment_bigarray, erasures', cnt' =
-             if Hashtbl.mem fragments fragment_id
-             then fst (Hashtbl.find fragments fragment_id), erasures, cnt + 1
-             else Lwt_bytes.create fragment_size, fragment_id :: erasures, cnt in
+             match Hashtbl.find fragments fragment_id with
+             | Some (fragment, _) ->
+                fragment,
+                erasures,
+                cnt + 1
+             | None ->
+                Lwt_bytes.create fragment_size,
+                fragment_id :: erasures,
+                cnt
+           in
            if Lwt_bytes.length fragment_bigarray <> fragment_size
            then failwith (Printf.sprintf "fragment %i,%i has size %i while %i expected\n%!" chunk_id fragment_id (Lwt_bytes.length fragment_bigarray) fragment_size);
            gather_fragments

@@ -1493,15 +1493,21 @@ module Protocol = struct
        then failwith (Printf.sprintf "%li is used for multiple albamgr commands" tag);
        Hashtbl.add hasht tag comm)
       command_map;
-    (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
+    (fun tag ->
+     wrap_unknown_operation
+       (fun () -> Hashtbl.find_exn hasht tag))
 
   let tag_to_name =
     let hasht = Hashtbl.create 100 in
     List.iter (fun (_, tag, name) -> Hashtbl.add hasht tag name) command_map;
-    (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
+    (fun tag ->
+     wrap_unknown_operation
+       (fun () -> Hashtbl.find_exn hasht tag))
 
   let command_to_tag =
     let hasht = Hashtbl.create 100 in
     List.iter (fun (comm, tag, _) -> Hashtbl.add hasht comm tag) command_map;
-    (fun comm -> wrap_unknown_operation (fun () -> Hashtbl.find hasht comm))
+    (fun comm ->
+     wrap_unknown_operation
+       (fun () -> Hashtbl.find_exn hasht comm))
 end

@@ -587,9 +587,7 @@ let retrieve_cfg_from_any_node ~tls current_config =
       | node_name :: rest ->
          Lwt.catch
            (fun  () ->
-            let node_cfg  =
-              Hashtbl.find node_hashtbl node_name
-            in
+            let node_cfg = Hashtbl.find_exn node_hashtbl node_name in
             let open Albamgr_protocol.Protocol.Arakoon_config in
             let cfg = from_node_client_cfg node_cfg in
             Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->

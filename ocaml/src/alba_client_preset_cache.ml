@@ -25,8 +25,9 @@ class preset_cache (mgr_access : Albamgr_client.client) =
   in
   let preset_cache = Hashtbl.create 3 in
   let get_preset_info ~preset_name =
-    try Lwt.return (Hashtbl.find preset_cache preset_name)
-    with Not_found ->
+    match Hashtbl.find preset_cache preset_name with
+    | Some p -> Lwt.return p
+    | None ->
          get_preset ~preset_name >>= fun preset ->
 
          if not (Hashtbl.mem preset_cache preset_name)

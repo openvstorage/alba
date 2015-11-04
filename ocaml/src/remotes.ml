@@ -87,8 +87,9 @@ module Pool = struct
 
     let use_nsm_host t ~nsm_host_id f =
       let pool =
-        try Hashtbl.find t.pools nsm_host_id with
-        | Not_found ->
+        match Hashtbl.find t.pools nsm_host_id with
+        | Some p -> p
+        | None ->
           let p =
             Lwt_pool2.create
               t.pool_size
@@ -114,7 +115,7 @@ module Pool = struct
     let invalidate t ~nsm_host_id =
       if Hashtbl.mem t.pools nsm_host_id
       then begin
-        Lwt_pool2.finalize (Hashtbl.find t.pools nsm_host_id) |> Lwt.ignore_result;
+        Lwt_pool2.finalize (Hashtbl.find_exn t.pools nsm_host_id) |> Lwt.ignore_result;
         Hashtbl.remove t.pools nsm_host_id
       end
 
@@ -167,8 +168,9 @@ module Pool = struct
 
     let use_osd t ~(osd_id:int32) f =
       let pool =
-        try Hashtbl.find t.pools osd_id
-        with Not_found ->
+        match Hashtbl.find t.pools osd_id with
+        | Some p -> p
+        | None ->
           let p =
             Lwt_pool2.create
               t.pool_size
@@ -188,7 +190,7 @@ module Pool = struct
     let invalidate t ~osd_id =
       if Hashtbl.mem t.pools osd_id
       then begin
-        Lwt_pool2.finalize (Hashtbl.find t.pools osd_id) |> Lwt.ignore_result;
+        Lwt_pool2.finalize (Hashtbl.find_exn t.pools osd_id) |> Lwt.ignore_result;
         Hashtbl.remove t.pools osd_id
       end
 

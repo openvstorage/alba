@@ -96,12 +96,12 @@ let plan_move cache (too_low,ok, too_high) manifest
     let () = List.iter add (snd too_high) in
     let () = List.iter add (snd ok) in
     let () = List.iter add (snd too_low) in
-    fun osd_id -> Hashtbl.find tbl osd_id
+    fun osd_id -> Hashtbl.find_exn tbl osd_id
   in
   let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
   let node_id_of osd_id =
     let open Nsm_model.OsdInfo in
-    let info = Hashtbl.find cache osd_id in
+    let info = Hashtbl.find_exn cache osd_id in
     info.node_id
   in
   let osds_used_on_node =
@@ -110,11 +110,12 @@ let plan_move cache (too_low,ok, too_high) manifest
       DeviceSet.iter
         (fun osd_id ->
          let node_id = node_id_of osd_id in
-         let count = try Hashtbl.find h node_id with Not_found -> 0 in
+         let count = Hashtbl.find h node_id
+                     |> Option.get_some_default 0 in
          Hashtbl.replace h node_id (count + 1)
         ) object_osds
     in
-    fun node_id -> Hashtbl.find h node_id
+    fun node_id -> Hashtbl.find_exn h node_id
   in
   let check_move src tgt =
     let node_id = node_id_of tgt in

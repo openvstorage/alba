@@ -17,40 +17,46 @@ limitations under the License.
 open Prelude
 
 type t = {
-    create_key_if_missing : bool;
-    project : string;
-    (* url, domain, username & password are specified at proxy/maintenance startup *)
+    create_project_and_key_if_missing : bool;
+    project_prefix : string;
+    domain : string;
+    (* url, username & password are specified at proxy/maintenance startup *)
   } [@@deriving show, yojson]
 
 let from_buffer buf =
   let container = Llio.string_from buf in
   let ser_version = Llio.int8_from buf in
   assert (ser_version = 1);
-  let create_key_if_missing,
-      project =
+  let create_project_and_key_if_missing,
+      project_prefix,
+      domain =
     deserialize
-      (Llio.pair_from
+      (Llio.tuple3_from
          Llio.bool_from
+         Llio.string_from
          Llio.string_from) container in
-  { create_key_if_missing;
-    project; }
+  { create_project_and_key_if_missing;
+    project_prefix;
+    domain; }
 
-let to_buffer buf { create_key_if_missing;
-                    project; } =
+let to_buffer buf { create_project_and_key_if_missing;
+                    project_prefix;
+                    domain; } =
   let container =
     serialize_with_length
-      (Llio.tuple3_to
+      (Llio.tuple4_to
          Llio.int8_to
          Llio.bool_to
+         Llio.string_to
          Llio.string_to)
       (1,
-       create_key_if_missing,
-       project)
+       create_project_and_key_if_missing,
+       project_prefix,
+       domain)
   in
   Llio.string_to buf container
 
 type t' = {
-    domain : string;
     username : string;
     password : string;
     url : string;

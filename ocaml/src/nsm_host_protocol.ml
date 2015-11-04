@@ -187,17 +187,23 @@ module Protocol = struct
   let tag_to_command =
     let hasht = Hashtbl.create 3 in
     List.iter (fun (comm, tag, _) -> Hashtbl.add hasht tag comm) command_map;
-    (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
+    (fun tag ->
+     wrap_unknown_operation
+       (fun () -> Hashtbl.find_exn hasht tag))
 
   let tag_to_name =
     let hasht = Hashtbl.create 3 in
     List.iter (fun (_, tag, name) -> Hashtbl.add hasht tag name) command_map;
-    (fun tag -> wrap_unknown_operation (fun () -> Hashtbl.find hasht tag))
+    (fun tag ->
+     wrap_unknown_operation
+       (fun () -> Hashtbl.find_exn hasht tag))
 
   let command_to_tag =
     let hasht = Hashtbl.create 3 in
     List.iter (fun (comm, tag, _) -> Hashtbl.add hasht comm tag) command_map;
-    (fun comm -> wrap_unknown_operation (fun () -> Hashtbl.find hasht comm))
+    (fun comm ->
+     wrap_unknown_operation
+       (fun () -> Hashtbl.find_exn hasht comm))
 
   type 'a serializer = 'a Llio.serializer
   type 'a deserializer = 'a Llio.deserializer

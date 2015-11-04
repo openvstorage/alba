@@ -80,8 +80,10 @@ let get_disk_safety alba_client namespaces dead_osds =
   in
 
   let get_dead_namespace_osds ~namespace_id =
-    try List.map fst (Hashtbl.find dead_namespace_osds namespace_id)
-    with Not_found -> []
+    List.map
+      fst
+      (Hashtbl.find dead_namespace_osds namespace_id
+       |> Option.get_some_default [])
   in
 
   Lwt_list.map_p

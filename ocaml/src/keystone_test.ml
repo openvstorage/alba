@@ -36,8 +36,8 @@ let dump resp body =
 let test_get_credentials () =
   Lwt_main.run
     begin
-      let c = new client ~url ~username ~password:!password ~project () in
-      c # get_credentials >>= fun (resp, body) ->
+      let c = new client ~url ~username ~password:!password () in
+      c # get_credentials ~project >>= fun (resp, body) ->
       dump resp (Yojson.Safe.to_string body)
     end
 

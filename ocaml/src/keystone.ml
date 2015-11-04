@@ -31,7 +31,7 @@ let get_json_property (json : Yojson.Safe.json) prop =
 - http://specs.openstack.org/openstack/keystone-specs/api/v3/identity-api-v3.html
  *)
 
-class client ~url ?(domain="Default") ~username ~password ~project () =
+class client ~url ?(domain="Default") ~username ~password () =
   let make_uri x = Uri.of_string (url ^ x) in
   let to_headers headers_ =
     let headers = Header.init () in
@@ -66,7 +66,7 @@ class client ~url ?(domain="Default") ~username ~password ~project () =
     let json = Yojson.Safe.from_string body in
     Lwt.return (resp, json)
   in
-  let get_token () =
+  let get_token ~project =
     (* The deprecated way to authenticate is to pass the username,
      * the user’s domain name (which will default to ‘Default’ if it is not specified),
      * and a password: *)
@@ -104,12 +104,31 @@ class client ~url ?(domain="Default") ~username ~password ~project () =
     Lwt.return (Header.get headers "x-subject-token")
   in
   (* some invalid token to begin with, will be replaced when needed *)
-  let token = ref "fdsaivxxopfsd" in
-  let get_token_header () = "X-Auth-Token", !token in
-  let authenticated_get url headers =
-    get_json url (get_token_header () :: headers)
-    >>= fun (resp, json) ->
-    (* TODO check for auth error *)
+  let tokens = Hashtbl.create 3 in
+  let get_cached_token ~project =
+    match Hashtbl.find tokens project with
+    | None ->
+       get_token ~project >>=
+         (function
+           | None ->
+              Lwt.fail AuthenticationError
+           | Some token ->
+              Hashtbl.replace tokens project token;
+              Lwt.return token)
+    | Some token ->
+       Lwt.return token
+  in
+  let get_cached_token_header ~project =
+    get_cached_token ~project >>= fun token ->
+    Lwt.return ("X-Auth-Token", token)
+  in
+  let authenticated_get ~project url headers =
+    let do_request () =
+      get_cached_token_header ~project >>= fun token_header ->
+      get_json url (token_header :: headers)
+    in
+    do_request () >>= fun (resp, json) ->
+
     let unauthorized =
       match get_json_property json "error" with
       | None -> false
@@ -118,14 +137,15 @@ class client ~url ?(domain="Default") ~username ~password ~project () =
          | Some (`Int code) -> code = 401
          | _ -> false
     in
-    (if unauthorized
-     then get_token () >>= function
-          | None ->
-             Lwt.fail AuthenticationError
-          | Some t ->
-             token := t;
-             get_json url (get_token_header () :: headers)
-     else Lwt.return (resp, json))
+
+    if unauthorized
+    then
+      begin
+        Hashtbl.remove tokens project;
+        do_request ()
+      end
+    else
+      Lwt.return (resp, json)
   in
   object
     method get = get
@@ -134,5 +154,8 @@ class client ~url ?(domain="Default") ~username ~password ~project () =
     method post = post
     method post_json = post_json
 
-    method get_credentials = authenticated_get "v3/credentials" []
+    method get_credentials ~project =
+      authenticated_get
+        ~project
+        "v3/credentials" []
   end

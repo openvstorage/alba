@@ -54,8 +54,9 @@ module ManifestCache = struct
       }
 
     let _find_stat t namespace_id =
-      try Hashtbl.find t.stats namespace_id
-      with Not_found ->
+      match Hashtbl.find t.stats namespace_id with
+      | Some p -> p
+      | None ->
         let n = { hit = 0; miss = 0} in
         let () = Hashtbl.add t.stats namespace_id n in
         n
@@ -71,12 +72,13 @@ module ManifestCache = struct
       stat
 
     let get_epoch t namespace_id =
-      try Hashtbl.find t.namespace_epoch namespace_id with
-      | Not_found ->
-        let epoch = t.next_epoch in
-        Hashtbl.add t.namespace_epoch namespace_id epoch;
-        t.next_epoch <- epoch + 1;
-        epoch
+      match Hashtbl.find t.namespace_epoch namespace_id with
+      | Some e -> e
+      | None ->
+         let epoch = t.next_epoch in
+         Hashtbl.add t.namespace_epoch namespace_id epoch;
+         t.next_epoch <- epoch + 1;
+         epoch
 
     let add t namespace_id object_name a =
       Lwt_log.ign_debug_f "add %li %S to manifest cache" namespace_id object_name;

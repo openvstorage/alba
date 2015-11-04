@@ -533,6 +533,12 @@ let get_start_key i n =
 module Hashtbl = struct
   include Hashtbl
 
+  let find_exn = find
+
+  let find t k =
+    try Some (find_exn t k)
+    with Not_found -> None
+
   exception Break
 
   let choose t =

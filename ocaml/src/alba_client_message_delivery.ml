@@ -241,7 +241,7 @@ let deliver_messages_to_most_osds
                         f
                      )
                      (fun () ->
-                      match Hashtbl.find osd_msg_delivery_threads osd_id with
+                      match Hashtbl.find_exn osd_msg_delivery_threads osd_id with
                       | `Busy ->
                          Hashtbl.remove osd_msg_delivery_threads osd_id;
                          Lwt.return ()

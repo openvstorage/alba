@@ -56,9 +56,9 @@ module MStats = struct
        Hashtbl.add nms t n;
        Hashtbl.add ton i n;
       ) mapping;
-    Hashtbl.find i32,
-    Hashtbl.find nms,
-    Hashtbl.find ton
+    Hashtbl.find_exn i32,
+    Hashtbl.find_exn nms,
+    Hashtbl.find_exn ton
 
   open Statistics_collection
   let stats = ref (Generic.make ())

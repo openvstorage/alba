@@ -144,9 +144,9 @@ module DirectoryInfo = struct
   let rec ensure_dir_exists t dir =
     Lwt_log.debug_f "ensure_dir_exists: %s" dir >>= fun () ->
     match Hashtbl.find t.directory_cache dir with
-    | Exists -> Lwt.return ()
-    | Creating wait -> wait
-    | exception Not_found ->
+    | Some Exists -> Lwt.return ()
+    | Some (Creating wait) -> wait
+    | None ->
       let sleep, awake = Lwt.wait () in
       (* the sleeper should be woken up under all
          circumstances, hence the exception handling
@@ -186,12 +186,12 @@ module DirectoryInfo = struct
       begin
         let full_dir = Filename.concat t.files_path dir in
         match Hashtbl.find t.directory_cache dir with
-        | Exists ->
+        | Some Exists ->
            Hashtbl.remove t.directory_cache dir;
            Lwt_unix.rmdir full_dir
-        | Creating wait -> Lwt.fail_with (Printf.sprintf "creating %s" dir)
-        | exception Not_found ->
-                    Lwt_unix.rmdir full_dir
+        | Some (Creating wait) -> Lwt.fail_with (Printf.sprintf "creating %s" dir)
+        | None ->
+           Lwt_unix.rmdir full_dir
       end
 
   let write_blob t fnr blob =

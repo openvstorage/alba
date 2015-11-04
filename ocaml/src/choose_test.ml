@@ -383,11 +383,11 @@ let test_choose_extra_bug2() =
   let () =
     List.iter
       (fun osd_id ->
-       let osd_info = Hashtbl.find info osd_id in
+       let osd_info = Hashtbl.find_exn info osd_id in
        let node_id = osd_info.node_id in
        let cnt =
-         try Hashtbl.find osds_per_node node_id
-         with Not_found -> 0
+         Hashtbl.find osds_per_node node_id
+         |> Option.get_some_default 0
        in
        let cnt' = cnt + 1 in
        Hashtbl.replace osds_per_node node_id cnt'

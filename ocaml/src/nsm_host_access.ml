@@ -100,7 +100,7 @@ class nsm_host_access
   let nsm_hosts_info_cache = Hashtbl.create 3 in
 
   let get_nsm_host_info ~nsm_host_id =
-    try Lwt.return (Hashtbl.find nsm_hosts_info_cache nsm_host_id)
+    try Lwt.return (Hashtbl.find_exn nsm_hosts_info_cache nsm_host_id)
     with Not_found ->
       mgr # get_nsm_host ~nsm_host_id
       >>= function
@@ -155,7 +155,7 @@ class nsm_host_access
     get_gc_epoch () >>= fun gc_epochs ->
 
     if Hashtbl.mem namespace_id_to_info_cache namespace_id
-    then Lwt.return (Hashtbl.find namespace_id_to_info_cache namespace_id)
+    then Lwt.return (Hashtbl.find_exn namespace_id_to_info_cache namespace_id)
     else begin
       Lwt.ignore_result begin
         (* start a thread which periodically refreshes which osds
@@ -203,7 +203,7 @@ class nsm_host_access
     end
   in
   let get_namespace_info ~namespace_id =
-    try Lwt.return (Hashtbl.find namespace_id_to_info_cache namespace_id)
+    try Lwt.return (Hashtbl.find_exn namespace_id_to_info_cache namespace_id)
     with Not_found ->
       mgr # get_namespace_by_id ~namespace_id
       >>= fun (_, namespace, namespace_info) ->
@@ -225,7 +225,7 @@ class nsm_host_access
         Lwt.return (namespace_id, ns_info)
     in
     begin
-      try Lwt.return (Hashtbl.find namespace_to_id_cache namespace)
+      try Lwt.return (Hashtbl.find_exn namespace_to_id_cache namespace)
       with Not_found ->
         get_namespace_id_info () >>= fun (namespace_id, ns_info) ->
         Hashtbl.replace namespace_to_id_cache namespace namespace_id;
@@ -292,8 +292,8 @@ class nsm_host_access
 
     (* update the cache with the newly found osds *)
     (match Hashtbl.find namespace_id_to_info_cache namespace_id with
-     | exception Not_found -> ()
-     | (namespace, ns_info, _, gc_epochs) ->
+     | None -> ()
+     | Some (namespace, ns_info, _, gc_epochs) ->
        Hashtbl.replace
          namespace_id_to_info_cache
          namespace_id
