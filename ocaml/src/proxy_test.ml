@@ -192,6 +192,14 @@ let test_protocol_version () =
   in
   Lwt_main.run t
 
+let test_unknown_operation () =
+  test_with_proxy_client
+    (fun client ->
+     client # do_unknown_operation >>= fun () ->
+     client # do_unknown_operation >>= fun () ->
+     client # get_version >>= fun _ ->
+     Lwt.return ())
+
 open OUnit
 
 let suite = "proxy_test" >:::[
@@ -200,4 +208,5 @@ let suite = "proxy_test" >:::[
     "test_overwrite" >:: test_overwrite;
     "test_read" >:: test_read;
     "test_protocol_version" >:: test_protocol_version;
+    "test_unknown_operation" >:: test_unknown_operation;
   ]

@@ -34,9 +34,10 @@ class client fd ic id =
       lwt_fail err'
   in
   let do_request
-        code description
+        code
         serialize_request request
         deserialize_response =
+    let description = code_to_description code in
     Lwt_log.debug_f
       "asd_client %s: %s"
       id description >>= fun () ->
@@ -58,21 +59,15 @@ class client fd ic id =
   object(self)
     method private query : type req res. (req, res) query -> req -> res Lwt.t =
       fun command req ->
-      let code = command_to_code (Wrap_query command) in
-      let descr = code_to_description (command_to_code (Wrap_query command)) in
       do_request
-        code
-        descr
+        (command_to_code (Wrap_query command))
         (query_request_serializer command) req
         (query_response_deserializer command)
 
     method private update : type req res. (req, res) update -> req -> res Lwt.t =
       fun command req ->
-      let code = command_to_code (Wrap_update command) in
-      let descr = code_to_description (command_to_code (Wrap_update command)) in
       do_request
-        code
-        descr
+        (command_to_code (Wrap_update command))
         (update_request_serializer command) req
         (update_response_deserializer command)
 
@@ -90,7 +85,6 @@ class client fd ic id =
         (fun () ->
          do_request
            code
-           (Printf.sprintf "unknown operation with code %li" code)
            (fun buf () -> ()) ()
            (fun buf -> ()) >>= fun () ->
          Lwt.fail_with "did not get an exception for unknown operation")

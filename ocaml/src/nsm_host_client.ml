@@ -51,32 +51,55 @@ class single_connection_client (ic, oc) =
       >>= fun () ->
       Lwt.fail exn
   in
-  (object
+  let do_request tag serialize_request deserialize_response =
+    let buf = Buffer.create 20 in
+    Llio.int32_to buf tag;
+    Lwt_log.debug_f "nsm_host_client: %s" (tag_to_name tag) >>= fun () ->
+    serialize_request buf;
+    Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+    read_response deserialize_response
+  in
+  object(self :# basic_client)
     method query : type i o.
       ?consistency : Consistency.t ->
       (i, o) query -> i -> o Lwt.t =
       fun ?(consistency = Consistency.Consistent) command req ->
-        let buf = Buffer.create 20 in
-        let tag = command_to_tag (Wrap_q command) in
-        Llio.int32_to buf tag;
-        Consistency.to_buffer buf consistency;
-        Lwt_log.debug_f "nsm_host_client: %s\n" (tag_to_name tag)
-        >>= fun() ->
-        write_query_i command buf req;
-        Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-        read_response (read_query_o command)
+      do_request
+        (command_to_tag (Wrap_q command))
+        (fun buf ->
+         Consistency.to_buffer buf consistency;
+         write_query_i command buf req)
+        (read_query_o command)
 
     method update : type i o. (i, o) update -> i -> o Lwt.t =
       fun command req ->
-        let buf = Buffer.create 20 in
-        let tag = command_to_tag (Wrap_u command) in
-        Llio.int32_to buf tag;
-        Lwt_log.debug_f "nsm_host_client: %s\n" (tag_to_name tag)
-        >>= fun() ->
-        write_update_i command buf req;
-        Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-        read_response (read_update_o command)
-  end : basic_client)
+      do_request
+        (command_to_tag (Wrap_u command))
+        (fun buf -> write_update_i command buf req)
+        (read_update_o command)
+
+    method do_unknown_operation =
+      let code =
+        Int32.add
+          100l
+          (List.map
+             (fun (_, code, _) -> code)
+             command_map
+           |> List.max
+           |> Option.get_some)
+      in
+      Lwt.catch
+        (fun () ->
+         do_request
+           code
+           (fun buf -> ())
+           (fun buf -> ()) >>= fun () ->
+         Lwt.fail_with "did not get an exception for unknown operation")
+        (let open Nsm_model in
+         function
+          | Err.Nsm_exn (Err.Unknown_operation, _) -> Lwt.return ()
+          | exn -> Lwt.fail exn)
+  end
 
 class client (client : basic_client) =
   object(self)

@@ -442,30 +442,54 @@ class single_connection_client (ic, oc) =
       let payload = Llio.string_from res_buf in
       Lwt.fail (Error.Albamgr_exn (err, payload))
   in
-  (object
+  let do_request tag serialize_request deserialize_response =
+    let buf = Buffer.create 20 in
+    Llio.int32_to buf tag;
+    serialize_request buf;
+    Lwt_log.debug_f "albamgr_client: %s" (tag_to_name tag) >>= fun () ->
+    Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+    read_response deserialize_response
+  in
+  object(self :# basic_client)
     method query : 'i 'o.
            ?consistency:Consistency.t ->
            ('i, 'o) Albamgr_protocol.Protocol.query -> 'i -> 'o Lwt.t =
       fun ?(consistency = Consistency.Consistent) command req ->
-        let buf = Buffer.create 20 in
-        let tag = command_to_tag (Wrap_q command) in
-        Llio.int32_to buf tag;
-        Consistency.to_buffer buf consistency;
-        Lwt_log.debug_f "albamgr_client: %s" (tag_to_name tag) >>= fun ()->
-        write_query_i command buf req;
-        Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-        read_response (read_query_o command)
+      do_request
+        (command_to_tag (Wrap_q command))
+        (fun buf ->
+         Consistency.to_buffer buf consistency;
+         write_query_i command buf req)
+        (read_query_o command)
 
     method update : 'i 'o. ('i, 'o) Albamgr_protocol.Protocol.update -> 'i -> 'o Lwt.t =
       fun command req ->
-        let buf = Buffer.create 20 in
-        let tag = command_to_tag (Wrap_u command) in
-        Llio.int32_to buf tag;
-        Lwt_log.debug_f "albamgr_client: %s" (tag_to_name tag) >>= fun ()->
-        write_update_i command buf req;
-        Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-        read_response (read_update_o command)
-  end : basic_client)
+      do_request
+        (command_to_tag (Wrap_u command))
+        (fun buf -> write_update_i command buf req)
+        (read_update_o command)
+
+    method do_unknown_operation =
+      let code =
+        Int32.add
+          100l
+          (List.map
+             (fun (_, code, _) -> code)
+             command_map
+           |> List.max
+           |> Option.get_some)
+      in
+      Lwt.catch
+        (fun () ->
+         do_request
+           code
+           (fun buf -> ())
+           (fun buf -> ()) >>= fun () ->
+         Lwt.fail_with "did not get an exception for unknown operation")
+        (function
+         | Error.Albamgr_exn (Error.Unknown_operation, _) -> Lwt.return ()
+         | exn -> Lwt.fail exn)
+  end
 
 let wrap_around (ara_c:Arakoon_client.client) =
   ara_c # user_hook "albamgr" >>= fun (ic, oc) ->
@@ -483,7 +507,7 @@ let wrap_around (ara_c:Arakoon_client.client) =
 
 let wrap_around' ara_c =
   wrap_around ara_c >>= fun c ->
-  Lwt.return (new client c)
+  Lwt.return (new client (c :> basic_client))
 
 let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
   let open Client_helper in
@@ -556,4 +580,4 @@ let _with_client ~attempts cfg f =
 let with_client' ?(attempts=1) cfg f =
   _with_client ~attempts
     cfg
-    (fun c -> f (new client c))
+    (fun c -> f (new client (c :> basic_client)))
