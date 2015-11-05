@@ -285,6 +285,18 @@ let test_protocol_version port () =
   in
   Lwt_main.run t
 
+let test_unknown_operation () =
+  Lwt_main.run
+    begin
+      Asd_client.with_client
+        buffer_pool
+        [ "::1" ] 8000 None
+        (fun asd ->
+         asd # do_unknown_operation >>= fun () ->
+         asd # do_unknown_operation >>= fun () ->
+         asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.Slice.wrap_string "x" ] >>= fun _ ->
+         Lwt.return ())
+    end
 
 open OUnit
 
@@ -297,4 +309,5 @@ let suite = "asd_test" >:::[
     "test_startup" >:: test_startup 7905 7906;
     "test_protocol_version" >:: test_protocol_version 7907;
     "test_multi_exists" >:: test_multi_exists 7908;
+    "test_unknown_operation" >:: test_unknown_operation;
   ]
