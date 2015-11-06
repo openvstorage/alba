@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
 open Lwt
 open Proxy_protocol
 open Protocol
@@ -31,14 +32,41 @@ class proxy_client (ic, oc) =
       Lwt_log.debug_f "Proxy client received error from server: %s" err_string
       >>= fun () -> Error.failwith (Error.int2err err)
   in
+  let do_request code request_serializer response_deserializer =
+    let buf = Buffer.create 20 in
+    Llio.int_to buf code;
+    request_serializer buf;
+    Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+    read_response response_deserializer
+  in
   object(self)
     method private request : type i o. (i, o) request -> i -> o Lwt.t =
       fun command req ->
-        let buf = Buffer.create 20 in
-        Llio.int_to buf (command_to_code (Wrap command));
-        Deser.to_buffer (deser_request_i command) buf req;
-        Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-        read_response (Deser.from_buffer (deser_request_o command))
+      do_request
+        (command_to_code (Wrap command))
+        (fun buf -> Deser.to_buffer (deser_request_i command) buf req)
+        (Deser.from_buffer (deser_request_o command))
+
+    method do_unknown_operation =
+      let code =
+        (+)
+          100
+          (List.map
+             (fun (code, _, _) -> code)
+             command_map
+           |> List.max
+           |> Option.get_some)
+      in
+      Lwt.catch
+        (fun () ->
+         do_request
+           code
+           (fun buf -> ())
+           (fun buf -> ()) >>= fun () ->
+         Lwt.fail_with "did not get an exception for unknown operation")
+        (function
+          | Error.Exn Error.UnknownOperation -> Lwt.return ()
+          | exn -> Lwt.fail exn)
 
     method write_object_fs
         ~namespace ~object_name

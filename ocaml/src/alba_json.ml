@@ -178,7 +178,7 @@ module Preset = struct
 
   type osds = Albamgr_protocol.Protocol.Preset.osds =
     | All      [@name "all"]
-    | Explicit of (int32 list) [@name "explicit"]
+    | Explicit of (int32 list [@name "explicit"])
   [@@deriving yojson]
 
   type checksum_algo =
@@ -198,7 +198,7 @@ module Preset = struct
 
   type fragment_encryption =
     | NO_ENCRYPTION [@name "none"]
-    | AES_CBC_256   of string [@name "aes-cbc-256"]
+    | AES_CBC_256   of (string [@name "aes-cbc-256"])
   [@@deriving yojson]
 
   type t = {

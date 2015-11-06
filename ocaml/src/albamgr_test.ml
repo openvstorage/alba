@@ -52,8 +52,22 @@ let test_add_namespace () =
        assert (cnt' = cnt + 1);
        Lwt.return ())
 
+let test_unknown_operation () =
+  Lwt_main.run
+    begin
+      _with_client
+        ~attempts:1 (get_ccfg ())
+        (fun client ->
+         client # do_unknown_operation >>= fun () ->
+         let client' = new client (client :> basic_client) in
+         client' # get_alba_id >>= fun _ ->
+         client # do_unknown_operation >>= fun () ->
+         Lwt.return ())
+    end
+
 open OUnit
 
 let suite = "albamgr" >:::[
-    "test_add_namespace" >:: test_add_namespace;
-  ]
+      "test_add_namespace" >:: test_add_namespace;
+      "test_unknown_operation" >:: test_unknown_operation;
+    ]

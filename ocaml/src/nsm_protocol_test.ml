@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Lwt.Infix
 open OUnit
 
 let doubles test_ctxt =
@@ -31,5 +32,21 @@ let doubles test_ctxt =
          ())
       Nsm_host_protocol.Protocol.command_map
 
-
-let suite = ["doubles" >:: doubles]
+let test_unknown_operation () =
+  Lwt_main.run
+    begin
+      let open Nsm_host_client in
+      with_client
+        (Albamgr_test.get_ccfg ())
+        (fun client ->
+         client # do_unknown_operation >>= fun () ->
+         let client' = new client (client :> basic_client) in
+         client' # get_version >>= fun _ ->
+         client # do_unknown_operation >>= fun () ->
+         Lwt.return ())
+    end
+ 
+let suite = "Nsm_protocol" >::: [
+    "doubles" >:: doubles;
+    "test_unknown_operation" >:: test_unknown_operation;
+  ]

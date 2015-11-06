@@ -33,48 +33,66 @@ class client fd ic id =
       Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
       lwt_fail err'
   in
+  let do_request
+        code
+        serialize_request request
+        deserialize_response =
+    let description = code_to_description code in
+    Lwt_log.debug_f
+      "asd_client %s: %s"
+      id description >>= fun () ->
+    with_timing_lwt
+      (fun () ->
+       let s =
+         serialize_with_length
+           (Llio.pair_to
+              Llio.int32_to
+              serialize_request)
+           (code,
+            request)
+       in
+       Lwt_extra2.write_all' fd s >>= fun () ->
+       read_response deserialize_response) >>= fun (t, r) ->
+    Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
+    Lwt.return r
+  in
   object(self)
     method private query : type req res. (req, res) query -> req -> res Lwt.t =
       fun command req ->
-        let descr = code_to_description (command_to_code (Wrap_query command)) in
-        Lwt_log.debug_f
-          "asd_client %s: %s"
-          id descr >>= fun () ->
-        with_timing_lwt
-          (fun () ->
-           let s =
-             serialize_with_length
-               (Llio.pair_to
-                  Llio.int32_to
-                  (query_request_serializer command))
-               (command_to_code (Wrap_query command),
-                req)
-           in
-           Lwt_extra2.write_all' fd s >>= fun () ->
-           read_response (query_response_deserializer command)) >>= fun (t, r) ->
-        Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
-        Lwt.return r
+      do_request
+        (command_to_code (Wrap_query command))
+        (query_request_serializer command) req
+        (query_response_deserializer command)
 
     method private update : type req res. (req, res) update -> req -> res Lwt.t =
       fun command req ->
-        let descr = code_to_description (command_to_code (Wrap_update command)) in
-        Lwt_log.debug_f
-          "asd_client %s: %s"
-          id descr >>= fun () ->
-        with_timing_lwt
-          (fun () ->
-           let s =
-             serialize_with_length
-               (Llio.pair_to
-                  Llio.int32_to
-                  (update_request_serializer command))
-               (command_to_code (Wrap_update command),
-                req)
-           in
-           Lwt_extra2.write_all' fd s >>= fun () ->
-           read_response (update_response_deserializer command)) >>= fun (t, r) ->
-        Lwt_log.debug_f "asd_client %s: %s took %f" id descr t >>= fun () ->
-        Lwt.return r
+      do_request
+        (command_to_code (Wrap_update command))
+        (update_request_serializer command) req
+        (update_response_deserializer command)
+
+    method do_unknown_operation =
+      let code =
+        Int32.add
+          100l
+          (List.map
+             (fun (_, code, _) -> code)
+             command_map
+           |> List.max
+           |> Option.get_some)
+      in
+      Lwt.catch
+        (fun () ->
+         do_request
+           code
+           (fun buf () -> ()) ()
+           (fun buf -> ()) >>= fun () ->
+         Lwt.fail_with "did not get an exception for unknown operation")
+        (function
+          | Error.Exn Error.Unknown_operation ->
+             Lwt.return ()
+          | exn ->
+             Lwt.fail exn)
 
     val mutable supports_multiget2 = None
     method multi_get ~prio keys =
