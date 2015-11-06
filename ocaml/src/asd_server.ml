@@ -895,7 +895,7 @@ let asd_protocol
       nfd ic
   =
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
-  let handle_request buf command =
+  let handle_request buf code =
     (*
      Lwt_log.debug_f "Got request %s" (Protocol.code_to_description code)
   >>= fun () ->
@@ -923,6 +923,7 @@ let asd_protocol
     in
     Lwt.catch
       (fun () ->
+       let command = Protocol.code_to_command code in
        begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
@@ -965,9 +966,8 @@ let asd_protocol
     >>= fun req_s ->
     let buf = Llio.make_buffer req_s 0 in
     let code = Llio.int32_from buf in
-    let command = Protocol.code_to_command code in
     with_timing_lwt
-      (fun () -> handle_request buf command)
+      (fun () -> handle_request buf code)
     >>= fun (delta, ()) ->
     Statistics_collection.Generic.new_delta stats code delta;
 

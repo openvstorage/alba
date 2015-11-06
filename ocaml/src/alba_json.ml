@@ -24,8 +24,9 @@ module Osd = struct
     alba_id : string option;
     ips : Osd.ip list;
     port : Osd.port;
-    node_id : Osd.node_id;
     kind : string;
+    decommissioned : bool;
+    node_id : Osd.node_id;
     long_id : Osd.long_id;
     total: int64;
     used : int64;
@@ -61,6 +62,7 @@ module Osd = struct
       kind = k;
       ips; port;
       node_id; long_id;
+      decommissioned;
       total; used;
       seen; read; write; errors;
     }
@@ -179,7 +181,7 @@ module Preset = struct
 
   type osds = Albamgr_protocol.Protocol.Preset.osds =
     | All      [@name "all"]
-    | Explicit of (int32 list) [@name "explicit"]
+    | Explicit of (int32 list [@name "explicit"])
   [@@deriving yojson]
 
   type checksum_algo =
@@ -199,7 +201,7 @@ module Preset = struct
 
   type fragment_encryption =
     | NO_ENCRYPTION [@name "none"]
-    | AES_CBC_256   of string [@name "aes-cbc-256"]
+    | AES_CBC_256   of (string [@name "aes-cbc-256"])
   [@@deriving yojson]
 
   type t = {

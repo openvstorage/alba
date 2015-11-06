@@ -22,7 +22,6 @@ open Lwt
 let test_with_alba_client ?bad_fragment_callback f =
   let albamgr_client_cfg  = Albamgr_test.get_ccfg () in
   let tls_config = Albamgr_test.get_tls_config () in
-  (* assert (tls_config <> None); *)
   Lwt_main.run begin
     Alba_client.with_client
       ?bad_fragment_callback
@@ -688,6 +687,11 @@ let test_encryption () =
 
 let test_discover_claimed () =
   let test_name = "test_discover_claimed" in
+  let tls_config = Albamgr_test.get_tls_config () in
+  let tlsPort = match tls_config with
+    | None -> None
+    | Some _ -> (*Some 8730 *) None
+  in
   test_with_alba_client
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
@@ -704,7 +708,7 @@ let test_discover_claimed () =
                                       });
                                     ips = ["::1"];
                                     port = 8230;
-                                    tlsPort = Some 8730;
+                                    tlsPort;
                                   })) >>= fun () ->
 
             let is_osd_available () =
@@ -723,7 +727,7 @@ let test_discover_claimed () =
             (* check the osd is now 'available' *)
             is_osd_available () >>= fun r ->
             assert r;
-
+            Lwt_log.debug "so far so good (1)" >>= fun () ->
             let module IRK = Osd_keys.AlbaInstanceRegistration in
             let open Slice in
 
@@ -761,14 +765,16 @@ let test_discover_claimed () =
                   no_checksum true; ]
             >>= fun apply_result ->
             OUnit.assert_equal Osd.Ok apply_result;
+            Lwt_log.debug "applied sequence" >>= fun () ->
 
             (* this timeout should be enough... *)
             Lwt_unix.sleep 3. >>= fun () ->
 
             (* check the osd is no longer 'available' *)
             is_osd_available () >>= fun r ->
-            assert (not r);
-
+            let () =
+              OUnit.assert_bool "the osd should no longer be available, but it is!" (not r)
+            in
             Lwt.return ()
             ))
 

@@ -365,7 +365,9 @@ module Protocol = struct
   let code_to_txt =
     let hasht = Hashtbl.create 3 in
     List.iter (fun (code, _, txt) -> Hashtbl.add hasht code txt) command_map;
-    (fun code -> wrap_unknown_operation (fun () -> Hashtbl.find hasht code))
+    (fun code ->
+     try Hashtbl.find hasht code with
+     | Not_found -> Printf.sprintf "unknown operation %i" code)
 
   let deser_request_i : type i o. (i, o) request -> i Deser.t = function
     | ListNamespaces -> RangeQueryArgs.deser Deser.string

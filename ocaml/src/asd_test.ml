@@ -41,6 +41,18 @@ let rec wait_asd_connection port asd_id () =
 
 let with_asd_client ?(is_restart=false) test_name port f =
   let path = "/tmp/alba/" ^ test_name in
+  let tls_config = Albamgr_test.get_tls_config () in (* client config *)
+  let tls =
+    match tls_config
+    with
+    | None -> None
+    | Some _ ->
+       let path = "/tmp/arakoon/test_discover_claimed/" in
+       let open Asd_config.Config in
+       Some {cert = path ^ "test_discover_claimed.pem";
+             key  = path ^ "test_discover_claimed.key";
+            }
+  in
   if not is_restart
   then begin
     Unix.system (Printf.sprintf "rm -rf %s" path) |> ignore;
@@ -60,7 +72,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
            ~buffer_size:(768*1024)
            ~rocksdb_max_open_files:256
            ~limit:90L
-           ~tls:None
+           ~tls
            ~configuredTlsPort:None
            ~multicast:(Some 10.0) >>= fun () ->
          Lwt.fail_with "Asd server stopped!");
@@ -292,6 +304,19 @@ let test_protocol_version port () =
   in
   Lwt_main.run t
 
+let test_unknown_operation () =
+  Lwt_main.run
+    begin
+      let conn_info = Networking2.make_conn_info [ "::1" ] 8000 None in
+      Asd_client.with_client
+        buffer_pool
+        ~conn_info None
+        (fun asd ->
+         asd # do_unknown_operation >>= fun () ->
+         asd # do_unknown_operation >>= fun () ->
+         asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.Slice.wrap_string "x" ] >>= fun _ ->
+         Lwt.return ())
+    end
 
 open OUnit
 
@@ -304,4 +329,5 @@ let suite = "asd_test" >:::[
     "test_startup" >:: test_startup 7905 7906;
     "test_protocol_version" >:: test_protocol_version 7907;
     "test_multi_exists" >:: test_multi_exists 7908;
+    "test_unknown_operation" >:: test_unknown_operation;
   ]
