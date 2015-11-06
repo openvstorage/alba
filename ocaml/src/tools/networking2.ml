@@ -115,7 +115,16 @@ let first_connection' ?close_msg buffer_pool ips port =
   in
   Lwt.return (fd, conn, closer)
 
-let make_server ?(cancel = Lwt_condition.create ()) hosts port protocol =
+let make_server
+      ?(cancel = Lwt_condition.create ())
+      ?max
+      hosts port protocol =
+  let count = ref 0 in
+  let allow_connection =
+    match max with
+    | None -> fun () -> true
+    | Some max -> fun () -> max > !count
+  in
   let server_loop socket_address =
     let rec inner listening_socket =
       Lwt.pick
@@ -128,6 +137,9 @@ let make_server ?(cancel = Lwt_condition.create ()) hosts port protocol =
         begin
           Lwt.finalize
             (fun () ->
+             incr count;
+             if allow_connection ()
+             then
                Lwt.catch
                  (fun () -> protocol fd)
                  (function
@@ -137,8 +149,11 @@ let make_server ?(cancel = Lwt_condition.create ()) hosts port protocol =
                      Lwt_log.info_f
                        "exception occurred in client connection: %s"
                        (Printexc.to_string exn)
-                 ))
+                 )
+             else
+               Lwt_log.warning_f "Denying connection, too many client connections %i" !count)
             (fun () ->
+               decr count;
                Lwt.catch
                  (fun () -> Lwt_unix.close fd)
                  (fun exn ->

@@ -455,6 +455,7 @@ let run_server hosts port
                ~osd_connection_pool_size
                ~osd_timeout
                ~albamgr_cfg_file
+               ~max_client_connections
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -515,6 +516,7 @@ let run_server hosts port
               (let buffer_size = 8192 in
                let buffer_pool = Buffer_pool.create ~buffer_size in
                Networking2.make_server
+                 ~max:max_client_connections
                  hosts port
                  (fun fd ->
                   Buffer_pool.with_buffer
