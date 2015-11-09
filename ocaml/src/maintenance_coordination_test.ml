@@ -7,7 +7,7 @@ let test_coordinator_master () =
      let test_name = "test_coordinator_master" in
      let lease_name = test_name in
      let registration_prefix = test_name in
-     let lease_timeout = 0.2 in
+     let lease_timeout = 0.3 in
 
      (* create a coordinator that we don't initialize
       * to see that it has no influence on the other
@@ -20,7 +20,6 @@ let test_coordinator_master () =
                  ~lease_timeout
                  ~registration_prefix
      in
-     assert (not (c0 # is_master));
 
      let c1 = new coordinator
                   (client#mgr_access)
@@ -39,9 +38,10 @@ let test_coordinator_master () =
      in
      c2 # init;
 
-     Lwt_unix.sleep (2. *. lease_timeout) >>= fun () ->
+     Lwt_unix.sleep (3. *. lease_timeout) >>= fun () ->
 
      let assert_1_master () =
+       assert (not (c0 # is_master));
        assert (c1 # is_master || c2 # is_master);
        assert (not (c1 # is_master && c2 # is_master))
      in
@@ -69,7 +69,7 @@ let test_coordinator_participants () =
      let test_name = "test_coordinator_participants" in
      let lease_name = test_name in
      let registration_prefix = test_name in
-     let lease_timeout = 0.2 in
+     let lease_timeout = 0.3 in
 
      (* create a coordinator that we don't initialize
       * to see that it has no influence on the other
@@ -100,7 +100,7 @@ let test_coordinator_participants () =
      in
      c2 # init;
 
-     Lwt_unix.sleep (2. *. lease_timeout) >>= fun () ->
+     Lwt_unix.sleep (3. *. lease_timeout) >>= fun () ->
 
      assert (2 = c1 # get_modulo);
      assert (2 = c2 # get_modulo);
