@@ -86,8 +86,9 @@ def run_tests_ocaml(xml=False,tls = 'False',
 
     alba.start_osds(kind, N, False, tls = tls)
 
-    # make cert for extra asd (test_discover_claimed)
-    alba.make_cert(name = 'test_discover_claimed')
+    if tls =='True':
+        # make cert for extra asd (test_discover_claimed)
+        alba.make_cert(name = 'test_discover_claimed')
 
     alba.claim_local_osds(N, abm_cfg = arakoon_config_file, tls = tls)
 
