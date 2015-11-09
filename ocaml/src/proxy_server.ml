@@ -281,14 +281,17 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
         | End_of_file as e ->
           Lwt.fail e
         | Protocol.Error.Exn err ->
-          Lwt_log.info_f "Returning %s error to client"
-                          (Protocol.Error.show err) >>= fun () ->
-          return_err_response err
+           let msg = Protocol.Error.show err in
+           Lwt_log.info_f "Returning %s error to client" msg
+           >>= fun () ->
+           return_err_response ~msg err
         | Asd_protocol.Protocol.Error.Exn err ->
-          Lwt_log.info_f
-            "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
-            (Asd_protocol.Protocol.Error.show err) >>= fun () ->
-          return_err_response Protocol.Error.Unknown
+           let msg = Asd_protocol.Protocol.Error.show err in
+           Lwt_log.info_f
+             "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
+             msg
+           >>= fun () ->
+           return_err_response ~msg Protocol.Error.Unknown
         | Nsm_model.Err.Nsm_exn (err, _) ->
           begin
             let open Nsm_model.Err in
@@ -309,10 +312,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Too_many_disks_per_node
             | Insufficient_fragments
             | Unknown_operation ->
-              Lwt_log.info_f
-                "Unexpected Nsm_model.Err exception in proxy while handling request: %s"
-                (Nsm_model.Err.show err) >>= fun () ->
-              return_err_response Protocol.Error.Unknown
+               let msg = Nsm_model.Err.show err in
+               Lwt_log.info_f
+                 "Unexpected Nsm_model.Err exception in proxy while handling request: %s" msg
+               >>= fun () ->
+               return_err_response ~msg Protocol.Error.Unknown
             | Overwrite_not_allowed ->
               Lwt_log.info_f
                 "Received Nsm_model.Err Overwrite_not_allowed exception in proxy while that should've already been handled earlier..." >>= fun () ->
@@ -349,10 +353,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Progress_does_not_exist
             | Progress_CAS_failed
             | Unknown_operation ->
-              Lwt_log.info_f
-                "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"
-                (Albamgr_protocol.Protocol.Error.show err) >>= fun () ->
-              return_err_response Protocol.Error.Unknown
+               let msg = Albamgr_protocol.Protocol.Error.show err in
+               Lwt_log.info_f
+                 "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"  msg
+               >>= fun () ->
+               return_err_response ~msg Protocol.Error.Unknown
           end
         | Alba_client_errors.Error.Exn err ->
           begin
@@ -373,8 +378,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
               )
           end
         | exn ->
-          Lwt_log.info_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
-          return_err_response Protocol.Error.Unknown)
+           Lwt_log.info_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
+           let msg = Printexc.to_string exn in
+           return_err_response ~msg Protocol.Error.Unknown)
     >>= fun res ->
     Lwt_extra2.write_all' fd res
   in
