@@ -43,10 +43,10 @@ RUN pip install fabric junit-xml
 
 RUN mkdir /home/alba
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
-RUN sh ./opam_installer.sh /usr/local/bin 4.02.1
+RUN sh ./opam_installer.sh /usr/local/bin 4.02.3
 
 ENV opam_env='opam config env --root=/home/alba/OPAM'
-RUN opam init --root=/home/alba/OPAM --comp 4.02.1
+RUN opam init --root=/home/alba/OPAM --comp 4.02.3
 RUN eval `${opam_env}` && opam install -y \
         ocamlfind \
         ssl \
@@ -86,7 +86,7 @@ RUN cd /usr/src/gtest \
         && mv libg* /usr/lib/
 
 
-RUN eval `${opam_env}` && opam install -y arakoon.1.8.8
+RUN eval `${opam_env}` && opam install -y arakoon.1.8.10
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
 RUN cd /home/alba && git clone https://github.com/openvstorage/alba.git

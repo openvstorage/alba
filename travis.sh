@@ -23,14 +23,14 @@ OPAM_DEPENDS="ocamlfind \
          nocrypto.0.5.1 \
          uuidm.0.9.5 \
          zarith.1.3 \
-         arakoon.1.8.8 \
+         arakoon.1.8.10 \
          orocksdb.0.2.1 \
          kinetic-client \
          tiny_json \
          cmdliner \
          ppx_deriving ppx_deriving_yojson \
-         sexplib.112.35.00 \
-         core_kernel.112.35.00
+         sexplib.113.00.00 \
+         core_kernel.113.00.00
 "
 
 export OPAMYES=1
@@ -60,8 +60,8 @@ before_install () {
     # no longer works because it results in 4.02.3...
     # so now using this alternative method:
     wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
-    sudo sh ./opam_installer.sh /usr/local/bin 4.02.1  # change to system once it works with 4.02.3
-    /usr/local/bin/opam init --comp 4.02.1 |tail -n256 # change to system once it works with 4.02.3
+    sudo sh ./opam_installer.sh /usr/local/bin 4.02.3  # change to system once it works with 4.02.3
+    /usr/local/bin/opam init --comp 4.02.3 |tail -n256 # change to system once it works with 4.02.3
     expr $PIPESTATUS && false
     eval `opam config env`
     opam update
