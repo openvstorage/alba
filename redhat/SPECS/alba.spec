@@ -2,7 +2,7 @@
 
 Summary: Alba
 Name: alba
-Version: 0.7.1
+Version: 0.7.2
 Release: 1%{?dist}
 License: Proprietary license
 ExclusiveArch: x86_64
@@ -48,6 +48,8 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
+* Tue Nov 10 2015 Jan Doms <jan.doms@openvstorage.com> - 0.7.2
+- Create Alba 0.7.2 RPM package
 * Tue Nov 10 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.29
 - Create Alba 0.6.29 RPM package
 * Fri Nov 06 2015 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.6.28
