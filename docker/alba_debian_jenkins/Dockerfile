@@ -1,5 +1,7 @@
-FROM ubuntu:15.04
-RUN apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+FROM ubuntu:14.04.3
+RUN echo "deb http://archive.ubuntu.com/ubuntu/ trusty-backports main restricted universe multiverse" > /etc/apt/sources.list.d/trusty-backports-universe.list
+RUN apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
         build-essential m4 apt-utils \
         libffi-dev libssl-dev \
         libbz2-dev \
@@ -93,8 +95,18 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 RUN apt-get -y install clang-3.5
 
+RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
+RUN apt-get update
+RUN apt-get -y --force-yes install libboost1.57-all liblttng-ust0 librdmacm1 libtokyocabinet9 libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-base_5.0.6-0_amd64.deb && dpkg -i volumedriver-base_5.0.6-0_amd64.deb
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-pitreplication_5.0.6-0_amd64.deb && dpkg -i volumedriver-pitreplication_5.0.6-0_amd64.deb
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-server_5.0.6-0_amd64.deb && dpkg -i volumedriver-server_5.0.6-0_amd64.deb
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-test_5.0.6-0_amd64.deb && dpkg -i volumedriver-test_5.0.6-0_amd64.deb
+
 ENV UID 1001
 ENV ARAKOON_BIN=arakoon
+ENV VOLDRV_TEST=volumedriver_test
+ENV VOLDRV_BACKEND_TEST=backend_test
 CMD eval `${opam_env}` \
     && echo ${SUITE} \
     && ./jenkins/run.sh ${SUITE}
