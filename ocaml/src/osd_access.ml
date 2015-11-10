@@ -36,7 +36,7 @@ class osd_access
     let open Albamgr_protocol.Protocol in
     (Hashtbl.create 3
      : (Osd.id,
-        Osd.t * Osd_state.t) Hashtbl.t) in
+        Nsm_model.OsdInfo.t * Osd_state.t) Hashtbl.t) in
   let get_osd_info ~osd_id =
     let open Albamgr_protocol.Protocol in
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
@@ -52,8 +52,10 @@ class osd_access
           let osd_state = Osd_state.make () in
           let info' = (osd_info, osd_state) in
           Hashtbl.replace osds_info_cache osd_id info';
-          let long_id = let open Osd in
-                        Nsm_model.OsdInfo.get_long_id osd_info.kind
+          let open Nsm_model.OsdInfo in
+          let long_id =
+
+            get_long_id osd_info.kind
           in
           osd_long_id_claim_info :=
             StringMap.add
@@ -65,7 +67,7 @@ class osd_access
             (fun () ->
              Pool.Osd.factory
                tls_config osd_buffer_pool
-               (Hashtbl.find osds_info_cache osd_id |> fst).Osd.kind
+               (Hashtbl.find osds_info_cache osd_id |> fst).kind
              >>= fun (osd, closer) ->
              Lwt.finalize
                (fun () ->
@@ -84,8 +86,8 @@ class osd_access
       ~size:osd_connection_pool_size
       (fun osd_id ->
        get_osd_info ~osd_id >>= fun (osd_info, _) ->
-       let open Albamgr_protocol.Protocol in
-       Lwt.return osd_info.Osd.kind)
+       let open Nsm_model.OsdInfo in
+       Lwt.return osd_info.kind)
       osd_buffer_pool
       tls_config
   in
@@ -96,7 +98,7 @@ class osd_access
     | Some osd_info' ->
        let osd_info, osd_state = Hashtbl.find osds_info_cache osd_id in
        Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state);
-       let open Albamgr_protocol.Protocol.Osd in
+       let open Nsm_model.OsdInfo in
        Lwt.return (osd_info.kind <> osd_info'.kind)
   in
 
@@ -228,16 +230,16 @@ class osd_access
     method osd_timeout = osd_timeout
 
     method osd_factory osd_info =
-      Pool.Osd.factory tls_config osd_buffer_pool osd_info.Albamgr_protocol.Protocol.Osd.kind
+      Pool.Osd.factory tls_config osd_buffer_pool osd_info.Nsm_model.OsdInfo.kind
 
     method osds_to_osds_info_cache osds =
       let res = Hashtbl.create 0 in
       Lwt_list.iter_p
         (fun osd_id ->
-         let open Albamgr_protocol.Protocol in
+         let open Nsm_model.OsdInfo in
          get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
          let osd_ok =
-           not osd_info.Osd.decommissioned
+           not osd_info.decommissioned
            && Osd_state.osd_ok osd_state
          in
          if osd_ok
@@ -250,8 +252,9 @@ class osd_access
       Lwt.return res
 
     method propagate_osd_info ?(run_once=false) ?(delay=20.) () : unit Lwt.t =
+      let open Nsm_model in
       let open Albamgr_protocol.Protocol in
-      let make_update (id:Osd.id) (osd_info:Osd.t) (osd_state:Osd_state.t) =
+      let make_update id (osd_info:OsdInfo.t) (osd_state:Osd_state.t) =
         let n = 10 in
         let most_recent xs =
           let my_compare x y = ~-(compare x y) in
@@ -347,9 +350,10 @@ class osd_access
                | None -> (ips,port,false)
                | Some tlsPort -> (ips, tlsPort, true)
              in
+             let open Nsm_model in
              (match extras with
               | None ->
-                 let kind = Osd.Kinetic (conn_info, id) in
+                 let kind = OsdInfo.Kinetic (conn_info, id) in
                  Pool.Osd.factory tls_config osd_buffer_pool kind >>= fun (osd, closer) ->
                  Lwt.finalize
                    (fun () -> osd # get_disk_usage)
@@ -360,22 +364,23 @@ class osd_access
               | Some { node_id; version; total; used; } ->
                  Lwt.return
                    (node_id,
-                    Osd.Asd (conn_info, id),
+                    OsdInfo.Asd (conn_info, id),
                     used, total))
              >>= fun (node_id, kind, used, total) ->
 
              let osd_info =
-               Osd.({
-                       kind;
-                       decommissioned = false;
-                       node_id;
-                       other = json;
-                       used; total;
-                       seen = [ Unix.gettimeofday (); ];
-                       read = [];
-                       write = [];
-                       errors = [];
-                     }) in
+               OsdInfo.({
+                           kind;
+                           decommissioned = false;
+                           node_id;
+                           other = json;
+                           used; total;
+                           seen = [ Unix.gettimeofday (); ];
+                           read = [];
+                           write = [];
+                           errors = [];
+                         })
+             in
 
              Lwt.catch
                (fun () -> mgr_access # add_osd osd_info)

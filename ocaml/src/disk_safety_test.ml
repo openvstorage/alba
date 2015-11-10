@@ -77,7 +77,7 @@ let test_safety () =
            List.filter
              (function
                | (Osd.ClaimInfo.ThisAlba id, osd_info) ->
-                 let node_id = osd_info.Osd.node_id in
+                 let node_id = osd_info.OsdInfo.node_id in
                  if String.length node_id > 5
                  then "_2002" = Str.last_chars node_id 5
                  else false

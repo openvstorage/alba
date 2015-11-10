@@ -19,15 +19,16 @@ open Encryption
 open Albamgr_protocol.Protocol
 
 module Osd = struct
+  open Nsm_model
   type t = {
     id : Osd.id option;
     alba_id : string option;
-    ips : Osd.ip list;
-    port : Osd.port;
+    ips : OsdInfo.ip list;
+    port : OsdInfo.port;
     kind : string;
     decommissioned : bool;
-    node_id : Osd.node_id;
-    long_id : Osd.long_id;
+    node_id : OsdInfo.node_id;
+    long_id : OsdInfo.long_id;
     total: int64;
     used : int64;
     seen : timestamp list;
@@ -41,7 +42,7 @@ module Osd = struct
 
   let make
       alba_id claim_info
-      { Osd.kind; decommissioned; node_id;
+      { OsdInfo.kind; decommissioned; node_id;
         other;
         total; used;
         seen; read; write; errors; } =
@@ -54,8 +55,8 @@ module Osd = struct
     in
     let k, conn_info, long_id =
       match kind with
-      | Osd.Asd (conn_info, asd_id)    -> "AsdV1", conn_info, asd_id
-      | Osd.Kinetic(conn_info, kin_id) -> "Kinetic3", conn_info, kin_id
+      | OsdInfo.Asd (conn_info, asd_id)    -> "AsdV1", conn_info, asd_id
+      | OsdInfo.Kinetic(conn_info, kin_id) -> "Kinetic3", conn_info, kin_id
     in
     let ips, port, _ = conn_info in
     { id; alba_id;

@@ -28,9 +28,10 @@ class type basic_client = object
                   ('i, 'o) update -> 'i -> 'o Lwt.t
 end
 
-class client (client : basic_client) =
+class client (client : basic_client)  =
   object(self)
     val supports_update_osds = ref None
+    val supports_add_osd2    = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -217,7 +218,9 @@ class client (client : basic_client) =
     method list_all_osds =
       list_all_x
         ~first:""
-        (fun (_, osd_info) -> Osd.get_long_id osd_info.Osd.kind)
+        (fun (_, osd_info) ->
+         let open Nsm_model.OsdInfo in
+         get_long_id osd_info.kind)
         (self # list_osds_by_long_id
            ~last:None
            ~reverse:false ~max:(-1))
@@ -234,12 +237,35 @@ class client (client : basic_client) =
       client # query ListAvailableOsds ()
 
     method add_osd osd_info =
-      client # update AddOsd osd_info
+      let use_feature () = client # update AddOsd2 osd_info in
+      let alternative () = client # update AddOsd  osd_info in
+      match !supports_add_osd2 with
+      | None ->
+         Lwt_log.debug "testing add_osd support" >>= fun () ->
+         Lwt.catch
+           ( fun () ->
+             use_feature () >>= fun () ->
+             let () = supports_add_osd2 := Some true in
+             Lwt.return_unit
+           )
+           (let open Albamgr_protocol.Protocol.Error in
+            function
+             | Albamgr_exn(Unknown_operation,_) as exn ->
+                Lwt_log.debug ~exn "no support for add_osd2" >>= fun () ->
+                let () = supports_add_osd2 := Some false in
+                alternative ()
+             | exn -> Lwt.fail exn
+           )
+      | Some true -> use_feature()
+      | Some false -> alternative ()
+
+
 
     method update_osd ~long_id changes =
       client # update UpdateOsd (long_id, changes)
 
     method update_osds updates =
+      Lwt_log.info "update_osds" >>= fun () ->
       let do_it () = client # update UpdateOsds updates in
       let fake_it () =
         Lwt_list.fold_left_s

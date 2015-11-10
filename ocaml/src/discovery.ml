@@ -286,7 +286,7 @@ let get_kind buffer_pool (conn_info:Networking2.conn_info) =
                let wwn = config.world_wide_name in
                Lwt_io.printlf "wwn:%s" wwn>>= fun () ->
                let long_id = wwn in
-               let kind = Albamgr_protocol.Protocol.Osd.Kinetic(conn_info',long_id) in
+               let kind = Nsm_model.OsdInfo.Kinetic(conn_info',long_id) in
                let r = Some kind in
                Lwt.return r)
            )
@@ -309,7 +309,7 @@ let get_kind buffer_pool (conn_info:Networking2.conn_info) =
       )
       (function
         | Asd_client.BadLongId(_,long_id) ->
-           let kind = Albamgr_protocol.Protocol.Osd.Asd(conn_info', long_id) in
+           let kind = Nsm_model.OsdInfo.Asd(conn_info', long_id) in
            Lwt.return (Some kind)
         | exn ->
            Lwt_log.debug_f "probably not an asd..." ~exn

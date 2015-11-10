@@ -17,9 +17,9 @@ limitations under the License.
 open Albamgr_protocol
 
 let test_apply () =
-  let open Protocol.Osd in
+  let open Nsm_model.OsdInfo in
   let create seen =
-    Update.make ~ips':[] ~port':0 ~used':10L ~total':99L ~seen':seen ()
+    Protocol.Osd.Update.make ~ips':[] ~port':0 ~used':10L ~total':99L ~seen':seen ()
   in
   let ts = [4.;3.;2.;1.;0.] in
   let kind = Asd(([],8000, false),"asd") in
@@ -35,7 +35,7 @@ let test_apply () =
 
   in
   let u1 = create [6.1;5.1;4.1;3.1;2.1;1.1] in
-  let r = Update.apply info u1 in
+  let r = Protocol.Osd.Update.apply info u1 in
   let kind = Asd(([], 0, false),"asd") in
   let expected =
     make

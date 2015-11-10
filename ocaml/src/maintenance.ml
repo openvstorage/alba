@@ -152,7 +152,7 @@ class client ?(retry_timeout = 60.)
       alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
       Lwt.return ((maintenance_config.Maintenance_config.enable_auto_repair
                    && Hashtbl.mem maybe_dead_osds osd_id)
-                  || osd_info.Albamgr_protocol.Protocol.Osd.decommissioned)
+                  || osd_info.Nsm_model.OsdInfo.decommissioned)
 
     method failure_detect_all_osds : unit Lwt.t =
       Lwt_extra2.run_forever
@@ -166,7 +166,7 @@ class client ?(retry_timeout = 60.)
              (* failure detecting already decommissioned osds isn't that useful *)
              let osds =
                List.filter
-                 (fun (_, osd_info) -> not osd_info.Albamgr_protocol.Protocol.Osd.decommissioned)
+                 (fun (_, osd_info) -> not osd_info.Nsm_model.OsdInfo.decommissioned)
                  osds
              in
 
@@ -183,7 +183,7 @@ class client ?(retry_timeout = 60.)
              in
              List.iter
                (fun (osd_id, osd_info) ->
-                let open Albamgr_protocol.Protocol.Osd in
+                let open Nsm_model.OsdInfo in
                 if not (Automatic_repair.recent_enough past_date osd_info.write
                         && Automatic_repair.recent_enough past_date osd_info.write)
                    && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)

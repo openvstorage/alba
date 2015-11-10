@@ -298,7 +298,7 @@ module Protocol = struct
     | GetVersion : (unit, (int * int * int * string)) request
     | OsdView : (unit, (string * Albamgr_protocol.Protocol.Osd.ClaimInfo.t) Std.counted_list
                        * (Albamgr_protocol.Protocol.Osd.id
-                          * Albamgr_protocol.Protocol.Osd.t
+                          * Nsm_model.OsdInfo.t
                           * Osd_state.t) Std.counted_list) request
 
   type request' = Wrap : _ request -> request'
@@ -446,8 +446,8 @@ module Protocol = struct
        let deser_info = Albamgr_protocol.Protocol.Osd.ClaimInfo.deser in
        let deser_claim = Deser.counted_list (Deser.tuple2 Deser.string deser_info) in
        let deser_int32 = Llio.int32_from, Llio.int32_to in
-       let deser_osd   = Albamgr_protocol.Protocol.Osd.from_buffer,
-                         Albamgr_protocol.Protocol.Osd.to_buffer
+       let deser_osd   = Nsm_model.OsdInfo.from_buffer,
+                         Nsm_model.OsdInfo.to_buffer ~version:2
        in
        Deser.tuple2
          deser_claim

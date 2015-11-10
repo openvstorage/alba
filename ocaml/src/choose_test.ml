@@ -17,7 +17,7 @@ limitations under the License.
 open Prelude
 open Albamgr_protocol.Protocol
 
-type r_t = int * ((Osd.id * Osd.t ) list)
+type r_t = int * ((Osd.id * Nsm_model.OsdInfo.t ) list)
 
 open Choose
 
@@ -34,11 +34,13 @@ let test () =
       else
         let device_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
-        let kind = Osd.Asd ((["::1"], 8000 +i, false),
-                            "asd id choose test " ^ (string_of_int i) )
+        let kind = Nsm_model.OsdInfo.Asd (
+                       (["::1"], 8000 +i, false),
+                       "asd id choose test " ^ (string_of_int i)
+                     )
         in
         let d_info =
-          Osd.make
+          Nsm_model.OsdInfo.make
             ~node_id ~kind
             ~decommissioned:false
             ~other:""
@@ -86,6 +88,7 @@ let test () =
 let choose_bug () =
   let pop = 12 in
   let info = Hashtbl.create 13 in
+  let open Nsm_model in
   let rec fill i =
     if i = pop
     then ()
@@ -93,9 +96,10 @@ let choose_bug () =
       let device_id = Int32.of_int i in
       let node_id = "my node" in
       let conn_info = ["::1"], 8000 + i, false in
-      let kind = Osd.Asd(conn_info, "asd id choose bug " ^ string_of_int i) in
+
+      let kind = OsdInfo.Asd(conn_info, "asd id choose bug " ^ string_of_int i) in
       let d_info =
-        Osd.make
+        OsdInfo.make
           ~node_id ~kind ~decommissioned:false ~other:""
           ~total:_TOTAL
           ~used:_USED
@@ -109,7 +113,7 @@ let choose_bug () =
   in
   let () = fill 0 in
   let r = Choose.choose_devices 12 info in
-  let () = Printf.printf "r=%s\n" ([%show : (Osd.id * Osd.t ) list ] r) in
+  let () = Printf.printf "r=%s\n" ([%show : (Osd.id * OsdInfo.t ) list ] r) in
   ()
 
 
@@ -120,6 +124,7 @@ let choose_forced () =
   Printf.printf "seed = %i" seed;
   Random.init seed;
   let pop = 32 in
+  let open Nsm_model in
   let rec fill i =
       if i = pop
       then ()
@@ -127,9 +132,11 @@ let choose_forced () =
         let osd_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
         let conn_info = (["::1"], 8000 +i, false) in
-        let kind = Osd.Asd (conn_info, "osd id choose forced test " ^ (string_of_int i) ) in
+        let kind = OsdInfo.Asd (conn_info,
+                                          "osd id choose forced test " ^ (string_of_int i) )
+        in
         let d_info =
-          Osd.make
+          OsdInfo.make
             ~node_id ~kind
             ~decommissioned:false ~other:""
             ~total:_TOTAL ~used:_USED
@@ -318,18 +325,19 @@ let test_actually_rebalances () =
   ()
 
 let setup_explicit_info info_list =
+  let open Nsm_model in
   let make_kind osd_id =
     let conn_info = ["::1"],8000 + (Int32.to_int osd_id), false
     and asd_id = "asd id choose test " ^ (Int32.to_string osd_id)
     in
-    Osd.Asd (conn_info, asd_id)
+    OsdInfo.Asd (conn_info, asd_id)
   in
   let info = Hashtbl.create 15 in
   let () =
     List.iter
       (fun (osd_id,node_id) ->
        let d_info =
-         Osd.make
+         OsdInfo.make
            ~node_id
            ~kind:(make_kind osd_id)
            ~decommissioned:false
@@ -371,7 +379,7 @@ let test_choose_extra_bug2() =
   let r = choose_extra_devices n info chosen in
   let osd_ids = List.map fst r in
   let osds_per_node = Hashtbl.create 16 in
-  let open Osd in
+  let open Nsm_model.OsdInfo in
   let () =
     List.iter
       (fun osd_id ->

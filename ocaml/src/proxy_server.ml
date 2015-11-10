@@ -240,7 +240,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        let info = alba_client # osd_access # osds_info_cache  in
        let state_info =
          Hashtbl.fold
-           (fun osd_id ((osd:Albamgr_protocol.Protocol.Osd.t),
+           (fun osd_id ((osd:Nsm_model.OsdInfo.t),
                         (state:Osd_state.t)) (c,acc) ->
             let c' = c+1
             and acc' = (osd_id, osd, state) :: acc

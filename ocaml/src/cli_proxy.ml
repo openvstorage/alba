@@ -337,7 +337,7 @@ let proxy_osd_view host port =
        (fun (osd_id, info,state) ->
         Lwt_io.printlf "%li:\n\t%s\n\t%s"
                        osd_id
-                       (Albamgr_protocol.Protocol.Osd.show info)
+                       (Nsm_model.OsdInfo.show info)
                        (Osd_state.show state)
 
        )

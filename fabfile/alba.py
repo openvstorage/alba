@@ -43,7 +43,7 @@ def _local_ip():
     return local_ip_address
 
 @task
-def demo_kill():
+def demo_kill(env = env):
     where = local
     with warn_only():
         where("pkill -e -9 %s" % os.path.basename(env['arakoon_bin']))
@@ -60,7 +60,7 @@ def demo_kill():
 @task
 def arakoon_start_(arakoon_config_file,
                    base_dir,
-                   arakoon_nodes):
+                   arakoon_nodes, env = env):
     where = local
 
     for node in arakoon_nodes:
@@ -131,7 +131,7 @@ def make_cert(name, serial = None):
         )
 
 @task
-def arakoon_start(tls):
+def arakoon_start(tls, env = env):
     acf = arakoon_config_file
     where = local
     path = "/tmp/arakoon"
@@ -149,7 +149,7 @@ def arakoon_start(tls):
             where("mkdir ./%s" % client)
             make_cert(name = client, serial = serial)
 
-    arakoon_start_(acf, "/tmp/arakoon", arakoon_nodes)
+    arakoon_start_(acf, "/tmp/arakoon", arakoon_nodes, env = env)
 
 def _extend_arakoon_tls(cmd):
     root = TLS['root_dir']
@@ -170,7 +170,9 @@ def _extend_alba_tls(cmd):
                             '%s/%s/%s.key' % (root, name, name))
     ])
 @task
-def arakoon_who_master(arakoon_cfg_file = arakoon_config_file, tls = 'False'):
+def arakoon_who_master(arakoon_cfg_file = arakoon_config_file,
+                       tls = 'False',
+                       env = env):
     if tls == 'True':
         arakoon_cfg_file = TLS['arakoon_config_file']
 
@@ -241,7 +243,7 @@ def create_loop_devices():
 local_nodeid_prefix = str(uuid4())
 
 def _asd_inner(port, path, node_id, slow, multicast,
-               tls):
+               tls, env):
     global local_nodeid_prefix
     cfg_path = path + "/cfg.json"
     limit = 90 if env['osds_on_separate_fs'] else 99
@@ -254,9 +256,7 @@ def _asd_inner(port, path, node_id, slow, multicast,
             'limit' : limit,
             '__sync_dont_use' : False
     }
-    if multicast:
-        cfg ['multicast'] = 10.0
-    else:
+    if not multicast:
         cfg ['multicast'] = None
 
     if tls == 'True':
@@ -290,7 +290,7 @@ def _kinetic_inner(port, path):
 @task
 def osd_start(port, path, node_id, kind, slow,
               setup_dir=True, multicast = True,
-              tls = 'False'):
+              tls = 'False', env = env):
     where = local
     if setup_dir:
         where("mkdir -p %s" % path)
@@ -307,7 +307,7 @@ def osd_start(port, path, node_id, kind, slow,
     if kind == "ASD":
         inner = _asd_inner(port, path,
                            node_id, slow and port == 8000,
-                           multicast, tls = tls)
+                           multicast, tls = tls, env = env)
     else:
         inner = _kinetic_inner(port, path)
 
@@ -463,7 +463,9 @@ def maintenance_stop():
     where = local
     where(cmd_line)
 
-def wait_for_master(arakoon_cfg_file = arakoon_config_file, tls = 'False', max = 10):
+def wait_for_master(arakoon_cfg_file = arakoon_config_file,
+                    tls = 'False', max = 10, env = env
+    ):
     waiting = True
     count = 0
     m = None
@@ -471,7 +473,7 @@ def wait_for_master(arakoon_cfg_file = arakoon_config_file, tls = 'False', max =
 
         try:
             m = arakoon_who_master(arakoon_cfg_file,
-                                   tls = tls)
+                                   tls = tls, env = env)
 
         except:
             m = None
@@ -545,7 +547,8 @@ def claim_local_osds(n, abm_cfg = arakoon_config_file,
     assert (claimed_osds == n)
 
 @task
-def start_osds(kind, n, slow, multicast=True, tls = 'False'):
+def start_osds(kind, n, slow, multicast=True,
+               tls = 'False', env = env):
     n = int(n) # as a separate task, you will be getting a string
     for i in range(n):
         if kind == "MIXED":
@@ -562,7 +565,8 @@ def start_osds(kind, n, slow, multicast=True, tls = 'False'):
                   kind = my_kind,
                   slow = slow,
                   multicast = multicast,
-                  tls = tls
+                  tls = tls,
+                  env = env
         )
 
 @task
@@ -589,6 +593,16 @@ def demo_setup(kind = default_kind,
     arakoon_start(tls = tls)
     wait_for_master(tls = tls)
 
+    if env.get('0.6') :
+        cmd = [
+        env['alba_bin'],
+        'apply-license',
+        env['license_file'],
+        env['signature'],
+        '--config', arakoon_config_file
+        ]
+
+    local(' '.join(cmd))
     n_agents = int(n_agents)
     n_proxies = int(n_proxies)
 
@@ -620,7 +634,7 @@ def smoke_test(sudo = 'False', tls = 'False'):
     try:
         with open('/etc/os-release','r') as f:
             data = f.read()
-            print data
+            #print data
             if data.find('centos') > 0:
                 centos = True
     except:

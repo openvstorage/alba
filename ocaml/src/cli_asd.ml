@@ -390,7 +390,7 @@ let asd_statistics hosts port_o asd_id to_json config_o tls_config clear =
                   Lwt.fail (Failure msg)
                 | Some (claim_info, osd) ->
                   let conn_info =
-                    let open Albamgr_protocol.Protocol.Osd in
+                    let open Nsm_model.OsdInfo in
                     let conn_info' = get_conn_info osd.kind in
                     Asd_client.conn_info_from conn_info' ~tls_config
                   in

@@ -107,7 +107,7 @@ let alba_list_osds cfg_file tls_config node_id to_json attempts =
                 let r =
                   List.filter
                   (fun (_,osd) ->
-                   node_id = osd.node_id) devices
+                   node_id = osd.Nsm_model.OsdInfo.node_id) devices
                 in
                 (List.length r, r)
               end
@@ -127,7 +127,7 @@ let alba_list_osds cfg_file tls_config node_id to_json attempts =
              (fun (d_id,d_info) ->
                 Lwt_io.printlf
                   "%li : %s" d_id
-                  (show d_info)
+                  (Nsm_model.OsdInfo.show d_info)
              )
              devices'
          end)
@@ -174,7 +174,7 @@ let alba_list_all_osds cfg_file tls_config node_id to_json attempts =
                 let r =
                   List.filter
                   (fun (_,osd) ->
-                   let open Albamgr_protocol.Protocol.Osd in
+                   let open Nsm_model.OsdInfo in
                    node_id = osd.node_id) devices
                 in
                 (List.length r, r)
@@ -196,7 +196,7 @@ let alba_list_all_osds cfg_file tls_config node_id to_json attempts =
                 Lwt_io.printlf
                   "%s : %s"
                   (Osd.ClaimInfo.show claim)
-                  (Osd.show d_info)
+                  (Nsm_model.OsdInfo.show d_info)
              )
              devices'
          end)
@@ -237,7 +237,7 @@ let alba_list_available_osds alba_cfg_file tls_config to_json attempts =
       Lwt_log.debug_f
         "Found %i available osds: %s"
         cnt
-        ([%show : Albamgr_protocol.Protocol.Osd.t list] osds)
+        ([%show : Nsm_model.OsdInfo.t list] osds)
   in
   lwt_cmd_line to_json t
 
@@ -407,7 +407,7 @@ let alba_list_decommissioning_osds
          else
            Lwt_log.debug_f "%i osds still decommissioning: %s"
              cnt
-             ([%show : (Osd.id * Osd.t) list] osds))
+             ([%show : (Osd.id * Nsm_model.OsdInfo.t) list] osds))
   in
   lwt_cmd_line to_json t
 
@@ -507,7 +507,7 @@ let alba_add_osd cfg_file tls_config host port node_id to_json attempts =
        let total = Int64.of_int (1 lsl 42) in
        let used = 0L in
        let osd_info =
-         Albamgr_protocol.Protocol.Osd.({
+         Nsm_model.OsdInfo.({
                  kind;
                  decommissioned = false;
                  node_id;

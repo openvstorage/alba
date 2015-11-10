@@ -717,7 +717,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               let osd_info_v = db # get_exn osd_info_key in
               let _, osd_info = deserialize Osd.from_buffer_with_claim_info osd_info_v in
 
-              if osd_info.Osd.decommissioned
+              if osd_info.Nsm_model.OsdInfo.decommissioned
               then
                 begin
                   let add_work_items =
@@ -913,6 +913,25 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       in
       upds
     in
+    let add_osd osd =
+      (* this adds the osd to the albamgr without claiming it *)
+
+       let info_key =
+         Keys.Osd.info
+           ~long_id:(let open Nsm_model in OsdInfo.get_long_id osd.OsdInfo.kind)
+       in
+       if None <> (db # get info_key)
+       then Error.failwith Error.Osd_already_exists;
+
+
+       let upds = [ Update.Assert (info_key, None);
+                    Update.Set (info_key,
+                                serialize
+                                  Osd.to_buffer_with_claim_info
+                                  (Osd.ClaimInfo.Available, osd)); ]
+       in
+       Lwt.return ((), upds)
+    in
     function
     | AddNsmHost -> fun (id, nsm_host) ->
       let nsm_host_info_key = Keys.Nsm_host.info id in
@@ -940,20 +959,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             [ Update.Set (nsm_host_info_key,
                                  serialize Nsm_host.to_buffer nsm_host) ]
       end
-    | AddOsd -> fun osd ->
-      (* this adds the osd to the albamgr without claiming it *)
-      let info_key = Keys.Osd.info ~long_id:(Osd.get_long_id osd.Osd.kind) in
-      if None <> (db # get info_key)
-      then Error.failwith Error.Osd_already_exists;
+    | AddOsd  -> fun osd -> add_osd osd
+    | AddOsd2 -> fun osd -> add_osd osd
 
-
-      let upds = [ Update.Assert (info_key, None);
-                   Update.Set (info_key,
-                               serialize
-                                 Osd.to_buffer_with_claim_info
-                                 (Osd.ClaimInfo.Available, osd)); ]
-      in
-      Lwt.return ((), upds)
     | UpdateOsd ->
        fun (long_id, osd_changes) ->
        let upds = make_update_osd_updates long_id osd_changes [] in
@@ -988,10 +996,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | AnotherAlba _
         | Available -> Error.(failwith ~payload:"osd not claimed by this instance" Unknown)
       in
-      if osd_info_current.Osd.decommissioned
+      if osd_info_current.Nsm_model.OsdInfo.decommissioned
       then Error.(failwith Osd_already_decommissioned);
 
-      let osd_info_new = Osd.({
+      let osd_info_new = Nsm_model.OsdInfo.({
           osd_info_current with
           decommissioned = true;
         }) in
@@ -1217,7 +1225,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             List.filter
               (fun osd_id ->
                  let _, osd_info = Option.get_some (get_osd_by_id ~osd_id) in
-                 not osd_info.Osd.decommissioned)
+                 not osd_info.Nsm_model.OsdInfo.decommissioned)
               ids
           in
 

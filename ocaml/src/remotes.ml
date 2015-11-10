@@ -137,12 +137,12 @@ module Pool = struct
   module Osd = struct
     type osd = Osd.osd
     open Albamgr_protocol.Protocol
-
+    open Nsm_model
     type osd_pool = (osd * (unit -> unit Lwt.t)) Lwt_pool2.t
 
     type t = {
       pools : (Osd.id, osd_pool) Hashtbl.t;
-      get_osd_kind : Osd.id -> Osd.kind Lwt.t;
+      get_osd_kind : Osd.id -> OsdInfo.kind Lwt.t;
       pool_size : int;
       buffer_pool : Buffer_pool.t;
       tls_config: Tls.t option;
@@ -158,9 +158,8 @@ module Pool = struct
       }
 
     let factory tls_config buffer_pool =
-      let open Osd in
       function
-      | Asd (conn_info', asd_id) ->
+      | OsdInfo.Asd (conn_info', asd_id) ->
          let () =
            Lwt_log.ign_debug_f
              "factory: conn_info':%s"
@@ -172,7 +171,7 @@ module Pool = struct
          >>= fun (asd, closer) ->
          let osd = new Asd_client.asd_osd asd_id asd in
          Lwt.return (osd, closer)
-      | Kinetic (conn_info', kinetic_id) ->
+      | OsdInfo.Kinetic (conn_info', kinetic_id) ->
          let conn_info = Asd_client.conn_info_from conn_info' in
          Kinetic_client.make_client buffer_pool ~conn_info kinetic_id
          >>= fun (kin, closer) ->

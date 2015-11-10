@@ -717,7 +717,7 @@ let test_discover_claimed () =
               let res =
                 List.exists
                   (fun osd ->
-                     let open Albamgr_protocol.Protocol.Osd in
+                     let open Nsm_model.OsdInfo in
                      test_name = get_long_id osd.kind)
                   available_osds
               in
@@ -1237,7 +1237,7 @@ let test_disk_churn () =
               | None -> Lwt.fail_with "can't find osd"
               | Some osd_info ->
                 alba_client # decommission_osd
-                  ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+                  ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            used_osds
          >>= fun () ->
 
@@ -1325,7 +1325,7 @@ let test_disk_churn () =
                | None -> Lwt.fail_with "can't find osd"
                | Some osd_info ->
                   alba_client # decommission_osd
-                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+                              ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
                               ~deterministic:true
@@ -1371,7 +1371,7 @@ let test_disk_churn () =
                | None -> Lwt.fail_with "can't find osd"
                | Some osd_info ->
                   alba_client # decommission_osd
-                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+                              ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
                               ~deterministic:true

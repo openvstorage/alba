@@ -33,7 +33,7 @@ module Protocol = struct
       | LinkOsd (osd_id, osd_info) ->
         Llio.int8_to buf 1;
         Llio.int32_to buf osd_id;
-        Nsm_model.OsdInfo.to_buffer buf osd_info
+        Nsm_model.OsdInfo.to_buffer buf osd_info ~version:2
       | UnlinkOsd osd_id ->
         Llio.int8_to buf 2;
         Llio.int32_to buf osd_id
