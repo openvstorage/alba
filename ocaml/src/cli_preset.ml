@@ -41,6 +41,7 @@ let alba_create_preset
     Alba_json.Preset.to_preset
       preset' >>= fun preset ->
     let open Albamgr_protocol.Protocol in
+    Lwt_log.debug_f "Storing preset %s" (Preset.show preset) >>= fun () ->
     Albamgr_client.with_client'
       (Arakoon_config.from_config_file cfg_file)
       ~tls_config

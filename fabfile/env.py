@@ -26,12 +26,15 @@ def env_or_default(key, default):
 
 ARAKOON_HOME = env_or_default("ARAKOON_HOME",
                               "%s/workspace/ARAKOON" % os.environ['HOME'])
+ARAKOON_BIN = env_or_default("ARAKOON_BIN",
+                         "%s/arakoon/arakoon.native" % ARAKOON_HOME)
 
 VOLDRV_HOME = env_or_default("VOLDRV_HOME",
                              "%s/workspace/VOLDRV" % os.environ['HOME'])
-
-ARAKOON_BIN = env_or_default("ARAKOON_BIN",
-                         "%s/arakoon/arakoon.native" % ARAKOON_HOME)
+VOLDRV_TEST = env_or_default("VOLDRV_TEST",
+                             "%s/volumedriver_test" % VOLDRV_HOME)
+VOLDRV_BACKEND_TEST = env_or_default("VOLDRV_BACKEND_TEST",
+                                     "%s/backend_test" % VOLDRV_HOME)
 
 ALBA_BIN = env_or_default("ALBA_BIN",
                           "%s/ocaml/alba.native" % cwd)
@@ -49,8 +52,8 @@ env = {
     'kinetic_bin': '%s/bin/start_kinetic.sh' % cwd,
     'asd_path_t': ALBA_ASD_PATH_T,
     'arakoon_bin' : ARAKOON_BIN,
-    'voldrv_backend_test' : "%s/backend_test" % VOLDRV_HOME,
-    'voldrv_tests' : "%s/volumedriver_test" % VOLDRV_HOME,
+    'voldrv_backend_test' : VOLDRV_BACKEND_TEST,
+    'voldrv_tests' : VOLDRV_TEST,
     'failure_tester' : "%s/ocaml/disk_failure_tests.native" % cwd,
     'osds_on_separate_fs' : False
 }

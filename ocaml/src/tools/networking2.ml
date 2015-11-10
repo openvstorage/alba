@@ -181,10 +181,18 @@ let first_connection' ?close_msg buffer_pool ~conn_info =
   in
   Lwt.return (nfd, conn, closer)
 
+
 let make_server ?(cancel = Lwt_condition.create ())
                 ?(server_name = "server")
+                ?max
                 hosts port
                 ~ctx protocol =
+  let count = ref 0 in
+  let allow_connection =
+    match max with
+    | None -> fun () -> true
+    | Some max -> fun () -> max > !count
+  in
   let server_loop socket_address =
     let rec inner listening_socket =
       Lwt.pick
@@ -202,18 +210,24 @@ let make_server ?(cancel = Lwt_condition.create ())
                begin
                  Lwt.finalize
                    (fun () ->
-                    Lwt.catch
-                      (fun () -> protocol nfd)
-                      (function
-                        | End_of_file ->
-                           Lwt_log.debug_f "%s: End_of_file from client" server_name
-                        | exn ->
-                           Lwt_log.info_f
-                             "%s: exception occurred in client connection: %s"
-                             server_name
-                             (Printexc.to_string exn)
-                      ))
+                    let () = incr count in
+                    if allow_connection ()
+                    then
+                      Lwt.catch
+                        (fun () -> protocol nfd)
+                        (function
+                          | End_of_file ->
+                             Lwt_log.debug_f "%s: End_of_file from client" server_name
+                          | exn ->
+                             Lwt_log.info_f
+                               "%s: exception occurred in client connection: %s"
+                               server_name
+                               (Printexc.to_string exn)
+                        )
+                    else
+                      (Lwt_log.warning_f "Denying connection, too many client connections %i" !count))
                    (fun () ->
+                    let () = decr count in
                     Lwt.catch
                       (fun () -> Net_fd.close nfd)
                       (fun exn ->
@@ -221,7 +235,8 @@ let make_server ?(cancel = Lwt_condition.create ())
                          "%s: exception occurred during close of client connection: %s"
                          server_name
                          (Printexc.to_string exn)
-                      ))
+                      )
+                   )
                end
       in
       inner listening_socket

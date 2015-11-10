@@ -437,6 +437,8 @@ let test_rewrite_namespace () =
 
      alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
      assert (cnt = cnt');
+     Lwt_log.debug_f "progresses:%s" ([%show : (int * Progress.t) list] progresses)
+     >>= fun () ->
      let cnt'' =
        List.fold_left
          (fun acc (i, p) ->
@@ -449,7 +451,7 @@ let test_rewrite_namespace () =
          0
          progresses
      in
-     assert (cnt'' = List.length objs);
+     OUnit2.assert_equal ~printer:string_of_int cnt'' (List.length objs);
 
      get_objs () >>= fun manifests' ->
      assert (manifests' <> manifests);

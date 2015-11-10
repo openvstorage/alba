@@ -435,6 +435,6 @@ let with_client albamgr_client_cfg
                         ~tls_config
   in
   let client = new alba_client base_client in
-  Lwt.finalize
-  (fun () -> f client)
-  (fun () -> cache # close ())
+  f client >>= fun r ->
+  cache # close () >>= fun () ->
+  Lwt.return r

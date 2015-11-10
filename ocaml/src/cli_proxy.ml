@@ -35,6 +35,7 @@ module Config = struct
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
+    max_client_connections : int [@default 128];
     tls_client : Tls.t option [@default None];
   } [@@deriving yojson, show]
 end
@@ -70,17 +71,20 @@ let proxy_start cfg_file =
         albamgr_connection_pool_size,
         nsm_host_connection_pool_size,
         osd_connection_pool_size, osd_timeout,
-        lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size =
+        lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size,
+        max_client_connections
+        =
         cfg.fragment_cache_dir,
         cfg.manifest_cache_size,
         (* the fragment cache size is currently a rather soft limit which we'll
            surely exceed. this can lead to disk full conditions. by taking a
-           safety margin of 10% we turn the soft limit into a hard one... *)
+           safety margin of 15% we turn the soft limit into a hard one... *)
         (cfg.fragment_cache_size / 100) * 85,
         cfg.albamgr_connection_pool_size,
         cfg.nsm_host_connection_pool_size,
         cfg.osd_connection_pool_size, cfg.osd_timeout,
-        cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size
+        cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
+        cfg.max_client_connections
       in
       let () = match cfg.chattiness with
         | None -> ()
@@ -129,6 +133,7 @@ let proxy_start cfg_file =
         ~osd_connection_pool_size
         ~osd_timeout
         ~albamgr_cfg_file
+        ~max_client_connections
         ~tls_config:cfg.tls_client
   in
   lwt_server t

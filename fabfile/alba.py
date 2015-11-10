@@ -565,6 +565,15 @@ def start_osds(kind, n, slow, multicast=True, tls = 'False'):
                   tls = tls
         )
 
+@task
+def create_example_preset():
+    cmd = [ env['alba_bin'],
+            'create-preset', 'example',
+            '--config', './cfg/albamgr_example_arakoon_cfg.ini',
+            '< cfg/preset.json'
+    ]
+    cmd_line = ' '.join(cmd)
+    local (cmd_line)
 
 @task
 def demo_setup(kind = default_kind,
@@ -600,8 +609,7 @@ def demo_setup(kind = default_kind,
     claim_local_osds(N, abm_cfg = arakoon_config_file, multicast = multicast, tls = tls)
 
     create_namespace_demo(tls = tls)
-
-
+    create_example_preset()
 
 @task
 def smoke_test(sudo = 'False', tls = 'False'):

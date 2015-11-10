@@ -23,14 +23,14 @@ OPAM_DEPENDS="ocamlfind \
          nocrypto.0.5.1 \
          uuidm.0.9.5 \
          zarith.1.3 \
-         arakoon.1.8.8 \
+         arakoon.1.8.10 \
          orocksdb.0.2.1 \
          kinetic-client \
          tiny_json \
          cmdliner \
          ppx_deriving ppx_deriving_yojson \
-         sexplib.112.35.00 \
-         core_kernel.112.35.00
+         sexplib.113.00.00 \
+         core_kernel.113.00.00
 "
 
 export OPAMYES=1
@@ -53,7 +53,7 @@ before_install () {
     echo "Installing general dependencies"
     sudo apt-get install -q ${APT_DEPENDS}
 
-    echo "yes" | sudo add-apt-repository ppa:avsm/ocaml42+opam12
+    sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
     echo "Updating Apt cache"
     sudo apt-get update -qq
     echo "updating keys"

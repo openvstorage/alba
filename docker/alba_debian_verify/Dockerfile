@@ -1,4 +1,4 @@
-FROM ubuntu:15.04
+FROM ubuntu:14.04.3
 RUN apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential sudo python-dev python-pip wget gdebi-core
 RUN pip install fabric junit-xml
