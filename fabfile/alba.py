@@ -401,6 +401,15 @@ def start_osds(kind, n, slow, multicast=True):
                   slow = slow,
                   multicast = multicast)
 
+@task
+def create_example_preset():
+    cmd = [ env['alba_bin'],
+            'create-preset', 'example',
+            '--config', './cfg/albamgr_example_arakoon_cfg.ini',
+            '< cfg/preset.json'
+    ]
+    cmd_line = ' '.join(cmd)
+    local (cmd_line)
 
 @task
 def demo_setup(kind = default_kind, multicast = True, n_agents = 1, n_proxies = 1):
@@ -426,7 +435,7 @@ def demo_setup(kind = default_kind, multicast = True, n_agents = 1, n_proxies = 
     claim_local_osds(N, multicast)
 
     create_namespace_demo()
-
+    create_example_preset()
 
 
 @task
