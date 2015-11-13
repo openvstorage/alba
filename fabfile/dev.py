@@ -86,7 +86,8 @@ def run_tests_ocaml(xml=False,tls = 'False',
 
     alba.start_osds(kind, N, False, tls = tls)
 
-    if tls =='True':
+    use_tls = alba._use_tls(tls)
+    if use_tls:
         # make cert for extra asd (test_discover_claimed)
         alba.make_cert(name = 'test_discover_claimed')
 
@@ -101,7 +102,7 @@ def run_tests_ocaml(xml=False,tls = 'False',
     if filter:
         cmd.append(" --only-test=%s" % filter)
 
-    if tls == 'True':
+    if use_tls:
         alba._extend_alba_tls(cmd)
 
     print cmd
@@ -209,7 +210,7 @@ def run_tests_disk_failures(xml=False, tls = 'False'):
     cmd = [env['failure_tester']]
     if xml:
         cmd.append(" --xml=true")
-    if tls == 'True':
+    if alba._use_tls(tls):
         alba._extend_alba_tls(cmd)
 
     cmd_s = " ".join(cmd)
@@ -238,7 +239,7 @@ def run_tests_stress(kind = default_kind, xml = False, tls = 'False'):
 
     def list_namespaces_cmd():
         cmd = build_cmd('list-namespaces')
-        if tls == 'True':
+        if alba._use_tls(tls):
             alba._extend_alba_tls(cmd)
 
         cmd.append('--to-json')
@@ -467,7 +468,8 @@ def run_test_asd_start(xml=False, tls = 'False'):
     for i in xrange(0, N):
         alba.osd_stop(8000 + i)
 
-    alba.start_osds(default_kind, N, True)
+    alba.start_osds(default_kind, N, True, tls = tls,
+                    restart = True)
     time.sleep(1)
 
     cmd = [
@@ -483,7 +485,8 @@ def run_test_asd_start(xml=False, tls = 'False'):
         local(" ".join(cmd))
         local(" ".join(cmd))
 
-    local(" ".join(cmd))
+    r = local(" ".join(cmd))
+    print r
 
     local(" ".join([
         env['alba_bin'],
@@ -506,7 +509,7 @@ def run_test_big_object(tls = 'False'):
         '--config', arakoon_config_file,
 
     ]
-    if tls:
+    if alba._use_tls(tls):
         alba._extend_alba_tls(cmd)
 
     cmd.append('< ./cfg/preset_no_compression.json')
@@ -518,7 +521,7 @@ def run_test_big_object(tls = 'False'):
         'create-namespace', 'big', 'preset_no_compression',
         '--config', arakoon_config_file
     ]
-    if tls:
+    if alba._use_tls(tls):
         alba._extend_alba_tls(cmd)
     # create new namespace with this preset
     local(" ".join(cmd))
@@ -548,7 +551,7 @@ def run_test_big_object(tls = 'False'):
             'decommission-osd', '--long-id', long_id,
             '--config', arakoon_config_file
         ]
-        if tls:
+        if alba._use_tls(tls):
             alba._extend_alba_tls(cmd)
         local(" ".join(cmd))
 
@@ -560,10 +563,17 @@ def run_test_big_object(tls = 'False'):
 @task
 def run_tests_compat(xml = True):
     def test(old_proxy,old_plugins, old_asd, tls):
-        local ("pgrep -a alba")
-        local ("pgrep -a arakoon")
-        local ("which fuser")
-        alba.smoke_test(tls = tls)
+        try:
+            alba.smoke_test(tls = tls)
+        except:
+            with warn_only():
+                local ("which alba.0.6")
+                local ("pgrep -a alba")
+                local ("pgrep -a arakoon")
+                local ("which fuser")
+                local ("sudo fuser -n tcp 10000 8001")
+
+            raise
 
     def deploy_and_test(old_proxy, old_plugins, old_asds):
         tls = 'False'
@@ -572,10 +582,11 @@ def run_tests_compat(xml = True):
 
         env_old = env.copy()
         old_alba_home = './bin/0.6'
-        env_old['alba_bin'] = '%s/alba.0.6' % old_alba_home
-        env_old['alba_plugin_path'] = '%s' % old_alba_home
+        env_old['alba_bin'] = env.get('ALBA_06', 'alba.0.6')
+        env_old['alba_plugin_path'] = env.get('ALBA_06_PLUGIN_PATH', '/usr/lib/alba')
         env_old['license_file'] = '%s/community_license' % old_alba_home
         env_old['signature']    = '''3cd787f7a0bcb6c8dbf40a8b4a3a5f350fa87d1bff5b33f5d099ab850e44aaeca6e3206b595d7cb361eed28c5dd3c0f3b95531d931a31a058f3c054b04917797b7363457f7a156b5f36c9bf3e1a43b46e5c1e9ca3025c695ef366be6c36a1fc28f5648256a82ca392833a3050e1808e21ef3838d0c027cf6edaafedc8cfe2f2fc37bd95102b92e7de28042acc65b8b6af4cfb3a11dadce215986da3743f1be275200860d24446865c50cdae2ebe2d77c86f6d8b3907b20725cdb7489e0a1ba7e306c90ff0189c5299194598c44a537b0a460c2bf2569ab9bb99c72f6415a2f98c614d196d0538c8c19ef956d42094658dba8d59cfc4a024c18c1c677eb59299425ac2c225a559756dee125ef93c38c211cda69c892d26ca33b7bd2ca95f15bbc1bb755c46574432005b8afcab48a0a5ed489854cec24207cddc7ab632d8715c1fb4b1309b45376a49e4c2b4819f27d9d6c8170c59422a0b778b9c3ac18e677bc6fa6e2a2527365aca5d16d4bc6e22007debef1989d08adc9523be0a5d50309ef9393eace644260345bb3d442004c70097fffd29fe315127f6d19edd4f0f46ae2f10df4f162318c4174b1339286f8c07d5febdf24dc049a875347f6b2860ba3a71b82aba829f890192511d6eddaacb0c8be890799fb5cb353bce7366e8047c9a66b8ee07bf78af40b09b4b278d8af2a9333959213df6101c85dda61f2944237c8'''
+        env_old['arakoon_bin'] = env.get('ARAKOON_189_BIN', '/usr/bin/arakoon')
         if old_plugins:
             arakoon_env = env_old
         else:
@@ -617,7 +628,7 @@ def run_tests_compat(xml = True):
 
 
     results = []
-    flavours = [0]
+    flavours = range(8)
 
     t0 = time.time()
     for flavour in flavours:

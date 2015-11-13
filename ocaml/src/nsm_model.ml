@@ -86,7 +86,12 @@ module OsdInfo = struct
     let ser_version = 1 in
     Llio.int8_to buf ser_version;
     let conn_info_to buf (ips,port,use_tls) =
-      assert (use_tls = false);
+      if use_tls
+      then
+        begin
+        let () = Lwt_log.ign_fatal "use_tls ?!" in
+        failwith "use_tls?"
+        end;
       Llio.list_to Llio.string_to buf ips;
       Llio.int_to buf port;
 
@@ -160,7 +165,6 @@ module OsdInfo = struct
     | 2 -> _to_buffer_2 buf t
     | 1 -> _to_buffer_1 buf t
     | k -> raise_bad_tag "OsdInfo" k
-
 
   let _from_buffer1 buf =
     let kind = match Llio.int8_from buf with
@@ -821,18 +825,19 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
   module EKV = Read_store_extensions(KV)
 
   let link_osd kv osd_id osd_info =
-    [ Update.set
-        (Keys.Device.active_osds ~osd_id)
-        "";
-      Update.set
-        (Keys.Device.info ~osd_id)
-        (serialize OsdInfo.to_buffer osd_info); ]
+    let blob = serialize (OsdInfo.to_buffer ~version:2) osd_info in
+    [
+      Update.set (Keys.Device.active_osds ~osd_id) "";
+      Update.set (Keys.Device.info ~osd_id)        blob;
+    ]
 
   let unlink_osd kv osd_id =
     [ Update.delete (Keys.Device.active_osds ~osd_id); ]
 
   let get_osd_info kv osd_id =
-    deserialize OsdInfo.from_buffer (KV.get_exn kv (Keys.Device.info ~osd_id))
+    let key = Keys.Device.info ~osd_id in
+    let blob = KV.get_exn kv key in
+    deserialize OsdInfo.from_buffer blob
 
   let list_active_osds kv ~first ~finc ~last ~max ~reverse =
     EKV.map_range

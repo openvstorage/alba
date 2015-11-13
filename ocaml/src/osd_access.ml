@@ -52,11 +52,13 @@ class osd_access
           let osd_state = Osd_state.make () in
           let info' = (osd_info, osd_state) in
           Hashtbl.replace osds_info_cache osd_id info';
-          let open Nsm_model.OsdInfo in
-          let long_id =
-
-            get_long_id osd_info.kind
+          let () =
+            Lwt_log.ign_debug_f
+              "replacing with: osd_info:%s"
+              (Nsm_model.OsdInfo.show osd_info)
           in
+          let open Nsm_model.OsdInfo in
+          let long_id = get_long_id osd_info.kind in
           osd_long_id_claim_info :=
             StringMap.add
               long_id (Osd.ClaimInfo.ThisAlba osd_id)

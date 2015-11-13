@@ -223,9 +223,26 @@ module Protocol = struct
         let my_compare x y = compare y x in
         let kind =
           let ips, port, tls = get_conn_info osd.kind in
-          let ips'  = Option.get_some_default ips ips' in
-          let port' = Option.get_some_default port port' in
-          let conn_info' = (ips',port', false) in
+          let conn_info' =
+            let ips'  = Option.get_some_default ips ips' in
+            let port' = Option.get_some_default port port' in
+            let real_port, use_tls =
+              let open Tiny_json in
+              match other' with
+              | None -> port', false
+              | Some other' ->
+                 try
+                   let r = Json.parse other' in
+                   let tlsPort = Json.as_int (Json.getf "tlsPort" r)  in
+                   tlsPort, true
+                 with
+                 | Json.JSON_InvalidField("tlsPort") -> port', false
+                 | ex ->
+                    let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
+                    port', false
+            in
+            (ips',real_port, use_tls)
+          in
           match osd.kind with
           | Asd (_, asd_id)   -> Asd (conn_info', asd_id)
           | Kinetic (_, k_id) -> Kinetic (conn_info', k_id)
@@ -1338,6 +1355,7 @@ module Protocol = struct
 
                       Wrap_q GetMaintenanceConfig, 64l, "GetMaintenanceConfig";
                       Wrap_u UpdateMaintenanceConfig, 65l, "UpdateMaintenanceConfig";
+                      Wrap_u AddOsd2, 66l, "AddOsd2";
                     ]
 
 

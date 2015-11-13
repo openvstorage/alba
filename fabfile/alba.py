@@ -25,6 +25,9 @@ import socket
 
 os.environ['ALBA_CONFIG'] = './cfg/test.ini'
 
+def _use_tls(tls):
+    return tls == 'True' or tls == 'true'
+
 def _detach(inner, out= '/dev/null'):
     cmd = [
         'nohup',
@@ -136,7 +139,7 @@ def arakoon_start(tls, env = env):
     where = local
     path = "/tmp/arakoon"
     where ("mkdir -p %s" % path)
-    if tls == 'True':
+    if _use_tls(tls):
         acf = TLS['arakoon_config_file']
         make_ca()
         serial = 0
@@ -173,7 +176,7 @@ def _extend_alba_tls(cmd):
 def arakoon_who_master(arakoon_cfg_file = arakoon_config_file,
                        tls = 'False',
                        env = env):
-    if tls == 'True':
+    if _use_tls(tls):
         arakoon_cfg_file = TLS['arakoon_config_file']
 
     cmd = [
@@ -181,7 +184,7 @@ def arakoon_who_master(arakoon_cfg_file = arakoon_config_file,
         '-config', arakoon_cfg_file,
         '--who-master'
     ]
-    if tls == 'True':
+    if _use_tls(tls):
         _extend_arakoon_tls(cmd)
 
     where = local
@@ -204,7 +207,7 @@ def nsm_host_register(cfg_file, albamgr_cfg = arakoon_config_file, tls = 'False'
         "--config",
         albamgr_cfg
     ]
-    if tls == 'True':
+    if _use_tls(tls):
         _extend_alba_tls(cmd)
 
     cmd_line = ' '.join(cmd)
@@ -215,7 +218,7 @@ def nsm_host_register(cfg_file, albamgr_cfg = arakoon_config_file, tls = 'False'
 def nsm_host_register_default(tls = 'False'):
     cfg_file = "%s/cfg/nsm_host_arakoon_cfg.ini" % env['alba_dev']
     albamgr_cfg = arakoon_config_file
-    if tls == 'True':
+    if _use_tls(tls):
         cfg_file = TLS['arakoon_config_file']
         albamgr_cfg = TLS['arakoon_config_file']
 
@@ -243,31 +246,32 @@ def create_loop_devices():
 local_nodeid_prefix = str(uuid4())
 
 def _asd_inner(port, path, node_id, slow, multicast,
-               tls, env):
+               tls, env, restart):
     global local_nodeid_prefix
     cfg_path = path + "/cfg.json"
-    limit = 90 if env['osds_on_separate_fs'] else 99
-    asd_id = "%i_%i_%s" % (port,node_id, local_nodeid_prefix)
-    cfg = { 'port' : port,
-            'node_id' : "%s_%i" % (local_nodeid_prefix, node_id),
-            'home' : path,
-            'log_level' : 'debug',
-            'asd_id' : asd_id,
-            'limit' : limit,
-            '__sync_dont_use' : False
-    }
-    if not multicast:
-        cfg ['multicast'] = None
-
-    if tls == 'True':
-        make_cert(name = asd_id )
-        path = '%s/%s' % (TLS['root_dir'], asd_id)
-        cfg['tls'] = {
-            "cert": "%s/%s.pem" % (path, asd_id),
-            "key" : "%s/%s.key" % (path, asd_id)
+    if not restart:
+        limit = 90 if env['osds_on_separate_fs'] else 99
+        asd_id = "%i_%i_%s" % (port,node_id, local_nodeid_prefix)
+        cfg = { 'port' : port,
+                'node_id' : "%s_%i" % (local_nodeid_prefix, node_id),
+                'home' : path,
+                'log_level' : 'debug',
+                'asd_id' : asd_id,
+                'limit' : limit,
+                '__sync_dont_use' : False
         }
+        if not multicast:
+            cfg ['multicast'] = None
 
-    dump_to_cfg_as_json(cfg_path, cfg)
+        if _use_tls(tls) and restart == False:
+            make_cert(name = asd_id )
+            path = '%s/%s' % (TLS['root_dir'], asd_id)
+            cfg['tls'] = {
+                "cert": "%s/%s.pem" % (path, asd_id),
+                "key" : "%s/%s.key" % (path, asd_id)
+            }
+
+        dump_to_cfg_as_json(cfg_path, cfg)
 
     cmd = [
         env['alba_bin'],
@@ -290,7 +294,7 @@ def _kinetic_inner(port, path):
 @task
 def osd_start(port, path, node_id, kind, slow,
               setup_dir=True, multicast = True,
-              tls = 'False', env = env):
+              tls = 'False', env = env, restart = False):
     where = local
     if setup_dir:
         where("mkdir -p %s" % path)
@@ -307,7 +311,7 @@ def osd_start(port, path, node_id, kind, slow,
     if kind == "ASD":
         inner = _asd_inner(port, path,
                            node_id, slow and port == 8000,
-                           multicast, tls = tls, env = env)
+                           multicast, tls = tls, env = env, restart = restart)
     else:
         inner = _kinetic_inner(port, path)
 
@@ -332,7 +336,7 @@ def create_namespace(namespace, abm_cfg = arakoon_config_file, tls = 'False'):
         '--config',
         abm_cfg
     ]
-    if tls == 'True':
+    if _use_tls(tls):
         _extend_alba_tls(cmd)
 
     cmd_line = ' '.join(cmd)
@@ -401,7 +405,7 @@ def proxy_start(abm_cfg = arakoon_config_file,
             'fragment_cache_size' : 100 * 1000 * 1000,
             'chattiness': chattiness
         }
-        if tls == 'True':
+        if _use_tls(tls):
             _add_tls_config(cfg)
 
         dump_to_cfg_as_json(proxy_cfg, cfg)
@@ -433,7 +437,7 @@ def maintenance_start(abm_cfg = arakoon_config_file,
                 'log_level' : 'debug'
         }
 
-        if tls == 'True':
+        if _use_tls(tls):
             _add_tls_config(cfg)
 
         dump_to_cfg_as_json(maintenance_cfg, cfg)
@@ -506,7 +510,7 @@ def claim_local_osds(n, abm_cfg = arakoon_config_file,
         return False
 
     def inner(abm_cfg):
-        if tls == 'True':
+        if _use_tls(tls):
             abm_cfg = TLS['arakoon_config_file'] #TODO:run_tests_recovery ?
 
         global claimed_osds
@@ -515,7 +519,7 @@ def claim_local_osds(n, abm_cfg = arakoon_config_file,
                '--config', abm_cfg,
                '--to-json']
 
-        if tls == 'True':
+        if _use_tls(tls):
             _extend_alba_tls(cmd)
 
         cmd.extend(['2>',  '/dev/null'])
@@ -532,7 +536,7 @@ def claim_local_osds(n, abm_cfg = arakoon_config_file,
                 cmd = [env['alba_bin'], 'claim-osd',
                        '--config', abm_cfg,
                        '--long-id', osd['long_id'], '--to-json']
-                if tls == 'True':
+                if _use_tls(tls):
                     _extend_alba_tls(cmd)
                 cmd_line = ' '.join(cmd)
                 local(cmd_line)
@@ -548,7 +552,7 @@ def claim_local_osds(n, abm_cfg = arakoon_config_file,
 
 @task
 def start_osds(kind, n, slow, multicast=True,
-               tls = 'False', env = env):
+               tls = 'False', env = env, restart = False):
     n = int(n) # as a separate task, you will be getting a string
     for i in range(n):
         if kind == "MIXED":
@@ -566,16 +570,21 @@ def start_osds(kind, n, slow, multicast=True,
                   slow = slow,
                   multicast = multicast,
                   tls = tls,
-                  env = env
+                  env = env,
+                  restart = restart
         )
 
 @task
-def create_example_preset():
+def create_example_preset(tls = 'False'):
     cmd = [ env['alba_bin'],
             'create-preset', 'example',
             '--config', './cfg/albamgr_example_arakoon_cfg.ini',
             '< cfg/preset.json'
     ]
+
+    if _use_tls(tls):
+        _extend_alba_tls(cmd)
+
     cmd_line = ' '.join(cmd)
     local (cmd_line)
 
@@ -623,7 +632,7 @@ def demo_setup(kind = default_kind,
     claim_local_osds(N, abm_cfg = arakoon_config_file, multicast = multicast, tls = tls)
 
     create_namespace_demo(tls = tls)
-    create_example_preset()
+    create_example_preset(tls = tls)
 
 @task
 def smoke_test(sudo = 'False', tls = 'False'):
@@ -646,7 +655,7 @@ def smoke_test(sudo = 'False', tls = 'False'):
 
     my_fuser = "fuser"
 
-    if sudo == 'True':
+    if sudo <> 'False':
         my_fuser = "sudo fuser"
 
     def how_many_osds():

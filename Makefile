@@ -83,6 +83,7 @@ build-mgr-plugin: build-alba
 	_build/src/albamgr_protocol.cmx \
 	_build/src/albamgr_plugin.cmx \
 	-linkpkg -package ppx_deriving_yojson \
+	-linkpkg -package tiny_json \
 	-shared -o albamgr_plugin.cmxs
 
 build-disk-failure-tests: build-alba

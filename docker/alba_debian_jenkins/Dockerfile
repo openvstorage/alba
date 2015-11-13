@@ -103,6 +103,9 @@ RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-u
 RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-server_5.0.6-0_amd64.deb && dpkg -i volumedriver-server_5.0.6-0_amd64.deb
 RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-test_5.0.6-0_amd64.deb && dpkg -i volumedriver-test_5.0.6-0_amd64.deb
 
+# Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
+RUN apt-get install -y --force-yes alba arakoon
+RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 ENV UID 1001
 ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
