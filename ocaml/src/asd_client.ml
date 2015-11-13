@@ -17,21 +17,32 @@ limitations under the License.
 open Prelude
 open Lwt
 open Slice
+open Lwt_bytes2
 open Asd_protocol
 open Protocol
 
-class client fd ic id =
+class client fd id =
   let read_response deserializer =
-    Llio.input_string ic >>= fun res_s ->
-    let res_buf = Llio.make_buffer res_s 0 in
-    match Llio.int_from res_buf with
-    | 0 ->
-      Lwt.return (deserializer res_buf)
-    | err ->
-      let open Error in
-      let err' = deserialize' err res_buf in
-      Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
-      lwt_fail err'
+    Llio2.FdReader.int_from fd >>= fun size ->
+    let module Llio = Llio2.ReadBuffer in
+    let res_buf = Lwt_bytes.create size in
+    Lwt.finalize
+      (fun () ->
+       Lwt_extra2.read_all_lwt_bytes_exact
+         fd
+         res_buf 0 size >>= fun () ->
+       let res_buf = Llio.make_buffer res_buf 0 in
+       match Llio.int_from res_buf with
+       | 0 ->
+          Lwt.return (deserializer res_buf)
+       | err ->
+          let open Error in
+          let err' = deserialize' err res_buf in
+          Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
+          lwt_fail err')
+      (fun () ->
+       Lwt_bytes.unsafe_destroy res_buf;
+       Lwt.return_unit)
   in
   let do_request
         code
@@ -43,15 +54,18 @@ class client fd ic id =
       id description >>= fun () ->
     with_timing_lwt
       (fun () ->
-       let s =
-         serialize_with_length
+       let module Llio = Llio2.WriteBuffer in
+       let buf =
+         Llio.serialize_with_length
            (Llio.pair_to
               Llio.int32_to
               serialize_request)
            (code,
             request)
        in
-       Lwt_extra2.write_all' fd s >>= fun () ->
+       Lwt_extra2.write_all_lwt_bytes
+         fd
+         buf.Llio.buf 0 buf.Llio.pos >>= fun () ->
        read_response deserialize_response) >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
@@ -128,42 +142,8 @@ class client fd ic id =
              match blob with
              | Direct s -> Lwt.return (Some (s, cs))
              | Later size ->
-                let target = Bytes.create size in
-
-                let buffered = Lwt_io.buffered ic in
-                (if size <= buffered
-                 then
-                   begin
-                     Lwt_io.read_into ic target 0 size >>= fun read ->
-                     assert (read = size);
-                     Lwt.return ()
-                   end
-                 else
-                   begin
-                     (if buffered > 0
-                      then Lwt_io.read_into ic target 0 buffered
-                      else Lwt.return 0) >>= fun read ->
-                     assert (read = buffered);
-                     assert (0 = Lwt_io.buffered ic);
-
-                     let remaining = size - read in
-                     Lwt_extra2.read_all
-                       fd target
-                       read remaining
-                     >>= fun read' ->
-                     if read' = remaining
-                     then Lwt.return ()
-                     else begin
-                         Lwt_log.debug_f
-                           "read=%i, read'=%i, size=%i, buffered=%i, new buffered=%i"
-                           read read' size
-                           buffered (Lwt_io.buffered ic)
-                         >>= fun () ->
-                         Lwt.fail End_of_file
-                     end
-                   end) >>= fun () ->
-
-                Lwt.return (Some (Slice.wrap_bytes target, cs)))
+                Llio2.FdReader.raw_string_from fd size >>= fun blob ->
+                Lwt.return (Some (Slice.wrap_bytes blob, cs)))
         res
 
     method multi_get_string ~prio keys =
@@ -208,7 +188,7 @@ class client fd ic id =
     method range ~prio ~first ~finc ~last ~reverse ~max =
       self # query
         Range
-        ({ first; finc; last; reverse; max }, prio)
+        (RangeQueryArgs.({ first; finc; last; reverse; max }), prio)
 
     method range_all ~prio ?(max = -1) () =
       list_all_x
@@ -227,7 +207,7 @@ class client fd ic id =
     method range_entries ~prio ~first ~finc ~last ~reverse ~max =
       self # query
         RangeEntries
-        ({ first; finc; last; reverse; max; }, prio)
+        (RangeQueryArgs.({ first; finc; last; reverse; max; }), prio)
 
     method apply_sequence ~prio asserts updates =
       self # update Apply (asserts, updates, prio)
@@ -254,37 +234,31 @@ let make_prologue magic version lido =
   Llio.string_option_to buf lido;
   Buffer.contents buf
 
-let _prologue_response ic lido =
-  Llio.input_int32 ic >>=
+let _prologue_response fd lido =
+  Llio2.FdReader.int32_from fd >>=
     function
     | 0l ->
        begin
-         Llio.input_string ic >>= fun asd_id' ->
+         Llio2.FdReader.string_from fd >>= fun asd_id' ->
          match lido with
          | Some asd_id when asd_id <> asd_id' ->
             Lwt.fail (BadLongId (asd_id, asd_id'))
          | _ -> Lwt.return asd_id'
        end
-    | err -> Error.from_stream (Int32.to_int err) ic
+    | err -> Error.from_stream (Int32.to_int err) fd
 
 
 
 let make_client buffer_pool ips port (lido:string option) =
   Networking2.first_connection ips port
   >>= fun (fd, closer) ->
-  let buffer = Buffer_pool.get_buffer buffer_pool in
-  let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
-  let closer () =
-    Buffer_pool.return_buffer buffer_pool buffer;
-    closer ()
-  in
   Lwt.catch
     (fun () ->
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
        Lwt_extra2.write_all' fd prologue_bytes >>= fun () ->
-       _prologue_response ic lido >>= fun long_id ->
-       let client = new client fd ic long_id in
+       _prologue_response fd lido >>= fun long_id ->
+       let client = new client fd long_id in
        Lwt.return (client, closer)
     )
     (fun exn ->

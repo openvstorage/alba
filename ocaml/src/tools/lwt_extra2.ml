@@ -142,8 +142,19 @@ let _read_all read_to_target offset length =
 let read_all_lwt_bytes fd target offset length =
   _read_all (Lwt_bytes.read fd target) offset length
 
+let expect_exact_length len length =
+  if len = length
+  then Lwt.return_unit
+  else Lwt.fail End_of_file
+
+let read_all_lwt_bytes_exact fd target offset length =
+  read_all_lwt_bytes fd target offset length >>= expect_exact_length length
+
 let read_all fd target offset length =
   _read_all (Lwt_unix.read fd target) offset length
+
+let read_all_exact fd target offset length =
+  read_all fd target offset length >>= expect_exact_length length
 
 let _write_all write_from_source offset length =
   let rec inner offset todo =

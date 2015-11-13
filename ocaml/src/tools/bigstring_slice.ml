@@ -20,6 +20,13 @@ type t = {
   length : int;
 }
 
+let show t =
+  (* TODO this could be better. *)
+  String.escaped (Lwt_bytes.to_string t.bs)
+
+let pp formatter t =
+  Format.pp_print_string formatter (show t)
+
 let from_bigstring bs offset length =
   { bs; offset; length; }
 

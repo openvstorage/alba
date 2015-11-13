@@ -307,12 +307,13 @@ let execute_query : type req res.
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
                          req ->
-                         (string * (Lwt_unix.file_descr ->
-                                    unit Lwt.t)) Lwt.t
+                         (Llio2.WriteBuffer.t * (Lwt_unix.file_descr ->
+                                                 unit Lwt.t)) Lwt.t
   = fun kv io_sched dir_info mgmt stats q ->
     let open Protocol in
+    let module Llio = Llio2.WriteBuffer in
     let serialize_with_length res =
-      serialize_with_length
+      Llio.serialize_with_length
         (Llio.pair_to
            Llio.int_to
            (Protocol.query_response_serializer q))
@@ -323,7 +324,7 @@ let execute_query : type req res.
     let return ~cost res = return'' ~cost (res, fun _ -> Lwt.return_unit) in
     let return' res = Lwt.return (serialize_with_length res, fun _ -> Lwt.return_unit) in
     match q with
-    | Range -> fun ({ first; finc; last; reverse; max; }, prio) ->
+    | Range -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
       perform_read
         io_sched
         prio
@@ -343,7 +344,7 @@ let execute_query : type req res.
            ~cost:(max * 200)
            ((count, List.map Keys.string_chop_prefix keys),
             have_more))
-    | RangeEntries -> fun ({ first; finc; last; reverse; max; }, prio) ->
+    | RangeEntries -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
       perform_read
         io_sched
         prio
@@ -851,20 +852,21 @@ let asd_protocol
       kv ~release_fnr ~slow io_sched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
-      fd ic
+      fd
   =
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
-  let handle_request buf code =
+  let handle_request (buf : Llio2.ReadBuffer.t) code =
     (*
      Lwt_log.debug_f "Got request %s" (Protocol.code_to_description code)
   >>= fun () ->
      *)
 
+    let module Llio = Llio2.WriteBuffer in
     let return_result
           ?(write_extra=fun _ -> Lwt.return ())
           serializer res =
       let res_s =
-        serialize_with_length
+        Llio.serialize_with_length
           (Llio.pair_to
              Llio.int_to
              serializer)
@@ -874,7 +876,7 @@ let asd_protocol
     in
     let return_error error =
       let res =
-        serialize_with_length
+        Llio2.WriteBuffer.serialize_with_length
           Protocol.Error.serialize
           error
       in
@@ -911,23 +913,28 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    Lwt_extra2.write_all' fd res >>= fun () ->
+    Lwt_extra2.write_all_lwt_bytes
+      fd
+      res.Llio.buf 0 res.Llio.pos >>= fun () ->
     write_extra fd
   in
   let rec inner () =
     (match cancel with
-     | None -> Llio.input_string ic
+     | None -> Llio2.FdReader.int_from fd
      | Some cancel ->
         Lwt.pick
           [ (Lwt_condition.wait cancel >>= fun () ->
              Lwt.fail Lwt.Canceled);
-            Llio.input_string ic; ])
-    >>= fun req_s ->
-    let buf = Llio.make_buffer req_s 0 in
-    let code = Llio.int32_from buf in
-    with_timing_lwt
-      (fun () -> handle_request buf code)
-    >>= fun (delta, ()) ->
+            Llio2.FdReader.int_from fd; ])
+    >>= fun len ->
+    Llio2.FdReader.with_buffer_from
+      fd len
+      (fun buf ->
+       let code = Llio2.ReadBuffer.int32_from buf in
+       with_timing_lwt
+         (fun () -> handle_request buf code >>= fun () ->
+                    Lwt.return code))
+    >>= fun (delta, code) ->
     Statistics_collection.Generic.new_delta stats code delta;
 
     (if slow
@@ -946,15 +953,14 @@ let asd_protocol
       "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
     inner ()
   in
-  let b0 = Bytes.create 4 in
-  Lwt_io.read_into_exactly ic b0 0 4 >>= fun () ->
+  Llio2.FdReader.raw_string_from fd 4 >>= fun b0 ->
   (*Lwt_io.printlf "b0:%S%!" b0 >>= fun () -> *)
   begin
     if b0 <> Asd_protocol._MAGIC
     then Lwt.fail_with "protocol error: no magic"
     else
       begin
-        Llio.input_int32 ic >>= fun version ->
+        Llio2.FdReader.int32_from fd >>= fun version ->
         if Asd_protocol.incompatible version
         then
           let open Asd_protocol.Protocol in
@@ -963,15 +969,19 @@ let asd_protocol
               "asd_protocol version: (server) %li <> %li (client)"
               _VERSION version
           in
-          let rbuf = Buffer.create 32 in
+          Lwt_log.debug msg >>= fun () ->
+          let open Llio2.WriteBuffer in
+          let rbuf = make ~length:32 in
           let err = Error.ProtocolVersionMismatch msg in
           Error.serialize rbuf err;
-          Lwt_log.debug msg >>= fun () ->
-          let bytes_back = Buffer.contents rbuf  in
-          Lwt_extra2.write_all' fd bytes_back
+          Lwt_extra2.write_all_lwt_bytes
+            fd
+            rbuf.buf 0 rbuf.pos
         else
           begin
-            Llio.input_string_option ic >>= fun lido ->
+            Llio2.FdReader.option_from
+              Llio2.FdReader.string_from
+              fd >>= fun lido ->
             Lwt_extra2.write_all'
               fd
               (serialize
@@ -1230,12 +1240,7 @@ let run_server
   let mgmt = AsdMgmt.make latest_disk_usage limit in
 
   let server_t =
-    let buffer_pool = Buffer_pool.create ~buffer_size in
     let protocol fd =
-      Buffer_pool.with_buffer
-        buffer_pool
-        (fun buffer ->
-         let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
          asd_protocol
            ?cancel
            kv
@@ -1246,7 +1251,7 @@ let run_server
            stats
            ~mgmt
            ~get_next_fnr
-           asd_id fd ic)
+           asd_id fd
     in
     Networking2.make_server ?cancel hosts port protocol
   in
