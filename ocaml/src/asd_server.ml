@@ -201,10 +201,17 @@ module DirectoryInfo = struct
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
            ~perm:0o664
            (fun fd ->
+            match blob with
+            | Blob.Slice s ->
               let open Slice in
               Lwt_extra2.write_all
                 fd
-                blob.buf blob.offset blob.length)) >>= fun (t_write, ()) ->
+                s.buf s.offset s.length
+            | Blob.Lwt_bytes s ->
+               Lwt_extra2.write_all_lwt_bytes
+                 fd
+                 s 0 (Lwt_bytes.length s)))
+    >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
      then Lwt_log.info_f
@@ -414,10 +421,10 @@ let execute_query : type req res.
               |> Option.map
                    (fun (cs, blob) ->
                     let b = match blob with
-                      | Value.Direct s -> Asd_protocol.Value.Direct s
+                      | Value.Direct s -> Asd_protocol.Blob.Direct s
                       | Value.OnFs (fnr, size) ->
                          write_laters := (fnr, size) :: !write_laters;
-                         Asd_protocol.Value.Later size in
+                         Asd_protocol.Blob.Later size in
                     b, cs))
              keys
          in
@@ -427,8 +434,8 @@ let execute_query : type req res.
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Slice.length blob
-                     | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
+                     | Some (Asd_protocol.Blob.Direct blob, _) -> acc + 200 + Slice.length blob
+                     | Some (Asd_protocol.Blob.Later size, _) -> acc + 200 + size)
                     0
                     res)
            (res,
@@ -572,7 +579,15 @@ let execute_update : type req res.
                         check whether the key is still associated with the same blob
                      *)
                      Value.get_blob_from_value dir_info value >>= fun blob ->
-                     if (Slice.compare' blob expected) <> Compare.EQ
+                     let compare_blob () =
+                       match expected with
+                       | Asd_protocol.Blob.Slice s ->
+                          Slice.compare' s blob
+                       | Asd_protocol.Blob.Lwt_bytes _ ->
+                          (* TODO direct comparison between slice & lwt_bytes *)
+                          Slice.compare' (Asd_protocol.Blob.to_slice expected) blob
+                     in
+                     if compare_blob () <> Compare.EQ
                      then begin
                        Lwt_log.warning_f
                          "Assertion failed, expected some blob but got another" >>= fun () ->
@@ -605,10 +620,10 @@ let execute_update : type req res.
             Lwt_list.map_p
               (function
                 | Update.Set (key, Some (v, c, _)) ->
-                   let blob_length = Slice.length v in
+                   let blob_length = Blob.length v in
                    (if blob_length < blob_threshold
                     then begin
-                        Lwt.return (Value.Direct v)
+                        Lwt.return (Value.Direct (Blob.to_slice v))
                       end else begin
                         let fnr, file_path, fnr_release = get_file_path () in
                         Lwt.finalize
@@ -618,7 +633,7 @@ let execute_update : type req res.
                              prio
                              (fun () ->
                               DirectoryInfo.write_blob dir_info fnr v >>= fun () ->
-                              Lwt.return ((), 4000 + Slice.length v)))
+                              Lwt.return ((), 4000 + Blob.length v)))
                           (fun () ->
                            Lwt.wakeup fnr_release ();
                            Lwt.return ()) >>= fun () ->
@@ -809,6 +824,9 @@ let execute_update : type req res.
            in
            inner 0)
       end
+    | Apply2 ->
+       (* TODO *)
+       fun _ -> Lwt.return ()
     | SetFull -> fun full ->
       Lwt_log.warning_f "SetFull %b" full >>= fun () ->
       AsdMgmt.set_full mgmt full;

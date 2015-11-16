@@ -24,6 +24,7 @@ type priority = Asd_protocol.Protocol.priority =
               | High
               | Low
 
+module Blob   = Asd_protocol.Blob
 module Update = Asd_protocol.Update
 module Assert = Asd_protocol.Assert
 

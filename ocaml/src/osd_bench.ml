@@ -76,7 +76,7 @@ let sets (client:Osd.osd) progress n value_size period prefix =
     let value_slice = Slice.wrap_string value in
     let open Checksum in
     let set = Update.Set (key_slice,
-                          Some (value_slice, Checksum.NoChecksum, false))
+                          Some (Osd.Blob.slice value_slice, Checksum.NoChecksum, false))
 
     in
     let updates = [set] in

@@ -104,7 +104,7 @@ type dest msg.
                 let asserts' =
                   Osd'.Assert.value_option
                     (Slice.wrap_string DK.next_msg_id)
-                    next_id_so :: asserts
+                    (Option.map Osd'.Blob.slice next_id_so) :: asserts
                 in
                 client # apply_sequence
                        (osd_access # get_default_osd_priority)

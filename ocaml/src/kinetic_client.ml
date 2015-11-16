@@ -21,6 +21,7 @@ open Prelude
 open Slice
 
 let slice2s x_s = Slice.get_string_unsafe x_s
+let blob2s x_s = Slice.get_string_unsafe (Asd_protocol.Blob.to_slice x_s)
 let s2slice x = Slice.wrap_string x
 
 let build_forced = function
@@ -37,11 +38,17 @@ let value2checksum v_s =
   let algo = Checksum.Checksum.Algo.CRC32c in
   let hasher = Hashes.make_hash algo in
   let () =
-    let open Slice in
-    hasher # update_substring
-           v_s.buf
-           v_s.offset
-           v_s.length
+    let open Asd_protocol.Blob in
+    match v_s with
+    | Slice s ->
+       let open Slice in
+       hasher # update_substring
+              s.buf
+              s.offset
+              s.length
+    | Lwt_bytes s ->
+       (* TODO could be detached *)
+       hasher # update_lwt_bytes s 0 (Lwt_bytes.length s)
   in
   hasher # final ()
 
@@ -65,7 +72,7 @@ let forced_delete key =
 
 let forced_set_without_version key v_s =
   let new_version = None in
-  let v = slice2s v_s in
+  let v = blob2s v_s in
   let tag = Kinetic.make_sha1 v in
   let vt = Some (v,tag) in
   let entry = Kinetic.make_entry
@@ -76,7 +83,7 @@ let forced_set_without_version key v_s =
 
 let forced_set_with_version key v_s  =
   let new_version = value2version v_s in
-  let v = slice2s v_s in
+  let v = blob2s v_s in
   let t = Kinetic.make_sha1 v in
   let vt = Some (v,t) in
   let entry = Kinetic.make_entry
@@ -91,7 +98,7 @@ let conditional_delete key db_version =
 
 let conditional_set key db_version v_s cs =
   let new_version = value2version v_s in
-  let v = slice2s v_s in
+  let v = blob2s v_s in
   let t = Kinetic.make_sha1 v in
   let vt = Some (v,t) in
   let entry = Kinetic.make_entry ~key ~db_version ~new_version vt in
@@ -119,7 +126,7 @@ let translate alba_asserts alba_updates =
     in
     let fix_for_dangling_asserts asserts kseq =
     StringMap.fold
-        (fun (k:string) (a:value option) acc ->
+        (fun (k:string) (a:Asd_protocol.Blob.t option) acc ->
          if StringSet.mem k set_keys
          then acc
          else

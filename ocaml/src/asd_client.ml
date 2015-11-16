@@ -121,7 +121,7 @@ class client fd ic id =
     method multi_get2 ~prio keys =
       self # query MultiGet2 (keys, prio) >>= fun res ->
       Lwt_list.map_s
-        (let open Value in
+        (let open Blob in
          function
           | None -> Lwt.return_none
           | Some (blob, cs) ->

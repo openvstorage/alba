@@ -626,7 +626,7 @@ class client ?(retry_timeout = 60.)
                       retag fragments strategy is applied (when an upload
                       failed due to Invalid_gc_epoch) we're not removing
                       a value that could still be used for some object... *)
-                   Osd.Assert.value gc_tag_key (wrap_string ""); ] in
+                   Osd.Assert.value gc_tag_key (wrap_string "" |> Osd.Blob.slice); ] in
 
                Lwt_log.debug_f
                  "Cleaning up garbage fragment ns_id=%li, gc_epoch=%Li, object_id=%S, %i,%i,%i"
