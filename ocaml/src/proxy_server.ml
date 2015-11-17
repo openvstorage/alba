@@ -241,8 +241,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        let total_length = Bytes.length bytes in
        ProxyStatistics.new_read_object_slices
          stats namespace
-         total_length n_slices n_objects
-         delay;
+         ~total_length ~n_slices ~n_objects
+         ~took:delay;
        Lwt.return bytes
 
     | InvalidateCache ->
