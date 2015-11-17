@@ -87,7 +87,7 @@ let read_objects_slices
            offset
            object_slices
        in
-       let object_names' = object_names
+       let object_names' = StringSet.add object_name object_names
        and n_slices' = n_slices + 1
        and acc' = (offset, object_name, object_slices) :: acc
        in
