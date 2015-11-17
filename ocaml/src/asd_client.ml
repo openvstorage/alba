@@ -134,7 +134,7 @@ class client fd ic id =
              match blob with
              | Direct s -> Lwt.return (Some (s, cs))
              | Later size ->
-                Lwt_extra2.read_blob_from_ic_fd
+                Lwt_extra2.read_bytes_from_ic_fd
                   size fd ic >>= fun target ->
                 Lwt.return (Some (Slice.wrap_bytes target, cs)))
         res
@@ -202,8 +202,23 @@ class client fd ic id =
         RangeEntries
         ({ first; finc; last; reverse; max; }, prio)
 
+    val mutable supports_apply2 = None
     method apply_sequence ~prio asserts updates =
+      (match supports_apply2 with
+       | None ->
+          self # supports_operation (Wrap_update Apply2) >>= fun s ->
+          supports_apply2 <- Some s;
+          Lwt.return s
+       | Some s ->
+          Lwt.return s) >>= function
+      | true -> self # apply_sequence2 ~prio asserts updates
+      | false -> self # apply_sequence1 ~prio asserts updates
+
+    method apply_sequence1 ~prio asserts updates =
       self # update Apply (asserts, updates, prio)
+
+    method apply_sequence2 ~prio asserts updates =
+      self # update Apply2 (asserts, updates, prio)
 
     method statistics clear =
       self # query Statistics clear
@@ -216,6 +231,28 @@ class client fd ic id =
 
     method get_disk_usage () =
       self # query GetDiskUsage ()
+
+    method supports_operations (commands : t list) =
+      Lwt.catch
+        (fun () ->
+         self # query
+              SupportsOperations
+              (List.map
+                 command_to_code
+                 commands))
+        (function
+          | Error.Exn Error.Unknown_operation ->
+             List.map
+               (fun _ -> false)
+               commands
+             |> Lwt.return
+          | exn -> Lwt.fail exn)
+
+    method supports_operation command =
+      self # supports_operations [ command ]
+      >>= function
+      | [ x ] -> Lwt.return x
+      | _ -> assert false
   end
 
 exception BadLongId of string * string

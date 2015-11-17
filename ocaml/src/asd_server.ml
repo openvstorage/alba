@@ -22,6 +22,7 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
+open Lwt_bytes2
 
 let blob_threshold = 16 * 1024
 
@@ -535,8 +536,7 @@ let execute_update : type req res.
   = fun kv ~release_fnr io_sched dir_info
         ~mgmt ~get_next_fnr ->
     let open Protocol in
-    function
-    | Apply -> fun (asserts, upds, prio) ->
+    let apply (asserts, upds, prio) =
       begin
         Lwt_log.debug_f
           "Apply with asserts = %s & upds = %s"
@@ -832,9 +832,10 @@ let execute_update : type req res.
            in
            inner 0)
       end
-    | Apply2 ->
-       (* TODO *)
-       fun _ -> Lwt.return ()
+    in
+    function
+    | Apply -> apply
+    | Apply2 -> apply
     | SetFull -> fun full ->
       Lwt_log.warning_f "SetFull %b" full >>= fun () ->
       AsdMgmt.set_full mgmt full;
@@ -915,10 +916,16 @@ let asd_protocol
                   u
                   buf
                   (fun size ->
-                   Lwt_extra2.read_blob_from_ic_fd
-                     size
-                     fd ic >>= fun x ->
-                   Lwt.return (Blob.Slice (Slice.wrap_string x)))
+                   let bs = Lwt_bytes.create size in
+                   Lwt.catch
+                     (fun () ->
+                      Lwt_extra2.read_lwt_bytes_from_ic_fd
+                        bs 0 size
+                        fd ic >>= fun x ->
+                      Lwt.return (Blob.Lwt_bytes x))
+                     (fun exn ->
+                      Lwt_bytes.unsafe_destroy bs;
+                      Lwt.fail exn))
                 >>= fun req ->
                 execute_update
                   kv

@@ -79,13 +79,14 @@ module Blob = struct
        Later size
     | k -> Prelude.raise_bad_tag "Asd_server.Value.blob" k
 
-  let from_buffer buf =
+  let from_buffer2 buf =
     let x = from_buffer' buf in
     fun read_bytes ->
     match x with
     | Direct s -> Lwt.return (Slice s)
     | Later size -> read_bytes size
 end
+
 module Value = struct
 
   type t = Blob.t' * Checksum.t
@@ -154,20 +155,20 @@ module Assert = struct
       let key = Slice.from_buffer buf in
       let value = Llio.option_from Slice.from_buffer buf in
       Value (key, Option.map (fun s -> Blob.Slice s) value)
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert" k
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert1" k
 
   let from_buffer2 buf =
     (* TODO wrap with length? *)
     match Llio.int8_from buf with
     | 1 ->
       let key = Slice.from_buffer buf in
-      let get_value = Llio.option_from Blob.from_buffer buf in
+      let get_value = Llio.option_from Blob.from_buffer2 buf in
       (fun read_bytes ->
        (match get_value with
         | None -> Lwt.return None
         | Some x -> x read_bytes >>= fun x -> Lwt.return_some x) >>= fun value ->
        Lwt.return (Value (key, value)))
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert" k
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert2" k
 end
 
 module Update = struct
@@ -225,21 +226,28 @@ module Update = struct
           buf
       in
       Set (key, vcob)
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Update" k
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Update1" k
 
   let from_buffer2 buf =
     (* TODO wrap with length? *)
     match Llio.int8_from buf with
     | 1 ->
       let key = Slice.from_buffer buf in
-      let get_value = Blob.from_buffer buf in
-      (fun read_bytes ->
-       get_value read_bytes >>= fun blob ->
-       let cs = Checksum.input buf in
-       let x = Llio.bool_from buf in
-       let vcob = Some (blob, cs, x) in
-       Set (key, vcob) |> Lwt.return)
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Update" k
+      (match Llio.option_from
+               (Llio.tuple3_from
+                  Blob.from_buffer2
+                  Checksum.input
+                  Llio.bool_from)
+               buf with
+       | None ->
+          fun _ ->
+          Lwt.return (Set (key, None))
+       | Some (get_value, cs, b) ->
+          fun read_bytes ->
+          get_value read_bytes >>= fun blob ->
+          let vcob = Some (blob, cs, b) in
+          Lwt.return (Set (key, vcob)))
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Update2" k
 
 end
 
