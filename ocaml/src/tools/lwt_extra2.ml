@@ -150,6 +150,45 @@ let expect_exact_length len length =
   then Lwt.return_unit
   else Lwt.fail End_of_file
 
+let read_blob_from_ic_fd size fd ic =
+  (* TODO change to Lwt_bytes *)
+  let target = Bytes.create size in
+
+  let buffered = Lwt_io.buffered ic in
+  (if size <= buffered
+   then
+     begin
+       Lwt_io.read_into ic target 0 size >>= fun read ->
+       assert (read = size);
+       Lwt.return ()
+     end
+   else
+     begin
+       (if buffered > 0
+        then Lwt_io.read_into ic target 0 buffered
+        else Lwt.return 0) >>= fun read ->
+       assert (read = buffered);
+       assert (0 = Lwt_io.buffered ic);
+
+       let remaining = size - read in
+       read_all
+         fd target
+         read remaining
+       >>= fun read' ->
+       if read' = remaining
+       then Lwt.return ()
+       else begin
+           Lwt_log.debug_f
+             "read=%i, read'=%i, size=%i, buffered=%i, new buffered=%i"
+             read read' size
+             buffered (Lwt_io.buffered ic)
+           >>= fun () ->
+           Lwt.fail End_of_file
+         end
+     end) >>= fun () ->
+  Lwt.return target
+
+
 let _write_all write_from_source offset length =
   let rec inner offset todo =
     if todo = 0

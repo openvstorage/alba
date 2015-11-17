@@ -43,15 +43,21 @@ class client fd ic id =
       id description >>= fun () ->
     with_timing_lwt
       (fun () ->
+       let bs = ref [] in
        let s =
          serialize_with_length
            (Llio.pair_to
               Llio.int32_to
-              serialize_request)
+              (serialize_request
+                 (fun b -> bs := b :: !bs)))
            (code,
             request)
        in
        Lwt_extra2.write_all' fd s >>= fun () ->
+       Lwt_list.rev_map_s
+         (fun b ->
+          Lwt_extra2.write_all_lwt_bytes fd b 0 (Lwt_bytes.length b))
+         !bs >>= fun (_ : unit list) ->
        read_response deserialize_response) >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
@@ -61,7 +67,7 @@ class client fd ic id =
       fun command req ->
       do_request
         (command_to_code (Wrap_query command))
-        (query_request_serializer command) req
+        (fun _ -> (query_request_serializer command)) req
         (query_response_deserializer command)
 
     method private update : type req res. (req, res) update -> req -> res Lwt.t =
@@ -85,7 +91,7 @@ class client fd ic id =
         (fun () ->
          do_request
            code
-           (fun buf () -> ()) ()
+           (fun _ buf () -> ()) ()
            (fun buf -> ()) >>= fun () ->
          Lwt.fail_with "did not get an exception for unknown operation")
         (function
@@ -128,41 +134,8 @@ class client fd ic id =
              match blob with
              | Direct s -> Lwt.return (Some (s, cs))
              | Later size ->
-                let target = Bytes.create size in
-
-                let buffered = Lwt_io.buffered ic in
-                (if size <= buffered
-                 then
-                   begin
-                     Lwt_io.read_into ic target 0 size >>= fun read ->
-                     assert (read = size);
-                     Lwt.return ()
-                   end
-                 else
-                   begin
-                     (if buffered > 0
-                      then Lwt_io.read_into ic target 0 buffered
-                      else Lwt.return 0) >>= fun read ->
-                     assert (read = buffered);
-                     assert (0 = Lwt_io.buffered ic);
-
-                     let remaining = size - read in
-                     Lwt_extra2.read_all
-                       fd target
-                       read remaining
-                     >>= fun read' ->
-                     if read' = remaining
-                     then Lwt.return ()
-                     else begin
-                         Lwt_log.debug_f
-                           "read=%i, read'=%i, size=%i, buffered=%i, new buffered=%i"
-                           read read' size
-                           buffered (Lwt_io.buffered ic)
-                         >>= fun () ->
-                         Lwt.fail End_of_file
-                     end
-                   end) >>= fun () ->
-
+                Lwt_extra2.read_blob_from_ic_fd
+                  size fd ic >>= fun target ->
                 Lwt.return (Some (Slice.wrap_bytes target, cs)))
         res
 

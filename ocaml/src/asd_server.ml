@@ -465,6 +465,14 @@ let execute_query : type req res.
     | GetDiskUsage ->
        fun () ->
        return' !(mgmt.AsdMgmt.latest_disk_usage)
+    | SupportsOperations ->
+       fun is ->
+       let open Asd_protocol.Protocol in
+       List.map
+         (fun i -> try let _ : t = code_to_command i in true
+                   with Error.Exn Error.Unknown_operation -> false)
+         is
+       |> return'
 
 exception ConcurrentModification
 
@@ -903,7 +911,15 @@ let asd_protocol
                 let req = Protocol.query_request_deserializer q buf in
                 execute_query kv io_sched dir_info mgmt stats q req
              | Protocol.Wrap_update u ->
-                let req = Protocol.update_request_deserializer u buf in
+                Protocol.update_request_deserializer
+                  u
+                  buf
+                  (fun size ->
+                   Lwt_extra2.read_blob_from_ic_fd
+                     size
+                     fd ic >>= fun x ->
+                   Lwt.return (Blob.Slice (Slice.wrap_string x)))
+                >>= fun req ->
                 execute_update
                   kv
                   ~release_fnr
