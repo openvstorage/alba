@@ -229,7 +229,7 @@ module Protocol = struct
             let real_port, use_tls =
               let open Tiny_json in
               match other' with
-              | None -> port', false
+              | None -> port', tls
               | Some other' ->
                  try
                    let r = Json.parse other' in
