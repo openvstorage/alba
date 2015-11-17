@@ -58,6 +58,7 @@ module ProxyStatistics = struct
         mutable partial_read_size: stat;
         mutable partial_read_count: stat;
         mutable partial_read_time : stat;
+        mutable partial_read_objects: stat;
       }[@@ deriving show, yojson]
 
     let ns_make () =
@@ -69,9 +70,10 @@ module ProxyStatistics = struct
         fragment_cache_hits = 0;
         fragment_cache_misses = 0;
 
-        partial_read_size  = Stat.make ();
-        partial_read_count = Stat.make ();
-        partial_read_time  = Stat.make ()
+        partial_read_size    = Stat.make ();
+        partial_read_count   = Stat.make ();
+        partial_read_time    = Stat.make ();
+        partial_read_objects = Stat.make ();
       }
 
     let ns_to buf t =
@@ -85,7 +87,8 @@ module ProxyStatistics = struct
 
       Stat.stat_to buf t.partial_read_size;
       Stat.stat_to buf t.partial_read_count;
-      Stat.stat_to buf t.partial_read_time
+      Stat.stat_to buf t.partial_read_time;
+      Stat.stat_to buf t.partial_read_objects
 
     let ns_from buf =
       let upload   = Stat.stat_from buf in
@@ -98,15 +101,24 @@ module ProxyStatistics = struct
       (* trick to be able to work with <= 0.6.20 proxies *)
       let (partial_read_size,
            partial_read_count,
-           partial_read_time)
-        = if Llio.buffer_done buf
-          then let r = Stat.make () in
-               r,r,r
+           partial_read_time,
+           partial_read_objects)
+        =
+        begin
+          if Llio.buffer_done buf
+          then
+            let r = Stat.make () in
+            r,r,r,r
           else
             let s = Stat.stat_from buf in
             let c = Stat.stat_from buf in
             let t = Stat.stat_from buf in
-            s,c,t
+            if Llio.buffer_done buf
+            then s,c,t,Stat.make()
+            else
+              let n = Stat.stat_from buf in
+              s,c,t,n
+        end
       in
 
       { upload ; download;
@@ -118,6 +130,7 @@ module ProxyStatistics = struct
         partial_read_size;
         partial_read_count;
         partial_read_time;
+        partial_read_objects;
       }
 
     type t = {
@@ -215,11 +228,12 @@ module ProxyStatistics = struct
      in
      ns_stats.download <- _update ns_stats.download delta
 
-   let new_read_object_slices t ns total_length n_slices took =
+   let new_read_object_slices t ns total_length n_slices n_objects took =
      let ns_stats = find t ns in
-     ns_stats.partial_read_size  <- _update ns_stats.partial_read_size  (float total_length);
-     ns_stats.partial_read_count <- _update ns_stats.partial_read_count (float n_slices);
-     ns_stats.partial_read_time  <- _update ns_stats.partial_read_time  took
+     ns_stats.partial_read_size    <- _update ns_stats.partial_read_size  (float total_length);
+     ns_stats.partial_read_count   <- _update ns_stats.partial_read_count (float n_slices);
+     ns_stats.partial_read_objects <- _update ns_stats.partial_read_objects (float n_objects);
+     ns_stats.partial_read_time    <- _update ns_stats.partial_read_time  took
 
 end
 
