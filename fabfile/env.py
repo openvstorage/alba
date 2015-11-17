@@ -24,6 +24,9 @@ def env_or_default(key, default):
     else:
         return default
 
+def is_true(tls):
+    return tls == 'True' or tls == 'true' or tls == True
+
 ARAKOON_HOME = env_or_default("ARAKOON_HOME",
                               "%s/workspace/ARAKOON" % os.environ['HOME'])
 ARAKOON_BIN = env_or_default("ARAKOON_BIN",

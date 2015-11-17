@@ -183,7 +183,6 @@ module Protocol = struct
   end
 
   module Osd = struct
-    (*include Nsm_model.OsdInfo*)
 
     type id = Nsm_model.osd_id [@@deriving show, yojson]
 

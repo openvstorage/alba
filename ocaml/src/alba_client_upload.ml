@@ -74,8 +74,8 @@ let upload_packed_fragment_data
                                   Active)) in
 
   let do_upload () =
-    Lwt_unix.with_timeout
-      (osd_access # osd_timeout)
+    let msg = Printf.sprintf "do_upload ~osd_id:%li" osd_id in
+    Lwt_extra2.with_timeout ~msg (osd_access # osd_timeout)
       (fun () ->
        osd_access # with_osd
          ~osd_id

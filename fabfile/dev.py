@@ -86,7 +86,7 @@ def run_tests_ocaml(xml=False,tls = 'False',
 
     alba.start_osds(kind, N, False, tls = tls)
 
-    use_tls = alba._use_tls(tls)
+    use_tls = is_true(tls)
     if use_tls:
         # make cert for extra asd (test_discover_claimed)
         alba.make_cert(name = 'test_discover_claimed')
@@ -210,7 +210,7 @@ def run_tests_disk_failures(xml=False, tls = 'False'):
     cmd = [env['failure_tester']]
     if xml:
         cmd.append(" --xml=true")
-    if alba._use_tls(tls):
+    if is_true(tls):
         alba._extend_alba_tls(cmd)
 
     cmd_s = " ".join(cmd)
@@ -239,7 +239,7 @@ def run_tests_stress(kind = default_kind, xml = False, tls = 'False'):
 
     def list_namespaces_cmd():
         cmd = build_cmd('list-namespaces')
-        if alba._use_tls(tls):
+        if is_true(tls):
             alba._extend_alba_tls(cmd)
 
         cmd.append('--to-json')
@@ -509,7 +509,7 @@ def run_test_big_object(tls = 'False'):
         '--config', arakoon_config_file,
 
     ]
-    if alba._use_tls(tls):
+    if is_true(tls):
         alba._extend_alba_tls(cmd)
 
     cmd.append('< ./cfg/preset_no_compression.json')
@@ -521,7 +521,7 @@ def run_test_big_object(tls = 'False'):
         'create-namespace', 'big', 'preset_no_compression',
         '--config', arakoon_config_file
     ]
-    if alba._use_tls(tls):
+    if is_true(tls):
         alba._extend_alba_tls(cmd)
     # create new namespace with this preset
     local(" ".join(cmd))
@@ -551,7 +551,7 @@ def run_test_big_object(tls = 'False'):
             'decommission-osd', '--long-id', long_id,
             '--config', arakoon_config_file
         ]
-        if alba._use_tls(tls):
+        if is_true(tls):
             alba._extend_alba_tls(cmd)
         local(" ".join(cmd))
 
@@ -652,21 +652,18 @@ def run_tests_compat(xml = True):
     failures = filter(lambda x: not x[1], results)
     t1 = time.time()
     delta = t1 - t0
-    # TODO: is there a better way than manually generate this?
-    if xml:
-        result_txt=\
-"""<testsuite disabled="0" errors="0" failures="%i" name="unittest.CompatibilitySuite" tests="%i" time="%f">""" \
-        % (len(failures), len(results), delta)
 
+    if is_true(xml):
+        from junit_xml import TestSuite, TestCase
+        test_cases = []
         for (name,result, delta) in results:
-            result_txt += """
-            <testcase classname="compat" name="%s" status="run" time="%f">
-            """ % (name,delta)
-            if not result :
-                result_txt += '<error message="failed"/>'
-            result_txt += '</testcase>\n'
+            test_case = TestCase(name, 'TestCompat', elapsed_sec = delta)
+            if not result:
+                test_case.add_error_info(message = "failed")
+            test_cases.append(test_case)
 
-        result_txt += "</testsuite>\n"
-
-        with open('./testresults.xml','w') as f:
-            f.write(result_txt)
+        ts = [TestSuite("compatibility", test_cases)]
+        with open('./testresults.xml', 'w') as f:
+            TestSuite.to_file(f,ts)
+    else:
+        print results

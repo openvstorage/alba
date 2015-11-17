@@ -58,13 +58,7 @@ module Pool = struct
         ~factory
         ~cleanup:(fun (_, closer) -> closer ())
 
-    let use_mgr t f =
-      Lwt_log.debug_f "Taking an albamgr from the connection pool" >>= fun () ->
-      Lwt_pool2.use
-        t
-        (fun p ->
-           Lwt_log.debug_f "Got an albamgr from the connection pool" >>= fun () ->
-           f (fst p))
+    let use_mgr t f = Lwt_pool2.use t (fun p -> f (fst p))
 
   end
 
@@ -115,16 +109,7 @@ module Pool = struct
           Hashtbl.add t.pools nsm_host_id p;
           p
       in
-      Lwt_log.debug_f
-        "Taking an nsm host client for %S from the connection pool"
-        nsm_host_id >>= fun () ->
-      Lwt_pool2.use
-        pool
-        (fun p ->
-           Lwt_log.debug_f
-             "Got an nsm host client for %S from the connection pool"
-             nsm_host_id >>= fun () ->
-           f (fst p))
+      Lwt_pool2.use pool (fun p -> f (fst p))
 
     let invalidate t ~nsm_host_id =
       if Hashtbl.mem t.pools nsm_host_id
