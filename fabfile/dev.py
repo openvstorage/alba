@@ -17,6 +17,7 @@ limitations under the License.
 from env import *
 import alba
 from fabric.api import local, task, warn_only
+from fabric.context_managers import shell_env
 import time
 from uuid import uuid4
 import sha
@@ -48,17 +49,16 @@ def clean():
         where("cd ocaml/ && rm -rf _build")
 
 
-def setup_demo_alba(kind = default_kind, tls = False):
+def setup_demo_alba(kind = default_kind):
     alba.demo_kill()
-    alba.demo_setup(tls = tls)
+    alba.demo_setup()
 
 @task
 def run_tests_cpp(xml=False, kind=default_kind,
                   valgrind = False,
-                  filter = None,
-                  tls = 'False'):
+                  filter = None):
 
-    setup_demo_alba(kind, tls = tls)
+    setup_demo_alba(kind)
 
     where = local
     where("rm -rf /tmp/alba/ocaml/")
@@ -72,26 +72,27 @@ def run_tests_cpp(xml=False, kind=default_kind,
     where(cmd)
 
 @task
-def run_tests_ocaml(xml=False,tls = 'False',
+def run_tests_ocaml(xml=False,
                     kind = default_kind,
                     dump = None,
                     filter = None):
     alba.demo_kill()
-    alba.arakoon_start(tls = tls)
-    alba.wait_for_master(tls = tls)
+    alba.arakoon_start()
+    alba.wait_for_master()
 
-    alba.maintenance_start(tls = tls)
-    alba.proxy_start(tls = tls)
-    alba.nsm_host_register_default(tls = tls)
+    alba.maintenance_start()
+    alba.proxy_start()
+    alba.nsm_host_register_default()
 
-    alba.start_osds(kind, N, False, tls = tls)
+    alba.start_osds(kind, N, False)
 
+    tls = env['alba_tls']
     use_tls = is_true(tls)
     if use_tls:
         # make cert for extra asd (test_discover_claimed)
         alba.make_cert(name = 'test_discover_claimed')
 
-    alba.claim_local_osds(N, abm_cfg = arakoon_config_file, tls = tls)
+    alba.claim_local_osds(N, abm_cfg = arakoon_config_file)
 
     where = local
     where("rm -rf /tmp/alba/ocaml/")
@@ -113,20 +114,21 @@ def run_tests_ocaml(xml=False,tls = 'False',
     where(cmd_line)
 
 @task
-def run_tests_cli(xml = False, tls = 'False'):
+def run_tests_cli(xml = False):
     alba.demo_kill()
-    alba.demo_setup(tls = tls)
-
-    port = '8500' if tls =='True' else '8000'
+    alba.demo_setup()
+    tls = env['alba_tls']
+    port = '8500' if is_true(tls) else '8000'
     host = '::1'
     where = local
-    def _asd( what, extra ):
+
+    def _asd( what, extra, tls = tls):
         cmd = [env['alba_bin'],
                what,
                '-h', host,
                '-p', port]
         cmd.extend(extra)
-        if tls == 'True':
+        if is_true(tls):
             alba._extend_alba_tls(cmd)
         return cmd
 
@@ -135,14 +137,14 @@ def run_tests_cli(xml = False, tls = 'False'):
         result = where(cmd_line, capture = True)
         return result
 
-    def test_get_version():
-        cmd = _asd('asd-get-version', [])
+    def test_asd_get_version():
+        cmd = _asd('asd-get-version', [] )
         result = _run(cmd)
 
         t = eval(result)
         assert (len(t) == 4)
 
-    def test_get_statistics():
+    def test_asd_get_statistics():
         cmd = _asd('asd-statistics',['--to-json'])
         result = _run(cmd)
         t = json.loads(result)
@@ -163,17 +165,39 @@ def run_tests_cli(xml = False, tls = 'False'):
         print v_s2
         assert (v_s2 == '[None]')
 
-    test_get_version()
-    test_get_statistics()
+    def test_asd_cli_env():
+        cmd = _asd('asd-get-version', [], tls = False)
+        x = alba._my_client_tls()
+        with shell_env(ALBA_CLI_TLS='%s,%s,%s' % x):
+            cmd_line = ' ' . join(cmd)
+            result = where(cmd_line, capture=True)
+            print result
+
+    def create_example_preset():
+        cmd = [ env['alba_bin'],
+                'create-preset', 'example',
+                '--config', './cfg/albamgr_example_arakoon_cfg.ini',
+                '< cfg/preset.json'
+        ]
+        tls = env['arakoon_tls']
+
+        if is_true(tls):
+            _extend_alba_tls(cmd)
+
+        cmd_line = ' '.join(cmd)
+        local (cmd_line)
+
+    test_asd_get_version()
+    test_asd_cli_env()
+    test_asd_get_statistics()
     test_asd_crud()
 
 
 @task
 def run_tests_voldrv_backend(xml=False, kind = default_kind,
-                             tls = 'False',
                              filter = None, dump = None):
     alba.demo_kill()
-    alba.demo_setup(kind, tls = tls)
+    alba.demo_setup(kind)
     time.sleep(1)
     where = local
     cmd0 = ""
@@ -188,10 +212,9 @@ def run_tests_voldrv_backend(xml=False, kind = default_kind,
     where(cmd)
 
 @task
-def run_tests_voldrv_tests(xml=False, kind = default_kind,
-                           tls = 'False', dump = None):
+def run_tests_voldrv_tests(xml=False, kind = default_kind, dump = None):
     alba.demo_kill()
-    alba.demo_setup(kind, tls = tls)
+    alba.demo_setup(kind)
     time.sleep(1)
     where = local
     cmd = "%s --skip-backend-setup 1 --backend-config-file ./cfg/backend.json --gtest_filter=SimpleVolumeTests/SimpleVolumeTest* --loglevel=error" % env['voldrv_tests']
@@ -202,14 +225,16 @@ def run_tests_voldrv_tests(xml=False, kind = default_kind,
     where(cmd)
 
 @task
-def run_tests_disk_failures(xml=False, tls = 'False'):
+def run_tests_disk_failures(xml=False):
     alba.demo_kill()
-    alba.demo_setup(tls = tls)
+    alba.demo_setup()
     time.sleep(1)
     where = local
     cmd = [env['failure_tester']]
     if xml:
         cmd.append(" --xml=true")
+
+    tls = env['alba_tls']
     if is_true(tls):
         alba._extend_alba_tls(cmd)
 
@@ -217,9 +242,9 @@ def run_tests_disk_failures(xml=False, tls = 'False'):
     where(cmd_s)
 
 @task
-def run_tests_stress(kind = default_kind, xml = False, tls = 'False'):
+def run_tests_stress(kind = default_kind, xml = False):
     alba.demo_kill()
-    alba.demo_setup(kind = kind, tls = tls)
+    alba.demo_setup(kind = kind)
     time.sleep(1)
     where = local
     #
@@ -239,6 +264,7 @@ def run_tests_stress(kind = default_kind, xml = False, tls = 'False'):
 
     def list_namespaces_cmd():
         cmd = build_cmd('list-namespaces')
+        tls = env['alba_tls']
         if is_true(tls):
             alba._extend_alba_tls(cmd)
 
@@ -287,7 +313,7 @@ def run_tests_recovery(xml = False, tls = 'False'):
     N = 3
     alba.start_osds("ASD", N, False)
 
-    alba.claim_local_osds(N, abm_cfg = abm_cfg, tls = tls)
+    alba.claim_local_osds(N, abm_cfg = abm_cfg)
 
     alba.maintenance_stop()
 
@@ -450,9 +476,9 @@ def spreadsheet_my_ass(start=0, end = 13400):
 
 
 @task
-def run_test_asd_start(xml=False, tls = 'False'):
+def run_test_asd_start(xml=False):
     alba.demo_kill()
-    alba.demo_setup(tls = tls)
+    alba.demo_setup()
 
     local("dd if=/dev/urandom of=/tmp/alba/obj bs=1M count=1")
 
@@ -468,8 +494,7 @@ def run_test_asd_start(xml=False, tls = 'False'):
     for i in xrange(0, N):
         alba.osd_stop(8000 + i)
 
-    alba.start_osds(default_kind, N, True, tls = tls,
-                    restart = True)
+    alba.start_osds(default_kind, N, True, restart = True)
     time.sleep(1)
 
     cmd = [
@@ -494,15 +519,15 @@ def run_test_asd_start(xml=False, tls = 'False'):
         'demo', '1', '/tmp/alba/obj2'
     ]))
 
-    alba.smoke_test(tls = tls)
+    alba.smoke_test()
 
     if xml:
         alba.dump_junit_xml()
 
 @task
-def run_test_big_object(tls = 'False'):
+def run_test_big_object():
     alba.demo_kill()
-    alba.demo_setup(tls = tls)
+    alba.demo_setup()
     cmd = [
         env['alba_bin'],
         'create-preset', 'preset_no_compression',

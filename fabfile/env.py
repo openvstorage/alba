@@ -58,7 +58,8 @@ env = {
     'voldrv_backend_test' : VOLDRV_BACKEND_TEST,
     'voldrv_tests' : VOLDRV_TEST,
     'failure_tester' : "%s/ocaml/disk_failure_tests.native" % cwd,
-    'osds_on_separate_fs' : False
+    'osds_on_separate_fs' : False,
+    'alba_tls' : env_or_default('ALBA_TLS', 'False')
 }
 
 arakoon_nodes = ["arakoon_0", "arakoon_1", "witness_0"]

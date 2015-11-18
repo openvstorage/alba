@@ -115,14 +115,13 @@ let lwt_server t : unit =
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run (t ())
 
-let alba_cfg_default_location =
-  try Some (Sys.getenv "ALBA_CONFIG")
-  with Not_found -> None
-
 let alba_cfg_file =
+  let doc = "alba mgr (arakoon) config file" in
+  let env = Arg.env_var "ALBA_CONFIG" ~doc in
   Arg.(required
-       & opt (some file) alba_cfg_default_location
-       & info ["config"] ~docv:"CONFIG_FILE" ~doc:"alba mgr (arakoon) config file")
+       & opt (some file) None
+       & info ["config"]
+              ~env ~docv:"CONFIG_FILE" ~doc )
 
 let to_json =
   Arg.(value
@@ -248,15 +247,6 @@ let max =
 let reverse =
   Arg.(value & opt bool false & info["reverse"] ~doc:"")
 
-let tls_arg =
-  let t3sss = let open Arg in (t3 string string string)
-  in
-  Arg.(value
-       & opt (some t3sss) None
-       & info ["tls"] ~doc:""
-  )
-
-
 let tls_config =
   let open Arg in
   let (tls: Tls.t Arg.converter) =
@@ -272,18 +262,12 @@ let tls_config =
     in (parser, printer)
 
   in
+  let doc = "<cacert.pem,mycert.pem,mykey.key>" in
+  let env = Arg.env_var "ALBA_CLI_TLS" ~doc in
   Arg.(value
        & opt (some tls) None
-       & info ["tls"] ~doc:""
+       & info ["tls"] ~env ~doc
   )
-
-
-(*let of_tls_arg = function
-  | None -> None
-  | Some (ca_cert,cert,key) ->
-     let open Tls in
-     Some {ca_cert; cert;key}
- *)
 
 let produce_xml default =
   let doc = "produce xml in ./testresults.xml. $(docv): bool" in
