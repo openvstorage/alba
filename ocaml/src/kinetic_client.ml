@@ -21,7 +21,7 @@ open Prelude
 open Slice
 
 let slice2s x_s = Slice.get_string_unsafe x_s
-let blob2s x_s = Slice.get_string_unsafe (Asd_protocol.Blob.to_slice x_s)
+let blob2s x_s = Slice.get_string_unsafe (Blob.to_slice x_s)
 let s2slice x = Slice.wrap_string x
 
 let build_forced = function
@@ -38,7 +38,7 @@ let value2checksum v_s =
   let algo = Checksum.Checksum.Algo.CRC32c in
   let hasher = Hashes.make_hash algo in
   let () =
-    let open Asd_protocol.Blob in
+    let open Blob in
     match v_s with
     | Slice s ->
        let open Slice in
@@ -126,7 +126,7 @@ let translate alba_asserts alba_updates =
     in
     let fix_for_dangling_asserts asserts kseq =
     StringMap.fold
-        (fun (k:string) (a:Asd_protocol.Blob.t option) acc ->
+        (fun (k:string) (a:Blob.t option) acc ->
          if StringSet.mem k set_keys
          then acc
          else

@@ -22,6 +22,7 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
+open Blob
 open Lwt_bytes2
 
 let blob_threshold = 16 * 1024
@@ -422,10 +423,10 @@ let execute_query : type req res.
               |> Option.map
                    (fun (cs, blob) ->
                     let b = match blob with
-                      | Value.Direct s -> Asd_protocol.Blob.Direct s
+                      | Value.Direct s -> Blob.Direct s
                       | Value.OnFs (fnr, size) ->
                          write_laters := (fnr, size) :: !write_laters;
-                         Asd_protocol.Blob.Later size in
+                         Blob.Later size in
                     b, cs))
              keys
          in
@@ -435,8 +436,8 @@ let execute_query : type req res.
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (Asd_protocol.Blob.Direct blob, _) -> acc + 200 + Slice.length blob
-                     | Some (Asd_protocol.Blob.Later size, _) -> acc + 200 + size)
+                     | Some (Blob.Direct blob, _) -> acc + 200 + Slice.length blob
+                     | Some (Blob.Later size, _) -> acc + 200 + size)
                     0
                     res)
            (res,
@@ -589,11 +590,11 @@ let execute_update : type req res.
                      Value.get_blob_from_value dir_info value >>= fun blob ->
                      let compare_blob () =
                        match expected with
-                       | Asd_protocol.Blob.Slice s ->
+                       | Blob.Slice s ->
                           Slice.compare' s blob
-                       | Asd_protocol.Blob.Lwt_bytes _ ->
+                       | Blob.Lwt_bytes _ ->
                           (* TODO direct comparison between slice & lwt_bytes *)
-                          Slice.compare' (Asd_protocol.Blob.to_slice expected) blob
+                          Slice.compare' (Blob.to_slice expected) blob
                      in
                      if compare_blob () <> Compare.EQ
                      then begin

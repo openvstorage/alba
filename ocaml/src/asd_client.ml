@@ -105,7 +105,7 @@ class client fd ic id =
     method multi_get ~prio keys =
       let old_multiget () =
         self # query MultiGet (keys, prio)
-        >|= List.map (Option.map (fun (s, cs) -> Blob.Slice s, cs))
+        >|= List.map (Option.map (fun (s, cs) -> Blob.Blob.Slice s, cs))
       in
       match supports_multiget2 with
       | None ->
@@ -134,8 +134,8 @@ class client fd ic id =
           | None -> Lwt.return_none
           | Some (blob, cs) ->
              match blob with
-             | Direct s -> Lwt.return (Some (Blob.Slice s, cs))
-             | Later size ->
+             | Blob.Direct s -> Lwt.return (Some (Blob.Slice s, cs))
+             | Blob.Later size ->
                 let target = Lwt_bytes.create size in
                 Lwt.catch
                   (fun () ->
@@ -154,7 +154,7 @@ class client fd ic id =
       Lwt.return
         (List.map
            (Option.map (fun (blob, cs) -> Slice.get_string_unsafe
-                                             (Blob.to_slice blob),
+                                             (Blob.Blob.to_slice blob),
                                            cs))
            res)
 
