@@ -50,6 +50,14 @@ module Blob = struct
     | Slice s -> s
     | Lwt_bytes s -> Slice.wrap_string (Lwt_bytes.to_string s)
 
+  let to_string_unsafe = function
+    | Slice s -> Slice.get_string_unsafe s
+    | Lwt_bytes s -> Lwt_bytes.to_string s
+
+  let to_lwt_bytes = function
+    | Slice s -> Slice.to_bigstring s
+    | Lwt_bytes s -> s
+
   let to_buffer1 buf b =
     Slice.to_buffer buf (to_slice b)
 
@@ -177,10 +185,12 @@ module Update = struct
     | Set of key * (Blob.t * checksum * bool) option
                                              [@@ deriving show]
 
-  let set k v c b = Set (k, Some (Blob.Slice v,c,b))
+  let set k v c b = Set (k, Some (v,c,b))
 
+  let set_slice k v c b =
+    set k (Blob.Slice v) c b
   let set_string k v c b =
-    set (Slice.wrap_string k) (Slice.wrap_string v) c b
+    set_slice (Slice.wrap_string k) (Slice.wrap_string v) c b
 
   let delete k = Set (k, None)
   let delete_string k = delete (Slice.wrap_string k)

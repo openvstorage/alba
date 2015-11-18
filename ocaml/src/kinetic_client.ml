@@ -197,7 +197,7 @@ class kinetic_client cid session conn =
       match vco with
       | None -> Lwt.return None
       | Some (v, version) ->
-         let vo_s = Some (s2slice v) in
+         let vo_s = Some (Blob.Slice (s2slice v)) in
          Lwt.return vo_s
 
 

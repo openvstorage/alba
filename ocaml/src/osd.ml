@@ -48,10 +48,10 @@ type apply_result =
 
 class type osd = object
 
-  method get_exn : priority -> key -> value Lwt.t
-  method get_option : priority -> key -> value option Lwt.t
+  method get_exn : priority -> key -> Blob.t Lwt.t
+  method get_option : priority -> key -> Blob.t option Lwt.t
 
-  method multi_get    : priority -> key list -> value option list Lwt.t
+  method multi_get    : priority -> key list -> Blob.t option list Lwt.t
   method multi_exists : priority -> key list -> bool list Lwt.t
 
   method range :

@@ -921,8 +921,8 @@ let asd_protocol
                      (fun () ->
                       Lwt_extra2.read_lwt_bytes_from_ic_fd
                         bs 0 size
-                        fd ic >>= fun x ->
-                      Lwt.return (Blob.Lwt_bytes x))
+                        fd ic >>= fun () ->
+                      Lwt.return (Blob.Lwt_bytes bs))
                      (fun exn ->
                       Lwt_bytes.unsafe_destroy bs;
                       Lwt.fail exn))

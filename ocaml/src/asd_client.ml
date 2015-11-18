@@ -19,6 +19,7 @@ open Lwt
 open Slice
 open Asd_protocol
 open Protocol
+open Lwt_bytes2
 
 class client fd ic id =
   let read_response deserializer =
@@ -104,6 +105,7 @@ class client fd ic id =
     method multi_get ~prio keys =
       let old_multiget () =
         self # query MultiGet (keys, prio)
+        >|= List.map (Option.map (fun (s, cs) -> Blob.Slice s, cs))
       in
       match supports_multiget2 with
       | None ->
@@ -132,18 +134,28 @@ class client fd ic id =
           | None -> Lwt.return_none
           | Some (blob, cs) ->
              match blob with
-             | Direct s -> Lwt.return (Some (s, cs))
+             | Direct s -> Lwt.return (Some (Blob.Slice s, cs))
              | Later size ->
-                Lwt_extra2.read_bytes_from_ic_fd
-                  size fd ic >>= fun target ->
-                Lwt.return (Some (Slice.wrap_bytes target, cs)))
+                let target = Lwt_bytes.create size in
+                Lwt.catch
+                  (fun () ->
+                   Lwt_extra2.read_lwt_bytes_from_ic_fd
+                     target 0 size
+                     fd ic >>= fun () ->
+                   Lwt.return (Some (Blob.Lwt_bytes target, cs)))
+                  (fun exn ->
+                   Lwt_bytes.unsafe_destroy target;
+                   Lwt.fail exn)
+                )
         res
 
     method multi_get_string ~prio keys =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
-           (Option.map (fun (slice, cs) -> Slice.get_string_unsafe slice, cs))
+           (Option.map (fun (blob, cs) -> Slice.get_string_unsafe
+                                             (Blob.to_slice blob),
+                                           cs))
            res)
 
     method multi_exists ~prio keys = self # query MultiExists (keys, prio)

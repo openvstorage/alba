@@ -19,6 +19,8 @@ open Remotes
 open Checksum
 open Slice
 open Lwt.Infix
+module Osd_sec = Osd
+
 let large_value = lazy (String.make (512*1024) 'a')
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -408,7 +410,7 @@ class osd_access
                                closer >>= function
                              | None -> Lwt.return `Continue
                              | Some alba_id' ->
-                                let alba_id' = Slice.get_string_unsafe alba_id' in
+                                let alba_id' = Slice.get_string_unsafe (Osd_sec.Blob.to_slice alba_id') in
                                 mgr_access # get_alba_id >>= fun alba_id ->
 
                                 Lwt.catch

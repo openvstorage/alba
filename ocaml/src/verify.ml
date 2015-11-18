@@ -41,8 +41,8 @@ let verify_and_maybe_repair_object
       | [ None ] -> Lwt.return `Missing
       | [ Some f ] ->
          let checksum = Layout.index manifest.fragment_checksums chunk_id fragment_id in
-         let fragment_data' = Slice.to_bigstring f in
-         Fragment_helper.verify fragment_data' checksum
+         let fragment_data' = Osd.Blob.to_lwt_bytes f in
+         Fragment_helper.verify_lwt_bytes fragment_data' checksum
          >>= fun checksum_valid ->
          Lwt_bytes.unsafe_destroy fragment_data';
          Lwt.return

@@ -296,7 +296,7 @@ class client ?(retry_timeout = 60.)
          | Prelude.Error.Error x ->
             Lwt.fail (Exn NotEnoughFragments)
          | Prelude.Error.Ok (_, _, packed_fragment) ->
-            Fragment_helper.verify' packed_fragment fragment_checksum
+            Fragment_helper.verify_blob packed_fragment fragment_checksum
             >>= fun checksum_valid ->
             if not checksum_valid
             then Lwt.fail (Exn ChecksumMismatch)

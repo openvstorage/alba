@@ -104,20 +104,20 @@ let download_packed_fragment
             in
             Lwt_log.warning msg >>= fun () ->
             E.fail `FragmentMissing
-         | Some (data:Slice.t) ->
+         | Some (data:Osd.Blob.t) ->
             osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
             Osd_state.add_read state;
             Lwt.ignore_result
               (fragment_cache # add
                               namespace_id key_string
-                              (Slice.get_string_unsafe data)
+                              (Osd.Blob.to_string_unsafe data)
               );
             let hit_or_mis = false in
             E.return (osd_id, hit_or_mis, data)
        end
     | Some data ->
        let hit_or_mis = true in
-       E.return (osd_id, hit_or_mis, Slice.wrap_string data)
+       E.return (osd_id, hit_or_mis, Osd.Blob.Slice (Slice.wrap_string data))
   in
   retrieve key
 
@@ -150,11 +150,11 @@ let download_fragment
        fragment_cache)
   >>== fun (t_retrieve, (osd_id, hit_or_miss, fragment_data)) ->
 
-  let fragment_data' = Slice.to_bigstring fragment_data in
+  let fragment_data' = Osd.Blob.to_lwt_bytes fragment_data in
 
   E.with_timing
     (fun () ->
-     Fragment_helper.verify fragment_data' fragment_checksum
+     Fragment_helper.verify_lwt_bytes fragment_data' fragment_checksum
      >>= E.return)
   >>== fun (t_verify, checksum_valid) ->
 

@@ -160,61 +160,22 @@ let read_into_lwt_bytes ic target offset length =
 
 let read_lwt_bytes_from_ic_fd target offset length fd ic =
   let buffered = Lwt_io.buffered ic in
-  (if length <= buffered
-   then
-     read_into_lwt_bytes ic target 0 length
-   else
-     begin
-       (if buffered > 0
-        then read_into_lwt_bytes ic target 0 buffered
-        else Lwt.return_unit) >>= fun () ->
-       assert (0 = Lwt_io.buffered ic);
+  if length <= buffered
+  then
+    read_into_lwt_bytes ic target 0 length
+  else
+    begin
+      (if buffered > 0
+       then read_into_lwt_bytes ic target 0 buffered
+       else Lwt.return_unit) >>= fun () ->
+      assert (0 = Lwt_io.buffered ic);
 
-       let remaining = length - buffered in
-       read_all_lwt_bytes
-         fd target
-         buffered remaining
-       >>= expect_exact_length remaining
-     end) >>= fun () ->
-  Lwt.return target
-
-let read_bytes_from_ic_fd size fd ic =
-  (* TODO obsolete this *)
-  let target = Bytes.create size in
-
-  let buffered = Lwt_io.buffered ic in
-  (if size <= buffered
-   then
-     begin
-       Lwt_io.read_into ic target 0 size >>= fun read ->
-       assert (read = size);
-       Lwt.return ()
-     end
-   else
-     begin
-       (if buffered > 0
-        then Lwt_io.read_into ic target 0 buffered
-        else Lwt.return 0) >>= fun read ->
-       assert (read = buffered);
-       assert (0 = Lwt_io.buffered ic);
-
-       let remaining = size - read in
-       read_all
-         fd target
-         read remaining
-       >>= fun read' ->
-       if read' = remaining
-       then Lwt.return ()
-       else begin
-           Lwt_log.debug_f
-             "read=%i, read'=%i, size=%i, buffered=%i, new buffered=%i"
-             read read' size
-             buffered (Lwt_io.buffered ic)
-           >>= fun () ->
-           Lwt.fail End_of_file
-         end
-     end) >>= fun () ->
-  Lwt.return target
+      let remaining = length - buffered in
+      read_all_lwt_bytes
+        fd target
+        buffered remaining
+      >>= expect_exact_length remaining
+    end
 
 
 let _write_all write_from_source offset length =
