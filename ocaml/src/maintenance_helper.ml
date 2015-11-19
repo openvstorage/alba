@@ -123,9 +123,8 @@ let upload_missing_fragments
        compression
        encryption
        fragment_checksum_algo
-     >>= fun (packed_fragment_bs, _, _, checksum') ->
+     >>= fun (packed_fragment, _, _, checksum') ->
 
-     let packed_fragment = Osd.Blob.Lwt_bytes packed_fragment_bs in
      if checksum = checksum'
      then
        begin

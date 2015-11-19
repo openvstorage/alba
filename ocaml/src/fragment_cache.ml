@@ -34,13 +34,13 @@ class type cache = object
 end
 
 class no_cache = object(self :# cache)
-    method clear_all () = Lwt.return ()
-    method add    bid oid blob = Lwt.return ()
-    method lookup bid oid      = Lwt.return None
-    method drop   bid          = Lwt.return ()
+    method clear_all ()        = Lwt.return_unit
+    method add    bid oid blob = Lwt.return_unit
+    method lookup bid oid      = Lwt.return_none
+    method drop   bid          = Lwt.return_unit
     method get_count () = 0L
     method get_total_size () = 0L
-    method close () = Lwt.return ()
+    method close () = Lwt.return_unit
 end
 
 let ser64 x=
@@ -652,6 +652,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         then Lwt.return ()
         else delete parent
       in
+      (* TODO this cleanup flag looks like an accident waiting to happen.
+       * The fact that we're evicting an item does not automatically mean
+       * no new blobs will be written in this directory.
+       *)
       if cleanup then
         let dir = Filename.dirname path0 in
         Lwt.catch

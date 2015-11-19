@@ -45,7 +45,7 @@ let upload_packed_fragment_data
          ~object_id ~version_id
          ~chunk_id ~fragment_id
        |> Slice.wrap_string)
-      packed_fragment checksum false
+      (Blob.Blob.Lwt_bytes packed_fragment) checksum false
   in
   let set_recovery_info =
     Osd.Update.set_slice
@@ -145,12 +145,11 @@ let upload_chunk
   Lwt_list.map_p
     (fun ((fragment_id,
            fragment,
-           (packed_fragment_bs,
+           (packed_fragment,
             t_compress_encrypt,
             t_hash,
             checksum)),
           osd_id_o) ->
-     let packed_fragment = Osd.Blob.Lwt_bytes packed_fragment_bs in
      with_timing_lwt
        (fun () ->
         match osd_id_o with
@@ -169,7 +168,7 @@ let upload_chunk
 
      let t_fragment = Statistics.({
                                      size_orig = Bigstring_slice.length fragment;
-                                     size_final = Osd.Blob.length packed_fragment;
+                                     size_final = Lwt_bytes.length packed_fragment;
                                      compress_encrypt = t_compress_encrypt;
                                      hash = t_hash;
                                      osd_id_o;
