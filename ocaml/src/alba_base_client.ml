@@ -154,7 +154,9 @@ class client
                 ~namespace
                 ~object_name
                 ~checksum_o
-                ~allow_overwrite))
+                ~allow_overwrite
+                ~object_id_hint:None
+           ))
         (function
           | Unix.Unix_error(Unix.ENOENT,_,y) ->
              let open Error in failwith FileNotFound
@@ -181,6 +183,7 @@ class client
         ~object_reader
         ~checksum_o
         ~allow_overwrite
+        ~object_id_hint:None
 
     method upload_object_from_string
       ~namespace
@@ -194,6 +197,7 @@ class client
         ~object_reader:(new Object_reader.string_reader object_data)
         ~checksum_o
         ~allow_overwrite
+        ~object_id_hint:None
 
     method upload_object
         ~(namespace : string)
@@ -201,6 +205,7 @@ class client
         ~(object_reader : Object_reader.reader)
         ~(checksum_o: Checksum.t option)
         ~(allow_overwrite : Nsm_model.overwrite)
+        ~(object_id_hint: string option)
       =
       nsm_host_access # with_namespace_id
         ~namespace
@@ -210,14 +215,18 @@ class client
              ~object_name
              ~object_reader
              ~checksum_o
-             ~allow_overwrite)
+             ~allow_overwrite
+             ~object_id_hint
+        )
 
     method upload_object'
              ~namespace_id
              ~object_name
              ~object_reader
              ~checksum_o
-             ~allow_overwrite =
+             ~allow_overwrite
+             ~object_id_hint
+      =
        Alba_client_upload.upload_object'
          nsm_host_access osd_access
          manifest_cache
@@ -228,7 +237,7 @@ class client
          ~object_reader
          ~checksum_o
          ~allow_overwrite
-
+         ~object_id_hint
 
     (* consumers of this method are responsible for freeing
      * the returned fragment bigstring

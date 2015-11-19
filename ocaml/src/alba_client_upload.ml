@@ -193,6 +193,7 @@ let upload_object''
       ~(object_reader : Object_reader.reader)
       ~(checksum_o: Checksum.t option)
       ~(allow_overwrite : Nsm_model.overwrite)
+      ~(object_id_hint: string option)
   =
 
   (* TODO
@@ -299,7 +300,11 @@ let upload_object''
       dummies
   in
 
-  let object_id = get_random_string 32 in
+  let object_id =
+    match object_id_hint with
+    | None -> get_random_string 32
+    | Some hint -> hint
+  in
 
   object_reader # length >>= fun object_length ->
 
@@ -540,7 +545,9 @@ let upload_object'
       ~object_name
       ~object_reader
       ~checksum_o
-      ~allow_overwrite =
+      ~allow_overwrite
+      ~object_id_hint
+  =
 
   let object_t0 = Unix.gettimeofday () in
   let do_upload timestamp =
@@ -555,6 +562,7 @@ let upload_object'
       ~object_reader
       ~checksum_o
       ~allow_overwrite
+      ~object_id_hint
   in
   Lwt.catch
     (fun () -> do_upload object_t0)
