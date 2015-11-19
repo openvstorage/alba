@@ -244,21 +244,25 @@ class client fd ic id =
     method get_disk_usage () =
       self # query GetDiskUsage ()
 
-    method supports_operations (commands : t list) =
+    method supports_operations' codes =
       Lwt.catch
         (fun () ->
          self # query
               SupportsOperations
-              (List.map
-                 command_to_code
-                 commands))
+              codes)
         (function
           | Error.Exn Error.Unknown_operation ->
              List.map
                (fun _ -> false)
-               commands
+               codes
              |> Lwt.return
           | exn -> Lwt.fail exn)
+
+    method supports_operations (commands : t list) =
+      self # supports_operations'
+           (List.map
+              command_to_code
+              commands)
 
     method supports_operation command =
       self # supports_operations [ command ]

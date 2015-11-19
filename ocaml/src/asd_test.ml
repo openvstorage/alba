@@ -16,6 +16,7 @@ limitations under the License.
 
 open Prelude
 open Osd
+open Slice
 open Lwt.Infix
 
 let buffer_pool = Buffer_pool.osd_buffer_pool
@@ -109,7 +110,6 @@ let test_multi_exists port () =
   test_with_asd_client
     "test_multi_exists" port
     (fun client ->
-     let open Slice in
      let v = "xxxx" in
      let existing_key = "exists" in
      client # set_string ~prio:High existing_key v true >>= fun () ->
@@ -290,13 +290,49 @@ let test_unknown_operation () =
     begin
       Asd_client.with_client
         buffer_pool
-        [ "::1" ] 8000 None
+        [ "::1" ] 8001 None
         (fun asd ->
          asd # do_unknown_operation >>= fun () ->
          asd # do_unknown_operation >>= fun () ->
-         asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.Slice.wrap_string "x" ] >>= fun _ ->
+         asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.wrap_string "x" ] >>= fun _ ->
          Lwt.return ())
     end
+
+let test_supported_operations port () =
+  test_with_asd_client
+    "test_supported_operations" port
+    (fun client ->
+     let command_map = Asd_protocol.Protocol.command_map in
+     client # supports_operations' (206l :: List.map
+                                              (fun (_, code, _) -> code)
+                                              command_map) >>= fun r ->
+     assert (List.hd_exn r = false);
+     List.iter
+       (fun supported -> assert supported)
+       (List.tl_exn r);
+     Lwt.return_unit)
+
+let test_apply1 port () =
+  test_with_asd_client
+    "test_apply1" port
+    (fun client ->
+     let key = "key" in
+     let value = "value" in
+     client # apply_sequence1
+            ~prio:High
+            []
+            [ Asd_protocol.Update.set
+                (Slice.wrap_string key)
+                (Blob.Slice (Slice.wrap_string value))
+                Checksum.Checksum.NoChecksum
+                false ]
+     >>= fun () ->
+     client # get_string ~prio:High key >>= function
+     | None -> failwith "oops got None"
+     | Some (v, _) ->
+        assert (v = value);
+        Lwt_io.printlf "Got %s" v)
+
 
 open OUnit
 
@@ -310,4 +346,6 @@ let suite = "asd_test" >:::[
     "test_protocol_version" >:: test_protocol_version 7907;
     "test_multi_exists" >:: test_multi_exists 7908;
     "test_unknown_operation" >:: test_unknown_operation;
+    "test_supported_operations" >:: test_supported_operations 7909;
+    "test_apply1" >:: test_apply1 7910;
   ]
