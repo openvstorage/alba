@@ -587,9 +587,9 @@ def run_test_big_object():
 
 @task
 def run_tests_compat(xml = True):
-    def test(old_proxy,old_plugins, old_asd, tls):
+    def test(old_proxy,old_plugins, old_asd):
         try:
-            alba.smoke_test(tls = tls)
+            alba.smoke_test()
         except:
             with warn_only():
                 local ("which alba.0.6")
@@ -619,8 +619,8 @@ def run_tests_compat(xml = True):
 
         alba.demo_kill(env = env_old)
 
-        alba.arakoon_start(tls = tls, env = arakoon_env)
-        alba.wait_for_master(tls = tls, env = arakoon_env)
+        alba.arakoon_start(env = arakoon_env)
+        alba.wait_for_master(env = arakoon_env)
 
         if old_plugins:
             cmd = [
@@ -633,23 +633,21 @@ def run_tests_compat(xml = True):
             cmd_line = ' '.join(cmd)
             local(cmd_line)
 
-        alba.maintenance_start(tls = tls)
-        alba.proxy_start(tls = tls)
-        alba.nsm_host_register_default(tls = tls)
+        alba.maintenance_start()
+        alba.proxy_start()
+        alba.nsm_host_register_default()
 
 
         if old_asds:
-            asd_tls = 'False'
             asd_env = env_old
         else:
-            asd_tls = tls
             asd_env = env
 
         kind = default_kind
-        alba.start_osds(kind, N, False, tls = asd_tls, env = asd_env)
-        alba.claim_local_osds(N, abm_cfg = arakoon_config_file, tls = tls)
+        alba.start_osds(kind, N, False, env = asd_env)
+        alba.claim_local_osds(N, abm_cfg = arakoon_config_file)
         #
-        test(old_proxy, old_plugins, old_asds, tls)
+        test(old_proxy, old_plugins, old_asds)
 
 
     results = []
