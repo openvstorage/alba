@@ -19,10 +19,16 @@ open Slice
 open Encryption
 open Lwt
 
-let test_with_alba_client ?bad_fragment_callback f =
+let test_with_alba_client ?cache_dir ?bad_fragment_callback f =
   let albamgr_client_cfg = Albamgr_test.get_ccfg () in
   Lwt_main.run begin
+    (match cache_dir with
+     | None -> Lwt.return ()
+     | Some d -> Lwt_extra2.create_dir
+                   ~sync:false
+                   d) >>= fun () ->
     Alba_client.with_client
+      ?cache_dir
       ?bad_fragment_callback
       (ref albamgr_client_cfg)
       f
@@ -1930,6 +1936,63 @@ let test_list_objects_by_id () =
                   assert (objs = [ mf; ]);
                   Lwt.return ()))
 
+let test_corrupted_fragment_in_cache () =
+  let test_name = "test_corrupted_fragment_in_cache" in
+  let namespace = test_name in
+  let cache_dir = "/tmp/alba/" ^ test_name in
+  test_with_alba_client
+    ~cache_dir
+    (fun alba_client ->
+     alba_client # create_namespace
+                 ~preset_name:None
+                 ~namespace () >>= fun namespace_id ->
+
+     let open Nsm_model in
+
+     let object_name = test_name in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data:"dfsaixoxoxo"
+                 ~checksum_o:None
+                 ~allow_overwrite:NoPrevious
+     >>= fun (mf, _) ->
+
+     let open Manifest in
+     let object_id = mf.object_id in
+
+     let fill_fragment_cache_with_corrupt_data fragment_id version_id =
+       let key =
+         Osd_keys.AlbaInstance.fragment
+           ~namespace_id
+           ~object_id ~version_id
+           ~chunk_id:0 ~fragment_id
+       in
+       let frag_cache = alba_client # get_base_client # get_fragment_cache in
+       frag_cache # add
+                   namespace_id
+                   key (Blob.Blob.Lwt_bytes (Lwt_bytes.create 20)) >>= fun () ->
+       frag_cache # lookup
+                  namespace_id key >>= function
+       | None ->
+          (* make sure we're not testing against a dummy cache *)
+          assert false
+       | Some _ -> Lwt.return ()
+     in
+     Lwt_list.iteri_s
+       (fun fragment_id (_, version_id) ->
+        fill_fragment_cache_with_corrupt_data fragment_id version_id)
+       (List.hd_exn mf.fragment_locations)
+     >>= fun () ->
+
+     alba_client # download_object_to_string
+            ~namespace
+            ~object_name
+            ~consistent_read:false
+            ~should_cache:false >>= function
+     | Some _ -> Lwt.return ()
+     | None -> assert false)
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -1956,4 +2019,5 @@ let suite = "alba_test" >:::[
     "test_object_sizes" >:: test_object_sizes;
     "test_retry_download" >:: test_retry_download;
     "test_list_objects_by_id" >:: test_list_objects_by_id;
-  ]
+    "test_corrupted_fragment_in_cache" >:: test_corrupted_fragment_in_cache;
+    ]
