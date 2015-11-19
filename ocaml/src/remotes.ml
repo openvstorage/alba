@@ -157,10 +157,8 @@ module Pool = struct
          let osd = new Asd_client.asd_osd asd_id asd in
          Lwt.return (osd, closer)
       | OsdInfo.Kinetic (conn_info', kinetic_id) ->
-         let conn_info = Asd_client.conn_info_from conn_info' in
+         let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
          Kinetic_client.make_client buffer_pool ~conn_info kinetic_id
-         >>= fun (kin, closer) ->
-         Lwt.return (kin, closer)
 
     let use_osd t ~(osd_id:int32) f =
       let pool =

@@ -310,7 +310,6 @@ module Net_fd = struct
          ~fd_out:fd
          size
     | SSL(_,socket) ->
-       let buffer = Lwt_bytes.create 4096 in
        let copy_using buffer =
          let buffer_size = Lwt_bytes.length buffer in
           let write_all socket buffer offset length =
@@ -334,7 +333,7 @@ module Net_fd = struct
           in
           loop size
        in
-       copy_using buffer
+       Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
 end
 
 let execute_query : type req res.

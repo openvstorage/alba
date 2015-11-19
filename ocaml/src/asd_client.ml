@@ -245,7 +245,7 @@ class client (fd:Net_fd.t) ic id =
 
 exception BadLongId of string * string
 
-let conn_info_from ?(tls_config = None) (conn_info':Nsm_model.OsdInfo.conn_info)  =
+let conn_info_from ~tls_config (conn_info':Nsm_model.OsdInfo.conn_info)  =
   let ips,port, use_tls = conn_info' in
   let tls_config =
     match use_tls,tls_config with
