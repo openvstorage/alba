@@ -254,7 +254,7 @@ let alba_upload_object
                              else NoPrevious)
            ~checksum_o:None
          >>= fun _ ->
-         Lwt_io.printlf "object %s was succesfully uploaded"
+         Lwt_io.printlf "object %s was successfully uploaded"
                         input_file
       )
   in
