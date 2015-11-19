@@ -634,7 +634,7 @@ let test_automatic_repair () =
                                                used = 1L;
                                              });
                                       ips = ["::1"];
-                                      port;
+                                      port = Some port;
                                       tlsPort = None;
                                     })) >>= fun () ->
         alba_client # claim_osd ~long_id:test_name >>= fun osd_id ->

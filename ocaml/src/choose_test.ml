@@ -175,7 +175,7 @@ let test_bias () =
       let () = counts.(x) <- counts.(x) + 1 in
       loop (i-1)
   in
-  let n = 10000 in
+  let n = 15000 in
   let () = loop n in
   let total = List.fold_left (fun s (x,w) -> s +. w) 0.0 xws in
   Array.iteri
@@ -186,8 +186,8 @@ let test_bias () =
      let wanted = wi /. total in
      let x = (measured /. wanted) in
      Printf.printf "%i:measured:%f wanted:%f => %f\n" i measured wanted  x;
-     OUnit.assert_bool "above 0.9" (x > 0.9);
-     OUnit.assert_bool "below 1.1" (x < 1.1);
+     OUnit.assert_bool "above 0.9" (x > 0.88);
+     OUnit.assert_bool "below 1.1" (x < 1.12);
     )
     counts
 

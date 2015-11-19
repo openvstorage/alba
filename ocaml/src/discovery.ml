@@ -73,7 +73,7 @@ type extra_info =
 type record = {
     extras: extra_info option;
     ips: string list;
-    port :int;
+    port :int option;
     tlsPort: int option;
     id : string;
   }[@@deriving show]
@@ -100,7 +100,10 @@ let parse s addr0 =
         id, None
     in
     let nics = Json.as_list (get_f "network_interfaces") in
-    let port = Json.as_int (get_f "port") in
+    let port =
+      try Some (Json.as_int (get_f "port"))
+      with | Json.JSON_InvalidField _ -> None
+    in
     let tlsPort =
       try  Some (get_f "tlsPort" |> Json.as_int )
       with | Json.JSON_InvalidField _ -> None

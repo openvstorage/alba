@@ -348,9 +348,11 @@ class osd_access
            begin
              Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
              let conn_info =
-               match tlsPort with
-               | None -> (ips,port,false)
-               | Some tlsPort -> (ips, tlsPort, true)
+               match port, tlsPort with
+               | None     , None         -> failwith "multicast anounced no port ?!"
+               | Some port, None         -> (ips,port,false)
+               | None     , Some tlsPort
+               | Some _   , Some tlsPort -> (ips,tlsPort, true)
              in
              let open Nsm_model in
              (match extras with

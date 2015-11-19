@@ -440,10 +440,10 @@ let asd_discover () =
                        record.extras
        in
        Lwt_io.printlf
-         "{extras: %s ; ips = %s; port = %i ; tlsPort = %s }%!"
+         "{extras: %s ; ips = %s; port = %s ; tlsPort = %s }%!"
          extras_s
          ([%show: string list] record.ips)
-         record.port
+         ([%show: int option] record.port)
          ([%show: int option] record.tlsPort)
   in
   lwt_cmd_line false (fun () -> discovery seen)

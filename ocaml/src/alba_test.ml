@@ -707,7 +707,7 @@ let test_discover_claimed () =
                                         used = 1L;
                                       });
                                     ips = ["::1"];
-                                    port = 8230;
+                                    port = Some 8230;
                                     tlsPort;
                                   })) >>= fun () ->
 
@@ -1168,7 +1168,7 @@ let test_disk_churn () =
                                             used = 1L;
                                           });
                                         ips = ["::1"];
-                                        port = asd_port;
+                                        port = Some asd_port;
                                         tlsPort = None;
                                       })) >>= fun () ->
                 alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
@@ -1524,7 +1524,7 @@ let test_add_disk () =
                                         used = 1L;
                                       });
                                     ips = ["::1"];
-                                    port = asd_port;
+                                    port = Some asd_port;
                                     tlsPort = None;
                                   })) >>= fun () ->
             alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->

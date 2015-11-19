@@ -261,7 +261,7 @@ def _asd_inner(port, path, node_id, slow, multicast,
     if not restart:
         limit = 90 if env['osds_on_separate_fs'] else 99
         asd_id = "%i_%i_%s" % (port,node_id, local_nodeid_prefix)
-        cfg = { 'port' : port,
+        cfg = {
                 'node_id' : "%s_%i" % (local_nodeid_prefix, node_id),
                 'home' : path,
                 'log_level' : 'debug',
@@ -282,6 +282,8 @@ def _asd_inner(port, path, node_id, slow, multicast,
                 "key" : "%s/%s.key" % (path, asd_id),
                 "port": (port + 500)
             }
+        else:
+            cfg['port'] = port
 
         dump_to_cfg_as_json(cfg_path, cfg)
 
