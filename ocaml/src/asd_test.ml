@@ -51,6 +51,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
        let open Asd_config.Config in
        Some {cert = path ^ "test_discover_claimed.pem";
              key  = path ^ "test_discover_claimed.key";
+             port = (port + 500)
             }
   in
   if not is_restart
@@ -64,7 +65,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
     Lwt.pick
       [ (Asd_server.run_server
            ~cancel
-           [] port path
+           [] (Some port) path
            ~asd_id
            ~node_id:"bla"
            ~slow:false
@@ -73,7 +74,6 @@ let with_asd_client ?(is_restart=false) test_name port f =
            ~rocksdb_max_open_files:256
            ~limit:90L
            ~tls
-           ~configuredTlsPort:None
            ~multicast:(Some 10.0) >>= fun () ->
          Lwt.fail_with "Asd server stopped!");
         begin
@@ -284,7 +284,7 @@ let test_protocol_version port () =
   let t =
     Lwt.pick [
         Asd_server.run_server
-          [] port path
+          [] (Some port) path
           ~asd_id
           ~node_id:"node"
           ~slow:false
@@ -293,7 +293,6 @@ let test_protocol_version port () =
           ~rocksdb_max_open_files:256
           ~limit:90L
           ~tls:None
-          ~configuredTlsPort:None
           ~multicast:(Some 10.0);
         Lwt_unix.with_timeout
           5.

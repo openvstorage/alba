@@ -18,21 +18,21 @@ module Config = struct
 
   type tls = { cert: string;
                key : string;
+               port: int;
              } [@@deriving yojson, show]
 
   type t = {
-    ips : (string list       [@default []]);
-    port : int;
+    ips : (string list         [@default []]);
+    port :(int option          [@default None]);
     node_id : string;
     home : string;
     log_level : string;
-    asd_id : (string option  [@default None]);
-    __sync_dont_use : (bool  [@default true]);
-    limit : (int64           [@default 99L]);
-    buffer_size : (int       [@default (768*1024)]);
-    multicast: (float option [@default (Some 10.0)]);
-    tls : (tls option        [@default None]);
-    tlsPort : (int option    [@default None]);
+    asd_id : (string option    [@default None]);
+    __sync_dont_use : (bool    [@default true]);
+    limit : (int64             [@default 99L]);
+    buffer_size : (int         [@default (768*1024)]);
+    multicast: (float option   [@default (Some 10.0)]);
+    tls : (tls option          [@default None]);
   } [@@deriving yojson, show]
 end
 open Lwt.Infix

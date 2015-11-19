@@ -1064,7 +1064,7 @@ class check_garbage_from_advancer check_garbage_from kv =
 let run_server
       ?cancel
       (hosts:string list)
-      (port:int)
+      (port:int option)
       (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1073,14 +1073,10 @@ let run_server
       ~limit
       ~multicast
       ~tls
-      ~configuredTlsPort
   =
-  Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision
-  >>= fun () ->
-  Lwt_log.debug_f "tls:%s; configuredTlsPort:%s"
-                  ([%show: Asd_config.Config.tls option] tls)
-                  ([%show: int option] configuredTlsPort)
-  >>= fun () ->
+  Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
+  Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls) >>= fun () ->
+
   let ctx = Tls.to_server_context tls in
   let db_path = path ^ "/db" in
   Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
@@ -1299,14 +1295,36 @@ let run_server
          ~get_next_fnr
          asd_id nfd ic)
   in
-  let server_t = Networking2.make_server ?cancel hosts port ~ctx:None protocol in
+  let maybe_add_plain_server threads =
+    match port with
+    | None -> threads
+    | Some port ->
+       let t = Networking2.make_server ?cancel hosts port ~ctx:None protocol in
+       t :: threads
+  in
   let maybe_add_tls_server threads =
       match tls with
       | None -> threads
       | Some tls ->
-         let tlsPort = Option.get_some_default (port + 500) configuredTlsPort in
+         let open Asd_config.Config in
+         let tlsPort = tls.port in
          let t = Networking2.make_server ?cancel hosts tlsPort ~ctx protocol in
          t :: threads
+  in
+  let maybe_add_multicast threads =
+    match multicast with
+    | None -> threads
+    | Some mcast_period ->
+       let tlsPort =
+         match tls with
+         | None   -> None
+         | Some tls -> let open Asd_config.Config in Some tls.port
+       in
+       let mcast_t () =
+         Discovery.multicast asd_id node_id hosts port tlsPort mcast_period
+                             ~disk_usage
+       in
+       mcast_t () :: threads
   in
   let reporting_t =
     let section = AsdStatistics.section in
@@ -1320,28 +1338,17 @@ let run_server
                Asd_protocol.Protocol.code_to_description))
       ()
   in
-  let threads = maybe_add_tls_server [
-      server_t;
+  let threads =
+    [
       (Lwt_extra2.make_fuse_thread ());
       reporting_t;
       io_sched_t;
     ]
+    |> maybe_add_plain_server
+    |> maybe_add_tls_server
+    |> maybe_add_multicast
   in
-  let threads' = match multicast with
-    | None -> threads
-    | Some mcast_period ->
-       let tlsPort =
-         match tls with
-         | None   -> None
-         | Some _ -> Some (Option.get_some_default (port + 500) configuredTlsPort)
-       in
-       let mcast_t () =
-         Discovery.multicast asd_id node_id hosts port tlsPort mcast_period
-                             ~disk_usage
-       in
-       mcast_t () :: threads
-  in
-  let t = Lwt.pick threads'
+  let t = Lwt.pick threads
   in
   Lwt.finalize
     (fun () ->

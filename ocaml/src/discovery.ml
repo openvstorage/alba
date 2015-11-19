@@ -178,7 +178,9 @@ let discovery seen =
   outer ()
 
 let multicast
-      (id:string) (node_id:string) ips port tlsPort period
+      (id:string) (node_id:string) ips
+      (port:int option)
+      (tlsPort:int option) period
       ~(disk_usage:unit -> (int64 * int64) Lwt.t)
   =
   let data (used:int64) (total:int64) =
@@ -199,25 +201,35 @@ let multicast
            add_ips (ip1 :: ips)
          end
     in
-    add_s "{ \"id\": \"";
-    add_s id;
-    add_s "\", \"node_id\": \"";
-    add_s node_id;
-    add_s "\", \"port\" : ";
-    add_s (Printf.sprintf "%i" port);
-    let () = match tlsPort with
+    let add_pair name s =
+      add_s "\"";
+      add_s name;
+      add_s "\" : \"";
+      add_s s;
+      add_s "\"";
+    in
+    let maybe_add_port name = function
       | None -> ()
-      | Some tlsPort ->
+      | Some port ->
          begin
-           add_s ", \"tlsPort\" : ";
-           add_s (Printf.sprintf "%i" tlsPort);
+           add_s ", \"";
+           add_s name;
+           add_s "\" : ";
+           add_s (Printf.sprintf "%i" port);
          end
     in
-    add_s ", \"used_bytes\": ";
-    add_s (Printf.sprintf "\"%Li\"" used);
-    add_s ", \"total_bytes\": ";
-    add_s (Printf.sprintf "\"%Li\"" total);
-    add_s ", \"version\" : \"AsdV1\"";
+    add_s "{ ";
+    add_pair "id" id;
+    add_s ", ";
+    add_pair "node_id" node_id;
+    maybe_add_port "port" port;
+    maybe_add_port "tlsPort" tlsPort;
+    add_s ", ";
+    add_pair "used_bytes" (Printf.sprintf "%Li" used);
+    add_s ", ";
+    add_pair "total_bytes"(Printf.sprintf "%Li" total);
+    add_s ", ";
+    add_pair "version" "AsdV1";
     add_s ", \"network_interfaces\":[";
     add_ips ips;
     add_s " ]}";

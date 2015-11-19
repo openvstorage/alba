@@ -32,7 +32,7 @@ let asd_start cfg_file slow =
     | `Ok cfg ->
 
       let ips, port, home, node_id, log_level, asd_id,
-          fsync, limit, multicast, buffer_size, tls,configuredTlsPort
+          fsync, limit, multicast, buffer_size, tls
         =
         let open Config in
         cfg.ips, cfg.port,
@@ -44,8 +44,7 @@ let asd_start cfg_file slow =
         cfg.limit,
         cfg.multicast,
         cfg.buffer_size,
-        cfg.tls,
-        cfg.tlsPort
+        cfg.tls
       in
 
       (if not fsync
@@ -72,7 +71,7 @@ let asd_start cfg_file slow =
 
       Asd_server.run_server ips port home ~asd_id ~node_id ~slow
                             ~fsync ~limit ~multicast ~buffer_size
-                            ~tls ~configuredTlsPort
+                            ~tls
                             ~rocksdb_max_open_files:256
   in
 

@@ -279,7 +279,8 @@ def _asd_inner(port, path, node_id, slow, multicast,
             path = '%s/%s' % (TLS['root_dir'], asd_id)
             cfg['tls'] = {
                 "cert": "%s/%s.pem" % (path, asd_id),
-                "key" : "%s/%s.key" % (path, asd_id)
+                "key" : "%s/%s.key" % (path, asd_id),
+                "port": (port + 500)
             }
 
         dump_to_cfg_as_json(cfg_path, cfg)
