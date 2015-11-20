@@ -854,10 +854,24 @@ let test_change_osd_ip_port () =
               | None -> assert false
               | Some _ -> Lwt.return ()
             in
-            (* it's ok to fail once while clearing the borked
-             * connection(s) *)
-            Lwt_extra2.ignore_errors download_obj >>= fun () ->
-            download_obj ()
+            let open Alba_client_errors.Error in
+            let n = 5 in
+            let rec loop i =
+              if i = n
+              then Lwt.fail_with "couldn't get the object"
+              else
+                Lwt_log.debug_f "download attempt:%i" i >>= fun () ->
+                Lwt.catch
+                  (fun () -> download_obj ())
+                  (function
+                    | Exn NotEnoughFragments ->
+                       Lwt_log.debug_f "for now: Not enoughFragments" >>= fun () ->
+                       loop (i+1)
+                    | exn -> Lwt_log.info ~exn "failing test"
+                  )
+            in
+            (* it is ok to fail a few times while clearing the borked connections *)
+            loop 0
          )
   in
   test_with_alba_client
