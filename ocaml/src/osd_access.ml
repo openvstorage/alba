@@ -35,30 +35,23 @@ class osd_access
     (Hashtbl.create 3
      : (Osd.id,
         Osd.t * Osd_state.t) Hashtbl.t) in
-  let get_osd_info ~osd_id =
-    let open Albamgr_protocol.Protocol in
-    try Lwt.return (Hashtbl.find osds_info_cache osd_id)
-    with Not_found ->
-      mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
-      if not (Hashtbl.mem osds_info_cache osd_id)
-      then
-        begin
-          let osd_info = match osd_o with
-            | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
-            | Some info -> info
-          in
-          let osd_state = Osd_state.make () in
-          let info' = (osd_info, osd_state) in
-          Hashtbl.replace osds_info_cache osd_id info';
-          let long_id = let open Osd in
-                        Nsm_model.OsdInfo.get_long_id osd_info.kind
-          in
-          osd_long_id_claim_info :=
-            StringMap.add
-              long_id (Osd.ClaimInfo.ThisAlba osd_id)
-              !osd_long_id_claim_info;
+  let add_osd_info ~osd_id osd_info =
+    if not (Hashtbl.mem osds_info_cache osd_id)
+    then
+      begin
+        let open Albamgr_protocol.Protocol in
+        let osd_state = Osd_state.make () in
+        let info' = (osd_info, osd_state) in
+        Hashtbl.replace osds_info_cache osd_id info';
+        let long_id = let open Osd in
+                      Nsm_model.OsdInfo.get_long_id osd_info.kind
+        in
+        osd_long_id_claim_info :=
+          StringMap.add
+            long_id (Osd.ClaimInfo.ThisAlba osd_id)
+            !osd_long_id_claim_info;
 
-          Lwt_extra2.run_forever
+        Lwt_extra2.run_forever
             "refresh_osd_total_used"
             (fun () ->
              let osd_info,osd_state = Hashtbl.find osds_info_cache osd_id in
@@ -71,12 +64,21 @@ class osd_access
                 let () = Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state) in
                 Lwt.return ())
                closer)
-            60.
-          |> Lwt.ignore_result
-        end;
+          60.
+        |> Lwt.ignore_result
+      end
+  in
+  let get_osd_info ~osd_id =
+    try Lwt.return (Hashtbl.find osds_info_cache osd_id)
+    with Not_found ->
+      mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
+      let osd_info = match osd_o with
+        | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
+        | Some info -> info
+      in
+      add_osd_info ~osd_id  osd_info;
       Lwt.return (Hashtbl.find osds_info_cache osd_id)
   in
-
   let osds_pool =
     Pool.Osd.make
       ~size:osd_connection_pool_size
@@ -216,6 +218,35 @@ class osd_access
       with_osd_from_pool ~osd_id f
 
     method get_osd_info = get_osd_info
+
+    method populate_osds_info_cache : unit Lwt.t =
+      let rec inner next_osd_id =
+        Lwt.catch
+          (fun () ->
+           mgr_access # list_osds_by_osd_id
+                      ~first:next_osd_id ~finc:true
+                      ~last:None ~reverse:false
+                      ~max:(-1) >>= fun ((cnt, osds), has_more) ->
+           List.iter
+             (fun (osd_id, osd_info) -> add_osd_info ~osd_id osd_info)
+             osds;
+
+           (if has_more
+            then Lwt.return_unit
+            else Lwt_extra2.sleep_approx 60.) >>= fun () ->
+
+           let next_osd_id' =
+             List.last osds
+             |> Option.map (fun (osd_id, _) -> Int32.succ osd_id)
+             |> Option.get_some_default next_osd_id
+           in
+           Lwt.return next_osd_id')
+          (fun exn ->
+           Lwt_log.info_f ~exn "Exception in populate_osds_info_cache" >>= fun () ->
+           Lwt.return next_osd_id) >>= fun next_osd_id' ->
+        inner next_osd_id'
+      in
+      inner 0l
 
     method get_default_osd_priority = default_osd_priority
 
