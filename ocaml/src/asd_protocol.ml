@@ -74,7 +74,7 @@ module Value = struct
     Checksum.output buf cs
   let to_buffer' buf (blob, cs) =
     blob_to_buffer' buf blob;
-    Checksum.to_buffer' buf cs
+    Checksum_deser.to_buffer' buf cs
 
   let from_buffer buf =
     let blob = blob_from_buffer buf in
@@ -82,7 +82,7 @@ module Value = struct
     (blob, cs)
   let from_buffer' buf =
     let blob = blob_from_buffer' buf in
-    let cs = Checksum.from_buffer' buf in
+    let cs = Checksum_deser.from_buffer' buf in
     (blob, cs)
 end
 
@@ -186,7 +186,7 @@ module Update = struct
       Llio.option_to
         (Llio.tuple3_to
            Slice.to_buffer'
-           Checksum.to_buffer'
+           Checksum_deser.to_buffer'
            Llio.bool_to
         )
         buf
@@ -216,7 +216,7 @@ module Update = struct
         Llio.option_from
           (Llio.tuple3_from
              Slice.from_buffer'
-             Checksum.from_buffer'
+             Checksum_deser.from_buffer'
              Llio.bool_from
           )
           buf
@@ -540,12 +540,12 @@ module Protocol = struct
           (Llio.tuple3_to
              Slice.to_buffer'
              Slice.to_buffer'
-             Checksum.to_buffer')
+             Checksum_deser.to_buffer')
       | MultiGet ->
          Llio.list_to (Llio.option_to
                          (Llio.pair_to
                             Slice.to_buffer'
-                            Checksum.to_buffer'
+                            Checksum_deser.to_buffer'
                          )
                       )
       | MultiGet2 ->
@@ -573,12 +573,12 @@ module Protocol = struct
           (Llio.tuple3_from
              Slice.from_buffer'
              Slice.from_buffer'
-             Checksum.from_buffer')
+             Checksum_deser.from_buffer')
       | MultiGet -> Llio.list_from
                       (Llio.option_from
                          (Llio.pair_from
                             Slice.from_buffer'
-                            Checksum.from_buffer'
+                            Checksum_deser.from_buffer'
                          )
                       )
       | MultiGet2 ->

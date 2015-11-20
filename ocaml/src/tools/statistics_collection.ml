@@ -76,12 +76,6 @@ module Generic = struct
       Llio.float_to buf t.creation;
       Llio.float_to buf t.period;
       Llio.hashtbl_to Llio.int32_to stat_to buf t.statistics
-    let to_buffer_with_version' ~ser_version buf t=
-      let module Llio = Llio2.WriteBuffer in
-      Llio.int8_to buf ser_version;
-      Llio.float_to buf t.creation;
-      Llio.float_to buf t.period;
-      Llio.hashtbl_to Llio.int32_to to_buffer' buf t.statistics
 
     let to_buffer buf t =
       to_buffer_with_version ~ser_version:1 buf t
@@ -91,15 +85,6 @@ module Generic = struct
       let period   = Llio.float_from buf in
       let statistics =
         let ef buf = Llio.pair_from Llio.int32_from stat_from buf in
-        Llio.hashtbl_from ef buf
-      in
-      { creation; period; statistics}
-    let from_buffer_raw' buf =
-      let module Llio = Llio2.ReadBuffer in
-      let creation = Llio.float_from buf in
-      let period   = Llio.float_from buf in
-      let statistics =
-        let ef buf = Llio.pair_from Llio.int32_from from_buffer' buf in
         Llio.hashtbl_from ef buf
       in
       { creation; period; statistics}
