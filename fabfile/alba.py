@@ -180,12 +180,15 @@ def _extend_alba_tls(cmd):
     cmd.extend(['--tls=%s,%s,%s' % cfg])
 
 @task
-def arakoon_who_master(arakoon_cfg_file = arakoon_config_file,
+def arakoon_who_master(arakoon_cfg_file = None,
                        env = env):
 
     tls = env['alba_tls']
-    if is_true(tls):
-        arakoon_cfg_file = TLS['arakoon_config_file']
+    if arakoon_cfg_file is None:
+        if is_true(tls):
+            arakoon_cfg_file = TLS['arakoon_config_file']
+        else:
+            arakoon_cfg_file = arakoon_config_file
 
     cmd = [
         env['arakoon_bin'],
