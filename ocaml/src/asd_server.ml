@@ -22,6 +22,8 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
+open Blob
+open Lwt_bytes2
 
 let blob_threshold = 16 * 1024
 
@@ -201,10 +203,17 @@ module DirectoryInfo = struct
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
            ~perm:0o664
            (fun fd ->
+            match blob with
+            | Blob.Slice s ->
               let open Slice in
               Lwt_extra2.write_all
                 fd
-                blob.buf blob.offset blob.length)) >>= fun (t_write, ()) ->
+                s.buf s.offset s.length
+            | Blob.Lwt_bytes s ->
+               Lwt_extra2.write_all_lwt_bytes
+                 fd
+                 s 0 (Lwt_bytes.length s)))
+    >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
      then Lwt_log.info_f
@@ -414,10 +423,10 @@ let execute_query : type req res.
               |> Option.map
                    (fun (cs, blob) ->
                     let b = match blob with
-                      | Value.Direct s -> Asd_protocol.Value.Direct s
+                      | Value.Direct s -> Blob.Direct s
                       | Value.OnFs (fnr, size) ->
                          write_laters := (fnr, size) :: !write_laters;
-                         Asd_protocol.Value.Later size in
+                         Blob.Later size in
                     b, cs))
              keys
          in
@@ -427,8 +436,8 @@ let execute_query : type req res.
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Slice.length blob
-                     | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
+                     | Some (Blob.Direct blob, _) -> acc + 200 + Slice.length blob
+                     | Some (Blob.Later size, _) -> acc + 200 + size)
                     0
                     res)
            (res,
@@ -458,6 +467,14 @@ let execute_query : type req res.
     | GetDiskUsage ->
        fun () ->
        return' !(mgmt.AsdMgmt.latest_disk_usage)
+    | SupportsOperations ->
+       fun is ->
+       let open Asd_protocol.Protocol in
+       List.map
+         (fun i -> try let _ : t = code_to_command i in true
+                   with Error.Exn Error.Unknown_operation -> false)
+         is
+       |> return'
 
 exception ConcurrentModification
 
@@ -520,8 +537,7 @@ let execute_update : type req res.
   = fun kv ~release_fnr io_sched dir_info
         ~mgmt ~get_next_fnr ->
     let open Protocol in
-    function
-    | Apply -> fun (asserts, upds, prio) ->
+    let apply (asserts, upds, prio) =
       begin
         Lwt_log.debug_f
           "Apply with asserts = %s & upds = %s"
@@ -572,7 +588,15 @@ let execute_update : type req res.
                         check whether the key is still associated with the same blob
                      *)
                      Value.get_blob_from_value dir_info value >>= fun blob ->
-                     if (Slice.compare' blob expected) <> Compare.EQ
+                     let compare_blob () =
+                       match expected with
+                       | Blob.Slice s ->
+                          Slice.compare' s blob
+                       | Blob.Lwt_bytes _ ->
+                          (* TODO direct comparison between slice & lwt_bytes *)
+                          Slice.compare' (Blob.to_slice expected) blob
+                     in
+                     if compare_blob () <> Compare.EQ
                      then begin
                        Lwt_log.warning_f
                          "Assertion failed, expected some blob but got another" >>= fun () ->
@@ -605,10 +629,10 @@ let execute_update : type req res.
             Lwt_list.map_p
               (function
                 | Update.Set (key, Some (v, c, _)) ->
-                   let blob_length = Slice.length v in
+                   let blob_length = Blob.length v in
                    (if blob_length < blob_threshold
                     then begin
-                        Lwt.return (Value.Direct v)
+                        Lwt.return (Value.Direct (Blob.to_slice v))
                       end else begin
                         let fnr, file_path, fnr_release = get_file_path () in
                         Lwt.finalize
@@ -618,7 +642,7 @@ let execute_update : type req res.
                              prio
                              (fun () ->
                               DirectoryInfo.write_blob dir_info fnr v >>= fun () ->
-                              Lwt.return ((), 4000 + Slice.length v)))
+                              Lwt.return ((), 4000 + Blob.length v)))
                           (fun () ->
                            Lwt.wakeup fnr_release ();
                            Lwt.return ()) >>= fun () ->
@@ -809,6 +833,10 @@ let execute_update : type req res.
            in
            inner 0)
       end
+    in
+    function
+    | Apply -> apply
+    | Apply2 -> apply
     | SetFull -> fun full ->
       Lwt_log.warning_f "SetFull %b" full >>= fun () ->
       AsdMgmt.set_full mgmt full;
@@ -885,7 +913,21 @@ let asd_protocol
                 let req = Protocol.query_request_deserializer q buf in
                 execute_query kv io_sched dir_info mgmt stats q req
              | Protocol.Wrap_update u ->
-                let req = Protocol.update_request_deserializer u buf in
+                Protocol.update_request_deserializer
+                  u
+                  buf
+                  (fun size ->
+                   let bs = Lwt_bytes.create size in
+                   Lwt.catch
+                     (fun () ->
+                      Lwt_extra2.read_lwt_bytes_from_ic_fd
+                        bs 0 size
+                        fd ic >>= fun () ->
+                      Lwt.return (Blob.Lwt_bytes bs))
+                     (fun exn ->
+                      Lwt_bytes.unsafe_destroy bs;
+                      Lwt.fail exn))
+                >>= fun req ->
                 execute_update
                   kv
                   ~release_fnr

@@ -15,7 +15,6 @@ limitations under the License.
 *)
 
 open Prelude
-open Slice
 open Nsm_model
 open Recovery_info
 open Lwt.Infix
@@ -124,8 +123,7 @@ let upload_missing_fragments
        compression
        encryption
        fragment_checksum_algo
-     >>= fun (packed_fragment_bs, _, _, checksum') ->
-     let packed_fragment = Slice.of_bigstring packed_fragment_bs in
+     >>= fun (packed_fragment, _, _, checksum') ->
 
      if checksum = checksum'
      then

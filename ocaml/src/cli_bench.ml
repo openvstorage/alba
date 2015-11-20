@@ -118,7 +118,10 @@ let alba_bench alba_cfg_file
                n_clients n file_name power
                prefix slice_size namespace
                scenarios robust
+               lwt_preemptive_thread_pool_min_size lwt_preemptive_thread_pool_max_size
   =
+  Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
+                             lwt_preemptive_thread_pool_max_size);
   lwt_cmd_line
     false
     (fun () ->
@@ -141,7 +144,9 @@ let alba_bench_cmd =
         $ slice_size 4096
         $ namespace 0
         $ scenarios
-        $ robust),
+        $ robust
+        $ lwt_preemptive_thread_pool_min_size
+        $ lwt_preemptive_thread_pool_max_size),
   Term.info "alba-bench" ~doc:"simple alba benchmark"
 
 let cmds = [

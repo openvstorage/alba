@@ -72,10 +72,10 @@ type dest msg.
             client # get_option
                    (osd_access # get_default_osd_priority)
                    (Slice.wrap_string DK.next_msg_id)
-            >>= fun next_id_so ->
-            let next_id = match next_id_so with
+            >>= fun next_id_o ->
+            let next_id = match next_id_o with
               | None -> 0l
-              | Some next_id_s -> deserialize Llio.int32_from (Slice.get_string_unsafe next_id_s)
+              | Some next_id_s -> deserialize Llio.int32_from (Osd_sec.Blob.to_string_unsafe next_id_s)
             in
             if Int32.(next_id =: msg_id)
             then begin
@@ -104,7 +104,7 @@ type dest msg.
                 let asserts' =
                   Osd'.Assert.value_option
                     (Slice.wrap_string DK.next_msg_id)
-                    next_id_so :: asserts
+                    next_id_o :: asserts
                 in
                 client # apply_sequence
                        (osd_access # get_default_osd_priority)

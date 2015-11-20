@@ -17,11 +17,12 @@ limitations under the License.
 open Lwt.Infix
 open Asd_server
 open Stat
+
 let batch_entry_syncfs dir_info fnr data size =
   let t () =
     let open Slice in
     let blob = Slice.make data 0 size in
-    DirectoryInfo.write_blob dir_info fnr blob >>= fun () ->
+    DirectoryInfo.write_blob dir_info fnr (Osd.Blob.slice blob) >>= fun () ->
     Lwt.return ()
   in
   t

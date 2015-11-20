@@ -249,6 +249,15 @@ let reverse =
   Arg.(value & opt bool false & info["reverse"] ~doc:"")
 
 
+let lwt_preemptive_thread_pool_min_size =
+  Arg.(value
+       & opt int 6
+       & info ["lwt_preemptive_thread_pool_min_size"])
+let lwt_preemptive_thread_pool_max_size =
+  Arg.(value
+       & opt int 6
+       & info ["lwt_preemptive_thread_pool_max_size"])
+
 let verify_log_level log_level =
   let levels = [ "debug"; "info"; "notice"; "warning"; "error"; "fatal"; ] in
   if not (List.mem log_level levels)

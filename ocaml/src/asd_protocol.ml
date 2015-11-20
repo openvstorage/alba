@@ -18,43 +18,24 @@ open Prelude
 open Slice
 open Checksum
 open Asd_statistics
+open Blob
+open Lwt.Infix
 
 type key = Slice.t
 let show_key = Slice.show_limited_escaped
 let pp_key = Slice.pp_limited_escaped
 
 module Value = struct
-  type blob =
-    | Direct of Slice.t
-    | Later of int
-  [@@deriving show]
-  type t = blob * Checksum.t
-  [@@deriving show]
 
-  let blob_to_buffer buf = function
-    | Direct value ->
-       Llio.int8_to buf 1;
-       Slice.to_buffer buf value
-    | Later size ->
-       Llio.int8_to buf 2;
-       Llio.int_to buf size
-
-  let blob_from_buffer buf =
-    match Llio.int8_from buf with
-    | 1 ->
-       let value = Slice.from_buffer buf in
-       Direct value
-    | 2 ->
-       let size = Llio.int_from buf in
-       Later size
-    | k -> Prelude.raise_bad_tag "Asd_server.Value.blob" k
+  type t = Blob.t' * Checksum.t
+  [@@deriving show]
 
   let to_buffer buf (blob, cs) =
-    blob_to_buffer buf blob;
+    Blob.to_buffer' buf blob;
     Checksum.output buf cs
 
   let from_buffer buf =
-    let blob = blob_from_buffer buf in
+    let blob = Blob.from_buffer' buf in
     let cs = Checksum.input buf in
     (blob, cs)
 end
@@ -73,7 +54,7 @@ let incompatible version =
 
 module Assert = struct
   type t =
-    | Value of key * value option
+    | Value of key * Blob.t option
                  [@@deriving show]
 
   let is_none_assert = function
@@ -86,70 +67,127 @@ module Assert = struct
   let value_string key value' =
     value
       (Slice.wrap_string key)
-      (Slice.wrap_string value')
+      (Blob.Slice (Slice.wrap_string value'))
 
   let none key = Value (key, None)
   let none_string key = none (Slice.wrap_string key)
 
   let value_option key vo = Value (key, vo)
 
-  let to_buffer buf = function
+  let to_buffer1 buf = function
     | Value (key, value) ->
       Llio.int8_to buf 1;
       Slice.to_buffer buf key;
-      Llio.option_to Slice.to_buffer buf value
+      Llio.option_to Blob.to_buffer1 buf value
 
-  let from_buffer buf =
+  let to_buffer2 write_later buf = function
+    (* TODO wrap with length? *)
+    | Value (key, value) ->
+      Llio.int8_to buf 1;
+      Slice.to_buffer buf key;
+      Llio.option_to (Blob.to_buffer2 write_later) buf value
+
+  let from_buffer1 buf =
     match Llio.int8_from buf with
     | 1 ->
       let key = Slice.from_buffer buf in
       let value = Llio.option_from Slice.from_buffer buf in
-      Value (key, value)
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert" k
+      Value (key, Option.map (fun s -> Blob.Slice s) value)
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert1" k
+
+  let from_buffer2 buf =
+    (* TODO wrap with length? *)
+    match Llio.int8_from buf with
+    | 1 ->
+      let key = Slice.from_buffer buf in
+      let get_value = Llio.option_from Blob.from_buffer2 buf in
+      (fun read_bytes ->
+       (match get_value with
+        | None -> Lwt.return None
+        | Some x -> x read_bytes >>= fun x -> Lwt.return_some x) >>= fun value ->
+       Lwt.return (Value (key, value)))
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert2" k
 end
 
 module Update = struct
 
   type t =
-    | Set of key * (value * checksum * bool) option
+    | Set of key * (Blob.t * checksum * bool) option
                                              [@@ deriving show]
 
   let set k v c b = Set (k, Some (v,c,b))
 
+  let set_slice k v c b =
+    set k (Blob.Slice v) c b
   let set_string k v c b =
-    set (Slice.wrap_string k) (Slice.wrap_string v) c b
+    set_slice (Slice.wrap_string k) (Slice.wrap_string v) c b
 
   let delete k = Set (k, None)
   let delete_string k = delete (Slice.wrap_string k)
 
-  let to_buffer buf = function
+  let to_buffer1 buf = function
     | Set (key, vcob) ->
       Llio.int8_to buf 1;
       Slice.to_buffer buf key;
       Llio.option_to
         (Llio.tuple3_to
-           Slice.to_buffer
+           Blob.to_buffer1
            Checksum.output
            Llio.bool_to
         )
         buf
         vcob
 
-  let from_buffer buf =
+  let to_buffer2 write_later buf = function
+    (* TODO wrap with length? *)
+    | Set (key, vcob) ->
+      Llio.int8_to buf 1;
+      Slice.to_buffer buf key;
+      Llio.option_to
+        (Llio.tuple3_to
+           (Blob.to_buffer2 write_later)
+           Checksum.output
+           Llio.bool_to
+        )
+        buf
+        vcob
+
+  let from_buffer1 buf =
     match Llio.int8_from buf with
     | 1 ->
       let key = Slice.from_buffer buf in
       let vcob =
         Llio.option_from
           (Llio.tuple3_from
-             Slice.from_buffer
+             (fun buf -> Blob.Slice (Slice.from_buffer buf))
              Checksum.input
              Llio.bool_from
           )
           buf
       in
       Set (key, vcob)
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Update" k
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Update1" k
+
+  let from_buffer2 buf =
+    (* TODO wrap with length? *)
+    match Llio.int8_from buf with
+    | 1 ->
+      let key = Slice.from_buffer buf in
+      (match Llio.option_from
+               (Llio.tuple3_from
+                  Blob.from_buffer2
+                  Checksum.input
+                  Llio.bool_from)
+               buf with
+       | None ->
+          fun _ ->
+          Lwt.return (Set (key, None))
+       | Some (get_value, cs, b) ->
+          fun read_bytes ->
+          get_value read_bytes >>= fun blob ->
+          let vcob = Some (blob, cs, b) in
+          Lwt.return (Set (key, vcob)))
+    | k -> Prelude.raise_bad_tag "Asd_protocol.Update2" k
 
 end
 
@@ -247,7 +285,6 @@ module Protocol = struct
       | n -> Unknown_error (n, Llio.string_from buf)
 
     let from_stream code ic =
-      let open Lwt.Infix in
       match code with
       | 1 -> Llio.input_string ic >>= fun s ->
              Unknown_error (1, s) |> lwt_fail
@@ -324,10 +361,12 @@ module Protocol = struct
     | MultiGet2 : (key list * priority, Value.t option list) query
     | MultiExists: (key list * priority, bool list) query
     | GetDiskUsage : (unit, (int64 * int64)) query
+    | SupportsOperations : (int32 list, bool list) query
   [@deriving show]
 
   type ('request, 'response) update =
     | Apply : (Assert.t list * Update.t list * priority, unit) update
+    | Apply2 : (Assert.t list * Update.t list * priority, unit) update
     | SetFull: (bool, unit) update
 
   type t =
@@ -344,6 +383,8 @@ module Protocol = struct
                       Wrap_query MultiGet2,    8l, "MultiGet2";
                       Wrap_query MultiExists,  9l, "MultiExists";
                       Wrap_query GetDiskUsage, 10l, "GetDiskUsage";
+                      Wrap_query SupportsOperations, 11l, "SupportsOperations";
+                      Wrap_update Apply2,            12l, "Apply2";
                     ]
 
   let wrap_unknown_operation f =
@@ -386,6 +427,7 @@ module Protocol = struct
            (Llio.list_to Slice.to_buffer)
            priority_to_buffer
       | GetDiskUsage -> Llio.unit_to
+      | SupportsOperations -> Llio.list_to Llio.int32_to
 
   let query_request_deserializer : type req res. (req, res) query -> req Llio.deserializer
     = function
@@ -412,6 +454,7 @@ module Protocol = struct
          (Llio.list_from Slice.from_buffer)
          maybe_priority_from_buffer
     | GetDiskUsage -> Llio.unit_from
+    | SupportsOperations -> Llio.list_from Llio.int32_from
 
   let query_response_serializer : type req res. (req, res) query -> res Llio.serializer
     = function
@@ -443,6 +486,7 @@ module Protocol = struct
          Llio.pair_to
            Llio.int64_to
            Llio.int64_to
+      | SupportsOperations -> Llio.list_to Llio.bool_to
 
   let query_response_deserializer : type req res. (req, res) query -> res Llio.deserializer
     = function
@@ -474,35 +518,62 @@ module Protocol = struct
          Llio.pair_from
            Llio.int64_from
            Llio.int64_from
+      | SupportsOperations -> Llio.list_from Llio.bool_from
 
-  let update_request_serializer : type req res. (req, res) update -> req Llio.serializer
+  let update_request_serializer : type req res.
+                                       (req, res) update ->
+                                       (Lwt_bytes.t -> unit) ->
+                                       req Llio.serializer
     = function
-      | Apply -> fun buf (asserts, updates, prio) ->
-        Llio.list_to Assert.to_buffer buf asserts;
-        Llio.list_to Update.to_buffer buf updates;
+      | Apply -> fun write_later buf (asserts, updates, prio)  ->
+        Llio.list_to Assert.to_buffer1 buf asserts;
+        Llio.list_to Update.to_buffer1 buf updates;
         priority_to_buffer buf prio
-      | SetFull -> fun buf full ->
+      | Apply2 -> fun write_later buf (asserts, updates, prio) ->
+        Llio.list_to (Assert.to_buffer2 write_later) buf asserts;
+        Llio.list_to (Update.to_buffer2 write_later) buf updates;
+        priority_to_buffer buf prio
+      | SetFull -> fun write_later buf full ->
         Llio.bool_to buf full
 
-  let update_request_deserializer : type req res. (req, res) update -> req Llio.deserializer
+  let update_request_deserializer : type req res. (req, res) update -> (Llio.buffer ->
+                                                                        (int -> Blob.t Lwt.t) ->
+                                                                        req Lwt.t)
     = function
-      | Apply -> fun buf ->
+      | Apply -> fun buf _ ->
         Lwt_log.ign_debug "Apply deser";
-        let asserts = Llio.list_from Assert.from_buffer buf in
-        let updates = Llio.list_from Update.from_buffer buf in
+        let asserts = Llio.list_from Assert.from_buffer1 buf in
+        let updates = Llio.list_from Update.from_buffer1 buf in
         let prio    = maybe_priority_from_buffer buf in
-        (asserts, updates, prio)
-      | SetFull -> fun buf ->
+        Lwt.return (asserts, updates, prio)
+      | Apply2 -> fun buf read_bytes ->
+        Lwt_log.ign_debug "Apply2 deser";
+
+        Llio.list_from Assert.from_buffer2 buf
+        |> Lwt_list.map_s
+             (fun a -> a read_bytes)
+        >>= fun asserts ->
+
+        Llio.list_from Update.from_buffer2 buf
+        |> Lwt_list.map_s
+             (fun a -> a read_bytes)
+        >>= fun updates ->
+
+        let prio    = priority_from_buffer buf in
+        Lwt.return (asserts, updates, prio)
+      | SetFull -> fun buf _ ->
         Lwt_log.ign_debug "SetFull deser";
-        Llio.bool_from buf
+        Llio.bool_from buf |> Lwt.return
 
   let update_response_serializer : type req res. (req, res) update -> res Llio.serializer
     = function
       | Apply -> Llio.unit_to
+      | Apply2 -> Llio.unit_to
       | SetFull -> Llio.unit_to
 
   let update_response_deserializer : type req res. (req, res) update -> res Llio.deserializer
     = function
       | Apply -> Llio.unit_from
+      | Apply2 -> Llio.unit_from
       | SetFull -> Llio.unit_from
 end

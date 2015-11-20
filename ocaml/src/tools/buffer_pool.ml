@@ -31,4 +31,4 @@ let with_buffer t f =
                Lwt.return ())
 
 let default_buffer_pool = create ~buffer_size:4096
-let osd_buffer_pool = create ~buffer_size:(768*1024)
+let osd_buffer_pool = default_buffer_pool

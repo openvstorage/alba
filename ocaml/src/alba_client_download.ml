@@ -42,13 +42,17 @@ let get_object_manifest'
 module E = Prelude.Error.Lwt
 let (>>==) = E.bind
 
+(* consumers of this method are reponsible for freeing
+ * the returned Blob.t
+ *)
 let download_packed_fragment
       (osd_access : osd_access)
       ~location
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
-      fragment_cache
+      (fragment_cache : Fragment_cache.cache)
+      ~from_osd
   =
 
   let osd_id_o, version_id = location in
@@ -72,9 +76,12 @@ let download_packed_fragment
   in
   let key = Slice.wrap_string key_string in
 
-  let retrieve key =
-    fragment_cache # lookup
-                   namespace_id key_string
+  let retrieve () =
+    (if from_osd
+     then Lwt.return_none
+     else
+       fragment_cache # lookup
+                      namespace_id key_string)
     >>= function
     | None ->
        begin
@@ -104,22 +111,68 @@ let download_packed_fragment
             in
             Lwt_log.warning msg >>= fun () ->
             E.fail `FragmentMissing
-         | Some (data:Slice.t) ->
+         | Some (data:Osd.Blob.t) ->
             osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
             Osd_state.add_read state;
-            Lwt.ignore_result
-              (fragment_cache # add
-                              namespace_id key_string
-                              (Slice.get_string_unsafe data)
-              );
+            fragment_cache # add
+                           namespace_id key_string
+                           data >>= fun () ->
             let hit_or_mis = false in
             E.return (osd_id, hit_or_mis, data)
        end
     | Some data ->
        let hit_or_mis = true in
-       E.return (osd_id, hit_or_mis, Slice.wrap_string data)
+       E.return (osd_id, hit_or_mis, data)
   in
-  retrieve key
+  retrieve ()
+
+(* consumers of this method are responsible for freeing the
+ * returned lwt_bytes
+ *)
+let download_and_verify_packed_fragment
+      (osd_access : osd_access)
+      ~location
+      ~namespace_id
+      ~object_id ~object_name
+      ~chunk_id ~fragment_id
+      fragment_checksum
+      (fragment_cache : Fragment_cache.cache) =
+  let rec inner from_osd =
+    E.with_timing
+      (fun () ->
+       download_packed_fragment
+         osd_access
+         ~location
+         ~namespace_id
+         ~object_id ~object_name
+         ~chunk_id ~fragment_id
+         fragment_cache ~from_osd)
+    >>== fun (t_retrieve, (osd_id, hit_or_miss, fragment_data)) ->
+
+    let fragment_data' = Osd.Blob.to_lwt_bytes fragment_data in
+
+    E.with_timing
+      (fun () ->
+       Fragment_helper.verify_lwt_bytes fragment_data' fragment_checksum
+       >>= E.return)
+    >>== fun (t_verify, checksum_valid) ->
+
+    if checksum_valid
+    then E.return (osd_id, t_retrieve, hit_or_miss, fragment_data', t_verify)
+    else
+      begin
+        Lwt_bytes.unsafe_destroy fragment_data';
+        if hit_or_miss
+        then
+          Lwt_log.warning_f
+            "Got corrupted fragment from fragment cache, refetching from osd (%li, %S, %S, %i, %i)"
+            namespace_id object_id object_name chunk_id fragment_id >>= fun () ->
+          inner true
+        else E.fail `ChecksumMismatch
+      end
+  in
+  inner false
+
 
 (* consumers of this method are responsible for freeing
  * the returned fragment bigstring
@@ -134,37 +187,20 @@ let download_fragment
       ~fragment_checksum
       decompress
       ~encryption
-      fragment_cache
+      (fragment_cache : Fragment_cache.cache)
   =
 
   let t0_fragment = Unix.gettimeofday () in
 
-  E.with_timing
-    (fun () ->
-     download_packed_fragment
-       osd_access
-       ~location
-       ~namespace_id
-       ~object_id ~object_name
-       ~chunk_id ~fragment_id
-       fragment_cache)
-  >>== fun (t_retrieve, (osd_id, hit_or_miss, fragment_data)) ->
-
-  let fragment_data' = Slice.to_bigstring fragment_data in
-
-  E.with_timing
-    (fun () ->
-     Fragment_helper.verify fragment_data' fragment_checksum
-     >>= E.return)
-  >>== fun (t_verify, checksum_valid) ->
-
-  (if checksum_valid
-   then E.return ()
-   else
-     begin
-       Lwt_bytes.unsafe_destroy fragment_data';
-       E.fail `ChecksumMismatch
-     end) >>== fun () ->
+  download_and_verify_packed_fragment
+    osd_access
+    ~location
+    ~namespace_id
+    ~object_id ~object_name
+    ~chunk_id ~fragment_id
+    fragment_checksum
+    fragment_cache
+  >>== fun (osd_id, t_retrieve, hit_or_miss, fragment_data', t_verify) ->
 
   E.with_timing
     (fun () ->

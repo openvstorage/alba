@@ -47,7 +47,7 @@ let gets (client: Osd.osd) progress n value_size period prefix =
     let () =
       match _value with
       | None   -> failwith (Printf.sprintf "db[%s] = None?" key)
-      | Some v -> assert (v.Slice.length = value_size)
+      | Some v -> assert (Osd.Blob.length v = value_size)
     in
     Lwt.return ()
   in
@@ -76,7 +76,7 @@ let sets (client:Osd.osd) progress n value_size period prefix =
     let value_slice = Slice.wrap_string value in
     let open Checksum in
     let set = Update.Set (key_slice,
-                          Some (value_slice, Checksum.NoChecksum, false))
+                          Some (Osd.Blob.slice value_slice, Checksum.NoChecksum, false))
 
     in
     let updates = [set] in

@@ -117,7 +117,7 @@ let maybe_decompress ~release_input compression compressed =
   Lwt.return r
 
 
-let verify fragment_data checksum =
+let verify_lwt_bytes fragment_data checksum =
   let algo = Checksum.algo_of checksum in
   let hash = Hashes.make_hash algo in
   hash # update_lwt_bytes_detached
@@ -127,7 +127,7 @@ let verify fragment_data checksum =
   let checksum2 = hash # final () in
   Lwt.return (checksum2 = checksum)
 
-let verify' fragment_data checksum =
+let verify_slice fragment_data checksum =
   let algo = Checksum.algo_of checksum in
   let hash = Hashes.make_hash algo in
   let open Slice in
@@ -136,7 +136,12 @@ let verify' fragment_data checksum =
     fragment_data.offset
     fragment_data.length;
   let checksum2 = hash # final () in
-  Lwt.return (checksum2 = checksum)
+  (checksum2 = checksum)
+
+let verify_blob fragment_data checksum =
+  match fragment_data with
+  | Osd.Blob.Slice s -> Lwt.return (verify_slice s checksum)
+  | Osd.Blob.Lwt_bytes s -> verify_lwt_bytes s checksum
 
 let pack_fragment
     (fragment : Bigstring_slice.t)
@@ -238,14 +243,12 @@ let chunk_to_packed_fragments
         ~object_id ~chunk_id ~fragment_id:0 ~ignore_fragment_id:true
         compression encryption fragment_checksum_algo
       >>= fun (packed, f1, f2, cs) ->
-      let packed' = Slice.of_bigstring packed in
-      Lwt_bytes.unsafe_destroy packed;
 
       let rec build_result acc = function
         | 0 -> acc
         | n ->
           let fragment_id = n - 1 in
-          let acc' = (fragment_id, fragment, (packed', f1, f2, cs)) :: acc in
+          let acc' = (fragment_id, fragment, (packed, f1, f2, cs)) :: acc in
           build_result
             acc'
             (n-1)
@@ -267,10 +270,7 @@ let chunk_to_packed_fragments
               ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
               compression encryption fragment_checksum_algo
             >>= fun (packed, f1, f2, cs) ->
-            let packed' = Slice.of_bigstring packed in
-            Lwt_bytes.unsafe_destroy packed;
-
-            Lwt.return (fragment_id, fragment, (packed', f1, f2, cs)))
+            Lwt.return (fragment_id, fragment, (packed, f1, f2, cs)))
            all_fragments)
         (fun () ->
          List.iter

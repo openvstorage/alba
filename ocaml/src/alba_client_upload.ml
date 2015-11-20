@@ -45,10 +45,10 @@ let upload_packed_fragment_data
          ~object_id ~version_id
          ~chunk_id ~fragment_id
        |> Slice.wrap_string)
-      packed_fragment checksum false
+      (Blob.Blob.Lwt_bytes packed_fragment) checksum false
   in
   let set_recovery_info =
-    Osd.Update.set
+    Osd.Update.set_slice
       (Slice.wrap_string
          (AlbaInstance.fragment_recovery_info
             ~namespace_id
@@ -123,7 +123,7 @@ let upload_chunk
   let packed_fragment_sizes =
     List.map
       (fun (_, _, (packed_fragment, _, _, _)) ->
-       Slice.length packed_fragment)
+       Lwt_bytes.length packed_fragment)
       fragments_with_id
   in
   let fragment_checksums =
@@ -168,7 +168,7 @@ let upload_chunk
 
      let t_fragment = Statistics.({
                                      size_orig = Bigstring_slice.length fragment;
-                                     size_final = Slice.length packed_fragment;
+                                     size_final = Lwt_bytes.length packed_fragment;
                                      compress_encrypt = t_compress_encrypt;
                                      hash = t_hash;
                                      osd_id_o;

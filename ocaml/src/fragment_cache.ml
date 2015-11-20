@@ -15,15 +15,17 @@ limitations under the License.
 *)
 
 open Prelude
-open Unix
+open Blob
+open Slice
+open Lwt_bytes2
 open Lwt.Infix
 open Rocks_store
 module KV = Rocks_key_value_store
 
 class type cache = object
     method clear_all : unit -> unit Lwt.t
-    method add : int32 -> string -> Bytes.t -> unit Lwt.t
-    method lookup : int32 -> string -> bytes option Lwt.t
+    method add : int32 -> string -> Blob.t -> unit Lwt.t
+    method lookup : int32 -> string -> Blob.t option Lwt.t
 
     method drop : int32 -> unit Lwt.t
     method get_count : unit -> int64
@@ -32,13 +34,13 @@ class type cache = object
 end
 
 class no_cache = object(self :# cache)
-    method clear_all () = Lwt.return ()
-    method add    bid oid blob = Lwt.return ()
-    method lookup bid oid      = Lwt.return None
-    method drop   bid          = Lwt.return ()
+    method clear_all ()        = Lwt.return_unit
+    method add    bid oid blob = Lwt.return_unit
+    method lookup bid oid      = Lwt.return_none
+    method drop   bid          = Lwt.return_unit
     method get_count () = 0L
     method get_total_size () = 0L
-    method close () = Lwt.return ()
+    method close () = Lwt.return_unit
 end
 
 let ser64 x=
@@ -68,10 +70,15 @@ let get_int32_exn db key =
 
 
 let read_it fd ~len =
-      let buffer = Bytes.create len in
-      Lwt_extra2.read_all fd buffer 0 len >>= fun size' ->
-      assert (size' = len);
-      Lwt.return buffer
+  let buffer = Lwt_bytes.create len in
+  Lwt.catch
+    (fun () ->
+     Lwt_extra2.read_all_lwt_bytes fd buffer 0 len
+     >>= Lwt_extra2.expect_exact_length len >>= fun () ->
+     Lwt.return (Blob.Lwt_bytes buffer))
+    (fun exn ->
+     Lwt_bytes.unsafe_destroy buffer;
+     Lwt.fail exn)
 
 let rm_tree ~silent dir =
       let cmd = Printf.sprintf "rm -rf %s" dir in
@@ -216,13 +223,16 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let full_path = canonical path in
       Lwt_log.debug_f "_write_blob: %s" full_path >>= fun () ->
       let perm = 0o644 in
-      let flags = [O_WRONLY;O_CREAT] in
+      let flags = Unix.([O_WRONLY;O_CREAT]) in
 
       Lwt_extra2.with_fd
         full_path ~flags ~perm
         (fun fd_out ->
-         let fragment_l = String.length fragment in
-         Lwt_extra2.write_all fd_out fragment 0 fragment_l
+         match fragment with
+         | Blob.Slice s ->
+            Lwt_extra2.write_all fd_out s.Slice.buf s.Slice.offset s.Slice.length
+         | Blob.Lwt_bytes s ->
+            Lwt_extra2.write_all_lwt_bytes fd_out s 0 (Lwt_bytes.length s)
         )
     in
     with_timing_lwt _inner  >>= fun (took,()) ->
@@ -448,8 +458,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
 
       let from_fs () =
         let is_dir f =
-          let st = Unix.stat f in
-          st.st_kind = Unix.S_DIR
+          let open Unix in
+          let st = stat f in
+          st.st_kind = S_DIR
         in
         let this_level (dir:string) =
           let rec inner h (dirs:string list) files =
@@ -465,7 +476,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
           in
           let h = Unix.opendir dir in
           let r = inner h [] [] in
-          let () = closedir h in
+          let () = Unix.closedir h in
           r
         in
         let entries dir =
@@ -483,7 +494,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         let size_fs =
           List.fold_left
             (fun acc f ->
-             let st = Unix.stat f in
+             let open Unix in
+             let st = stat f in
              acc + st.st_size
             )
             0
@@ -553,7 +565,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       >>= fun () ->
       _write_blob path blob >>= fun () ->
 
-      let blob_length = Bytes.length blob in
+      let blob_length = Blob.length blob in
       let blob_length64 = Int64.of_int blob_length in
       let total_count' = ser64 (Int64.succ total_count) in
       let total_size' = ser64 (total_size +: blob_length64) in
@@ -606,7 +618,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let access0 = access_of vaccess0 in
 
       let kaccess_rev0 =  access_key_of access0 in
-      let blob_length = Bytes.length blob in
+      let blob_length = Blob.length blob in
       let blob_length64 = Int64.of_int blob_length in
       let vsize = size_value_of blob_length in
       let vboid = boid_value_of boid in
@@ -640,6 +652,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         then Lwt.return ()
         else delete parent
       in
+      (* TODO this cleanup flag looks like an accident waiting to happen.
+       * The fact that we're evicting an item does not automatically mean
+       * no new blobs will be written in this directory.
+       *)
       if cleanup then
         let dir = Filename.dirname path0 in
         Lwt.catch
@@ -847,14 +863,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       >>= fun () ->
 
       _write_blob path blob >>= fun () ->
-      let blob_size = Bytes.length blob |> Int64.of_int in
+      let blob_size = Blob.length blob |> Int64.of_int in
       let victims_size = blob_size -: (max_size -: total_size) |> Int64.to_int in
       self # _evict
         ~total_count ~total_size
         ~victims_size
       >>= fun (total_count, total_size) ->
 
-      let blob_length   = Bytes.length blob in
+      let blob_length   = Blob.length blob in
       let blob_length64 = Int64.of_int blob_length in
 
       let open Rocks in
@@ -908,7 +924,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       _write_blob path blob >>= fun () ->
 
       let kfsid = blob_fsid_key_of boid in
-      let blob_length = Bytes.length blob in
+      let blob_length = Blob.length blob in
       let blob_length64 = Int64.of_int blob_length in
       let ksize   = blob_size_key_of   boid  in
       let blob0_length64 = get_int32_exn db ksize |> Int64.of_int in
@@ -959,7 +975,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
            >>= fun () ->
            let total_count = get_int64 db _TOTAL_COUNT in
            let total_size  = get_int64 db _TOTAL_SIZE in
-           let blob_length = Bytes.length blob |> Int64.of_int in
+           let blob_length = Blob.length blob |> Int64.of_int in
            begin
              match total_size +: blob_length < max_size ,
                    KV.get db fsid_key
@@ -1012,7 +1028,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       (fun () ->
        Rocks.RocksDb.close db;
        Lwt_extra2.with_fd
-         db_path ~flags:[O_RDONLY] ~perm:0o644
+         db_path ~flags:[Unix.O_RDONLY] ~perm:0o644
          (fun fd ->
           Syncfs.lwt_syncfs fd  >>= fun _ ->
           Lwt.return ()
@@ -1020,7 +1036,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
        >>= fun () ->
        let fn = marker_name root in
        Lwt_extra2.with_fd fn
-                          ~flags:[O_WRONLY;O_CREAT;O_EXCL]
+                          ~flags:Unix.([O_WRONLY;O_CREAT;O_EXCL])
                           ~perm:0o644
                           (fun fd -> Lwt.return ())
        >>= fun () ->

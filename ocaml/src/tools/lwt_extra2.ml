@@ -145,6 +145,39 @@ let read_all_lwt_bytes fd target offset length =
 let read_all fd target offset length =
   _read_all (Lwt_unix.read fd target) offset length
 
+let expect_exact_length len length =
+  if len = length
+  then Lwt.return_unit
+  else
+    Lwt_log.debug_f "Expected %i, only got %i bytes instead" len length >>= fun () ->
+    Lwt.fail End_of_file
+
+let read_into_lwt_bytes ic target offset length =
+  let sigh = Bytes.create length in
+  Lwt_io.read_into ic sigh 0 length >>= expect_exact_length length >>= fun () ->
+  Lwt_bytes.blit_from_bytes sigh 0 target offset length;
+  Lwt.return_unit
+
+let read_lwt_bytes_from_ic_fd target offset length fd ic =
+  let buffered = Lwt_io.buffered ic in
+  if length <= buffered
+  then
+    read_into_lwt_bytes ic target 0 length
+  else
+    begin
+      (if buffered > 0
+       then read_into_lwt_bytes ic target 0 buffered
+       else Lwt.return_unit) >>= fun () ->
+      assert (0 = Lwt_io.buffered ic);
+
+      let remaining = length - buffered in
+      read_all_lwt_bytes
+        fd target
+        buffered remaining
+      >>= expect_exact_length remaining
+    end
+
+
 let _write_all write_from_source offset length =
   let rec inner offset todo =
     if todo = 0

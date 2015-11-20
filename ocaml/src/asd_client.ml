@@ -19,6 +19,7 @@ open Lwt
 open Slice
 open Asd_protocol
 open Protocol
+open Lwt_bytes2
 
 class client fd ic id =
   let read_response deserializer =
@@ -43,15 +44,21 @@ class client fd ic id =
       id description >>= fun () ->
     with_timing_lwt
       (fun () ->
+       let bs = ref [] in
        let s =
          serialize_with_length
            (Llio.pair_to
               Llio.int32_to
-              serialize_request)
+              (serialize_request
+                 (fun b -> bs := b :: !bs)))
            (code,
             request)
        in
        Lwt_extra2.write_all' fd s >>= fun () ->
+       Lwt_list.rev_map_s
+         (fun b ->
+          Lwt_extra2.write_all_lwt_bytes fd b 0 (Lwt_bytes.length b))
+         !bs >>= fun (_ : unit list) ->
        read_response deserialize_response) >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
@@ -61,7 +68,7 @@ class client fd ic id =
       fun command req ->
       do_request
         (command_to_code (Wrap_query command))
-        (query_request_serializer command) req
+        (fun _ -> (query_request_serializer command)) req
         (query_response_deserializer command)
 
     method private update : type req res. (req, res) update -> req -> res Lwt.t =
@@ -85,7 +92,7 @@ class client fd ic id =
         (fun () ->
          do_request
            code
-           (fun buf () -> ()) ()
+           (fun _ buf () -> ()) ()
            (fun buf -> ()) >>= fun () ->
          Lwt.fail_with "did not get an exception for unknown operation")
         (function
@@ -98,6 +105,7 @@ class client fd ic id =
     method multi_get ~prio keys =
       let old_multiget () =
         self # query MultiGet (keys, prio)
+        >|= List.map (Option.map (fun (s, cs) -> Blob.Blob.Slice s, cs))
       in
       match supports_multiget2 with
       | None ->
@@ -121,56 +129,33 @@ class client fd ic id =
     method multi_get2 ~prio keys =
       self # query MultiGet2 (keys, prio) >>= fun res ->
       Lwt_list.map_s
-        (let open Value in
+        (let open Blob in
          function
           | None -> Lwt.return_none
           | Some (blob, cs) ->
              match blob with
-             | Direct s -> Lwt.return (Some (s, cs))
-             | Later size ->
-                let target = Bytes.create size in
-
-                let buffered = Lwt_io.buffered ic in
-                (if size <= buffered
-                 then
-                   begin
-                     Lwt_io.read_into ic target 0 size >>= fun read ->
-                     assert (read = size);
-                     Lwt.return ()
-                   end
-                 else
-                   begin
-                     (if buffered > 0
-                      then Lwt_io.read_into ic target 0 buffered
-                      else Lwt.return 0) >>= fun read ->
-                     assert (read = buffered);
-                     assert (0 = Lwt_io.buffered ic);
-
-                     let remaining = size - read in
-                     Lwt_extra2.read_all
-                       fd target
-                       read remaining
-                     >>= fun read' ->
-                     if read' = remaining
-                     then Lwt.return ()
-                     else begin
-                         Lwt_log.debug_f
-                           "read=%i, read'=%i, size=%i, buffered=%i, new buffered=%i"
-                           read read' size
-                           buffered (Lwt_io.buffered ic)
-                         >>= fun () ->
-                         Lwt.fail End_of_file
-                     end
-                   end) >>= fun () ->
-
-                Lwt.return (Some (Slice.wrap_bytes target, cs)))
+             | Blob.Direct s -> Lwt.return (Some (Blob.Slice s, cs))
+             | Blob.Later size ->
+                let target = Lwt_bytes.create size in
+                Lwt.catch
+                  (fun () ->
+                   Lwt_extra2.read_lwt_bytes_from_ic_fd
+                     target 0 size
+                     fd ic >>= fun () ->
+                   Lwt.return (Some (Blob.Lwt_bytes target, cs)))
+                  (fun exn ->
+                   Lwt_bytes.unsafe_destroy target;
+                   Lwt.fail exn)
+                )
         res
 
     method multi_get_string ~prio keys =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
-           (Option.map (fun (slice, cs) -> Slice.get_string_unsafe slice, cs))
+           (Option.map (fun (blob, cs) -> Slice.get_string_unsafe
+                                             (Blob.Blob.to_slice blob),
+                                           cs))
            res)
 
     method multi_exists ~prio keys = self # query MultiExists (keys, prio)
@@ -229,8 +214,23 @@ class client fd ic id =
         RangeEntries
         ({ first; finc; last; reverse; max; }, prio)
 
+    val mutable supports_apply2 = None
     method apply_sequence ~prio asserts updates =
+      (match supports_apply2 with
+       | None ->
+          self # supports_operation (Wrap_update Apply2) >>= fun s ->
+          supports_apply2 <- Some s;
+          Lwt.return s
+       | Some s ->
+          Lwt.return s) >>= function
+      | true -> self # apply_sequence2 ~prio asserts updates
+      | false -> self # apply_sequence1 ~prio asserts updates
+
+    method apply_sequence1 ~prio asserts updates =
       self # update Apply (asserts, updates, prio)
+
+    method apply_sequence2 ~prio asserts updates =
+      self # update Apply2 (asserts, updates, prio)
 
     method statistics clear =
       self # query Statistics clear
@@ -243,6 +243,32 @@ class client fd ic id =
 
     method get_disk_usage () =
       self # query GetDiskUsage ()
+
+    method supports_operations' codes =
+      Lwt.catch
+        (fun () ->
+         self # query
+              SupportsOperations
+              codes)
+        (function
+          | Error.Exn Error.Unknown_operation ->
+             List.map
+               (fun _ -> false)
+               codes
+             |> Lwt.return
+          | exn -> Lwt.fail exn)
+
+    method supports_operations (commands : t list) =
+      self # supports_operations'
+           (List.map
+              command_to_code
+              commands)
+
+    method supports_operation command =
+      self # supports_operations [ command ]
+      >>= function
+      | [ x ] -> Lwt.return x
+      | _ -> assert false
   end
 
 exception BadLongId of string * string

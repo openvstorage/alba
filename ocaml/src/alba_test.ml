@@ -19,10 +19,16 @@ open Slice
 open Encryption
 open Lwt
 
-let test_with_alba_client ?bad_fragment_callback f =
+let test_with_alba_client ?cache_dir ?bad_fragment_callback f =
   let albamgr_client_cfg = Albamgr_test.get_ccfg () in
   Lwt_main.run begin
+    (match cache_dir with
+     | None -> Lwt.return ()
+     | Some d -> Lwt_extra2.create_dir
+                   ~sync:false
+                   d) >>= fun () ->
     Alba_client.with_client
+      ?cache_dir
       ?bad_fragment_callback
       (ref albamgr_client_cfg)
       f
@@ -295,7 +301,7 @@ let test_delete_namespace () =
                 c # get_option
                   Osd.High
                   (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
-                let p = Option.map get_string_unsafe ps in
+                let p = Option.map Osd.Blob.to_string_unsafe ps in
                 Lwt_io.printlf "got p = %s" ([%show : string option] p) >>= fun () ->
                 assert (presence = (p <> None));
                 let fragment_key = wrap_string
@@ -307,7 +313,7 @@ let test_delete_namespace () =
                                      )
                 in
                 c # get_option Osd.High fragment_key >>= fun fs ->
-                let f = Option.map get_string_unsafe fs in
+                let f = Option.map Osd.Blob.to_string_unsafe fs in
                 Lwt_io.printlf "got f = %s" ([%show : string option] f) >>= fun () ->
                 assert (fragment = (f <> None));
                 Lwt.return ()) in
@@ -413,7 +419,7 @@ let test_garbage_collect () =
          Alba_client_upload.upload_packed_fragment_data
            (client # osd_access)
            ~namespace_id
-           ~packed_fragment:(Slice.create 1)
+           ~packed_fragment:(Lwt_bytes.create 1)
            ~osd_id ~version_id
            ~object_id
            ~chunk_id ~fragment_id
@@ -740,7 +746,7 @@ let test_discover_claimed () =
               [ Assert.none next_alba_instance';
                 Assert.none_string instance_log_key;
                 Assert.none_string instance_index_key; ]
-              [ Update.set
+              [ Update.set_slice
                   next_alba_instance'
                   (wrap_string (serialize Llio.int32_to (Int32.succ id_on_osd)))
                   no_checksum true;
@@ -1945,6 +1951,63 @@ let test_list_objects_by_id () =
                   assert (objs = [ mf; ]);
                   Lwt.return ()))
 
+let test_corrupted_fragment_in_cache () =
+  let test_name = "test_corrupted_fragment_in_cache" in
+  let namespace = test_name in
+  let cache_dir = "/tmp/alba/" ^ test_name in
+  test_with_alba_client
+    ~cache_dir
+    (fun alba_client ->
+     alba_client # create_namespace
+                 ~preset_name:None
+                 ~namespace () >>= fun namespace_id ->
+
+     let open Nsm_model in
+
+     let object_name = test_name in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data:"dfsaixoxoxo"
+                 ~checksum_o:None
+                 ~allow_overwrite:NoPrevious
+     >>= fun (mf, _) ->
+
+     let open Manifest in
+     let object_id = mf.object_id in
+
+     let fill_fragment_cache_with_corrupt_data fragment_id version_id =
+       let key =
+         Osd_keys.AlbaInstance.fragment
+           ~namespace_id
+           ~object_id ~version_id
+           ~chunk_id:0 ~fragment_id
+       in
+       let frag_cache = alba_client # get_base_client # get_fragment_cache in
+       frag_cache # add
+                   namespace_id
+                   key (Blob.Blob.Lwt_bytes (Lwt_bytes.create 20)) >>= fun () ->
+       frag_cache # lookup
+                  namespace_id key >>= function
+       | None ->
+          (* make sure we're not testing against a dummy cache *)
+          assert false
+       | Some _ -> Lwt.return ()
+     in
+     Lwt_list.iteri_s
+       (fun fragment_id (_, version_id) ->
+        fill_fragment_cache_with_corrupt_data fragment_id version_id)
+       (List.hd_exn mf.fragment_locations)
+     >>= fun () ->
+
+     alba_client # download_object_to_string
+            ~namespace
+            ~object_name
+            ~consistent_read:false
+            ~should_cache:false >>= function
+     | Some _ -> Lwt.return ()
+     | None -> assert false)
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -1971,4 +2034,5 @@ let suite = "alba_test" >:::[
     "test_object_sizes" >:: test_object_sizes;
     "test_retry_download" >:: test_retry_download;
     "test_list_objects_by_id" >:: test_list_objects_by_id;
-  ]
+    "test_corrupted_fragment_in_cache" >:: test_corrupted_fragment_in_cache;
+    ]

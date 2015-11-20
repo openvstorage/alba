@@ -46,7 +46,7 @@ let claim_osd mgr_access osd_access ~long_id =
        | Some _ ->
           osd # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
           >>= fun alba_id' ->
-          let u_alba_id' = get_string_unsafe alba_id' in
+          let u_alba_id' = Osd.Blob.to_string_unsafe alba_id' in
           if u_alba_id' = alba_id
           then Lwt.return `Continue
           else Lwt.return (`ClaimedBy u_alba_id')
@@ -64,7 +64,7 @@ let claim_osd mgr_access osd_access ~long_id =
               [ Assert.none next_alba_instance';
                 Assert.none_string instance_log_key;
                 Assert.none_string instance_index_key; ]
-              [ Update.set
+              [ Update.set_slice
                   next_alba_instance'
                   (wrap_string (serialize Llio.int32_to (Int32.succ id_on_osd)))
                   no_checksum true;
@@ -85,7 +85,7 @@ let claim_osd mgr_access osd_access ~long_id =
                      Osd.High
                      (wrap_string (IRK.instance_log_key 0l))
                  >>= fun alba_id'slice ->
-                 let alba_id' = get_string_unsafe alba_id'slice in
+                 let alba_id' = Osd.Blob.to_string_unsafe alba_id'slice in
                  let r =
                    if alba_id' = alba_id
                    then `Continue
