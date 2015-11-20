@@ -182,7 +182,8 @@ let deliver_all_messages is_master mgr_access nsm_host_access osd_access =
       is_master
   in
   Lwt.choose [ deliver_nsm_messages;
-               deliver_osd_messages; ]
+               deliver_osd_messages;
+               osd_access # populate_osds_info_cache; ]
 
 let deliver_messages_to_most_osds
       mgr_access nsm_host_access osd_access

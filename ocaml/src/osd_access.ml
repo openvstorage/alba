@@ -16,9 +16,10 @@ limitations under the License.
 
 open Prelude
 open Remotes
-open Checksum
+
 open Slice
 open Lwt.Infix
+open Nsm_model
 let large_value = lazy (String.make (512*1024) 'a')
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -36,53 +37,51 @@ class osd_access
     let open Albamgr_protocol.Protocol in
     (Hashtbl.create 3
      : (Osd.id,
-        Nsm_model.OsdInfo.t * Osd_state.t) Hashtbl.t) in
+        OsdInfo.t * Osd_state.t) Hashtbl.t) in
+  let add_osd_info ~osd_id osd_info =
+    if not (Hashtbl.mem osds_info_cache osd_id)
+    then
+      begin
+        let open Albamgr_protocol.Protocol in
+        let osd_state = Osd_state.make () in
+        let info' = (osd_info, osd_state) in
+        Hashtbl.replace osds_info_cache osd_id info';
+        let long_id = OsdInfo.(get_long_id osd_info.kind) in
+        osd_long_id_claim_info :=
+          StringMap.add
+            long_id (Osd.ClaimInfo.ThisAlba osd_id)
+            !osd_long_id_claim_info;
+
+        Lwt_extra2.run_forever
+            "refresh_osd_total_used"
+            (fun () ->
+             let osd_info,osd_state = Hashtbl.find osds_info_cache osd_id in
+             Pool.Osd.factory tls_config osd_buffer_pool osd_info.OsdInfo.kind
+             >>= fun (osd, closer) ->
+
+             Lwt.finalize
+               (fun () ->
+                osd # get_disk_usage >>= fun ((used,total ) as disk_usage) ->
+                Osd_state.add_disk_usage osd_state disk_usage;
+                let osd_info' = OsdInfo.{ osd_info with used;total } in
+                let () = Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state) in
+                Lwt.return ())
+               closer)
+          60.
+        |> Lwt.ignore_result
+      end
+  in
   let get_osd_info ~osd_id =
-    let open Albamgr_protocol.Protocol in
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
     with Not_found ->
       mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
-      if not (Hashtbl.mem osds_info_cache osd_id)
-      then
-        begin
-          let osd_info = match osd_o with
-            | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
-            | Some info -> info
-          in
-          let osd_state = Osd_state.make () in
-          let info' = (osd_info, osd_state) in
-          Hashtbl.replace osds_info_cache osd_id info';
-          let () =
-            Lwt_log.ign_debug_f
-              "replacing with: osd_info:%s"
-              (Nsm_model.OsdInfo.show osd_info)
-          in
-          let open Nsm_model.OsdInfo in
-          let long_id = get_long_id osd_info.kind in
-          osd_long_id_claim_info :=
-            StringMap.add
-              long_id (Osd.ClaimInfo.ThisAlba osd_id)
-              !osd_long_id_claim_info;
-
-          Lwt_extra2.run_forever
-            "refresh_osd_total_used"
-            (fun () ->
-             Pool.Osd.factory
-               tls_config osd_buffer_pool
-               (Hashtbl.find osds_info_cache osd_id |> fst).kind
-             >>= fun (osd, closer) ->
-             Lwt.finalize
-               (fun () ->
-                osd # get_disk_usage >>= fun disk_usage ->
-                Osd_state.add_disk_usage osd_state disk_usage;
-                Lwt.return ())
-               closer)
-            60.
-          |> Lwt.ignore_result
-        end;
+      let osd_info = match osd_o with
+        | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
+        | Some info -> info
+      in
+      add_osd_info ~osd_id  osd_info;
       Lwt.return (Hashtbl.find osds_info_cache osd_id)
   in
-
   let osds_pool =
     Pool.Osd.make
       ~size:osd_connection_pool_size
@@ -224,6 +223,35 @@ class osd_access
 
     method get_osd_info = get_osd_info
 
+    method populate_osds_info_cache : unit Lwt.t =
+      let rec inner next_osd_id =
+        Lwt.catch
+          (fun () ->
+           mgr_access # list_osds_by_osd_id
+                      ~first:next_osd_id ~finc:true
+                      ~last:None ~reverse:false
+                      ~max:(-1) >>= fun ((cnt, osds), has_more) ->
+           List.iter
+             (fun (osd_id, osd_info) -> add_osd_info ~osd_id osd_info)
+             osds;
+
+           (if has_more
+            then Lwt.return_unit
+            else Lwt_extra2.sleep_approx 60.) >>= fun () ->
+
+           let next_osd_id' =
+             List.last osds
+             |> Option.map (fun (osd_id, _) -> Int32.succ osd_id)
+             |> Option.get_some_default next_osd_id
+           in
+           Lwt.return next_osd_id')
+          (fun exn ->
+           Lwt_log.info_f ~exn "Exception in populate_osds_info_cache" >>= fun () ->
+           Lwt.return next_osd_id) >>= fun next_osd_id' ->
+        inner next_osd_id'
+      in
+      inner 0l
+
     method get_default_osd_priority = default_osd_priority
 
     method osds_info_cache = osds_info_cache
@@ -314,6 +342,13 @@ class osd_access
 
     method seen ?(check_claimed=fun id -> false) ?(check_claimed_delay=60.) =
       let open Discovery in
+      let determine_conn_info ips port tlsPort =
+        match port, tlsPort with
+        | None     , None         -> failwith "multicast anounced no port ?!"
+        | Some port, None         -> (ips,port,false)
+        | None     , Some tlsPort
+        | Some _   , Some tlsPort -> (ips,tlsPort, true)
+      in
       function
       | Bad s ->
          Lwt_log.info_f "Got 'bad' broadcast message: %s" s
@@ -331,29 +366,56 @@ class osd_access
              | Available ->
                 Lwt.return ()
              | ThisAlba osd_id ->
+                begin
+                  get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
+                  Osd_state.add_ips_port osd_state ips port;
+                  Osd_state.add_json osd_state json;
+                  Osd_state.add_seen osd_state;
+                  let conn_info = determine_conn_info ips port tlsPort in
+                  let kind',used',total' =
+                    let open OsdInfo in
+                    match extras with
+                    | None ->
+                       Kinetic(conn_info, id), osd_info.used, osd_info.total
+                    | Some { used; total; _ } ->
+                       Asd(conn_info, id), used, total
 
-                get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
-                Osd_state.add_ips_port osd_state ips port;
-                (match extras with
-                 | None -> ()
-                 | Some { used; total; _; } ->
-                    Osd_state.add_disk_usage osd_state (used, total));
-                Osd_state.add_json osd_state json;
-                Osd_state.add_seen osd_state;
-
-                Lwt.return ()
+                  in
+                  let osd_info' =
+                    OsdInfo.{ osd_info with
+                              kind = kind';
+                              total = total'; used = used'
+                    }
+                  in
+                  let () = Osd_state.add_disk_usage osd_state (used', total') in
+                  let () =
+                    Hashtbl.replace
+                      osds_info_cache osd_id
+                      (osd_info', osd_state)
+                  in
+                  let conn_info'  =
+                    let open OsdInfo in
+                    get_conn_info osd_info.kind
+                  in
+                  let () =
+                    if conn_info' <> conn_info
+                    then
+                      begin
+                        Lwt_log.ign_info_f
+                          "Asd (%li) now has new connection info -> invalidating connection pool"
+                          osd_id;
+                        Pool.Osd.invalidate osds_pool ~osd_id
+                      end
+                  in
+                  Lwt.return ()
+                end
            end
          else if check_claimed id
          then
            begin
              Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
-             let conn_info =
-               match port, tlsPort with
-               | None     , None         -> failwith "multicast anounced no port ?!"
-               | Some port, None         -> (ips,port,false)
-               | None     , Some tlsPort
-               | Some _   , Some tlsPort -> (ips,tlsPort, true)
-             in
+             let conn_info = determine_conn_info ips port tlsPort in
+
              let open Nsm_model in
              (match extras with
               | None ->

@@ -56,8 +56,12 @@ class single_connection_client (ic, oc) =
     Llio.int32_to buf tag;
     Lwt_log.debug_f "nsm_host_client: %s" (tag_to_name tag) >>= fun () ->
     serialize_request buf;
-    Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-    read_response deserialize_response
+    Lwt_unix.with_timeout
+      10.
+      (fun () ->
+       Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+       read_response deserialize_response
+      )
   in
   object(self :# basic_client)
     method query : type i o.
