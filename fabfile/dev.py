@@ -587,10 +587,25 @@ def run_test_big_object():
 
 @task
 def run_tests_compat(xml = True):
-    def test(old_proxy,old_plugins, old_asd):
+    def test(old_proxy, old_plugins, old_asd):
         try:
             alba.smoke_test()
-        except:
+            def alba_cli(extra):
+                cmd = [env['alba_bin']]
+                cmd.extend(extra)
+                cmd_line = ' '.join(cmd)
+                local(cmd_line)
+
+            obj_name = 'alba_binary'
+            ns = 'demo'
+            alba_cli(['proxy-upload-object', ns , env['alba_bin'], obj_name])
+            alba_cli(['proxy-download-object', ns, obj_name, '/tmp/downloaded.bin'])
+            alba_cli(['delete-object', ns, obj_name,
+                      '--config', './cfg/albamgr_example_arakoon_cfg.ini'])
+
+
+        except Exception, e:
+            print e
             with warn_only():
                 local ("which alba.0.6")
                 local ("pgrep -a alba")
@@ -646,6 +661,7 @@ def run_tests_compat(xml = True):
         kind = default_kind
         alba.start_osds(kind, N, False, env = asd_env)
         alba.claim_local_osds(N, abm_cfg = arakoon_config_file)
+        alba.create_namespace_demo()
         #
         test(old_proxy, old_plugins, old_asds)
 
