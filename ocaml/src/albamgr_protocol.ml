@@ -333,8 +333,8 @@ module Protocol = struct
 
     let from_buffer_with_claim_info =
       Llio.pair_from ClaimInfo.from_buffer Nsm_model.OsdInfo.from_buffer
-    let to_buffer_with_claim_info =
-      Llio.pair_to ClaimInfo.to_buffer (Nsm_model.OsdInfo.to_buffer ~version:2)
+    let to_buffer_with_claim_info ~version =
+      Llio.pair_to ClaimInfo.to_buffer (Nsm_model.OsdInfo.to_buffer ~version)
 
     module Message = struct
       type t =
@@ -398,7 +398,7 @@ module Protocol = struct
       | Nsm_host -> Nsm_host_protocol.Protocol.Message.from_buffer
       | Osd -> Osd.Message.from_buffer
     let msg_to_buffer : type dest msg. (dest, msg) t -> msg Llio.serializer = function
-      | Nsm_host -> Nsm_host_protocol.Protocol.Message.to_buffer
+      | Nsm_host -> (Nsm_host_protocol.Protocol.Message.to_buffer ~version:2)
       | Osd -> Osd.Message.to_buffer
   end
 
@@ -1047,7 +1047,7 @@ module Protocol = struct
            Llio.int32_to
            (OsdInfo.to_buffer ~version:2))
     | ListOsdsByLongId ->
-      counted_list_more_to Osd.to_buffer_with_claim_info
+      counted_list_more_to (Osd.to_buffer_with_claim_info ~version:2)
     | ListNamespaces ->
       counted_list_more_to
         (Llio.pair_to Llio.string_to Namespace.to_buffer)

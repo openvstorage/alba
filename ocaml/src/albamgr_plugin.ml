@@ -907,7 +907,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         Update.Assert (info_key, Some info_serialized)
         :: Update.Set (info_key,
                        serialize
-                         Osd.to_buffer_with_claim_info
+                         (Osd.to_buffer_with_claim_info ~version:2)
                          (claim_info, osd_info_new))
         :: acc;
       in
@@ -927,7 +927,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        let upds = [ Update.Assert (info_key, None);
                     Update.Set (info_key,
                                 serialize
-                                  Osd.to_buffer_with_claim_info
+                                  (Osd.to_buffer_with_claim_info ~version:2)
                                   (Osd.ClaimInfo.Available, osd)); ]
        in
        Lwt.return ((), upds)
@@ -1008,7 +1008,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         [ Update.Assert (info_key, Some info_serialized);
           Update.Set (info_key,
                       serialize
-                        Osd.to_buffer_with_claim_info
+                        (Osd.to_buffer_with_claim_info ~version:2)
                         (claim_info, osd_info_new)); ]
       in
 
@@ -1139,7 +1139,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           [ [ Update.Assert (info_key, Some info_serialized);
               Update.Set (info_key,
                           serialize
-                            Osd.to_buffer_with_claim_info
+                            (Osd.to_buffer_with_claim_info ~version:2)
                             (Osd.ClaimInfo.ThisAlba osd_id, osd_info));
               Update.Assert (next_id_key, next_id_so);
               Update.Set (next_id_key, serialize Llio.int32_to (Int32.succ osd_id));
@@ -1168,7 +1168,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         [ Update.Assert (info_key, Some info_serialized);
           Update.Set (info_key,
                       serialize
-                        Osd.to_buffer_with_claim_info
+                        (Osd.to_buffer_with_claim_info ~version:2)
                         (Osd.ClaimInfo.AnotherAlba alba_id', osd_info)); ]
       in
 
