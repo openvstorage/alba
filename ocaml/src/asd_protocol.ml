@@ -24,72 +24,97 @@ type key = Slice.t
 let show_key = Slice.show_limited_escaped
 let pp_key = Slice.pp_limited_escaped
 
+module Blob = struct
+  type t =
+    | Lwt_bytes of Lwt_bytes.t
+    | Bigslice of Bigstring_slice.t
+    | Bytes of Bytes.t
+    | Slice of Slice.t
+
+  let pp formatter t = Format.pp_print_string formatter "<Value>"
+
+  let to_buffer buf = function
+    (* TODO *)
+    | Lwt_bytes s -> ()
+    | Bigslice s -> ()
+    | Bytes s -> ()
+    | Slice s -> ()
+
+  let to_buffer' buf = function
+    (* TODO *)
+    | Lwt_bytes s -> ()
+    | Bigslice s -> ()
+    | Bytes s -> ()
+    | Slice s -> ()
+
+  let from_buffer buf = Slice (Slice.from_buffer buf)
+  let from_buffer' buf = Bigslice (Llio2.ReadBuffer.bigstring_slice_from buf)
+
+  let get_slice_unsafe = function
+    | Lwt_bytes s -> Slice.wrap_string "TODO"
+    | Bigslice s -> Slice.wrap_string "TODO"
+    | Bytes s -> Slice.wrap_string s
+    | Slice s -> s
+
+  let get_string_unsafe = function
+    | Lwt_bytes s -> "TODO"
+    | Bigslice s -> "TODO"
+    | Bytes s -> s
+    | Slice s -> Slice.get_string_unsafe s
+
+  let get_bigslice = function
+    | Lwt_bytes s -> Bigstring_slice.wrap_bigstring s
+    | Bigslice s -> s
+    | Bytes s -> Lwt_bytes.of_string s |> Bigstring_slice.wrap_bigstring
+    | Slice s -> Slice.to_bigstring s |> Bigstring_slice.wrap_bigstring
+
+  let length = function
+    | Lwt_bytes s -> Lwt_bytes.length s
+    | Bigslice s -> Bigstring_slice.length s
+    | Bytes s -> Bytes.length s
+    | Slice s -> Slice.length s
+end
+
 module Value = struct
   type blob =
-    | Direct of Slice.t
+    | Direct of Bigstring_slice.t
     | Later of int
   [@@deriving show]
   type t = blob * Checksum.t
   [@@deriving show]
 
-  let blob_to_buffer buf = function
-    | Direct value ->
-       Llio.int8_to buf 1;
-       Slice.to_buffer buf value
-    | Later size ->
-       Llio.int8_to buf 2;
-       Llio.int_to buf size
   let blob_to_buffer' buf =
     let module Llio = Llio2.WriteBuffer in
     function
     | Direct value ->
        Llio.int8_to buf 1;
-       Slice.to_buffer' buf value
+       Llio.bigstring_slice_to buf value
     | Later size ->
        Llio.int8_to buf 2;
        Llio.int_to buf size
 
-  let blob_from_buffer buf =
-    match Llio.int8_from buf with
-    | 1 ->
-       let value = Slice.from_buffer buf in
-       Direct value
-    | 2 ->
-       let size = Llio.int_from buf in
-       Later size
-    | k -> Prelude.raise_bad_tag "Asd_server.Value.blob" k
   let blob_from_buffer' buf =
     let module Llio = Llio2.ReadBuffer in
     match Llio.int8_from buf with
     | 1 ->
-       let value = Slice.from_buffer' buf in
+       let value = Llio.bigstring_slice_from buf in
        Direct value
     | 2 ->
        let size = Llio.int_from buf in
        Later size
     | k -> Prelude.raise_bad_tag "Asd_server.Value.blob" k
 
-  let to_buffer buf (blob, cs) =
-    blob_to_buffer buf blob;
-    Checksum.output buf cs
   let to_buffer' buf (blob, cs) =
     blob_to_buffer' buf blob;
     Checksum_deser.to_buffer' buf cs
 
-  let from_buffer buf =
-    let blob = blob_from_buffer buf in
-    let cs = Checksum.input buf in
-    (blob, cs)
   let from_buffer' buf =
     let blob = blob_from_buffer' buf in
     let cs = Checksum_deser.from_buffer' buf in
     (blob, cs)
 end
 
-(* TODO use a Lwt_bytes.t instead *)
-type value = Slice.t
-let show_value = Slice.show_limited_escaped
-let pp_value = Slice.pp_limited_escaped
+type value = Bigstring_slice.t
 
 type checksum = Checksum.t [@@deriving show]
 
@@ -101,7 +126,7 @@ let incompatible version =
 
 module Assert = struct
   type t =
-    | Value of key * value option
+    | Value of key * Blob.t option
                  [@@deriving show]
 
   let is_none_assert = function
@@ -114,7 +139,7 @@ module Assert = struct
   let value_string key value' =
     value
       (Slice.wrap_string key)
-      (Slice.wrap_string value')
+      (Blob.Bytes value')
 
   let none key = Value (key, None)
   let none_string key = none (Slice.wrap_string key)
@@ -125,20 +150,20 @@ module Assert = struct
     | Value (key, value) ->
       Llio.int8_to buf 1;
       Slice.to_buffer buf key;
-      Llio.option_to Slice.to_buffer buf value
+      Llio.option_to Blob.to_buffer buf value
   let to_buffer' buf =
     let module Llio = Llio2.WriteBuffer in
     function
     | Value (key, value) ->
       Llio.int8_to buf 1;
       Slice.to_buffer' buf key;
-      Llio.option_to Slice.to_buffer' buf value
+      Llio.option_to Blob.to_buffer' buf value
 
   let from_buffer buf =
     match Llio.int8_from buf with
     | 1 ->
       let key = Slice.from_buffer buf in
-      let value = Llio.option_from Slice.from_buffer buf in
+      let value = Llio.option_from Blob.from_buffer buf in
       Value (key, value)
     | k -> Prelude.raise_bad_tag "Asd_protocol.Assert" k
   let from_buffer' buf =
@@ -146,7 +171,7 @@ module Assert = struct
     match Llio.int8_from buf with
     | 1 ->
       let key = Slice.from_buffer' buf in
-      let value = Llio.option_from Slice.from_buffer' buf in
+      let value = Llio.option_from Blob.from_buffer' buf in
       Value (key, value)
     | k -> Prelude.raise_bad_tag "Asd_protocol.Assert" k
 end
@@ -154,13 +179,13 @@ end
 module Update = struct
 
   type t =
-    | Set of key * (value * checksum * bool) option
-                                             [@@ deriving show]
+    | Set of key * (Blob.t * checksum * bool) option
+                                              [@@ deriving show]
 
   let set k v c b = Set (k, Some (v,c,b))
 
   let set_string k v c b =
-    set (Slice.wrap_string k) (Slice.wrap_string v) c b
+    set (Slice.wrap_string k) (Blob.Bytes v) c b
 
   let delete k = Set (k, None)
   let delete_string k = delete (Slice.wrap_string k)
@@ -171,7 +196,7 @@ module Update = struct
       Slice.to_buffer buf key;
       Llio.option_to
         (Llio.tuple3_to
-           Slice.to_buffer
+           Blob.to_buffer
            Checksum.output
            Llio.bool_to
         )
@@ -185,7 +210,7 @@ module Update = struct
       Slice.to_buffer' buf key;
       Llio.option_to
         (Llio.tuple3_to
-           Slice.to_buffer'
+           Blob.to_buffer'
            Checksum_deser.to_buffer'
            Llio.bool_to
         )
@@ -199,7 +224,7 @@ module Update = struct
       let vcob =
         Llio.option_from
           (Llio.tuple3_from
-             Slice.from_buffer
+             Blob.from_buffer
              Checksum.input
              Llio.bool_from
           )
@@ -215,7 +240,7 @@ module Update = struct
       let vcob =
         Llio.option_from
           (Llio.tuple3_from
-             Slice.from_buffer'
+             Blob.from_buffer'
              Checksum_deser.from_buffer'
              Llio.bool_from
           )
@@ -429,8 +454,9 @@ module Protocol = struct
 
   type ('request, 'response) query =
     | Range : (RangeQueryArgs.t * priority, key counted_list_more) query
-    | MultiGet : (key list * priority, (value * Checksum.t) option list) query
-    | RangeEntries : (RangeQueryArgs.t * priority, (key * value * checksum) counted_list_more)
+    | MultiGet : (key list * priority, (Bigstring_slice.t * Checksum.t) option list) query
+    | RangeEntries : (RangeQueryArgs.t * priority,
+                      (key * Bigstring_slice.t * checksum) counted_list_more)
                        query
     | Statistics: (bool, AsdStatistics.t) query
     | GetVersion: (unit, (int * int * int *string)) query
@@ -539,12 +565,12 @@ module Protocol = struct
         Llio.counted_list_more_to
           (Llio.tuple3_to
              Slice.to_buffer'
-             Slice.to_buffer'
+             Llio.bigstring_slice_to
              Checksum_deser.to_buffer')
       | MultiGet ->
          Llio.list_to (Llio.option_to
                          (Llio.pair_to
-                            Slice.to_buffer'
+                            Llio.bigstring_slice_to
                             Checksum_deser.to_buffer'
                          )
                       )
@@ -572,12 +598,12 @@ module Protocol = struct
         Llio.counted_list_more_from
           (Llio.tuple3_from
              Slice.from_buffer'
-             Slice.from_buffer'
+             Llio.bigstring_slice_from
              Checksum_deser.from_buffer')
       | MultiGet -> Llio.list_from
                       (Llio.option_from
                          (Llio.pair_from
-                            Slice.from_buffer'
+                            Llio.bigstring_slice_from
                             Checksum_deser.from_buffer'
                          )
                       )

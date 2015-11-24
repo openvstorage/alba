@@ -34,7 +34,7 @@ let upload_packed_fragment_data
       ~version_id ~chunk_id ~fragment_id
       ~packed_fragment ~checksum
       ~gc_epoch
-      ~recovery_info_slice
+      ~recovery_info_blob
       ~osd_id
   =
   let open Osd_keys in
@@ -45,7 +45,8 @@ let upload_packed_fragment_data
          ~object_id ~version_id
          ~chunk_id ~fragment_id
        |> Slice.wrap_string)
-      packed_fragment checksum false
+      (Asd_protocol.Blob.Bigslice packed_fragment)
+      checksum false
   in
   let set_recovery_info =
     Osd.Update.set
@@ -55,7 +56,7 @@ let upload_packed_fragment_data
             ~object_id ~version_id
             ~chunk_id ~fragment_id))
       (* TODO do add some checksum *)
-      recovery_info_slice Checksum.NoChecksum true
+      recovery_info_blob Checksum.NoChecksum true
   in
   let set_gc_tag =
     Osd.Update.set_string
@@ -123,7 +124,7 @@ let upload_chunk
   let packed_fragment_sizes =
     List.map
       (fun (_, _, (packed_fragment, _, _, _)) ->
-       Slice.length packed_fragment)
+       Bigstring_slice.length packed_fragment)
       fragments_with_id
   in
   let fragment_checksums =
@@ -163,12 +164,12 @@ let upload_chunk
              ~chunk_id ~fragment_id
              ~packed_fragment ~checksum
              ~gc_epoch
-             ~recovery_info_slice)
+             ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
      >>= fun (t_store, x) ->
 
      let t_fragment = Statistics.({
                                      size_orig = Bigstring_slice.length fragment;
-                                     size_final = Slice.length packed_fragment;
+                                     size_final = Bigstring_slice.length packed_fragment;
                                      compress_encrypt = t_compress_encrypt;
                                      hash = t_hash;
                                      osd_id_o;

@@ -22,6 +22,7 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
+open Lwt_bytes2
 
 let blob_threshold = 16 * 1024
 
@@ -204,10 +205,28 @@ module DirectoryInfo = struct
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
            ~perm:0o664
            (fun fd ->
-              let open Slice in
-              Lwt_extra2.write_all
-                fd
-                blob.buf blob.offset blob.length)) >>= fun (t_write, ()) ->
+            let open Blob in
+            (* TODO push to blob module? *)
+            match blob with
+            | Lwt_bytes s ->
+               Lwt_extra2.write_all_lwt_bytes
+                 fd
+                 s 0 (Lwt_bytes.length s)
+            | Bigslice s ->
+               let open Bigstring_slice in
+               Lwt_extra2.write_all_lwt_bytes
+                 fd
+                 s.bs s.offset s.length
+            | Bytes s ->
+               Lwt_extra2.write_all
+                 fd
+                 s 0 (Bytes.length s)
+            | Slice s ->
+               let open Slice in
+               Lwt_extra2.write_all
+                 fd
+                 s.buf s.offset s.length
+           )) >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
      then Lwt_log.info_f
@@ -367,12 +386,13 @@ let execute_query : type req res.
          Lwt_list.map_p
            (fun (k, vt) ->
             Value.get_blob_from_value dir_info vt >>= fun blob ->
-            Lwt.return (k, blob, fst vt))
+            Lwt.return (k, Slice.to_bigstring blob |> Bigstring_slice.wrap_bigstring,
+                        fst vt))
            is >>= fun blobs ->
 
          return
            ~cost:(List.fold_left
-                    (fun acc (_, blob, _) -> acc + 200 + Slice.length blob)
+                    (fun acc (_, blob, _) -> acc + 200 + Bigstring_slice.length blob)
                     0
                     blobs)
            ((cnt, blobs),
@@ -393,13 +413,14 @@ let execute_query : type req res.
                | None -> Lwt.return None
                | Some v ->
                   Value.get_blob_from_value dir_info v >>= fun b ->
-                  Lwt.return (Some (b, Value.get_cs v))) >>= fun res ->
+                  Lwt.return (Some (Slice.to_bigstring b |> Bigstring_slice.wrap_bigstring,
+                                    Value.get_cs v))) >>= fun res ->
          return
            ~cost:(List.fold_left
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (blob, _) -> acc + 200 + Slice.length blob)
+                     | Some (blob, _) -> acc + 200 + Bigstring_slice.length blob)
                     0
                     res)
            res)
@@ -418,7 +439,9 @@ let execute_query : type req res.
               |> Option.map
                    (fun (cs, blob) ->
                     let b = match blob with
-                      | Value.Direct s -> Asd_protocol.Value.Direct s
+                      | Value.Direct s ->
+                         Asd_protocol.Value.Direct (Slice.to_bigstring s
+                                                    |> Bigstring_slice.wrap_bigstring)
                       | Value.OnFs (fnr, size) ->
                          write_laters := (fnr, size) :: !write_laters;
                          Asd_protocol.Value.Later size in
@@ -431,7 +454,7 @@ let execute_query : type req res.
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Slice.length blob
+                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
                      | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
                     0
                     res)
@@ -576,7 +599,12 @@ let execute_update : type req res.
                         check whether the key is still associated with the same blob
                      *)
                      Value.get_blob_from_value dir_info value >>= fun blob ->
-                     if (Slice.compare' blob expected) <> Compare.EQ
+                     (* TODO make this comparison less costly *)
+                     if (Slice.compare'
+                           blob
+                           (expected
+                            |> Asd_protocol.Blob.get_string_unsafe
+                            |> Slice.wrap_string)) <> Compare.EQ
                      then begin
                        Lwt_log.warning_f
                          "Assertion failed, expected some blob but got another" >>= fun () ->
@@ -609,10 +637,10 @@ let execute_update : type req res.
             Lwt_list.map_p
               (function
                 | Update.Set (key, Some (v, c, _)) ->
-                   let blob_length = Slice.length v in
+                   let blob_length = Asd_protocol.Blob.length v in
                    (if blob_length < blob_threshold
                     then begin
-                        Lwt.return (Value.Direct v)
+                        Lwt.return (Value.Direct (Asd_protocol.Blob.get_slice_unsafe v))
                       end else begin
                         let fnr, file_path, fnr_release = get_file_path () in
                         Lwt.finalize
@@ -622,7 +650,7 @@ let execute_update : type req res.
                              prio
                              (fun () ->
                               DirectoryInfo.write_blob dir_info fnr v >>= fun () ->
-                              Lwt.return ((), 4000 + Slice.length v)))
+                              Lwt.return ((), 4000 + Blob.length v)))
                           (fun () ->
                            Lwt.wakeup fnr_release ();
                            Lwt.return ()) >>= fun () ->

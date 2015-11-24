@@ -118,15 +118,17 @@ let translate alba_asserts alba_updates =
         StringSet.empty alba_updates
     in
     let fix_for_dangling_asserts asserts kseq =
-    StringMap.fold
-        (fun (k:string) (a:value option) acc ->
+      StringMap.fold
+        (fun (k:string) a acc ->
          if StringSet.mem k set_keys
          then acc
          else
            let extra =
                match a with
                | None -> failwith "not supported"
-               | Some v_s ->
+               | Some v ->
+                  (* TODO these copies should be avoided *)
+                  let v_s = Asd_protocol.Blob.get_slice_unsafe v in
                   let cs = value2checksum v_s in
                   let db_version = checksum2version cs in
                   conditional_set k db_version v_s cs
@@ -141,7 +143,9 @@ let translate alba_asserts alba_updates =
            then (* No asserts, so rather trivial *)
              match vco with
              | None          -> forced_delete key
-             | Some (v_s,cs,assertable) ->
+             | Some (v,cs,assertable) ->
+                (* TODO these copies should be avoided *)
+                let v_s = Asd_protocol.Blob.get_slice_unsafe v in
                 if assertable
                 then forced_set_with_version key v_s
                 else forced_set_without_version key v_s
@@ -152,11 +156,18 @@ let translate alba_asserts alba_updates =
                  match StringMap.find key asserts, vco with
                  | None          , None               ->
                     conditional_delete key None
-                 | None          , Some (v_s,cs,_ )   ->
+                 | None          , Some (v,cs,_ )   ->
+                    (* TODO these copies should be avoided *)
+                    let v_s = Asd_protocol.Blob.get_slice_unsafe v in
                     conditional_set key None v_s cs
-                 | (Some ov_s), None               ->
+                 | (Some ov), None               ->
+                    (* TODO these copies should be avoided *)
+                    let ov_s = Asd_protocol.Blob.get_slice_unsafe ov in
                     conditional_delete key (value2version ov_s)
-                 | (Some ov_s), Some (nv_s,ncs, asbl) ->
+                 | (Some ov), Some (nv,ncs, asbl) ->
+                    (* TODO these copies should be avoided *)
+                    let ov_s = Asd_protocol.Blob.get_slice_unsafe ov in
+                    let nv_s = Asd_protocol.Blob.get_slice_unsafe nv in
                     conditional_set key (value2version ov_s) nv_s ncs
                end
              end
@@ -190,7 +201,7 @@ class kinetic_client cid session conn =
       match vco with
       | None -> Lwt.return None
       | Some (v, version) ->
-         let vo_s = Some (s2slice v) in
+         let vo_s = Some (Bigstring_slice.wrap_bigstring (Lwt_bytes.of_string v)) in
          Lwt.return vo_s
 
 

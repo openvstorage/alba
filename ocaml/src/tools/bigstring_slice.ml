@@ -20,9 +20,9 @@ type t = {
   length : int;
 }
 
-let show t =
-  (* TODO this could be better. *)
-  String.escaped (Lwt_bytes.to_string t.bs)
+let show =
+  let r = "<bigstring_slice>" in
+  fun t -> r
 
 let pp formatter t =
   Format.pp_print_string formatter (show t)
@@ -48,3 +48,13 @@ let extract t offset length =
   wrap_bigstring bs
 
 let length t = t.length
+
+let get t pos = Lwt_bytes.get t.bs (t.offset + pos)
+
+let to_string t =
+  let s = Bytes.create t.length in
+  Lwt_bytes.blit_to_bytes t.bs t.offset s 0 t.length;
+  s
+
+let of_string s =
+  Lwt_bytes.of_string s |> wrap_bigstring

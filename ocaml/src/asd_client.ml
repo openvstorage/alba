@@ -142,15 +142,22 @@ class client fd id =
              match blob with
              | Direct s -> Lwt.return (Some (s, cs))
              | Later size ->
-                Llio2.FdReader.raw_string_from fd size >>= fun blob ->
-                Lwt.return (Some (Slice.wrap_bytes blob, cs)))
+                let bs = Lwt_bytes.create size in
+                Lwt.catch
+                  (fun () ->
+                   Lwt_extra2.read_all_lwt_bytes_exact fd bs 0 size >>= fun () ->
+                   Lwt.return (Some (Bigstring_slice.wrap_bigstring bs, cs)))
+                  (fun exn ->
+                   Lwt_bytes.unsafe_destroy bs;
+                   Lwt.fail exn))
         res
 
+    (* TODO where is this used? *)
     method multi_get_string ~prio keys =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
-           (Option.map (fun (slice, cs) -> Slice.get_string_unsafe slice, cs))
+           (Option.map (fun (slice, cs) -> Bigstring_slice.to_string slice, cs))
            res)
 
     method multi_exists ~prio keys = self # query MultiExists (keys, prio)

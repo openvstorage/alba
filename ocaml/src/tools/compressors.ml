@@ -176,6 +176,11 @@ module Snappy = struct
     _snappy_uncompress_generic
       Bytes_descr.Bigarray Bytes_descr.Bigarray
       ~release_runtime_lock
+
+  let uncompress_bs_ba ~release_runtime_lock =
+    _snappy_uncompress_generic
+      Bytes_descr.Bigstring_slice Bytes_descr.Bigarray
+      ~release_runtime_lock
 end
 
 module Bzip2 = struct
@@ -362,32 +367,44 @@ module Bzip2 = struct
     in
     Slice.get_string_unsafe r
 
+  let decompress_bs_string bs =
+    let r =
+      _decompress_generic
+        Bytes_descr.Bigstring_slice Bytes_descr.Slice
+        ~release_runtime_lock:false
+        bs
+    in
+    Slice.get_string_unsafe r
+
   let decompress_ba_ba =
     _decompress_generic
       Bytes_descr.Bigarray Bytes_descr.Bigarray
+
+  let decompress_bs_ba =
+    _decompress_generic
+      Bytes_descr.Bigstring_slice Bytes_descr.Bigarray
 end
 
 open Alba_compression.Compression
 open Lwt.Infix
 
-let decompress ~release_input c f =
-  (* big array to big array, detached *)
+let decompress c f =
+  (* TODO bigstring_slice to bigstring_slice *)
+  (* bigstring_slice to big array, detached *)
   match c with
   | NoCompression ->
-     if release_input
-     then Lwt.return f
-     else Lwt.return (Lwt_bytes.copy f)
+     let res = Bigstring_slice.extract_to_bigstring f in
+     Lwt_bytes.unsafe_destroy f.Bigstring_slice.bs;
+     Lwt.return res
   | Snappy ->
      Lwt_preemptive.detach
-       (Snappy.uncompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
-     if release_input
-     then Lwt_bytes.unsafe_destroy f;
+       (Snappy.uncompress_bs_ba ~release_runtime_lock:true) f >>= fun res ->
+     Lwt_bytes.unsafe_destroy f.Bigstring_slice.bs;
      Lwt.return res
   | Bzip2 ->
      Lwt_preemptive.detach
-       (Bzip2.decompress_ba_ba ~release_runtime_lock:true) f >>= fun res ->
-     if release_input
-     then Lwt_bytes.unsafe_destroy f;
+       (Bzip2.decompress_bs_ba ~release_runtime_lock:true) f >>= fun res ->
+     Lwt_bytes.unsafe_destroy f.Bigstring_slice.bs;
      Lwt.return res
 
 let compress c f = match c with

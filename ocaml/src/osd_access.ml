@@ -469,7 +469,7 @@ class osd_access
                                closer >>= function
                              | None -> Lwt.return `Continue
                              | Some alba_id' ->
-                                let alba_id' = Slice.get_string_unsafe alba_id' in
+                                let alba_id' = Bigstring_slice.to_string alba_id' in
                                 mgr_access # get_alba_id >>= fun alba_id ->
 
                                 Lwt.catch

@@ -49,7 +49,7 @@ let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
     in
 
     let block_len = block_length algo in
-    let bs = Padding.pad (Lwt_bytes.of_string s) block_len in
+    let bs = Padding.pad (Bigstring_slice.of_string s) block_len in
 
     Cipher.with_t_lwt
       key Cipher.AES256 Cipher.CBC []
@@ -74,7 +74,7 @@ let maybe_encrypt
     Cipher.with_t_lwt
       key Cipher.AES256 Cipher.CBC []
       (fun cipher -> Cipher.encrypt ~iv cipher bs) >>= fun () ->
-    Lwt.return bs
+    Lwt.return (Bigstring_slice.wrap_bigstring bs)
 
 let maybe_decrypt
     encryption
@@ -91,8 +91,13 @@ let maybe_decrypt
         get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
         Cipher.with_t_lwt
           key Cipher.AES256 Cipher.CBC []
-          (fun cipher -> Cipher.decrypt ~iv cipher data) >>= fun () ->
-        Lwt.return (Padding.unpad ~release_input:true data)
+          (fun cipher ->
+           let open Bigstring_slice in
+           Cipher.decrypt
+             ~iv
+             cipher
+             data.bs data.offset data.length) >>= fun () ->
+        Lwt.return (Padding.unpad data)
     end
 
 let maybe_compress compression fragment_data =
@@ -105,10 +110,10 @@ let maybe_compress compression fragment_data =
     (Lwt_bytes.length r) >>= fun () ->
   Lwt.return r
 
-let maybe_decompress ~release_input compression compressed =
+let maybe_decompress compression compressed =
   let open Lwt.Infix in
-  let compressed_length = Lwt_bytes.length compressed in
-  Compressors.decompress ~release_input compression compressed >>= fun r ->
+  let compressed_length = Bigstring_slice.length compressed in
+  Compressors.decompress compression compressed >>= fun r ->
   Lwt_log.debug_f
      "decompression: %s (%i => %i)"
      ([%show: Compression.t] compression)
@@ -120,10 +125,11 @@ let maybe_decompress ~release_input compression compressed =
 let verify fragment_data checksum =
   let algo = Checksum.algo_of checksum in
   let hash = Hashes.make_hash algo in
+  let open Bigstring_slice in
   hash # update_lwt_bytes_detached
-    fragment_data
-    0
-    (Lwt_bytes.length fragment_data) >>= fun () ->
+    fragment_data.bs
+    fragment_data.offset
+    fragment_data.length >>= fun () ->
   let checksum2 = hash # final () in
   Lwt.return (checksum2 = checksum)
 
@@ -152,13 +158,17 @@ let pack_fragment
        maybe_encrypt
          ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
          encryption
-         compressed)
+         (Bigstring_slice.wrap_bigstring compressed))
   >>= fun (t_compress_encrypt, final_data) ->
 
   with_timing_lwt
     (fun () ->
-       let hash = Hashes.make_hash checksum_algo in
-       hash # update_lwt_bytes_detached final_data 0 (Lwt_bytes.length final_data) >>= fun () ->
+     let hash = Hashes.make_hash checksum_algo in
+     let open Bigstring_slice in
+     hash # update_lwt_bytes_detached
+          final_data.bs
+          final_data.offset
+          final_data.length >>= fun () ->
        Lwt.return (hash # final ()))
   >>= fun (t_hash, checksum) ->
 
@@ -238,14 +248,12 @@ let chunk_to_packed_fragments
         ~object_id ~chunk_id ~fragment_id:0 ~ignore_fragment_id:true
         compression encryption fragment_checksum_algo
       >>= fun (packed, f1, f2, cs) ->
-      let packed' = Slice.of_bigstring packed in
-      Lwt_bytes.unsafe_destroy packed;
 
       let rec build_result acc = function
         | 0 -> acc
         | n ->
           let fragment_id = n - 1 in
-          let acc' = (fragment_id, fragment, (packed', f1, f2, cs)) :: acc in
+          let acc' = (fragment_id, fragment, (packed, f1, f2, cs)) :: acc in
           build_result
             acc'
             (n-1)
@@ -267,10 +275,7 @@ let chunk_to_packed_fragments
               ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
               compression encryption fragment_checksum_algo
             >>= fun (packed, f1, f2, cs) ->
-            let packed' = Slice.of_bigstring packed in
-            Lwt_bytes.unsafe_destroy packed;
-
-            Lwt.return (fragment_id, fragment, (packed', f1, f2, cs)))
+            Lwt.return (fragment_id, fragment, (packed, f1, f2, cs)))
            all_fragments)
         (fun () ->
          List.iter

@@ -296,7 +296,7 @@ let test_delete_namespace () =
                 c # get_option
                   Osd.High
                   (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
-                let p = Option.map get_string_unsafe ps in
+                let p = Option.map Bigstring_slice.to_string ps in
                 Lwt_io.printlf "got p = %s" ([%show : string option] p) >>= fun () ->
                 assert (presence = (p <> None));
                 let fragment_key = wrap_string
@@ -308,7 +308,7 @@ let test_delete_namespace () =
                                      )
                 in
                 c # get_option Osd.High fragment_key >>= fun fs ->
-                let f = Option.map get_string_unsafe fs in
+                let f = Option.map Bigstring_slice.to_string fs in
                 Lwt_io.printlf "got f = %s" ([%show : string option] f) >>= fun () ->
                 assert (fragment = (f <> None));
                 Lwt.return ()) in
@@ -414,13 +414,13 @@ let test_garbage_collect () =
          Alba_client_upload.upload_packed_fragment_data
            (client # osd_access)
            ~namespace_id
-           ~packed_fragment:(Slice.create 1)
+           ~packed_fragment:(Bigstring_slice.create 1)
            ~osd_id ~version_id
            ~object_id
            ~chunk_id ~fragment_id
            ~gc_epoch:0L
            ~checksum:Checksum.Checksum.NoChecksum
-           ~recovery_info_slice:(Slice.wrap_string "")
+           ~recovery_info_blob:(Osd.Blob.Bytes "")
          >>= fun _ ->
 
          let assert_fragment assert_ =
@@ -743,7 +743,7 @@ let test_discover_claimed () =
                 Assert.none_string instance_index_key; ]
               [ Update.set
                   next_alba_instance'
-                  (wrap_string (serialize Llio.int32_to (Int32.succ id_on_osd)))
+                  (Osd.Blob.Bytes (serialize Llio.int32_to (Int32.succ id_on_osd)))
                   no_checksum true;
                 Update.set_string
                   instance_log_key

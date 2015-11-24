@@ -104,20 +104,21 @@ let download_packed_fragment
             in
             Lwt_log.warning msg >>= fun () ->
             E.fail `FragmentMissing
-         | Some (data:Slice.t) ->
+         | Some data ->
             osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
             Osd_state.add_read state;
             Lwt.ignore_result
               (fragment_cache # add
                               namespace_id key_string
-                              (Slice.get_string_unsafe data)
+                              (* TODO *)
+                              (Bigstring_slice.to_string data)
               );
             let hit_or_mis = false in
             E.return (osd_id, hit_or_mis, data)
        end
     | Some data ->
        let hit_or_mis = true in
-       E.return (osd_id, hit_or_mis, Slice.wrap_string data)
+       E.return (osd_id, hit_or_mis, Bigstring_slice.of_string data)
   in
   retrieve key
 
@@ -150,11 +151,9 @@ let download_fragment
        fragment_cache)
   >>== fun (t_retrieve, (osd_id, hit_or_miss, fragment_data)) ->
 
-  let fragment_data' = Slice.to_bigstring fragment_data in
-
   E.with_timing
     (fun () ->
-     Fragment_helper.verify fragment_data' fragment_checksum
+     Fragment_helper.verify fragment_data fragment_checksum
      >>= E.return)
   >>== fun (t_verify, checksum_valid) ->
 
@@ -162,7 +161,7 @@ let download_fragment
    then E.return ()
    else
      begin
-       Lwt_bytes.unsafe_destroy fragment_data';
+       Lwt_bytes.unsafe_destroy fragment_data.Bigstring_slice.bs;
        E.fail `ChecksumMismatch
      end) >>== fun () ->
 
@@ -172,13 +171,13 @@ let download_fragment
        encryption
        ~object_id ~chunk_id ~fragment_id
        ~ignore_fragment_id:replication
-       fragment_data'
+       fragment_data
      >>= E.return)
   >>== fun (t_decrypt, maybe_decrypted) ->
 
   E.with_timing
     (fun () ->
-     decompress ~release_input:true maybe_decrypted
+     decompress maybe_decrypted
      >>= E.return)
   >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 

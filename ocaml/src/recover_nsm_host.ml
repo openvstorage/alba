@@ -187,7 +187,7 @@ let reap_osd
                 let recovery_info =
                   deserialize
                     RecoveryInfo.from_buffer
-                    (Slice.get_string_unsafe v) in
+                    (Bigstring_slice.to_string v) in
 
                 WriteBatch.put
                   wb

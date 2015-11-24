@@ -296,7 +296,7 @@ class client ?(retry_timeout = 60.)
          | Prelude.Error.Error x ->
             Lwt.fail (Exn NotEnoughFragments)
          | Prelude.Error.Ok (_, _, packed_fragment) ->
-            Fragment_helper.verify' packed_fragment fragment_checksum
+            Fragment_helper.verify packed_fragment fragment_checksum
             >>= fun checksum_valid ->
             if not checksum_valid
             then Lwt.fail (Exn ChecksumMismatch)
@@ -308,7 +308,7 @@ class client ?(retry_timeout = 60.)
                   ~chunk_id ~fragment_id ~version_id:version_id1
                   ~packed_fragment ~checksum:fragment_checksum
                   ~gc_epoch
-                  ~recovery_info_slice
+                  ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
                   ~osd_id:target_osd
                 >>= fun () ->
                 Lwt.return (chunk_id, fragment_id, source_osd, target_osd)
@@ -626,7 +626,9 @@ class client ?(retry_timeout = 60.)
                       retag fragments strategy is applied (when an upload
                       failed due to Invalid_gc_epoch) we're not removing
                       a value that could still be used for some object... *)
-                   Osd.Assert.value gc_tag_key (wrap_string ""); ] in
+                   Osd.Assert.value
+                     gc_tag_key
+                     (Osd.Blob.Bytes ""); ] in
 
                Lwt_log.debug_f
                  "Cleaning up garbage fragment ns_id=%li, gc_epoch=%Li, object_id=%S, %i,%i,%i"

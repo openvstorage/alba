@@ -29,6 +29,13 @@ module ReadBuffer = struct
 
     let buffer_done buf = buf.pos = Lwt_bytes.length buf.buf
 
+    let deserialize ?(pos = 0) deserializer buf =
+      deserializer { buf; pos; }
+
+    let deserialize' ?(pos = 0) deserializer (buf : Bigstring_slice.t) =
+      deserializer { buf = buf.Bigstring_slice.bs;
+                     pos = pos + buf.Bigstring_slice.offset; }
+
     let unit_from buf = ()
 
     let maybe_from_buffer a_from default buf =

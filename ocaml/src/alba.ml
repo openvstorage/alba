@@ -72,7 +72,7 @@ let osd_multi_get osd_id cfg_file keys unescape =
                       else key)))
                 keys >>= fun values_s ->
               let values = List.map(fun v -> Option.map
-                                               Slice.get_string_unsafe v)
+                                               Bigstring_slice.to_string v)
                                    values_s in
               Lwt_io.printlf "%s" ([%show : string option list] values)))
   in
@@ -254,7 +254,7 @@ let alba_upload_object
                              else NoPrevious)
            ~checksum_o:None
          >>= fun _ ->
-         Lwt_io.printlf "object %s was succesfully uploaded"
+         Lwt_io.printlf "object %s was successfully uploaded"
                         input_file
       )
   in
