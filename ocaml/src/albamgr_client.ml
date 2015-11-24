@@ -61,6 +61,7 @@ class client (client : basic_client)  =
     val supports_update_osds = ref None
     val supports_add_osd2    = ref None
     val supports_list_osds_by_osd_id2 = ref None
+    val supports_list_osds_by_long_id2 = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -237,9 +238,12 @@ class client (client : basic_client)  =
       Lwt.return (Option.map snd (List.hd osds))
 
     method list_osds_by_long_id ~first ~finc ~last ~reverse ~max =
-      client # query
-        ListOsdsByLongId
-        RangeQueryArgs.({ first; finc; last; reverse; max; })
+      let args = RangeQueryArgs.({ first; finc; last; reverse; max; })
+      and use_feature args = client # query ListOsdsByLongId2 args
+      and alternative args = client # query ListOsdsByLongId  args
+      and name = "ListOsdsByLongId2"
+      and flag = supports_list_osds_by_long_id2 in
+      maybe_use_feature flag name args use_feature alternative
 
     method get_osd_by_long_id ~long_id =
       self # list_osds_by_long_id

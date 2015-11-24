@@ -590,18 +590,27 @@ def run_tests_compat(xml = True):
     def test(old_proxy, old_plugins, old_asd):
         try:
             alba.smoke_test()
-            def alba_cli(extra):
-                cmd = [env['alba_bin']]
+            def alba_cli(extra, old = False, capture = False):
+                key = 'alba.0.6' if old else 'alba_bin'
+                binary = env[key]
+                cmd = [binary]
                 cmd.extend(extra)
                 cmd_line = ' '.join(cmd)
-                local(cmd_line)
+                r = local(cmd_line, capture = capture)
+                return r
 
             obj_name = 'alba_binary'
             ns = 'demo'
+            cfg = './cfg/albamgr_example_arakoon_cfg.ini'
             alba_cli(['proxy-upload-object', ns , env['alba_bin'], obj_name])
             alba_cli(['proxy-download-object', ns, obj_name, '/tmp/downloaded.bin'])
             alba_cli(['delete-object', ns, obj_name,
-                      '--config', './cfg/albamgr_example_arakoon_cfg.ini'])
+                      '--config', cfg ])
+
+            # some explicit backward compatible operations
+            r = alba_cli (['list-all-osds', '--config', cfg, '--to-json'], old = True, capture = True)
+            osds = json.loads(r)
+            assert osds['success'] == True
 
 
         except Exception, e:

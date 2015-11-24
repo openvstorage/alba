@@ -1652,6 +1652,11 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~first ~finc ~last
         ~max:(cap_max ~max ())
         ~reverse
+    | ListOsdsByLongId2 -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+      list_osds_by_long_id
+        ~first ~finc ~last
+        ~max:(cap_max ~max ())
+        ~reverse
     | ListAvailableOsds -> fun () ->
       let (_, osds), _ =
         list_osds_by_long_id
