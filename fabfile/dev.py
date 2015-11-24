@@ -649,7 +649,12 @@ def run_tests_compat(xml = True):
             local(cmd_line)
 
         alba.maintenance_start()
-        alba.proxy_start()
+
+        proxy_env = env_old if old_proxy else env
+
+        alba.proxy_start(env = proxy_env)
+
+
         alba.nsm_host_register_default()
 
 

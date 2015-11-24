@@ -390,7 +390,9 @@ def _add_tls_config(cfg):
 def proxy_start(abm_cfg = arakoon_config_file,
                 proxy_id = '0',
                 n_proxies = 1,
-                n_others = 1):
+                n_others = 1,
+                env = env):
+
     proxy_id = int(proxy_id) # how to enter ints from cli?
 
     proxy_home = "/tmp/alba/proxies/%02i" % proxy_id

@@ -28,10 +28,39 @@ class type basic_client = object
                   ('i, 'o) update -> 'i -> 'o Lwt.t
 end
 
+let maybe_use_feature
+        flag
+        name
+        (args : 'args)
+        (use_feature: 'args  -> 'r Lwt.t)
+        (alternative: 'args ->  'r Lwt.t) : 'r Lwt.t
+    =
+    match !flag with
+      | None ->
+         Lwt_log.debug_f "testing %s support" name >>= fun () ->
+         Lwt.catch
+           ( fun () ->
+             use_feature args >>= fun r ->
+             let () = flag := Some true in
+             Lwt.return r
+           )
+           (let open Albamgr_protocol.Protocol.Error in
+            function
+             | Albamgr_exn(Unknown_operation,_) as exn ->
+                Lwt_log.debug_f ~exn "no support for %s" name >>= fun () ->
+                let () = flag := Some false in
+                alternative args
+             | exn -> Lwt.fail exn
+           )
+      | Some true  -> use_feature args
+      | Some false -> alternative args
+
 class client (client : basic_client)  =
+
   object(self)
     val supports_update_osds = ref None
     val supports_add_osd2    = ref None
+    val supports_list_osds_by_osd_id2 = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -193,9 +222,12 @@ class client (client : basic_client)  =
         (preset_name, (List.length osd_ids, osd_ids))
 
     method list_osds_by_osd_id ~first ~finc ~last ~reverse ~max =
-      client # query
-        ListOsdsByOsdId
-        RangeQueryArgs.({ first; finc; last; reverse; max; })
+      let args = RangeQueryArgs.({ first; finc; last; reverse; max; }) in
+      let use_feature args = client # query ListOsdsByOsdId2 args in
+      let alternative args = client # query ListOsdsByOsdId  args in
+      let name = "ListOsdsByOsdId2" in
+      let flag = supports_list_osds_by_osd_id2  in
+      maybe_use_feature flag name args use_feature alternative
 
     method get_osd_by_osd_id ~osd_id =
       self # list_osds_by_osd_id
@@ -236,28 +268,13 @@ class client (client : basic_client)  =
     method list_available_osds =
       client # query ListAvailableOsds ()
 
-    method add_osd osd_info =
+    method add_osd osd_info : unit Lwt.t =
       let use_feature () = client # update AddOsd2 osd_info in
       let alternative () = client # update AddOsd  osd_info in
-      match !supports_add_osd2 with
-      | None ->
-         Lwt_log.debug "testing add_osd support" >>= fun () ->
-         Lwt.catch
-           ( fun () ->
-             use_feature () >>= fun () ->
-             let () = supports_add_osd2 := Some true in
-             Lwt.return_unit
-           )
-           (let open Albamgr_protocol.Protocol.Error in
-            function
-             | Albamgr_exn(Unknown_operation,_) as exn ->
-                Lwt_log.debug ~exn "no support for add_osd2" >>= fun () ->
-                let () = supports_add_osd2 := Some false in
-                alternative ()
-             | exn -> Lwt.fail exn
-           )
-      | Some true -> use_feature()
-      | Some false -> alternative ()
+      let args = ()
+      and flag = supports_add_osd2
+      and name = "AddOsd2" in
+      maybe_use_feature flag name args use_feature alternative
 
 
 
@@ -266,32 +283,17 @@ class client (client : basic_client)  =
 
     method update_osds updates =
       Lwt_log.info "update_osds" >>= fun () ->
-      let do_it () = client # update UpdateOsds updates in
-      let fake_it () =
+      let use_feature updates = client # update UpdateOsds updates in
+      let alternative updates =
         Lwt_list.fold_left_s
           (fun () (long_id,changes) ->self # update_osd ~long_id changes)
           () updates
       in
-      match !supports_update_osds with
-      | None ->
-         Lwt_log.debug "testing update_osds support" >>= fun () ->
-         Lwt.catch
-           (fun () ->
-            do_it ()
-            >>= fun () ->
-            supports_update_osds := Some true;
-            Lwt.return_unit
-           )
-           (let open Albamgr_protocol.Protocol.Error in
-             function
-             | Albamgr_exn (Unknown_operation,_) as exn ->
-                Lwt_log.debug ~exn "no support; fake it" >>= fun () ->
-                let () = supports_update_osds := Some false in
-                fake_it()
-             | exn -> Lwt.fail exn
-           )
-      | Some false -> fake_it()
-      | Some true  -> do_it()
+      let args = updates
+      and flag = supports_update_osds
+      and name = "update_osds2"
+      in
+      maybe_use_feature flag name args use_feature alternative
 
     method decommission_osd ~long_id =
       client # update DecommissionOsd long_id

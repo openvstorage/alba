@@ -835,6 +835,8 @@ module Protocol = struct
     | ListAvailableOsds : (unit, OsdInfo.t Std.counted_list) query
     | ListOsdsByOsdId : (Osd.id RangeQueryArgs.t,
                          (Osd.id * OsdInfo.t) counted_list_more) query
+    | ListOsdsByOsdId2 : (Osd.id RangeQueryArgs.t,
+                         (Osd.id * OsdInfo.t) counted_list_more) query
     | ListOsdsByLongId : (OsdInfo.long_id RangeQueryArgs.t,
                           (Osd.ClaimInfo.t * OsdInfo.t) counted_list_more) query
 
@@ -898,7 +900,8 @@ module Protocol = struct
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
     | ListNsmHosts -> RangeQueryArgs.from_buffer Llio.string_from
     | ListAvailableOsds -> Llio.unit_from
-    | ListOsdsByOsdId -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListOsdsByOsdId  -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListOsdsByOsdId2 -> RangeQueryArgs.from_buffer Llio.int32_from
     | ListOsdsByLongId -> RangeQueryArgs.from_buffer Llio.string_from
     | ListNamespaces -> RangeQueryArgs.from_buffer Llio.string_from
     | ListNamespaceOsds ->
@@ -929,6 +932,7 @@ module Protocol = struct
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
     | ListAvailableOsds -> Llio.unit_to
     | ListOsdsByOsdId -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListOsdsByOsdId2 -> RangeQueryArgs.to_buffer Llio.int32_to
     | ListOsdsByLongId -> RangeQueryArgs.to_buffer Llio.string_to
     | ListNamespaces -> RangeQueryArgs.to_buffer Llio.string_to
     | ListNamespaceOsds ->
@@ -965,6 +969,11 @@ module Protocol = struct
     | ListAvailableOsds ->
       Llio.counted_list_from OsdInfo.from_buffer
     | ListOsdsByOsdId ->
+      counted_list_more_from
+        (Llio.pair_from
+           Llio.int32_from
+           OsdInfo.from_buffer)
+    | ListOsdsByOsdId2 ->
       counted_list_more_from
         (Llio.pair_from
            Llio.int32_from
@@ -1042,6 +1051,11 @@ module Protocol = struct
     | ListAvailableOsds ->
       Llio.counted_list_to (OsdInfo.to_buffer ~version:2)
     | ListOsdsByOsdId ->
+      counted_list_more_to
+        (Llio.pair_to
+           Llio.int32_to
+           (OsdInfo.to_buffer ~version:1))
+    | ListOsdsByOsdId2 ->
       counted_list_more_to
         (Llio.pair_to
            Llio.int32_to
@@ -1355,6 +1369,7 @@ module Protocol = struct
                       Wrap_q GetMaintenanceConfig, 64l, "GetMaintenanceConfig";
                       Wrap_u UpdateMaintenanceConfig, 65l, "UpdateMaintenanceConfig";
                       Wrap_u AddOsd2, 66l, "AddOsd2";
+                      Wrap_q ListOsdsByOsdId2, 67l, "ListOsdsByOsdId2";
                     ]
 
 
