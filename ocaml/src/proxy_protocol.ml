@@ -249,7 +249,7 @@ module Protocol = struct
   module Namespace = Amgrp.Namespace
   module RangeQueryArgs = Nsmp.RangeQueryArgs
 
-  type object_name = string
+  type object_name = string[@@deriving show]
 
   type file_name = string
 
@@ -264,8 +264,8 @@ module Protocol = struct
   type has_more = bool
 
   type preset_name = string
-  type offset = Int64.t
-  type length = int
+  type offset = Int64.t [@@deriving show]
+  type length = int [@@deriving show]
   type data = string
 
   type consistent_read = bool

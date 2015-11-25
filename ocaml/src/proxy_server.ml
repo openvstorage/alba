@@ -137,13 +137,31 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   function
   | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} ->
                        "{ }"
+  | CreateNamespace -> fun (namespace, preset_option) ->
+                       Printf.sprintf "(%S,_)" namespace
+  | DeleteNamespace -> fun namespace ->
+                       Printf.sprintf "(%S)" namespace
   | ReadObjectFs    -> fun (namespace, object_name, _,_,_ ) ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | WriteObjectFs   -> fun (namespace, object_name, _,_,_)  ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
-  | CreateNamespace -> fun (namespace, preset_option) ->
-                       Printf.sprintf "(%S,_)" namespace
-  | _ -> fun _ ->      "_"
+  | ReadObjectsSlices -> fun (namespace, objects_slices, consistent_read) ->
+                         Printf.sprintf
+                           "(%S,%s )"
+                           namespace
+                           ([%show : (object_name *
+                                        (offset * length) list) list ]
+                           objects_slices)
+  | NamespaceExists -> fun namespace ->
+                       Printf.sprintf "(%S)" namespace
+  | ProxyStatistics -> fun _ -> "-"
+  | DropCache       -> fun _ -> "-"
+  | InvalidateCache -> fun _ -> "-"
+  | GetObjectInfo   -> fun _ -> "-"
+  | ListObjects     -> fun _ -> "-"
+  | DeleteObject    -> fun _ -> "_"
+  | GetVersion      -> fun _ -> "-"
+  | OsdView         -> fun _ -> "-"
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
