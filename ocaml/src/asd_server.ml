@@ -182,9 +182,8 @@ module DirectoryInfo = struct
     let full_dir = Filename.concat t.files_path dir in
     match Hashtbl.find t.directory_cache dir with
     | Exists ->
-       Lwt_unix.rmdir full_dir >>= fun () ->
        Hashtbl.remove t.directory_cache dir;
-       Lwt.return ()
+       Lwt_unix.rmdir full_dir
     | Creating wait -> Lwt.fail_with (Printf.sprintf "creating %s" dir)
     | exception Not_found ->
        Lwt_unix.rmdir full_dir
