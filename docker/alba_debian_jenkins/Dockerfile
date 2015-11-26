@@ -98,10 +98,10 @@ RUN apt-get -y install clang-3.5
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get update
 RUN apt-get -y --force-yes install libboost1.57-all liblttng-ust0 librdmacm1 libtokyocabinet9 libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1
-RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-base_5.0.6-0_amd64.deb && dpkg -i volumedriver-base_5.0.6-0_amd64.deb
-RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-pitreplication_5.0.6-0_amd64.deb && dpkg -i volumedriver-pitreplication_5.0.6-0_amd64.deb
-RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-server_5.0.6-0_amd64.deb && dpkg -i volumedriver-server_5.0.6-0_amd64.deb
-RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/3/artifact/volumedriver-core/build/debian/volumedriver-test_5.0.6-0_amd64.deb && dpkg -i volumedriver-test_5.0.6-0_amd64.deb
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-base_5.0.7-0_amd64.deb && dpkg -i volumedriver-base_5.0.7-0_amd64.deb
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-pitreplication_5.0.7-0_amd64.deb && dpkg -i volumedriver-pitreplication_5.0.7-0_amd64.deb
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-server_5.0.7-0_amd64.deb && dpkg -i volumedriver-server_5.0.7-0_amd64.deb
+RUN wget http://10.100.129.100:8080/view/voldrv/job/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-test_5.0.7-0_amd64.deb && dpkg -i volumedriver-test_5.0.7-0_amd64.deb
 
 ENV UID 1001
 ENV ARAKOON_BIN=arakoon
