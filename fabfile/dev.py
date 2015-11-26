@@ -59,7 +59,7 @@ def run_tests_cpp(xml=False, kind=default_kind,
     setup_demo_alba(kind)
 
     where = local
-    where("rm -rf /tmp/alba/ocaml/")
+    where("rm -rf %s/ocaml/" % ALBA_BASE_PATH)
     cmd = "./cpp/bin/unit_tests.out"
     if xml:
         cmd = cmd + " --gtest_output=xml:gtestresults.xml"
@@ -84,7 +84,7 @@ def run_tests_ocaml(xml=False, kind = default_kind, dump = None, filter = None):
     alba.claim_local_osds(N)
 
     where = local
-    where("rm -rf /tmp/alba/ocaml/")
+    where("rm -rf %s/ocaml/" % ALBA_BASE_PATH)
 
     cmd = "./ocaml/alba.native unit-tests"
     if xml:
@@ -193,8 +193,8 @@ def run_tests_recovery(xml = False):
     # set up separate albamgr & nsm host
     abm_cfg = "cfg/test_abm.ini"
     nsm_cfg = "cfg/test_nsm_1.ini"
-    alba.arakoon_start_(abm_cfg, "/tmp/alba/abm_0", ["micky_0"])
-    alba.arakoon_start_(nsm_cfg, "/tmp/alba/nsm_1", ["zicky_0"])
+    alba.arakoon_start_(abm_cfg, "%s/abm_0" % ALBA_BASE_PATH, ["micky_0"])
+    alba.arakoon_start_(nsm_cfg, "%s/nsm_1" % ALBA_BASE_PATH, ["zicky_0"])
 
     alba.wait_for_master(abm_cfg)
     alba.wait_for_master(nsm_cfg)
@@ -233,7 +233,7 @@ def run_tests_recovery(xml = False):
 
     # kill nsm host
     local('fuser -n tcp 4001 -k')
-    local('rm -rf /tmp/alba/nsm_1')
+    local('rm -rf %s/nsm_1' % ALBA_BASE_PATH)
 
     cmd = [
         env['alba_bin'],
@@ -245,7 +245,7 @@ def run_tests_recovery(xml = False):
     local(' '.join(cmd))
 
     # start new nsm host + register it to albamgr
-    alba.arakoon_start_("cfg/test_nsm_2.ini", "/tmp/alba/nsm_2", ["ticky_0"])
+    alba.arakoon_start_("cfg/test_nsm_2.ini", "%s/nsm_2" % ALBA_BASE_PATH, ["ticky_0"])
     alba.wait_for_master("cfg/test_nsm_2.ini")
     cmd = [
         env['alba_bin'],
@@ -276,11 +276,11 @@ def run_tests_recovery(xml = False):
     # we should be able to handle this...
     alba.osd_stop(8000)
 
-    local('mkdir -p /tmp/alba/recovery_agent')
+    local('mkdir -p %s/recovery_agent' % ALBA_BASE_PATH)
     cmd = [
         env['alba_bin'],
         'namespace-recovery-agent',
-        ns, '/tmp/alba/recovery_agent', '1', '0',
+        ns, '%s/recovery_agent' % ALBA_BASE_PATH, '1', '0',
         "--config", abm_cfg,
         "--osd-id 1 --osd-id 2"
     ]
@@ -345,12 +345,12 @@ def spreadsheet_my_ass(start=0, end = 13400):
         fresh()
 
     # fill the demo namespace
-    local("dd if=/dev/urandom of=/tmp/alba/obj bs=40K count=1")
+    local("dd if=/dev/urandom of=%s/obj bs=40K count=1" % ALBA_BASE_PATH)
     for i in xrange(start, end):
         cmd = [
             env['alba_bin'],
             'proxy-upload-object',
-            'demo', '/tmp/alba/obj',
+            'demo', '%s/obj' % ALBA_BASE_PATH,
             str(i)
         ]
         local(" ".join(cmd))
@@ -360,8 +360,8 @@ def spreadsheet_my_ass(start=0, end = 13400):
 
     # restart asd 0 as a not slow asd
     alba._detach(
-        [ env['alba_bin'], 'asd-start', '--config', '/tmp/alba/asd/00/cfg.json' ],
-        out='/tmp/alba/asd/00/output'
+        [ env['alba_bin'], 'asd-start', '--config', '%s/asd/00/cfg.json' % ALBA_BASE_PATH ],
+        out='%s/asd/00/output' % ALBA_BASE_PATH
     )
 
     # let maintenance process do some rebalancing
@@ -374,13 +374,14 @@ def run_test_asd_start(xml=False):
     alba.demo_kill()
     alba.demo_setup()
 
-    local("dd if=/dev/urandom of=/tmp/alba/obj bs=1M count=1")
+    object_location = "%s/obj" % ALBA_BASE_PATH
+    local("dd if=/dev/urandom of=%s bs=1M count=1" % object_location)
 
     for i in xrange(0, 1000):
         cmd = [
             env['alba_bin'],
             'proxy-upload-object',
-            'demo', '/tmp/alba/obj',
+            'demo', object_location,
             str(i)
         ]
         local(" ".join(cmd))
@@ -394,7 +395,7 @@ def run_test_asd_start(xml=False):
     cmd = [
         env['alba_bin'],
         'proxy-upload-object',
-        'demo', '/tmp/alba/obj',
+        'demo', object_location,
         "fdskii", "--allow-overwrite"
     ]
     with warn_only():
@@ -409,7 +410,7 @@ def run_test_asd_start(xml=False):
     local(" ".join([
         env['alba_bin'],
         'proxy-download-object',
-        'demo', '1', '/tmp/alba/obj2'
+        'demo', '1', '%s/obj2' % ALBA_BASE_PATH
     ]))
 
     alba.smoke_test()
@@ -437,19 +438,20 @@ def run_test_big_object():
         '--config', arakoon_config_file
     ]))
 
+    object_file = "%s/obj" % ALBA_BASE_PATH
     # upload a big object
-    local("truncate -s 2G /tmp/alba/obj")
+    local("truncate -s 2G %s" % object_file)
     local(" ".join([
         'time', env['alba_bin'],
-        'proxy-upload-object', 'big', '/tmp/alba/obj', 'bigobj'
+        'proxy-upload-object', 'big', object_file, 'bigobj'
     ]))
     # note this may fail with NoSatisfiablePolicy from time to time
 
     local(" ".join([
         'time', env['alba_bin'],
-        'proxy-download-object', 'big', 'bigobj', '/tmp/alba/obj_download'
+        'proxy-download-object', 'big', 'bigobj', '%s/obj_download' % ALBA_BASE_PATH
     ]))
-    local("rm /tmp/alba/obj_download")
+    local("rm %s/obj_download" % ALBA_BASE_PATH)
 
     # policy says we can lose a node,
     # so stop and decommission osd 0 to 3
