@@ -1,6 +1,6 @@
 #!/bin/bash -xue
 
-env
+env | sort
 
 export WORKSPACE=$PWD
 echo ${WORKSPACE}
@@ -28,6 +28,22 @@ case "$1" in
         ;;
     ocaml)
         fab dev.run_tests_ocaml:xml=True || true
+        fab alba.smoke_test
+        ;;
+    stress)
+        fab dev.run_tests_stress:xml=True || true
+        fab alba.smoke_test
+        ;;
+    voldrv_backend)
+        fab dev.run_tests_voldrv_backend:xml=True || true
+        fab alba.smoke_test
+        ;;
+    voldrv_tests)
+        fab dev.run_tests_voldrv_tests:xml=True || true
+        fab alba.smoke_test
+        ;;
+    disk_failures)
+        fab dev.run_tests_disk_failures:xml=True || true
         fab alba.smoke_test
         ;;
     *)
