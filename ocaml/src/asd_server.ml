@@ -178,17 +178,20 @@ module DirectoryInfo = struct
 
       Lwt.return ()
 
-  let delete_dir t dir =
-    let full_dir = Filename.concat t.files_path dir in
-    match Hashtbl.find t.directory_cache dir with
-    | Exists ->
-       Lwt_unix.rmdir full_dir >>= fun () ->
-       Hashtbl.remove t.directory_cache dir;
-       Lwt.return ()
-    | Creating wait -> Lwt.fail_with (Printf.sprintf "creating %s" dir)
-    | exception Not_found ->
-       Lwt_unix.rmdir full_dir
-
+  let delete_dir t = function
+    | "."
+    | "" -> Lwt.fail_with "just don't"
+    | dir ->
+      begin
+        let full_dir = Filename.concat t.files_path dir in
+        match Hashtbl.find t.directory_cache dir with
+        | Exists ->
+           Hashtbl.remove t.directory_cache dir;
+           Lwt_unix.rmdir full_dir
+        | Creating wait -> Lwt.fail_with (Printf.sprintf "creating %s" dir)
+        | exception Not_found ->
+                    Lwt_unix.rmdir full_dir
+      end
 
   let write_blob t fnr blob =
     Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->

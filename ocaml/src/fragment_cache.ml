@@ -630,9 +630,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let bid0 = bid_of boid0 in
       let path0 = path_of_fsid bid0 fsid0 in
       let full_path0 = canonical path0 in
-      Lwt_unix.unlink full_path0 >>= fun () ->
-      (* might have been the last of it's kind *)
+      Lwt_extra2.ignore_errors
+        (fun () -> Lwt_unix.unlink full_path0) >>= fun () ->
 
+      (* might have been the last of it's kind *)
       let rec delete dir =
         Asd_server.DirectoryInfo.delete_dir dirs dir >>= fun () ->
         let parent = Filename.dirname dir in
@@ -640,13 +641,12 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         then Lwt.return ()
         else delete parent
       in
-      if cleanup then
+      if cleanup
+      then
         let dir = Filename.dirname path0 in
-        Lwt.catch
-          (fun () -> delete dir)
-          (fun exn -> Lwt.return())
+        Lwt_extra2.ignore_errors (fun () -> delete dir)
       else
-        Lwt.return ()
+        Lwt.return_unit
 
     method _evict
         ~total_count ~total_size
@@ -1034,7 +1034,7 @@ let safe_create root ~max_size ~rocksdb_max_open_files =
   Lwt.catch
     (fun () ->
      Lwt_unix.unlink fn >>= fun () ->
-     Lwt_log.debug_f "removed marker:%s" fn
+     Lwt_log.info_f "removed marker:%s" fn
     )
     (fun exn ->
      Lwt_log.info_f "couldn't remove marker, so removing everything" >>= fun () ->

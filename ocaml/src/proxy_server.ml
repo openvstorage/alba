@@ -132,6 +132,47 @@ let read_objects_slices
 
   Lwt.return (res,n_slices,n_objects)
 
+let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
+  let open Protocol in
+  function
+  | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} ->
+                       "{ }"
+  | CreateNamespace -> fun (namespace, preset_option) ->
+                       Printf.sprintf "(%S,_)" namespace
+  | DeleteNamespace -> fun namespace ->
+                       Printf.sprintf "(%S)" namespace
+  | ReadObjectFs    -> fun (namespace, object_name, _,_,_ ) ->
+                       Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
+  | WriteObjectFs   -> fun (namespace, object_name, _,_,_)  ->
+                       Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
+  | ReadObjectsSlices -> fun (namespace, objects_slices, consistent_read) ->
+                         Printf.sprintf
+                           "(%S,%s )"
+                           namespace
+                           ([%show : (object_name *
+                                        (offset * length) list) list ]
+                           objects_slices)
+  | NamespaceExists -> fun namespace ->
+                       Printf.sprintf "(%S)" namespace
+  | ProxyStatistics -> fun _ -> "-"
+  | DropCache       -> fun _ -> "-"
+  | InvalidateCache -> fun _ -> "-"
+  | GetObjectInfo   -> fun _ -> "-"
+  | ListObjects     -> fun _ -> "-"
+  | DeleteObject    -> fun _ -> "_"
+  | GetVersion      -> fun _ -> "-"
+  | OsdView         -> fun _ -> "-"
+
+let log_request code maybe_renderer time =
+  let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
+  let details =
+    match maybe_renderer with
+    | None -> ""
+    | Some renderer -> renderer ()
+  in
+  log "Request %s %s took %f" (Protocol.code_to_txt code) details time
+
+
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (stats: ProxyStatistics.t')
                    fd ic =
@@ -287,9 +328,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          (match msg with
           | None -> Protocol.Error.show err
           | Some msg -> msg)) in
-    Lwt.return res_s
+    Lwt.return (res_s, None)
   in
-  let handle_request buf code =
+  let handle_request buf code : (unit -> string) option Lwt.t =
     Lwt.catch
       (fun () ->
          match Protocol.code_to_command code with
@@ -300,7 +341,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                          (Llio.pair_to
                             Llio.int_to
                             (Deser.to_buffer (Protocol.deser_request_o r)))
-                         (0, res)))
+                         (0, res),
+                       let renderer () = render_request_args r req in
+                       Some renderer))
       (function
         | End_of_file as e ->
           Lwt.fail e
@@ -405,8 +448,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            Lwt_log.info_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
            let msg = Printexc.to_string exn in
            return_err_response ~msg Protocol.Error.Unknown)
-    >>= fun res ->
-    Lwt_extra2.write_all' fd res
+    >>= fun (res, maybe_renderer) ->
+    Lwt_extra2.write_all' fd res >>= fun () ->
+    Lwt.return maybe_renderer
   in
   let rec inner () =
     Llio.input_string ic >>= fun req_s ->
@@ -414,10 +458,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     let code = Llio.int_from buf in
     with_timing_lwt
       (fun () -> handle_request buf code)
-    >>= fun (time_inner, ()) ->
-    (if time_inner > 0.5
-     then Lwt_log.info_f
-     else Lwt_log.debug_f) "Request %s took %f" (Protocol.code_to_txt code) time_inner >>= fun () ->
+    >>= fun (time_inner, maybe_renderer) ->
+    log_request code maybe_renderer time_inner >>= fun () ->
     inner ()
   in
   Llio.input_int32 ic >>= fun magic ->
@@ -433,7 +475,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     "protocol version: (server) %li <> %li (client)"
                     Protocol.version version
         in
-        return_err_response ~msg err >>= fun res ->
+        return_err_response ~msg err >>= fun (res, _) ->
         Lwt_extra2.write_all' fd res
     end
   else Lwt.return ()
