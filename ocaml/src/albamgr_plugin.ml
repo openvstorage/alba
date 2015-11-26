@@ -1617,7 +1617,28 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                           serialize Maintenance_config.to_buffer new_cfg); ])
   in
 
-  let handle_query : type i o. (i, o) query -> i -> o = function
+  let handle_query : type i o. (i, o) query -> i -> o =
+  let list_decommissioning_osds { RangeQueryArgs.first; finc; last; reverse; max; } =
+    let module KV = WrapReadUserDb(struct
+          let db = db
+          let prefix = ""
+        end)
+      in
+      let module EKV = Key_value_store.Read_store_extensions(KV) in
+      EKV.map_range
+        db
+        ~first:(Keys.Osd.decommissioning ~osd_id:first) ~finc
+        ~last:(match last with
+            | Some (last, linc) -> Some (Keys.Osd.decommissioning ~osd_id:last, linc)
+            | None -> Keys.Osd.decommissioning_next_prefix)
+        ~max:(cap_max ~max ()) ~reverse
+        (fun cur key ->
+           let osd_id = Keys.Osd.decommissioning_extract_osd_id key in
+           let _, osd_info = Option.get_some (get_osd_by_id ~osd_id) in
+           osd_id, osd_info)
+  in
+
+  function
     | ListNsmHosts -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
       let (cnt, hosts), has_more =
         list_nsm_hosts
@@ -1756,24 +1777,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       fun long_id ->
         let _ = check_claim_osd long_id in
         ()
-    | ListDecommissioningOsds -> fun { RangeQueryArgs.first; finc; last; reverse; max; } ->
-      let module KV = WrapReadUserDb(struct
-          let db = db
-          let prefix = ""
-        end)
-      in
-      let module EKV = Key_value_store.Read_store_extensions(KV) in
-      EKV.map_range
-        db
-        ~first:(Keys.Osd.decommissioning ~osd_id:first) ~finc
-        ~last:(match last with
-            | Some (last, linc) -> Some (Keys.Osd.decommissioning ~osd_id:last, linc)
-            | None -> Keys.Osd.decommissioning_next_prefix)
-        ~max:(cap_max ~max ()) ~reverse
-        (fun cur key ->
-           let osd_id = Keys.Osd.decommissioning_extract_osd_id key in
-           let _, osd_info = Option.get_some (get_osd_by_id ~osd_id) in
-           osd_id, osd_info)
+    | ListDecommissioningOsds  -> list_decommissioning_osds
+    | ListDecommissioningOsds2 -> list_decommissioning_osds
     | ListOsdNamespaces -> fun (osd_id,
                                 { RangeQueryArgs.first; finc; last; reverse; max; }) ->
       let module KV = WrapReadUserDb(struct

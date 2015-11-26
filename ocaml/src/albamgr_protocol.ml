@@ -861,6 +861,8 @@ module Protocol = struct
     | CheckClaimOsd : (OsdInfo.long_id, unit) query
     | ListDecommissioningOsds : (Osd.id RangeQueryArgs.t,
                                  (Osd.id * OsdInfo.t) counted_list_more) query
+    | ListDecommissioningOsds2 : (Osd.id RangeQueryArgs.t,
+                                 (Osd.id * OsdInfo.t) counted_list_more) query
     | ListOsdNamespaces : (Osd.id * Namespace.id RangeQueryArgs.t,
                            Namespace.id counted_list_more) query
     | Statistics : (bool, Generic.t) query
@@ -919,7 +921,8 @@ module Protocol = struct
     | ListNamespacesById -> RangeQueryArgs.from_buffer Llio.int32_from
     | GetVersion -> Llio.unit_from
     | CheckClaimOsd -> Llio.string_from
-    | ListDecommissioningOsds -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListDecommissioningOsds  -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListDecommissioningOsds2 -> RangeQueryArgs.from_buffer Llio.int32_from
     | ListOsdNamespaces ->
       Llio.pair_from
         Llio.int32_from
@@ -951,7 +954,8 @@ module Protocol = struct
     | ListNamespacesById -> RangeQueryArgs.to_buffer Llio.int32_to
     | GetVersion -> Llio.unit_to
     | CheckClaimOsd -> Llio.string_to
-    | ListDecommissioningOsds -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListDecommissioningOsds  -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListDecommissioningOsds2 -> RangeQueryArgs.to_buffer Llio.int32_to
     | ListOsdNamespaces ->
       Llio.pair_to
         Llio.int32_to
@@ -1031,6 +1035,11 @@ module Protocol = struct
         (Llio.pair_from
            Llio.int32_from
            OsdInfo.from_buffer)
+    | ListDecommissioningOsds2 ->
+       counted_list_more_from
+         (Llio.pair_from
+            Llio.int32_from
+            OsdInfo.from_buffer)
     | ListOsdNamespaces -> counted_list_more_from Llio.int32_from
     | Statistics     -> Generic.from_buffer
     | CheckLease -> Llio.int_from
@@ -1111,6 +1120,11 @@ module Protocol = struct
          Llio.string_to
     | CheckClaimOsd -> Llio.unit_to
     | ListDecommissioningOsds ->
+      counted_list_more_to
+        (Llio.pair_to
+           Llio.int32_to
+           (OsdInfo.to_buffer ~version:1))
+    | ListDecommissioningOsds2 ->
       counted_list_more_to
         (Llio.pair_to
            Llio.int32_to
@@ -1376,9 +1390,11 @@ module Protocol = struct
 
                       Wrap_q GetMaintenanceConfig, 64l, "GetMaintenanceConfig";
                       Wrap_u UpdateMaintenanceConfig, 65l, "UpdateMaintenanceConfig";
-                      Wrap_u AddOsd2, 66l, "AddOsd2";
-                      Wrap_q ListOsdsByOsdId2, 67l, "ListOsdsByOsdId2";
-                      Wrap_q ListOsdsByLongId2, 68l, "ListOsdsByLongId2";
+
+                      Wrap_u AddOsd2,                  66l, "AddOsd2";
+                      Wrap_q ListOsdsByOsdId2,         67l, "ListOsdsByOsdId2";
+                      Wrap_q ListOsdsByLongId2,        68l, "ListOsdsByLongId2";
+                      Wrap_q ListDecommissioningOsds2, 69l, "ListDecommissioningOsds2";
                     ]
 
 

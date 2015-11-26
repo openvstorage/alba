@@ -57,11 +57,13 @@ let maybe_use_feature
 
 class client (client : basic_client)  =
 
-  object(self)
-    val supports_update_osds = ref None
-    val supports_add_osd2    = ref None
-    val supports_list_osds_by_osd_id2 = ref None
-    val supports_list_osds_by_long_id2 = ref None
+object(self)
+        (* TODO: this is an indicator we should have a 'capabilities' call *)
+    val supports_update_osds                = ref None
+    val supports_add_osd2                   = ref None
+    val supports_list_osds_by_osd_id2       = ref None
+    val supports_list_osds_by_long_id2      = ref None
+    val supports_list_decommissioning_osds2 = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -389,12 +391,12 @@ class client (client : basic_client)  =
            ~max:(-1) ~reverse:false)
 
     method list_decommissioning_osds ~first ~finc ~last ~reverse ~max =
-      client # query
-        ListDecommissioningOsds
-        RangeQueryArgs.({
-            first; finc; last;
-            max; reverse;
-          })
+      let args = RangeQueryArgs.{ first; finc; last; max; reverse; } in
+      let use_feature args = client # query ListDecommissioningOsds2 args in
+      let alternative args = client # query ListDecommissioningOsds  args in
+      let name = "ListDecommissioningOsds2" in
+      let flag = supports_list_decommissioning_osds2 in
+      maybe_use_feature flag name args use_feature alternative
 
     method list_all_decommissioning_osds =
       list_all_x

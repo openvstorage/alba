@@ -604,13 +604,26 @@ def run_tests_compat(xml = True):
             cfg = './cfg/albamgr_example_arakoon_cfg.ini'
             alba_cli(['proxy-upload-object', ns , env['alba_bin'], obj_name])
             alba_cli(['proxy-download-object', ns, obj_name, '/tmp/downloaded.bin'])
-            alba_cli(['delete-object', ns, obj_name,
-                      '--config', cfg ])
+            alba_cli(['delete-object', ns, obj_name, '--config', cfg ])
 
             # some explicit backward compatible operations
             r = alba_cli (['list-all-osds', '--config', cfg, '--to-json'], old = True, capture = True)
             osds = json.loads(r)
             assert osds['success'] == True
+            long_id = osds['result'][0]['long_id']
+
+            # decommission 1 asd:
+            alba_cli (['decommission-osd', '--long-id', long_id,
+                           '--config', cfg], old = True, capture = True)
+
+            print "now, list them"
+
+            r = alba_cli (['list-decommissioning-osds', '--config', cfg, '--to-json'],
+                          old = True,
+                          capture = True)
+            decommissioning_osds = json.loads(r)
+            print decommissioning_osds['success']
+            assert decommissioning_osds['success'] == True
 
 
         except Exception, e:
