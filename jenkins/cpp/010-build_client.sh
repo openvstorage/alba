@@ -11,4 +11,4 @@ make
 
 cd ../
 
-make
+CXX=clang++-3.5 make
