@@ -54,7 +54,7 @@ def demo_kill():
             if os.path.exists(path + "_file"):
                 where("sudo umount " + path)
             where("rm -rf %s" % path)
-        where("rm -rf /tmp/alba/")
+        where("rm -rf %s" % ALBA_BASE_PATH)
         arakoon_remove_dir()
 
 @task
@@ -80,7 +80,7 @@ def arakoon_start_(arakoon_config_file, base_dir, arakoon_nodes):
 
 @task
 def arakoon_start():
-    arakoon_start_(arakoon_config_file, "/tmp/arakoon", arakoon_nodes)
+    arakoon_start_(arakoon_config_file, ARAKOON_PATH, arakoon_nodes)
 
 @task
 def arakoon_who_master(arakoon_cfg_file = arakoon_config_file):
@@ -98,7 +98,7 @@ def arakoon_who_master(arakoon_cfg_file = arakoon_config_file):
 def arakoon_remove_dir():
     where = local
     for node in arakoon_nodes:
-        where("rm -rf /tmp/arakoon/%s" % node)
+        where("rm -rf %s/%s" % (ARAKOON_PATH, node))
 
 @task
 def nsm_host_register(cfg_file, albamgr_cfg = arakoon_config_file):
@@ -242,7 +242,7 @@ def proxy_start(abm_cfg = arakoon_config_file,
                 proxy_id = '0',
                 n_proxies = 1, n_others = 1):
     proxy_id = int(proxy_id) # how to enter ints from cli?
-    proxy_home = "/tmp/alba/proxies/%02i" % proxy_id
+    proxy_home = "%s/proxies/%02i" % (ALBA_BASE_PATH, proxy_id)
     proxy_cache = proxy_home + "/fragment_cache"
     proxy_cfg = "%s/proxy.cfg" % proxy_home
 
@@ -285,7 +285,7 @@ def proxy_stop(proxy_id = 0):
 @task
 def maintenance_start(abm_cfg = arakoon_config_file,
                       n_agents = 1, n_others = 1):
-    maintenance_home = "/tmp/alba/maintenance"
+    maintenance_home = "%s/maintenance" % ALBA_BASE_PATH
 
     local("mkdir -p %s" % maintenance_home)
 

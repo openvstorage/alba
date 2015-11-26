@@ -42,7 +42,10 @@ ALBA_BIN = env_or_default("ALBA_BIN",
 ALBA_PLUGIN_HOME = env_or_default("ALBA_PLUGIN_HOME",
                                   "%s/ocaml" % cwd)
 
-ALBA_ASD_PATH_T = env_or_default("ALBA_ASD_PATH_T", "/tmp/alba/asd/%02i")
+WORKSPACE = env_or_default("WORKSPACE", "")
+ALBA_BASE_PATH = "%s/tmp/alba" % WORKSPACE
+ALBA_ASD_PATH_T = env_or_default("ALBA_ASD_PATH_T", ALBA_BASE_PATH + "/asd/%02i")
+ARAKOON_PATH = "%s/tmp/arakoon" % WORKSPACE
 
 KINDS = ["ASD","KINETIC"]
 env = {
