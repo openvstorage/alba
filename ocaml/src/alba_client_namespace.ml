@@ -22,12 +22,15 @@ let create_namespace
       deliver_messages_to_most_osds
       deliver_nsm_host_messages
       ~namespace ~preset_name ?nsm_host_id () =
-  Lwt_log.debug_f "Alba_client: create_namespace %S" namespace >>= fun () ->
+  Lwt_log.info_f "Alba_client: create_namespace %S" namespace >>= fun () ->
 
   let t0 = Unix.gettimeofday () in
 
   mgr_access #  create_namespace ~namespace ~preset_name ?nsm_host_id ()
   >>= fun ns_info ->
+
+  Lwt_log.info_f "Alba_client: namespace %S created on albamgr" namespace >>= fun () ->
+
 
   let open Albamgr_protocol.Protocol in
   let namespace_id = ns_info.Namespace.id in
@@ -43,6 +46,10 @@ let create_namespace
 
   deliver_nsm_host_messages () >>= fun () ->
 
+  Lwt_log.info_f "Alba_client: create namespace %S: nsm host messages delivered to %s"
+                 namespace nsm_host_id >>= fun () ->
+
+
   let t1 = Unix.gettimeofday () in
 
   Lwt.choose
@@ -51,6 +58,10 @@ let create_namespace
         get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
 
         mgr_access # list_all_namespace_osds ~namespace_id >>= fun (_, osds) ->
+
+        Lwt_log.info_f "Alba_client: create namespace %S: delivering osd messages"
+                       namespace >>= fun () ->
+
 
         let nsm_host_delivery_thread = ref None in
         let need_more_delivery = ref false in
@@ -85,7 +96,7 @@ let create_namespace
         | None -> Lwt.return ()
       end; ] >>= fun () ->
 
-  Lwt_log.debug_f "Alba_client: create_namespace %S:%li ok"
+  Lwt_log.info_f "Alba_client: create_namespace %S:%li ok"
                   namespace namespace_id
   >>= fun () ->
   Lwt.return namespace_id
