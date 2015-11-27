@@ -188,7 +188,7 @@ let deliver_all_messages is_master mgr_access nsm_host_access osd_access =
 let deliver_messages_to_most_osds
       mgr_access nsm_host_access osd_access
       osd_msg_delivery_threads
-      ~osds ~preset =
+      ~osds ~preset ~delivered =
   let mvar = Lwt_mvar.create_empty () in
 
   Lwt.ignore_result begin
@@ -223,6 +223,7 @@ let deliver_messages_to_most_osds
                  in
                  inner
                    (fun () ->
+                    let () = delivered () in
                     osds_delivered := osd_id :: !osds_delivered;
                     osd_access # osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
                     if get_best_policy

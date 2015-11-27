@@ -56,7 +56,7 @@ def demo_kill(env = env):
             if os.path.exists(path + "_file"):
                 where("sudo umount " + path)
             where("rm -rf %s" % path)
-        where("rm -rf /tmp/alba/")
+        where("rm -rf %s" % ALBA_BASE_PATH)
         arakoon_remove_dir()
 
 @task
@@ -136,7 +136,7 @@ def make_cert(name, serial = None):
 def arakoon_start(env = env):
     acf = arakoon_config_file
     where = local
-    path = "/tmp/arakoon"
+    path = ARAKOON_PATH
     where ("mkdir -p %s" % path)
     tls = env['alba_tls']
 
@@ -153,7 +153,7 @@ def arakoon_start(env = env):
             where("mkdir ./%s" % client)
             make_cert(name = client, serial = serial)
 
-    arakoon_start_(acf, "/tmp/arakoon", arakoon_nodes, env = env)
+    arakoon_start_(acf, path, arakoon_nodes, env = env)
 
 def _extend_arakoon_tls(cmd):
     root = TLS['root_dir']
@@ -207,7 +207,10 @@ def arakoon_who_master(arakoon_cfg_file = None,
 @task
 def arakoon_remove_dir():
     where = local
-    where("rm -rf /tmp/arakoon")
+    for node in arakoon_nodes:
+        where("rm -rf %s/%s" % (ARAKOON_PATH, node))
+
+    where("rm -rf %s/my_client" % ARAKOON_PATH)
 
 @task
 def nsm_host_register(cfg_file, albamgr_cfg = arakoon_config_file):
@@ -395,7 +398,8 @@ def proxy_start(abm_cfg = arakoon_config_file,
 
     proxy_id = int(proxy_id) # how to enter ints from cli?
 
-    proxy_home = "/tmp/alba/proxies/%02i" % proxy_id
+    proxy_home = "%s/proxies/%02i" % (ALBA_BASE_PATH, proxy_id)
+
     proxy_cache = proxy_home + "/fragment_cache"
     proxy_cfg = "%s/proxy.cfg" % proxy_home
 
@@ -443,7 +447,7 @@ def proxy_stop(proxy_id = 0):
 @task
 def maintenance_start(abm_cfg = arakoon_config_file,
                       n_agents = 1, n_others = 1):
-    maintenance_home = "/tmp/alba/maintenance"
+    maintenance_home = "%s/maintenance" % ALBA_BASE_PATH
 
     local("mkdir -p %s" % maintenance_home)
 
