@@ -121,7 +121,7 @@ module OsdInfo = struct
       buf
       errors
 
-  let _to_buffer_2 buf
+  let _to_buffer_2 final_buf
       { kind; node_id;
         decommissioned; other;
         total; used;
@@ -129,36 +129,40 @@ module OsdInfo = struct
       }
     =
     let ser_version = 2 in
-    Llio.int8_to buf ser_version;
+    Llio.int8_to final_buf ser_version;
     let conn_info_to buf (ips,port,use_tls) =
       Llio.list_to Llio.string_to buf ips;
       Llio.int_to buf port;
       Llio.bool_to buf use_tls
     in
-    let () = match kind with
-      | Asd (conn_info, asd_id) ->
-        Llio.int8_to buf 1;
-        conn_info_to buf conn_info;
-        Llio.string_to buf asd_id;
-      | Kinetic(conn_info, kin_id) ->
-        Llio.int8_to buf 2;
-        conn_info_to buf conn_info;
-        Llio.string_to buf kin_id
+    let buf = Buffer.create 128 in
+    let () =
+      let () = match kind with
+        | Asd (conn_info, asd_id) ->
+           Llio.int8_to buf 1;
+           conn_info_to buf conn_info;
+           Llio.string_to buf asd_id;
+        | Kinetic(conn_info, kin_id) ->
+           Llio.int8_to buf 2;
+           conn_info_to buf conn_info;
+           Llio.string_to buf kin_id
+      in
+      Llio.string_to buf node_id;
+      Llio.bool_to buf decommissioned;
+      Llio.string_to buf other;
+      Llio.int64_to buf total;
+      Llio.int64_to buf used;
+      Llio.list_to Llio.float_to buf seen;
+      Llio.list_to Llio.float_to buf read;
+      Llio.list_to Llio.float_to buf write;
+      Llio.list_to
+        (Llio.pair_to
+           Llio.float_to
+           Llio.string_to)
+        buf
+        errors
     in
-    Llio.string_to buf node_id;
-    Llio.bool_to buf decommissioned;
-    Llio.string_to buf other;
-    Llio.int64_to buf total;
-    Llio.int64_to buf used;
-    Llio.list_to Llio.float_to buf seen;
-    Llio.list_to Llio.float_to buf read;
-    Llio.list_to Llio.float_to buf write;
-    Llio.list_to
-      (Llio.pair_to
-         Llio.float_to
-         Llio.string_to)
-      buf
-      errors
+    Llio.string_to final_buf (Buffer.contents buf)
 
   let to_buffer  buf t ~version =
     match version with
@@ -198,7 +202,10 @@ module OsdInfo = struct
       seen; read; write; errors;
     }
 
-  let _from_buffer2 buf =
+  let _from_buffer2 orig_buf =
+    let bufs = Llio.string_from orig_buf in
+    let buf = Llio.make_buffer bufs 0 in
+
     let kind_v = Llio.int8_from buf in
     let ips = Llio.list_from Llio.string_from buf in
     let port = Llio.int_from buf in
