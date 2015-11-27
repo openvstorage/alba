@@ -469,3 +469,58 @@ def run_test_big_object():
     # wait for maintenance process to repair it
     # (give maintenance process a kick?)
     # report mem usage of proxy & maintenance process
+
+@task
+def run_test_arakoon_changes ():
+    alba.demo_kill ()
+    alba.demo_setup(arakoon_config_file = arakoon_config_file_2)
+    # 2 node cluster, and arakoon_0 will be master.
+    def stop_node(node_name):
+        r = local("pgrep -a arakoon | grep '%s'" % node_name, capture = True)
+        info = r.split()
+        pid = info[0]
+        local("kill %s" % pid)
+
+    def start_node(node_name, cfg):
+        inner = [
+            env['arakoon_bin'],
+            "--node", node_name,
+            "-config", cfg
+        ]
+        cmd_line = alba._detach(inner)
+        local(cmd_line)
+
+    def signal_alba(process_name,signal):
+        r = local("pgrep -a alba | grep %s" % process_name, capture = True)
+        info = r.split()
+        pid = info[0]
+        local("kill -s %s %s" % (signal, pid))
+
+    def wait_for(delay):
+        n = int(delay)
+        print "sleeping %i" % n
+        while n:
+            print "\t%i" % n
+            time.sleep(1)
+            n = n - 1
+
+    # 2 node cluster, and arakoon_0 is master.
+    wait_for(10)
+    stop_node('arakoon_0')
+    stop_node('witness_0')
+    # restart them with other config
+
+    start_node('arakoon_1', arakoon_config_file)
+    start_node('witness_0', arakoon_config_file)
+
+    wait_for(20)
+    start_node('arakoon_0', arakoon_config_file)
+
+    maintenance_home = "%s/maintenance" % ALBA_BASE_PATH
+    maintenance_cfg = maintenance_home + "/albamgr.cfg"
+    local("cp %s %s" % (arakoon_config_file, maintenance_cfg))
+    signal_alba('maintenance','USR1')
+    wait_for(120)
+    cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
+    c = cfg_s.split()[0]
+    assert (c == '3') # 3 nodes in config

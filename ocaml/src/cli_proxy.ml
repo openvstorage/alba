@@ -346,6 +346,21 @@ let proxy_osd_view_cmd =
   Term.(pure proxy_osd_view $ host $ port 10000),
   Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
 
+let proxy_client_cfg host port =
+  proxy_client_cmd_line
+    host port
+    (fun client ->
+     client # get_client_config >>= fun cfg ->
+     Lwt_io.printlf "client_cfg:\n%s" (Albamgr_protocol.Protocol.Arakoon_config.show cfg)
+    )
+
+let proxy_client_cfg_cmd =
+  Term.(pure proxy_client_cfg
+        $ host
+        $ port 10000),
+  Term.info "proxy-client-cfg" ~doc:"what the proxy thinks the albamgr client config is"
+
+
 let cmds = [
   proxy_start_cmd;
   proxy_list_namespaces_cmd;
@@ -358,4 +373,5 @@ let cmds = [
   proxy_list_objects_cmd;
   proxy_get_version_cmd;
   proxy_osd_view_cmd;
+  proxy_client_cfg_cmd;
 ]
