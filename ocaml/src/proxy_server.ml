@@ -484,53 +484,17 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     end
   else Lwt.return ()
 
-type refresh_result =
-  | Retry
-  | Res of Albamgr_protocol.Protocol.Arakoon_config.t
+
 
 let refresh_albamgr_cfg
     ~loop
     albamgr_client_cfg
     (alba_client : Alba_client.alba_client)
     destination =
-  let retrieve_from_any_node_except () =
-    Lwt_log.debug "retrieve_from_any_node" >>= fun () ->
-    let cluster_id, node_hashtbl = !albamgr_client_cfg in
-    let node_names = Hashtbl.fold (fun nn _  acc -> nn :: acc) node_hashtbl [] in
 
-    let rec loop = function
-      | [] -> Lwt.return Retry
-      | node_name :: rest ->
-         Lwt.catch
-           (fun  () ->
-            let node_cfg  =
-              Hashtbl.find node_hashtbl node_name
-            in
-            let open Albamgr_protocol.Protocol.Arakoon_config in
-            let cfg = from_node_client_cfg node_cfg in
-            Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->
-            Client_helper.with_client'
-              ~tls:None
-              cfg
-              cluster_id
-              (fun node_client ->
-                Albamgr_client.wrap_around' ~consistency:Arakoon_client.No_guarantees node_client
-                 >>= fun mgr_dirty_client ->
-                mgr_dirty_client # get_client_config >>= fun ccfg ->
-                Lwt_log.debug_f "node:%s returned config" node_name >>= fun () ->
-                Lwt.return (Res ccfg)
-              )
-           )
-           (fun exn ->
-            Lwt_log.debug_f ~exn "retrieving cfg from %s failed; iterate" node_name
-            >>= fun () ->
-            loop rest
-           )
-    in
-    loop node_names
-  in
   let rec inner () =
     Lwt_log.debug "refresh_albamgr_cfg" >>= fun () ->
+    let open Albamgr_client in
     Lwt.catch
       (fun () ->
          alba_client # mgr_access # get_client_config
@@ -540,11 +504,12 @@ let refresh_albamgr_cfg
        function
        | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, master)
        | Error (Unknown_node (master, (_, _))) ->
-          retrieve_from_any_node_except ()
+          retrieve_cfg_from_any_node !albamgr_client_cfg
        | exn ->
           Lwt_log.debug_f ~exn "refresh_albamgr_cfg failed" >>= fun () ->
           Lwt.return Retry
-      ) >>= function
+      )
+    >>= function
     | Retry ->
       Lwt_extra2.sleep_approx 60. >>= fun () ->
       inner ()
