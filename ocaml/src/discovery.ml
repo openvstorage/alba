@@ -221,7 +221,13 @@ let multicast
        let use_socket () =
          let _ : int = set_multicast_ttl (Lwt_unix.unix_file_descr socket) in
          let rec inner () =
-           disk_usage () >>= fun (used, cap) ->
+           Lwt.catch
+             disk_usage
+             (fun exn ->
+              Lwt_log.error
+                ~exn
+                "Exception while getting disk usage, exiting process" >>= fun () ->
+              exit 1) >>= fun (used, cap) ->
            let msg = data used cap in
            Lwt_unix.sendto socket msg 0 (String.length msg) [] sa >>= fun _ ->
            Lwt_unix.sleep period >>=
