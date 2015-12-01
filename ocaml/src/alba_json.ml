@@ -97,6 +97,16 @@ module Namespace = struct
     }
     [@@deriving yojson]
   end
+
+  module Both = struct
+    type both = {
+        name: string;
+        statistics : Statistics.t;
+        namespace  : t
+      }
+    [@@deriving yojson]
+    type both_list = both list [@@deriving yojson]
+  end
 end
 
 module AsdStatistics = struct

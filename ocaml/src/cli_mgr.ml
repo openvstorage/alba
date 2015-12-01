@@ -19,6 +19,34 @@ open Lwt.Infix
 open Cli_common
 open Cmdliner
 
+let alba_list_namespaces cfg_file to_json =
+  let t () =
+    with_alba_client
+      cfg_file
+      (fun client ->
+         client # mgr_access # list_all_namespaces >>= fun (cnt, namespaces) ->
+         if to_json
+         then begin
+           let res =
+             List.map
+               (fun (name, info) -> Alba_json.Namespace.make name info)
+               namespaces
+           in
+           print_result res Alba_json.Namespace.t_list_to_yojson
+         end else
+           Lwt_io.printlf
+             "Found the following namespaces: %s"
+             ([%show: (string * Albamgr_protocol.Protocol.Namespace.t) list]
+                namespaces)
+      )
+  in
+  lwt_cmd_line to_json t
+
+
+let alba_list_namespaces_cmd =
+  Term.(pure alba_list_namespaces $ alba_cfg_file $ to_json),
+  Term.info "list-namespaces" ~doc:"list all namespaces"
+
 
 let alba_list_namespaces_by_id cfg_file to_json attempts =
   let t () =
@@ -714,31 +742,33 @@ let alba_update_maintenance_config_cmd =
                           info ["disable-rebalance"]); ])),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"
 
+
 let cmds = [
-  alba_list_namespaces_by_id_cmd;
+    alba_list_namespaces_cmd;
+    alba_list_namespaces_by_id_cmd;
 
-  recover_namespace_cmd;
-  alba_mgr_get_version_cmd;
+    recover_namespace_cmd;
+    alba_mgr_get_version_cmd;
 
-  alba_list_osds_cmd;
-  alba_list_all_osds_cmd;
-  alba_list_available_osds_cmd;
-  alba_list_decommissioning_osds_cmd;
+    alba_list_osds_cmd;
+    alba_list_all_osds_cmd;
+    alba_list_available_osds_cmd;
+    alba_list_decommissioning_osds_cmd;
 
-  alba_add_nsm_host_cmd;
-  alba_update_nsm_host_cmd;
-  alba_list_nsm_hosts_cmd;
-  alba_add_osd_cmd;
-  alba_mgr_statistics_cmd;
+    alba_add_nsm_host_cmd;
+    alba_update_nsm_host_cmd;
+    alba_list_nsm_hosts_cmd;
+    alba_add_osd_cmd;
+    alba_mgr_statistics_cmd;
 
-  alba_list_participants_cmd;
-  alba_list_work_cmd;
+    alba_list_participants_cmd;
+    alba_list_work_cmd;
 
-  alba_rewrite_namespace_cmd;
-  alba_verify_namespace_cmd;
-  alba_show_job_progress_cmd;
-  alba_clear_job_progress_cmd;
+    alba_rewrite_namespace_cmd;
+    alba_verify_namespace_cmd;
+    alba_show_job_progress_cmd;
+    alba_clear_job_progress_cmd;
 
-  alba_get_maintenance_config_cmd;
-  alba_update_maintenance_config_cmd;
+    alba_get_maintenance_config_cmd;
+    alba_update_maintenance_config_cmd;
 ]
