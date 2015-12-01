@@ -129,6 +129,7 @@ module Protocol = struct
     | NsmQuery :
         ('i_, 'o_) Nsm_protocol.Protocol.query ->
         (namespace_id * 'i_, 'o_) query
+    | GetNextMsgId : (unit, int32) query
 
   type ('i, 'o) update =
     | CleanupForNamespace : (namespace_id, int) update
@@ -176,6 +177,7 @@ module Protocol = struct
       nsm_query ListActiveOsds, 22l, "ListActiveOsds";
 
       Wrap_q NSMHStatistics, 30l , "NSMHStatistics";
+      Wrap_q GetNextMsgId, 32l, "GetNextMsgId";
     ]
 
   let wrap_unknown_operation f =
@@ -238,6 +240,7 @@ module Protocol = struct
       Llio.pair_from
         Llio.int32_from
         (Nsm_protocol.Protocol.read_query_request q)
+    | GetNextMsgId -> Llio.unit_from
 
 
   let write_query_i : type i o. (i, o) query -> i serializer = function
@@ -248,6 +251,7 @@ module Protocol = struct
       Llio.pair_to
         Llio.int32_to
         (Nsm_protocol.Protocol.write_query_request q)
+    | GetNextMsgId -> Llio.unit_to
 
 
   let read_query_o : type i o. (i, o) query -> o deserializer = function
@@ -259,6 +263,7 @@ module Protocol = struct
                       Llio.string_from
     | NSMHStatistics -> NSMHStatistics.from_buffer
     | NsmQuery q -> Nsm_protocol.Protocol.read_query_response q
+    | GetNextMsgId -> Llio.int32_from
   let write_query_o : type i o. (i, o) query -> o serializer = function
     | ListNsms -> Llio.counted_list_to (Llio.pair_to Llio.int32_to namespace_state_to_buf)
     | GetVersion -> Llio.tuple4_to
@@ -268,4 +273,5 @@ module Protocol = struct
                       Llio.string_to
     | NSMHStatistics -> NSMHStatistics.to_buffer
     | NsmQuery q -> Nsm_protocol.Protocol.write_query_response q
+    | GetNextMsgId -> Llio.int32_to
 end

@@ -36,49 +36,64 @@ type dest msg.
   let rec inner () =
     mgr_access # get_next_msgs t dest >>= fun  ((cnt, msgs), has_more) ->
     Lwt_log.debug_f "deliver_messages: count = %i" cnt >>= fun () ->
-    let do_one : type dest msg.
-                      (dest, msg) Albamgr_protocol.Protocol.Msg_log.t ->
-                      dest ->
-                      (int32 * msg) ->
-                      unit Lwt.t = fun t dest (msg_id,msg) ->
-    begin
-      match t with
-      | Msg_log.Nsm_host ->
-         let nsm_host_id = dest in
-         nsm_host_access # get_nsm_host_info ~nsm_host_id
-         >>= fun nsm_host_info ->
-         if nsm_host_info.Nsm_host.lost
-         then Lwt.return_unit
-         else
-           begin
-             Lwt_log.debug_f
-               "Delivering msg %li to %s: %s"
-               msg_id
-               dest
-               ([%show : Nsm_host_protocol.Protocol.Message.t] msg) >>= fun () ->
-             (nsm_host_access # get ~nsm_host_id:dest) # deliver_message msg msg_id
-           end
-      | Msg_log.Osd ->
-         let osd_id = dest in
-         Lwt_log.debug_f
-           "Delivering msg %li to %li: %s"
-           msg_id
-           osd_id
-           ([%show : Albamgr_protocol.Protocol.Osd.Message.t] msg) >>= fun () ->
-         osd_access # with_osd
-           ~osd_id
-           (fun client ->
-            let module DK = Osd_keys.AlbaInstance in
-            client # get_option
-                   (osd_access # get_default_osd_priority)
-                   (Slice.wrap_string DK.next_msg_id)
-            >>= fun next_id_so ->
-            let next_id = match next_id_so with
-              | None -> 0l
-              | Some next_id_s -> deserialize Llio.int32_from (Slice.get_string_unsafe next_id_s)
-            in
-            if Int32.(next_id =: msg_id)
-            then begin
+    (match t with
+     | Msg_log.Nsm_host ->
+        let nsm_host_id = dest in
+        nsm_host_access # get_nsm_host_info ~nsm_host_id
+        >>= fun nsm_host_info ->
+        if nsm_host_info.Nsm_host.lost
+        then
+          begin
+            if cnt > 0
+            then mgr_access # mark_msgs_delivered t dest (fst (List.last_exn msgs))
+            else Lwt.return_unit
+          end
+        else
+          begin
+            let nsm_host = nsm_host_access # get ~nsm_host_id:dest in
+            nsm_host # get_next_msg_id >>= fun next_msg_id ->
+            Lwt_list.fold_left_s
+              (fun _ (msg_id, msg) ->
+               (if msg_id >= next_msg_id
+                then nsm_host # deliver_message msg msg_id
+                else Lwt.return_unit) >>= fun () ->
+               Lwt.return msg_id)
+              next_msg_id
+              msgs >>= fun delivered_up_to_msg_id ->
+            mgr_access # mark_msgs_delivered t dest delivered_up_to_msg_id
+          end
+     | Msg_log.Osd ->
+        let osd_id = dest in
+
+        let module DK = Osd_keys.AlbaInstance in
+
+        let get_next_msg_id () =
+          osd_access # with_osd
+            ~osd_id
+            (fun client ->
+             client # get_option
+                    (osd_access # get_default_osd_priority)
+                    (Slice.wrap_string DK.next_msg_id))
+          >>= fun next_id_so ->
+          let next_id = match next_id_so with
+            | None -> 0l
+            | Some next_id_s -> deserialize Llio.int32_from (Slice.get_string_unsafe next_id_s)
+          in
+          Lwt.return (next_id_so, next_id)
+        in
+
+        let do_one msg_id msg =
+          Lwt_log.debug_f
+            "Delivering msg %li to %li: %s"
+            msg_id
+            osd_id
+            ([%show : Albamgr_protocol.Protocol.Osd.Message.t] msg) >>= fun () ->
+          osd_access # with_osd
+            ~osd_id
+            (fun client ->
+             get_next_msg_id () >>= fun (next_id_so, next_id) ->
+             if Int32.(next_id =: msg_id)
+             then begin
                 let open Albamgr_protocol.Protocol.Osd.Message in
                 let asserts, upds =
                   match msg with
@@ -132,14 +147,24 @@ type dest msg.
                 Lwt_log.warning msg >>= fun () ->
                 Lwt.fail_with msg
               end
-           )
-    end >>= fun () ->
-    mgr_access #  mark_msg_delivered t dest msg_id
-    in
-  Lwt_list.iter_s (do_one t dest) msgs >>= fun () ->
-  if has_more
-  then inner ()
-  else Lwt.return ()
+            )
+        in
+
+        get_next_msg_id () >>= fun (next_id_so, next_id) ->
+        Lwt_list.iter_s
+          (fun (msg_id, msg) ->
+           if msg_id >= next_id
+           then do_one msg_id msg
+           else Lwt.return_unit)
+          msgs >>= fun () ->
+        (match List.last msgs with
+         | None -> Lwt.return_unit
+         | Some (msg_id, _) ->
+            mgr_access # mark_msgs_delivered t dest msg_id))
+    >>= fun () ->
+    if has_more
+    then inner ()
+    else Lwt.return ()
   in
   inner ()
 

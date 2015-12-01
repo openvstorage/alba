@@ -596,11 +596,13 @@ let mark_msgs_delivered (db : user_db) t dest msg_id =
             | Assert _ ->
                (* all asserts should be noops when executed immediatelly *)
                ()
+            | UserFunction (name, value_o) ->
+               let _ : string option = Registry.lookup name db value_o in
+               ()
             | Nop -> ()
             | DeletePrefix _
             | SyncedSequence _
             | AdminSet _
-            | UserFunction _
             | SetRoutingDelta _
             | SetRouting _
             | SetInterval _

@@ -321,6 +321,12 @@ class client (client : basic_client) =
       fun t dest msg_id ->
         client # update (MarkMsgDelivered t) (dest, msg_id)
 
+    method mark_msgs_delivered : type dest msg.
+                                      (dest, msg) Msg_log.t -> dest ->
+                                      Albamgr_protocol.Protocol.Msg_log.id -> unit Lwt.t =
+      fun t dest msg_id ->
+      client # update (MarkMsgsDelivered t) (dest, msg_id)
+
     method get_alba_id =
       client # query GetAlbaId ()
 

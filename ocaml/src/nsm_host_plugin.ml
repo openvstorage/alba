@@ -59,6 +59,12 @@ let transform_updates namespace_id =
         end
     )
 
+let get_next_msg_id db =
+  let expected_id_s = db # get Keys.next_msg in
+  let expected_id = match expected_id_s with
+    | None -> 0l
+    | Some s -> deserialize Llio.int32_from s in
+  expected_id_s, expected_id
 
 let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (o * Update.Update.t list) Lwt.t = fun db ->
   let open Protocol in
@@ -117,10 +123,7 @@ let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (
         end
     end
     in
-    let expected_id_s = db # get Keys.next_msg in
-    let expected_id = match expected_id_s with
-      | None -> 0l
-      | Some s -> deserialize Llio.int32_from s in
+    let expected_id_s, expected_id = get_next_msg_id db in
     (if id <> expected_id
      then Lwt.return ((), [])
      else begin
@@ -213,6 +216,7 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
     in
     cnt, nsms
   | GetVersion -> Alba_version.summary
+  | GetNextMsgId -> snd (get_next_msg_id db)
   | NSMHStatistics ->
      NSMHStatistics.snapshot statistics req
   | NsmQuery tag ->
