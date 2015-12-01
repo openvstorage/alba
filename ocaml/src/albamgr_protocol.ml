@@ -365,6 +365,17 @@ module Protocol = struct
       | Nsm_host : (Nsm_host.id, Nsm_host_protocol.Protocol.Message.t) t
       | Osd : (Osd.id, Osd.Message.t) t
 
+    type t' = Wrap : _ t -> t'
+
+    let from_buffer buf : t' =
+      match Llio.int8_from buf with
+      | 1 -> Wrap Nsm_host
+      | 2 -> Wrap Osd
+      | k -> raise_bad_tag "Msg_log.t" k
+    let to_buffer buf = function
+      | Wrap Nsm_host -> Llio.int8_to buf 1
+      | Wrap Osd -> Llio.int8_to buf 2
+
     let dest_from_buffer : type dest msg. (dest, msg) t -> dest Llio.deserializer = function
       | Nsm_host -> Llio.string_from
       | Osd -> Llio.int32_from

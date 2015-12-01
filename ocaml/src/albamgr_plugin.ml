@@ -108,13 +108,12 @@ module Keys = struct
       let suffix = serialize (dest_to_buffer t) dest in
       (prefix_prefix t) ^ "msgs/" ^ suffix
 
-    let extract_id_from_key : type dest msg. (dest, msg) t -> Key.t -> string -> id =
-      fun t key prefix ->
-        Llio.int32_be_from (Llio.make_buffer
-                              (Key.get_raw key)
-                              (1 + String.length prefix))
+    let extract_id_from_key key prefix =
+      Llio.int32_be_from (Llio.make_buffer
+                            (Key.get_raw key)
+                            (1 + String.length prefix))
 
-    let extract_id = fun t key prefix ->
+    let extract_id key prefix =
       Llio.int32_be_from (Llio.make_buffer
                             key
                             (String.length prefix))
@@ -178,7 +177,7 @@ module Keys = struct
   end
 end
 
-
+let mark_msgs_delivered_user_function_name = "albamgr_mark_messages_delivered"
 
 module Statistics =
   struct
@@ -542,7 +541,7 @@ let mark_msg_delivered (db : read_user_db) t dest msg_id =
           if not (Plugin_extra.key_has_prefix prefix key)
           then []
           else begin
-              let msg_id' = Keys.Msg_log.extract_id_from_key t key prefix in
+              let msg_id' = Keys.Msg_log.extract_id_from_key key prefix in
               if msg_id' <> msg_id
               then Error.failwith ~payload:"Wrong msg_id for mark_msg_delivered" Error.Unknown
               else begin
@@ -556,6 +555,62 @@ let mark_msg_delivered (db : read_user_db) t dest msg_id =
             end
         end)
 
+let mark_msgs_delivered (db : user_db) t dest msg_id =
+  let read_db = (db :> read_user_db) in
+  let open Protocol in
+  db # with_cursor
+     (fun cur ->
+      let prefix = Keys.Msg_log.prefix t dest in
+      let module KV = WrapReadUserDb(
+                          struct
+                            let db = read_db
+                            let prefix = ""
+                          end) in
+      let module EKV = Key_value_store.Read_store_extensions(KV) in
+      let (_, msgs), _ =
+        EKV.map_range
+          read_db
+          ~first:prefix ~finc:true
+          ~last:(Some (prefix ^ serialize Llio.int32_be_to msg_id,true))
+          ~max:(-1) ~reverse:false
+          (fun cur key ->
+           let msg_id' = Keys.Msg_log.extract_id key prefix in
+           let msg = deserialize (Msg_log.msg_from_buffer t) (KV.cur_get_value cur) in
+           (key, msg_id', msg))
+      in
+      List.iter
+        (fun (key, msg_id, msg) ->
+         let upds = upds_for_delivered_msg read_db t dest msg in
+         db # put key None;
+         List.iter
+           (let open Update in
+            function
+            | Replace (k, None)
+            | Delete k ->
+               db # put k None
+            | Replace (k, Some v)
+            | Set (k, v) ->
+               db # put k (Some v)
+            | Assert_range _
+            | Assert_exists _
+            | Assert _ ->
+               (* all asserts should be noops when executed immediatelly *)
+               ()
+            | Nop -> ()
+            | DeletePrefix _
+            | SyncedSequence _
+            | AdminSet _
+            | UserFunction _
+            | SetRoutingDelta _
+            | SetRouting _
+            | SetInterval _
+            | Sequence _
+            | TestAndSet _
+            | MasterSet _ ->
+               (* these are not (yet?) supported here *)
+               assert false)
+           upds)
+        msgs)
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
@@ -780,7 +835,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~max:10 (* don't overdo it *)
         ~reverse:false
         (fun cur key ->
-         let msg_id = Keys.Msg_log.extract_id t key first in
+         let msg_id = Keys.Msg_log.extract_id key first in
          let msg_s = KV.cur_get_value cur in
          let msg = deserialize (Msg_log.msg_from_buffer t) msg_s in
          (msg_id,msg)
@@ -1368,8 +1423,18 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         return_upds (mark_msg_delivered db t dest msg_id)
     | MarkMsgsDelivered t ->
        fun (dest, msg_id) ->
-       (* TODO *)
-       Error.(failwith Unknown)
+       return_upds
+         [ Update.UserFunction
+             (mark_msgs_delivered_user_function_name,
+              Some
+                (serialize
+                   (Llio.tuple3_to
+                      Msg_log.to_buffer
+                      (Msg_log.dest_to_buffer t)
+                      Llio.int32_to)
+                   (Msg_log.Wrap t,
+                    dest,
+                    msg_id))) ]
     | AddWork -> fun (_cnt, work) ->
       return_upds (add_work_items work)
     | MarkWorkCompleted -> fun id ->
@@ -1932,7 +1997,20 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
 
 
-
+let () = Registry.register
+           mark_msgs_delivered_user_function_name
+           (fun user_db ->
+            function
+            | None -> assert false
+            | Some req_s ->
+               let buf = Llio.make_buffer req_s 0 in
+               let open Protocol in
+               match Msg_log.from_buffer buf with
+               | Msg_log.Wrap msg_t ->
+                  let dest = Msg_log.dest_from_buffer msg_t buf in
+                  let msg_id = Llio.int32_from buf in
+                  mark_msgs_delivered user_db msg_t dest msg_id;
+                  None)
 let () = HookRegistry.register "albamgr" albamgr_user_hook
 let () = Log_plugin.register ()
 let () = Arith64.register()
