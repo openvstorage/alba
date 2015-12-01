@@ -28,9 +28,42 @@ class type basic_client = object
                   ('i, 'o) update -> 'i -> 'o Lwt.t
 end
 
-class client (client : basic_client) =
-  object(self)
-    val supports_update_osds = ref None
+let maybe_use_feature
+        flag
+        name
+        (args : 'args)
+        (use_feature: 'args  -> 'r Lwt.t)
+        (alternative: 'args ->  'r Lwt.t) : 'r Lwt.t
+    =
+    match !flag with
+      | None ->
+         Lwt_log.debug_f "testing %s support" name >>= fun () ->
+         Lwt.catch
+           ( fun () ->
+             use_feature args >>= fun r ->
+             let () = flag := Some true in
+             Lwt.return r
+           )
+           (let open Albamgr_protocol.Protocol.Error in
+            function
+             | Albamgr_exn(Unknown_operation,_) as exn ->
+                Lwt_log.debug_f ~exn "no support for %s" name >>= fun () ->
+                let () = flag := Some false in
+                alternative args
+             | exn -> Lwt.fail exn
+           )
+      | Some true  -> use_feature args
+      | Some false -> alternative args
+
+class client (client : basic_client)  =
+
+object(self)
+        (* TODO: this is an indicator we should have a 'capabilities' call *)
+    val supports_update_osds                = ref None
+    val supports_add_osd2                   = ref None
+    val supports_list_osds_by_osd_id2       = ref None
+    val supports_list_osds_by_long_id2      = ref None
+    val supports_list_decommissioning_osds2 = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -192,9 +225,12 @@ class client (client : basic_client) =
         (preset_name, (List.length osd_ids, osd_ids))
 
     method list_osds_by_osd_id ~first ~finc ~last ~reverse ~max =
-      client # query
-        ListOsdsByOsdId
-        RangeQueryArgs.({ first; finc; last; reverse; max; })
+      let args = RangeQueryArgs.({ first; finc; last; reverse; max; }) in
+      let use_feature args = client # query ListOsdsByOsdId2 args in
+      let alternative args = client # query ListOsdsByOsdId  args in
+      let name = "ListOsdsByOsdId2" in
+      let flag = supports_list_osds_by_osd_id2  in
+      maybe_use_feature flag name args use_feature alternative
 
     method get_osd_by_osd_id ~osd_id =
       self # list_osds_by_osd_id
@@ -204,9 +240,12 @@ class client (client : basic_client) =
       Lwt.return (Option.map snd (List.hd osds))
 
     method list_osds_by_long_id ~first ~finc ~last ~reverse ~max =
-      client # query
-        ListOsdsByLongId
-        RangeQueryArgs.({ first; finc; last; reverse; max; })
+      let args = RangeQueryArgs.({ first; finc; last; reverse; max; })
+      and use_feature args = client # query ListOsdsByLongId2 args
+      and alternative args = client # query ListOsdsByLongId  args
+      and name = "ListOsdsByLongId2"
+      and flag = supports_list_osds_by_long_id2 in
+      maybe_use_feature flag name args use_feature alternative
 
     method get_osd_by_long_id ~long_id =
       self # list_osds_by_long_id
@@ -217,7 +256,9 @@ class client (client : basic_client) =
     method list_all_osds =
       list_all_x
         ~first:""
-        (fun (_, osd_info) -> Osd.get_long_id osd_info.Osd.kind)
+        (fun (_, osd_info) ->
+         let open Nsm_model.OsdInfo in
+         get_long_id osd_info.kind)
         (self # list_osds_by_long_id
            ~last:None
            ~reverse:false ~max:(-1))
@@ -233,39 +274,32 @@ class client (client : basic_client) =
     method list_available_osds =
       client # query ListAvailableOsds ()
 
-    method add_osd osd_info =
-      client # update AddOsd osd_info
+    method add_osd osd_info : unit Lwt.t =
+      let use_feature () = client # update AddOsd2 osd_info in
+      let alternative () = client # update AddOsd  osd_info in
+      let args = ()
+      and flag = supports_add_osd2
+      and name = "AddOsd2" in
+      maybe_use_feature flag name args use_feature alternative
+
+
 
     method update_osd ~long_id changes =
       client # update UpdateOsd (long_id, changes)
 
     method update_osds updates =
-      let do_it () = client # update UpdateOsds updates in
-      let fake_it () =
+      Lwt_log.info "update_osds" >>= fun () ->
+      let use_feature updates = client # update UpdateOsds updates in
+      let alternative updates =
         Lwt_list.fold_left_s
           (fun () (long_id,changes) ->self # update_osd ~long_id changes)
           () updates
       in
-      match !supports_update_osds with
-      | None ->
-         Lwt_log.debug "testing update_osds support" >>= fun () ->
-         Lwt.catch
-           (fun () ->
-            do_it ()
-            >>= fun () ->
-            supports_update_osds := Some true;
-            Lwt.return_unit
-           )
-           (let open Albamgr_protocol.Protocol.Error in
-             function
-             | Albamgr_exn (Unknown_operation,_) as exn ->
-                Lwt_log.debug ~exn "no support; fake it" >>= fun () ->
-                let () = supports_update_osds := Some false in
-                fake_it()
-             | exn -> Lwt.fail exn
-           )
-      | Some false -> fake_it()
-      | Some true  -> do_it()
+      let args = updates
+      and flag = supports_update_osds
+      and name = "update_osds2"
+      in
+      maybe_use_feature flag name args use_feature alternative
 
     method decommission_osd ~long_id =
       client # update DecommissionOsd long_id
@@ -357,12 +391,12 @@ class client (client : basic_client) =
            ~max:(-1) ~reverse:false)
 
     method list_decommissioning_osds ~first ~finc ~last ~reverse ~max =
-      client # query
-        ListDecommissioningOsds
-        RangeQueryArgs.({
-            first; finc; last;
-            max; reverse;
-          })
+      let args = RangeQueryArgs.{ first; finc; last; max; reverse; } in
+      let use_feature args = client # query ListDecommissioningOsds2 args in
+      let alternative args = client # query ListDecommissioningOsds  args in
+      let name = "ListDecommissioningOsds2" in
+      let flag = supports_list_decommissioning_osds2 in
+      maybe_use_feature flag name args use_feature alternative
 
     method list_all_decommissioning_osds =
       list_all_x
@@ -520,8 +554,8 @@ type refresh_result =
   | Retry
   | Res of Albamgr_protocol.Protocol.Arakoon_config.t
 
-let retrieve_cfg_from_any_node current_config =
-    Lwt_log.debug "retrieve_from_any_node" >>= fun () ->
+let retrieve_cfg_from_any_node ~tls current_config =
+    Lwt_log.debug "retrieve_cfg_from_any_node" >>= fun () ->
     let cluster_id, node_hashtbl = current_config in
     let node_names = Hashtbl.fold (fun nn _  acc -> nn :: acc) node_hashtbl [] in
 
@@ -537,7 +571,7 @@ let retrieve_cfg_from_any_node current_config =
             let cfg = from_node_client_cfg node_cfg in
             Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->
             Client_helper.with_client'
-              ~tls:None
+              ~tls
               cfg
               cluster_id
               (fun node_client ->
@@ -558,12 +592,22 @@ let retrieve_cfg_from_any_node current_config =
 
 let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
   let open Client_helper in
-  find_master' ~tls:None ccfg >>= function
+  let tls_config =
+    let open Arakoon_client_config in
+    ccfg.ssl_cfg |> Option.map Tls.of_ssl_cfg
+  in
+  let tls =
+      Tls.to_client_context tls_config
+  in
+  Lwt_log.debug_f "Albamgr_client.make_client :%s " ([%show : Tls.t option] tls_config)
+  >>= fun () ->
+  find_master' ~tls ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->
      let open Arakoon_client_config in
+     let conn_info = Networking2.make_conn_info ncfg.ips ncfg.port tls_config in
      Networking2.first_connection'
        buffer_pool
-       ncfg.ips ncfg.port
+       ~conn_info
        ~close_msg:"closing albamgr"
      >>= fun (fd, conn, closer) ->
      Lwt.catch
@@ -590,13 +634,17 @@ let _msg_of_exception = function
      Printf.sprintf "%s: %s" (Arakoon_exc.string_of_rc rc) msg
   | exn -> Printexc.to_string exn
 
-let _with_client ~attempts cfg f =
+let _with_client ~attempts cfg tls_config f =
+  let ccfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg in
+  let tls = Tls.to_client_context tls_config in
   let attempt_it () =
     Lwt.catch
       (fun () ->
+       Lwt_log.debug_f "_with_client: tls_config=%s" ([%show : Tls.t option] tls_config)
+       >>= fun () ->
        Client_helper.with_master_client'
-         ~tls:None
-         (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg cfg)
+         ~tls
+         ccfg
          (fun c -> wrap_around ~consistency:Arakoon_client.Consistent c >>= fun wc -> f wc)
        >>= fun r ->
        Lwt.return (`Success r)
@@ -624,7 +672,7 @@ let _with_client ~attempts cfg f =
        end
   in loop attempts 1.0
 
-let with_client' ?(attempts=1) cfg f =
+let with_client' ?(attempts=1) cfg ~tls_config f =
   _with_client ~attempts
-    cfg
+    cfg tls_config
     (fun c -> f (new client (c :> basic_client)))

@@ -28,11 +28,13 @@ module Protocol = struct
     type node_client_cfg = { ips : string list;
                              port : int; }
     [@@deriving show]
-    type t = cluster_id * (node_name, node_client_cfg) Hashtbl.t
+    type t = cluster_id *  (node_name, node_client_cfg) Hashtbl.t
 
-    let show (cluster_id, cfgs) =
-      Printf.sprintf "cluster_id = %s , %s"
+    let show ((cluster_id,  cfgs):t) =
+      Printf.sprintf
+        "cluster_id = %s , %s"
         cluster_id
+        (*([%show : Tls.t option] tlso)*)
         ([%show : (string * node_client_cfg) list]
            (Hashtbl.fold (fun k v acc -> (k,v) :: acc) cfgs []))
     let pp formatter t =
@@ -84,11 +86,10 @@ module Protocol = struct
         node_names;
       (cluster_id, node_cfgs)
 
-    let from_node_client_cfg cfg =
-      { Arakoon_client_config.ips = cfg.ips;
-        port = cfg.port }
-
-    let to_arakoon_client_cfg ((cluster_id, cfgs) : t) =
+      let from_node_client_cfg cfg =
+        { Arakoon_client_config.ips = cfg.ips;
+          port = cfg.port }
+    let to_arakoon_client_cfg tlso ((cluster_id, cfgs) : t) : Arakoon_client_config.t =
       {
         Arakoon_client_config.cluster_id;
         node_cfgs =
@@ -97,7 +98,7 @@ module Protocol = struct
                (name, from_node_client_cfg cfg) :: acc)
             cfgs
             [];
-        ssl_cfg = None;
+        ssl_cfg = (Option.map Tls.to_ssl_cfg tlso);
       }
   end
 
@@ -183,11 +184,11 @@ module Protocol = struct
   end
 
   module Osd = struct
-    include Nsm_model.OsdInfo
 
     type id = Nsm_model.osd_id [@@deriving show, yojson]
 
     module Update = struct
+      open Nsm_model.OsdInfo
       type t = {
         ips' : ip list option;
         port' : port option;
@@ -221,12 +222,30 @@ module Protocol = struct
         =
         let my_compare x y = compare y x in
         let kind =
-          let ips, port = get_ips_port osd.kind in
-          let ips' = Option.get_some_default ips ips' in
-          let port' = Option.get_some_default port port' in
+          let ips, port, tls = get_conn_info osd.kind in
+          let conn_info' =
+            let ips'  = Option.get_some_default ips ips' in
+            let port' = Option.get_some_default port port' in
+            let real_port, use_tls =
+              let open Tiny_json in
+              match other' with
+              | None -> port', tls
+              | Some other' ->
+                 try
+                   let r = Json.parse other' in
+                   let tlsPort = Json.as_int (Json.getf "tlsPort" r)  in
+                   tlsPort, true
+                 with
+                 | Json.JSON_InvalidField("tlsPort") -> port', false
+                 | ex ->
+                    let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
+                    port', false
+            in
+            (ips',real_port, use_tls)
+          in
           match osd.kind with
-          | Asd (_, _, asd_id) -> Asd (ips', port', asd_id)
-          | Kinetic (_, _, k_id) -> Kinetic (ips', port', k_id)
+          | Asd (_, asd_id)   -> Asd (conn_info', asd_id)
+          | Kinetic (_, k_id) -> Kinetic (conn_info', k_id)
         in
         let max_n = 10 in
         { node_id = osd.node_id;
@@ -313,8 +332,10 @@ module Protocol = struct
     end
 
 
-    let from_buffer_with_claim_info = Llio.pair_from ClaimInfo.from_buffer from_buffer
-    let to_buffer_with_claim_info = Llio.pair_to ClaimInfo.to_buffer to_buffer
+    let from_buffer_with_claim_info =
+      Llio.pair_from ClaimInfo.from_buffer Nsm_model.OsdInfo.from_buffer
+    let to_buffer_with_claim_info ~version =
+      Llio.pair_to ClaimInfo.to_buffer (Nsm_model.OsdInfo.to_buffer ~version)
 
     module Message = struct
       type t =
@@ -378,7 +399,7 @@ module Protocol = struct
       | Nsm_host -> Nsm_host_protocol.Protocol.Message.from_buffer
       | Osd -> Osd.Message.from_buffer
     let msg_to_buffer : type dest msg. (dest, msg) t -> msg Llio.serializer = function
-      | Nsm_host -> Nsm_host_protocol.Protocol.Message.to_buffer
+      | Nsm_host -> (Nsm_host_protocol.Protocol.Message.to_buffer ~version:2)
       | Osd -> Osd.Message.to_buffer
   end
 
@@ -805,18 +826,22 @@ module Protocol = struct
   end
 
   module RangeQueryArgs = Nsm_protocol.Protocol.RangeQueryArgs
-
+  open Nsm_model
   type ('i, 'o) query =
     | ListNsmHosts : (string RangeQueryArgs.t,
                       (Nsm_host.id * Nsm_host.t * int64) counted_list_more) query
     | ListNamespaces : (string RangeQueryArgs.t,
                         (Namespace.name * Namespace.t) counted_list_more) query
 
-    | ListAvailableOsds : (unit, Osd.t Std.counted_list) query
+    | ListAvailableOsds : (unit, OsdInfo.t Std.counted_list) query
     | ListOsdsByOsdId : (Osd.id RangeQueryArgs.t,
-                         (Osd.id * Osd.t) counted_list_more) query
-    | ListOsdsByLongId : (Osd.long_id RangeQueryArgs.t,
-                          (Osd.ClaimInfo.t * Osd.t) counted_list_more) query
+                         (Osd.id * OsdInfo.t) counted_list_more) query
+    | ListOsdsByOsdId2 : (Osd.id RangeQueryArgs.t,
+                         (Osd.id * OsdInfo.t) counted_list_more) query
+    | ListOsdsByLongId : (OsdInfo.long_id RangeQueryArgs.t,
+                          (Osd.ClaimInfo.t * OsdInfo.t) counted_list_more) query
+    | ListOsdsByLongId2 : (OsdInfo.long_id RangeQueryArgs.t,
+                           (Osd.ClaimInfo.t * OsdInfo.t) counted_list_more) query
 
     | ListNamespaceOsds : (Namespace.id * Osd.id RangeQueryArgs.t,
                            (Osd.id * Osd.NamespaceLink.state) counted_list_more) query
@@ -834,9 +859,11 @@ module Protocol = struct
                                 Namespace.t) counted_list_more)
                              query
     | GetVersion : (unit, (int * int * int * string)) query
-    | CheckClaimOsd : (Osd.long_id, unit) query
+    | CheckClaimOsd : (OsdInfo.long_id, unit) query
     | ListDecommissioningOsds : (Osd.id RangeQueryArgs.t,
-                                 (Osd.id * Osd.t) counted_list_more) query
+                                 (Osd.id * OsdInfo.t) counted_list_more) query
+    | ListDecommissioningOsds2 : (Osd.id RangeQueryArgs.t,
+                                 (Osd.id * OsdInfo.t) counted_list_more) query
     | ListOsdNamespaces : (Osd.id * Namespace.id RangeQueryArgs.t,
                            Namespace.id counted_list_more) query
     | Statistics : (bool, Generic.t) query
@@ -852,12 +879,12 @@ module Protocol = struct
     | CreateNamespace : (Namespace.name * Nsm_host.id * Preset.name option, Namespace.t) update
     | DeleteNamespace : (Namespace.name, Nsm_host.id) update
     | RecoverNamespace : (Namespace.name * Nsm_host.id, unit) update
-    | AddOsd : (Osd.t, unit) update
-    | UpdateOsd : (Osd.long_id * Osd.Update.t, unit) update
-    | UpdateOsds : ((Osd.long_id * Osd.Update.t) list, unit) update
-    | DecommissionOsd : (Osd.long_id, unit) update
-    | MarkOsdClaimed : (Osd.long_id, Osd.id) update
-    | MarkOsdClaimedByOther : (Osd.long_id * alba_id, unit) update
+    | AddOsd : (OsdInfo.t, unit) update
+    | UpdateOsd : (OsdInfo.long_id * Osd.Update.t, unit) update
+    | UpdateOsds : ((OsdInfo.long_id * Osd.Update.t) list, unit) update
+    | DecommissionOsd : (OsdInfo.long_id, unit) update
+    | MarkOsdClaimed : (OsdInfo.long_id, Osd.id) update
+    | MarkOsdClaimedByOther : (OsdInfo.long_id * alba_id, unit) update
     | MarkMsgDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
     | AddWork : (Work.t Std.counted_list, unit) update
     | MarkWorkCompleted : (Work.id, unit) update
@@ -872,13 +899,16 @@ module Protocol = struct
     | RemoveParticipant : (string * (string * int), unit) update
     | UpdateProgress : (string * Progress.Update.t, unit) update
     | UpdateMaintenanceConfig : (Maintenance_config.Update.t, Maintenance_config.t) update
+    | AddOsd2 : (OsdInfo.t, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
     | ListNsmHosts -> RangeQueryArgs.from_buffer Llio.string_from
     | ListAvailableOsds -> Llio.unit_from
-    | ListOsdsByOsdId -> RangeQueryArgs.from_buffer Llio.int32_from
-    | ListOsdsByLongId -> RangeQueryArgs.from_buffer Llio.string_from
+    | ListOsdsByOsdId   -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListOsdsByOsdId2  -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListOsdsByLongId  -> RangeQueryArgs.from_buffer Llio.string_from
+    | ListOsdsByLongId2 -> RangeQueryArgs.from_buffer Llio.string_from
     | ListNamespaces -> RangeQueryArgs.from_buffer Llio.string_from
     | ListNamespaceOsds ->
       Llio.pair_from
@@ -892,7 +922,8 @@ module Protocol = struct
     | ListNamespacesById -> RangeQueryArgs.from_buffer Llio.int32_from
     | GetVersion -> Llio.unit_from
     | CheckClaimOsd -> Llio.string_from
-    | ListDecommissioningOsds -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListDecommissioningOsds  -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListDecommissioningOsds2 -> RangeQueryArgs.from_buffer Llio.int32_from
     | ListOsdNamespaces ->
       Llio.pair_from
         Llio.int32_from
@@ -907,8 +938,10 @@ module Protocol = struct
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
     | ListAvailableOsds -> Llio.unit_to
-    | ListOsdsByOsdId -> RangeQueryArgs.to_buffer Llio.int32_to
-    | ListOsdsByLongId -> RangeQueryArgs.to_buffer Llio.string_to
+    | ListOsdsByOsdId   -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListOsdsByOsdId2  -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListOsdsByLongId  -> RangeQueryArgs.to_buffer Llio.string_to
+    | ListOsdsByLongId2 -> RangeQueryArgs.to_buffer Llio.string_to
     | ListNamespaces -> RangeQueryArgs.to_buffer Llio.string_to
     | ListNamespaceOsds ->
       Llio.pair_to
@@ -922,7 +955,8 @@ module Protocol = struct
     | ListNamespacesById -> RangeQueryArgs.to_buffer Llio.int32_to
     | GetVersion -> Llio.unit_to
     | CheckClaimOsd -> Llio.string_to
-    | ListDecommissioningOsds -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListDecommissioningOsds  -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListDecommissioningOsds2 -> RangeQueryArgs.to_buffer Llio.int32_to
     | ListOsdNamespaces ->
       Llio.pair_to
         Llio.int32_to
@@ -942,14 +976,21 @@ module Protocol = struct
            Nsm_host.from_buffer
            Llio.int64_from)
     | ListAvailableOsds ->
-      Llio.counted_list_from Osd.from_buffer
+      Llio.counted_list_from OsdInfo.from_buffer
     | ListOsdsByOsdId ->
       counted_list_more_from
         (Llio.pair_from
            Llio.int32_from
-           Osd.from_buffer)
+           OsdInfo.from_buffer)
+    | ListOsdsByOsdId2 ->
+      counted_list_more_from
+        (Llio.pair_from
+           Llio.int32_from
+           OsdInfo.from_buffer)
     | ListOsdsByLongId ->
-      counted_list_more_from Osd.from_buffer_with_claim_info
+       counted_list_more_from Osd.from_buffer_with_claim_info
+    | ListOsdsByLongId2 ->
+       counted_list_more_from Osd.from_buffer_with_claim_info
     | ListNamespaces ->
       counted_list_more_from
         (Llio.pair_from Llio.string_from Namespace.from_buffer)
@@ -994,7 +1035,12 @@ module Protocol = struct
       counted_list_more_from
         (Llio.pair_from
            Llio.int32_from
-           Osd.from_buffer)
+           OsdInfo.from_buffer)
+    | ListDecommissioningOsds2 ->
+       counted_list_more_from
+         (Llio.pair_from
+            Llio.int32_from
+            OsdInfo.from_buffer)
     | ListOsdNamespaces -> counted_list_more_from Llio.int32_from
     | Statistics     -> Generic.from_buffer
     | CheckLease -> Llio.int_from
@@ -1019,14 +1065,21 @@ module Protocol = struct
            Nsm_host.to_buffer
            Llio.int64_to)
     | ListAvailableOsds ->
-      Llio.counted_list_to Osd.to_buffer
+      Llio.counted_list_to (OsdInfo.to_buffer ~version:2)
     | ListOsdsByOsdId ->
       counted_list_more_to
         (Llio.pair_to
            Llio.int32_to
-           Osd.to_buffer)
+           (OsdInfo.to_buffer ~version:1))
+    | ListOsdsByOsdId2 ->
+      counted_list_more_to
+        (Llio.pair_to
+           Llio.int32_to
+           (OsdInfo.to_buffer ~version:2))
     | ListOsdsByLongId ->
-      counted_list_more_to Osd.to_buffer_with_claim_info
+       counted_list_more_to (Osd.to_buffer_with_claim_info ~version:1)
+    | ListOsdsByLongId2 ->
+       counted_list_more_to (Osd.to_buffer_with_claim_info ~version:2)
     | ListNamespaces ->
       counted_list_more_to
         (Llio.pair_to Llio.string_to Namespace.to_buffer)
@@ -1071,7 +1124,12 @@ module Protocol = struct
       counted_list_more_to
         (Llio.pair_to
            Llio.int32_to
-           Osd.to_buffer)
+           (OsdInfo.to_buffer ~version:1))
+    | ListDecommissioningOsds2 ->
+      counted_list_more_to
+        (Llio.pair_to
+           Llio.int32_to
+           (OsdInfo.to_buffer ~version:2))
     | ListOsdNamespaces ->
        counted_list_more_to Llio.int32_to
     | Statistics -> Generic.to_buffer
@@ -1092,7 +1150,7 @@ module Protocol = struct
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
     | UpdateNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
-    | AddOsd -> Osd.from_buffer
+    | AddOsd -> OsdInfo.from_buffer
     | UpdateOsd ->
       Llio.pair_from
         Llio.string_from
@@ -1150,11 +1208,12 @@ module Protocol = struct
            Llio.int_from)
     | UpdateProgress -> Llio.pair_from Llio.string_from Progress.Update.from_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.from_buffer
+    | AddOsd2 -> OsdInfo.from_buffer
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
     | UpdateNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
-    | AddOsd -> Osd.to_buffer
+    | AddOsd -> OsdInfo.to_buffer ~version:1
     | UpdateOsd -> Llio.pair_to Llio.string_to Osd.Update.to_buffer
     | UpdateOsds ->
        Llio.list_to (Llio.pair_to Llio.string_to Osd.Update.to_buffer)
@@ -1206,6 +1265,7 @@ module Protocol = struct
            Llio.int_to)
     | UpdateProgress -> Llio.pair_to Llio.string_to Progress.Update.to_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.to_buffer
+    | AddOsd2 -> OsdInfo.to_buffer ~version:2
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -1234,6 +1294,8 @@ module Protocol = struct
     | RemoveParticipant ->  Llio.unit_from
     | UpdateProgress     -> Llio.unit_from
     | UpdateMaintenanceConfig -> Maintenance_config.from_buffer
+    | AddOsd2                 -> Llio.unit_from
+
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
     | UpdateNsmHost   -> Llio.unit_to
@@ -1260,6 +1322,7 @@ module Protocol = struct
     | RemoveParticipant ->  Llio.unit_to
     | UpdateProgress     -> Llio.unit_to
     | UpdateMaintenanceConfig -> Maintenance_config.to_buffer
+    | AddOsd2                 -> Llio.unit_to
 
 
   type request =
@@ -1328,6 +1391,11 @@ module Protocol = struct
 
                       Wrap_q GetMaintenanceConfig, 64l, "GetMaintenanceConfig";
                       Wrap_u UpdateMaintenanceConfig, 65l, "UpdateMaintenanceConfig";
+
+                      Wrap_u AddOsd2,                  66l, "AddOsd2";
+                      Wrap_q ListOsdsByOsdId2,         67l, "ListOsdsByOsdId2";
+                      Wrap_q ListOsdsByLongId2,        68l, "ListOsdsByLongId2";
+                      Wrap_q ListDecommissioningOsds2, 69l, "ListDecommissioningOsds2";
                     ]
 
 

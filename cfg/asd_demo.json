@@ -1,16 +1,32 @@
 {
- "log_level":"debug",
- // should be an absolute path
- "home": "/tmp/asd_demo",
- "node_id": "xxxxxxxxxx",
- // optionally specify the ips to listen for incoming client connections
- // "ips" : ["1.2.3.4", "2.3.4.4"],
- "port": 10000,
- // optional asd_id is optional
- "asd_id" : "a globally unique id for the asd",
- // optional, we use 90% of the file system capacity
- "limit" : 90
- // turn off syncing of batches;
- // don't uncomment this unless you know what you're doing. warranty void
- //, "__sync_dont_use" : false
+    "log_level":"debug",
+    // should be an absolute path
+    "home": "/tmp/asd_demo",
+    "node_id": "xxxxxxxxxx",
+    // optionally specify the ips to listen for incoming client connections
+    // "ips" : ["1.2.3.4", "2.3.4.4"],
+
+    // port is optional; If you don't specify
+    // the port, then don't run the server.
+    // So you need to specify a port here OR
+    // a port in the tls dict
+    // (Obviously: both is allowed too,
+    // and it means you run both servers).
+
+    "port": 10000,
+    // optional asd_id is optional
+    "asd_id" : "a globally unique id for the asd"
+    // optional, we use 90% of the file system capacity
+    , "limit" : 90
+
+    // optional:
+    , "tls" : {"cert": "path/to/cert",
+               "key" : "path/to/key",
+               "port": 10500
+              }
+
+    // turn off syncing of batches;
+    // don't uncomment this unless you know what you're doing. WARRANTY VOID
+    //, "__sync_dont_use" : false
+
 }

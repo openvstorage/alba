@@ -183,7 +183,7 @@ module Inner = struct
       loop [] bags n
 end
 
-open Albamgr_protocol.Protocol
+open Nsm_model
 
 module StringSet = Set.Make(String)
 
@@ -197,13 +197,12 @@ let group_weight d_nodes =
   sum /. (float tot)
 
 let build_initial_state info =
-  let open Osd in
 
   let per_node = Hashtbl.create 47 in
   let node_ids = ref StringSet.empty in
   Hashtbl.iter
     (fun d_id d_info ->
-     let node_id = d_info.node_id in
+     let node_id = d_info.OsdInfo.node_id in
      Hashtbl.add per_node node_id (d_id,d_info);
      node_ids := StringSet.add node_id !node_ids
     ) info;
@@ -216,8 +215,8 @@ let build_initial_state info =
        let d_nodes =
          List.map
            (fun (osd_id, info) ->
-            let tf = Int64.to_float info.total in
-            let uf = Int64.to_float info.used in
+            let tf = Int64.to_float info.OsdInfo.total in
+            let uf = Int64.to_float info.OsdInfo.used in
             let weight = tf /. (1.0 +. uf) in
             D(weight, 0, osd_id))
            ds
@@ -256,5 +255,5 @@ let choose_extra_devices n info chosen =
     )
     r_inner
 
-let choose_devices n info : (Osd.id * Osd.t ) list =
+let choose_devices n info : (Albamgr_protocol.Protocol.Osd.id * OsdInfo.t ) list =
   choose_extra_devices n info []

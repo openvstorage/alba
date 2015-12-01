@@ -36,8 +36,10 @@ let test_unknown_operation () =
   Lwt_main.run
     begin
       let open Nsm_host_client in
+      let tls_config = Albamgr_test.get_tls_config() in
       with_client
         (Albamgr_test.get_ccfg ())
+        tls_config
         (fun client ->
          client # do_unknown_operation >>= fun () ->
          let client' = new client (client :> basic_client) in
@@ -45,7 +47,7 @@ let test_unknown_operation () =
          client # do_unknown_operation >>= fun () ->
          Lwt.return ())
     end
- 
+
 let suite = "Nsm_protocol" >::: [
     "doubles" >:: doubles;
     "test_unknown_operation" >:: test_unknown_operation;

@@ -23,9 +23,10 @@ let buffer_pool = Buffer_pool.osd_buffer_pool
 let rec wait_asd_connection port asd_id () =
   Lwt.catch
     (fun () ->
+     let conn_info = Networking2.make_conn_info [ "::1" ] port None in
      Asd_client.with_client
        buffer_pool
-       [ "::1" ] port asd_id
+       ~conn_info  asd_id
        (fun client -> Lwt.return `Continue))
     (function
       | exn when Networking2.is_connection_failure_exn exn ->
@@ -40,6 +41,19 @@ let rec wait_asd_connection port asd_id () =
 
 let with_asd_client ?(is_restart=false) test_name port f =
   let path = "/tmp/alba/" ^ test_name in
+  let tls_config = Albamgr_test.get_tls_config () in (* client config *)
+  let tls =
+    match tls_config
+    with
+    | None -> None
+    | Some _ ->
+       let path = "/tmp/arakoon/test_discover_claimed/" in
+       let open Asd_config.Config in
+       Some {cert = path ^ "test_discover_claimed.pem";
+             key  = path ^ "test_discover_claimed.key";
+             port = (port + 500)
+            }
+  in
   if not is_restart
   then begin
     Unix.system (Printf.sprintf "rm -rf %s" path) |> ignore;
@@ -51,7 +65,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
     Lwt.pick
       [ (Asd_server.run_server
            ~cancel
-           [] port path
+           [] (Some port) path
            ~asd_id
            ~node_id:"bla"
            ~slow:false
@@ -59,15 +73,17 @@ let with_asd_client ?(is_restart=false) test_name port f =
            ~buffer_size:(768*1024)
            ~rocksdb_max_open_files:256
            ~limit:90L
+           ~tls
            ~multicast:(Some 10.0) >>= fun () ->
          Lwt.fail_with "Asd server stopped!");
         begin
           Lwt_unix.with_timeout
             5.
             (wait_asd_connection port asd_id)>>= fun () ->
+          let conn_info = Networking2.make_conn_info [ "::1" ] port None in
           Asd_client.with_client
             buffer_pool
-            [ "::1" ] port (Some test_name)
+            ~conn_info (Some test_name)
             f >>= fun r ->
           Lwt_condition.broadcast cancel ();
           Lwt.return r
@@ -242,7 +258,8 @@ let test_protocol_version port () =
   let protocol_test port =
     Lwt.catch
       (fun () ->
-       Networking2.first_connection' buffer_pool ["::1"] port
+       let conn_info = Networking2.make_conn_info ["::1"] port None in
+       Networking2.first_connection' buffer_pool ~conn_info
        >>= fun (_, (ic,oc), closer) ->
        Lwt.finalize
          (fun () ->
@@ -267,7 +284,7 @@ let test_protocol_version port () =
   let t =
     Lwt.pick [
         Asd_server.run_server
-          [] port path
+          [] (Some port) path
           ~asd_id
           ~node_id:"node"
           ~slow:false
@@ -275,6 +292,7 @@ let test_protocol_version port () =
           ~buffer_size:(768*1024)
           ~rocksdb_max_open_files:256
           ~limit:90L
+          ~tls:None
           ~multicast:(Some 10.0);
         Lwt_unix.with_timeout
           5.
@@ -285,18 +303,15 @@ let test_protocol_version port () =
   in
   Lwt_main.run t
 
-let test_unknown_operation () =
-  Lwt_main.run
-    begin
-      Asd_client.with_client
-        buffer_pool
-        [ "::1" ] 8000 None
-        (fun asd ->
-         asd # do_unknown_operation >>= fun () ->
-         asd # do_unknown_operation >>= fun () ->
-         asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.Slice.wrap_string "x" ] >>= fun _ ->
-         Lwt.return ())
-    end
+let test_unknown_operation port () =
+  test_with_asd_client
+    "test_unknown_operation" port
+    (fun asd ->
+     asd # do_unknown_operation >>= fun () ->
+     asd # do_unknown_operation >>= fun () ->
+     asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.Slice.wrap_string "x" ] >>= fun _ ->
+     Lwt.return ()
+    )
 
 open OUnit
 
@@ -309,5 +324,5 @@ let suite = "asd_test" >:::[
     "test_startup" >:: test_startup 7905 7906;
     "test_protocol_version" >:: test_protocol_version 7907;
     "test_multi_exists" >:: test_multi_exists 7908;
-    "test_unknown_operation" >:: test_unknown_operation;
+    "test_unknown_operation" >:: test_unknown_operation 7909;
   ]

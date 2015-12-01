@@ -75,7 +75,7 @@ let add_seen t =
 
 let add_ips_port t ips port =
   t.ips <- Some ips;
-  t.port <- Some port
+  t.port <- port
 
 let add_disk_usage t (used, total) =
   t.used <- Some used;

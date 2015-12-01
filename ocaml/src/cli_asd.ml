@@ -21,43 +21,18 @@ open Checksum
 open Slice
 open Asd_protocol
 
-module Config = struct
-  type t = {
-    ips : (string list       [@default []]);
-    port : int;
-    node_id : string;
-    home : string;
-    log_level : string;
-    asd_id : (string option  [@default None]);
-    __sync_dont_use : (bool  [@default true]);
-    limit : (int64           [@default 99L]);
-    buffer_size : (int       [@default (768*1024)]);
-    multicast: (float option [@default (Some 10.0)]);
-  } [@@deriving yojson, show]
-end
+open Asd_config
 
 
 let asd_start cfg_file slow =
-  let read_cfg () =
-    Lwt_extra2.read_file cfg_file >>= fun txt ->
-    Lwt_log.debug_f "Found the following config: %s" txt >>= fun () ->
-    let config = Config.of_yojson (Yojson.Safe.from_string txt) in
-    (match config with
-     | `Error err ->
-       Lwt_log.warning_f "Error while parsing cfg file: %s" err
-     | `Ok cfg ->
-       Lwt_log.info_f
-         "Interpreted the config as: %s"
-         ([%show : Config.t] cfg)) >>= fun () ->
-    Lwt.return config
-  in
+
   let t () =
-    read_cfg () >>= function
+    read_cfg cfg_file >>= function
     | `Error err -> failwith err
     | `Ok cfg ->
 
       let ips, port, home, node_id, log_level, asd_id,
-          fsync, limit, multicast, buffer_size
+          fsync, limit, multicast, buffer_size, tls
         =
         let open Config in
         cfg.ips, cfg.port,
@@ -68,7 +43,8 @@ let asd_start cfg_file slow =
         cfg.__sync_dont_use,
         cfg.limit,
         cfg.multicast,
-        cfg.buffer_size
+        cfg.buffer_size,
+        cfg.tls
       in
 
       (if not fsync
@@ -82,7 +58,7 @@ let asd_start cfg_file slow =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
             let handle () =
               Lwt_log.info_f "Received USR1, reloading log level from config file" >>= fun () ->
-              read_cfg () >>= function
+              read_cfg cfg_file >>= function
               | `Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
               | `Ok cfg ->
@@ -95,6 +71,7 @@ let asd_start cfg_file slow =
 
       Asd_server.run_server ips port home ~asd_id ~node_id ~slow
                             ~fsync ~limit ~multicast ~buffer_size
+                            ~tls
                             ~rocksdb_max_open_files:256
   in
 
@@ -122,35 +99,34 @@ let asd_start_cmd =
 
 let buffer_pool = Buffer_pool.osd_buffer_pool
 
-let run_with_asd_client' host port asd_id f =
+let run_with_asd_client' ~conn_info asd_id f =
   lwt_cmd_line
     false
     (fun () ->
      Asd_client.with_client
        buffer_pool
-       host port asd_id
+       ~conn_info asd_id
        f)
 
-let with_osd_client
-      ips port osd_id f =
-  Discovery.get_kind buffer_pool ips port >>= function
+let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
+  Discovery.get_kind buffer_pool conn_info >>= function
   | None -> failwith "what kind is this?"
   | Some k ->
-     Remotes.Pool.Osd.factory buffer_pool k >>= fun (client, closer) ->
+     let open Networking2 in
+     Remotes.Pool.Osd.factory conn_info.tls_config buffer_pool k >>= fun (client, closer) ->
      Lwt.finalize
        (fun () -> f client)
        closer
 
-let run_with_osd_client'
-      (ips:string list)
-      (port:int) osd_id f =
-    lwt_cmd_line
-      false
-      (fun () -> with_osd_client ips port osd_id f)
+let run_with_osd_client' conn_info osd_id f =
+  lwt_cmd_line
+    false
+    (fun () -> with_osd_client conn_info osd_id f)
 
-let asd_set host port asd_id key value =
+let asd_set hosts port tls_config asd_id key value =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    host port asd_id
+    ~conn_info asd_id
     (fun client ->
      let checksum = Checksum.NoChecksum in
      Lwt_log.warning "checksum option will be `NoChecksum`"
@@ -172,15 +148,19 @@ let asd_set_cmd =
                    pos 1 (some string) None &
                    info [] ~docv:"VALUE" ~doc) in
   let asd_set_t = Term.(pure asd_set
-                        $ hosts $ (port 8_000) $ lido
-                        $ key $ value) in
+                        $ hosts $ (port 8_000) $ tls_config
+                        $ lido
+                        $ key $ value
+
+                  ) in
   let info =
     let doc = "perform a set on a remote ASD" in
     Term.info "asd-set" ~doc in asd_set_t, info
 
-let asd_get_version host port asd_id =
+let asd_get_version hosts port tls_config asd_id =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    host port asd_id
+    ~conn_info asd_id
     (fun client ->
      client # get_version () >>= fun (major,minor,patch, hash) ->
      Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
@@ -189,16 +169,18 @@ let asd_get_version host port asd_id =
 let asd_get_version_cmd =
   let asd_get_version_t =
     Term.(pure asd_get_version
-          $ hosts $ (port 8_000) $ lido
+          $ hosts $ (port 8_000) $ tls_config
+          $ lido
     ) in
   let info = Term.info "asd-get-version"
                        ~doc:"get remote version"
   in
   asd_get_version_t, info
 
-let asd_multi_get host port asd_id (keys:string list) =
+let asd_multi_get hosts port tls_config asd_id (keys:string list) =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    host port asd_id
+    ~conn_info asd_id
     (fun client ->
 
      client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys)
@@ -212,7 +194,8 @@ let asd_multi_get_cmd =
                  pos_all string [] &
                  info [] ~docv:"KEYS" ~doc) in
   let asd_multi_get_t = Term.(pure asd_multi_get
-                              $ hosts $ (port 8_000) $ lido
+                              $ hosts $ (port 8_000) $ tls_config
+                              $ lido
                               $ keys) in
   let info =
     let doc = "perform a multi get on a remote ASD" in
@@ -220,9 +203,10 @@ let asd_multi_get_cmd =
   in asd_multi_get_t, info
 
 
-let asd_delete host port asd_id key =
+let asd_delete hosts port tls_config asd_id key =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    host port asd_id
+    ~conn_info asd_id
     (fun client -> client # delete ~prio:Osd.High (Slice.wrap_string key))
 
 let asd_delete_cmd =
@@ -231,7 +215,8 @@ let asd_delete_cmd =
                  pos 0 (some string) None &
                  info [] ~docv:"KEY" ~doc) in
   let asd_delete_t = Term.(pure asd_delete
-                           $ hosts $ (port 8_000) $ lido
+                           $ hosts $ (port 8_000) $ tls_config
+                           $ lido
                            $ key)
   in
   let info =
@@ -240,11 +225,12 @@ let asd_delete_cmd =
   in asd_delete_t, info
 
 
-let asd_range host port asd_id first =
+let asd_range hosts port tls_config asd_id first =
   let finc = true
   and last = None in
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    host port asd_id
+    ~conn_info asd_id
     (fun client ->
      client # range
             ~prio:Osd.High
@@ -267,7 +253,8 @@ let asd_range_cmd =
          & info ["f";"first"] ~docv:"FIRST" ~doc)
   in
   let asd_range_t = Term.(pure asd_range
-                          $ hosts $ (port 8_000) $ lido
+                          $ hosts $ (port 8_000) $tls_config
+                          $ lido
                           $ first) in
   let info =
     let doc = "range query on a remote ASD" in
@@ -275,18 +262,19 @@ let asd_range_cmd =
   in
   asd_range_t, info
 
-let osd_bench host port osd_id
+let osd_bench hosts port tls_config osd_id
               n_clients n
               value_size power prefix
               scenarios
   =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
   lwt_cmd_line
     false
     (fun () ->
      Osd_bench.do_scenarios
        (fun f ->
         with_osd_client
-          host port osd_id
+          conn_info osd_id
           f)
        n_clients n
        value_size power prefix
@@ -341,7 +329,8 @@ let osd_bench_cmd =
          & info [ "scenario" ])
   in
   let osd_bench_t = Term.(pure osd_bench
-                          $ hosts $ port 10000 $ lido
+                          $ hosts $ port 10000 $ tls_config
+                          $ lido
                           $ n_clients 1
                           $ n 10000
                           $ value_size 16384
@@ -357,7 +346,7 @@ let osd_bench_cmd =
   in
   osd_bench_t, info
 
-let asd_statistics hosts port_o asd_id to_json config_o clear =
+let asd_statistics hosts port_o asd_id to_json config_o tls_config clear =
   let open Asd_statistics in
   let _inner =
     (fun (client:Asd_client.client) ->
@@ -372,11 +361,10 @@ let asd_statistics hosts port_o asd_id to_json config_o clear =
                Asd_protocol.Protocol.code_to_description)
     )
   in
-  let from_asd hosts port asd_id =
+  let from_asd hosts port tls_config asd_id =
     begin
-       run_with_asd_client'
-         hosts port asd_id
-         _inner
+      let conn_info = Networking2.make_conn_info hosts port tls_config in
+      run_with_asd_client' ~conn_info asd_id _inner
     end
   in
   match port_o, config_o with
@@ -385,7 +373,7 @@ let asd_statistics hosts port_o asd_id to_json config_o clear =
      begin
        let t () =
          with_alba_client
-           cfg_file
+           cfg_file tls_config
            (
              (*(fun alba_client -> client # with_osd osd_id _inner) *)
             fun alba_client ->
@@ -400,19 +388,20 @@ let asd_statistics hosts port_o asd_id to_json config_o clear =
                   in
                   Lwt.fail (Failure msg)
                 | Some (claim_info, osd) ->
-                  let ips,port =
-                    let open Albamgr_protocol.Protocol.Osd in
-                    get_ips_port osd.kind
+                  let conn_info =
+                    let open Nsm_model.OsdInfo in
+                    let conn_info' = get_conn_info osd.kind in
+                    Asd_client.conn_info_from conn_info' ~tls_config
                   in
                   Asd_client.with_client
-                    buffer_pool ips port asd_id
+                    buffer_pool ~conn_info asd_id
                     _inner
               end
            )
        in
        lwt_cmd_line to_json t
      end
-  | Some port,_ -> from_asd hosts port asd_id
+  | Some port,_ -> from_asd hosts port tls_config asd_id
 
 let asd_statistics_cmd =
   let port_o =
@@ -434,6 +423,7 @@ let asd_statistics_cmd =
                 $ lido
                 $ to_json
                 $ config_o
+                $ tls_config
                 $ clear
           )
   in
@@ -450,10 +440,11 @@ let asd_discover () =
                        record.extras
        in
        Lwt_io.printlf
-         "{extras: %s ; ips = %s; port = %i}%!"
+         "{extras: %s ; ips = %s; port = %s ; tlsPort = %s }%!"
          extras_s
          ([%show: string list] record.ips)
-         record.port
+         ([%show: int option] record.port)
+         ([%show: int option] record.tlsPort)
   in
   lwt_cmd_line false (fun () -> discovery seen)
 
@@ -463,9 +454,10 @@ let asd_discover_cmd =
   term,info
 
 
-let asd_set_full host port asd_id full =
+let asd_set_full hosts port tls_config asd_id full =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    host port asd_id
+    ~conn_info asd_id
     (fun client -> client # set_full full)
 
 
@@ -478,7 +470,8 @@ let asd_set_full_cmd =
   in
   let asd_set_full_t =
     Term.(pure asd_set_full
-          $ hosts $ (port 8_000) $ lido
+          $ hosts $ (port 8_000) $ tls_config
+          $ lido
           $ full
     )
   in

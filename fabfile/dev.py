@@ -17,11 +17,13 @@ limitations under the License.
 from env import *
 import alba
 from fabric.api import local, task, warn_only
+from fabric.context_managers import shell_env
 import time
 from uuid import uuid4
 import sha
 import json
 import hashlib
+
 
 @task
 def check():
@@ -60,7 +62,8 @@ def run_tests_cpp(xml=False, kind=default_kind,
 
     where = local
     where("rm -rf %s/ocaml/" % ALBA_BASE_PATH)
-    cmd = "./cpp/bin/unit_tests.out"
+    cmd = "LD_LIBRARY_PATH=./cpp/lib ./cpp/bin/unit_tests.out"
+
     if xml:
         cmd = cmd + " --gtest_output=xml:gtestresults.xml"
     if valgrind:
@@ -70,7 +73,10 @@ def run_tests_cpp(xml=False, kind=default_kind,
     where(cmd)
 
 @task
-def run_tests_ocaml(xml=False, kind = default_kind, dump = None, filter = None):
+def run_tests_ocaml(xml=False,
+                    kind = default_kind,
+                    dump = None,
+                    filter = None):
     alba.demo_kill()
     alba.arakoon_start()
     alba.wait_for_master()
@@ -81,20 +87,114 @@ def run_tests_ocaml(xml=False, kind = default_kind, dump = None, filter = None):
 
     alba.start_osds(kind, N, False)
 
-    alba.claim_local_osds(N)
+    tls = env['alba_tls']
+    use_tls = is_true(tls)
+    if use_tls:
+        # make cert for extra asd (test_discover_claimed)
+        alba.make_cert(name = 'test_discover_claimed')
+
+    alba.claim_local_osds(N, abm_cfg = arakoon_config_file)
 
     where = local
     where("rm -rf %s/ocaml/" % ALBA_BASE_PATH)
 
-    cmd = "./ocaml/alba.native unit-tests"
+    cmd = [env['alba_bin'], "unit-tests"]
     if xml:
-        cmd = cmd + " --xml=true"
+        cmd.append(" --xml=true")
     if filter:
-        cmd = cmd + " --only-test=%s" % filter
-    if dump:
-        cmd = cmd + " > %s" % dump
+        cmd.append(" --only-test=%s" % filter)
 
-    where(cmd)
+    if use_tls:
+        alba._extend_alba_tls(cmd)
+
+    print cmd
+    cmd_line = ' '.join(cmd)
+    if dump:
+        cmd_line += " > %s" % dump
+
+    where(cmd_line)
+
+@task
+def run_tests_cli(xml = False):
+    alba.demo_kill()
+    alba.demo_setup()
+    tls = env['alba_tls']
+    port = '8501' if is_true(tls) else '8001'
+    host = '::1'
+    where = local
+
+    def _asd( what, extra, tls = tls):
+        cmd = [env['alba_bin'],
+               what,
+               '-h', host,
+               '-p', port]
+        cmd.extend(extra)
+        if is_true(tls):
+            alba._extend_alba_tls(cmd)
+        return cmd
+
+    def _run(cmd):
+        cmd_line = ' '.join(cmd)
+        result = where(cmd_line, capture = True)
+        return result
+
+    def test_asd_get_version():
+        cmd = _asd('asd-get-version', [] )
+        result = _run(cmd)
+        t = eval(result)
+        print t
+        assert (len(t) == 4)
+        print "ok"
+
+    def test_asd_get_statistics():
+        cmd = _asd('asd-statistics',['--to-json'])
+        result = _run(cmd)
+        t = json.loads(result)
+
+    def test_asd_crud():
+        k = 'the_key'
+        v = 'the_value'
+        asd_set = _asd('asd-set', [k,v])
+        _run(asd_set)
+
+        asd_get = _asd('asd-multi-get',[k])
+        v_s = _run(asd_get)
+        assert (v_s.find(v) > 0)
+
+        asd_delete = _asd('asd-delete',[k])
+        _run(asd_delete)
+        v_s2 = _run(asd_get)
+        print v_s2
+        assert (v_s2 == '[None]')
+
+    def test_asd_cli_env():
+        print "test_asd_cli_env"
+        if is_true(env['alba_tls']):
+            cmd = _asd('asd-get-version', [], tls = False)
+            x = alba._my_client_tls()
+            with shell_env(ALBA_CLI_TLS='%s,%s,%s' % x):
+                cmd_line = ' ' . join(cmd)
+                result = where(cmd_line, capture=True)
+                print result
+
+    def create_example_preset():
+        cmd = [ env['alba_bin'],
+                'create-preset', 'example',
+                '--config', './cfg/albamgr_example_arakoon_cfg.ini',
+                '< cfg/preset.json'
+        ]
+        tls = env['arakoon_tls']
+
+        if is_true(tls):
+            _extend_alba_tls(cmd)
+
+        cmd_line = ' '.join(cmd)
+        local (cmd_line)
+
+    test_asd_get_version()
+    test_asd_cli_env()
+    test_asd_get_statistics()
+    test_asd_crud()
 
 
 @task
@@ -134,15 +234,21 @@ def run_tests_disk_failures(xml=False):
     alba.demo_setup()
     time.sleep(1)
     where = local
-    cmd = "%s" % env['failure_tester']
+    cmd = [env['failure_tester']]
     if xml:
-        cmd = cmd + " --xml=true"
-    where(cmd)
+        cmd.append(" --xml=true")
+
+    tls = env['alba_tls']
+    if is_true(tls):
+        alba._extend_alba_tls(cmd)
+
+    cmd_s = " ".join(cmd)
+    where(cmd_s)
 
 @task
 def run_tests_stress(kind = default_kind, xml = False):
     alba.demo_kill()
-    alba.demo_setup(kind)
+    alba.demo_setup(kind = kind)
     time.sleep(1)
     where = local
     #
@@ -162,6 +268,10 @@ def run_tests_stress(kind = default_kind, xml = False):
 
     def list_namespaces_cmd():
         cmd = build_cmd('list-namespaces')
+        tls = env['alba_tls']
+        if is_true(tls):
+            alba._extend_alba_tls(cmd)
+
         cmd.append('--to-json')
         cmd.append('2> /dev/null')
         cmd_s = ' '.join(cmd)
@@ -187,7 +297,7 @@ def run_tests_stress(kind = default_kind, xml = False):
         alba.dump_junit_xml()
 
 @task
-def run_tests_recovery(xml = False):
+def run_tests_recovery(xml = False, tls = 'False'):
     alba.demo_kill()
 
     # set up separate albamgr & nsm host
@@ -389,7 +499,7 @@ def run_test_asd_start(xml=False):
     for i in xrange(0, N):
         alba.osd_stop(8000 + i)
 
-    alba.start_osds(default_kind, N, True)
+    alba.start_osds(default_kind, N, True, restart = True)
     time.sleep(1)
 
     cmd = [
@@ -405,7 +515,8 @@ def run_test_asd_start(xml=False):
         local(" ".join(cmd))
         local(" ".join(cmd))
 
-    local(" ".join(cmd))
+    r = local(" ".join(cmd))
+    print r
 
     local(" ".join([
         env['alba_bin'],
@@ -422,21 +533,28 @@ def run_test_asd_start(xml=False):
 def run_test_big_object():
     alba.demo_kill()
     alba.demo_setup()
-
-    # create the preset in albamgr
-    local(" ".join([
+    cmd = [
         env['alba_bin'],
         'create-preset', 'preset_no_compression',
         '--config', arakoon_config_file,
-        '< ./cfg/preset_no_compression.json'
-    ]))
 
-    # create new namespace with this preset
-    local(" ".join([
+    ]
+    if is_true(tls):
+        alba._extend_alba_tls(cmd)
+
+    cmd.append('< ./cfg/preset_no_compression.json')
+    # create the preset in albamgr
+    local(" ".join(cmd))
+
+    cmd = [
         env['alba_bin'],
         'create-namespace', 'big', 'preset_no_compression',
         '--config', arakoon_config_file
-    ]))
+    ]
+    if is_true(tls):
+        alba._extend_alba_tls(cmd)
+    # create new namespace with this preset
+    local(" ".join(cmd))
 
     object_file = "%s/obj" % ALBA_BASE_PATH
     # upload a big object
@@ -459,11 +577,14 @@ def run_test_big_object():
         port = 8000+i
         alba.osd_stop(port)
         long_id = "%i_%i_%s" % (port, 2000, alba.local_nodeid_prefix)
-        local(" ".join([
+        cmd = [
             env['alba_bin'],
             'decommission-osd', '--long-id', long_id,
             '--config', arakoon_config_file
-        ]))
+        ]
+        if is_true(tls):
+            alba._extend_alba_tls(cmd)
+        local(" ".join(cmd))
 
     # TODO
     # wait for maintenance process to repair it
@@ -471,9 +592,158 @@ def run_test_big_object():
     # report mem usage of proxy & maintenance process
 
 @task
+def run_tests_compat(xml = True):
+    def test(old_proxy, old_plugins, old_asd):
+        try:
+            alba.smoke_test()
+            def alba_cli(extra, old = False, capture = False):
+                key = 'alba.0.6' if old else 'alba_bin'
+                binary = env[key]
+                cmd = [binary]
+                cmd.extend(extra)
+                cmd_line = ' '.join(cmd)
+                r = local(cmd_line, capture = capture)
+                return r
+
+            obj_name = 'alba_binary'
+            ns = 'demo'
+            cfg = './cfg/albamgr_example_arakoon_cfg.ini'
+            alba_cli(['proxy-upload-object', ns , env['alba_bin'], obj_name])
+            alba_cli(['proxy-download-object', ns, obj_name, '/tmp/downloaded.bin'])
+            alba_cli(['delete-object', ns, obj_name, '--config', cfg ])
+
+            # some explicit backward compatible operations
+            r = alba_cli (['list-all-osds', '--config', cfg, '--to-json'], old = True, capture = True)
+            osds = json.loads(r)
+            assert osds['success'] == True
+            long_id = osds['result'][0]['long_id']
+
+            # decommission 1 asd:
+            alba_cli (['decommission-osd', '--long-id', long_id,
+                           '--config', cfg], old = True, capture = True)
+
+            print "now, list them"
+
+            r = alba_cli (['list-decommissioning-osds', '--config', cfg, '--to-json'],
+                          old = True,
+                          capture = True)
+            decommissioning_osds = json.loads(r)
+            print decommissioning_osds['success']
+            assert decommissioning_osds['success'] == True
+
+
+        except Exception, e:
+            print e
+            with warn_only():
+                local ("which alba.0.6")
+                local ("pgrep -a alba")
+                local ("pgrep -a arakoon")
+                local ("which fuser")
+                local ("sudo fuser -n tcp 10000 8001")
+
+            raise
+
+    def deploy_and_test(old_proxy, old_plugins, old_asds):
+        tls = 'False'
+
+        alba.demo_kill()
+
+        env_old = env.copy()
+        old_alba_home = './bin/0.6'
+        env_old['alba_bin'] = env.get('alba.0.6')
+        env_old['alba_plugin_path'] = env.get('ALBA_06_PLUGIN_PATH', '/usr/lib/alba')
+        env_old['license_file'] = '%s/community_license' % old_alba_home
+        env_old['signature']    = '''3cd787f7a0bcb6c8dbf40a8b4a3a5f350fa87d1bff5b33f5d099ab850e44aaeca6e3206b595d7cb361eed28c5dd3c0f3b95531d931a31a058f3c054b04917797b7363457f7a156b5f36c9bf3e1a43b46e5c1e9ca3025c695ef366be6c36a1fc28f5648256a82ca392833a3050e1808e21ef3838d0c027cf6edaafedc8cfe2f2fc37bd95102b92e7de28042acc65b8b6af4cfb3a11dadce215986da3743f1be275200860d24446865c50cdae2ebe2d77c86f6d8b3907b20725cdb7489e0a1ba7e306c90ff0189c5299194598c44a537b0a460c2bf2569ab9bb99c72f6415a2f98c614d196d0538c8c19ef956d42094658dba8d59cfc4a024c18c1c677eb59299425ac2c225a559756dee125ef93c38c211cda69c892d26ca33b7bd2ca95f15bbc1bb755c46574432005b8afcab48a0a5ed489854cec24207cddc7ab632d8715c1fb4b1309b45376a49e4c2b4819f27d9d6c8170c59422a0b778b9c3ac18e677bc6fa6e2a2527365aca5d16d4bc6e22007debef1989d08adc9523be0a5d50309ef9393eace644260345bb3d442004c70097fffd29fe315127f6d19edd4f0f46ae2f10df4f162318c4174b1339286f8c07d5febdf24dc049a875347f6b2860ba3a71b82aba829f890192511d6eddaacb0c8be890799fb5cb353bce7366e8047c9a66b8ee07bf78af40b09b4b278d8af2a9333959213df6101c85dda61f2944237c8'''
+        env_old['arakoon_bin'] = env.get('ARAKOON_189_BIN', '/usr/bin/arakoon')
+        if old_plugins:
+            arakoon_env = env_old
+        else:
+            arakoon_env = env
+
+        alba.demo_kill(env = env_old)
+
+        alba.arakoon_start(env = arakoon_env)
+        alba.wait_for_master(env = arakoon_env)
+
+        if old_plugins:
+            cmd = [
+                env_old['alba_bin'],
+                'apply-license',
+                env_old['license_file'],
+                env_old['signature'],
+                '--config', arakoon_config_file
+            ]
+            cmd_line = ' '.join(cmd)
+            local(cmd_line)
+
+        alba.maintenance_start()
+
+        proxy_env = env_old if old_proxy else env
+
+        alba.proxy_start(env = proxy_env)
+
+
+        alba.nsm_host_register_default()
+
+
+        if old_asds:
+            asd_env = env_old
+        else:
+            asd_env = env
+
+        kind = default_kind
+        alba.start_osds(kind, N, False, env = asd_env)
+        alba.claim_local_osds(N, abm_cfg = arakoon_config_file)
+        alba.create_namespace_demo()
+        #
+        test(old_proxy, old_plugins, old_asds)
+
+
+    results = []
+    flavours = range(8)
+
+    t0 = time.time()
+    for flavour in flavours:
+        old_proxy   = flavour & 4 == 4
+        old_plugins = flavour & 2 == 2
+        old_asds    = flavour & 1 == 1
+        t0_test = time.time()
+
+        result = False
+        try:
+            deploy_and_test(old_proxy,old_plugins,old_asds)
+            result = True
+        except:
+            pass
+
+        t1_test = time.time()
+        delta_test = t1_test - t0_test
+        test_name = "flavour_%i" % flavour
+        results.append((test_name, result, delta_test))
+
+    failures = filter(lambda x: not x[1], results)
+    t1 = time.time()
+    delta = t1 - t0
+
+    if is_true(xml):
+        from junit_xml import TestSuite, TestCase
+        test_cases = []
+        for (name,result, delta) in results:
+            test_case = TestCase(name, 'TestCompat', elapsed_sec = delta)
+            if not result:
+                test_case.add_error_info(message = "failed")
+            test_cases.append(test_case)
+
+        ts = [TestSuite("compatibility", test_cases)]
+        with open('./testresults.xml', 'w') as f:
+            TestSuite.to_file(f,ts)
+    else:
+        print results
+
+@task
 def run_test_arakoon_changes ():
     alba.demo_kill ()
-    alba.demo_setup(arakoon_config_file = arakoon_config_file_2)
+    alba.demo_setup(acf = arakoon_config_file_2)
     # 2 node cluster, and arakoon_0 will be master.
     def stop_node(node_name):
         r = local("pgrep -a arakoon | grep '%s'" % node_name, capture = True)
