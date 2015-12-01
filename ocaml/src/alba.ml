@@ -284,11 +284,14 @@ let alba_show_namespaces cfg_file first finc last max reverse to_json =
              }
            in
            let json = List.map transform r in
-           print_result json Alba_json.Namespace.Both.both_list_to_yojson
+           print_result
+             (count, has_more, json)
+             Alba_json.Namespace.Both.cm_both_list_to_yojson
          end
        else
          begin
            begin
+             Lwt_io.printlf "count:%i\nhas_more:%b" count has_more >>= fun () ->
              Lwt_list.iter_s
                (fun (name,namespace, stats) ->
                 _render_namespace name namespace stats
