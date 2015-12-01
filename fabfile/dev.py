@@ -119,7 +119,7 @@ def run_tests_cli(xml = False):
     alba.demo_kill()
     alba.demo_setup()
     tls = env['alba_tls']
-    port = '8500' if is_true(tls) else '8000'
+    port = '8501' if is_true(tls) else '8001'
     host = '::1'
     where = local
 
@@ -141,9 +141,10 @@ def run_tests_cli(xml = False):
     def test_asd_get_version():
         cmd = _asd('asd-get-version', [] )
         result = _run(cmd)
-
         t = eval(result)
+        print t
         assert (len(t) == 4)
+        print "ok"
 
     def test_asd_get_statistics():
         cmd = _asd('asd-statistics',['--to-json'])
@@ -167,12 +168,14 @@ def run_tests_cli(xml = False):
         assert (v_s2 == '[None]')
 
     def test_asd_cli_env():
-        cmd = _asd('asd-get-version', [], tls = False)
-        x = alba._my_client_tls()
-        with shell_env(ALBA_CLI_TLS='%s,%s,%s' % x):
-            cmd_line = ' ' . join(cmd)
-            result = where(cmd_line, capture=True)
-            print result
+        print "test_asd_cli_env"
+        if is_true(env['alba_tls']):
+            cmd = _asd('asd-get-version', [], tls = False)
+            x = alba._my_client_tls()
+            with shell_env(ALBA_CLI_TLS='%s,%s,%s' % x):
+                cmd_line = ' ' . join(cmd)
+                result = where(cmd_line, capture=True)
+                print result
 
     def create_example_preset():
         cmd = [ env['alba_bin'],
@@ -736,3 +739,58 @@ def run_tests_compat(xml = True):
             TestSuite.to_file(f,ts)
     else:
         print results
+
+@task
+def run_test_arakoon_changes ():
+    alba.demo_kill ()
+    alba.demo_setup(acf = arakoon_config_file_2)
+    # 2 node cluster, and arakoon_0 will be master.
+    def stop_node(node_name):
+        r = local("pgrep -a arakoon | grep '%s'" % node_name, capture = True)
+        info = r.split()
+        pid = info[0]
+        local("kill %s" % pid)
+
+    def start_node(node_name, cfg):
+        inner = [
+            env['arakoon_bin'],
+            "--node", node_name,
+            "-config", cfg
+        ]
+        cmd_line = alba._detach(inner)
+        local(cmd_line)
+
+    def signal_alba(process_name,signal):
+        r = local("pgrep -a alba | grep %s" % process_name, capture = True)
+        info = r.split()
+        pid = info[0]
+        local("kill -s %s %s" % (signal, pid))
+
+    def wait_for(delay):
+        n = int(delay)
+        print "sleeping %i" % n
+        while n:
+            print "\t%i" % n
+            time.sleep(1)
+            n = n - 1
+
+    # 2 node cluster, and arakoon_0 is master.
+    wait_for(10)
+    stop_node('arakoon_0')
+    stop_node('witness_0')
+    # restart them with other config
+
+    start_node('arakoon_1', arakoon_config_file)
+    start_node('witness_0', arakoon_config_file)
+
+    wait_for(20)
+    start_node('arakoon_0', arakoon_config_file)
+
+    maintenance_home = "%s/maintenance" % ALBA_BASE_PATH
+    maintenance_cfg = maintenance_home + "/albamgr.cfg"
+    local("cp %s %s" % (arakoon_config_file, maintenance_cfg))
+    signal_alba('maintenance','USR1')
+    wait_for(120)
+    cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
+    c = cfg_s.split()[0]
+    assert (c == '3') # 3 nodes in config

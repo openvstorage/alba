@@ -86,15 +86,16 @@ module Protocol = struct
         node_names;
       (cluster_id, node_cfgs)
 
+      let from_node_client_cfg cfg =
+        { Arakoon_client_config.ips = cfg.ips;
+          port = cfg.port }
     let to_arakoon_client_cfg tlso ((cluster_id, cfgs) : t) : Arakoon_client_config.t =
       {
         Arakoon_client_config.cluster_id;
         node_cfgs =
           Hashtbl.fold
             (fun name (cfg : node_client_cfg) acc ->
-               (name,
-                { Arakoon_client_config.ips = cfg.ips;
-                  port = cfg.port }) :: acc)
+               (name, from_node_client_cfg cfg) :: acc)
             cfgs
             [];
         ssl_cfg = (Option.map Tls.to_ssl_cfg tlso);

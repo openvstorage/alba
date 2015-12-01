@@ -69,7 +69,6 @@ env = {
 arakoon_nodes = ["arakoon_0", "arakoon_1", "witness_0"]
 arakoon_config_file = "%s/cfg/test.ini" % cwd
 
-
 TLS = {
     'arakoon_config_file' : "%s/cfg/test_tls.ini" % cwd,
     'root_dir' : ARAKOON_PATH,
@@ -78,6 +77,10 @@ TLS = {
 for node in arakoon_nodes:
     TLS[node] = '%s/%s' % (ARAKOON_PATH, node)
 
+
+# 2 node cluster that can evolve into 3 node cluster above
+arakoon_nodes_2 = ["arakoon_0", "witness_0"]
+arakoon_config_file_2 = "%s/cfg/test_2.ini" % cwd
 
 
 namespace = "demo"

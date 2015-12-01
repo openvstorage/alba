@@ -59,6 +59,7 @@ def demo_kill(env = env):
         where("rm -rf %s" % ALBA_BASE_PATH)
         arakoon_remove_dir()
 
+
 @task
 def arakoon_start_(arakoon_config_file,
                    base_dir,
@@ -133,8 +134,8 @@ def make_cert(name, serial = None):
         )
 
 @task
-def arakoon_start(env = env):
-    acf = arakoon_config_file
+def arakoon_start(acf = None, env = env):
+
     where = local
     path = ARAKOON_PATH
     where ("mkdir -p %s" % path)
@@ -152,6 +153,8 @@ def arakoon_start(env = env):
             client = "my_client"
             where("mkdir ./%s" % client)
             make_cert(name = client, serial = serial)
+    else:
+        acf = arakoon_config_file if acf is None else acf
 
     arakoon_start_(acf, path, arakoon_nodes, env = env)
 
@@ -178,6 +181,7 @@ def _extend_alba_tls(cmd):
     name = "my_client"
     cfg = _my_client_tls()
     cmd.extend(['--tls=%s,%s,%s' % cfg])
+
 
 @task
 def arakoon_who_master(arakoon_cfg_file = None,
@@ -599,17 +603,28 @@ def start_osds(kind, n, slow, multicast=True,
 
 
 @task
+
 def demo_setup(kind = default_kind,
                multicast = True,
                n_agents = 1,
-               n_proxies = 1):
+               n_proxies = 1,
+               acf = None):
+
     cmd = [ env['arakoon_bin'], '--version' ]
     local(' '.join(cmd))
     cmd = [ env['alba_bin'], 'version' ]
     local(' '.join(cmd))
 
-    arakoon_start()
-    wait_for_master()
+    tls = env['alba_tls']
+    if acf is None:
+        if is_true(tls):
+            acf = TLS['arakoon_config_file']
+        else:
+            acf = arakoon_config_file
+
+
+    arakoon_start(acf = acf)
+    wait_for_master(arakoon_cfg_file = acf)
 
     if env.get('0.6') :
         cmd = [
@@ -617,25 +632,26 @@ def demo_setup(kind = default_kind,
         'apply-license',
         env['license_file'],
         env['signature'],
-        '--config', arakoon_config_file
+        '--config', acf
         ]
 
     local(' '.join(cmd))
     n_agents = int(n_agents)
     n_proxies = int(n_proxies)
 
-    proxy_start(n_proxies = n_proxies,
+    proxy_start(abm_cfg = acf,
+                n_proxies = n_proxies,
                 n_others = n_agents)
 
-
-    maintenance_start(n_agents = n_agents,
+    maintenance_start(abm_cfg = acf,
+                      n_agents = n_agents,
                       n_others = n_proxies)
 
     nsm_host_register_default()
 
     start_osds(kind, N, True, multicast)
 
-    claim_local_osds(N, abm_cfg = arakoon_config_file, multicast = multicast)
+    claim_local_osds(N, abm_cfg = acf, multicast = multicast)
 
     create_namespace_demo()
 

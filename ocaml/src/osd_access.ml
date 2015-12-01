@@ -247,6 +247,7 @@ class osd_access
            Lwt.return next_osd_id')
           (fun exn ->
            Lwt_log.info_f ~exn "Exception in populate_osds_info_cache" >>= fun () ->
+           Lwt_extra2.sleep_approx 60. >>= fun () ->
            Lwt.return next_osd_id) >>= fun next_osd_id' ->
         inner next_osd_id'
       in

@@ -27,24 +27,24 @@ module Pool = struct
       let factory () =
         let ccfg = Arakoon_config.to_arakoon_client_cfg tls_config !cfg in
         let tls = Tls.to_client_context tls_config in
+        let open Albamgr_client in
         Lwt.catch
-          (fun () -> Albamgr_client.make_client buffer_pool ccfg)
+          (fun () -> make_client buffer_pool ccfg)
           (let open Client_helper in
            let open MasterLookupResult in
            function
-            | Error (Unknown_node (_master, (node', cfg'))) ->
-              let cluster_id = fst !cfg in
-              with_client'
-                ~tls
-                cfg' cluster_id
-                (fun arakoon ->
-                   Albamgr_client.wrap_around' arakoon >>= fun mgr ->
-                   mgr # get_client_config >>= fun cfg' ->
-                   cfg := cfg';
-                   Lwt.return ()) >>= fun () ->
-              Albamgr_client.make_client
-                buffer_pool
-                (Arakoon_config.to_arakoon_client_cfg tls_config !cfg)
+            | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, _master)
+            | Error (Unknown_node (_master, (_, _))) ->
+               begin
+                 retrieve_cfg_from_any_node ~tls !cfg >>= fun cfg' ->
+                 match cfg' with
+                 | Res cfg' ->
+                    let () = cfg := cfg' in
+                    make_client
+                      buffer_pool
+                      (Arakoon_config.to_arakoon_client_cfg tls_config !cfg)
+                 | Retry -> Lwt.fail_with "retry later"
+               end
             | exn ->
               Lwt.fail exn)
         >>= fun (c, node_name, closer) ->
