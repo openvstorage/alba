@@ -129,6 +129,7 @@ class proxy_client (ic, oc) =
 
     method osd_view = self # request OsdView ()
 
+    method get_client_config = self # request GetClientConfig ()
   end
 
 let _prologue oc magic version =

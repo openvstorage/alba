@@ -162,6 +162,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | DeleteObject    -> fun _ -> "_"
   | GetVersion      -> fun _ -> "-"
   | OsdView         -> fun _ -> "-"
+  | GetClientConfig -> fun _ -> "()"
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -174,6 +175,7 @@ let log_request code maybe_renderer time =
 
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
+                   (albamgr_client_cfg:Albamgr_protocol.Protocol.Arakoon_config.t ref)
                    (stats: ProxyStatistics.t')
                    fd ic =
   let execute_request : type i o. (i, o) Protocol.request ->
@@ -316,7 +318,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        let claim_info = alba_client # osd_access # get_osd_claim_info in
        let claim_info = (StringMap.cardinal claim_info, StringMap.bindings claim_info) in
        Lwt.return (claim_info, state_info)
-
+    | GetClientConfig ->
+       fun stats () ->
+       Lwt.return !albamgr_client_cfg
   in
   let return_err_response ?msg err =
     let res_s =
@@ -480,35 +484,36 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     end
   else Lwt.return ()
 
+
+
 let refresh_albamgr_cfg
     ~loop
     albamgr_client_cfg
     (alba_client : Alba_client.alba_client)
     destination =
+
   let rec inner () =
+    Lwt_log.debug "refresh_albamgr_cfg" >>= fun () ->
+    let open Albamgr_client in
     Lwt.catch
       (fun () ->
          alba_client # mgr_access # get_client_config
          >>= fun ccfg ->
-         Lwt.return (`Res ccfg))
-      (fun exn ->
-         let open Client_helper.MasterLookupResult in
-         match exn with
-         | Error (Unknown_node (master, (node, cfg))) ->
-           Client_helper.with_client'
-             (* TODO *)
-             ~tls:None
-             cfg (fst !albamgr_client_cfg)
-             (fun conn ->
-                Lwt.return ()) >>= fun () ->
-           Lwt.return `Retry
-         | _ ->
-           Lwt.return `Retry
-      ) >>= function
-    | `Retry ->
+         Lwt.return (Res ccfg))
+      (let open Client_helper.MasterLookupResult in
+       function
+       | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, master)
+       | Error (Unknown_node (master, (_, _))) ->
+          retrieve_cfg_from_any_node !albamgr_client_cfg
+       | exn ->
+          Lwt_log.debug_f ~exn "refresh_albamgr_cfg failed" >>= fun () ->
+          Lwt.return Retry
+      )
+    >>= function
+    | Retry ->
       Lwt_extra2.sleep_approx 60. >>= fun () ->
       inner ()
-    | `Res ccfg ->
+    | Res ccfg ->
       albamgr_client_cfg := ccfg;
       write_albamgr_cfg ccfg destination >>= fun () ->
       Lwt_extra2.sleep_approx 60. >>= fun () ->
@@ -595,7 +600,7 @@ let run_server hosts port
                     buffer_pool
                     (fun buffer ->
                      let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
-                     proxy_protocol alba_client stats fd ic)));
+                     proxy_protocol alba_client albamgr_client_cfg stats fd ic)));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());

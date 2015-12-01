@@ -64,6 +64,10 @@ env = {
 arakoon_nodes = ["arakoon_0", "arakoon_1", "witness_0"]
 arakoon_config_file = "%s/cfg/test.ini" % cwd
 
+# 2 node cluster that can evolve into 3 node cluster above
+arakoon_nodes_2 = ["arakoon_0", "witness_0"]
+arakoon_config_file_2 = "%s/cfg/test_2.ini" % cwd
+
 namespace = "demo"
 
 N = 12

@@ -495,8 +495,11 @@ class single_connection_client (ic, oc) =
          | exn -> Lwt.fail exn)
   end
 
-let wrap_around (ara_c:Arakoon_client.client) =
-  ara_c # user_hook "albamgr" >>= fun (ic, oc) ->
+let wrap_around
+      ~consistency
+      (ara_c:Arakoon_client.client)
+  =
+  ara_c # user_hook "albamgr" ~consistency >>= fun (ic, oc) ->
   Llio.input_int32 ic
   >>= function
   | 0l -> begin
@@ -509,9 +512,49 @@ let wrap_around (ara_c:Arakoon_client.client) =
      Llio.input_string ic >>= fun msg ->
      Lwt.fail (Arakoon_exc.Exception (rc, msg))
 
-let wrap_around' ara_c =
-  wrap_around ara_c >>= fun c ->
+let wrap_around' ?(consistency=Arakoon_client.Consistent) ara_c =
+  wrap_around ~consistency ara_c >>= fun c ->
   Lwt.return (new client (c :> basic_client))
+
+type refresh_result =
+  | Retry
+  | Res of Albamgr_protocol.Protocol.Arakoon_config.t
+
+let retrieve_cfg_from_any_node current_config =
+    Lwt_log.debug "retrieve_from_any_node" >>= fun () ->
+    let cluster_id, node_hashtbl = current_config in
+    let node_names = Hashtbl.fold (fun nn _  acc -> nn :: acc) node_hashtbl [] in
+
+    let rec loop = function
+      | [] -> Lwt.return Retry
+      | node_name :: rest ->
+         Lwt.catch
+           (fun  () ->
+            let node_cfg  =
+              Hashtbl.find node_hashtbl node_name
+            in
+            let open Albamgr_protocol.Protocol.Arakoon_config in
+            let cfg = from_node_client_cfg node_cfg in
+            Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->
+            Client_helper.with_client'
+              ~tls:None
+              cfg
+              cluster_id
+              (fun node_client ->
+                wrap_around' ~consistency:Arakoon_client.No_guarantees node_client
+                 >>= fun mgr_dirty_client ->
+                mgr_dirty_client # get_client_config >>= fun ccfg ->
+                Lwt_log.debug_f "node:%s returned config" node_name >>= fun () ->
+                Lwt.return (Res ccfg)
+              )
+           )
+           (fun exn ->
+            Lwt_log.debug_f ~exn "retrieving cfg from %s failed; iterate" node_name
+            >>= fun () ->
+            loop rest
+           )
+    in
+    loop node_names
 
 let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
   let open Client_helper in
@@ -528,7 +571,7 @@ let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
           Arakoon_remote_client.make_remote_client
             ccfg.cluster_id
             conn >>= fun client ->
-          wrap_around (client:Arakoon_client.client))
+          wrap_around ~consistency:Arakoon_client.Consistent (client:Arakoon_client.client))
        (fun exn ->
           closer () >>= fun () ->
           Lwt.fail exn)
@@ -554,7 +597,7 @@ let _with_client ~attempts cfg f =
        Client_helper.with_master_client'
          ~tls:None
          (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg cfg)
-         (fun c -> wrap_around c >>= fun wc -> f wc)
+         (fun c -> wrap_around ~consistency:Arakoon_client.Consistent c >>= fun wc -> f wc)
        >>= fun r ->
        Lwt.return (`Success r)
       )

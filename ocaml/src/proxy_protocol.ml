@@ -314,6 +314,7 @@ module Protocol = struct
                        * (Albamgr_protocol.Protocol.Osd.id
                           * Albamgr_protocol.Protocol.Osd.t
                           * Osd_state.t) Std.counted_list) request
+    | GetClientConfig : (unit, Albamgr_protocol.Protocol.Arakoon_config.t) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -332,6 +333,7 @@ module Protocol = struct
                       16, Wrap DropCache, "DropCache";
                       17, Wrap GetVersion, "GetVersion";
                       18, Wrap OsdView,    "OsdView";
+                      19, Wrap GetClientConfig, "GetClientConfig";
                     ]
 
   module Error = struct
@@ -432,9 +434,9 @@ module Protocol = struct
     | InvalidateCache -> Deser.string
     | DropCache -> Deser.string
     | ProxyStatistics -> Deser.bool
-    | GetVersion -> Deser.unit
-    | OsdView    -> Deser.unit
-
+    | GetVersion      -> Deser.unit
+    | OsdView         -> Deser.unit
+    | GetClientConfig -> Deser.unit
 
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
@@ -467,4 +469,8 @@ module Protocol = struct
          deser_claim
          (Deser.counted_list
             (Deser.tuple3 deser_int32 deser_osd Osd_state.deser_state))
+
+    | GetClientConfig ->
+       let open Albamgr_protocol.Protocol in
+       Arakoon_config.from_buffer, Arakoon_config.to_buffer
 end
