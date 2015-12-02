@@ -35,6 +35,8 @@ module Keys = struct
     namespace_content_prefix ^ (serialize Llio.int32_to namespace_id)
 end
 
+let deliver_msgs_user_function_name = "nsm_host_user_function"
+
 let transform_updates namespace_id =
   let open Update in
 
@@ -59,6 +61,75 @@ let transform_updates namespace_id =
         end
     )
 
+let get_next_msg_id db =
+  let expected_id_s = db # get Keys.next_msg in
+  let expected_id = match expected_id_s with
+    | None -> 0l
+    | Some s -> deserialize Llio.int32_from s in
+  expected_id_s, expected_id
+
+let handle_msg db =
+  let open Update in
+  let open Protocol in
+  let open Message in
+  function
+  | CreateNamespace (namespace_name, namespace_id) ->
+     let key = Keys.namespace_info namespace_id in
+     [ Update.Assert (key, None);
+       Update.Set (key,
+                   serialize
+                     namespace_state_to_buf
+                     (Active namespace_name)); ]
+  | DeleteNamespace namespace_id ->
+     let key = Keys.namespace_info namespace_id in
+     [ Update.Replace (key, None); ]
+  | RecoverNamespace (namespace_name, namespace_id) ->
+     let key = Keys.namespace_info namespace_id in
+     [ Update.Assert (key, None);
+       Update.Set (key,
+                   serialize
+                     namespace_state_to_buf
+                     (Recovering namespace_name)); ]
+  | NamespaceMsg (namespace_id, msg) ->
+     if not (db # exists (Keys.namespace_info namespace_id))
+     then []
+     else begin
+         let module KV = WrapReadUserDb(
+                             struct
+                               let db = db
+                               let prefix = Keys.namespace_content namespace_id
+                             end) in
+         let module NSM = NamespaceManager(struct let namespace_id = namespace_id end)(KV) in
+
+         let open Namespace_message in
+         let upds = match msg with
+           | LinkOsd (osd_id, osd_info) ->
+              NSM.link_osd db osd_id osd_info
+           | UnlinkOsd osd_id ->
+              NSM.unlink_osd db osd_id
+         in
+         transform_updates namespace_id upds
+       end
+
+let deliver_msgs (db : user_db) msgs =
+  let _, first_msg_id = get_next_msg_id db in
+  List.iter
+    (fun (msg_id, msg) ->
+     if msg_id >= first_msg_id
+     then
+       begin
+         let upds = handle_msg (db :> read_user_db) msg in
+         List.iter
+           (apply_update db)
+           upds;
+         db # put
+            Keys.next_msg
+            (Some (serialize
+                     Llio.int32_to
+                     (Int32.succ msg_id)))
+       end)
+    msgs
+
 
 let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (o * Update.Update.t list) Lwt.t = fun db ->
   let open Protocol in
@@ -75,62 +146,30 @@ let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (
     let (cnt, keys), _ = EKV.range db ~first:"" ~finc:true ~last:None ~max:1000 ~reverse:false in
     Lwt.return (cnt, (List.map (fun k -> Update.Replace (prefix ^ k, None)) keys))
   | DeliverMsg -> fun (msg, id) ->
-    let handle_msg = begin
-      let open Message in
-      function
-      | CreateNamespace (namespace_name, namespace_id) ->
-        let key = Keys.namespace_info namespace_id in
-        [ Update.Assert (key, None);
-          Update.Set (key,
-                      serialize
-                        namespace_state_to_buf
-                        (Active namespace_name)); ]
-      | DeleteNamespace namespace_id ->
-        let key = Keys.namespace_info namespace_id in
-        [ Update.Replace (key, None); ]
-      | RecoverNamespace (namespace_name, namespace_id) ->
-        let key = Keys.namespace_info namespace_id in
-        [ Update.Assert (key, None);
-          Update.Set (key,
-                      serialize
-                        namespace_state_to_buf
-                        (Recovering namespace_name)); ]
-      | NamespaceMsg (namespace_id, msg) ->
-        if not (db # exists (Keys.namespace_info namespace_id))
-        then []
-        else begin
-          let module KV = WrapReadUserDb(
-            struct
-              let db = db
-              let prefix = Keys.namespace_content namespace_id
-            end) in
-          let module NSM = NamespaceManager(struct let namespace_id = namespace_id end)(KV) in
-
-          let open Namespace_message in
-          let upds = match msg with
-            | LinkOsd (osd_id, osd_info) ->
-              NSM.link_osd db osd_id osd_info
-            | UnlinkOsd osd_id ->
-              NSM.unlink_osd db osd_id
-          in
-          transform_updates namespace_id upds
-        end
-    end
-    in
-    let expected_id_s = db # get Keys.next_msg in
-    let expected_id = match expected_id_s with
-      | None -> 0l
-      | Some s -> deserialize Llio.int32_from s in
-    (if id <> expected_id
-     then Lwt.return ((), [])
-     else begin
-       let upds = handle_msg msg in
-       let bump_next_msg =
-         [ Update.Assert (Keys.next_msg, expected_id_s);
-           Update.Set (Keys.next_msg, (serialize Llio.int32_to (Int32.succ expected_id))); ]
-       in
-       Lwt.return ((), List.append bump_next_msg upds)
-     end)
+    let expected_id_s, expected_id = get_next_msg_id db in
+    if id <> expected_id
+    then Lwt.return ((), [])
+    else
+      begin
+        let upds = handle_msg db msg in
+        let bump_next_msg =
+          [ Update.Assert (Keys.next_msg, expected_id_s);
+            Update.Set (Keys.next_msg, (serialize Llio.int32_to (Int32.succ expected_id))); ]
+        in
+        Lwt.return ((), List.append bump_next_msg upds)
+      end
+  | DeliverMsgs ->
+     fun msgs ->
+     Lwt.return
+       ((),
+        [ Update.UserFunction
+            (deliver_msgs_user_function_name,
+             Some (serialize
+                     (Llio.list_to
+                        (Llio.pair_to
+                           Llio.int32_to
+                           Message.to_buffer))
+                     msgs)); ])
   | NsmUpdate tag -> fun (namespace_id, req) ->
     if not (db # exists (Keys.namespace_info namespace_id))
     then Err.failwith Err.Namespace_id_not_found;
@@ -451,6 +490,22 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
 
 
+let () = Registry.register
+           deliver_msgs_user_function_name
+           (fun user_db ->
+            function
+            | None -> assert false
+            | Some req_s ->
+               let open Protocol in
+               let msgs = deserialize
+                            (Llio.list_from
+                               (Llio.pair_from
+                                  Llio.int32_from
+                                  Message.from_buffer))
+                            req_s
+               in
+               deliver_msgs user_db msgs;
+               None)
 let () = HookRegistry.register "nsm_host" nsm_host_user_hook
 let () = Arith64.register()
 (* TODO make sure all ints are actually unsigned

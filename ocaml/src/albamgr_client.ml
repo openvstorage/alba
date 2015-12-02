@@ -31,6 +31,7 @@ end
 class client (client : basic_client) =
   object(self)
     val supports_update_osds = ref None
+    val supports_mark_msgs_delivered = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -320,6 +321,40 @@ class client (client : basic_client) =
       Albamgr_protocol.Protocol.Msg_log.id -> unit Lwt.t =
       fun t dest msg_id ->
         client # update (MarkMsgDelivered t) (dest, msg_id)
+
+
+    method mark_msgs_delivered : type dest msg.
+                                      (dest, msg) Msg_log.t -> dest ->
+                                      Albamgr_protocol.Protocol.Msg_log.id ->
+                                      Albamgr_protocol.Protocol.Msg_log.id -> unit Lwt.t =
+      fun t dest from_msg_id to_msg_id ->
+      let do_new () = client # update (MarkMsgsDelivered t) (dest, to_msg_id) in
+      let do_old () =
+        let rec inner from_msg_id =
+          if from_msg_id > to_msg_id
+          then Lwt.return ()
+          else
+            self # mark_msg_delivered t dest from_msg_id >>= fun () ->
+            inner (Int32.succ from_msg_id)
+        in
+        inner from_msg_id
+      in
+      match !supports_mark_msgs_delivered with
+      | None ->
+         Lwt.catch
+           (fun () ->
+            do_new () >>= fun () ->
+            supports_mark_msgs_delivered := Some true;
+            Lwt.return_unit)
+           (function
+             | Error.Albamgr_exn (Error.Unknown_operation, _) ->
+                supports_mark_msgs_delivered := Some false;
+                do_old ()
+             | exn -> Lwt.fail exn)
+      | Some true ->
+         do_new ()
+      | Some false ->
+         do_old ()
 
     method get_alba_id =
       client # query GetAlbaId ()

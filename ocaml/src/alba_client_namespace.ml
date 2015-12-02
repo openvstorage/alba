@@ -69,7 +69,13 @@ let create_namespace
           match !nsm_host_delivery_thread with
           | None ->
              let rec inner () =
-               deliver_nsm_host_messages () >>= fun () ->
+               Lwt.catch
+                 deliver_nsm_host_messages
+                 (fun exn ->
+                  Lwt_log.info_f
+                    ~exn
+                    "An exception occured while delivering osd messages during create namespace")
+               >>= fun () ->
                if !need_more_delivery
                then
                  begin
@@ -77,13 +83,12 @@ let create_namespace
                    inner ()
                  end
                else
-                 Lwt.return ()
+                 begin
+                   nsm_host_delivery_thread := None;
+                   Lwt.return ()
+                 end
              in
-             nsm_host_delivery_thread :=
-               Some (Lwt.finalize
-                       inner
-                       (fun () -> nsm_host_delivery_thread := None;
-                                  Lwt.return ()));
+             nsm_host_delivery_thread := Some (inner ());
           | Some _ ->
              need_more_delivery := true
         in

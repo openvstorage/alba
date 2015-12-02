@@ -367,6 +367,17 @@ module Protocol = struct
       | Nsm_host : (Nsm_host.id, Nsm_host_protocol.Protocol.Message.t) t
       | Osd : (Osd.id, Osd.Message.t) t
 
+    type t' = Wrap : _ t -> t'
+
+    let from_buffer buf : t' =
+      match Llio.int8_from buf with
+      | 1 -> Wrap Nsm_host
+      | 2 -> Wrap Osd
+      | k -> raise_bad_tag "Msg_log.t" k
+    let to_buffer buf = function
+      | Wrap Nsm_host -> Llio.int8_to buf 1
+      | Wrap Osd -> Llio.int8_to buf 2
+
     let dest_from_buffer : type dest msg. (dest, msg) t -> dest Llio.deserializer = function
       | Nsm_host -> Llio.string_from
       | Osd -> Llio.int32_from
@@ -859,6 +870,7 @@ module Protocol = struct
     | MarkOsdClaimed : (Osd.long_id, Osd.id) update
     | MarkOsdClaimedByOther : (Osd.long_id * alba_id, unit) update
     | MarkMsgDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
+    | MarkMsgsDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
     | AddWork : (Work.t Std.counted_list, unit) update
     | MarkWorkCompleted : (Work.id, unit) update
     | CreatePreset : (Preset.name * Preset.t, unit) update
@@ -1119,6 +1131,7 @@ module Protocol = struct
         Llio.string_from
         Llio.string_from
     | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
+    | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
     | AddWork -> Llio.counted_list_from Work.from_buffer
     | MarkWorkCompleted -> Llio.int32_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
@@ -1175,6 +1188,7 @@ module Protocol = struct
         Llio.string_to
         Llio.string_to
     | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
+    | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
     | MarkWorkCompleted -> Llio.int32_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
@@ -1221,6 +1235,7 @@ module Protocol = struct
     | DeleteNamespace ->    Llio.string_from
     | RecoverNamespace ->   Llio.unit_from
     | MarkMsgDelivered _ -> Llio.unit_from
+    | MarkMsgsDelivered _ ->Llio.unit_from
     | AddWork ->            Llio.unit_from
     | MarkWorkCompleted ->  Llio.unit_from
     | CreatePreset ->       Llio.unit_from
@@ -1247,6 +1262,7 @@ module Protocol = struct
     | DeleteNamespace ->    Llio.string_to
     | RecoverNamespace ->   Llio.unit_to
     | MarkMsgDelivered _ -> Llio.unit_to
+    | MarkMsgsDelivered _ ->Llio.unit_to
     | AddWork ->            Llio.unit_to
     | MarkWorkCompleted ->  Llio.unit_to
     | CreatePreset ->       Llio.unit_to
@@ -1328,6 +1344,9 @@ module Protocol = struct
 
                       Wrap_q GetMaintenanceConfig, 64l, "GetMaintenanceConfig";
                       Wrap_u UpdateMaintenanceConfig, 65l, "UpdateMaintenanceConfig";
+
+                      Wrap_u (MarkMsgsDelivered Msg_log.Nsm_host), 71l, "MarkMsgsDelivered Msg_log.Nsm_host";
+                      Wrap_u (MarkMsgsDelivered Msg_log.Osd), 72l, "MarkMsgsDelivered Msg_log.Osd";
                     ]
 
 

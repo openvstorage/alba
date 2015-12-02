@@ -108,13 +108,12 @@ module Keys = struct
       let suffix = serialize (dest_to_buffer t) dest in
       (prefix_prefix t) ^ "msgs/" ^ suffix
 
-    let extract_id_from_key : type dest msg. (dest, msg) t -> Key.t -> string -> id =
-      fun t key prefix ->
-        Llio.int32_be_from (Llio.make_buffer
-                              (Key.get_raw key)
-                              (1 + String.length prefix))
+    let extract_id_from_key key prefix =
+      Llio.int32_be_from (Llio.make_buffer
+                            (Key.get_raw key)
+                            (1 + String.length prefix))
 
-    let extract_id = fun t key prefix ->
+    let extract_id key prefix =
       Llio.int32_be_from (Llio.make_buffer
                             key
                             (String.length prefix))
@@ -178,7 +177,7 @@ module Keys = struct
   end
 end
 
-
+let mark_msgs_delivered_user_function_name = "albamgr_mark_messages_delivered"
 
 module Statistics =
   struct
@@ -208,6 +207,385 @@ let maybe_activate_reporting =
       Lwt.ignore_result (inner ())
   end
 
+let update_namespace_info (db : read_user_db) name f_some f_none =
+  let namespace_info_key = Keys.Namespace.info name in
+  let ns_info_s = db # get namespace_info_key in
+  match ns_info_s with
+  | None -> f_none (), None
+  | Some v ->
+     let open Protocol in
+     let ns_info = deserialize Namespace.from_buffer v in
+     let ns_info' = f_some ns_info in
+     [ Update.Assert (namespace_info_key, ns_info_s);
+       Update.Replace
+         (namespace_info_key,
+          Some (serialize Namespace.to_buffer ns_info')); ],
+     Some ns_info'
+
+let get_namespace_by_id db ~namespace_id =
+  let key = Keys.Namespace.name namespace_id in
+  match db # get key with
+  | None -> None
+  | Some namespace_name ->
+     let info_key = Keys.Namespace.info namespace_name in
+     begin
+       match db # get info_key with
+       | None -> None
+       | Some v ->
+          let namespace_info =
+            deserialize Protocol.Namespace.from_buffer v
+          in
+          Some (namespace_name, namespace_info)
+     end
+
+let get_namespace_osds
+      (db : read_user_db)
+      ~namespace_id
+      ~first ~finc ~last
+      ~max ~reverse =
+  let module KV = WrapReadUserDb(
+                      struct
+                        let db = db
+                        let prefix = ""
+                      end) in
+  let module EKV = Key_value_store.Read_store_extensions(KV) in
+  EKV.map_range
+    db
+    ~first:(Keys.Namespace.osds ~namespace_id ~osd_id:first) ~finc
+    ~last:(match last with
+           | Some (last, linc) -> Some (Keys.Namespace.osds ~namespace_id ~osd_id:last, linc)
+           | None -> Keys.Namespace.osds_next_prefix ~namespace_id)
+    ~max ~reverse
+    (fun cur key ->
+     let osd_id = Keys.Namespace.osds_extract_osd_id key in
+     let state = deserialize Protocol.Osd.NamespaceLink.from_buffer (KV.cur_get_value cur) in
+     (osd_id, state))
+
+let add_work_items work_items =
+  [ Log_plugin.make_update
+      ~next_id_key:Keys.Work.next_id
+      ~log_prefix:Keys.Work.prefix
+      ~msgs:(List.map
+               (serialize Protocol.Work.to_buffer)
+               work_items) ]
+
+let add_msgs : type dest msg.
+                    (dest, msg) Protocol.Msg_log.t ->
+                    dest -> msg list ->
+                    Update.t list =
+  fun t dest msgs ->
+  [ Log_plugin.make_update
+      ~next_id_key:(Keys.Msg_log.next_msg_key t dest)
+      ~log_prefix:(Keys.Msg_log.prefix t dest )
+      ~msgs:(List.map
+               (fun msg ->
+                serialize (Protocol.Msg_log.msg_to_buffer t) msg)
+               msgs)
+  ]
+let add_msg t dest msg = add_msgs t dest [ msg ]
+
+let get_osd_by_long_id db long_id =
+  let vo = db # get (Keys.Osd.info ~long_id) in
+  Option.map (deserialize Protocol.Osd.from_buffer_with_claim_info) vo
+let list_osds_by_osd_id db ~first ~finc ~last ~max ~reverse =
+  let module KV = WrapReadUserDb(
+                      struct
+                        let db = db
+                        let prefix = ""
+                      end) in
+  let module EKV = Key_value_store.Read_store_extensions(KV) in
+  let (cnt, ids), has_more =
+    EKV.map_range
+      db
+      ~first:(Keys.Osd.osd_id_to_long_id ~osd_id:first) ~finc
+      ~last:(match last with
+             | None -> Keys.Osd.osd_id_to_long_id_next_prefix
+             | Some (osd_id, linc) -> Some (Keys.Osd.osd_id_to_long_id ~osd_id, linc))
+      ~max ~reverse
+      (fun cur key ->
+       let osd_id = Keys.Osd.osd_id_to_long_id_extract_osd_id key in
+       let long_id = KV.cur_get_value cur in
+       osd_id, long_id) in
+  (cnt,
+   List.map
+     (fun (osd_id, long_id) ->
+      let _, osd_info = Option.get_some (get_osd_by_long_id db long_id) in
+      (osd_id, osd_info))
+     ids),
+  has_more
+let list_all_osds db =
+  let res, _has_more =
+    list_osds_by_osd_id
+      db
+      ~first:0l ~finc:true ~last:None
+      ~max:(-1) ~reverse:false in
+  res
+
+let list_osds_by_long_id db ~first ~finc ~last ~max ~reverse =
+  let module KV = WrapReadUserDb(
+                      struct
+                        let db = db
+                        let prefix = ""
+                      end) in
+  let module EKV = Key_value_store.Read_store_extensions(KV) in
+  EKV.map_range
+    db
+    ~first:(Keys.Osd.info ~long_id:first) ~finc
+    ~last:(match last with
+           | None -> Keys.Osd.info_next_prefix
+           | Some (long_id, linc) -> Some (Keys.Osd.info ~long_id, linc))
+    ~max ~reverse
+    (fun cur key ->
+     deserialize
+       Protocol.Osd.from_buffer_with_claim_info
+       (KV.cur_get_value cur))
+
+let get_osd_by_id (db : read_user_db) ~osd_id =
+  let long_id_o = db # get (Keys.Osd.osd_id_to_long_id ~osd_id) in
+  Option.map
+    (fun long_id ->
+     Option.get_some (get_osd_by_long_id db long_id))
+    long_id_o
+
+let update_namespace_link ~namespace_id ~osd_id from to' =
+  let key = Keys.Namespace.osds ~namespace_id ~osd_id in
+  [ Update.Assert (key,
+                   Some (serialize Protocol.Osd.NamespaceLink.to_buffer from));
+    Update.Set (key,
+                serialize Protocol.Osd.NamespaceLink.to_buffer to'); ]
+
+
+let upds_for_delivered_msg
+    : type dest msg.
+           read_user_db ->
+           (dest, msg) Protocol.Msg_log.t -> dest -> msg ->
+           Update.t list =
+  fun db t dest msg ->
+  let open Protocol in
+  match t with
+  | Msg_log.Nsm_host -> begin
+      let open Nsm_host_protocol.Protocol.Message in
+      match msg with
+      | CreateNamespace (name, id) ->
+         let upds, _ =
+           update_namespace_info
+             db
+             name
+             (fun ns_info -> Namespace.({ ns_info with state = Active }))
+             (fun () -> []) in
+         upds
+      | DeleteNamespace namespace_id ->
+         begin
+           match get_namespace_by_id db ~namespace_id with
+           | None -> []
+           | Some (namespace_name, namespace_info) ->
+              let namespace_info_key = Keys.Namespace.info namespace_name in
+              let namespace_name_key = Keys.Namespace.name namespace_id in
+              let { Namespace.id; nsm_host_id; state } = namespace_info in
+              let delete_ns_info =
+                [ Update.Assert (namespace_info_key,
+                                 Some (serialize Namespace.to_buffer namespace_info));
+                  Update.Delete namespace_info_key ;
+                  Update.Delete namespace_name_key;
+                ]
+              in
+              let delete_preset_used_by_ns =
+                Update.Replace (Keys.Preset.namespaces
+                                  ~preset_name:namespace_info.Namespace.preset_name
+                                  ~namespace_id,
+                                None) in
+              let (_, osd_ids), _ =
+                let module KV = WrapReadUserDb(
+                                    struct
+                                      let db = db
+                                      let prefix = ""
+                                    end) in
+                let module EKV = Key_value_store.Read_store_extensions(KV) in
+                EKV.map_range
+                  db
+                  ~first:(Keys.Namespace.osds_prefix ~namespace_id) ~finc:true
+                  ~last:(Keys.Namespace.osds_next_prefix ~namespace_id)
+                  ~max:(-1) ~reverse:false
+                  (fun cur key -> Keys.Namespace.osds_extract_osd_id key)
+              in
+              let add_work_item =
+                add_work_items
+                  [ Work.CleanupNsmHostNamespace (nsm_host_id, namespace_id) ]  in
+
+              let cleanup_osds =
+                List.fold_left
+                  (fun acc osd_id ->
+                   let upds =
+                     Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
+                                     None) ::
+                       Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
+                                       None) ::
+                         add_work_items [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
+                   in
+                   upds::acc)
+                  []
+                  osd_ids
+              in
+
+              List.concat
+                [ add_work_item;
+                  List.concat cleanup_osds;
+                  delete_ns_info;
+                  [ delete_preset_used_by_ns; ]; ]
+         end
+      | RecoverNamespace (name, namespace_id) ->
+         (* link all osds that should be linked... *)
+         let _, ns_info =
+           get_namespace_by_id db ~namespace_id |>
+             Option.get_some
+         in
+         let (_, osds), _ =
+           get_namespace_osds
+             db
+             ~namespace_id
+             ~first:0l ~finc:true ~last:None
+             ~reverse:false ~max:(-1)
+         in
+         add_msgs
+           Msg_log.Nsm_host
+           ns_info.Namespace.nsm_host_id
+           (let open Nsm_host_protocol.Protocol in
+            List.map
+              (fun (osd_id, osd_state) ->
+               let _, osd_info = get_osd_by_id db ~osd_id |>
+                                   Option.get_some in
+               Message.NamespaceMsg
+                 (namespace_id,
+                  Namespace_message.LinkOsd (osd_id, osd_info)))
+              osds)
+      | NamespaceMsg (namespace_id, msg) ->
+         begin
+           let open Nsm_host_protocol.Protocol.Namespace_message in
+           match msg with
+           | LinkOsd _ -> []
+           | UnlinkOsd osd_id ->
+              let add_work_item =
+                add_work_items
+                  [ Work.WaitUntilRepaired (osd_id, namespace_id) ]  in
+
+              List.concat
+                [ update_namespace_link
+                    ~namespace_id ~osd_id
+                    Osd.NamespaceLink.Decommissioning
+                    Osd.NamespaceLink.Repairing;
+                  add_work_item
+                ]
+         end
+    end
+  | Msg_log.Osd -> begin
+      let osd_id = dest in
+      let open Osd.Message in
+      match msg with
+      | AddNamespace (_, namespace_id) ->
+         let long_id = db # get_exn (Keys.Osd.osd_id_to_long_id ~osd_id) in
+         let osd_info_key = Keys.Osd.info ~long_id in
+         let osd_info_v = db # get_exn osd_info_key in
+         let _, osd_info = deserialize Osd.from_buffer_with_claim_info osd_info_v in
+
+         if osd_info.Osd.decommissioned
+         then
+           begin
+             let add_work_items =
+               add_work_items
+                 [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
+             in
+             Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None)
+             :: Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None)
+             :: add_work_items
+           end
+         else
+           begin
+             match get_namespace_by_id db ~namespace_id with
+             | None -> []
+             | Some (_, ns_info) ->
+                let add_nsm_msg =
+                  add_msg
+                    Msg_log.Nsm_host
+                    ns_info.Namespace.nsm_host_id
+                    (let open Nsm_host_protocol.Protocol in
+                     Message.NamespaceMsg
+                       (namespace_id,
+                        Namespace_message.LinkOsd (osd_id, osd_info)))
+                in
+                List.concat
+                  [ (* prevent race by making sure the decommissioned flag
+                              hasn't changed in the meantime
+                     *)
+                    [ Update.Assert (osd_info_key, Some osd_info_v);
+                      Update.Set (Keys.Osd.namespaces ~osd_id ~namespace_id, "");
+                    ];
+                    update_namespace_link
+                      ~osd_id ~namespace_id
+                      Osd.NamespaceLink.Adding
+                      Osd.NamespaceLink.Active;
+
+                    add_nsm_msg ]
+           end
+    end
+
+let mark_msg_delivered (db : read_user_db) t dest msg_id =
+  let open Protocol in
+  db # with_cursor
+     (fun cur ->
+      let prefix = Keys.Msg_log.prefix t dest in
+      let found = cur # jump ~inc:true ~right:true prefix in
+      if not found
+      then []
+      else begin
+          let key = cur # get_key () in
+          if not (Plugin_extra.key_has_prefix prefix key)
+          then []
+          else begin
+              let msg_id' = Keys.Msg_log.extract_id_from_key key prefix in
+              if msg_id' <> msg_id
+              then Error.failwith ~payload:"Wrong msg_id for mark_msg_delivered" Error.Unknown
+              else begin
+                  let k = Key.get key in
+                  let v = cur # get_value () in
+                  let msg = deserialize (Msg_log.msg_from_buffer t) v in
+                  Update.Assert (k, Some v) ::
+                    Update.Delete k ::
+                      (upds_for_delivered_msg db t dest msg)
+                end
+            end
+        end)
+
+let mark_msgs_delivered (db : user_db) t dest msg_id =
+  let read_db = (db :> read_user_db) in
+  let open Protocol in
+  db # with_cursor
+     (fun cur ->
+      let prefix = Keys.Msg_log.prefix t dest in
+      let module KV = WrapReadUserDb(
+                          struct
+                            let db = read_db
+                            let prefix = ""
+                          end) in
+      let module EKV = Key_value_store.Read_store_extensions(KV) in
+      let (_, msgs), _ =
+        EKV.map_range
+          read_db
+          ~first:prefix ~finc:true
+          ~last:(Some (prefix ^ serialize Llio.int32_be_to msg_id,true))
+          ~max:(-1) ~reverse:false
+          (fun cur key ->
+           let msg_id' = Keys.Msg_log.extract_id key prefix in
+           let msg = deserialize (Msg_log.msg_from_buffer t) (KV.cur_get_value cur) in
+           (key, msg_id', msg))
+      in
+      List.iter
+        (fun (key, msg_id, msg) ->
+         let upds = upds_for_delivered_msg read_db t dest msg in
+         db # put key None;
+         List.iter
+           (apply_update db)
+           upds)
+        msgs)
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
@@ -336,21 +714,6 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     Lwt_extra2.llio_output_and_flush oc s
   in
 
-  let update_namespace_info name f_some f_none =
-    let namespace_info_key = Keys.Namespace.info name in
-    let ns_info_s = db # get namespace_info_key in
-    match ns_info_s with
-    | None -> f_none (), None
-    | Some v ->
-      let ns_info = deserialize Namespace.from_buffer v in
-      let ns_info' = f_some ns_info in
-      [ Update.Assert (namespace_info_key, ns_info_s);
-        Update.Replace
-          (namespace_info_key,
-           Some (serialize Namespace.to_buffer ns_info')); ],
-      Some ns_info'
-  in
-
   let list_namespaces ~first ~finc ~last ~max ~reverse =
     let module KV = WrapReadUserDb(
       struct
@@ -370,88 +733,6 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
            let namespace_name = Keys.Namespace.info_extract_namespace_name key in
            let namespace_info = deserialize Namespace.from_buffer (KV.cur_get_value cur) in
            (namespace_name, namespace_info))
-  in
-  let get_namespace_by_id ~namespace_id =
-    let key = Keys.Namespace.name namespace_id in
-    match db # get key with
-    | None -> None
-    | Some namespace_name ->
-       let info_key = Keys.Namespace.info namespace_name in
-       begin
-         match db # get info_key with
-         | None -> None
-         | Some v ->
-            let namespace_info =
-              deserialize Namespace.from_buffer v
-            in
-            Some (namespace_name, namespace_info)
-       end
-  in
-
-  let get_osd_by_long_id long_id =
-    let vo = db # get (Keys.Osd.info ~long_id) in
-    Option.map (deserialize Osd.from_buffer_with_claim_info) vo
-  in
-  let list_osds_by_osd_id ~first ~finc ~last ~max ~reverse =
-    let module KV = WrapReadUserDb(
-      struct
-        let db = db
-        let prefix = ""
-      end) in
-    let module EKV = Key_value_store.Read_store_extensions(KV) in
-    let (cnt, ids), has_more =
-      EKV.map_range
-        db
-        ~first:(Keys.Osd.osd_id_to_long_id ~osd_id:first) ~finc
-        ~last:(match last with
-            | None -> Keys.Osd.osd_id_to_long_id_next_prefix
-            | Some (osd_id, linc) -> Some (Keys.Osd.osd_id_to_long_id ~osd_id, linc))
-        ~max ~reverse
-        (fun cur key ->
-           let osd_id = Keys.Osd.osd_id_to_long_id_extract_osd_id key in
-           let long_id = KV.cur_get_value cur in
-           osd_id, long_id) in
-    (cnt,
-     List.map
-       (fun (osd_id, long_id) ->
-          let _, osd_info = Option.get_some (get_osd_by_long_id long_id) in
-          (osd_id, osd_info))
-       ids),
-    has_more
-  in
-  let list_all_osds () =
-    let res, _has_more =
-      list_osds_by_osd_id
-        ~first:0l ~finc:true ~last:None
-        ~max:(-1) ~reverse:false in
-    res
-  in
-  let get_osd_by_id ~osd_id =
-    let long_id_o = db # get (Keys.Osd.osd_id_to_long_id ~osd_id) in
-    Option.map
-      (fun long_id ->
-         Option.get_some (get_osd_by_long_id long_id))
-      long_id_o
-  in
-
-  let list_osds_by_long_id ~first ~finc ~last ~max ~reverse =
-    let module KV = WrapReadUserDb(
-        struct
-          let db = db
-          let prefix = ""
-        end) in
-    let module EKV = Key_value_store.Read_store_extensions(KV) in
-    EKV.map_range
-      db
-      ~first:(Keys.Osd.info ~long_id:first) ~finc
-      ~last:(match last with
-          | None -> Keys.Osd.info_next_prefix
-          | Some (long_id, linc) -> Some (Keys.Osd.info ~long_id, linc))
-      ~max ~reverse
-      (fun cur key ->
-         deserialize
-           Osd.from_buffer_with_claim_info
-           (KV.cur_get_value cur))
   in
 
   let list_preset_namespaces ~preset_name ~max =
@@ -514,28 +795,6 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
 
 
-  let add_work_items work_items =
-    [ Log_plugin.make_update
-        ~next_id_key:Keys.Work.next_id
-        ~log_prefix:Keys.Work.prefix
-        ~msgs:(List.map
-                 (serialize Work.to_buffer)
-                 work_items) ]
-  in
-
-  let add_msgs : type dest msg. (dest, msg) Msg_log.t -> dest -> msg list -> Update.t list =
-    fun t dest msgs ->
-      [ Log_plugin.make_update
-          ~next_id_key:(Keys.Msg_log.next_msg_key t dest)
-          ~log_prefix:(Keys.Msg_log.prefix t dest )
-          ~msgs:(List.map
-                   (fun msg ->
-                    serialize (Msg_log.msg_to_buffer t) msg)
-                   msgs)
-      ]
-  in
-  let add_msg t dest msg = add_msgs t dest [ msg ] in
-
   let get_next_msgs : type dest msg. (dest, msg) Msg_log.t -> dest -> (Msg_log.id * msg) counted_list_more =
     fun t dest ->
     begin
@@ -551,239 +810,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~max:10 (* don't overdo it *)
         ~reverse:false
         (fun cur key ->
-         let msg_id = Keys.Msg_log.extract_id t key first in
+         let msg_id = Keys.Msg_log.extract_id key first in
          let msg_s = KV.cur_get_value cur in
          let msg = deserialize (Msg_log.msg_from_buffer t) msg_s in
          (msg_id,msg)
         )
     end
-  in
-
-  let get_namespace_osds
-        ~namespace_id
-        ~first ~finc ~last
-        ~max ~reverse =
-    let module KV = WrapReadUserDb(
-                        struct
-                          let db = db
-                          let prefix = ""
-                        end) in
-    let module EKV = Key_value_store.Read_store_extensions(KV) in
-    EKV.map_range
-      db
-      ~first:(Keys.Namespace.osds ~namespace_id ~osd_id:first) ~finc
-      ~last:(match last with
-             | Some (last, linc) -> Some (Keys.Namespace.osds ~namespace_id ~osd_id:last, linc)
-             | None -> Keys.Namespace.osds_next_prefix ~namespace_id)
-      ~max ~reverse
-      (fun cur key ->
-       let osd_id = Keys.Namespace.osds_extract_osd_id key in
-       let state = deserialize Osd.NamespaceLink.from_buffer (KV.cur_get_value cur) in
-       (osd_id, state))
-  in
-
-  let update_namespace_link ~namespace_id ~osd_id from to' =
-    let key = Keys.Namespace.osds ~namespace_id ~osd_id in
-    [ Update.Assert (key,
-                     Some (serialize Osd.NamespaceLink.to_buffer from));
-      Update.Set (key,
-                  serialize Osd.NamespaceLink.to_buffer to'); ]
-  in
-
-  let mark_msg_delivered t dest msg_id =
-    let upds_for_delivered_msg
-      : type dest msg. (dest, msg) Msg_log.t -> dest -> msg -> Update.t list =
-      fun t dest msg ->
-        match t with
-        | Msg_log.Nsm_host -> begin
-            let open Nsm_host_protocol.Protocol.Message in
-            match msg with
-            | CreateNamespace (name, id) ->
-              let upds, _ =
-                update_namespace_info
-                  name
-                  (fun ns_info -> Namespace.({ ns_info with state = Active }))
-                  (fun () -> []) in
-              upds
-            | DeleteNamespace namespace_id ->
-              begin
-                match get_namespace_by_id ~namespace_id with
-                | None -> []
-                | Some (namespace_name, namespace_info) ->
-                  let namespace_info_key = Keys.Namespace.info namespace_name in
-                  let namespace_name_key = Keys.Namespace.name namespace_id in
-                  let { Namespace.id; nsm_host_id; state } = namespace_info in
-                  let delete_ns_info =
-                    [ Update.Assert (namespace_info_key,
-                                     Some (serialize Namespace.to_buffer namespace_info));
-                      Update.Delete namespace_info_key ;
-                      Update.Delete namespace_name_key;
-                    ]
-                  in
-                  let delete_preset_used_by_ns =
-                    Update.Replace (Keys.Preset.namespaces
-                                      ~preset_name:namespace_info.Namespace.preset_name
-                                      ~namespace_id,
-                                    None) in
-                  let (_, osd_ids), _ =
-                    let module KV = WrapReadUserDb(
-                                        struct
-                                          let db = db
-                                          let prefix = ""
-                                        end) in
-                    let module EKV = Key_value_store.Read_store_extensions(KV) in
-                    EKV.map_range
-                      db
-                      ~first:(Keys.Namespace.osds_prefix ~namespace_id) ~finc:true
-                      ~last:(Keys.Namespace.osds_next_prefix ~namespace_id)
-                      ~max:(-1) ~reverse:false
-                      (fun cur key -> Keys.Namespace.osds_extract_osd_id key)
-                  in
-                  let add_work_item =
-                    add_work_items
-                      [ Work.CleanupNsmHostNamespace (nsm_host_id, namespace_id) ]  in
-
-                  let cleanup_osds =
-                    List.fold_left
-                      (fun acc osd_id ->
-                         let upds =
-                           Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
-                                           None) ::
-                           Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
-                                           None) ::
-                           add_work_items [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
-                         in
-                         upds::acc)
-                      []
-                      osd_ids
-                  in
-
-                  List.concat
-                    [ add_work_item;
-                      List.concat cleanup_osds;
-                      delete_ns_info;
-                      [ delete_preset_used_by_ns; ]; ]
-              end
-            | RecoverNamespace (name, namespace_id) ->
-               (* link all osds that should be linked... *)
-               let _, ns_info =
-                 get_namespace_by_id ~namespace_id |>
-                 Option.get_some
-               in
-               let (_, osds), _ =
-                 get_namespace_osds
-                   ~namespace_id
-                   ~first:0l ~finc:true ~last:None
-                   ~reverse:false ~max:(-1)
-               in
-               add_msgs
-                 Msg_log.Nsm_host
-                 ns_info.Namespace.nsm_host_id
-                 (let open Nsm_host_protocol.Protocol in
-                  List.map
-                    (fun (osd_id, osd_state) ->
-                     let _, osd_info = get_osd_by_id ~osd_id |>
-                                    Option.get_some in
-                     Message.NamespaceMsg
-                       (namespace_id,
-                        Namespace_message.LinkOsd (osd_id, osd_info)))
-                    osds)
-            | NamespaceMsg (namespace_id, msg) ->
-              begin
-                let open Nsm_host_protocol.Protocol.Namespace_message in
-                match msg with
-                | LinkOsd _ -> []
-                | UnlinkOsd osd_id ->
-                  let add_work_item =
-                    add_work_items
-                      [ Work.WaitUntilRepaired (osd_id, namespace_id) ]  in
-
-                  List.concat
-                    [ update_namespace_link
-                        ~namespace_id ~osd_id
-                        Osd.NamespaceLink.Decommissioning
-                        Osd.NamespaceLink.Repairing;
-                      add_work_item
-                    ]
-              end
-          end
-        | Msg_log.Osd -> begin
-            let osd_id = dest in
-            let open Osd.Message in
-            match msg with
-            | AddNamespace (_, namespace_id) ->
-              let long_id = db # get_exn (Keys.Osd.osd_id_to_long_id ~osd_id) in
-              let osd_info_key = Keys.Osd.info ~long_id in
-              let osd_info_v = db # get_exn osd_info_key in
-              let _, osd_info = deserialize Osd.from_buffer_with_claim_info osd_info_v in
-
-              if osd_info.Osd.decommissioned
-              then
-                begin
-                  let add_work_items =
-                    add_work_items
-                      [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
-                  in
-                  Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None)
-                  :: Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None)
-                  :: add_work_items
-                end
-              else
-                begin
-                  match get_namespace_by_id ~namespace_id with
-                    | None -> []
-                    | Some (_, ns_info) ->
-                       let add_nsm_msg =
-                         add_msg
-                           Msg_log.Nsm_host
-                           ns_info.Namespace.nsm_host_id
-                           (let open Nsm_host_protocol.Protocol in
-                            Message.NamespaceMsg
-                              (namespace_id,
-                               Namespace_message.LinkOsd (osd_id, osd_info)))
-                       in
-                       List.concat
-                         [ (* prevent race by making sure the decommissioned flag
-                              hasn't changed in the meantime
-                            *)
-                           [ Update.Assert (osd_info_key, Some osd_info_v);
-                             Update.Set (Keys.Osd.namespaces ~osd_id ~namespace_id, "");
-                           ];
-                           update_namespace_link
-                             ~osd_id ~namespace_id
-                             Osd.NamespaceLink.Adding
-                             Osd.NamespaceLink.Active;
-
-                           add_nsm_msg ]
-                end
-          end
-    in
-    let upds =
-      db # with_cursor
-        (fun cur ->
-           let prefix = Keys.Msg_log.prefix t dest in
-           let found = cur # jump ~inc:true ~right:true prefix in
-           if not found
-           then []
-           else begin
-             let key = cur # get_key () in
-             if not (Plugin_extra.key_has_prefix prefix key)
-             then []
-             else begin
-               let msg_id' = Keys.Msg_log.extract_id_from_key t key prefix in
-               if msg_id' <> msg_id
-               then []
-               else begin
-                 let k = Key.get key in
-                 let v = cur # get_value () in
-                 let msg = deserialize (Msg_log.msg_from_buffer t) v in
-                 Update.Assert (k, Some v) ::
-                 Update.Delete k ::
-                 (upds_for_delivered_msg t dest msg)
-               end
-             end
-           end) in
-    upds
   in
 
   let check_claim_osd long_id =
@@ -1021,7 +1053,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       let unlink_from_namespaces =
         List.fold_left
           (fun acc namespace_id ->
-             let _, ns_info = Option.get_some (get_namespace_by_id ~namespace_id) in
+             let _, ns_info = Option.get_some (get_namespace_by_id db ~namespace_id) in
              let new_upds =
                add_msg
                  Msg_log.Nsm_host
@@ -1098,7 +1130,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
              List.flatmap_unordered
                (fun namespace_id ->
                   let namespace_name, namespace_info =
-                    Option.get_some (get_namespace_by_id ~namespace_id) in
+                    Option.get_some (get_namespace_by_id db ~namespace_id) in
                   add_namespace_osd
                     ~osd_id
                     ~namespace_id
@@ -1212,11 +1244,11 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
           let osd_ids =
             let ids = match preset.Preset.osds with
-              | Preset.All -> List.map fst (snd (list_all_osds ()))
+              | Preset.All -> List.map fst (snd (list_all_osds db))
               | Preset.Explicit osd_ids -> osd_ids in
             List.filter
               (fun osd_id ->
-                 let _, osd_info = Option.get_some (get_osd_by_id ~osd_id) in
+                 let _, osd_info = Option.get_some (get_osd_by_id db ~osd_id) in
                  not osd_info.Osd.decommissioned)
               ids
           in
@@ -1265,6 +1297,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
       let update_ns_info, ns_info =
         update_namespace_info
+          db
           name
           (fun ns_info ->
              let open Namespace in
@@ -1362,7 +1395,21 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | MarkMsgDelivered t ->
       fun (dest, msg_id) ->
         Lwt_log.debug_f "MarkMsgDelivered(...,msg_id:%li)" msg_id >>= fun () ->
-        return_upds (mark_msg_delivered t dest msg_id)
+        return_upds (mark_msg_delivered db t dest msg_id)
+    | MarkMsgsDelivered t ->
+       fun (dest, msg_id) ->
+       return_upds
+         [ Update.UserFunction
+             (mark_msgs_delivered_user_function_name,
+              Some
+                (serialize
+                   (Llio.tuple3_to
+                      Msg_log.to_buffer
+                      (Msg_log.dest_to_buffer t)
+                      Llio.int32_to)
+                   (Msg_log.Wrap t,
+                    dest,
+                    msg_id))) ]
     | AddWork -> fun (_cnt, work) ->
       return_upds (add_work_items work)
     | MarkWorkCompleted -> fun id ->
@@ -1515,7 +1562,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                (List.map
                   (fun namespace_id ->
                      let namespace_name, namespace_info =
-                       Option.get_some (get_namespace_by_id ~namespace_id) in
+                       Option.get_some (get_namespace_by_id db ~namespace_id) in
                      add_namespace_osd
                        ~osd_id
                        ~namespace_id
@@ -1631,17 +1678,20 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
     | ListOsdsByOsdId -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
       list_osds_by_osd_id
+        db
         ~first ~finc ~last
         ~max:(cap_max ~max ())
         ~reverse
     | ListOsdsByLongId -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
       list_osds_by_long_id
+        db
         ~first ~finc ~last
         ~max:(cap_max ~max ())
         ~reverse
     | ListAvailableOsds -> fun () ->
       let (_, osds), _ =
         list_osds_by_long_id
+          db
           ~first:"" ~finc:true ~last:None
           ~max:(-1) ~reverse:false
       in
@@ -1659,10 +1709,11 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | ListNamespaceOsds -> fun (namespace_id,
                                 { RangeQueryArgs.first; finc; last; max; reverse; }) ->
 
-      if None = get_namespace_by_id ~namespace_id
+      if None = get_namespace_by_id db ~namespace_id
       then Error.failwith Error.Namespace_does_not_exist;
 
       get_namespace_osds
+        db
         ~namespace_id
         ~first ~finc ~last
         ~max:(cap_max ~max ())
@@ -1754,7 +1805,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~max:(cap_max ~max ()) ~reverse
         (fun cur key ->
            let osd_id = Keys.Osd.decommissioning_extract_osd_id key in
-           let _, osd_info = Option.get_some (get_osd_by_id ~osd_id) in
+           let _, osd_info = Option.get_some (get_osd_by_id db ~osd_id) in
            osd_id, osd_info)
     | ListOsdNamespaces -> fun (osd_id,
                                 { RangeQueryArgs.first; finc; last; reverse; max; }) ->
@@ -1921,7 +1972,20 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
 
 
-
+let () = Registry.register
+           mark_msgs_delivered_user_function_name
+           (fun user_db ->
+            function
+            | None -> assert false
+            | Some req_s ->
+               let buf = Llio.make_buffer req_s 0 in
+               let open Protocol in
+               match Msg_log.from_buffer buf with
+               | Msg_log.Wrap msg_t ->
+                  let dest = Msg_log.dest_from_buffer msg_t buf in
+                  let msg_id = Llio.int32_from buf in
+                  mark_msgs_delivered user_db msg_t dest msg_id;
+                  None)
 let () = HookRegistry.register "albamgr" albamgr_user_hook
 let () = Log_plugin.register ()
 let () = Arith64.register()
