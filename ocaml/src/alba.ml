@@ -260,9 +260,34 @@ let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json
     with_alba_client
       cfg_file tls_config
       (fun client ->
-       client # mgr_access # list_namespaces ~first ~finc ~last ~max ~reverse
-       >>= fun ((count, namespaces),has_more) ->
-       Lwt_list.map_s
+       let list_all () =
+         let needed =
+           if max < 0
+           then max_int
+           else max
+         in
+         let rec inner (acc_count, acc_namespaces, acc_has_more) ~first ~finc needed =
+           if needed <= 0 || not acc_has_more
+           then Lwt.return (acc_count, List.rev acc_namespaces)
+           else
+             client # mgr_access # list_namespaces
+                    ~first ~finc ~last ~max:needed ~reverse
+             >>= fun ((count, namespaces), has_more) ->
+             let acc_count' = count + acc_count
+             and acc_namespaces' = List.rev_append namespaces acc_namespaces
+             and acc_has_more' = has_more
+             and needed' = needed - count
+             in
+             let first' = List.hd_exn acc_namespaces' |> fst
+             and finc' = false
+             in
+             inner (acc_count', acc_namespaces', acc_has_more')
+                   ~first:first' ~finc:finc' needed'
+         in
+         inner (0,[],true) ~first ~finc needed
+       in
+       list_all () >>= fun (count, namespaces) ->
+       Lwt_list.map_p
          (fun (name, namespace) ->
           client # get_base_client # with_nsm_client ~namespace:name
                (fun nsm_client ->
@@ -297,13 +322,13 @@ let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json
            in
            let json = List.map transform r in
            print_result
-             (count, has_more, json)
-             Alba_json.Namespace.Both.cm_both_list_to_yojson
+             (count, json)
+             Alba_json.Namespace.Both.c_both_list_to_yojson
          end
        else
          begin
            begin
-             Lwt_io.printlf "count:%i\nhas_more:%b" count has_more >>= fun () ->
+             Lwt_io.printlf "count:%i" count >>= fun () ->
              Lwt_list.iter_s
                (fun (name,namespace, stats) ->
                 _render_namespace name namespace stats

@@ -110,7 +110,7 @@ module Namespace = struct
       }
     [@@deriving yojson]
     type both_list = both list [@@deriving yojson]
-    type cm_both_list = int * bool * both_list [@@deriving yojson]
+    type c_both_list = int * both_list [@@deriving yojson]
   end
 end
 
