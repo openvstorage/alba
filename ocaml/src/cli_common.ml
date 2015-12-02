@@ -115,14 +115,13 @@ let lwt_server t : unit =
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run (t ())
 
-let alba_cfg_default_location =
-  try Some (Sys.getenv "ALBA_CONFIG")
-  with Not_found -> None
-
 let alba_cfg_file =
+  let doc = "alba mgr (arakoon) config file" in
+  let env = Arg.env_var "ALBA_CONFIG" ~doc in
   Arg.(required
-       & opt (some file) alba_cfg_default_location
-       & info ["config"] ~docv:"CONFIG_FILE" ~doc:"alba mgr (arakoon) config file")
+       & opt (some file) None
+       & info ["config"]
+              ~env ~docv:"CONFIG_FILE" ~doc )
 
 let to_json =
   Arg.(value
@@ -248,6 +247,41 @@ let max =
 let reverse =
   Arg.(value & opt bool false & info["reverse"] ~doc:"")
 
+let tls_config =
+  let open Arg in
+  let (tls: Tls.t Arg.converter) =
+    let pa,pr = (t3 string string string) in
+    let parser  =
+      begin
+        fun s ->
+        match pa s with
+        | `Ok cck -> `Ok (Tls.make cck)
+        | `Error x -> `Error x
+      end
+    and printer = (fun fmt tls -> Format.pp_print_string fmt (Tls.show tls))
+    in (parser, printer)
+
+  in
+  let doc = "<cacert.pem,mycert.pem,mykey.key>" in
+  let env = Arg.env_var "ALBA_CLI_TLS" ~doc in
+  Arg.(value
+       & opt (some tls) None
+       & info ["tls"] ~env ~doc
+  )
+
+let produce_xml default =
+  let doc = "produce xml in ./testresults.xml. $(docv): bool" in
+  Arg.(value
+       & opt bool default
+       & info ["xml"] ~docv:"XML" ~doc)
+
+
+let only_test =
+  Arg.(value
+       & opt_all string []
+       & info ["only-test"] ~docv:"ONLY-TEST" ~doc:"limit tests to filter:$(docv)"
+  )
+
 
 let verify_log_level log_level =
   let levels = [ "debug"; "info"; "notice"; "warning"; "error"; "fatal"; ] in
@@ -267,16 +301,16 @@ let to_level =
   | "fatal" -> Fatal
   | log_level -> failwith (Printf.sprintf "unknown log level %s" log_level)
 
-let with_alba_client cfg_file f =
+let with_alba_client cfg_file tls_config f =
   Alba_client.with_client
     (ref (Albamgr_protocol.Protocol.Arakoon_config.from_config_file cfg_file))
+    ~tls_config
     f
 
-let with_albamgr_client ~attempts cfg_file f =
+let with_albamgr_client ~attempts cfg_file tls_config f =
   let cfg =
     Albamgr_protocol.Protocol.Arakoon_config.from_config_file
       cfg_file
   in
   Albamgr_client.with_client' ~attempts
-    cfg
-    f
+    cfg ~tls_config f

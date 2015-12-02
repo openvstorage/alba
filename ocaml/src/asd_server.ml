@@ -298,6 +298,46 @@ let get_value_option kv key =
 
 let key_exists kv key = (get_value_option kv key) <> None
 
+module Net_fd = struct
+  include Net_fd
+  (*
+    we don't want this to end up in the arakoon plugins,
+    where it's needed nor used
+    and pulls along cstruct and friends
+   *)
+  let sendfile_all ~fd_in ~(fd_out:t) size =
+    match fd_out with
+    | Plain fd ->
+       Fsutil.sendfile_all
+         ~fd_in
+         ~fd_out:fd
+         size
+    | SSL(_,socket) ->
+       let copy_using buffer =
+         let buffer_size = Lwt_bytes.length buffer in
+          let write_all socket buffer offset length =
+            let write_from_source = Lwt_ssl.write_bytes socket buffer in
+            Lwt_extra2._write_all write_from_source offset length
+          in
+          let rec loop todo =
+            if todo = 0
+            then Lwt.return_unit
+            else
+              begin
+                let step =
+                  if todo <= buffer_size
+                  then todo
+                  else buffer_size
+                in
+                Lwt_bytes.read fd_in        buffer 0 step >>= fun bytes_read ->
+                write_all socket buffer 0 bytes_read >>= fun () ->
+                loop (todo - bytes_read)
+              end
+          in
+          loop size
+       in
+       Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
+end
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
@@ -307,9 +347,9 @@ let execute_query : type req res.
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
                          req ->
-                         (string * (Lwt_unix.file_descr ->
-                                    unit Lwt.t)) Lwt.t
+                         (string * (Net_fd.t -> unit Lwt.t)) Lwt.t
   = fun kv io_sched dir_info mgmt stats q ->
+
     let open Protocol in
     let serialize_with_length res =
       serialize_with_length
@@ -435,16 +475,17 @@ let execute_query : type req res.
                     0
                     res)
            (res,
-            fun fd ->
+            fun nfd ->
             Lwt_list.iter_s
               (fun (fnr, size) ->
                DirectoryInfo.with_blob_fd
                  dir_info fnr
                  (fun blob_fd ->
-                  Fsutil.sendfile_all
+                  Net_fd.sendfile_all
                     ~fd_in:blob_fd
-                    ~fd_out:fd
-                    size))
+                    ~fd_out:nfd
+                    size)
+              )
               (List.rev !write_laters)))
     | MultiExists -> fun (keys, prio) ->
                      perform_read
@@ -846,12 +887,14 @@ let check_asd_id kv asd_id =
     else failwith (Printf.sprintf "asd id mismatch: %s <> %s" asd_id asd_id')
 
 
+let done_writing (nfd:Net_fd.t) = Lwt.return_unit
+
 let asd_protocol
       ?cancel
       kv ~release_fnr ~slow io_sched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
-      fd ic
+      nfd ic
   =
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
   let handle_request buf code =
@@ -861,7 +904,7 @@ let asd_protocol
      *)
 
     let return_result
-          ?(write_extra=fun _ -> Lwt.return ())
+          ?(write_extra=done_writing)
           serializer res =
       let res_s =
         serialize_with_length
@@ -878,7 +921,7 @@ let asd_protocol
           Protocol.Error.serialize
           error
       in
-      Lwt.return (res, fun _ -> Lwt.return ())
+      Lwt.return (res, done_writing)
     in
     Lwt.catch
       (fun () ->
@@ -911,8 +954,8 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    Lwt_extra2.write_all' fd res >>= fun () ->
-    write_extra fd
+    Net_fd.write_all res nfd >>= fun () ->
+    write_extra nfd
   in
   let rec inner () =
     (match cancel with
@@ -968,17 +1011,18 @@ let asd_protocol
           Error.serialize rbuf err;
           Lwt_log.debug msg >>= fun () ->
           let bytes_back = Buffer.contents rbuf  in
-          Lwt_extra2.write_all' fd bytes_back
+          Net_fd.write_all bytes_back nfd
         else
           begin
             Llio.input_string_option ic >>= fun lido ->
-            Lwt_extra2.write_all'
-              fd
+            Net_fd.write_all
               (serialize
                  (Llio.pair_to
                     Llio.int32_to
                     Llio.string_to)
-                 (0l, asd_id))
+                 (0l, asd_id)
+              )
+              nfd
             >>= fun () ->
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()
@@ -1021,14 +1065,21 @@ class check_garbage_from_advancer check_garbage_from kv =
 
 let run_server
       ?cancel
-      hosts port path
+      (hosts:string list)
+      (port:int option)
+      (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
       ~buffer_size
       ~rocksdb_max_open_files
-      ~limit ~multicast =
-  Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision
-  >>= fun () ->
+      ~limit
+      ~multicast
+      ~tls
+  =
+  Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
+  Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls) >>= fun () ->
+
+  let ctx = Tls.to_server_context tls in
   let db_path = path ^ "/db" in
   Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
   let kv =
@@ -1228,29 +1279,55 @@ let run_server
     Lwt.return r
   in
   let mgmt = AsdMgmt.make latest_disk_usage limit in
-
-  let server_t =
-    let buffer_pool = Buffer_pool.create ~buffer_size in
-    let protocol fd =
-      Buffer_pool.with_buffer
-        buffer_pool
-        (fun buffer ->
-         let ic = Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd in
-         asd_protocol
-           ?cancel
-           kv
-           ~release_fnr:(fun fnr -> advancer # release fnr)
-           ~slow
-           io_sched
-           dir_info
-           stats
-           ~mgmt
-           ~get_next_fnr
-           asd_id fd ic)
-    in
-    Networking2.make_server ?cancel hosts port protocol
+  let buffer_pool = Buffer_pool.create ~buffer_size in
+  let protocol nfd =
+    Buffer_pool.with_buffer
+      buffer_pool
+      (fun buffer ->
+       let ic = Net_fd.make_ic ~buffer nfd in
+       asd_protocol
+         ?cancel
+         kv
+         ~release_fnr:(fun fnr -> advancer # release fnr)
+         ~slow
+         io_sched
+         dir_info
+         stats
+         ~mgmt
+         ~get_next_fnr
+         asd_id nfd ic)
   in
-
+  let maybe_add_plain_server threads =
+    match port with
+    | None -> threads
+    | Some port ->
+       let t = Networking2.make_server ?cancel hosts port ~ctx:None protocol in
+       t :: threads
+  in
+  let maybe_add_tls_server threads =
+      match tls with
+      | None -> threads
+      | Some tls ->
+         let open Asd_config.Config in
+         let tlsPort = tls.port in
+         let t = Networking2.make_server ?cancel hosts tlsPort ~ctx protocol in
+         t :: threads
+  in
+  let maybe_add_multicast threads =
+    match multicast with
+    | None -> threads
+    | Some mcast_period ->
+       let tlsPort =
+         match tls with
+         | None   -> None
+         | Some tls -> let open Asd_config.Config in Some tls.port
+       in
+       let mcast_t () =
+         Discovery.multicast asd_id node_id hosts port tlsPort mcast_period
+                             ~disk_usage
+       in
+       mcast_t () :: threads
+  in
   let reporting_t =
     let section = AsdStatistics.section in
     Mem_stats.reporting_t
@@ -1263,23 +1340,17 @@ let run_server
                Asd_protocol.Protocol.code_to_description))
       ()
   in
-  let threads = [
-      server_t;
+  let threads =
+    [
       (Lwt_extra2.make_fuse_thread ());
       reporting_t;
       io_sched_t;
     ]
+    |> maybe_add_plain_server
+    |> maybe_add_tls_server
+    |> maybe_add_multicast
   in
-  let threads' = match multicast with
-    | None -> threads
-    | Some mcast_period ->
-       let mcast_t () =
-         Discovery.multicast asd_id node_id hosts port mcast_period
-                             ~disk_usage
-       in
-       mcast_t () :: threads
-  in
-  let t = Lwt.pick threads'
+  let t = Lwt.pick threads
   in
   Lwt.finalize
     (fun () ->

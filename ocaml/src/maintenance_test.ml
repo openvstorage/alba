@@ -437,6 +437,8 @@ let test_rewrite_namespace () =
 
      alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
      assert (cnt = cnt');
+     Lwt_log.debug_f "progresses:%s" ([%show : (int * Progress.t) list] progresses)
+     >>= fun () ->
      let cnt'' =
        List.fold_left
          (fun acc (i, p) ->
@@ -449,11 +451,17 @@ let test_rewrite_namespace () =
          0
          progresses
      in
-     assert (cnt'' = List.length objs);
-
      get_objs () >>= fun manifests' ->
-     assert (manifests' <> manifests);
-
+     Lwt_log.debug_f "number of rewrites: %i" cnt'' >>= fun () ->
+     OUnit2.assert_bool "not enough rewrites" (cnt'' >= (List.length objs));
+     let obj_names' =
+       List.fold_left
+         (fun acc mf -> StringSet.add mf.Manifest.name acc)
+         StringSet.empty
+         manifests'
+     in
+     OUnit2.assert_equal ~msg:"not all objects were rewitten"
+                         (StringSet.cardinal obj_names') (List.length objs);
      List.iter
        (fun mf -> assert (not (List.mem mf.Manifest.object_id object_ids)))
        manifests';
@@ -626,7 +634,9 @@ let test_automatic_repair () =
                                                used = 1L;
                                              });
                                       ips = ["::1"];
-                                      port; })) >>= fun () ->
+                                      port = Some port;
+                                      tlsPort = None;
+                                    })) >>= fun () ->
         alba_client # claim_osd ~long_id:test_name >>= fun osd_id ->
 
         alba_client # create_namespace

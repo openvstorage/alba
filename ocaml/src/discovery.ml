@@ -73,7 +73,8 @@ type extra_info =
 type record = {
     extras: extra_info option;
     ips: string list;
-    port :int;
+    port :int option;
+    tlsPort: int option;
     id : string;
   }[@@deriving show]
 
@@ -99,8 +100,14 @@ let parse s addr0 =
         id, None
     in
     let nics = Json.as_list (get_f "network_interfaces") in
-    let port = Json.as_int (get_f "port") in
-
+    let port =
+      try Some (Json.as_int (get_f "port"))
+      with | Json.JSON_InvalidField _ -> None
+    in
+    let tlsPort =
+      try  Some (get_f "tlsPort" |> Json.as_int )
+      with | Json.JSON_InvalidField _ -> None
+    in
     let set0 = StringSet.of_list addr0 in
     let ip_set =
       if nics = []
@@ -117,9 +124,11 @@ let parse s addr0 =
     in
     let ips = StringSet.elements ip_set in
 
-    Good (s, { id; extras; ips; port; })
+    Good (s, { id; extras; ips; port; tlsPort})
   with
-  | _ -> Bad s
+  | exn ->
+     let () = Lwt_log.ign_debug_f ~exn "ex => Bad" in
+     Bad s
 
 open Lwt
 
@@ -172,7 +181,9 @@ let discovery seen =
   outer ()
 
 let multicast
-      (id:string) (node_id:string) ips port period
+      (id:string) (node_id:string) ips
+      (port:int option)
+      (tlsPort:int option) period
       ~(disk_usage:unit -> (int64 * int64) Lwt.t)
   =
   let data (used:int64) (total:int64) =
@@ -193,17 +204,35 @@ let multicast
            add_ips (ip1 :: ips)
          end
     in
-    add_s "{ \"id\": \"";
-    add_s id;
-    add_s "\", \"node_id\": \"";
-    add_s node_id;
-    add_s "\", \"port\" : ";
-    add_s (Printf.sprintf "%i" port);
-    add_s ", \"used_bytes\": ";
-    add_s (Printf.sprintf "\"%Li\"" used);
-    add_s ", \"total_bytes\": ";
-    add_s (Printf.sprintf "\"%Li\"" total);
-    add_s ", \"version\" : \"AsdV1\"";
+    let add_pair name s =
+      add_s "\"";
+      add_s name;
+      add_s "\" : \"";
+      add_s s;
+      add_s "\"";
+    in
+    let maybe_add_port name = function
+      | None -> ()
+      | Some port ->
+         begin
+           add_s ", \"";
+           add_s name;
+           add_s "\" : ";
+           add_s (Printf.sprintf "%i" port);
+         end
+    in
+    add_s "{ ";
+    add_pair "id" id;
+    add_s ", ";
+    add_pair "node_id" node_id;
+    maybe_add_port "port" port;
+    maybe_add_port "tlsPort" tlsPort;
+    add_s ", ";
+    add_pair "used_bytes" (Printf.sprintf "%Li" used);
+    add_s ", ";
+    add_pair "total_bytes"(Printf.sprintf "%Li" total);
+    add_s ", ";
+    add_pair "version" "AsdV1";
     add_s ", \"network_interfaces\":[";
     add_ips ips;
     add_s " ]}";
@@ -221,7 +250,13 @@ let multicast
        let use_socket () =
          let _ : int = set_multicast_ttl (Lwt_unix.unix_file_descr socket) in
          let rec inner () =
-           disk_usage () >>= fun (used, cap) ->
+           Lwt.catch
+             disk_usage
+             (fun exn ->
+              Lwt_log.error
+                ~exn
+                "Exception while getting disk usage, exiting process" >>= fun () ->
+              exit 1) >>= fun (used, cap) ->
            let msg = data used cap in
            Lwt_unix.sendto socket msg 0 (String.length msg) [] sa >>= fun _ ->
            Lwt_unix.sleep period >>=
@@ -240,12 +275,24 @@ let multicast
   in
   outer ()
 
-let get_kind buffer_pool ips port =
-  let maybe_kinetic ips port =
-    Lwt_log.debug_f "%s %i is a kinetic?" (List.hd_exn ips) port >>= fun () ->
+
+
+let get_kind buffer_pool (conn_info:Networking2.conn_info) =
+  Lwt_log.debug_f "get_kind conn_info:%s" (Networking2.show_conn_info conn_info) >>= fun () ->
+  let conn_info' =
+    let open Networking2 in
+    let use_tls = match conn_info.tls_config with
+      | None   -> false
+      | Some _ -> true
+    in
+    (conn_info.ips, conn_info.port, use_tls)
+  in
+  let maybe_kinetic conn_info =
+    Lwt_log.debug "is it a kinetic?" >>= fun () ->
     Lwt.catch
       (fun () ->
-       Networking2.first_connection' buffer_pool ips port >>= fun (fd, conn, closer) ->
+       Networking2.first_connection' buffer_pool ~conn_info
+       >>= fun (fd, conn, closer) ->
        Lwt.finalize
            (fun () ->
             Lwt_unix.with_timeout
@@ -260,7 +307,7 @@ let get_kind buffer_pool ips port =
                let wwn = config.world_wide_name in
                Lwt_io.printlf "wwn:%s" wwn>>= fun () ->
                let long_id = wwn in
-               let kind = Albamgr_protocol.Protocol.Osd.Kinetic(ips,port,long_id) in
+               let kind = Nsm_model.OsdInfo.Kinetic(conn_info',long_id) in
                let r = Some kind in
                Lwt.return r)
            )
@@ -271,12 +318,11 @@ let get_kind buffer_pool ips port =
        Lwt.return None
       )
   in
-  let maybe_asd ips port =
-    Lwt_log.debug_f "%s %i is an asd?" (List.hd_exn ips) port
-    >>= fun () ->
+  let maybe_asd conn_info =
+    Lwt_log.debug "is it an asd?" >>= fun () ->
     Lwt.catch
       (fun () ->
-       Asd_client.make_client buffer_pool ips port (Some "xxx")
+       Asd_client.make_client buffer_pool ~conn_info (Some "xxx")
        >>= fun (client, closer) ->
        Lwt.finalize
          (fun () -> Lwt.return None)
@@ -284,7 +330,7 @@ let get_kind buffer_pool ips port =
       )
       (function
         | Asd_client.BadLongId(_,long_id) ->
-           let kind = Albamgr_protocol.Protocol.Osd.Asd(ips,port, long_id) in
+           let kind = Nsm_model.OsdInfo.Asd(conn_info', long_id) in
            Lwt.return (Some kind)
         | exn ->
            Lwt_log.debug_f "probably not an asd..." ~exn
@@ -298,7 +344,7 @@ let get_kind buffer_pool ips port =
     | Some x, _ -> Lwt.return xo
     | None, m :: ms ->
        begin
-         m ips port >>= fun xo ->
+         m conn_info >>= fun xo ->
          loop_kinds xo ms
        end
     | None  ,[] -> Lwt.return None

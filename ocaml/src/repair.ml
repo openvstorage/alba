@@ -183,7 +183,7 @@ let rewrite_object
   let open Nsm_model in
 
   Lwt_log.debug_f
-    "Repairing %s in namespace %li"
+    "Rewriting %s in namespace %li"
     (Manifest.show manifest) namespace_id
   >>= fun () ->
 
@@ -194,7 +194,12 @@ let rewrite_object
 
   let object_name = manifest.Manifest.name in
   let checksum_o = Some manifest.Manifest.checksum in
-  let allow_overwrite = PreviousObjectId manifest.Manifest.object_id in
+  let old_object_id = manifest.Manifest.object_id in
+  let allow_overwrite = PreviousObjectId old_object_id in
+  let object_id_hint =
+    Some (get_random_string 32)
+    (* TODO: this causes some objects to be rewritten multiple times*)
+  in
 
   Lwt.catch
     (fun () ->
@@ -203,7 +208,9 @@ let rewrite_object
                  ~object_name
                  ~object_reader
                  ~checksum_o
-                 ~allow_overwrite >>= fun _ ->
+                 ~allow_overwrite
+                 ~object_id_hint
+     >>= fun _ ->
      Lwt.return ())
     (let open Nsm_model.Err in
      function

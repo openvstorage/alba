@@ -21,7 +21,7 @@ let get_best_policy policies osds_info_cache =
     policies
     (Hashtbl.fold
        (fun osd_id osd_info acc ->
-          (osd_id, osd_info.Albamgr_protocol.Protocol.Osd.node_id) :: acc)
+          (osd_id, osd_info.Nsm_model.OsdInfo.node_id) :: acc)
        osds_info_cache
        [])
 

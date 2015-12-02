@@ -53,19 +53,15 @@ before_install () {
     echo "Installing general dependencies"
     sudo apt-get install -q ${APT_DEPENDS}
 
-    # using
-    # sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
-    # and then
-    # sudo apt-get install ocaml ocaml-native-compilers camlp4-extra opam
-    # no longer works because it results in 4.02.3...
-    # so now using this alternative method:
-    wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
-    sudo sh ./opam_installer.sh /usr/local/bin 4.02.3  # change to system once it works with 4.02.3
-    /usr/local/bin/opam init --comp 4.02.3 |tail -n256 # change to system once it works with 4.02.3
-    expr $PIPESTATUS && false
-    eval `opam config env`
-    opam update
-    opam install camlp4
+    sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
+    echo "Updating Apt cache"
+    sudo apt-get update -qq
+    echo "updating keys"
+    sudo apt-key update
+    echo "Installing general dependencies"
+    sudo apt-get install -qq libev-dev libssl-dev libsnappy-dev libgmp3-dev
+    echo "Installing dependencies"
+    sudo apt-get install -qq ocaml ocaml-native-compilers camlp4-extra opam
 
     echo "OCaml versions:"
     ocaml -version

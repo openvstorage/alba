@@ -21,12 +21,13 @@ let get_namespace_safety
       (alba_client : Alba_client.alba_client)
       ns_info dead_ns_osds =
   let open Albamgr_protocol.Protocol in
+  let open Nsm_model in
   let namespace_id = ns_info.Namespace.id in
 
   Lwt_list.map_p
     (fun osd_id ->
        alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
-       Lwt.return (osd_id, osd_info.Osd.node_id))
+       Lwt.return (osd_id, osd_info.OsdInfo.node_id))
     dead_ns_osds
   >>= fun osds_with_node_id ->
 

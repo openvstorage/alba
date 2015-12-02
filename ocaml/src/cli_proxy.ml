@@ -36,6 +36,7 @@ module Config = struct
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
     max_client_connections : int [@default 128];
+    tls_client : Tls.t option [@default None];
   } [@@deriving yojson, show]
 end
 
@@ -133,6 +134,7 @@ let proxy_start cfg_file =
         ~osd_timeout
         ~albamgr_cfg_file
         ~max_client_connections
+        ~tls_config:cfg.tls_client
   in
   lwt_server t
 
@@ -335,7 +337,7 @@ let proxy_osd_view host port =
        (fun (osd_id, info,state) ->
         Lwt_io.printlf "%li:\n\t%s\n\t%s"
                        osd_id
-                       (Albamgr_protocol.Protocol.Osd.show info)
+                       (Nsm_model.OsdInfo.show info)
                        (Osd_state.show state)
 
        )
@@ -345,6 +347,21 @@ let proxy_osd_view host port =
 let proxy_osd_view_cmd =
   Term.(pure proxy_osd_view $ host $ port 10000),
   Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
+
+let proxy_client_cfg host port =
+  proxy_client_cmd_line
+    host port
+    (fun client ->
+     client # get_client_config >>= fun cfg ->
+     Lwt_io.printlf "client_cfg:\n%s" (Albamgr_protocol.Protocol.Arakoon_config.show cfg)
+    )
+
+let proxy_client_cfg_cmd =
+  Term.(pure proxy_client_cfg
+        $ host
+        $ port 10000),
+  Term.info "proxy-client-cfg" ~doc:"what the proxy thinks the albamgr client config is"
+
 
 let cmds = [
   proxy_start_cmd;
@@ -358,4 +375,5 @@ let cmds = [
   proxy_list_objects_cmd;
   proxy_get_version_cmd;
   proxy_osd_view_cmd;
+  proxy_client_cfg_cmd;
 ]

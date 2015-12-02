@@ -312,8 +312,9 @@ module Protocol = struct
     | GetVersion : (unit, (int * int * int * string)) request
     | OsdView : (unit, (string * Albamgr_protocol.Protocol.Osd.ClaimInfo.t) Std.counted_list
                        * (Albamgr_protocol.Protocol.Osd.id
-                          * Albamgr_protocol.Protocol.Osd.t
+                          * Nsm_model.OsdInfo.t
                           * Osd_state.t) Std.counted_list) request
+    | GetClientConfig : (unit, Albamgr_protocol.Protocol.Arakoon_config.t) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -332,6 +333,7 @@ module Protocol = struct
                       16, Wrap DropCache, "DropCache";
                       17, Wrap GetVersion, "GetVersion";
                       18, Wrap OsdView,    "OsdView";
+                      19, Wrap GetClientConfig, "GetClientConfig";
                     ]
 
   module Error = struct
@@ -432,9 +434,9 @@ module Protocol = struct
     | InvalidateCache -> Deser.string
     | DropCache -> Deser.string
     | ProxyStatistics -> Deser.bool
-    | GetVersion -> Deser.unit
-    | OsdView    -> Deser.unit
-
+    | GetVersion      -> Deser.unit
+    | OsdView         -> Deser.unit
+    | GetClientConfig -> Deser.unit
 
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
@@ -460,11 +462,15 @@ module Protocol = struct
        let deser_info = Albamgr_protocol.Protocol.Osd.ClaimInfo.deser in
        let deser_claim = Deser.counted_list (Deser.tuple2 Deser.string deser_info) in
        let deser_int32 = Llio.int32_from, Llio.int32_to in
-       let deser_osd   = Albamgr_protocol.Protocol.Osd.from_buffer,
-                         Albamgr_protocol.Protocol.Osd.to_buffer
+       let deser_osd   = Nsm_model.OsdInfo.from_buffer,
+                         Nsm_model.OsdInfo.to_buffer ~version:2
        in
        Deser.tuple2
          deser_claim
          (Deser.counted_list
             (Deser.tuple3 deser_int32 deser_osd Osd_state.deser_state))
+
+    | GetClientConfig ->
+       let open Albamgr_protocol.Protocol in
+       Arakoon_config.from_buffer, Arakoon_config.to_buffer
 end

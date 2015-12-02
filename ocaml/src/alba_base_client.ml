@@ -42,17 +42,21 @@ class client
     ~osd_connection_pool_size
     ~osd_timeout
     ~default_osd_priority
+    ~tls_config
   =
-
+  let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
     new nsm_host_access
         mgr_access
         nsm_host_connection_pool_size
+        ~tls_config
         default_buffer_pool
   in
 
   let osd_access =
-    new osd_access mgr_access ~osd_connection_pool_size ~osd_timeout ~default_osd_priority
+    new osd_access mgr_access
+        ~osd_connection_pool_size ~osd_timeout
+        ~default_osd_priority ~tls_config
   in
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
 
@@ -150,7 +154,9 @@ class client
                 ~namespace
                 ~object_name
                 ~checksum_o
-                ~allow_overwrite))
+                ~allow_overwrite
+                ~object_id_hint:None
+           ))
         (function
           | Unix.Unix_error(Unix.ENOENT,_,y) ->
              let open Error in failwith FileNotFound
@@ -177,6 +183,7 @@ class client
         ~object_reader
         ~checksum_o
         ~allow_overwrite
+        ~object_id_hint:None
 
     method upload_object_from_string
       ~namespace
@@ -190,6 +197,7 @@ class client
         ~object_reader:(new Object_reader.string_reader object_data)
         ~checksum_o
         ~allow_overwrite
+        ~object_id_hint:None
 
     method upload_object
         ~(namespace : string)
@@ -197,6 +205,7 @@ class client
         ~(object_reader : Object_reader.reader)
         ~(checksum_o: Checksum.t option)
         ~(allow_overwrite : Nsm_model.overwrite)
+        ~(object_id_hint: string option)
       =
       nsm_host_access # with_namespace_id
         ~namespace
@@ -206,14 +215,18 @@ class client
              ~object_name
              ~object_reader
              ~checksum_o
-             ~allow_overwrite)
+             ~allow_overwrite
+             ~object_id_hint
+        )
 
     method upload_object'
              ~namespace_id
              ~object_name
              ~object_reader
              ~checksum_o
-             ~allow_overwrite =
+             ~allow_overwrite
+             ~object_id_hint
+      =
        Alba_client_upload.upload_object'
          nsm_host_access osd_access
          manifest_cache
@@ -224,7 +237,7 @@ class client
          ~object_reader
          ~checksum_o
          ~allow_overwrite
-
+         ~object_id_hint
 
     (* consumers of this method are responsible for freeing
      * the returned fragment bigstring

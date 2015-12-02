@@ -29,12 +29,12 @@ let periodic_load_osds
     Unix.gettimeofday () -.
       (maintenance_config.Maintenance_config.auto_repair_timeout_seconds
        /. 2.) in
-  let open Albamgr_protocol.Protocol.Osd in
+  let open Nsm_model in
   let do_one (osd_id, osd_info) =
         alba_client # osd_access # get_osd_info ~osd_id
         >>= fun (_, osd_state) ->
 
-        (if not (recent_enough past_date osd_info.write)
+        (if not (recent_enough past_date osd_info.OsdInfo.write)
          then
            begin
              Lwt.catch
@@ -49,7 +49,7 @@ let periodic_load_osds
                                  [ Osd.Update.set_string
                                      Osd_keys.test_key
                                      (Lazy.force Osd_access.large_value)
-                                     Checksum.Checksum.NoChecksum
+                                     Checksum.NoChecksum
                                      false ])
                 >>= function
                 | Osd.Ok ->
@@ -63,7 +63,7 @@ let periodic_load_osds
          else
            Lwt.return ())
         >>= fun () ->
-        (if not (recent_enough past_date osd_info.read)
+        (if not (recent_enough past_date osd_info.OsdInfo.read)
          then
            begin
              Lwt.catch

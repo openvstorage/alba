@@ -51,20 +51,13 @@ type dest msg.
          then Lwt.return_unit
          else
            begin
-             Lwt_log.debug_f
-               "Delivering msg %li to %s: %s"
-               msg_id
-               dest
-               ([%show : Nsm_host_protocol.Protocol.Message.t] msg) >>= fun () ->
+             Lwt_log.debug_f "Delivering msg %li to %s" msg_id dest >>= fun () ->
              (nsm_host_access # get ~nsm_host_id:dest) # deliver_message msg msg_id
            end
       | Msg_log.Osd ->
          let osd_id = dest in
          Lwt_log.debug_f
-           "Delivering msg %li to %li: %s"
-           msg_id
-           osd_id
-           ([%show : Albamgr_protocol.Protocol.Osd.Message.t] msg) >>= fun () ->
+           "Delivering msg %li to %li" msg_id osd_id >>= fun () ->
          osd_access # with_osd
            ~osd_id
            (fun client ->
