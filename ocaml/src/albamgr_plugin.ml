@@ -583,34 +583,7 @@ let mark_msgs_delivered (db : user_db) t dest msg_id =
          let upds = upds_for_delivered_msg read_db t dest msg in
          db # put key None;
          List.iter
-           (let open Update in
-            function
-            | Replace (k, None)
-            | Delete k ->
-               db # put k None
-            | Replace (k, Some v)
-            | Set (k, v) ->
-               db # put k (Some v)
-            | Assert_range _
-            | Assert_exists _
-            | Assert _ ->
-               (* all asserts should be noops when executed immediatelly *)
-               ()
-            | UserFunction (name, value_o) ->
-               let _ : string option = Registry.lookup name db value_o in
-               ()
-            | Nop -> ()
-            | DeletePrefix _
-            | SyncedSequence _
-            | AdminSet _
-            | SetRoutingDelta _
-            | SetRouting _
-            | SetInterval _
-            | Sequence _
-            | TestAndSet _
-            | MasterSet _ ->
-               (* these are not (yet?) supported here *)
-               assert false)
+           (apply_update db)
            upds)
         msgs)
 

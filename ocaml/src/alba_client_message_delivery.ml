@@ -47,17 +47,7 @@ type dest msg.
             >>= fun nsm_host_info ->
             if nsm_host_info.Nsm_host.lost
             then Lwt.return_unit
-            else
-              begin
-                let nsm_host = nsm_host_access # get ~nsm_host_id:dest in
-                nsm_host # get_next_msg_id >>= fun next_msg_id ->
-                Lwt_list.iter_s
-                  (fun (msg_id, msg) ->
-                   if msg_id >= next_msg_id
-                   then nsm_host # deliver_message msg msg_id
-                   else Lwt.return_unit)
-                  msgs
-              end
+            else (nsm_host_access # get ~nsm_host_id:dest) # deliver_messages msgs
          | Msg_log.Osd ->
             let osd_id = dest in
 
