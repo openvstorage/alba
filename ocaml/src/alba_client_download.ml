@@ -98,8 +98,8 @@ let download_packed_fragment
          | None ->
             let msg =
               Printf.sprintf
-                "Detected missing fragment namespace_id=%li object_id=%S osd_id=%li (chunk,fragment,version)=(%i,%i,%i)"
-                namespace_id object_id osd_id
+                "Detected missing fragment namespace_id=%li object_name=%S object_id=%S osd_id=%li (chunk,fragment,version)=(%i,%i,%i)"
+                namespace_id object_name object_id osd_id
                 chunk_id fragment_id version_id
             in
             Lwt_log.warning msg >>= fun () ->
