@@ -192,6 +192,25 @@ let alba_list_ns_osds_cmd =
   in
   alba_list_ns_osds_t, info
 
+let _render_namespace name namespace stats =
+  let { Nsm_model.NamespaceStats.logical_size;
+        storage_size;
+        storage_size_per_osd;
+        bucket_count; } = stats
+  in
+  let open Albamgr_protocol.Protocol in
+  Lwt_io.printlf "(%s,%s)" name
+                 ([%show : Namespace.t] namespace)
+  >>= fun () ->
+  Lwt_io.printlf "logical: %Li" logical_size >>= fun () ->
+  Lwt_io.printlf "storage: %Li" storage_size >>= fun () ->
+  Lwt_io.printlf
+    "storage_per_osd: %s"
+    ([%show : (int32 * int64) list] (snd storage_size_per_osd)) >>= fun () ->
+  Lwt_io.printlf
+    "bucket_count: %s"
+    ([%show : (Policy.policy * int64) list] (snd bucket_count))
+
 let alba_show_namespace cfg_file tls_config namespace to_json =
   let t () =
     with_alba_client
@@ -203,10 +222,10 @@ let alba_show_namespace cfg_file tls_config namespace to_json =
           | Some (namespace, r) ->
              client # get_base_client # with_nsm_client ~namespace
                (fun nsm_client ->
-                  nsm_client # get_stats >>= fun { Nsm_model.NamespaceStats.logical_size;
+                  nsm_client # get_stats >>= fun ({ Nsm_model.NamespaceStats.logical_size;
                                                    storage_size;
                                                    storage_size_per_osd;
-                                                   bucket_count; } ->
+                                                   bucket_count; } as stats) ->
                   if to_json
                   then
                     begin
@@ -220,18 +239,7 @@ let alba_show_namespace cfg_file tls_config namespace to_json =
                     end
                   else
                     begin
-                      let open Albamgr_protocol.Protocol in
-                      Lwt_io.printlf "(%s,%s)" namespace
-                                     ([%show : Namespace.t] r)
-                      >>= fun () ->
-                      Lwt_io.printlf "logical: %Li" logical_size >>= fun () ->
-                      Lwt_io.printlf "storage: %Li" storage_size >>= fun () ->
-                      Lwt_io.printlf
-                        "storage_per_osd: %s"
-                        ([%show : (int32 * int64) list] (snd storage_size_per_osd)) >>= fun () ->
-                      Lwt_io.printlf
-                        "bucket_count: %s"
-                        ([%show : (Policy.policy * int64) list] (snd bucket_count))
+                      _render_namespace namespace r  stats
                     end
                ))
   in
@@ -246,6 +254,99 @@ let alba_show_namespace_cmd =
   ),
   Term.info "show-namespace" ~doc:"show information about a namespace"
 
+let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json =
+  let last = Option.map (fun x -> x,true) last in
+  let t () =
+    with_alba_client
+      cfg_file tls_config
+      (fun client ->
+       let list_all () =
+         let needed =
+           if max < 0
+           then max_int
+           else max
+         in
+         let rec inner (acc_count, acc_namespaces, acc_has_more) ~first ~finc needed =
+           if needed <= 0 || not acc_has_more
+           then Lwt.return (acc_count, List.rev acc_namespaces)
+           else
+             client # mgr_access # list_namespaces
+                    ~first ~finc ~last ~max:needed ~reverse
+             >>= fun ((count, namespaces), has_more) ->
+             let acc_count' = count + acc_count
+             and acc_namespaces' = List.rev_append namespaces acc_namespaces
+             and acc_has_more' = has_more
+             and needed' = needed - count
+             in
+             let first' = List.hd_exn acc_namespaces' |> fst
+             and finc' = false
+             in
+             inner (acc_count', acc_namespaces', acc_has_more')
+                   ~first:first' ~finc:finc' needed'
+         in
+         inner (0,[],true) ~first ~finc needed
+       in
+       list_all () >>= fun (count, namespaces) ->
+       Lwt_list.map_p
+         (fun (name, namespace) ->
+          client # get_base_client # with_nsm_client ~namespace:name
+               (fun nsm_client ->
+                  nsm_client # get_stats >>= fun stats ->
+                  Lwt.return (name,namespace,stats)
+               )
+         )
+         namespaces
+       >>= fun r ->
+       if to_json
+       then
+         begin
+           let transform (name,namespace,stats) =
+             let { Nsm_model.NamespaceStats.logical_size;
+                   storage_size;
+                   storage_size_per_osd;
+                   bucket_count; } = stats
+             in
+             let open Alba_json.Namespace  in
+             let res = { Statistics.logical = logical_size;
+                         storage = storage_size;
+                         storage_per_osd = snd storage_size_per_osd;
+                         bucket_count = snd bucket_count; }
+             in
+             let namespace_j = Alba_json.Namespace.make name namespace
+             and statistics_j = res
+             in
+             {Both.name ;
+              namespace = namespace_j;
+              statistics = statistics_j
+             }
+           in
+           let json = List.map transform r in
+           print_result
+             (count, json)
+             Alba_json.Namespace.Both.c_both_list_to_yojson
+         end
+       else
+         begin
+           begin
+             Lwt_io.printlf "count:%i" count >>= fun () ->
+             Lwt_list.iter_s
+               (fun (name,namespace, stats) ->
+                _render_namespace name namespace stats
+               ) r
+           end
+         end
+      )
+  in
+  lwt_cmd_line to_json t
+
+let alba_show_namespaces_cmd =
+  Term.(pure alba_show_namespaces
+        $ alba_cfg_file
+        $ tls_config
+        $ first $ finc $ last $ max $ reverse
+        $ to_json
+  ),
+  Term.info "show-namespaces" ~doc:"information about a range of namespaces"
 
 let alba_upload_object
     cfg_file tls_config
@@ -434,36 +535,7 @@ let alba_get_nsm_version_cmd =
   Term.info "nsm-get-version" ~doc:"nsm host's version info"
 
 
-let alba_list_namespaces cfg_file tls_config to_json =
-  let t () =
-    with_alba_client
-      cfg_file tls_config
-      (fun client ->
-         client # mgr_access # list_all_namespaces >>= fun (cnt, namespaces) ->
-         if to_json
-         then begin
-           let res =
-             List.map
-               (fun (name, info) -> Alba_json.Namespace.make name info)
-               namespaces
-           in
-           print_result res Alba_json.Namespace.t_list_to_yojson
-         end else
-           Lwt_io.printlf
-             "Found the following namespaces: %s"
-             ([%show: (string * Albamgr_protocol.Protocol.Namespace.t) list]
-                namespaces)
-      )
-  in
-  lwt_cmd_line to_json t
 
-
-let alba_list_namespaces_cmd =
-  Term.(pure alba_list_namespaces
-        $ alba_cfg_file
-        $ tls_config
-        $ to_json),
-  Term.info "list-namespaces" ~doc:"list all namespaces"
 
 
 
@@ -773,11 +845,10 @@ let () =
       alba_claim_osd_cmd;
       alba_decommission_osd_cmd;
 
-      alba_list_namespaces_cmd;
       alba_create_namespace_cmd;
       alba_delete_namespace_cmd;
       alba_show_namespace_cmd;
-
+      alba_show_namespaces_cmd;
       alba_list_ns_osds_cmd;
 
       alba_upload_object_cmd;
