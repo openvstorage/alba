@@ -122,7 +122,12 @@ class client (client : basic_client) =
 
     method statistics (clear:bool) = client # query NSMHStatistics clear
 
-    method get_next_msg_id = client # query GetNextMsgId ()
+    method get_next_msg_id =
+      Lwt.catch
+        (client # query GetNextMsgId)
+        (function
+          | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Unknown_operation, _) -> Lwt.return 0l
+          | exn -> Lwt.fail exn)
   end
 
 let wrap_around (client:Arakoon_client.client) =
