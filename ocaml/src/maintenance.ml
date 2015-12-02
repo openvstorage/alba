@@ -1067,7 +1067,20 @@ class client ?(retry_timeout = 60.)
         in
         inner ()
       in
-
+      let namespace_exists ~namespace_id =
+            Lwt.catch
+              (fun () ->
+               alba_client # mgr_access # get_namespace_by_id ~namespace_id
+               >>= fun _r ->
+               Lwt.return_true
+              )
+              (let open Albamgr_protocol.Protocol.Error in
+               function
+                | Albamgr_exn(Namespace_does_not_exist, _) ->
+                   Lwt.return_false
+                | exn -> Lwt.fail exn
+              )
+      in
       match work_item with
       | CleanupNsmHostNamespace (nsm_host_id, namespace_id) ->
         let nsm_client = alba_client # nsm_host_access # get ~nsm_host_id in
@@ -1170,31 +1183,36 @@ class client ?(retry_timeout = 60.)
              Lwt.return (cnt = 0))
       | RepairBadFragment (namespace_id, object_id, object_name,
                            chunk_id, fragment_id, version) ->
-        begin
-          alba_client # with_nsm_client'
-                      ~namespace_id
-                      (fun client ->
-                       client # get_object_manifest_by_name object_name)
-          >>= function
-          | None ->
-             (* object must've been deleted in the mean time, so no work to do here *)
-             Lwt.return ()
-          | Some manifest ->
-             if manifest.Nsm_model.Manifest.object_id = object_id
-             then begin
-                 Lwt_log.warning_f
-                   "Repairing object due to bad (missing/corrupted) fragment (%li, %S, %S, %i, %i)"
-                   namespace_id object_id object_name chunk_id fragment_id
-                 >>= fun () ->
-                 (* this is inefficient but in general it should never happen *)
-                 self # repair_object
-                      ~namespace_id
-                      ~manifest
-                      ~problem_fragments:[(chunk_id,fragment_id)]
-               end else
-               (* object has been replaced with a new version in the mean time,
-               so no work to do here *)
+         begin
+          let repair () =
+            alba_client # with_nsm_client'
+                        ~namespace_id
+                        (fun client ->
+                         client # get_object_manifest_by_name object_name)
+            >>= function
+            | None ->
+               (* object must've been deleted in the mean time, so no work to do here *)
                Lwt.return ()
+            | Some manifest ->
+               if manifest.Nsm_model.Manifest.object_id = object_id
+               then begin
+                   Lwt_log.warning_f
+                     "Repairing object due to bad (missing/corrupted) fragment (%li, %S, %S, %i, %i)"
+                     namespace_id object_id object_name chunk_id fragment_id
+                   >>= fun () ->
+                   (* this is inefficient but in general it should never happen *)
+                   self # repair_object
+                        ~namespace_id
+                        ~manifest
+                        ~problem_fragments:[(chunk_id,fragment_id)]
+                 end else
+                 (* object has been replaced with a new version in the mean time,
+               so no work to do here *)
+                 Lwt.return ()
+          in
+          namespace_exists ~namespace_id >>= function
+          | true  -> repair ()
+          | false -> Lwt.return ()
         end
       | IterNamespaceLeaf (action, namespace_id, name, (first, last)) ->
         let rec inner = function
