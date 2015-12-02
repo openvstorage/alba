@@ -122,10 +122,29 @@ class single_connection_client (ic, oc) =
 
 class client (client : basic_client) =
   object(self)
-    method deliver_message message msg_id =
-      client # update
-        DeliverMsg
-        (message, msg_id)
+    val supports_deliver_messages = ref None
+
+    method deliver_messages msgs =
+      let do_new () = client # update DeliverMsgs msgs in
+      let do_old () = Lwt_list.iter_s
+                        (fun (msg_id, msg) ->
+                         client # update
+                                DeliverMsg
+                                (msg, msg_id))
+                        msgs in
+      match !supports_deliver_messages with
+      | None ->
+         Lwt.catch
+           (fun () -> do_new () >>= fun () ->
+                      supports_deliver_messages := Some true;
+                      Lwt.return_unit)
+           (function
+             | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Unknown_operation, _) ->
+                supports_deliver_messages := Some false;
+                do_old ()
+             | exn -> Lwt.fail exn)
+      | Some true -> do_new ()
+      | Some false -> do_old ()
 
     method cleanup_for_namespace ~namespace_id =
       client # update

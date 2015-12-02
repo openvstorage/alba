@@ -36,103 +36,125 @@ type dest msg.
   let rec inner () =
     mgr_access # get_next_msgs t dest >>= fun  ((cnt, msgs), has_more) ->
     Lwt_log.debug_f "deliver_messages: count = %i" cnt >>= fun () ->
-    let do_one : type dest msg.
-                      (dest, msg) Albamgr_protocol.Protocol.Msg_log.t ->
-                      dest ->
-                      (int32 * msg) ->
-                      unit Lwt.t = fun t dest (msg_id,msg) ->
-    begin
-      match t with
-      | Msg_log.Nsm_host ->
-         let nsm_host_id = dest in
-         nsm_host_access # get_nsm_host_info ~nsm_host_id
-         >>= fun nsm_host_info ->
-         if nsm_host_info.Nsm_host.lost
-         then Lwt.return_unit
-         else
-           begin
-             Lwt_log.debug_f "Delivering msg %li to %s" msg_id dest >>= fun () ->
-             (nsm_host_access # get ~nsm_host_id:dest) # deliver_message msg msg_id
-           end
-      | Msg_log.Osd ->
-         let osd_id = dest in
-         Lwt_log.debug_f
-           "Delivering msg %li to %li" msg_id osd_id >>= fun () ->
-         osd_access # with_osd
-           ~osd_id
-           (fun client ->
+    if cnt = 0
+    then Lwt.return_unit
+    else
+      begin
+        (match t with
+         | Msg_log.Nsm_host ->
+            let nsm_host_id = dest in
+            nsm_host_access # get_nsm_host_info ~nsm_host_id
+            >>= fun nsm_host_info ->
+            if nsm_host_info.Nsm_host.lost
+            then Lwt.return_unit
+            else (nsm_host_access # get ~nsm_host_id:dest) # deliver_messages msgs
+         | Msg_log.Osd ->
+            let osd_id = dest in
+
             let module DK = Osd_keys.AlbaInstance in
-            client # get_option
-                   (osd_access # get_default_osd_priority)
-                   (Slice.wrap_string DK.next_msg_id)
-            >>= fun next_id_so ->
-            let next_id = match next_id_so with
-              | None -> 0l
-              | Some next_id_s -> deserialize Llio.int32_from (Slice.get_string_unsafe next_id_s)
+
+            let get_next_msg_id () =
+              osd_access # with_osd
+                ~osd_id
+                (fun client ->
+                 client # get_option
+                        (osd_access # get_default_osd_priority)
+                        (Slice.wrap_string DK.next_msg_id))
+              >>= fun next_id_so ->
+              let next_id = match next_id_so with
+                | None -> 0l
+                | Some next_id_s -> deserialize Llio.int32_from (Slice.get_string_unsafe next_id_s)
+              in
+              Lwt.return (next_id_so, next_id)
             in
-            if Int32.(next_id =: msg_id)
-            then begin
-                let open Albamgr_protocol.Protocol.Osd.Message in
-                let asserts, upds =
-                  match msg with
-                  | AddNamespace (namespace_name, namespace_id) ->
-                     let namespace_status_key = DK.namespace_status ~namespace_id in
-                     [ Osd'.Assert.none_string namespace_status_key; ],
-                     [ Osd'.Update.set_string
-                         namespace_status_key
-                         Osd'.Osd_namespace_state.(serialize to_buffer Active)
-                         Checksum.NoChecksum true;
-                       Osd'.Update.set_string
-                         (DK.namespace_name ~namespace_id) namespace_name
-                         Checksum.NoChecksum true;
-                     ]
-                in
-                let bump_msg_id =
-                  Osd'.Update.set_string
-                    DK.next_msg_id
-                    (serialize Llio.int32_to (Int32.succ next_id))
-                    Checksum.NoChecksum
-                    true
-                in
-                let asserts' =
-                  Osd'.Assert.value_option
-                    (Slice.wrap_string DK.next_msg_id)
-                    next_id_so :: asserts
-                in
-                client # apply_sequence
-                       (osd_access # get_default_osd_priority)
-                       asserts'
-                       (bump_msg_id :: upds)
-                >>=
-                  let open Osd_sec in
-                  (function
-                    | Ok    -> Lwt.return ()
-                    | Exn x ->
-                       Lwt_log.warning ([%show : Error.t] x)
-                       >>= fun () ->
-                       Error.lwt_fail x
-                  )
-              end
-            else if Int32.(next_id =: succ msg_id)
-            then Lwt.return ()
-            else
-              begin
-                let msg =
-                  Printf.sprintf
-                    "Osd msg_id (%li) too far off"
-                    msg_id
-                in
-                Lwt_log.warning msg >>= fun () ->
-                Lwt.fail_with msg
-              end
-           )
-    end >>= fun () ->
-    mgr_access #  mark_msg_delivered t dest msg_id
-    in
-  Lwt_list.iter_s (do_one t dest) msgs >>= fun () ->
-  if has_more
-  then inner ()
-  else Lwt.return ()
+
+            let do_one msg_id msg =
+              Lwt_log.debug_f
+                "Delivering msg %li to %li: %s"
+                msg_id
+                osd_id
+                ([%show : Albamgr_protocol.Protocol.Osd.Message.t] msg) >>= fun () ->
+              osd_access # with_osd
+                 ~osd_id
+                 (fun client ->
+                  get_next_msg_id () >>= fun (next_id_so, next_id) ->
+                  if Int32.(next_id =: msg_id)
+                  then begin
+                      let open Albamgr_protocol.Protocol.Osd.Message in
+                      let asserts, upds =
+                        match msg with
+                        | AddNamespace (namespace_name, namespace_id) ->
+                           let namespace_status_key = DK.namespace_status ~namespace_id in
+                           [ Osd'.Assert.none_string namespace_status_key; ],
+                           [ Osd'.Update.set_string
+                               namespace_status_key
+                               Osd'.Osd_namespace_state.(serialize to_buffer Active)
+                               Checksum.NoChecksum true;
+                             Osd'.Update.set_string
+                               (DK.namespace_name ~namespace_id) namespace_name
+                               Checksum.NoChecksum true;
+                           ]
+                      in
+                      let bump_msg_id =
+                        Osd'.Update.set_string
+                          DK.next_msg_id
+                          (serialize Llio.int32_to (Int32.succ next_id))
+                          Checksum.NoChecksum
+                          true
+                      in
+                      let asserts' =
+                        Osd'.Assert.value_option
+                          (Slice.wrap_string DK.next_msg_id)
+                          next_id_so :: asserts
+                      in
+                      client # apply_sequence
+                             (osd_access # get_default_osd_priority)
+                             asserts'
+                             (bump_msg_id :: upds)
+                      >>=
+                        let open Osd_sec in
+                        (function
+                          | Ok    -> Lwt.return ()
+                          | Exn x ->
+                             Lwt_log.warning ([%show : Error.t] x)
+                             >>= fun () ->
+                             Error.lwt_fail x
+                        )
+                    end
+                  else if Int32.(next_id =: succ msg_id)
+                  then Lwt.return ()
+                  else
+                    begin
+                      let msg =
+                        Printf.sprintf
+                          "Osd msg_id (%li) too far off"
+                          msg_id
+                      in
+                      Lwt_log.warning msg >>= fun () ->
+                      Lwt.fail_with msg
+                    end
+                 )
+            in
+
+            get_next_msg_id () >>= fun (next_id_so, next_id) ->
+
+            Lwt_list.iter_s
+              (fun (msg_id, msg) ->
+               if msg_id >= next_id
+               then do_one msg_id msg
+               else Lwt.return_unit)
+              msgs
+        ) >>= fun () ->
+
+        mgr_access # mark_msgs_delivered
+                   t dest
+                   (List.hd_exn msgs |> fst)
+                   (List.last_exn msgs |> fst) >>= fun () ->
+
+        if has_more
+        then inner ()
+        else Lwt.return_unit
+      end
   in
   inner ()
 
