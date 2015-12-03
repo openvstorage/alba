@@ -12,6 +12,7 @@ make
 find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
 
 id
+ulimit -n 2048
 ulimit -c unlimited
 cat /proc/sys/kernel/core_pattern
 
@@ -45,6 +46,9 @@ case "$1" in
     disk_failures)
         fab dev.run_tests_disk_failures:xml=True || true
         fab alba.smoke_test
+        ;;
+    compat)
+        fab dev.run_tests_compat:xml=True || true
         ;;
     *)
         echo "invalid test suite specified..."

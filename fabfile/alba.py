@@ -510,6 +510,8 @@ def wait_for_master(arakoon_cfg_file = arakoon_config_file,
         if m<>None:
             waiting = False
         if count == max:
+            print "check if the arakoons are running..."
+            local("pgrep -a arakoon")
             raise Exception("this should not take so long")
         count = count + 1
         time.sleep(1)

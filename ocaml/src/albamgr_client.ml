@@ -64,6 +64,7 @@ object(self)
     val supports_list_osds_by_osd_id2       = ref None
     val supports_list_osds_by_long_id2      = ref None
     val supports_list_decommissioning_osds2 = ref None
+    val supports_mark_msgs_delivered        = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
       client # query
@@ -354,6 +355,28 @@ object(self)
       Albamgr_protocol.Protocol.Msg_log.id -> unit Lwt.t =
       fun t dest msg_id ->
         client # update (MarkMsgDelivered t) (dest, msg_id)
+
+
+    method mark_msgs_delivered : type dest msg.
+                                      (dest, msg) Msg_log.t -> dest ->
+                                      Albamgr_protocol.Protocol.Msg_log.id ->
+                                      Albamgr_protocol.Protocol.Msg_log.id -> unit Lwt.t =
+      fun t dest from_msg_id to_msg_id ->
+      let use_feature () = client # update (MarkMsgsDelivered t) (dest, to_msg_id) in
+      let alternative () =
+        let rec inner from_msg_id =
+          if from_msg_id > to_msg_id
+          then Lwt.return ()
+          else
+            self # mark_msg_delivered t dest from_msg_id >>= fun () ->
+            inner (Int32.succ from_msg_id)
+        in
+        inner from_msg_id
+      in
+      let args = ()
+      and flag = supports_mark_msgs_delivered
+      and name = "MarkMsgsDelivered" in
+      maybe_use_feature flag name args use_feature alternative
 
     method get_alba_id =
       client # query GetAlbaId ()

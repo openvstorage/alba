@@ -118,3 +118,33 @@ module WrapReadUserDb(RUD : ReadUserDb) = struct
            ~right:(match dir with | Right -> true | Left -> false)
            (prefix_wrap_string key))
 end
+
+let apply_update (db : user_db) =
+  let open Update.Update in
+  function
+  | Replace (k, None)
+  | Delete k ->
+     db # put k None
+  | Replace (k, Some v)
+  | Set (k, v) ->
+     db # put k (Some v)
+  | Assert_range _
+  | Assert_exists _
+  | Assert _ ->
+     (* all asserts should be noops when executed immediatelly *)
+     ()
+  | UserFunction (name, value_o) ->
+     let _ : string option = Registry.lookup name db value_o in
+     ()
+  | Nop -> ()
+  | DeletePrefix _
+  | SyncedSequence _
+  | AdminSet _
+  | SetRoutingDelta _
+  | SetRouting _
+  | SetInterval _
+  | Sequence _
+  | TestAndSet _
+  | MasterSet _ ->
+     (* these are not (yet?) supported here *)
+     assert false
