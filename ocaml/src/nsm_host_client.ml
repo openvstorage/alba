@@ -65,7 +65,6 @@ class single_connection_client (ic, oc) =
       )
   in
   object(self :# basic_client)
-    val mutable _is_06 = false
 
     method query : type i o.
       ?consistency : Consistency.t ->
@@ -82,11 +81,7 @@ class single_connection_client (ic, oc) =
       fun command req ->
       do_request
         (command_to_tag (Wrap_u command))
-        (fun buf ->
-         if _is_06
-         then write_update_i06 command buf req
-         else write_update_i command buf req
-        )
+        (fun buf -> write_update_i command buf req)
         (read_update_o command)
 
     method do_unknown_operation =
@@ -111,12 +106,6 @@ class single_connection_client (ic, oc) =
          function
           | Err.Nsm_exn (Err.Unknown_operation, _) -> Lwt.return ()
           | exn -> Lwt.fail exn)
-
-
-    method set_06 =
-      _is_06 <- true
-
-    method is_06 = _is_06
 
   end
 
@@ -146,7 +135,6 @@ let wrap_around (client:Arakoon_client.client) =
       let client = new single_connection_client (ic, oc) in
       client # query GetVersion () >>= fun (major,minor,patch, commit) ->
       Lwt_log.debug_f "version:(%i,%i,%i,%s)" major minor patch commit >>= fun () ->
-      let () = if major = 0 && minor = 6 then client # set_06 in
       Lwt.return client
     end
   | e ->

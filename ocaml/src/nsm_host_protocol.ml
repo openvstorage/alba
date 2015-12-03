@@ -29,11 +29,11 @@ module Protocol = struct
       | UnlinkOsd of osd_id
     [@@deriving show]
 
-    let to_buffer buf ~version = function
+    let to_buffer buf = function
       | LinkOsd (osd_id, osd_info) ->
         Llio.int8_to buf 1;
         Llio.int32_to buf osd_id;
-        Nsm_model.OsdInfo.to_buffer buf osd_info ~version
+        Nsm_model.OsdInfo.to_buffer buf osd_info ~version:1
       | UnlinkOsd osd_id ->
         Llio.int8_to buf 2;
         Llio.int32_to buf osd_id
@@ -58,7 +58,7 @@ module Protocol = struct
       | NamespaceMsg of namespace_id * Namespace_message.t
     [@@deriving show]
 
-    let to_buffer buf msg ~version =
+    let to_buffer buf msg =
       let s =
         serialize
           (fun buf -> function
@@ -76,7 +76,7 @@ module Protocol = struct
              | NamespaceMsg (namespace_id, msg) ->
                Llio.int8_to buf 4;
                Llio.int32_to buf namespace_id;
-               Namespace_message.to_buffer buf msg ~version)
+               Namespace_message.to_buffer buf msg)
           msg in
       Llio.string_to buf s
 
@@ -215,18 +215,7 @@ module Protocol = struct
         (Nsm_protocol.Protocol.read_update_request u)
   let write_update_i : type i o. (i, o) update -> i serializer = function
     | CleanupForNamespace -> Llio.int32_to
-    | DeliverMsg -> Llio.pair_to (Message.to_buffer ~version:2) Llio.int32_to
-    | NsmUpdate u ->
-      Llio.pair_to
-        Llio.int32_to
-        (Nsm_protocol.Protocol.write_update_request u)
-
-  let write_update_i06 : type i o. (i, o) update -> i serializer = function
-    | CleanupForNamespace -> Llio.int32_to
-    | DeliverMsg ->
-       Llio.pair_to
-         (Message.to_buffer ~version:1)
-         Llio.int32_to
+    | DeliverMsg -> Llio.pair_to Message.to_buffer Llio.int32_to
     | NsmUpdate u ->
       Llio.pair_to
         Llio.int32_to
