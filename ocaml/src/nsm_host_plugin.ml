@@ -168,7 +168,7 @@ let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (
                      (Llio.list_to
                         (Llio.pair_to
                            Llio.int32_to
-                           (Message.to_buffer ~version:1)))
+                           Message.to_buffer))
                      msgs)); ])
   | NsmUpdate tag -> fun (namespace_id, req) ->
     if not (db # exists (Keys.namespace_info namespace_id))
