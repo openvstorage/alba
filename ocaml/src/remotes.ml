@@ -124,7 +124,7 @@ module Pool = struct
     let invalidate t ~nsm_host_id =
       if Hashtbl.mem t.pools nsm_host_id
       then begin
-        Lwt_pool2.finalize (Hashtbl.find t.pools nsm_host_id);
+        Lwt_pool2.finalize (Hashtbl.find t.pools nsm_host_id) |> Lwt.ignore_result;
         Hashtbl.remove t.pools nsm_host_id
       end
   end
@@ -186,7 +186,7 @@ module Pool = struct
     let invalidate t ~osd_id =
       if Hashtbl.mem t.pools osd_id
       then begin
-        Lwt_pool2.finalize (Hashtbl.find t.pools osd_id);
+        Lwt_pool2.finalize (Hashtbl.find t.pools osd_id) |> Lwt.ignore_result;
         Hashtbl.remove t.pools osd_id
       end
   end

@@ -25,6 +25,7 @@ let test_with_alba_client ?bad_fragment_callback f =
     Alba_client.with_client
       ?bad_fragment_callback
       (ref albamgr_client_cfg)
+      ~release_resources:true
       f
   end
 
