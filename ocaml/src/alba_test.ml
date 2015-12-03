@@ -25,6 +25,7 @@ let test_with_alba_client ?bad_fragment_callback f =
     Alba_client.with_client
       ?bad_fragment_callback
       (ref albamgr_client_cfg)
+      ~release_resources:true
       f
   end
 
@@ -1543,6 +1544,7 @@ let test_invalidate_deleted_namespace () =
   test_with_alba_client
     (fun alba_client1 ->
        Alba_client.with_client
+         ~release_resources:true
          (ref (Albamgr_test.get_ccfg ()))
          (fun alba_client2 ->
 
@@ -1763,6 +1765,7 @@ let test_stale_manifest_download () =
      in
      let rewrite_obj () =
        Alba_client.with_client
+         ~release_resources:true
          (ref (Albamgr_test.get_ccfg ()))
          (fun alba_client2 ->
           let maintenance_client =

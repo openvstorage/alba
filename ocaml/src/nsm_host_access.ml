@@ -298,6 +298,8 @@ class nsm_host_access
   in
 
   object(self)
+    method finalize = Pool.Nsm_host.invalidate_all nsm_hosts_pool
+
     method get = get
     method get_basic = get_basic
 

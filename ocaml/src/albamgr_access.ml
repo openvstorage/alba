@@ -16,17 +16,7 @@ limitations under the License.
 
 open Remotes
 
-class basic_mgr_pooled
-        buffer_pool
-        ~albamgr_connection_pool_size
-        ~albamgr_client_cfg =
-
-  let albamgr_pool =
-    Pool.Albamgr.make
-      ~size:albamgr_connection_pool_size
-      albamgr_client_cfg
-      buffer_pool
-  in
+class basic_mgr_pooled (albamgr_pool : Pool.Albamgr.t) =
   let with_basic_albamgr_from_pool f =
     Pool.Albamgr.use_mgr
       albamgr_pool
