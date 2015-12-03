@@ -441,6 +441,8 @@ let with_client albamgr_client_cfg
      if release_resources
      then
        begin
+         base_client # osd_access # finalize;
+         base_client # nsm_host_access # finalize;
          Lwt_pool2.finalize albamgr_pool
        end
      else Lwt.return ()) >>= fun r ->

@@ -127,6 +127,11 @@ module Pool = struct
         Lwt_pool2.finalize (Hashtbl.find t.pools nsm_host_id) |> Lwt.ignore_result;
         Hashtbl.remove t.pools nsm_host_id
       end
+
+    let invalidate_all t =
+      List.iter
+        (fun (nsm_host_id, _) -> invalidate t ~nsm_host_id)
+        (Hashtbl.to_assoc_list t.pools)
   end
 
   module Osd = struct
@@ -189,6 +194,11 @@ module Pool = struct
         Lwt_pool2.finalize (Hashtbl.find t.pools osd_id) |> Lwt.ignore_result;
         Hashtbl.remove t.pools osd_id
       end
+
+    let invalidate_all t =
+      List.iter
+        (fun (osd_id, _) -> invalidate t ~osd_id)
+        (Hashtbl.to_assoc_list t.pools)
   end
 
 end
