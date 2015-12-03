@@ -324,7 +324,7 @@ def maintenance_stop():
     where = local
     where(cmd_line)
 
-def wait_for_master(arakoon_cfg_file = arakoon_config_file, max = 10):
+def wait_for_master(arakoon_cfg_file = arakoon_config_file, max = 15):
     waiting = True
     count = 0
     m = None
@@ -337,6 +337,7 @@ def wait_for_master(arakoon_cfg_file = arakoon_config_file, max = 10):
         if m<>None:
             waiting = False
         if count == max:
+            local("pgrep -a arakoon")
             raise Exception("this should not take so long")
         count = count + 1
         time.sleep(1)
