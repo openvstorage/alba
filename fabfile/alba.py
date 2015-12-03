@@ -211,10 +211,8 @@ def osd_stop(port):
 def create_namespace(namespace, abm_cfg = arakoon_config_file):
     cmd = [
         env['alba_bin'],
-        "create-namespace",
-        namespace,
-        '--config',
-        abm_cfg
+        "proxy-create-namespace",
+        namespace
     ]
     cmd_line = ' '.join(cmd)
     where = local
@@ -445,6 +443,9 @@ def demo_setup(kind = default_kind, multicast = True, n_agents = 1, n_proxies = 
 
 @task
 def smoke_test(sudo = False):
+    local("pgrep -a alba")
+    local("pgrep -a arakoon")
+
     m = arakoon_who_master()
     print "master:", m
     fuser = "fuser"
