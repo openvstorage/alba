@@ -29,15 +29,15 @@ let test_with_alba_client ?bad_fragment_callback f =
       f
   end
 
-let _wait_for_osds (alba_client:Alba_client.alba_client) namespace_id =
+let _wait_for_osds ?(cnt=11) (alba_client:Alba_client.alba_client) namespace_id =
   alba_client # nsm_host_access # get_namespace_info ~namespace_id
   >>= fun (ns_info, _, _) ->
   let nsm_host_id = ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id in
   let rec loop () =
     alba_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->
     alba_client # nsm_host_access # refresh_namespace_osds ~namespace_id
-    >>= fun (cnt, osd_ids) ->
-    if cnt > 10
+    >>= fun (cnt', osd_ids) ->
+    if cnt' >= cnt
     then Lwt.return ()
     else Lwt_unix.sleep 0.1 >>= fun () -> loop ()
   in
@@ -1213,11 +1213,7 @@ let test_disk_churn () =
            ~namespace
            ~preset_name:(Some preset_name) () >>= fun namespace_id ->
 
-         Lwt_list.iter_p
-           (fun osd_id -> alba_client # deliver_osd_messages ~osd_id)
-           osd_ids >>= fun () ->
-
-         alba_client # deliver_nsm_host_messages ~nsm_host_id:"ricky" >>= fun () ->
+         _wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
 
          let open Nsm_model in
 

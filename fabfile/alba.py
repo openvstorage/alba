@@ -211,10 +211,8 @@ def osd_stop(port):
 def create_namespace(namespace, abm_cfg = arakoon_config_file):
     cmd = [
         env['alba_bin'],
-        "create-namespace",
-        namespace,
-        '--config',
-        abm_cfg
+        "proxy-create-namespace",
+        namespace
     ]
     cmd_line = ' '.join(cmd)
     where = local
@@ -324,7 +322,7 @@ def maintenance_stop():
     where = local
     where(cmd_line)
 
-def wait_for_master(arakoon_cfg_file = arakoon_config_file, max = 10):
+def wait_for_master(arakoon_cfg_file = arakoon_config_file, max = 15):
     waiting = True
     count = 0
     m = None
@@ -337,6 +335,7 @@ def wait_for_master(arakoon_cfg_file = arakoon_config_file, max = 10):
         if m<>None:
             waiting = False
         if count == max:
+            local("pgrep -a arakoon")
             raise Exception("this should not take so long")
         count = count + 1
         time.sleep(1)
@@ -444,6 +443,9 @@ def demo_setup(kind = default_kind, multicast = True, n_agents = 1, n_proxies = 
 
 @task
 def smoke_test(sudo = False):
+    local("pgrep -a alba")
+    local("pgrep -a arakoon")
+
     m = arakoon_who_master()
     print "master:", m
     fuser = "fuser"

@@ -23,6 +23,7 @@ open OUnit
 let _easiest_upload () =
   let cfg_file = "./cfg/test.ini"
   and namespace = "demo"
+  and namespace_id = 0l
   and input_file = "./ocaml/alba.native"
   and object_name = Printf.sprintf "easy_test_%i" 1
   and allow_overwrite = false in
@@ -54,6 +55,7 @@ let _easiest_upload () =
     (ref cfg)
     (fun alba_client ->
 
+     Alba_test._wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
      alba_client # mgr_access # list_all_claimed_osds >>= fun (n, osds) ->
      Lwt_io.printlf "n=%i" n >>= fun()->
      let soon_dead = List.hd_exn osds
