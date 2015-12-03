@@ -215,6 +215,9 @@ class osd_access
   in
 
   object
+
+    method finalize = Pool.Osd.invalidate_all osds_pool
+
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
                           (Osd.osd -> 'a Lwt.t) -> 'a Lwt.t =
