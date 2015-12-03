@@ -399,7 +399,7 @@ module Protocol = struct
       | Nsm_host -> Nsm_host_protocol.Protocol.Message.from_buffer
       | Osd -> Osd.Message.from_buffer
     let msg_to_buffer : type dest msg. (dest, msg) t -> msg Llio.serializer = function
-      | Nsm_host -> (Nsm_host_protocol.Protocol.Message.to_buffer ~version:2)
+      | Nsm_host -> Nsm_host_protocol.Protocol.Message.to_buffer
       | Osd -> Osd.Message.to_buffer
   end
 
