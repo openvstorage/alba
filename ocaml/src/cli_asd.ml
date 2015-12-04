@@ -322,7 +322,10 @@ let osd_bench_cmd =
              (enum
                 [ "sets", sets;
                   "gets", gets;
-                  "deletes", deletes; ])
+                  "deletes", deletes;
+                  "upload_fragments", upload_fragments;
+                  "ranges",range_queries;
+                ])
              [ sets;
                gets;
                deletes; ]
