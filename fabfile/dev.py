@@ -136,7 +136,7 @@ def run_tests_cli():
     alba.demo_setup()
     tls = env['alba_tls']
     port = '8501' if is_true(tls) else '8001'
-    host = '::1'
+    host = '127.0.0.1'
     where = local
 
     def _asd( what, extra, tls = tls):
@@ -291,6 +291,7 @@ def run_tests_stress(kind = default_kind, xml = False):
     def create_namespace_cmd(name):
         cmd = build_cmd('proxy-create-namespace')
         cmd.append(name)
+        cmd.append("-h 127.0.0.1 ")
         cmd_s = ' '.join(cmd)
         return cmd_s
 
@@ -488,6 +489,7 @@ def spreadsheet_my_ass(start=0, end = 13400):
         cmd = [
             env['alba_bin'],
             'proxy-upload-object',
+            "-h 127.0.0.1 ",
             'demo', '%s/obj' % ALBA_BASE_PATH,
             str(i)
         ]
@@ -519,6 +521,7 @@ def run_test_asd_start(xml=False):
         cmd = [
             env['alba_bin'],
             'proxy-upload-object',
+            "-h 127.0.0.1 ",
             'demo', object_location,
             str(i)
         ]
@@ -533,6 +536,7 @@ def run_test_asd_start(xml=False):
     cmd = [
         env['alba_bin'],
         'proxy-upload-object',
+        "-h 127.0.0.1 ",
         'demo', object_location,
         "fdskii", "--allow-overwrite"
     ]
@@ -551,6 +555,7 @@ def run_test_asd_start(xml=False):
     local(" ".join([
         env['alba_bin'],
         'proxy-download-object',
+        "-h 127.0.0.1 ",
         'demo', '1', '%s/obj2' % ALBA_BASE_PATH
     ]))
 
@@ -593,13 +598,17 @@ def run_test_big_object():
         local("truncate -s 2G %s" % object_file)
         local(" ".join([
             'time', env['alba_bin'],
-            'proxy-upload-object', 'big', object_file, 'bigobj'
+            'proxy-upload-object',
+            "-h 127.0.0.1 ",
+            'big', object_file, 'bigobj'
         ]))
         # note this may fail with NoSatisfiablePolicy from time to time
 
         local(" ".join([
             'time', env['alba_bin'],
-            'proxy-download-object', 'big', 'bigobj', '%s/obj_download' % ALBA_BASE_PATH
+            'proxy-download-object',
+            "-h 127.0.0.1 ",
+            'big', 'bigobj', '%s/obj_download' % ALBA_BASE_PATH
         ]))
         local("rm %s/obj_download" % ALBA_BASE_PATH)
 
@@ -645,8 +654,8 @@ def run_tests_compat(xml = True):
             obj_name = 'alba_binary'
             ns = 'demo'
             cfg = './cfg/albamgr_example_arakoon_cfg.ini'
-            alba_cli(['proxy-upload-object', ns , env['alba_bin'], obj_name])
-            alba_cli(['proxy-download-object', ns, obj_name, '/tmp/downloaded.bin'])
+            alba_cli(['proxy-upload-object', "-h 127.0.0.1 ", ns , env['alba_bin'], obj_name])
+            alba_cli(['proxy-download-object', "-h 127.0.0.1 ", ns, obj_name, '/tmp/downloaded.bin'])
             alba_cli(['delete-object', ns, obj_name, '--config', cfg ])
 
             # some explicit backward compatible operations

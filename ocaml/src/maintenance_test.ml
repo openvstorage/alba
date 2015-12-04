@@ -633,7 +633,7 @@ let test_automatic_repair () =
                                                total = 1L;
                                                used = 1L;
                                              });
-                                      ips = ["::1"];
+                                      ips = ["127.0.0.1"];
                                       port = Some port;
                                       tlsPort = None;
                                     })) >>= fun () ->
