@@ -23,7 +23,7 @@ from uuid import uuid4
 import sha
 import json
 import hashlib
-
+import sys
 
 @task
 def check():
@@ -114,8 +114,24 @@ def run_tests_ocaml(xml=False,
 
     where(cmd_line)
 
+
+def timed_test(name, test):
+    t0 = time.time()
+    r = True
+    try:
+        test ()
+    except:
+        e = sys.exc_info()[0]
+        print e
+        r = False
+
+    t1 = time.time ()
+    delta = t1 - t0
+    return (name, r, delta)
+
+
 @task
-def run_tests_cli(xml = False):
+def run_tests_cli():
     alba.demo_kill()
     alba.demo_setup()
     tls = env['alba_tls']
@@ -191,9 +207,21 @@ def run_tests_cli(xml = False):
         cmd_line = ' '.join(cmd)
         local (cmd_line)
 
-    test_asd_get_version()
-    test_asd_cli_env()
-    test_asd_get_statistics()
+    suite_name = "run_tests_cli"
+    results = []
+    tests = [
+        ("asd_get_version", test_asd_get_version),
+        ("asd_cli_env", test_asd_cli_env),
+        ("asd_get_statistics", test_asd_get_statistics),
+        ("asd_crud", test_asd_crud)
+    ]
+
+    for test_name, test  in tests:
+        r = timed_test(test_name,test)
+        results.append(r)
+    return "cli", results
+
+
     test_asd_crud()
 
 
@@ -531,65 +559,72 @@ def run_test_asd_start(xml=False):
 
 @task
 def run_test_big_object():
-    alba.demo_kill()
-    alba.demo_setup()
-    cmd = [
-        env['alba_bin'],
-        'create-preset', 'preset_no_compression',
-        '--config', arakoon_config_file,
-
-    ]
-    if is_true(tls):
-        alba._extend_alba_tls(cmd)
-
-    cmd.append('< ./cfg/preset_no_compression.json')
-    # create the preset in albamgr
-    local(" ".join(cmd))
-
-    cmd = [
-        env['alba_bin'],
-        'create-namespace', 'big', 'preset_no_compression',
-        '--config', arakoon_config_file
-    ]
-    if is_true(tls):
-        alba._extend_alba_tls(cmd)
-    # create new namespace with this preset
-    local(" ".join(cmd))
-
-    object_file = "%s/obj" % ALBA_BASE_PATH
-    # upload a big object
-    local("truncate -s 2G %s" % object_file)
-    local(" ".join([
-        'time', env['alba_bin'],
-        'proxy-upload-object', 'big', object_file, 'bigobj'
-    ]))
-    # note this may fail with NoSatisfiablePolicy from time to time
-
-    local(" ".join([
-        'time', env['alba_bin'],
-        'proxy-download-object', 'big', 'bigobj', '%s/obj_download' % ALBA_BASE_PATH
-    ]))
-    local("rm %s/obj_download" % ALBA_BASE_PATH)
-
-    # policy says we can lose a node,
-    # so stop and decommission osd 0 to 3
-    for i in range(0,4):
-        port = 8000+i
-        alba.osd_stop(port)
-        long_id = "%i_%i_%s" % (port, 2000, alba.local_nodeid_prefix)
+    def _inner():
+        alba.demo_kill()
+        alba.demo_setup()
         cmd = [
             env['alba_bin'],
-            'decommission-osd', '--long-id', long_id,
+            'create-preset', 'preset_no_compression',
+            '--config', arakoon_config_file,
+
+        ]
+        tls = env['alba_tls']
+        if is_true(tls):
+            alba._extend_alba_tls(cmd)
+
+        cmd.append('< ./cfg/preset_no_compression.json')
+        # create the preset in albamgr
+        local(" ".join(cmd))
+
+        cmd = [
+            env['alba_bin'],
+            'create-namespace', 'big', 'preset_no_compression',
             '--config', arakoon_config_file
         ]
         if is_true(tls):
             alba._extend_alba_tls(cmd)
+        # create new namespace with this preset
         local(" ".join(cmd))
 
-    # TODO
-    # wait for maintenance process to repair it
-    # (give maintenance process a kick?)
-    # report mem usage of proxy & maintenance process
+        object_file = "%s/obj" % ALBA_BASE_PATH
+        # upload a big object
+        local("truncate -s 2G %s" % object_file)
+        local(" ".join([
+            'time', env['alba_bin'],
+            'proxy-upload-object', 'big', object_file, 'bigobj'
+        ]))
+        # note this may fail with NoSatisfiablePolicy from time to time
+
+        local(" ".join([
+            'time', env['alba_bin'],
+            'proxy-download-object', 'big', 'bigobj', '%s/obj_download' % ALBA_BASE_PATH
+        ]))
+        local("rm %s/obj_download" % ALBA_BASE_PATH)
+
+        # policy says we can lose a node,
+        # so stop and decommission osd 0 to 3
+        for i in range(0,4):
+            port = 8000+i
+            alba.osd_stop(port)
+            long_id = "%i_%i_%s" % (port, 2000, alba.local_nodeid_prefix)
+            cmd = [
+                env['alba_bin'],
+                'decommission-osd', '--long-id', long_id,
+                '--config', arakoon_config_file
+            ]
+            if is_true(tls):
+                alba._extend_alba_tls(cmd)
+            local(" ".join(cmd))
+
+        # TODO
+        # wait for maintenance process to repair it
+        # (give maintenance process a kick?)
+        # report mem usage of proxy & maintenance process
+
+    test_name = "big_object"
+    result = timed_test(test_name, _inner)
+    suite_name = test_name
+    return suite_name, [result]
 
 @task
 def run_tests_compat(xml = True):
@@ -742,55 +777,92 @@ def run_tests_compat(xml = True):
 
 @task
 def run_test_arakoon_changes ():
-    alba.demo_kill ()
-    alba.demo_setup(acf = arakoon_config_file_2)
-    # 2 node cluster, and arakoon_0 will be master.
-    def stop_node(node_name):
-        r = local("pgrep -a arakoon | grep '%s'" % node_name, capture = True)
-        info = r.split()
-        pid = info[0]
-        local("kill %s" % pid)
+    def _inner():
+        alba.demo_kill ()
+        alba.demo_setup(acf = arakoon_config_file_2)
+        # 2 node cluster, and arakoon_0 will be master.
+        def stop_node(node_name):
+            r = local("pgrep -a arakoon | grep '%s'" % node_name, capture = True)
+            info = r.split()
+            pid = info[0]
+            local("kill %s" % pid)
 
-    def start_node(node_name, cfg):
-        inner = [
-            env['arakoon_bin'],
-            "--node", node_name,
-            "-config", cfg
-        ]
-        cmd_line = alba._detach(inner)
-        local(cmd_line)
+        def start_node(node_name, cfg):
+            inner = [
+                env['arakoon_bin'],
+                "--node", node_name,
+                "-config", cfg
+            ]
+            cmd_line = alba._detach(inner)
+            local(cmd_line)
 
-    def signal_alba(process_name,signal):
-        r = local("pgrep -a alba | grep %s" % process_name, capture = True)
-        info = r.split()
-        pid = info[0]
-        local("kill -s %s %s" % (signal, pid))
+        def signal_alba(process_name,signal):
+            r = local("pgrep -a alba | grep %s" % process_name, capture = True)
+            info = r.split()
+            pid = info[0]
+            local("kill -s %s %s" % (signal, pid))
 
-    def wait_for(delay):
-        n = int(delay)
-        print "sleeping %i" % n
-        while n:
-            print "\t%i" % n
-            time.sleep(1)
-            n = n - 1
+        def wait_for(delay):
+            n = int(delay)
+            print "sleeping %i" % n
+            while n:
+                print "\t%i" % n
+                time.sleep(1)
+                n = n - 1
 
-    # 2 node cluster, and arakoon_0 is master.
-    wait_for(10)
-    stop_node('arakoon_0')
-    stop_node('witness_0')
-    # restart them with other config
+        # 2 node cluster, and arakoon_0 is master.
+        wait_for(10)
+        stop_node('arakoon_0')
+        stop_node('witness_0')
+        # restart them with other config
 
-    start_node('arakoon_1', arakoon_config_file)
-    start_node('witness_0', arakoon_config_file)
+        start_node('arakoon_1', arakoon_config_file)
+        start_node('witness_0', arakoon_config_file)
 
-    wait_for(20)
-    start_node('arakoon_0', arakoon_config_file)
+        wait_for(20)
+        start_node('arakoon_0', arakoon_config_file)
 
-    maintenance_home = "%s/maintenance" % ALBA_BASE_PATH
-    maintenance_cfg = maintenance_home + "/albamgr.cfg"
-    local("cp %s %s" % (arakoon_config_file, maintenance_cfg))
-    signal_alba('maintenance','USR1')
-    wait_for(120)
-    cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
-    c = cfg_s.split()[0]
-    assert (c == '3') # 3 nodes in config
+        maintenance_home = "%s/maintenance" % ALBA_BASE_PATH
+        maintenance_cfg = maintenance_home + "/albamgr.cfg"
+        local("cp %s %s" % (arakoon_config_file, maintenance_cfg))
+        signal_alba('maintenance','USR1')
+        wait_for(120)
+        cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
+        c = cfg_s.split()[0]
+        assert (c == '3') # 3 nodes in config
+
+    test_name = "arakoon_changes"
+    result = timed_test(test_name, _inner)
+    suite_name = test_name
+    return suite_name, [result]
+
+
+
+@task
+def run_everything_else(xml = False):
+    mega_suite = []
+    tests = [
+        run_test_arakoon_changes,
+        run_tests_cli,
+        run_test_big_object
+    ]
+    for x in tests:
+        r = x ()
+        mega_suite.append(r)
+
+    print mega_suite
+    if is_true(xml):
+        from junit_xml import TestSuite, TestCase
+        test_cases = []
+        for (suite, results) in mega_suite:
+            for (name,result, delta) in results:
+                test_case = TestCase(name, suite, elapsed_sec = delta)
+                if not result:
+                    test_case.add_error_info(message = "failed")
+                test_cases.append(test_case)
+
+        ts = [TestSuite("run_everything_else", test_cases)]
+        with open('./testresults.xml', 'w') as f:
+            TestSuite.to_file(f,ts)
+    else:
+        print mega_suite
