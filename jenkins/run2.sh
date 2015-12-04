@@ -50,6 +50,9 @@ case "$1" in
     compat)
         fab dev.run_tests_compat:xml=True || true
         ;;
+    everything_else)
+        fab dev.run_everything_else:xml=True || true
+        ;;
     *)
         echo "invalid test suite specified..."
         exit1
