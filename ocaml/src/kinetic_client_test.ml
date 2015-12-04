@@ -124,7 +124,7 @@ let test_scenario (client:Kinetic_client.kinetic_client) =
 let () =
   let () = Cli_common.install_logger() in
   let t =
-    Kinetic_client.make_client ["::1"] 11000 "blabla"
+    Kinetic_client.make_client ["127.0.0.1"] 11000 "blabla"
     >>= fun (client, closer) ->
     Lwt.finalize
       (fun () ->
