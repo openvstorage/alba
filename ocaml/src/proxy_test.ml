@@ -17,7 +17,7 @@ limitations under the License.
 open Lwt
 open Proxy_protocol.Protocol
 
-let _IP = "::1"
+let _IP = "127.0.0.1"
 let _PORT = 10_000
 
 let test_with_proxy_client f =

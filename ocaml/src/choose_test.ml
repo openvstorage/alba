@@ -34,7 +34,7 @@ let test () =
       else
         let device_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
-        let kind = Osd.Asd (["::1"], 8000 +i, "asd id choose test " ^ (string_of_int i) ) in
+        let kind = Osd.Asd (["127.0.0.1"], 8000 +i, "asd id choose test " ^ (string_of_int i) ) in
         let d_info =
           Osd.make
             ~node_id ~kind
@@ -90,7 +90,7 @@ let choose_bug () =
     else
       let device_id = Int32.of_int i in
       let node_id = "my node" in
-      let kind = Osd.Asd(["::1"], 8000 + i, "asd id choose bug " ^ string_of_int i) in
+      let kind = Osd.Asd(["127.0.0.1"], 8000 + i, "asd id choose bug " ^ string_of_int i) in
       let d_info =
         Osd.make
           ~node_id ~kind ~decommissioned:false ~other:""
@@ -123,7 +123,7 @@ let choose_forced () =
       else
         let osd_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
-        let kind = Osd.Asd (["::1"], 8000 +i, "osd id choose forced test " ^ (string_of_int i) ) in
+        let kind = Osd.Asd (["127.0.0.1"], 8000 +i, "osd id choose forced test " ^ (string_of_int i) ) in
         let d_info =
           Osd.make
             ~node_id ~kind
@@ -315,7 +315,7 @@ let test_actually_rebalances () =
 
 let setup_explicit_info info_list =
     let make_kind osd_id =
-      Osd.Asd (["::1"],
+      Osd.Asd (["127.0.0.1"],
                8000 + (Int32.to_int osd_id),
                "asd id choose test " ^ (Int32.to_string osd_id)
               )

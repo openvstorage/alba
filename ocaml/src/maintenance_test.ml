@@ -625,7 +625,7 @@ let test_automatic_repair () =
                                                total = 1L;
                                                used = 1L;
                                              });
-                                      ips = ["::1"];
+                                      ips = ["127.0.0.1"];
                                       port; })) >>= fun () ->
         alba_client # claim_osd ~long_id:test_name >>= fun osd_id ->
 

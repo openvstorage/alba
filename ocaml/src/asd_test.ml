@@ -25,7 +25,7 @@ let rec wait_asd_connection port asd_id () =
     (fun () ->
      Asd_client.with_client
        buffer_pool
-       [ "::1" ] port asd_id
+       [ "127.0.0.1" ] port asd_id
        (fun client -> Lwt.return `Continue))
     (function
       | exn when Networking2.is_connection_failure_exn exn ->
@@ -67,7 +67,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
             (wait_asd_connection port asd_id)>>= fun () ->
           Asd_client.with_client
             buffer_pool
-            [ "::1" ] port (Some test_name)
+            [ "127.0.0.1" ] port (Some test_name)
             f >>= fun r ->
           Lwt_condition.broadcast cancel ();
           Lwt.return r
@@ -242,7 +242,7 @@ let test_protocol_version port () =
   let protocol_test port =
     Lwt.catch
       (fun () ->
-       Networking2.first_connection' buffer_pool ["::1"] port
+       Networking2.first_connection' buffer_pool ["127.0.0.1"] port
        >>= fun (_, (ic,oc), closer) ->
        Lwt.finalize
          (fun () ->
@@ -290,7 +290,7 @@ let test_unknown_operation () =
     begin
       Asd_client.with_client
         buffer_pool
-        [ "::1" ] 8000 None
+        [ "127.0.0.1" ] 8000 None
         (fun asd ->
          asd # do_unknown_operation >>= fun () ->
          asd # do_unknown_operation >>= fun () ->
