@@ -41,7 +41,7 @@ class client fd id =
           Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
           lwt_fail err')
       (fun () ->
-       Lwt_bytes.unsafe_destroy res_buf;
+       (* Lwt_bytes.unsafe_destroy res_buf; *)
        Lwt.return_unit)
   in
   let do_request

@@ -28,6 +28,7 @@ let pp formatter t =
   Format.pp_print_string formatter (show t)
 
 let from_bigstring bs offset length =
+  assert (offset + length <= Lwt_bytes.length bs);
   { bs; offset; length; }
 
 let wrap_bigstring bs =
