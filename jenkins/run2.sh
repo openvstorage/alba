@@ -12,7 +12,7 @@ make
 find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
 
 id
-ulimit -n 2048
+ulimit -n 1024
 ulimit -c unlimited
 cat /proc/sys/kernel/core_pattern
 

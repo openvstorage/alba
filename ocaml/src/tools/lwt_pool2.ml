@@ -101,4 +101,4 @@ let finalize t =
          t.cleanup item :: acc)
       []
       t.available_items in
-  Lwt.ignore_result (Lwt.join ts)
+  Lwt.join ts

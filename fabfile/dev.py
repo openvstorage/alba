@@ -528,7 +528,7 @@ def run_test_asd_start(xml=False):
         alba.osd_stop(8000 + i)
 
     alba.start_osds(default_kind, N, True, restart = True)
-    time.sleep(1)
+    time.sleep(2)
 
     cmd = [
         env['alba_bin'],
@@ -541,6 +541,8 @@ def run_test_asd_start(xml=False):
         # asd connection pools
         local(" ".join(cmd))
         local(" ".join(cmd))
+        local(" ".join(cmd))
+        time.sleep(2)
         local(" ".join(cmd))
 
     r = local(" ".join(cmd))

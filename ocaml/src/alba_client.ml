@@ -401,6 +401,7 @@ let with_client albamgr_client_cfg
                 ?(osd_timeout = 2.)
                 ?(default_osd_priority = Osd.Low)
                 ~tls_config
+                ?(release_resources = false)
                 f
   =
   begin
@@ -415,13 +416,15 @@ let with_client albamgr_client_cfg
        Lwt.return (cache :> cache)
   end
   >>= fun cache ->
+  let albamgr_pool =
+    Remotes.Pool.Albamgr.make
+      ~size:albamgr_connection_pool_size
+      albamgr_client_cfg
+      tls_config
+      default_buffer_pool
+  in
   let mgr_access =
-    new Albamgr_client.client
-      (new basic_mgr_pooled
-        ~albamgr_connection_pool_size
-        ~albamgr_client_cfg
-        ~tls_config
-        default_buffer_pool)
+    new Albamgr_client.client (new basic_mgr_pooled albamgr_pool)
   in
   let base_client = new Alba_base_client.client
                         cache
@@ -435,6 +438,16 @@ let with_client albamgr_client_cfg
                         ~tls_config
   in
   let client = new alba_client base_client in
-  f client >>= fun r ->
+  Lwt.finalize
+    (fun () -> f client)
+    (fun () ->
+     if release_resources
+     then
+       begin
+         base_client # osd_access # finalize;
+         base_client # nsm_host_access # finalize;
+         Lwt_pool2.finalize albamgr_pool
+       end
+     else Lwt.return ()) >>= fun r ->
   cache # close () >>= fun () ->
   Lwt.return r
