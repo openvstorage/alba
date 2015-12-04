@@ -47,11 +47,16 @@ let claim_osd mgr_access osd_access ~long_id =
           osd # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
           >>= fun alba_id' ->
           let u_alba_id' = Bigstring_slice.to_string alba_id' in
+          Lwt_log.debug_f
+            "osd %s is owned by %s, want to claim for %s"
+            long_id u_alba_id' alba_id >>= fun () ->
           if u_alba_id' = alba_id
           then Lwt.return `Continue
           else Lwt.return (`ClaimedBy u_alba_id')
        | None ->
-          (* the osd is not yet owned, go and tag it *)
+          Lwt_log.debug_f
+            "osd %s is not yet owned, let's go claim it"
+            long_id >>= fun () ->
 
           let id_on_osd = 0l in
           let instance_index_key = IRK.instance_index_key ~alba_id in
@@ -81,7 +86,9 @@ let claim_osd mgr_access osd_access ~long_id =
                   no_checksum true; ]
           >>=
             function
-            | Ok -> Lwt.return `Continue
+            | Ok ->
+               Lwt_log.debug_f "successfully claimed osd %s" long_id >>= fun () ->
+               Lwt.return `Continue
             | _  ->
                begin
                  osd # get_exn
@@ -89,6 +96,9 @@ let claim_osd mgr_access osd_access ~long_id =
                      (wrap_string (IRK.instance_log_key 0l))
                  >>= fun alba_id'slice ->
                  let alba_id' =  Bigstring_slice.to_string alba_id'slice in
+                 Lwt_log.debug_f
+                   "got an error while claiming osd %s. it is now owned by %s (wanted to claim for %s)"
+                   long_id alba_id' alba_id >>= fun () ->
                  let r =
                    if alba_id' = alba_id
                    then `Continue

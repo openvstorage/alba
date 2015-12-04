@@ -33,32 +33,29 @@ module Blob = struct
 
   let pp formatter t = Format.pp_print_string formatter "<Value>"
 
-  let to_buffer buf = function
-    (* TODO *)
-    | Lwt_bytes s -> ()
-    | Bigslice s -> ()
-    | Bytes s -> ()
-    | Slice s -> ()
+  let to_buffer' buf =
+    let module L = Llio2.WriteBuffer in
+    function
+    | Lwt_bytes s -> L.bigstring_slice_to buf (Bigstring_slice.wrap_bigstring s)
+    | Bigslice s -> L.bigstring_slice_to buf s
+    | Bytes s -> L.string_to buf s
+    | Slice s ->
+       let open Slice in
+       L.substring_to buf (s.buf, s.offset, s.length)
 
-  let to_buffer' buf = function
-    (* TODO *)
-    | Lwt_bytes s -> ()
-    | Bigslice s -> ()
-    | Bytes s -> ()
-    | Slice s -> ()
-
-  let from_buffer buf = Slice (Slice.from_buffer buf)
   let from_buffer' buf = Bigslice (Llio2.ReadBuffer.bigstring_slice_from buf)
 
   let get_slice_unsafe = function
-    | Lwt_bytes s -> Slice.wrap_string "TODO"
-    | Bigslice s -> Slice.wrap_string "TODO"
+    | Lwt_bytes s -> Slice.wrap_string (Lwt_bytes.to_string s)
+    | Bigslice s -> Slice.wrap_string (Bigstring_slice.to_string s)
     | Bytes s -> Slice.wrap_string s
     | Slice s -> s
 
-  let get_string_unsafe = function
-    | Lwt_bytes s -> "TODO"
-    | Bigslice s -> "TODO"
+  let get_string_unsafe x =
+    let get () = x |> get_slice_unsafe |> Slice.get_string_unsafe in
+    match x with
+    | Lwt_bytes _
+    | Bigslice _ -> get ()
     | Bytes s -> s
     | Slice s -> Slice.get_string_unsafe s
 
@@ -146,11 +143,6 @@ module Assert = struct
 
   let value_option key vo = Value (key, vo)
 
-  let to_buffer buf = function
-    | Value (key, value) ->
-      Llio.int8_to buf 1;
-      Slice.to_buffer buf key;
-      Llio.option_to Blob.to_buffer buf value
   let to_buffer' buf =
     let module Llio = Llio2.WriteBuffer in
     function
@@ -159,13 +151,6 @@ module Assert = struct
       Slice.to_buffer' buf key;
       Llio.option_to Blob.to_buffer' buf value
 
-  let from_buffer buf =
-    match Llio.int8_from buf with
-    | 1 ->
-      let key = Slice.from_buffer buf in
-      let value = Llio.option_from Blob.from_buffer buf in
-      Value (key, value)
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Assert" k
   let from_buffer' buf =
     let module Llio = Llio2.ReadBuffer in
     match Llio.int8_from buf with
@@ -190,18 +175,6 @@ module Update = struct
   let delete k = Set (k, None)
   let delete_string k = delete (Slice.wrap_string k)
 
-  let to_buffer buf = function
-    | Set (key, vcob) ->
-      Llio.int8_to buf 1;
-      Slice.to_buffer buf key;
-      Llio.option_to
-        (Llio.tuple3_to
-           Blob.to_buffer
-           Checksum.output
-           Llio.bool_to
-        )
-        buf
-        vcob
   let to_buffer' buf =
     let module Llio = Llio2.WriteBuffer in
     function
@@ -217,21 +190,6 @@ module Update = struct
         buf
         vcob
 
-  let from_buffer buf =
-    match Llio.int8_from buf with
-    | 1 ->
-      let key = Slice.from_buffer buf in
-      let vcob =
-        Llio.option_from
-          (Llio.tuple3_from
-             Blob.from_buffer
-             Checksum.input
-             Llio.bool_from
-          )
-          buf
-      in
-      Set (key, vcob)
-    | k -> Prelude.raise_bad_tag "Asd_protocol.Update" k
   let from_buffer' buf =
     let module Llio = Llio2.ReadBuffer in
     match Llio.int8_from buf with
