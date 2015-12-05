@@ -40,6 +40,8 @@ export OPAMCOLOR=never
 before_install () {
     echo "Running 'before_install' phase"
 
+    date
+
     env | sort
 
     sudo add-apt-repository "deb http://us-central1.gce.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse"
@@ -56,6 +58,8 @@ before_install () {
     sudo apt-get install -qq ${APT_DEPENDS} \
          ocaml ocaml-native-compilers camlp4-extra opam
 
+    date
+
     opam init --auto-setup
     eval `opam config env`
     opam update
@@ -68,6 +72,8 @@ before_install () {
     opam --version
     opam --git-version
 
+    date
+
     echo "Installing ISA-L:"
     wget --no-check-certificate https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
     tar xfzv isa-l-2.14.0.tar.gz
@@ -76,11 +82,17 @@ before_install () {
     make
     sudo make install
 
+    date
+
     sudo pip install fabric junit-xml
+
+    date
 }
 
 install () {
     echo "Running 'install' phase"
+
+    date
 
     eval `opam config env`
 
@@ -94,11 +106,17 @@ install () {
     opam depext arakoon.1.8.6 orocksdb.0.2.0
     opam install ${OPAM_DEPENDS}
 
+    date
+
     ./jenkins/system2/020-build_ocaml.sh
+
+    date
 }
 
 script () {
     echo "Running 'script' phase"
+
+    date
 
     eval `opam config env`
     export ARAKOON_BIN=arakoon
@@ -139,6 +157,8 @@ script () {
             echo "invalid test suite specified..."
             exit1
     esac
+
+    date
 }
 
 case "$1" in
