@@ -40,32 +40,25 @@ export OPAMCOLOR=never
 before_install () {
     echo "Running 'before_install' phase"
 
-    env
+    env | sort
 
-    echo "Adding PPA"
-    sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty main restricted universe multiverse"
-    sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty-updates main restricted universe multiverse"
-    sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty-backports main restricted universe multiverse"
+    sudo add-apt-repository "deb http://us-central1.gce.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse"
+    sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
 
     echo "Updating Apt cache"
-    sudo apt-get update -q
+    ATTEMPT=0
+    until sudo timeout -s 9 30 apt-get update -q || [ ${ATTEMPT} -eq 3 ]; do
+        echo "Attempt ${ATTEMPT} to update apt failed"
+        sleep $(( ATTEMPT++ ))
+    done
 
     echo "Installing general dependencies"
-    sudo apt-get install -q ${APT_DEPENDS}
+    sudo apt-get install -qq ${APT_DEPENDS} \
+         ocaml ocaml-native-compilers camlp4-extra opam
 
-    # using
-    # sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
-    # and then
-    # sudo apt-get install ocaml ocaml-native-compilers camlp4-extra opam
-    # no longer works because it results in 4.02.3...
-    # so now using this alternative method:
-    wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
-    sudo sh ./opam_installer.sh /usr/local/bin 4.02.3  # change to system once it works with 4.02.3
-    /usr/local/bin/opam init --comp 4.02.3 |tail -n256 # change to system once it works with 4.02.3
-    expr $PIPESTATUS && false
+    opam init --auto-setup
     eval `opam config env`
     opam update
-    opam install camlp4
 
     echo "OCaml versions:"
     ocaml -version
@@ -76,7 +69,7 @@ before_install () {
     opam --git-version
 
     echo "Installing ISA-L:"
-    wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
+    wget --no-check-certificate https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
     tar xfzv isa-l-2.14.0.tar.gz
     cd isa-l-2.14.0
     ./configure
@@ -89,9 +82,7 @@ before_install () {
 install () {
     echo "Running 'install' phase"
 
-    opam init
     eval `opam config env`
-    opam update
 
     wget https://gist.github.com/domsj/f2d7726e5d9895d498fb/raw/1e6191c16cc45bbc493328188079cad40a7aa6c8/librocksdb.so.3.12.0
     sudo cp librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12.0
