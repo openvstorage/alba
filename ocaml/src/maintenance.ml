@@ -18,6 +18,7 @@ open Prelude
 open Slice
 open Recovery_info
 open Lwt.Infix
+open Lwt_bytes2
 
 
 let gc_grace_period = Nsm_host_access.gc_grace_period
@@ -296,24 +297,29 @@ class client ?(retry_timeout = 60.)
          | Prelude.Error.Error x ->
             Lwt.fail (Exn NotEnoughFragments)
          | Prelude.Error.Ok (_, _, packed_fragment) ->
-            Fragment_helper.verify packed_fragment fragment_checksum
-            >>= fun checksum_valid ->
-            if not checksum_valid
-            then Lwt.fail (Exn ChecksumMismatch)
-            else
-              begin
-                Alba_client_upload.upload_packed_fragment_data
-                  (alba_client # osd_access)
-                  ~namespace_id ~object_id
-                  ~chunk_id ~fragment_id ~version_id:version_id1
-                  ~packed_fragment:(Bigstring_slice.wrap_bigstring packed_fragment)
-                  ~checksum:fragment_checksum
-                  ~gc_epoch
-                  ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
-                  ~osd_id:target_osd
-                >>= fun () ->
-                Lwt.return (chunk_id, fragment_id, source_osd, target_osd)
-              end
+            Lwt.finalize
+              (fun () ->
+               Fragment_helper.verify packed_fragment fragment_checksum
+               >>= fun checksum_valid ->
+               if not checksum_valid
+               then Lwt.fail (Exn ChecksumMismatch)
+               else
+                 begin
+                   Alba_client_upload.upload_packed_fragment_data
+                     (alba_client # osd_access)
+                     ~namespace_id ~object_id
+                     ~chunk_id ~fragment_id ~version_id:version_id1
+                     ~packed_fragment:(Bigstring_slice.wrap_bigstring packed_fragment)
+                     ~checksum:fragment_checksum
+                     ~gc_epoch
+                     ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
+                     ~osd_id:target_osd
+                   >>= fun () ->
+                   Lwt.return (chunk_id, fragment_id, source_osd, target_osd)
+                 end)
+              (fun () ->
+               Lwt_bytes.unsafe_destroy packed_fragment;
+               Lwt.return_unit)
          )
         (List.mapi (fun i lc -> i, lc) fragment_info)
       >>= fun object_location_movements ->

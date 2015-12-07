@@ -42,6 +42,9 @@ let get_object_manifest'
 module E = Prelude.Error.Lwt
 let (>>==) = E.bind
 
+(* consumers of this method are responsible for freeing
+ * the returned fragment bigstring
+ *)
 let download_packed_fragment
       (osd_access : osd_access)
       ~location

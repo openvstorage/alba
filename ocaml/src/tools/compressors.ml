@@ -393,6 +393,7 @@ let decompress c f =
   (* bigstring_slice to big array, detached *)
   match c with
   | NoCompression ->
+     (* TODO can eliminate a copy here if the bigstring is exactly the desired lwt_bytes *)
      let res = Bigstring_slice.extract_to_bigstring f in
      Lwt_bytes.unsafe_destroy f.Bigstring_slice.bs;
      Lwt.return res
