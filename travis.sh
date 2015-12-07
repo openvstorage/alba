@@ -40,28 +40,32 @@ export OPAMCOLOR=never
 before_install () {
     echo "Running 'before_install' phase"
 
-    env
+    date
 
-    echo "Adding PPA"
-    sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty main restricted universe multiverse"
-    sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty-updates main restricted universe multiverse"
-    sudo add-apt-repository "deb mirror://mirrors.ubuntu.com/mirrors.txt trusty-backports main restricted universe multiverse"
+    env | sort
 
-    echo "Updating Apt cache"
-    sudo apt-get update -q
-
-    echo "Installing general dependencies"
-    sudo apt-get install -q ${APT_DEPENDS}
-
+    sudo add-apt-repository "deb http://us-central1.gce.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse"
     sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
+
     echo "Updating Apt cache"
-    sudo apt-get update -qq
+    ATTEMPT=0
+    until sudo timeout -s 9 30 apt-get update -q || [ ${ATTEMPT} -eq 3 ]; do
+        echo "Attempt ${ATTEMPT} to update apt failed"
+        sleep $(( ATTEMPT++ ))
+    done
+
     echo "updating keys"
     sudo apt-key update
+
     echo "Installing general dependencies"
-    sudo apt-get install -qq libev-dev libssl-dev libsnappy-dev libgmp3-dev
-    echo "Installing dependencies"
-    sudo apt-get install -qq ocaml ocaml-native-compilers camlp4-extra opam
+    sudo apt-get install -qq ${APT_DEPENDS} \
+         ocaml ocaml-native-compilers camlp4-extra opam
+
+    date
+
+    opam init --auto-setup
+    eval `opam config env`
+    opam update
 
     echo "OCaml versions:"
     ocaml -version
@@ -71,23 +75,29 @@ before_install () {
     opam --version
     opam --git-version
 
+    date
+
     echo "Installing ISA-L:"
-    wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
+    wget --no-check-certificate https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
     tar xfzv isa-l-2.14.0.tar.gz
     cd isa-l-2.14.0
     ./configure
     make
     sudo make install
 
+    date
+
     sudo pip install fabric junit-xml
+
+    date
 }
 
 install () {
     echo "Running 'install' phase"
 
-    opam init
+    date
+
     eval `opam config env`
-    opam update
 
     wget https://gist.github.com/domsj/f2d7726e5d9895d498fb/raw/1e6191c16cc45bbc493328188079cad40a7aa6c8/librocksdb.so.3.12.0
     sudo cp librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12.0
@@ -99,11 +109,17 @@ install () {
     opam depext arakoon.1.8.6 orocksdb.0.2.0
     opam install ${OPAM_DEPENDS}
 
+    date
+
     ./jenkins/system2/020-build_ocaml.sh
+
+    date
 }
 
 script () {
     echo "Running 'script' phase"
+
+    date
 
     eval `opam config env`
     export ARAKOON_BIN=arakoon
@@ -144,6 +160,8 @@ script () {
             echo "invalid test suite specified..."
             exit1
     esac
+
+    date
 }
 
 case "$1" in
