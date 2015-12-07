@@ -110,11 +110,9 @@ let download_packed_fragment
          | Some data ->
             osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
             Osd_state.add_read state;
-            Lwt.ignore_result
-              (fragment_cache # add
-                              namespace_id key_string
-                              data
-              );
+            fragment_cache # add
+                           namespace_id key_string
+                           data >>= fun () ->
             let hit_or_mis = false in
             E.return (osd_id, hit_or_mis, data)
        end
