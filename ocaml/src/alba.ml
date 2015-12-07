@@ -71,9 +71,9 @@ let osd_multi_get osd_id cfg_file keys unescape =
                       then Scanf.unescaped key
                       else key)))
                 keys >>= fun values_s ->
-              let values = List.map(fun v -> Option.map
-                                               Bigstring_slice.to_string v)
-                                   values_s in
+              let values = List.map
+                             (fun v -> Option.map Lwt_bytes.to_string v)
+                             values_s in
               Lwt_io.printlf "%s" ([%show : string option list] values)))
   in
   lwt_cmd_line false t

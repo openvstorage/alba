@@ -43,7 +43,7 @@ let verify_and_maybe_repair_object
          let checksum = Layout.index manifest.fragment_checksums chunk_id fragment_id in
          Fragment_helper.verify fragment_data checksum
          >>= fun checksum_valid ->
-         Lwt_bytes.unsafe_destroy fragment_data.Bigstring_slice.bs;
+         Lwt_bytes.unsafe_destroy fragment_data;
          Lwt.return
            (if checksum_valid
             then `Ok

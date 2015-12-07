@@ -50,18 +50,18 @@ let run_with_fragment_cache size test test_name =
 let test_1 () =
   let _inner (cache :Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Bytes.create 4096 in
+    let blob = Lwt_bytes.create 4096 in
     let bid = 0l and oid = "0000" in
     cache # add bid oid blob  (* _add_new_grow *)
     >>= fun () ->
 
-    Bytes.set blob 0 'x';
+    Lwt_bytes.set blob 0 'x';
     cache # add bid oid blob  (* _replace_grow *)
     >>= fun () ->
-    Bytes.set blob 0 'y';     (* _replace_grow *)
+    Lwt_bytes.set blob 0 'y';     (* _replace_grow *)
     cache # add bid oid blob
     >>= fun () ->
-    Bytes.set blob 0 'z';     (* _replace_grow *)
+    Lwt_bytes.set blob 0 'z';     (* _replace_grow *)
     cache # add bid oid blob >>= fun () ->
     (* lookup *)
     cache # lookup bid oid >>=
@@ -71,7 +71,7 @@ let test_1 () =
            OUnit.assert_bool "should have been found" false;
            Lwt.return ()
         | Some retrieved ->
-           OUnit.assert_bool "first byte?" (retrieved.[0] = 'z');
+           OUnit.assert_bool "first byte?" (Lwt_bytes.get retrieved 0 = 'z');
 
            Lwt.return ()
       end >>= fun () ->
@@ -83,7 +83,7 @@ let test_1 () =
 let test_2 () =
   let _inner (cache: Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Bytes.create 4096 in
+    let blob = Lwt_bytes.create 4096 in
     cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Y" blob >>= fun () -> (* _add_new_full *)
     cache # add 0l "Z" blob >>= fun () -> (* _add_new_full *)
@@ -102,7 +102,7 @@ let test_3 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Bytes.create blob_size in
+    let blob = Lwt_bytes.create blob_size in
     cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Y" blob >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Z" blob >>= fun () -> (* _add_new_grow *)
@@ -141,7 +141,7 @@ let test_4 () =
   let blob_size = 4096 in
   let _inner (cache : Fragment_cache.blob_cache) =
     cache # clear_all() >>= fun () ->
-    let blob = Bytes.create blob_size in
+    let blob = Lwt_bytes.create blob_size in
     let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
       if n = 1000
@@ -171,7 +171,7 @@ let test_5 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Bytes.create blob_size in
+    let blob = Lwt_bytes.create blob_size in
     let bid0 = 0l
     and bid1 = 1l
     in
@@ -214,15 +214,16 @@ let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
     cache #clear_all () >>= fun () ->
     let bid_to_drop1 = Int32.of_int 21 in
-    cache # add bid_to_drop1 "oid" "blob" >>= fun () ->
+    let blob = Lwt_bytes.of_string "blob" in
+    cache # add bid_to_drop1 "oid" blob >>= fun () ->
     cache # drop bid_to_drop1 >>= fun () ->
     let bid_to_drop2 = Int32.of_int 20 in
-    cache # add bid_to_drop2 "oid1" "blob" >>= fun () ->
-    cache # add bid_to_drop2 "oid2" "blob" >>= fun () ->
+    cache # add bid_to_drop2 "oid1" blob >>= fun () ->
+    cache # add bid_to_drop2 "oid2" blob >>= fun () ->
     cache # drop bid_to_drop2 >>= fun () ->
     cache # drop 22l >>= fun () ->
     cache # drop 23l >>= fun () ->
-    let make_blob () = Bytes.create (2048 + Random.int 2048) in
+    let make_blob () = Lwt_bytes.create (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
         if i = 0

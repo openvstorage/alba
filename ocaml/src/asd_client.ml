@@ -22,32 +22,26 @@ open Asd_protocol
 open Protocol
 
 class client fd id =
-  let read_response deserializer =
+  let with_response deserializer f =
     Llio2.FdReader.int_from fd >>= fun size ->
-    let module Llio = Llio2.ReadBuffer in
-    let res_buf = Lwt_bytes.create size in
-    Lwt.finalize
-      (fun () ->
-       Lwt_extra2.read_all_lwt_bytes_exact
-         fd
-         res_buf 0 size >>= fun () ->
-       let res_buf = Llio.make_buffer res_buf 0 in
+    Llio2.FdReader.with_buffer_from
+      fd size
+      (fun res_buf ->
+       let module Llio = Llio2.ReadBuffer in
        match Llio.int_from res_buf with
        | 0 ->
-          Lwt.return (deserializer res_buf)
+          f (deserializer res_buf)
        | err ->
           let open Error in
           let err' = deserialize' err res_buf in
           Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
           lwt_fail err')
-      (fun () ->
-       (* Lwt_bytes.unsafe_destroy res_buf; *)
-       Lwt.return_unit)
   in
   let do_request
         code
         serialize_request request
-        deserialize_response =
+        deserialize_response
+        f =
     let description = code_to_description code in
     Lwt_log.debug_f
       "asd_client %s: %s"
@@ -66,24 +60,32 @@ class client fd id =
        Lwt_extra2.write_all_lwt_bytes
          fd
          buf.Llio.buf 0 buf.Llio.pos >>= fun () ->
-       read_response deserialize_response) >>= fun (t, r) ->
+       with_response deserialize_response f) >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
   in
   object(self)
-    method private query : type req res. (req, res) query -> req -> res Lwt.t =
-      fun command req ->
+    method private query :
+    type req res a.
+         (req, res) query -> req ->
+         (res -> a Lwt.t) -> a Lwt.t =
+      fun command req f ->
       do_request
         (command_to_code (Wrap_query command))
         (query_request_serializer command) req
         (query_response_deserializer command)
+        f
 
-    method private update : type req res. (req, res) update -> req -> res Lwt.t =
-      fun command req ->
+    method private update :
+    type req res a.
+         (req, res) update -> req ->
+         (res -> a Lwt.t) -> a Lwt.t =
+      fun command req f ->
       do_request
         (command_to_code (Wrap_update command))
         (update_request_serializer command) req
         (update_response_deserializer command)
+        f
 
     method do_unknown_operation =
       let code =
@@ -100,7 +102,8 @@ class client fd id =
          do_request
            code
            (fun buf () -> ()) ()
-           (fun buf -> ()) >>= fun () ->
+           (fun buf -> ())
+           Lwt.return >>= fun () ->
          Lwt.fail_with "did not get an exception for unknown operation")
         (function
           | Error.Exn Error.Unknown_operation ->
@@ -111,7 +114,16 @@ class client fd id =
     val mutable supports_multiget2 = None
     method multi_get ~prio keys =
       let old_multiget () =
-        self # query MultiGet (keys, prio)
+        self # query
+             MultiGet
+             (keys, prio)
+             (fun res ->
+              List.map
+                (Option.map
+                   (fun (bss, cs) ->
+                    Bigstring_slice.extract_to_bigstring bss, cs))
+                res
+             |> Lwt.return)
       in
       match supports_multiget2 with
       | None ->
@@ -133,34 +145,34 @@ class client fd id =
          old_multiget ()
 
     method multi_get2 ~prio keys =
-      self # query MultiGet2 (keys, prio) >>= fun res ->
-      Lwt_list.map_s
-        (let open Value in
-         function
-          | None -> Lwt.return_none
-          | Some (blob, cs) ->
-             match blob with
-             | Direct s -> Lwt.return (Some (s, cs))
-             | Later size ->
-                let bs = Lwt_bytes.create size in
-                Lwt.catch
-                  (fun () ->
-                   Lwt_extra2.read_all_lwt_bytes_exact fd bs 0 size >>= fun () ->
-                   Lwt.return (Some (Bigstring_slice.wrap_bigstring bs, cs)))
-                  (fun exn ->
-                   Lwt_bytes.unsafe_destroy bs;
-                   Lwt.fail exn))
-        res
+      self # query MultiGet2 (keys, prio)
+           (Lwt_list.map_s
+              (let open Value in
+               function
+               | None -> Lwt.return_none
+               | Some (blob, cs) ->
+                  match blob with
+                  | Direct s -> Lwt.return (Some (Bigstring_slice.extract_to_bigstring s, cs))
+                  | Later size ->
+                     let bs = Lwt_bytes.create size in
+                     Lwt.catch
+                       (fun () ->
+                        Lwt_extra2.read_all_lwt_bytes_exact fd bs 0 size >>= fun () ->
+                        Lwt.return (Some (bs, cs)))
+                       (fun exn ->
+                        Lwt_bytes.unsafe_destroy bs;
+                        Lwt.fail exn)))
 
     (* TODO where is this used? *)
     method multi_get_string ~prio keys =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
-           (Option.map (fun (slice, cs) -> Bigstring_slice.to_string slice, cs))
+           (Option.map (fun (slice, cs) -> Lwt_bytes.to_string slice, cs))
            res)
 
-    method multi_exists ~prio keys = self # query MultiExists (keys, prio)
+    method multi_exists ~prio keys =
+      self # query MultiExists (keys, prio) Lwt.return
 
     method get ~prio key =
       self # multi_get ~prio [ key ] >>= fun res ->
@@ -196,6 +208,7 @@ class client fd id =
       self # query
         Range
         (RangeQueryArgs.({ first; finc; last; reverse; max }), prio)
+        Lwt.return
 
     method range_all ~prio ?(max = -1) () =
       list_all_x
@@ -215,21 +228,28 @@ class client fd id =
       self # query
         RangeEntries
         (RangeQueryArgs.({ first; finc; last; reverse; max; }), prio)
+        (fun ((cnt, items), has_more) ->
+         let items' =
+           List.map
+             (fun (k, v, cs) -> k, Bigstring_slice.extract_to_bigstring v, cs)
+             items
+         in
+         Lwt.return ((cnt, items'), has_more))
 
     method apply_sequence ~prio asserts updates =
-      self # update Apply (asserts, updates, prio)
+      self # update Apply (asserts, updates, prio) Lwt.return
 
     method statistics clear =
-      self # query Statistics clear
+      self # query Statistics clear Lwt.return
 
     method set_full full =
-      self # update SetFull full
+      self # update SetFull full Lwt.return
 
     method get_version () =
-      self # query GetVersion ()
+      self # query GetVersion () Lwt.return
 
     method get_disk_usage () =
-      self # query GetDiskUsage ()
+      self # query GetDiskUsage () Lwt.return
   end
 
 exception BadLongId of string * string

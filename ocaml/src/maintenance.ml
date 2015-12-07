@@ -306,7 +306,8 @@ class client ?(retry_timeout = 60.)
                   (alba_client # osd_access)
                   ~namespace_id ~object_id
                   ~chunk_id ~fragment_id ~version_id:version_id1
-                  ~packed_fragment ~checksum:fragment_checksum
+                  ~packed_fragment:(Bigstring_slice.wrap_bigstring packed_fragment)
+                  ~checksum:fragment_checksum
                   ~gc_epoch
                   ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
                   ~osd_id:target_osd

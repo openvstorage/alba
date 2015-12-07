@@ -201,7 +201,7 @@ class kinetic_client cid session conn =
       match vco with
       | None -> Lwt.return None
       | Some (v, version) ->
-         let vo_s = Some (Bigstring_slice.wrap_bigstring (Lwt_bytes.of_string v)) in
+         let vo_s = Some (Lwt_bytes.of_string v) in
          Lwt.return vo_s
 
 

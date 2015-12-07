@@ -122,7 +122,7 @@ module RecoveryInfo = struct
       encryption
       ~object_id
       ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
-      (Bigstring_slice.of_string t.payload) >>= fun decrypted ->
+      (Lwt_bytes.of_string t.payload) >>= fun decrypted ->
     let t' =
       Compressors.Bzip2.decompress_bs_string decrypted |>
       deserialize from_buffer'

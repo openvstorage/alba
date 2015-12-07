@@ -46,7 +46,7 @@ let claim_osd mgr_access osd_access ~long_id =
        | Some _ ->
           osd # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
           >>= fun alba_id' ->
-          let u_alba_id' = Bigstring_slice.to_string alba_id' in
+          let u_alba_id' = Lwt_bytes.to_string alba_id' in
           Lwt_log.debug_f
             "osd %s is owned by %s, want to claim for %s"
             long_id u_alba_id' alba_id >>= fun () ->
@@ -95,7 +95,7 @@ let claim_osd mgr_access osd_access ~long_id =
                      Osd.High
                      (wrap_string (IRK.instance_log_key 0l))
                  >>= fun alba_id'slice ->
-                 let alba_id' =  Bigstring_slice.to_string alba_id'slice in
+                 let alba_id' =  Lwt_bytes.to_string alba_id'slice in
                  Lwt_log.debug_f
                    "got an error while claiming osd %s. it is now owned by %s (wanted to claim for %s)"
                    long_id alba_id' alba_id >>= fun () ->

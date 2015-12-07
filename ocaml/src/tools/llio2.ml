@@ -32,9 +32,9 @@ module ReadBuffer = struct
     let deserialize ?(pos = 0) deserializer buf =
       deserializer { buf; pos; }
 
-    let deserialize' ?(pos = 0) deserializer (buf : Bigstring_slice.t) =
-      deserializer { buf = buf.Bigstring_slice.bs;
-                     pos = pos + buf.Bigstring_slice.offset; }
+    let deserialize' ?(pos = 0) deserializer (buf : Lwt_bytes.t) =
+      deserializer { buf = buf;
+                     pos = pos; }
 
     let unit_from buf = ()
 

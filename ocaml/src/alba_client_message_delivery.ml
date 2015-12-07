@@ -108,7 +108,7 @@ type dest msg.
                         Osd'.Assert.value_option
                           (Slice.wrap_string DK.next_msg_id)
                           (Option.map
-                             (fun x -> Asd_protocol.Blob.Bigslice x)
+                             (fun x -> Asd_protocol.Blob.Lwt_bytes x)
                              next_id_so)
                         :: asserts
                       in

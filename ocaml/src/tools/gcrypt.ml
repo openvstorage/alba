@@ -125,21 +125,21 @@ module Padding = struct
     res
 
   let unpad data =
-    (* unpad from Bigstring_slice to Bigstring_slice (in place) *)
-    let open Bigstring_slice in
-    let len = length data in
-    let cnt_char = get data (len - 1) in
+    (* unpad from Lwt_bytes to Bigstring_slice (in place) *)
+    let len = Lwt_bytes.length data in
+    let cnt_char = Lwt_bytes.get data (len - 1) in
     let cnt = Char.code cnt_char in
     if cnt = 0 || cnt > len then failwith "bad padding";
 
     for i = len - cnt to len - 1 do
-      if cnt_char <> get data i
+      if cnt_char <> Lwt_bytes.get data i
       then failwith "bad padding'"
     done;
 
-    { bs = data.bs;
-      offset = data.offset;
-      length = len - cnt; }
+    Bigstring_slice.from_bigstring
+      data
+      0
+      (len - cnt)
 
 end
 

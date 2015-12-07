@@ -46,7 +46,7 @@ let test_encrypt_decrypt () =
            res1
            0
            (Lwt_bytes.length res1)) >>= fun () ->
-    let data' = Padding.unpad (Bigstring_slice.wrap_bigstring res1) in
+    let data' = Padding.unpad res1 in
     OUnit.assert_equal (Bigstring_slice.to_string data') data;
     Lwt.return ()
   in

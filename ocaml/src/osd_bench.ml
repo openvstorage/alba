@@ -47,7 +47,7 @@ let gets (client: Osd.osd) progress n value_size period prefix =
     let () =
       match _value with
       | None   -> failwith (Printf.sprintf "db[%s] = None?" key)
-      | Some v -> assert (Bigstring_slice.length v = value_size)
+      | Some v -> assert (Lwt_bytes.length v = value_size)
     in
     Lwt.return ()
   in

@@ -83,7 +83,7 @@ let maybe_decrypt
   let open Encryption in
   match encryption with
   | NoEncryption ->
-    Lwt.return data
+    Lwt.return (Bigstring_slice.wrap_bigstring data)
   | AlgoWithKey (algo, key) ->
     begin match algo with
       | AES (CBC, L256) ->
@@ -92,11 +92,10 @@ let maybe_decrypt
         Cipher.with_t_lwt
           key Cipher.AES256 Cipher.CBC []
           (fun cipher ->
-           let open Bigstring_slice in
            Cipher.decrypt
              ~iv
              cipher
-             data.bs data.offset data.length) >>= fun () ->
+             data 0 (Lwt_bytes.length data)) >>= fun () ->
         Lwt.return (Padding.unpad data)
     end
 
@@ -125,11 +124,9 @@ let maybe_decompress compression compressed =
 let verify fragment_data checksum =
   let algo = Checksum.algo_of checksum in
   let hash = Hashes.make_hash algo in
-  let open Bigstring_slice in
   hash # update_lwt_bytes_detached
-    fragment_data.bs
-    fragment_data.offset
-    fragment_data.length >>= fun () ->
+       fragment_data
+       0 (Lwt_bytes.length fragment_data) >>= fun () ->
   let checksum2 = hash # final () in
   Lwt.return (checksum2 = checksum)
 

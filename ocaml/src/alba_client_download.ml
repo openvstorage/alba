@@ -48,7 +48,7 @@ let download_packed_fragment
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
-      fragment_cache
+      (fragment_cache : Fragment_cache.cache)
   =
 
   let osd_id_o, version_id = location in
@@ -110,15 +110,14 @@ let download_packed_fragment
             Lwt.ignore_result
               (fragment_cache # add
                               namespace_id key_string
-                              (* TODO *)
-                              (Bigstring_slice.to_string data)
+                              data
               );
             let hit_or_mis = false in
             E.return (osd_id, hit_or_mis, data)
        end
     | Some data ->
        let hit_or_mis = true in
-       E.return (osd_id, hit_or_mis, Bigstring_slice.of_string data)
+       E.return (osd_id, hit_or_mis, data)
   in
   retrieve key
 
@@ -135,7 +134,7 @@ let download_fragment
       ~fragment_checksum
       decompress
       ~encryption
-      fragment_cache
+      (fragment_cache : Fragment_cache.cache)
   =
 
   let t0_fragment = Unix.gettimeofday () in
@@ -161,7 +160,7 @@ let download_fragment
    then E.return ()
    else
      begin
-       Lwt_bytes.unsafe_destroy fragment_data.Bigstring_slice.bs;
+       Lwt_bytes.unsafe_destroy fragment_data;
        E.fail `ChecksumMismatch
      end) >>== fun () ->
 

@@ -296,7 +296,7 @@ let test_delete_namespace () =
                 c # get_option
                   Osd.High
                   (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
-                let p = Option.map Bigstring_slice.to_string ps in
+                let p = Option.map Lwt_bytes.to_string ps in
                 Lwt_io.printlf "got p = %s" ([%show : string option] p) >>= fun () ->
                 assert (presence = (p <> None));
                 let fragment_key = wrap_string
@@ -308,7 +308,7 @@ let test_delete_namespace () =
                                      )
                 in
                 c # get_option Osd.High fragment_key >>= fun fs ->
-                let f = Option.map Bigstring_slice.to_string fs in
+                let f = Option.map Lwt_bytes.to_string fs in
                 Lwt_io.printlf "got f = %s" ([%show : string option] f) >>= fun () ->
                 assert (fragment = (f <> None));
                 Lwt.return ()) in
