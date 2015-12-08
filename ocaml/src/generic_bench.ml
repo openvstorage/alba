@@ -50,6 +50,9 @@ let measured_loop progress f n =
   let latency = d /. nf in
   Lwt.return (d,speed, latency, min_d, max_d)
 
+let final_key prefix i =
+  Printf.sprintf "%s%s_%016i" Osd_keys.bench_prefix prefix i
+
 let _make_key period prefix =
   (* math:
          X_{n+1} = (aX_{n} + c) mod m
@@ -62,7 +65,7 @@ let _make_key period prefix =
     let i = !_x in
     let x' = (21 * !_x + 3) mod period in
     let () = _x := x'  in
-    Printf.sprintf "%s%s_%016i" Osd_keys.bench_prefix prefix i
+    final_key prefix i
   end
 
 
