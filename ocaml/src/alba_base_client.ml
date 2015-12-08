@@ -26,9 +26,7 @@ module Osd_sec = Osd
 open Nsm_host_access
 open Osd_access
 
-let hm_to_source =  function
-  | true  -> Statistics.Cache
-  | false -> Statistics.NsmHost
+
 
 
 let default_buffer_pool = Buffer_pool.default_buffer_pool
@@ -722,37 +720,44 @@ class client
              ~object_slices
              ~consistent_read
              write_data =
-      let attempt_download_slices manifest =
+      let attempt_download_slices manifest mf_src =
         self # download_object_slices''
              ~namespace_id
              ~manifest
              ~object_slices
              write_data
+        >>= function
+        | None -> Lwt.return_none
+        | Some mf -> Lwt.return (Some (mf,mf_src))
+
       in
       self # get_object_manifest'
         ~namespace_id ~object_name
         ~consistent_read ~should_cache:true
-      >>= fun (cache_hit, r) ->
+      >>= fun (mf_src, r) ->
       match r with
       | None -> Lwt.return None
       | Some manifest ->
          Lwt.catch
-           (fun () ->attempt_download_slices manifest)
+           (fun () ->attempt_download_slices manifest mf_src)
            (fun exn ->
             match exn with
-             | Error.Exn Error.NotEnoughFragments ->
-                if cache_hit
-                then
-                  begin
-                    self # get_object_manifest' ~namespace_id ~object_name
-                         ~consistent_read:true ~should_cache:true
-                    >>= fun (_,r) ->
-                    (* Option.map_lwt? *)
-                    match r with
-                    | Some manifest -> attempt_download_slices manifest
-                    | None -> Lwt.return None
-                  end
-                else Lwt.fail exn
+            | Error.Exn Error.NotEnoughFragments ->
+               begin
+                 let open Cache in
+                 match mf_src with
+                 | Fast ->
+                    begin
+                      self # get_object_manifest' ~namespace_id ~object_name
+                           ~consistent_read:true ~should_cache:true
+                      >>= fun (_,r) ->
+                      (* Option.map_lwt? *)
+                      match r with
+                      | Some manifest -> attempt_download_slices manifest Stale
+                      | None -> Lwt.return None
+                    end
+                 | _ -> Lwt.fail exn
+               end
              | exn -> Lwt.fail exn
            )
 

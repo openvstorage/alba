@@ -61,14 +61,10 @@ module Statistics = struct
     total : duration;
   } [@@deriving show]
 
-  type manifest_source =
-    | Cache
-    | NsmHost
-    | Stale
-    [@@ deriving show]
+
 
   type object_download = {
-    get_manifest_dh : duration * manifest_source;
+    get_manifest_dh : duration * Cache.value_source;
     chunks : chunk_download list;
     verify : duration;
     write_data : duration;

@@ -1907,7 +1907,7 @@ let test_retry_download () =
        let _, stats = Option.get_some res_o in
        assert
          (let open Alba_statistics.Statistics in
-          snd stats.get_manifest_dh = Stale)
+          snd stats.get_manifest_dh = Cache.Stale)
      in
      begin
        poison_mf_cache ();

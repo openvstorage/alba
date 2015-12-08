@@ -104,12 +104,12 @@ let read_objects_slices
   let strategy, logger =
     if n_slices < 8
     then
-      Lwt_list.iter_p,
+      Lwt_list.map_p,
       fun n_slices total_length n_objects ->
       Lwt_log.debug_f "%i slices,%i bytes,%i objects => parallel"
                       n_slices total_length n_objects
     else
-      Lwt_list.iter_s,
+      Lwt_list.map_s,
       fun n_slices total_length n_objects ->
       Lwt_log.info_f "%i slices,%i bytes,%i objects => sequential"
                      n_slices total_length n_objects
@@ -125,12 +125,14 @@ let read_objects_slices
                  ~consistent_read
                  (fun dest_off src off len ->
                   Lwt_bytes.blit_to_bytes src off res (offset + dest_off) len;
-                  Lwt.return ()) >>= function
+                  Lwt.return ())
+     >>= function
      | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-     | Some _ -> Lwt.return ())
-    objects_slices >>= fun () ->
-
-  Lwt.return (res,n_slices,n_objects)
+     | Some (_mf, mf_src) -> Lwt.return mf_src
+    )
+    objects_slices
+  >>= fun mf_sources ->
+  Lwt.return (res,n_slices,n_objects, mf_sources)
 
 let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   let open Protocol in
@@ -281,11 +283,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats (namespace, objects_slices, consistent_read) ->
        with_timing_lwt
          (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
-       >>= fun (delay, (bytes, n_slices, n_objects)) ->
+       >>= fun (delay, (bytes, n_slices, n_objects, mf_sources )) ->
        let total_length = Bytes.length bytes in
-       ProxyStatistics.new_read_object_slices
+       ProxyStatistics.new_read_objects_slices
          stats namespace
-         ~total_length ~n_slices ~n_objects
+         ~total_length ~n_slices ~n_objects ~mf_sources
          ~took:delay;
        Lwt.return bytes
 
