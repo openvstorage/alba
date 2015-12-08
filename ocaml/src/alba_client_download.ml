@@ -112,12 +112,10 @@ let download_packed_fragment
                               namespace_id key_string
                               (Slice.get_string_unsafe data)
               );
-            let hit_or_mis = false in
-            E.return (osd_id, hit_or_mis, data)
+            E.return (osd_id, Cache.Slow, data)
        end
     | Some data ->
-       let hit_or_mis = true in
-       E.return (osd_id, hit_or_mis, Slice.wrap_string data)
+       E.return (osd_id, Cache.Fast, Slice.wrap_string data)
   in
   retrieve key
 
@@ -148,7 +146,7 @@ let download_fragment
        ~object_id ~object_name
        ~chunk_id ~fragment_id
        fragment_cache)
-  >>== fun (t_retrieve, (osd_id, hit_or_miss, fragment_data)) ->
+  >>== fun (t_retrieve, (osd_id, source, fragment_data)) ->
 
   let fragment_data' = Slice.to_bigstring fragment_data in
 
@@ -185,7 +183,7 @@ let download_fragment
   let t_fragment = Statistics.({
                                   osd_id;
                                   retrieve = t_retrieve;
-                                  hit_or_miss;
+                                  source;
                                   verify = t_verify;
                                   decrypt = t_decrypt;
                                   decompress = t_decompress;

@@ -313,14 +313,14 @@ class client
                       ~fragment_checksum
                       decompress
                       ~encryption
-                    >>= fun (t_fragment, fragment_data) ->
+                    >>= fun ((t_fragment, fragment_data) as r) ->
 
                     if !finito
                     then
                       Lwt_bytes.unsafe_destroy fragment_data
                     else
                       begin
-                        Hashtbl.add fragments fragment_id (fragment_data, t_fragment);
+                        Hashtbl.add fragments fragment_id r;
                         CountDownLatch.count_down successes;
                       end;
                     Lwt.return ())
@@ -353,13 +353,13 @@ class client
               chunk_id (Hashtbl.length fragments) k
           in
           Hashtbl.iter
-            (fun _ (fragment, _) -> Lwt_bytes.unsafe_destroy fragment)
+            (fun _ (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
             fragments;
 
           Error.failwith Error.NotEnoughFragments
       in
       let fragment_size =
-        let _, (bs, _) = Hashtbl.choose fragments |> Option.get_some in
+        let _, (_, bs) = Hashtbl.choose fragments |> Option.get_some in
         Lwt_bytes.length bs
       in
 
@@ -368,7 +368,7 @@ class client
         | fragment_id ->
            let fragment_bigarray, erasures', cnt' =
              if Hashtbl.mem fragments fragment_id
-             then fst (Hashtbl.find fragments fragment_id), erasures, cnt + 1
+             then snd (Hashtbl.find fragments fragment_id), erasures, cnt + 1
              else Lwt_bytes.create fragment_size, fragment_id :: erasures, cnt in
            if Lwt_bytes.length fragment_bigarray <> fragment_size
            then failwith (Printf.sprintf "fragment %i,%i has size %i while %i expected\n%!" chunk_id fragment_id (Lwt_bytes.length fragment_bigarray) fragment_size);
@@ -404,7 +404,7 @@ class client
 
       let t_fragments =
         Hashtbl.fold
-          (fun _ (_, t_fragment) acc ->
+          (fun _ (t_fragment,_) acc ->
              t_fragment :: acc)
           fragments
           []
@@ -443,7 +443,9 @@ class client
       ~namespace_id
       ~manifest
       ~(object_slices : (Int64.t * int) list)
-      write_data =
+      ~write_data
+      ~fragment_statistics_cb
+      =
            let open Nsm_model in
 
            let object_name = manifest.Manifest.name in
@@ -595,7 +597,8 @@ class client
                            decompress
                            ~encryption
                          >>= fun (t_fragment, fragment_data) ->
-                         Lwt.return (fragment_id, fragment_data))
+                         let () = fragment_statistics_cb t_fragment in
+                         Lwt.return (fragment_id,  fragment_data))
                       chunk_intersections
                   in
 
@@ -614,7 +617,8 @@ class client
                             ~object_name
                             chunk_locations ~chunk_id
                             decompress
-                            k m w' >>= fun (data_fragments, coding_fragments, t_chunk) ->
+                            k m w'
+                       >>= fun (data_fragments, coding_fragments, t_chunk) ->
 
                        List.iter
                          Lwt_bytes.unsafe_destroy
@@ -720,12 +724,13 @@ class client
              ~object_slices
              ~consistent_read
              write_data =
-      let attempt_download_slices manifest mf_src =
+      let attempt_download_slices manifest (mf_src:Cache.value_source) =
         self # download_object_slices''
              ~namespace_id
              ~manifest
              ~object_slices
-             write_data
+             ~write_data
+             ~fragment_statistics_cb:(fun _ -> ())
         >>= function
         | None -> Lwt.return_none
         | Some mf -> Lwt.return (Some (mf,mf_src))
@@ -736,7 +741,7 @@ class client
         ~consistent_read ~should_cache:true
       >>= fun (mf_src, r) ->
       match r with
-      | None -> Lwt.return None
+      | None -> Lwt.return_none
       | Some manifest ->
          Lwt.catch
            (fun () ->attempt_download_slices manifest mf_src)

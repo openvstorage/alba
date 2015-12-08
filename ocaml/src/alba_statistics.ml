@@ -48,7 +48,7 @@ module Statistics = struct
   type fragment_download = {
     osd_id : int32;
     retrieve : duration;
-    hit_or_miss: bool;
+    source: Cache.value_source;
     verify : duration;
     decrypt : duration;
     decompress : duration;
@@ -75,10 +75,10 @@ module Statistics = struct
     List.fold_left
       (fun (h,m) (chunk_download:chunk_download) ->
        List.fold_left
-           (fun (h,m) (fragment_download:fragment_download)->
-            if fragment_download.hit_or_miss
-            then (h+1,m)
-            else (h,m+1)
-           ) (h,m) chunk_download.fragments
+         (fun (h,m) (fragment_download:fragment_download)->
+          match fragment_download.source with
+          | Cache.Fast -> (h+1,m)
+          | _          -> (h,m+1)
+         ) (h,m) chunk_download.fragments
       ) (0,0) object_download.chunks
 end
