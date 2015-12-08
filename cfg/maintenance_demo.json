@@ -4,7 +4,7 @@
     "albamgr_connection_pool_size" : 10, // optional, default 10
     "nsm_host_connection_pool_size" : 10, // optional, default 10
     "osd_connection_pool_size" : 10, // optional, default 10
-    "osd_timeout" : 2.0 //optional, default 2.0
+    "osd_timeout" : 2.0 //optional, default 30.0
 
     // tls client config:
     , "tls_client" : {
