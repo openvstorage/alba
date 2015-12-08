@@ -23,7 +23,7 @@ let buffer_pool = Buffer_pool.osd_buffer_pool
 let rec wait_asd_connection port asd_id () =
   Lwt.catch
     (fun () ->
-     let conn_info = Networking2.make_conn_info [ "::1" ] port None in
+     let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port None in
      Asd_client.with_client
        buffer_pool
        ~conn_info  asd_id
@@ -80,7 +80,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
           Lwt_unix.with_timeout
             5.
             (wait_asd_connection port asd_id)>>= fun () ->
-          let conn_info = Networking2.make_conn_info [ "::1" ] port None in
+          let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port None in
           Asd_client.with_client
             buffer_pool
             ~conn_info (Some test_name)
@@ -258,7 +258,7 @@ let test_protocol_version port () =
   let protocol_test port =
     Lwt.catch
       (fun () ->
-       let conn_info = Networking2.make_conn_info ["::1"] port None in
+       let conn_info = Networking2.make_conn_info ["127.0.0.1"] port None in
        Networking2.first_connection' buffer_pool ~conn_info
        >>= fun (_, (ic,oc), closer) ->
        Lwt.finalize

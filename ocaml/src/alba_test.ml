@@ -707,7 +707,7 @@ let test_discover_claimed () =
                                         total = 1L;
                                         used = 1L;
                                       });
-                                    ips = ["::1"];
+                                    ips = ["127.0.0.1"];
                                     port = Some 8230;
                                     tlsPort;
                                   })) >>= fun () ->
@@ -1184,7 +1184,7 @@ let test_disk_churn () =
                                             total = 1L;
                                             used = 1L;
                                           });
-                                        ips = ["::1"];
+                                        ips = ["127.0.0.1"];
                                         port = Some asd_port;
                                         tlsPort = None;
                                       })) >>= fun () ->
@@ -1536,7 +1536,7 @@ let test_add_disk () =
                                         total = 1L;
                                         used = 1L;
                                       });
-                                    ips = ["::1"];
+                                    ips = ["127.0.0.1"];
                                     port = Some asd_port;
                                     tlsPort = None;
                                   })) >>= fun () ->
