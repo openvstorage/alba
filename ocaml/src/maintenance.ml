@@ -75,8 +75,8 @@ end
 
 
 class client ?(retry_timeout = 60.)
+             ?(load = 1)
              (alba_client : Alba_base_client.client)
-
   =
   let coordinator =
     let open Maintenance_coordination in
@@ -1513,11 +1513,21 @@ class client ?(retry_timeout = 60.)
            ~namespace_id
            ns_info >>= fun _ ->
 
+         let throttle_pool =
+           let max_size = load in
+           Lwt_pool2.create max_size
+                            ~check:(fun _ _ -> false)
+                            ~factory:(fun () -> Lwt.return_unit)
+                            ~cleanup:(fun () -> Lwt.return_unit)
+
+         in
+
          let rec run_until_removed (msg, f) =
            Lwt.catch
              (fun () ->
-                f () >>= fun () ->
-                Lwt.return `Continue)
+              Lwt_pool2.use throttle_pool f
+              >>= fun () ->
+              Lwt.return `Continue)
              (function
                | Error.Albamgr_exn (Error.Namespace_does_not_exist, _)
                | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Namespace_id_not_found, _) ->
