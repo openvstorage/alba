@@ -209,17 +209,21 @@ module ProxyStatistics = struct
      let ns_stats = find t ns in
      ns_stats.upload <- _update ns_stats.upload delta
 
+   let incr_manifest_src ns_stats =
+     let open Cache in
+     function
+     | Fast ->
+          ns_stats.manifest_cached <- ns_stats.manifest_cached + 1
+     | Slow ->
+        ns_stats.manifest_from_nsm <- ns_stats.manifest_from_nsm + 1
+     | Stale ->
+        ns_stats.manifest_stale <- ns_stats.manifest_stale + 1
+
    let new_download t ns delta manifest_src (fg_hits, fg_misses) =
      let ns_stats = find t ns in
      let () =
-       let open Alba_statistics.Statistics in
-       match manifest_src with
-       | Cache ->
-          ns_stats.manifest_cached <- ns_stats.manifest_cached + 1
-       | NsmHost ->
-          ns_stats.manifest_from_nsm <- ns_stats.manifest_from_nsm + 1
-       | Stale ->
-          ns_stats.manifest_stale <- ns_stats.manifest_stale + 1
+
+       incr_manifest_src ns_stats manifest_src
      in
      let () = ns_stats.fragment_cache_hits <-
                 ns_stats.fragment_cache_hits  + fg_hits
@@ -229,12 +233,21 @@ module ProxyStatistics = struct
      in
      ns_stats.download <- _update ns_stats.download delta
 
-   let new_read_object_slices t ns ~total_length ~n_slices ~n_objects ~took =
+   let new_read_objects_slices
+         t ns
+         ~total_length ~n_slices ~n_objects ~mf_sources
+         ~fc_hits ~fc_misses
+         ~took
+     =
      let ns_stats = find t ns in
      ns_stats.partial_read_size    <- _update ns_stats.partial_read_size  (float total_length);
      ns_stats.partial_read_count   <- _update ns_stats.partial_read_count (float n_slices);
      ns_stats.partial_read_objects <- _update ns_stats.partial_read_objects (float n_objects);
-     ns_stats.partial_read_time    <- _update ns_stats.partial_read_time  took
+     ns_stats.partial_read_time    <- _update ns_stats.partial_read_time  took;
+     List.iter (incr_manifest_src ns_stats) mf_sources;
+     ns_stats.fragment_cache_hits   <- ns_stats.fragment_cache_hits + fc_hits;
+     ns_stats.fragment_cache_misses <- ns_stats.fragment_cache_misses + fc_misses;
+     ()
 
 end
 

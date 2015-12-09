@@ -14,6 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+type value_source =
+  | Fast
+  | Slow
+  | Stale
+  [@@ deriving show]
+
 module Cache = struct
 type 'a node = {a: 'a ;
                 prev : 'a node ref;

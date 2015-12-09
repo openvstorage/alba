@@ -26,9 +26,7 @@ module Osd_sec = Osd
 open Nsm_host_access
 open Osd_access
 
-let hm_to_source =  function
-  | true  -> Statistics.Cache
-  | false -> Statistics.NsmHost
+
 
 
 let default_buffer_pool = Buffer_pool.default_buffer_pool
@@ -317,14 +315,14 @@ class client
                       ~fragment_checksum
                       decompress
                       ~encryption
-                    >>= fun (t_fragment, fragment_data) ->
+                    >>= fun ((t_fragment, fragment_data) as r) ->
 
                     if !finito
                     then
                       Lwt_bytes.unsafe_destroy fragment_data
                     else
                       begin
-                        Hashtbl.add fragments fragment_id (fragment_data, t_fragment);
+                        Hashtbl.add fragments fragment_id r;
                         CountDownLatch.count_down successes;
                       end;
                     Lwt.return ())
@@ -357,13 +355,13 @@ class client
               chunk_id (Hashtbl.length fragments) k
           in
           Hashtbl.iter
-            (fun _ (fragment, _) -> Lwt_bytes.unsafe_destroy fragment)
+            (fun _ (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
             fragments;
 
           Error.failwith Error.NotEnoughFragments
       in
       let fragment_size =
-        let _, (bs, _) = Hashtbl.choose fragments |> Option.get_some in
+        let _, (_, bs) = Hashtbl.choose fragments |> Option.get_some in
         Lwt_bytes.length bs
       in
 
@@ -371,16 +369,9 @@ class client
         | fragment_id when fragment_id = end_fragment -> acc_fragments, erasures, cnt
         | fragment_id ->
            let fragment_bigarray, erasures', cnt' =
-             match Hashtbl.find fragments fragment_id with
-             | Some (fragment, _) ->
-                fragment,
-                erasures,
-                cnt + 1
-             | None ->
-                Lwt_bytes.create fragment_size,
-                fragment_id :: erasures,
-                cnt
-           in
+             if Hashtbl.mem fragments fragment_id
+             then snd (Hashtbl.find_exn fragments fragment_id), erasures, cnt + 1
+             else Lwt_bytes.create fragment_size, fragment_id :: erasures, cnt in
            if Lwt_bytes.length fragment_bigarray <> fragment_size
            then failwith (Printf.sprintf "fragment %i,%i has size %i while %i expected\n%!" chunk_id fragment_id (Lwt_bytes.length fragment_bigarray) fragment_size);
            gather_fragments
@@ -415,7 +406,7 @@ class client
 
       let t_fragments =
         Hashtbl.fold
-          (fun _ (_, t_fragment) acc ->
+          (fun _ (t_fragment,_) acc ->
              t_fragment :: acc)
           fragments
           []
@@ -434,7 +425,9 @@ class client
       ~object_name
       ~(object_slices : (int64 * int) list)
       ~consistent_read
-      write_data =
+      write_data
+      ~fragment_statistics_cb
+      =
       Lwt_log.debug_f "download_object_slices: %S %S %s consistent_read:%b"
                       namespace object_name
                       ([%show: (int64 * int) list] object_slices)
@@ -448,13 +441,17 @@ class client
              ~object_name
              ~object_slices
              ~consistent_read
-             write_data)
+             write_data
+             ~fragment_statistics_cb
+        )
 
     method download_object_slices''
       ~namespace_id
       ~manifest
       ~(object_slices : (Int64.t * int) list)
-      write_data =
+      ~write_data
+      ~fragment_statistics_cb
+      =
            let open Nsm_model in
 
            let object_name = manifest.Manifest.name in
@@ -607,7 +604,8 @@ class client
                            decompress
                            ~encryption
                          >>= fun (t_fragment, fragment_data) ->
-                         Lwt.return (fragment_id, fragment_data))
+                         let () = fragment_statistics_cb t_fragment in
+                         Lwt.return (fragment_id,  fragment_data))
                       chunk_intersections
                   in
 
@@ -626,7 +624,8 @@ class client
                             ~object_name
                             chunk_locations ~chunk_id
                             decompress
-                            k m w' >>= fun (data_fragments, coding_fragments, t_chunk) ->
+                            k m w'
+                       >>= fun (data_fragments, coding_fragments, t_chunk) ->
 
                        List.iter
                          Lwt_bytes.unsafe_destroy
@@ -731,38 +730,48 @@ class client
              ~object_name
              ~object_slices
              ~consistent_read
-             write_data =
-      let attempt_download_slices manifest =
+             write_data
+             ~fragment_statistics_cb
+      =
+      let attempt_download_slices manifest (mf_src:Cache.value_source) =
         self # download_object_slices''
              ~namespace_id
              ~manifest
              ~object_slices
-             write_data
+             ~write_data
+             ~fragment_statistics_cb
+        >>= function
+        | None -> Lwt.return_none
+        | Some mf -> Lwt.return (Some (mf,mf_src))
+
       in
       self # get_object_manifest'
         ~namespace_id ~object_name
         ~consistent_read ~should_cache:true
-      >>= fun (cache_hit, r) ->
+      >>= fun (mf_src, r) ->
       match r with
-      | None -> Lwt.return None
+      | None -> Lwt.return_none
       | Some manifest ->
          Lwt.catch
-           (fun () ->attempt_download_slices manifest)
+           (fun () ->attempt_download_slices manifest mf_src)
            (fun exn ->
             match exn with
-             | Error.Exn Error.NotEnoughFragments ->
-                if cache_hit
-                then
-                  begin
-                    self # get_object_manifest' ~namespace_id ~object_name
-                         ~consistent_read:true ~should_cache:true
-                    >>= fun (_,r) ->
-                    (* Option.map_lwt? *)
-                    match r with
-                    | Some manifest -> attempt_download_slices manifest
-                    | None -> Lwt.return None
-                  end
-                else Lwt.fail exn
+            | Error.Exn Error.NotEnoughFragments ->
+               begin
+                 let open Cache in
+                 match mf_src with
+                 | Fast ->
+                    begin
+                      self # get_object_manifest' ~namespace_id ~object_name
+                           ~consistent_read:true ~should_cache:true
+                      >>= fun (_,r) ->
+                      (* Option.map_lwt? *)
+                      match r with
+                      | Some manifest -> attempt_download_slices manifest Stale
+                      | None -> Lwt.return None
+                    end
+                 | _ -> Lwt.fail exn
+               end
              | exn -> Lwt.fail exn
            )
 

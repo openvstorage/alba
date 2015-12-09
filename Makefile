@@ -25,6 +25,7 @@ build-nsm-plugin: build-cmxs
 	_build/alba_version.cmx \
 	_build/src/tools/prelude.cmx \
 	_build/src/tools/deser.cmx \
+	_build/src/tools/cache.cmx \
 	_build/src/consistency.cmx \
 	_build/src/keystone_encryption_config.cmx \
 	_build/src/policy.cmx \
@@ -57,6 +58,7 @@ build-mgr-plugin: build-alba
 	_build/alba_version.cmx \
 	_build/src/tools/prelude.cmx \
 	_build/src/tools/deser.cmx \
+	_build/src/tools/cache.cmx \
 	_build/src/consistency.cmx \
 	_build/src/keystone_encryption_config.cmx \
 	_build/src/policy.cmx \

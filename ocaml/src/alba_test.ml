@@ -568,6 +568,7 @@ let test_partial_download () =
            ~object_name
            ~object_slices:[offset, length]
            ~consistent_read:true
+           ~fragment_statistics_cb:(fun _ -> ())
            (fun _dest_off src off len ->
               hasher # update_lwt_bytes src off len;
               Lwt.return ()) >>= fun _ ->
@@ -589,6 +590,7 @@ let test_partial_download () =
            ~object_name
            ~object_slices
            ~consistent_read:true
+           ~fragment_statistics_cb:(fun _ -> ())
            (fun dest_off src off len ->
               assert (dest_off > !prev_offset);
               prev_offset := dest_off;
@@ -1778,6 +1780,7 @@ let test_stale_manifest_download () =
                    ~object_name
                    ~object_slices:[0L, object_length]
                    ~consistent_read:false
+                   ~fragment_statistics_cb:(fun _ -> ())
                    (fun _ _ _ _ -> Lwt.return ())
        >>= fun _ ->
        Lwt.return ()
@@ -1907,7 +1910,7 @@ let test_retry_download () =
        let _, stats = Option.get_some res_o in
        assert
          (let open Alba_statistics.Statistics in
-          snd stats.get_manifest_dh = Stale)
+          snd stats.get_manifest_dh = Cache.Stale)
      in
      begin
        poison_mf_cache ();
