@@ -129,6 +129,13 @@ class client ?(retry_timeout = 60.)
   in
   object(self)
 
+    val throttle_pool =
+      let max_size = load in
+      Lwt_pool2.create max_size
+                       ~check:(fun _ _ -> false)
+                       ~factory:(fun () -> Lwt.return_unit)
+                       ~cleanup:(fun () -> Lwt.return_unit)
+
     method get_coordinator = coordinator
 
     val mutable maintenance_config =
@@ -538,7 +545,12 @@ class client ?(retry_timeout = 60.)
           alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, devices, _) ->
 
           Lwt_list.iter_p
-            (fun osd_id -> self # clean_device_obsolete_keys ~namespace_id ~osd_id)
+            (fun osd_id ->
+             Lwt_pool2.use
+               throttle_pool
+               (fun () ->
+                self # clean_device_obsolete_keys ~namespace_id ~osd_id)
+            )
             devices
         end
       else
@@ -741,25 +753,29 @@ class client ?(retry_timeout = 60.)
                (if filter namespace_id
                 then
                   begin
-                    alba_client # nsm_host_access # get_namespace_info ~namespace_id
-                    >>= fun (_, devices, _) ->
-                    List.iter
-                      (fun osd_id ->
-                       if not (Hashtbl.mem threads osd_id)
-                       then begin
-                           Hashtbl.add threads osd_id ();
-                           Lwt.async
-                             (fun () ->
-                              Lwt_extra2.ignore_errors
+                    Lwt_pool2.use
+                      throttle_pool
+                      (fun () ->
+                       alba_client # nsm_host_access # get_namespace_info ~namespace_id
+                       >>= fun (_, devices, _) ->
+                       List.iter
+                         (fun osd_id ->
+                          if not (Hashtbl.mem threads osd_id)
+                          then begin
+                              Hashtbl.add threads osd_id ();
+                              Lwt.async
                                 (fun () ->
-                                 self # garbage_collect_device
-                                      ~gc_epoch:latest_gc_epoch
-                                      ~namespace_id ~osd_id) >>= fun () ->
-                              Hashtbl.remove threads osd_id;
-                              Lwt.return ())
-                         end)
-                      devices;
-                    Lwt.return_unit
+                                 Lwt_extra2.ignore_errors
+                                   (fun () ->
+                                    self # garbage_collect_device
+                                         ~gc_epoch:latest_gc_epoch
+                                         ~namespace_id ~osd_id) >>= fun () ->
+                                 Hashtbl.remove threads osd_id;
+                                 Lwt.return ())
+                            end)
+                         devices;
+                       Lwt.return_unit
+                      )
                   end
                 else
                   Lwt.return_unit) >>= fun () ->
@@ -898,7 +914,12 @@ class client ?(retry_timeout = 60.)
            Lwt_log.debug_f "rebalance: moving %i fragments"
                            (List.length best)
            >>= fun ()->
-           Lwt_list.iter_s execute_move best
+           Lwt_list.iter_s
+             (fun move ->
+              Lwt_pool2.use throttle_pool
+                            (fun () ->execute_move move)
+             )
+             best
            >>= fun () ->
            let delay =
              if !migrated
@@ -990,43 +1011,47 @@ class client ?(retry_timeout = 60.)
               ~last:(Some (((k, m, best_actual_fragment_count, 0), ""), false))
               ~max:200 >>= fun ((cnt, objs), _) ->
 
+            let do_one manifest () =
+              let _, problem_fragments =
+                 List.fold_left
+                   (fun (chunk_id, acc) chunk_location ->
+                    let actual_fragments = List.map_filter_rev fst chunk_location in
+                    let actual_fragments_count = List.length actual_fragments in
+                    let missing_fragments =
+                      List.map_filter
+                        (fun (fragment_id, (osd_id_o, _)) ->
+                         match osd_id_o with
+                         | None -> Some (chunk_id, fragment_id)
+                         | Some _ -> None)
+                        (List.mapi
+                           (fun fragment_id osd_id_o -> fragment_id, osd_id_o)
+                           chunk_location)
+                    in
+                    let to_generate =
+                      List.take
+                        (best_actual_fragment_count - actual_fragments_count)
+                        missing_fragments
+                    in
+                    let acc' =
+                      List.rev_append
+                        to_generate
+                        acc
+                    in
+                    chunk_id + 1, acc')
+                   (0, [])
+                   manifest.Nsm_model.Manifest.fragment_locations
+               in
+               self # repair_object
+                    ~namespace_id
+                    ~manifest
+                    ~problem_fragments
+            in
             Lwt_list.iter_s
               (fun manifest ->
-                 let _, problem_fragments =
-                   List.fold_left
-                     (fun (chunk_id, acc) chunk_location ->
-                        let actual_fragments = List.map_filter_rev fst chunk_location in
-                        let actual_fragments_count = List.length actual_fragments in
-                        let missing_fragments =
-                          List.map_filter
-                            (fun (fragment_id, (osd_id_o, _)) ->
-                               match osd_id_o with
-                               | None -> Some (chunk_id, fragment_id)
-                               | Some _ -> None)
-                            (List.mapi
-                               (fun fragment_id osd_id_o -> fragment_id, osd_id_o)
-                               chunk_location)
-                        in
-                        let to_generate =
-                          List.take
-                            (best_actual_fragment_count - actual_fragments_count)
-                            missing_fragments
-                        in
-                        let acc' =
-                          List.rev_append
-                            to_generate
-                            acc
-                        in
-                        chunk_id + 1, acc')
-                     (0, [])
-                     manifest.Nsm_model.Manifest.fragment_locations
-                 in
-                 self # repair_object
-                   ~namespace_id
-                   ~manifest
-                   ~problem_fragments)
-              objs >>= fun () ->
-
+               Lwt_pool2.use throttle_pool (do_one manifest)
+              )
+              objs
+            >>= fun () ->
             Lwt.return (cnt > 0)
           end
           else begin
@@ -1513,20 +1538,10 @@ class client ?(retry_timeout = 60.)
            ~namespace_id
            ns_info >>= fun _ ->
 
-         let throttle_pool =
-           let max_size = load in
-           Lwt_pool2.create max_size
-                            ~check:(fun _ _ -> false)
-                            ~factory:(fun () -> Lwt.return_unit)
-                            ~cleanup:(fun () -> Lwt.return_unit)
-
-         in
-
          let rec run_until_removed (msg, f) =
            Lwt.catch
              (fun () ->
-              Lwt_pool2.use throttle_pool f
-              >>= fun () ->
+              f () >>= fun () ->
               Lwt.return `Continue)
              (function
                | Error.Albamgr_exn (Error.Namespace_does_not_exist, _)
