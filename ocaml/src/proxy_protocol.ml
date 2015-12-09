@@ -244,6 +244,8 @@ module ProxyStatistics = struct
      ns_stats.partial_read_objects <- _update ns_stats.partial_read_objects (float n_objects);
      ns_stats.partial_read_time    <- _update ns_stats.partial_read_time  took;
      List.iter (incr_manifest_src ns_stats) mf_sources;
+     ns_stats.fragment_cache_hits   <- ns_stats.fragment_cache_hits + fc_hits;
+     ns_stats.fragment_cache_misses <- ns_stats.fragment_cache_misses + fc_misses;
      ()
 
 end
