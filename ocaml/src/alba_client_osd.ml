@@ -44,12 +44,17 @@ let claim_osd mgr_access osd_access ~long_id =
        | Some _ ->
           osd # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
           >>= fun alba_id' ->
-          let u_alba_id' = get_string_unsafe alba_id' in
+          let u_alba_id' = Lwt_bytes.to_string alba_id' in
+          Lwt_log.debug_f
+            "osd %s is owned by %s, want to claim for %s"
+            long_id u_alba_id' alba_id >>= fun () ->
           if u_alba_id' = alba_id
           then Lwt.return `Continue
           else Lwt.return (`ClaimedBy u_alba_id')
        | None ->
-          (* the osd is not yet owned, go and tag it *)
+          Lwt_log.debug_f
+            "osd %s is not yet owned, let's go claim it"
+            long_id >>= fun () ->
 
           let id_on_osd = 0l in
           let instance_index_key = IRK.instance_index_key ~alba_id in
@@ -64,7 +69,10 @@ let claim_osd mgr_access osd_access ~long_id =
                 Assert.none_string instance_index_key; ]
               [ Update.set
                   next_alba_instance'
-                  (wrap_string (serialize Llio.int32_to (Int32.succ id_on_osd)))
+                  (serialize
+                     Llio.int32_to
+                     (Int32.succ id_on_osd)
+                   |> fun x -> Asd_protocol.Blob.Bytes x)
                   no_checksum true;
                 Update.set_string
                   instance_log_key
@@ -76,14 +84,19 @@ let claim_osd mgr_access osd_access ~long_id =
                   no_checksum true; ]
           >>=
             function
-            | Ok -> Lwt.return `Continue
+            | Ok ->
+               Lwt_log.debug_f "successfully claimed osd %s" long_id >>= fun () ->
+               Lwt.return `Continue
             | _  ->
                begin
                  osd # get_exn
                      Osd.High
                      (wrap_string (IRK.instance_log_key 0l))
                  >>= fun alba_id'slice ->
-                 let alba_id' = get_string_unsafe alba_id'slice in
+                 let alba_id' =  Lwt_bytes.to_string alba_id'slice in
+                 Lwt_log.debug_f
+                   "got an error while claiming osd %s. it is now owned by %s (wanted to claim for %s)"
+                   long_id alba_id' alba_id >>= fun () ->
                  let r =
                    if alba_id' = alba_id
                    then `Continue

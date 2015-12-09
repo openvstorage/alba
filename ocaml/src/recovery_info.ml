@@ -100,14 +100,15 @@ module RecoveryInfo = struct
 
   let t'_to_t t' encryption ~object_id =
     let open Lwt.Infix in
-    serialize to_buffer' t' |>
-    Compressors.Bzip2.compress_string_to_ba |>
-    Fragment_helper.maybe_encrypt
-      encryption
-      ~object_id
-      ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
+    serialize to_buffer' t'
+    |> Compressors.Bzip2.compress_string_to_ba
+    |> Bigstring_slice.wrap_bigstring
+    |> Fragment_helper.maybe_encrypt
+         encryption
+         ~object_id
+         ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
     >>= fun encrypted ->
-    let payload = Lwt_bytes.to_string encrypted in
+    let payload = Bigstring_slice.to_string encrypted in
     let encrypt_info = EncryptInfo.from_encryption encryption in
     Lwt.return { payload; encrypt_info; }
 
@@ -123,7 +124,7 @@ module RecoveryInfo = struct
       ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
       (Lwt_bytes.of_string t.payload) >>= fun decrypted ->
     let t' =
-      Compressors.Bzip2.decompress_ba_string decrypted |>
+      Compressors.Bzip2.decompress_bs_string decrypted |>
       deserialize from_buffer'
     in
     Lwt.return t'

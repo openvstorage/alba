@@ -14,8 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Stat
-
 module AsdStatistics = struct
     module G = Statistics_collection.Generic
     type t = G.t
@@ -28,17 +26,18 @@ module AsdStatistics = struct
 
     let snapshot t reset = G.snapshot t reset
 
-    let from_buffer buf =
+    let from_buffer' buf =
+      let module Llio = Llio2.ReadBuffer in
       let ser_version = Llio.int8_from buf in
       match ser_version with
       | 1 ->
          begin
           let creation  = Llio.float_from buf in
           let period    = Llio.float_from buf in
-          let multi_get = Stat.stat_from buf in
-          let range = Stat.stat_from buf in
-          let range_entries = Stat.stat_from buf in
-          let apply = Stat.stat_from buf in
+          let multi_get = Stat_deser.from_buffer' buf in
+          let range = Stat_deser.from_buffer' buf in
+          let range_entries = Stat_deser.from_buffer' buf in
+          let apply = Stat_deser.from_buffer' buf in
           let statistics = Hashtbl.create 16 in
           let () = List.iter
             (fun (c,stat) ->
@@ -56,10 +55,10 @@ module AsdStatistics = struct
               G.statistics
           }
          end
-      | 2 -> Statistics_collection.Generic.from_buffer_raw buf
+      | 2 -> Statistics_collection_deser.from_buffer_raw' buf
       | k -> Prelude.raise_bad_tag "AsdStatistics" k
 
-    let to_buffer buf t =
-      Statistics_collection.Generic.to_buffer_with_version ~ser_version:2 buf t
+    let to_buffer' buf t =
+      Statistics_collection_deser.to_buffer_with_version' ~ser_version:2 buf t
 
 end

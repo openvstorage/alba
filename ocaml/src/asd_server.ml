@@ -22,6 +22,7 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
+open Lwt_bytes2
 
 let blob_threshold = 16 * 1024
 
@@ -204,10 +205,28 @@ module DirectoryInfo = struct
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
            ~perm:0o664
            (fun fd ->
-              let open Slice in
-              Lwt_extra2.write_all
-                fd
-                blob.buf blob.offset blob.length)) >>= fun (t_write, ()) ->
+            let open Blob in
+            (* TODO push to blob module? *)
+            match blob with
+            | Lwt_bytes s ->
+               Lwt_extra2.write_all_lwt_bytes
+                 fd
+                 s 0 (Lwt_bytes.length s)
+            | Bigslice s ->
+               let open Bigstring_slice in
+               Lwt_extra2.write_all_lwt_bytes
+                 fd
+                 s.bs s.offset s.length
+            | Bytes s ->
+               Lwt_extra2.write_all
+                 fd
+                 s 0 (Bytes.length s)
+            | Slice s ->
+               let open Slice in
+               Lwt_extra2.write_all
+                 fd
+                 s.buf s.offset s.length
+           )) >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
      then Lwt_log.info_f
@@ -347,12 +366,14 @@ let execute_query : type req res.
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
                          req ->
-                         (string * (Net_fd.t -> unit Lwt.t)) Lwt.t
+                         (Llio2.WriteBuffer.t * (Net_fd.t ->
+                                                 unit Lwt.t)) Lwt.t
   = fun kv io_sched dir_info mgmt stats q ->
 
     let open Protocol in
+    let module Llio = Llio2.WriteBuffer in
     let serialize_with_length res =
-      serialize_with_length
+      Llio.serialize_with_length
         (Llio.pair_to
            Llio.int_to
            (Protocol.query_response_serializer q))
@@ -363,7 +384,7 @@ let execute_query : type req res.
     let return ~cost res = return'' ~cost (res, fun _ -> Lwt.return_unit) in
     let return' res = Lwt.return (serialize_with_length res, fun _ -> Lwt.return_unit) in
     match q with
-    | Range -> fun ({ first; finc; last; reverse; max; }, prio) ->
+    | Range -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
       perform_read
         io_sched
         prio
@@ -383,7 +404,7 @@ let execute_query : type req res.
            ~cost:(max * 200)
            ((count, List.map Keys.string_chop_prefix keys),
             have_more))
-    | RangeEntries -> fun ({ first; finc; last; reverse; max; }, prio) ->
+    | RangeEntries -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
       perform_read
         io_sched
         prio
@@ -406,12 +427,13 @@ let execute_query : type req res.
          Lwt_list.map_p
            (fun (k, vt) ->
             Value.get_blob_from_value dir_info vt >>= fun blob ->
-            Lwt.return (k, blob, fst vt))
+            Lwt.return (k, Slice.to_bigstring blob |> Bigstring_slice.wrap_bigstring,
+                        fst vt))
            is >>= fun blobs ->
 
          return
            ~cost:(List.fold_left
-                    (fun acc (_, blob, _) -> acc + 200 + Slice.length blob)
+                    (fun acc (_, blob, _) -> acc + 200 + Bigstring_slice.length blob)
                     0
                     blobs)
            ((cnt, blobs),
@@ -432,13 +454,14 @@ let execute_query : type req res.
                | None -> Lwt.return None
                | Some v ->
                   Value.get_blob_from_value dir_info v >>= fun b ->
-                  Lwt.return (Some (b, Value.get_cs v))) >>= fun res ->
+                  Lwt.return (Some (Slice.to_bigstring b |> Bigstring_slice.wrap_bigstring,
+                                    Value.get_cs v))) >>= fun res ->
          return
            ~cost:(List.fold_left
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (blob, _) -> acc + 200 + Slice.length blob)
+                     | Some (blob, _) -> acc + 200 + Bigstring_slice.length blob)
                     0
                     res)
            res)
@@ -457,7 +480,9 @@ let execute_query : type req res.
               |> Option.map
                    (fun (cs, blob) ->
                     let b = match blob with
-                      | Value.Direct s -> Asd_protocol.Value.Direct s
+                      | Value.Direct s ->
+                         Asd_protocol.Value.Direct (Slice.to_bigstring s
+                                                    |> Bigstring_slice.wrap_bigstring)
                       | Value.OnFs (fnr, size) ->
                          write_laters := (fnr, size) :: !write_laters;
                          Asd_protocol.Value.Later size in
@@ -470,7 +495,7 @@ let execute_query : type req res.
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Slice.length blob
+                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
                      | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
                     0
                     res)
@@ -616,7 +641,12 @@ let execute_update : type req res.
                         check whether the key is still associated with the same blob
                      *)
                      Value.get_blob_from_value dir_info value >>= fun blob ->
-                     if (Slice.compare' blob expected) <> Compare.EQ
+                     (* TODO make this comparison less costly *)
+                     if (Slice.compare'
+                           blob
+                           (expected
+                            |> Asd_protocol.Blob.get_string_unsafe
+                            |> Slice.wrap_string)) <> Compare.EQ
                      then begin
                        Lwt_log.warning_f
                          "Assertion failed, expected some blob but got another" >>= fun () ->
@@ -649,10 +679,10 @@ let execute_update : type req res.
             Lwt_list.map_p
               (function
                 | Update.Set (key, Some (v, c, _)) ->
-                   let blob_length = Slice.length v in
+                   let blob_length = Asd_protocol.Blob.length v in
                    (if blob_length < blob_threshold
                     then begin
-                        Lwt.return (Value.Direct v)
+                        Lwt.return (Value.Direct (Asd_protocol.Blob.get_slice_unsafe v))
                       end else begin
                         let fnr, file_path, fnr_release = get_file_path () in
                         Lwt.finalize
@@ -662,7 +692,7 @@ let execute_update : type req res.
                              prio
                              (fun () ->
                               DirectoryInfo.write_blob dir_info fnr v >>= fun () ->
-                              Lwt.return ((), 4000 + Slice.length v)))
+                              Lwt.return ((), 4000 + Blob.length v)))
                           (fun () ->
                            Lwt.wakeup fnr_release ();
                            Lwt.return ()) >>= fun () ->
@@ -894,20 +924,21 @@ let asd_protocol
       kv ~release_fnr ~slow io_sched
       dir_info stats ~mgmt
       ~get_next_fnr asd_id
-      nfd ic
+      nfd
   =
   (* Lwt_log.debug "Waiting for request" >>= fun () -> *)
-  let handle_request buf code =
+  let handle_request (buf : Llio2.ReadBuffer.t) code =
     (*
      Lwt_log.debug_f "Got request %s" (Protocol.code_to_description code)
   >>= fun () ->
      *)
 
+    let module Llio = Llio2.WriteBuffer in
     let return_result
           ?(write_extra=done_writing)
           serializer res =
       let res_s =
-        serialize_with_length
+        Llio.serialize_with_length
           (Llio.pair_to
              Llio.int_to
              serializer)
@@ -917,7 +948,7 @@ let asd_protocol
     in
     let return_error error =
       let res =
-        serialize_with_length
+        Llio2.WriteBuffer.serialize_with_length
           Protocol.Error.serialize
           error
       in
@@ -954,23 +985,26 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    Net_fd.write_all res nfd >>= fun () ->
+    Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd >>= fun () ->
     write_extra nfd
   in
   let rec inner () =
     (match cancel with
-     | None -> Llio.input_string ic
+     | None -> Llio2.NetFdReader.int_from nfd
      | Some cancel ->
         Lwt.pick
           [ (Lwt_condition.wait cancel >>= fun () ->
              Lwt.fail Lwt.Canceled);
-            Llio.input_string ic; ])
-    >>= fun req_s ->
-    let buf = Llio.make_buffer req_s 0 in
-    let code = Llio.int32_from buf in
-    with_timing_lwt
-      (fun () -> handle_request buf code)
-    >>= fun (delta, ()) ->
+            Llio2.NetFdReader.int_from nfd; ])
+    >>= fun len ->
+    Llio2.NetFdReader.with_buffer_from
+      nfd len
+      (fun buf ->
+       let code = Llio2.ReadBuffer.int32_from buf in
+       with_timing_lwt
+         (fun () -> handle_request buf code >>= fun () ->
+                    Lwt.return code))
+    >>= fun (delta, code) ->
     Statistics_collection.Generic.new_delta stats code delta;
 
     (if slow
@@ -989,15 +1023,14 @@ let asd_protocol
       "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
     inner ()
   in
-  let b0 = Bytes.create 4 in
-  Lwt_io.read_into_exactly ic b0 0 4 >>= fun () ->
+  Llio2.NetFdReader.raw_string_from nfd 4 >>= fun b0 ->
   (*Lwt_io.printlf "b0:%S%!" b0 >>= fun () -> *)
   begin
     if b0 <> Asd_protocol._MAGIC
     then Lwt.fail_with "protocol error: no magic"
     else
       begin
-        Llio.input_int32 ic >>= fun version ->
+        Llio2.NetFdReader.int32_from nfd >>= fun version ->
         if Asd_protocol.incompatible version
         then
           let open Asd_protocol.Protocol in
@@ -1006,15 +1039,19 @@ let asd_protocol
               "asd_protocol version: (server) %li <> %li (client)"
               _VERSION version
           in
-          let rbuf = Buffer.create 32 in
+          Lwt_log.debug msg >>= fun () ->
+          let open Llio2.WriteBuffer in
+          let rbuf = make ~length:32 in
           let err = Error.ProtocolVersionMismatch msg in
           Error.serialize rbuf err;
-          Lwt_log.debug msg >>= fun () ->
-          let bytes_back = Buffer.contents rbuf  in
-          Net_fd.write_all bytes_back nfd
+          Net_fd.write_all_lwt_bytes
+            rbuf.buf 0 rbuf.pos
+            nfd
         else
           begin
-            Llio.input_string_option ic >>= fun lido ->
+            Llio2.NetFdReader.option_from
+              Llio2.NetFdReader.string_from
+              nfd >>= fun lido ->
             Net_fd.write_all
               (serialize
                  (Llio.pair_to
@@ -1279,23 +1316,19 @@ let run_server
     Lwt.return r
   in
   let mgmt = AsdMgmt.make latest_disk_usage limit in
-  let buffer_pool = Buffer_pool.create ~buffer_size in
+
   let protocol nfd =
-    Buffer_pool.with_buffer
-      buffer_pool
-      (fun buffer ->
-       let ic = Net_fd.make_ic ~buffer nfd in
-       asd_protocol
-         ?cancel
-         kv
-         ~release_fnr:(fun fnr -> advancer # release fnr)
-         ~slow
-         io_sched
-         dir_info
-         stats
-         ~mgmt
-         ~get_next_fnr
-         asd_id nfd ic)
+    asd_protocol
+      ?cancel
+      kv
+      ~release_fnr:(fun fnr -> advancer # release fnr)
+      ~slow
+      io_sched
+      dir_info
+      stats
+      ~mgmt
+      ~get_next_fnr
+      asd_id nfd
   in
   let maybe_add_plain_server threads =
     match port with

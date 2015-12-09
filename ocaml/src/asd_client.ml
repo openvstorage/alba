@@ -17,59 +17,75 @@ limitations under the License.
 open Prelude
 open Lwt
 open Slice
+open Lwt_bytes2
 open Asd_protocol
 open Protocol
 
-class client (fd:Net_fd.t) ic id =
-  let read_response deserializer =
-    Llio.input_string ic >>= fun res_s ->
-    let res_buf = Llio.make_buffer res_s 0 in
-    match Llio.int_from res_buf with
-    | 0 ->
-      Lwt.return (deserializer res_buf)
-    | err ->
-      let open Error in
-      let err' = deserialize' err res_buf in
-      Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
-      lwt_fail err'
+class client (fd:Net_fd.t) id =
+  let with_response deserializer f =
+    Llio2.NetFdReader.int_from fd >>= fun size ->
+    Llio2.NetFdReader.with_buffer_from
+      fd size
+      (fun res_buf ->
+       let module Llio = Llio2.ReadBuffer in
+       match Llio.int_from res_buf with
+       | 0 ->
+          f (deserializer res_buf)
+       | err ->
+          let open Error in
+          let err' = deserialize' err res_buf in
+          Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
+          lwt_fail err')
   in
   let do_request
         code
         serialize_request request
-        deserialize_response =
+        deserialize_response
+        f =
     let description = code_to_description code in
     Lwt_log.debug_f
       "asd_client %s: %s"
       id description >>= fun () ->
     with_timing_lwt
       (fun () ->
-       let s =
-         serialize_with_length
+       let module Llio = Llio2.WriteBuffer in
+       let buf =
+         Llio.serialize_with_length
            (Llio.pair_to
               Llio.int32_to
               serialize_request)
            (code,
             request)
        in
-       Net_fd.write_all s fd >>= fun () ->
-       read_response deserialize_response) >>= fun (t, r) ->
+       Net_fd.write_all_lwt_bytes
+         buf.Llio.buf 0 buf.Llio.pos
+         fd >>= fun () ->
+       with_response deserialize_response f) >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
   in
   object(self)
-    method private query : type req res. (req, res) query -> req -> res Lwt.t =
-      fun command req ->
+    method private query :
+    type req res a.
+         (req, res) query -> req ->
+         (res -> a Lwt.t) -> a Lwt.t =
+      fun command req f ->
       do_request
         (command_to_code (Wrap_query command))
         (query_request_serializer command) req
         (query_response_deserializer command)
+        f
 
-    method private update : type req res. (req, res) update -> req -> res Lwt.t =
-      fun command req ->
+    method private update :
+    type req res a.
+         (req, res) update -> req ->
+         (res -> a Lwt.t) -> a Lwt.t =
+      fun command req f ->
       do_request
         (command_to_code (Wrap_update command))
         (update_request_serializer command) req
         (update_response_deserializer command)
+        f
 
     method do_unknown_operation =
       let code =
@@ -86,7 +102,8 @@ class client (fd:Net_fd.t) ic id =
          do_request
            code
            (fun buf () -> ()) ()
-           (fun buf -> ()) >>= fun () ->
+           (fun buf -> ())
+           Lwt.return >>= fun () ->
          Lwt.fail_with "did not get an exception for unknown operation")
         (function
           | Error.Exn Error.Unknown_operation ->
@@ -97,7 +114,16 @@ class client (fd:Net_fd.t) ic id =
     val mutable supports_multiget2 = None
     method multi_get ~prio keys =
       let old_multiget () =
-        self # query MultiGet (keys, prio)
+        self # query
+             MultiGet
+             (keys, prio)
+             (fun res ->
+              List.map
+                (Option.map
+                   (fun (bss, cs) ->
+                    Bigstring_slice.extract_to_bigstring bss, cs))
+                res
+             |> Lwt.return)
       in
       match supports_multiget2 with
       | None ->
@@ -119,59 +145,33 @@ class client (fd:Net_fd.t) ic id =
          old_multiget ()
 
     method multi_get2 ~prio keys =
-      self # query MultiGet2 (keys, prio) >>= fun res ->
-      Lwt_list.map_s
-        (let open Value in
-         function
-          | None -> Lwt.return_none
-          | Some (blob, cs) ->
-             match blob with
-             | Direct s -> Lwt.return (Some (s, cs))
-             | Later size ->
-                let target = Bytes.create size in
-
-                let buffered = Lwt_io.buffered ic in
-                (if size <= buffered
-                 then
-                   begin
-                     Lwt_io.read_into ic target 0 size >>= fun read ->
-                     assert (read = size);
-                     Lwt.return ()
-                   end
-                 else
-                   begin
-                     (if buffered > 0
-                      then Lwt_io.read_into ic target 0 buffered
-                      else Lwt.return 0) >>= fun read ->
-                     assert (read = buffered);
-                     assert (0 = Lwt_io.buffered ic);
-
-                     let remaining = size - read in
-                     Net_fd.read_all target read remaining fd
-                     >>= fun read' ->
-                     if read' = remaining
-                     then Lwt.return ()
-                     else begin
-                         Lwt_log.debug_f
-                           "read=%i, read'=%i, size=%i, buffered=%i, new buffered=%i"
-                           read read' size
-                           buffered (Lwt_io.buffered ic)
-                         >>= fun () ->
-                         Lwt.fail End_of_file
-                     end
-                   end) >>= fun () ->
-
-                Lwt.return (Some (Slice.wrap_bytes target, cs)))
-        res
+      self # query MultiGet2 (keys, prio)
+           (Lwt_list.map_s
+              (let open Value in
+               function
+               | None -> Lwt.return_none
+               | Some (blob, cs) ->
+                  match blob with
+                  | Direct s -> Lwt.return (Some (Bigstring_slice.extract_to_bigstring s, cs))
+                  | Later size ->
+                     let bs = Lwt_bytes.create size in
+                     Lwt.catch
+                       (fun () ->
+                        Net_fd.read_all_lwt_bytes_exact bs 0 size fd >>= fun () ->
+                        Lwt.return (Some (bs, cs)))
+                       (fun exn ->
+                        Lwt_bytes.unsafe_destroy bs;
+                        Lwt.fail exn)))
 
     method multi_get_string ~prio keys =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
-           (Option.map (fun (slice, cs) -> Slice.get_string_unsafe slice, cs))
+           (Option.map (fun (slice, cs) -> Lwt_bytes.to_string slice, cs))
            res)
 
-    method multi_exists ~prio keys = self # query MultiExists (keys, prio)
+    method multi_exists ~prio keys =
+      self # query MultiExists (keys, prio) Lwt.return
 
     method get ~prio key =
       self # multi_get ~prio [ key ] >>= fun res ->
@@ -206,7 +206,8 @@ class client (fd:Net_fd.t) ic id =
     method range ~prio ~first ~finc ~last ~reverse ~max =
       self # query
         Range
-        ({ first; finc; last; reverse; max }, prio)
+        (RangeQueryArgs.({ first; finc; last; reverse; max }), prio)
+        Lwt.return
 
     method range_all ~prio ?(max = -1) () =
       list_all_x
@@ -225,22 +226,29 @@ class client (fd:Net_fd.t) ic id =
     method range_entries ~prio ~first ~finc ~last ~reverse ~max =
       self # query
         RangeEntries
-        ({ first; finc; last; reverse; max; }, prio)
+        (RangeQueryArgs.({ first; finc; last; reverse; max; }), prio)
+        (fun ((cnt, items), has_more) ->
+         let items' =
+           List.map
+             (fun (k, v, cs) -> k, Bigstring_slice.extract_to_bigstring v, cs)
+             items
+         in
+         Lwt.return ((cnt, items'), has_more))
 
     method apply_sequence ~prio asserts updates =
-      self # update Apply (asserts, updates, prio)
+      self # update Apply (asserts, updates, prio) Lwt.return
 
     method statistics clear =
-      self # query Statistics clear
+      self # query Statistics clear Lwt.return
 
     method set_full full =
-      self # update SetFull full
+      self # update SetFull full Lwt.return
 
     method get_version () =
-      self # query GetVersion ()
+      self # query GetVersion () Lwt.return
 
     method get_disk_usage () =
-      self # query GetDiskUsage ()
+      self # query GetDiskUsage () Lwt.return
   end
 
 exception BadLongId of string * string
@@ -263,37 +271,31 @@ let make_prologue magic version lido =
   Llio.string_option_to buf lido;
   Buffer.contents buf
 
-let _prologue_response ic lido =
-  Llio.input_int32 ic >>=
+let _prologue_response fd lido =
+  Llio2.NetFdReader.int32_from fd >>=
     function
     | 0l ->
        begin
-         Llio.input_string ic >>= fun asd_id' ->
+         Llio2.NetFdReader.string_from fd >>= fun asd_id' ->
          match lido with
          | Some asd_id when asd_id <> asd_id' ->
             Lwt.fail (BadLongId (asd_id, asd_id'))
          | _ -> Lwt.return asd_id'
        end
-    | err -> Error.from_stream (Int32.to_int err) ic
+    | err -> Error.from_stream (Int32.to_int err) fd
 
 
 
 let make_client buffer_pool ~conn_info (lido:string option)  =
   Networking2.first_connection ~conn_info
   >>= fun (nfd, closer) ->
-  let buffer = Buffer_pool.get_buffer buffer_pool in
-  let ic = Net_fd.make_ic ~buffer nfd in
-  let closer () =
-    Buffer_pool.return_buffer buffer_pool buffer;
-    closer ()
-  in
   Lwt.catch
     (fun () ->
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
        Net_fd.write_all prologue_bytes nfd >>= fun () ->
-       _prologue_response ic lido >>= fun long_id ->
-       let client = new client nfd ic long_id in
+       _prologue_response nfd lido >>= fun long_id ->
+       let client = new client nfd long_id in
        Lwt.return (client, closer)
     )
     (fun exn ->

@@ -34,22 +34,20 @@ let verify_and_maybe_repair_object
   let verify =
     if verify_checksum
     then
-      fun osd key ~chunk_id ~fragment_id ->
-      osd # multi_get
+      fun (osd : Osd.osd) key ~chunk_id ~fragment_id ->
+      osd # get_option
           Osd.Low
-          [ key ] >>= function
-      | [ None ] -> Lwt.return `Missing
-      | [ Some f ] ->
+          key >>= function
+      | None -> Lwt.return `Missing
+      | Some fragment_data ->
          let checksum = Layout.index manifest.fragment_checksums chunk_id fragment_id in
-         let fragment_data' = Slice.to_bigstring f in
-         Fragment_helper.verify fragment_data' checksum
+         Fragment_helper.verify fragment_data checksum
          >>= fun checksum_valid ->
-         Lwt_bytes.unsafe_destroy fragment_data';
+         Lwt_bytes.unsafe_destroy fragment_data;
          Lwt.return
            (if checksum_valid
             then `Ok
             else `ChecksumMismatch)
-      | _ -> assert false
     else
       fun osd key ~chunk_id ~fragment_id ->
       osd # multi_exists

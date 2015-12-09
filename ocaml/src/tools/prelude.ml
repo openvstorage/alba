@@ -481,6 +481,8 @@ external get32_prim : string -> int -> int32 = "%caml_string_get32"
 external set32_prim' : Lwt_bytes.t -> int -> int32 -> unit = "%caml_bigstring_set32"
 external get32_prim' : Lwt_bytes.t -> int -> int32 = "%caml_bigstring_get32"
 
+external set64_prim' : Lwt_bytes.t -> int -> int64 -> unit = "%caml_bigstring_set64"
+external get64_prim' : Lwt_bytes.t -> int -> int64 = "%caml_bigstring_get64"
 
 let deserialize ?(offset=0) deserializer s =
   deserializer (Llio.make_buffer s offset)

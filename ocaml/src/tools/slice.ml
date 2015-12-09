@@ -54,11 +54,17 @@ module Slice = struct
     Llio.int_to buffer t.length;
     Buffer.add_substring buffer t.buf t.offset t.length
 
+  let to_buffer' buffer t =
+    Llio2.WriteBuffer.substring_to buffer (t.buf, t.offset, t.length)
+
   let from_buffer buffer =
     let length = Llio.int_from buffer in
     let offset = buffer.Llio.pos in
     buffer.Llio.pos <- offset + length;
     make buffer.Llio.buf offset length
+
+  let from_buffer' buffer =
+    Llio2.ReadBuffer.string_from buffer |> wrap_string
 
   let add_prefix_byte_as_bytes t c =
       let b = Bytes.create (t.length + 1) in

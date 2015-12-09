@@ -259,14 +259,14 @@ let test_protocol_version port () =
     Lwt.catch
       (fun () ->
        let conn_info = Networking2.make_conn_info ["127.0.0.1"] port None in
-       Networking2.first_connection' buffer_pool ~conn_info
-       >>= fun (_, (ic,oc), closer) ->
+       Networking2.first_connection ~conn_info
+       >>= fun (fd, closer) ->
        Lwt.finalize
          (fun () ->
           let prologue_bytes = Asd_client.make_prologue
                                  Asd_protocol._MAGIC 666l None in
-          Lwt_io.write oc prologue_bytes >>= fun () ->
-          Asd_client._prologue_response ic None >>= fun _ ->
+          Net_fd.write_all prologue_bytes fd >>= fun () ->
+          Asd_client._prologue_response fd None >>= fun _ ->
           OUnit.assert_bool "should have failed" false;
           Lwt.return ())
          closer

@@ -113,18 +113,19 @@ let () =
 module Padding = struct
 
   let pad data block_len =
-    (* pad from bigarray to bigarray *)
-    let used_len = Lwt_bytes.length data in
+    (* pad from Bigstring_slice.t to bigarray *)
+    let used_len = Bigstring_slice.length data in
     let pad_len = (used_len/block_len + 1) * block_len in
     let res = Lwt_bytes.create pad_len in
-    Lwt_bytes.blit data 0 res 0 used_len;
+    (let open Bigstring_slice in
+     Lwt_bytes.blit data.bs data.offset res 0 used_len);
     let n = pad_len - used_len in
     assert (n > 0 && n <= block_len);
     Lwt_bytes.fill res used_len n (Char.chr n);
     res
 
-  let unpad ~release_input data =
-    (* unpad from bigarray to bigarray (in place) *)
+  let unpad data =
+    (* unpad from Lwt_bytes to Bigstring_slice (in place) *)
     let len = Lwt_bytes.length data in
     let cnt_char = Lwt_bytes.get data (len - 1) in
     let cnt = Char.code cnt_char in
@@ -135,12 +136,10 @@ module Padding = struct
       then failwith "bad padding'"
     done;
 
-    let res = Lwt_bytes.extract data 0 (len - cnt) in
-
-    if release_input
-    then Lwt_bytes.unsafe_destroy data;
-
-    res
+    Bigstring_slice.from_bigstring
+      data
+      0
+      (len - cnt)
 
 end
 
@@ -351,15 +350,14 @@ module Cipher = struct
          ptr char @-> int_to_size_t @->
          returning Error.t)
     in
-    fun t ?iv data ->
+    fun t ?iv (data : Lwt_bytes.t) offset length ->
       Option.iter (fun iv -> set_iv t iv) iv;
-      let len = Lwt_bytes.length data in
       let open Lwt.Infix in
       Lwt_preemptive.detach
         (fun () ->
            inner
              t
-             (bigarray_start array1 data) len
+             (bigarray_start array1 data +@ offset) length
              (from_voidp char null) 0)
         ()
       >>= fun err ->
