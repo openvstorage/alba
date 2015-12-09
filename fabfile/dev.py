@@ -413,7 +413,7 @@ def run_tests_recovery(xml = False, tls = 'False'):
 
     # bring down one of the osds
     # we should be able to handle this...
-    alba.osd_stop(8000)
+    alba.osd_stop(alba.get_osd_port(0))
 
     local('mkdir -p %s/recovery_agent' % ALBA_BASE_PATH)
     cmd = [
@@ -478,7 +478,7 @@ def spreadsheet_my_ass(start=0, end = 13400):
         local(' '.join(cmd))
 
         # stop asd 0
-        alba.osd_stop(8000)
+        alba.osd_stop(alba.get_osd_port(0))
 
     if start == 0:
         fresh()
@@ -528,7 +528,7 @@ def run_test_asd_start(xml=False):
         local(" ".join(cmd))
 
     for i in xrange(0, N):
-        alba.osd_stop(8000 + i)
+        alba.osd_stop(alba.get_osd_port(i))
 
     alba.start_osds(default_kind, N, True, restart = True)
     time.sleep(2)
@@ -615,7 +615,7 @@ def run_test_big_object():
         # policy says we can lose a node,
         # so stop and decommission osd 0 to 3
         for i in range(0,4):
-            port = 8000+i
+            port = alba.get_osd_port(i)
             alba.osd_stop(port)
             long_id = "%i_%i_%s" % (port, 2000, alba.local_nodeid_prefix)
             cmd = [

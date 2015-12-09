@@ -315,6 +315,11 @@ def _kinetic_inner(port, path):
     ]
     return cmd
 
+def get_osd_port(n):
+    tls = env['alba_tls']
+    use_tls = is_true(tls)
+    return (8500+n if use_tls else 8000+n)
+
 @task
 def osd_start(port, path, node_id, kind, slow,
               setup_dir=True, multicast = True,
@@ -334,7 +339,7 @@ def osd_start(port, path, node_id, kind, slow,
     inner = None
     if kind == "ASD":
         inner = _asd_inner(port, path,
-                           node_id, slow and port == 8000,
+                           node_id, slow and port == get_osd_port(0),
                            multicast, env = env, restart = restart)
     else:
         inner = _kinetic_inner(port, path)
@@ -683,7 +688,7 @@ def smoke_test(sudo = 'False'):
     def how_many_osds():
         cmd = "%s -n tcp " % my_fuser
         for i in range(N):
-            cmd += " %i" % (8000 + i)
+            cmd += " %i" % get_osd_port(i)
         n = 0
         with warn_only():
             r = local( cmd , capture=True )
@@ -758,7 +763,7 @@ def deb_integration_test(arakoon_version,
     local(' '.join(cmd))
 
     for i in range(N):
-        local("alba asd-statistics -h 127.0.0.1 -p %i" % (8000+i))
+        local("alba asd-statistics -h 127.0.0.1 -p %i" % get_osd_port(i))
 
     # TODO: why doesn't this work?
     #with show('debug'):
@@ -815,7 +820,7 @@ def rpm_integration_test(arakoon_version,
     #    smoke_test()
     #
     for i in range(N):
-        local("alba asd-statistics -h 127.0.0.1 -p %i" % (8000+i))
+        local("alba asd-statistics -h 127.0.0.1 -p %i" % get_osd_port(i))
     demo_kill()
 
     local("sudo yum -y erase arakoon alba")
