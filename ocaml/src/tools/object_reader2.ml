@@ -37,9 +37,11 @@ class object_reader
                 ~namespace_id
                 ~manifest
                 ~object_slices:[ (Int64.of_int pos, cnt); ]
-                (fun res_offset src off len ->
-                 Lwt_bytes.blit src off target res_offset len;
-                 Lwt.return ()) >>= fun _ ->
+                ~write_data:(fun res_offset src off len ->
+                             Lwt_bytes.blit src off target res_offset len;
+                             Lwt.return ())
+                ~fragment_statistics_cb:(fun _ -> ())
+    >>= fun _ ->
     pos <- pos + cnt;
     Lwt.return ()
 end: reader)

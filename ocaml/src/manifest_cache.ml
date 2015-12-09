@@ -45,6 +45,8 @@ module ManifestCache = struct
       }
 
 
+
+
     let make (max_size:int)
       =
       { cache = ACache.make ~weight:String.length ~max_size (0l, 0, "");
@@ -124,15 +126,15 @@ module ManifestCache = struct
              namespace_id object_name
            >>= fun () ->
            slow_path namespace_id object_name >>= fun r ->
-           Lwt.return (false, r)
+           Lwt.return (Stale, r)
         | Some deflated ->
            let _hm = _hit t namespace_id in
            let r = Some (inflate deflated) in
-           Lwt.return (true,r)
+           Lwt.return (Fast,r)
       else
         let _hm = _find_stat t namespace_id in
         slow_path namespace_id object_name >>= fun r ->
-        Lwt.return (false, r)
+        Lwt.return (Slow, r)
 
     let invalidate t namespace_id =
       Hashtbl.remove t.namespace_epoch namespace_id;

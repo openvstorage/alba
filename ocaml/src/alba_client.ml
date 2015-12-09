@@ -91,11 +91,13 @@ class alba_client (base_client : Alba_base_client.client)
           object_slices
       in
       let dest = Bytes.create length in
+      let not_interested = fun _ -> () in
       self # download_object_slices
         ~namespace
         ~object_name
         ~object_slices
         ~consistent_read
+        ~fragment_statistics_cb:not_interested
         (fun dest_off src off len ->
            Lwt_log.debug_f "Writing %i bytes at offset %i" len dest_off >>= fun () ->
            Lwt_bytes.blit_to_bytes src off dest dest_off len;
@@ -284,15 +286,15 @@ class alba_client (base_client : Alba_base_client.client)
       >>= fun r ->
       match r with
       | _, (hit_or_miss, None) -> Lwt.return None
-      | (t_get_manifest, (hit_or_miss, Some manifest)) ->
+      | (t_get_manifest, (mf_src, Some manifest)) ->
         let open Nsm_model in
         Lwt_log.debug_f
-          "download_object: found %s, hit_or_miss=%b manifest = %s"
+          "download_object: found %s, mf_src=%s manifest = %s"
           object_name
-          hit_or_miss
+          (Cache.show_value_source mf_src)
           (Manifest.show manifest) >>= fun () ->
 
-        let get_manifest_dh = t_get_manifest, hm_to_source hit_or_miss in
+        let get_manifest_dh = t_get_manifest, mf_src in
         let attempt_download get_manifest_dh manifest =
           write_object_data manifest.Manifest.size >>= fun write_object_data ->
           self # download_object_generic''
@@ -325,7 +327,7 @@ class alba_client (base_client : Alba_base_client.client)
                    match fresh_o with
                    | None -> Lwt.return None
                    | Some fresh ->
-                      let get_manifest_dh' = (delay, Statistics.Stale) in
+                      let get_manifest_dh' = (delay, Cache.Stale) in
                       attempt_download get_manifest_dh' fresh
                  end
               | exn -> Lwt.fail exn
