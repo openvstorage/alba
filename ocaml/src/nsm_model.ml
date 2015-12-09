@@ -77,6 +77,7 @@ module OsdInfo = struct
       seen; read; write; errors; }
 
   let _to_buffer_1
+      ?(ignore_tls = false)
       buf
       { kind; node_id;
         decommissioned; other;
@@ -86,7 +87,7 @@ module OsdInfo = struct
     let ser_version = 1 in
     Llio.int8_to buf ser_version;
     let conn_info_to buf (ips,port,use_tls) =
-      if use_tls
+      if use_tls && not ignore_tls
       then
         begin
         let () = Lwt_log.ign_fatal "use_tls ?!" in
