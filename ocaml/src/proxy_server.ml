@@ -114,7 +114,16 @@ let read_objects_slices
       Lwt_log.info_f "%i slices,%i bytes,%i objects => sequential"
                      n_slices total_length n_objects
   in
-
+  let fc_hits   = ref 0 in
+  let fc_misses = ref 0 in
+  let fragment_statistics_cb stat =
+    let open Cache  in
+    let open Alba_statistics in
+    match stat.Statistics.source with
+    | Fast  -> incr fc_hits
+    | Slow
+    | Stale -> incr fc_misses
+  in
   logger n_slices total_length n_objects >>= fun () ->
   strategy
     (fun (offset, object_name, object_slices) ->
@@ -123,6 +132,7 @@ let read_objects_slices
                  ~object_name
                  ~object_slices
                  ~consistent_read
+                 ~fragment_statistics_cb
                  (fun dest_off src off len ->
                   Lwt_bytes.blit_to_bytes src off res (offset + dest_off) len;
                   Lwt.return ())
@@ -132,7 +142,7 @@ let read_objects_slices
     )
     objects_slices
   >>= fun mf_sources ->
-  Lwt.return (res,n_slices,n_objects, mf_sources)
+  Lwt.return (res,n_slices,n_objects, mf_sources, !fc_hits, !fc_misses)
 
 let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   let open Protocol in
@@ -283,11 +293,12 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats (namespace, objects_slices, consistent_read) ->
        with_timing_lwt
          (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
-       >>= fun (delay, (bytes, n_slices, n_objects, mf_sources )) ->
+       >>= fun (delay, (bytes, n_slices, n_objects, mf_sources, fc_hits, fc_misses )) ->
        let total_length = Bytes.length bytes in
        ProxyStatistics.new_read_objects_slices
          stats namespace
          ~total_length ~n_slices ~n_objects ~mf_sources
+         ~fc_hits ~fc_misses
          ~took:delay;
        Lwt.return bytes
 

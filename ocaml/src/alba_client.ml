@@ -91,11 +91,13 @@ class alba_client (base_client : Alba_base_client.client)
           object_slices
       in
       let dest = Bytes.create length in
+      let not_interested = fun _ -> () in
       self # download_object_slices
         ~namespace
         ~object_name
         ~object_slices
         ~consistent_read
+        ~fragment_statistics_cb:not_interested
         (fun dest_off src off len ->
            Lwt_log.debug_f "Writing %i bytes at offset %i" len dest_off >>= fun () ->
            Lwt_bytes.blit_to_bytes src off dest dest_off len;

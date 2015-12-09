@@ -234,7 +234,9 @@ module ProxyStatistics = struct
 
    let new_read_objects_slices
          t ns
-         ~total_length ~n_slices ~n_objects ~mf_sources ~took
+         ~total_length ~n_slices ~n_objects ~mf_sources
+         ~fc_hits ~fc_misses
+         ~took
      =
      let ns_stats = find t ns in
      ns_stats.partial_read_size    <- _update ns_stats.partial_read_size  (float total_length);

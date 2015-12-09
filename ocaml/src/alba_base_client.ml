@@ -423,7 +423,9 @@ class client
       ~object_name
       ~(object_slices : (int64 * int) list)
       ~consistent_read
-      write_data =
+      write_data
+      ~fragment_statistics_cb
+      =
       Lwt_log.debug_f "download_object_slices: %S %S %s consistent_read:%b"
                       namespace object_name
                       ([%show: (int64 * int) list] object_slices)
@@ -437,7 +439,9 @@ class client
              ~object_name
              ~object_slices
              ~consistent_read
-             write_data)
+             write_data
+             ~fragment_statistics_cb
+        )
 
     method download_object_slices''
       ~namespace_id
@@ -723,14 +727,16 @@ class client
              ~object_name
              ~object_slices
              ~consistent_read
-             write_data =
+             write_data
+             ~fragment_statistics_cb
+      =
       let attempt_download_slices manifest (mf_src:Cache.value_source) =
         self # download_object_slices''
              ~namespace_id
              ~manifest
              ~object_slices
              ~write_data
-             ~fragment_statistics_cb:(fun _ -> ())
+             ~fragment_statistics_cb
         >>= function
         | None -> Lwt.return_none
         | Some mf -> Lwt.return (Some (mf,mf_src))
