@@ -356,6 +356,7 @@ def create_namespace(namespace, abm_cfg = arakoon_config_file):
     cmd = [
         env['alba_bin'],
         "proxy-create-namespace",
+        "-h 127.0.0.1 ",
         namespace
     ]
 
@@ -757,7 +758,7 @@ def deb_integration_test(arakoon_version,
     local(' '.join(cmd))
 
     for i in range(N):
-        local("alba asd-statistics -h ::1 -p %i" % (8000+i))
+        local("alba asd-statistics -h 127.0.0.1 -p %i" % (8000+i))
 
     # TODO: why doesn't this work?
     #with show('debug'):
@@ -814,7 +815,7 @@ def rpm_integration_test(arakoon_version,
     #    smoke_test()
     #
     for i in range(N):
-        local("alba asd-statistics -h ::1 -p %i" % (8000+i))
+        local("alba asd-statistics -h 127.0.0.1 -p %i" % (8000+i))
     demo_kill()
 
     local("sudo yum -y erase arakoon alba")

@@ -47,7 +47,7 @@ let gets (client: Osd.osd) progress n value_size period prefix =
     let () =
       match _value with
       | None   -> failwith (Printf.sprintf "db[%s] = None?" key)
-      | Some v -> assert (v.Slice.length = value_size)
+      | Some v -> assert (Lwt_bytes.length v = value_size)
     in
     Lwt.return ()
   in
@@ -71,14 +71,14 @@ let sets (client:Osd.osd) progress n value_size period prefix =
   let gen = make_key period prefix in
 
   let value = _make_value value_size in
-  let value_slice = Slice.wrap_string value in
 
   let do_one i =
     let key = gen () in
     let key_slice = Slice.wrap_string key in
-
     let set = Update.Set (key_slice,
-                          Some (value_slice, Checksum.NoChecksum, false))
+                          Some (Blob.Bytes value,
+                                Checksum.NoChecksum,
+                                false))
     in
     let updates = [set] in
     client # apply_sequence Osd.High [] updates >>= maybe_fail
@@ -103,7 +103,7 @@ let upload_fragments (client:Osd.osd) progress n value_size period prefix =
   let gen = make_key period prefix in
   let open Osd_keys in
   let value = _make_value value_size in
-  let value_slice = Slice.wrap_string value in
+  let value_blob = Blob.Bytes value in
   let namespace_id = 0xffff_ffffl in
   let namespace_status_key = AlbaInstance.namespace_status ~namespace_id in
   let active_value = Osd.Osd_namespace_state.(serialize
@@ -117,13 +117,13 @@ let upload_fragments (client:Osd.osd) progress n value_size period prefix =
   client # apply_sequence Osd.High []
          [Osd.Update.set
             (Slice.wrap_string namespace_status_key)
-            (Slice.wrap_string active_value)
+            (Blob.Bytes active_value)
             Checksum.NoChecksum
             false;
          ]
   >>= maybe_fail
   >>= fun () ->
-  let recovery_info_slice = _make_value 134 |> Slice.wrap_string in
+  let recovery_info = Blob.Bytes (_make_value 134) in
   let do_one i =
     let key = gen () in
     let object_id = key in
@@ -136,7 +136,7 @@ let upload_fragments (client:Osd.osd) progress n value_size period prefix =
                         ~object_id ~version_id
                         ~chunk_id ~fragment_id
                       |> Slice.wrap_string)
-                     value_slice
+                     value_blob
                      Checksum.NoChecksum
                      false
     in
@@ -147,7 +147,7 @@ let upload_fragments (client:Osd.osd) progress n value_size period prefix =
               ~namespace_id
               ~object_id ~version_id
               ~chunk_id ~fragment_id))
-        recovery_info_slice Checksum.NoChecksum true
+        recovery_info Checksum.NoChecksum true
     in
     let gc_epoch = 0L in
     let set_gc_tag =

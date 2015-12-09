@@ -134,7 +134,7 @@ let asd_set hosts port tls_config asd_id key value =
      client # apply_sequence ~prio:Osd.High []
              [ Update.set
                  (Slice.wrap_string key)
-                 (Slice.wrap_string value)
+                 (Osd.Blob.Bytes value)
                  checksum true
              ]
     )
@@ -185,7 +185,7 @@ let asd_multi_get hosts port tls_config asd_id (keys:string list) =
 
      client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys)
      >>= fun values ->
-     print_endline ([%show: (Slice.t * Checksum.t) option list] values);
+     print_endline ([%show: (Bigstring_slice.t * Checksum.t) option list] values);
      Lwt.return ())
 
 let asd_multi_get_cmd =

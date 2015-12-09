@@ -17,13 +17,14 @@ limitations under the License.
 open Prelude
 
 type key = Asd_protocol.key
-type value = Asd_protocol.value
+type value = Lwt_bytes.t
 type checksum = Asd_protocol.checksum
 
 type priority = Asd_protocol.Protocol.priority =
               | High
               | Low
 
+module Blob = Asd_protocol.Blob
 module Update = Asd_protocol.Update
 module Assert = Asd_protocol.Assert
 

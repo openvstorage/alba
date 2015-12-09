@@ -24,7 +24,7 @@ let test_encrypt_decrypt () =
     let block_len = 16 in
     let key = String.make 32 'a' in
     let get_res () =
-      let padded_data = Padding.pad (Lwt_bytes.of_string data) block_len in
+      let padded_data = Padding.pad (Bigstring_slice.of_string data) block_len in
       Cipher.with_t_lwt
         key Cipher.AES256 Cipher.CBC []
         (fun cipher ->
@@ -43,9 +43,11 @@ let test_encrypt_decrypt () =
       (fun cipher ->
          Cipher.decrypt
            cipher
-           res1) >>= fun () ->
-    let data' = Padding.unpad ~release_input:false res1 in
-    OUnit.assert_equal (Lwt_bytes.to_string data') data;
+           res1
+           0
+           (Lwt_bytes.length res1)) >>= fun () ->
+    let data' = Padding.unpad res1 in
+    OUnit.assert_equal (Bigstring_slice.to_string data') data;
     Lwt.return ()
   in
   Lwt_main.run (t ())
