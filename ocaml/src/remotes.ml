@@ -23,28 +23,29 @@ module Pool = struct
     type t = (Albamgr_client.single_connection_client *
               (unit -> unit Lwt.t)) Lwt_pool2.t
 
-    let make ~size cfg buffer_pool =
+    let make ~size cfg tls_config buffer_pool =
       let factory () =
-        let ccfg = Arakoon_config.to_arakoon_client_cfg !cfg in
+        let ccfg = Arakoon_config.to_arakoon_client_cfg tls_config !cfg in
+        let tls = Tls.to_client_context tls_config in
         let open Albamgr_client in
         Lwt.catch
           (fun () -> make_client buffer_pool ccfg)
           (let open Client_helper in
            let open MasterLookupResult in
            function
-           | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, _master)
-           | Error (Unknown_node (_master, (_, _))) ->
-              begin
-                retrieve_cfg_from_any_node !cfg >>= fun cfg' ->
-                match cfg' with
-                | Res cfg' ->
-                   let () = cfg := cfg' in
-                   Albamgr_client.make_client
-                     buffer_pool
-                     (Arakoon_config.to_arakoon_client_cfg !cfg)
-                | Retry -> Lwt.fail_with "retry later"
-              end
-           | exn ->
+            | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, _master)
+            | Error (Unknown_node (_master, (_, _))) ->
+               begin
+                 retrieve_cfg_from_any_node ~tls !cfg >>= fun cfg' ->
+                 match cfg' with
+                 | Res cfg' ->
+                    let () = cfg := cfg' in
+                    make_client
+                      buffer_pool
+                      (Arakoon_config.to_arakoon_client_cfg tls_config !cfg)
+                 | Retry -> Lwt.fail_with "retry later"
+               end
+            | exn ->
               Lwt.fail exn)
         >>= fun (c, node_name, closer) ->
         Lwt.return (c, closer)
@@ -57,13 +58,7 @@ module Pool = struct
         ~factory
         ~cleanup:(fun (_, closer) -> closer ())
 
-    let use_mgr t f =
-      Lwt_log.debug_f "Taking an albamgr from the connection pool" >>= fun () ->
-      Lwt_pool2.use
-        t
-        (fun p ->
-           Lwt_log.debug_f "Got an albamgr from the connection pool" >>= fun () ->
-           f (fst p))
+    let use_mgr t f = Lwt_pool2.use t (fun p -> f (fst p))
 
   end
 
@@ -71,18 +66,21 @@ module Pool = struct
     open Albamgr_protocol.Protocol
     type nsm_pool =
         (Nsm_host_client.single_connection_client *
-         (unit -> unit Lwt.t)) Lwt_pool2.t
+           (unit -> unit Lwt.t)) Lwt_pool2.t
+
     type t = {
       get_nsm_host_config : Nsm_host.id -> Nsm_host.t Lwt.t;
       pools : (Nsm_host.id, nsm_pool) Hashtbl.t;
+      tls_config : Tls.t option;
       pool_size : int;
       buffer_pool : Buffer_pool.t;
     }
 
-    let make ~size get_nsm_host_config buffer_pool =
+    let make ~size get_nsm_host_config ~tls_config buffer_pool =
       let pools = Hashtbl.create 0 in
       { get_nsm_host_config;
         pools;
+        tls_config;
         buffer_pool;
         pool_size = size;
       }
@@ -102,24 +100,16 @@ module Pool = struct
                  >>= fun nsm ->
                  match nsm.Nsm_host.kind with
                  | Nsm_host.Arakoon cfg ->
+                    let ccfg = Arakoon_config.to_arakoon_client_cfg t.tls_config cfg in
                     Nsm_host_client.make_client
-                      t.buffer_pool
-                      (Arakoon_config.to_arakoon_client_cfg cfg))
+                      t.buffer_pool ccfg
+                      )
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools nsm_host_id p;
           p
       in
-      Lwt_log.debug_f
-        "Taking an nsm host client for %S from the connection pool"
-        nsm_host_id >>= fun () ->
-      Lwt_pool2.use
-        pool
-        (fun p ->
-           Lwt_log.debug_f
-             "Got an nsm host client for %S from the connection pool"
-             nsm_host_id >>= fun () ->
-           f (fst p))
+      Lwt_pool2.use pool (fun p -> f (fst p))
 
     let invalidate t ~nsm_host_id =
       if Hashtbl.mem t.pools nsm_host_id
@@ -137,36 +127,43 @@ module Pool = struct
   module Osd = struct
     type osd = Osd.osd
     open Albamgr_protocol.Protocol
-
+    open Nsm_model
     type osd_pool = (osd * (unit -> unit Lwt.t)) Lwt_pool2.t
 
     type t = {
       pools : (Osd.id, osd_pool) Hashtbl.t;
-      get_osd_kind : Osd.id -> Osd.kind Lwt.t;
+      get_osd_kind : Osd.id -> OsdInfo.kind Lwt.t;
       pool_size : int;
       buffer_pool : Buffer_pool.t;
+      tls_config: Tls.t option;
     }
 
-    let make ~size get_osd_kind buffer_pool =
+    let make ~size get_osd_kind buffer_pool tls_config =
       let pools = Hashtbl.create 0 in
       { pools;
         get_osd_kind;
         pool_size = size;
         buffer_pool;
+        tls_config
       }
 
-    let factory buffer_pool =
-      let open Osd in
+    let factory tls_config buffer_pool =
       function
-      | Asd (ips, port, asd_id) ->
-        Asd_client.make_client buffer_pool ips port (Some asd_id)
-        >>= fun (asd, closer) ->
-        let osd = new Asd_client.asd_osd asd_id asd in
-        Lwt.return (osd, closer)
-      | Kinetic (ips, port, kinetic_id) ->
-        Kinetic_client.make_client buffer_pool ips port kinetic_id
-        >>= fun (kin, closer) ->
-        Lwt.return (kin, closer)
+      | OsdInfo.Asd (conn_info', asd_id) ->
+         let () =
+           Lwt_log.ign_debug_f
+             "factory: conn_info':%s"
+             ([%show :Nsm_model.OsdInfo.conn_info] conn_info')
+         in
+         let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
+
+         Asd_client.make_client buffer_pool ~conn_info (Some asd_id)
+         >>= fun (asd, closer) ->
+         let osd = new Asd_client.asd_osd asd_id asd in
+         Lwt.return (osd, closer)
+      | OsdInfo.Kinetic (conn_info', kinetic_id) ->
+         let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
+         Kinetic_client.make_client buffer_pool ~conn_info kinetic_id
 
     let use_osd t ~(osd_id:int32) f =
       let pool =
@@ -178,7 +175,7 @@ module Pool = struct
               ~check:(fun _ exn ->
                   (* TODO some exns shouldn't invalidate the connection *)
                   false)
-              ~factory:(fun () -> t.get_osd_kind osd_id >>= factory t.buffer_pool)
+              ~factory:(fun () -> t.get_osd_kind osd_id >>= factory t.tls_config t.buffer_pool)
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools osd_id p;

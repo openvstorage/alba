@@ -18,10 +18,10 @@ type fill_rate = int * (int32 * float) list [@@deriving show]
 
 
 let calculate_fill_rates cache =
-  let open Albamgr_protocol.Protocol in
+  let open Nsm_model in
   let rates = Hashtbl.fold
     (fun osd_id osd acc ->
-     let open Osd in
+     let open OsdInfo in
      let fill_rate = Int64.to_float osd.used /. Int64.to_float osd.total in
      let r = (osd_id, fill_rate) in
      r :: acc)
@@ -100,7 +100,7 @@ let plan_move cache (too_low,ok, too_high) manifest
   in
   let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
   let node_id_of osd_id =
-    let open Albamgr_protocol.Protocol.Osd in
+    let open Nsm_model.OsdInfo in
     let info = Hashtbl.find cache osd_id in
     info.node_id
   in

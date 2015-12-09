@@ -54,6 +54,9 @@ before_install () {
         sleep $(( ATTEMPT++ ))
     done
 
+    echo "updating keys"
+    sudo apt-key update
+
     echo "Installing general dependencies"
     sudo apt-get install -qq ${APT_DEPENDS} \
          ocaml ocaml-native-compilers camlp4-extra opam

@@ -486,9 +486,10 @@ external get64_prim' : Lwt_bytes.t -> int -> int64 = "%caml_bigstring_get64"
 
 let deserialize ?(offset=0) deserializer s =
   deserializer (Llio.make_buffer s offset)
+
 let serialize ?(buf_size=20) serializer a =
   let buf = Buffer.create buf_size in
-  serializer buf a;
+  let () = serializer buf a in
   Buffer.contents buf
 
 let serialize_with_length ?buf_size serializer a =

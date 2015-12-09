@@ -33,7 +33,7 @@ module Protocol = struct
       | LinkOsd (osd_id, osd_info) ->
         Llio.int8_to buf 1;
         Llio.int32_to buf osd_id;
-        Nsm_model.OsdInfo.to_buffer buf osd_info
+        Nsm_model.OsdInfo.to_buffer buf osd_info ~version:1
       | UnlinkOsd osd_id ->
         Llio.int8_to buf 2;
         Llio.int32_to buf osd_id
@@ -230,6 +230,8 @@ module Protocol = struct
       Llio.pair_to
         Llio.int32_to
         (Nsm_protocol.Protocol.write_update_request u)
+
+
 
   let read_update_o : type i o. (i, o) update -> o deserializer = function
     | CleanupForNamespace -> Llio.int_from

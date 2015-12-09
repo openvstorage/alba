@@ -33,19 +33,23 @@ module OsdInfo = struct
 
   type asd_id = string [@@deriving show, yojson]
   type kinetic_id = string [@@ deriving show, yojson]
+
+  type use_tls  = bool [@@ deriving show]
+  type conn_info = ip list * port * use_tls [@@ deriving show]
+
   type kind =
-    | Asd of ip list * port * asd_id
-    | Kinetic of ip list * port * kinetic_id
+    | Asd     of conn_info * asd_id
+    | Kinetic of conn_info * kinetic_id
                    [@@deriving show]
 
   let get_long_id = function
-    | Asd (_, _, asd_id) -> asd_id
-    | Kinetic (_,_,kinetic_id) -> kinetic_id
+    | Asd (_, asd_id)        -> asd_id
+    | Kinetic (_,kinetic_id) -> kinetic_id
 
-  let get_ips_port = function
-    | Asd (ips, port, _)
-    | Kinetic (ips, port, _) ->
-      ips, port
+  let get_conn_info = function
+    | Asd     (info, _)
+    | Kinetic (info, _) ->
+      info
 
   type t = {
     kind : kind;
@@ -72,26 +76,35 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors; }
 
-  let to_buffer
+  let _to_buffer_1
       buf
       { kind; node_id;
         decommissioned; other;
         total; used;
         seen; read; write; errors; } =
 
-    let ser_version = 1 in Llio.int8_to buf ser_version;
+    let ser_version = 1 in
+    Llio.int8_to buf ser_version;
+    let conn_info_to buf (ips,port,use_tls) =
+      if use_tls
+      then
+        begin
+        let () = Lwt_log.ign_fatal "use_tls ?!" in
+        failwith "use_tls?"
+        end;
+      Llio.list_to Llio.string_to buf ips;
+      Llio.int_to buf port;
 
+    in
     let () = match kind with
-      | Asd (ips, port, asd_id) ->
-        Llio.int8_to buf 1;
-        Llio.list_to Llio.string_to buf ips;
-        Llio.int_to buf port;
-        Llio.string_to buf asd_id;
-      | Kinetic(ips, port, kin_id) ->
-        Llio.int8_to buf 2;
-        Llio.list_to Llio.string_to buf ips;
-        Llio.int_to buf port;
-        Llio.string_to buf kin_id
+      | Asd (conn_info, asd_id) ->
+         Llio.int8_to buf 1;
+         conn_info_to buf conn_info;
+         Llio.string_to buf asd_id
+      | Kinetic(conn_info, kin_id) ->
+         Llio.int8_to buf 2;
+         conn_info_to buf conn_info;
+         Llio.string_to buf kin_id
     in
     Llio.string_to buf node_id;
     Llio.bool_to buf decommissioned;
@@ -108,20 +121,67 @@ module OsdInfo = struct
       buf
       errors
 
-  let from_buffer buf =
-    let ser_version = Llio.int8_from buf in
-    assert (ser_version = 1);
+  let _to_buffer_2 final_buf
+      { kind; node_id;
+        decommissioned; other;
+        total; used;
+        seen; read; write; errors;
+      }
+    =
+    let ser_version = 2 in
+    Llio.int8_to final_buf ser_version;
+    let conn_info_to buf (ips,port,use_tls) =
+      Llio.list_to Llio.string_to buf ips;
+      Llio.int_to buf port;
+      Llio.bool_to buf use_tls
+    in
+    let buf = Buffer.create 128 in
+    let () =
+      let () = match kind with
+        | Asd (conn_info, asd_id) ->
+           Llio.int8_to buf 1;
+           conn_info_to buf conn_info;
+           Llio.string_to buf asd_id;
+        | Kinetic(conn_info, kin_id) ->
+           Llio.int8_to buf 2;
+           conn_info_to buf conn_info;
+           Llio.string_to buf kin_id
+      in
+      Llio.string_to buf node_id;
+      Llio.bool_to buf decommissioned;
+      Llio.string_to buf other;
+      Llio.int64_to buf total;
+      Llio.int64_to buf used;
+      Llio.list_to Llio.float_to buf seen;
+      Llio.list_to Llio.float_to buf read;
+      Llio.list_to Llio.float_to buf write;
+      Llio.list_to
+        (Llio.pair_to
+           Llio.float_to
+           Llio.string_to)
+        buf
+        errors
+    in
+    Llio.string_to final_buf (Buffer.contents buf)
+
+  let to_buffer  buf t ~version =
+    match version with
+    | 2 -> _to_buffer_2 buf t
+    | 1 -> _to_buffer_1 buf t
+    | k -> raise_bad_tag "OsdInfo" k
+
+  let _from_buffer1 buf =
     let kind = match Llio.int8_from buf with
       | 1 ->
         let ips = Llio.list_from Llio.string_from buf in
         let port = Llio.int_from buf in
         let asd_id = Llio.string_from buf in
-        Asd (ips, port, asd_id)
+        Asd ((ips, port,false), asd_id)
       | 2 ->
         let ips = Llio.list_from Llio.string_from buf in
         let port = Llio.int_from buf in
         let kin_id = Llio.string_from buf in
-        Kinetic(ips, port, kin_id)
+        Kinetic((ips, port, false), kin_id)
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in
@@ -141,6 +201,50 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors;
     }
+
+  let _from_buffer2 orig_buf =
+    let bufs = Llio.string_from orig_buf in
+    let buf = Llio.make_buffer bufs 0 in
+
+    let kind_v = Llio.int8_from buf in
+    let ips = Llio.list_from Llio.string_from buf in
+    let port = Llio.int_from buf in
+    let use_tls = Llio.bool_from buf in
+    let long_id = Llio.string_from buf in
+    let conn_info = ips,port,use_tls in
+    let kind = match kind_v with
+      | 1 -> Asd (conn_info, long_id)
+      | 2 -> Kinetic(conn_info, long_id)
+      | k -> raise_bad_tag "OsdInfo" k
+    in
+    let node_id = Llio.string_from buf in
+    let decommissioned = Llio.bool_from buf in
+    let other  = Llio.string_from buf in
+    let total  = Llio.int64_from buf in
+    let used   = Llio.int64_from buf in
+    let seen = Llio.list_from Llio.float_from buf in
+    let read = Llio.list_from Llio.float_from buf in
+    let write = Llio.list_from Llio.float_from buf in
+    let errors =
+      Llio.list_from
+        (Llio.pair_from
+           Llio.float_from
+           Llio.string_from)
+        buf in
+    { kind; node_id; decommissioned; other;
+      total; used;
+      seen; read; write; errors;
+    }
+
+
+  let from_buffer buf =
+    let ser_version = Llio.int8_from buf in
+    match ser_version with
+    | 1 -> _from_buffer1 buf
+    | 2 -> _from_buffer2 buf
+    | k -> raise_bad_tag "OsdInfo.ser_version" k
+
+
 
 end
 
@@ -728,18 +832,19 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
   module EKV = Read_store_extensions(KV)
 
   let link_osd kv osd_id osd_info =
-    [ Update.set
-        (Keys.Device.active_osds ~osd_id)
-        "";
-      Update.set
-        (Keys.Device.info ~osd_id)
-        (serialize OsdInfo.to_buffer osd_info); ]
+    let blob = serialize (OsdInfo.to_buffer ~version:2) osd_info in
+    [
+      Update.set (Keys.Device.active_osds ~osd_id) "";
+      Update.set (Keys.Device.info ~osd_id)        blob;
+    ]
 
   let unlink_osd kv osd_id =
     [ Update.delete (Keys.Device.active_osds ~osd_id); ]
 
   let get_osd_info kv osd_id =
-    deserialize OsdInfo.from_buffer (KV.get_exn kv (Keys.Device.info ~osd_id))
+    let key = Keys.Device.info ~osd_id in
+    let blob = KV.get_exn kv key in
+    deserialize OsdInfo.from_buffer blob
 
   let list_active_osds kv ~first ~finc ~last ~max ~reverse =
     EKV.map_range

@@ -325,7 +325,7 @@ module Protocol = struct
 
     let from_stream code ic =
       let open Lwt.Infix in
-      let module Llio = Llio2.FdReader in
+      let module Llio = Llio2.NetFdReader in
       match code with
       | 1 -> Llio.string_from ic >>= fun s ->
              Unknown_error (1, s) |> lwt_fail

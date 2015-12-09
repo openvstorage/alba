@@ -114,7 +114,7 @@ let proxy_bench_cmd =
   ),
   Term.info "proxy-bench" ~doc:"simple proxy benchmark"
 
-let alba_bench alba_cfg_file
+let alba_bench alba_cfg_file tls_config
                n_clients n file_name power
                prefix slice_size namespace
                scenarios robust
@@ -126,6 +126,7 @@ let alba_bench alba_cfg_file
        (ref
           (Albamgr_protocol.Protocol.Arakoon_config.from_config_file
              alba_cfg_file))
+       ~tls_config
        n_clients n
        file_name power prefix slice_size namespace
        (map_scenarios scenarios robust))
@@ -133,6 +134,7 @@ let alba_bench alba_cfg_file
 let alba_bench_cmd =
   Term.(pure alba_bench
         $ alba_cfg_file
+        $ tls_config
         $ n_clients 1
         $ n 10000
         $ file_upload 1

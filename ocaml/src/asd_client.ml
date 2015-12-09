@@ -21,10 +21,10 @@ open Lwt_bytes2
 open Asd_protocol
 open Protocol
 
-class client fd id =
+class client (fd:Net_fd.t) id =
   let with_response deserializer f =
-    Llio2.FdReader.int_from fd >>= fun size ->
-    Llio2.FdReader.with_buffer_from
+    Llio2.NetFdReader.int_from fd >>= fun size ->
+    Llio2.NetFdReader.with_buffer_from
       fd size
       (fun res_buf ->
        let module Llio = Llio2.ReadBuffer in
@@ -57,9 +57,9 @@ class client fd id =
            (code,
             request)
        in
-       Lwt_extra2.write_all_lwt_bytes
-         fd
-         buf.Llio.buf 0 buf.Llio.pos >>= fun () ->
+       Net_fd.write_all_lwt_bytes
+         buf.Llio.buf 0 buf.Llio.pos
+         fd >>= fun () ->
        with_response deserialize_response f) >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
@@ -157,13 +157,12 @@ class client fd id =
                      let bs = Lwt_bytes.create size in
                      Lwt.catch
                        (fun () ->
-                        Lwt_extra2.read_all_lwt_bytes_exact fd bs 0 size >>= fun () ->
+                        Net_fd.read_all_lwt_bytes_exact bs 0 size fd >>= fun () ->
                         Lwt.return (Some (bs, cs)))
                        (fun exn ->
                         Lwt_bytes.unsafe_destroy bs;
                         Lwt.fail exn)))
 
-    (* TODO where is this used? *)
     method multi_get_string ~prio keys =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
@@ -254,6 +253,17 @@ class client fd id =
 
 exception BadLongId of string * string
 
+let conn_info_from ~tls_config (conn_info':Nsm_model.OsdInfo.conn_info)  =
+  let ips,port, use_tls = conn_info' in
+  let tls_config =
+    match use_tls,tls_config with
+    | false, None   -> None
+    | false, Some _ -> None
+    | true, None    -> failwith "want tls, but no tls_config is None !?"
+    | true, Some _  -> tls_config
+  in
+  Networking2.make_conn_info ips port tls_config
+
 let make_prologue magic version lido =
   let buf = Buffer.create 16 in
   Buffer.add_string buf magic;
@@ -262,11 +272,11 @@ let make_prologue magic version lido =
   Buffer.contents buf
 
 let _prologue_response fd lido =
-  Llio2.FdReader.int32_from fd >>=
+  Llio2.NetFdReader.int32_from fd >>=
     function
     | 0l ->
        begin
-         Llio2.FdReader.string_from fd >>= fun asd_id' ->
+         Llio2.NetFdReader.string_from fd >>= fun asd_id' ->
          match lido with
          | Some asd_id when asd_id <> asd_id' ->
             Lwt.fail (BadLongId (asd_id, asd_id'))
@@ -276,28 +286,30 @@ let _prologue_response fd lido =
 
 
 
-let make_client buffer_pool ips port (lido:string option) =
-  Networking2.first_connection ips port
-  >>= fun (fd, closer) ->
+let make_client buffer_pool ~conn_info (lido:string option)  =
+  Networking2.first_connection ~conn_info
+  >>= fun (nfd, closer) ->
   Lwt.catch
     (fun () ->
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
-       Lwt_extra2.write_all' fd prologue_bytes >>= fun () ->
-       _prologue_response fd lido >>= fun long_id ->
-       let client = new client fd long_id in
+       Net_fd.write_all prologue_bytes nfd >>= fun () ->
+       _prologue_response nfd lido >>= fun long_id ->
+       let client = new client nfd long_id in
        Lwt.return (client, closer)
     )
     (fun exn ->
      closer () >>= fun () ->
      Lwt.fail exn)
 
-let with_client buffer_pool ips port (lido:string option) f =
+let with_client buffer_pool ~conn_info (lido:string option) f =
   (* TODO: validation here? or elsewhere *)
-  if ips = []
-  then failwith "empty ips list for asd_client.with_client";
-
-  make_client buffer_pool ips port lido >>= fun (client, closer) ->
+  let () =
+    match conn_info.Networking2.ips with
+    | [] -> failwith "empty ips list for asd_client.with_client";
+    | _ -> ()
+  in
+  make_client buffer_pool ~conn_info lido >>= fun (client, closer) ->
   Lwt.finalize
     (fun () -> f client)
     closer

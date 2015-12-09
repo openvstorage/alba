@@ -29,6 +29,7 @@ module Config = struct
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
+    tls_client : Tls.t option [@default None];
   } [@@deriving yojson, show]
 end
 
@@ -140,6 +141,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
         ~osd_timeout
+        ~tls_config:cfg.tls_client
         (fun client ->
            let maintenance_client =
              new Maintenance.client (client # get_base_client)
@@ -231,10 +233,10 @@ let alba_maintenance_cmd =
   ),
   Term.info "maintenance" ~doc:"run the maintenance process (garbage collection, obsolete fragment deletion, repair, ...)"
 
-let alba_deliver_messages cfg_file =
+let alba_deliver_messages cfg_file tls_config =
   let t () =
     with_alba_client
-      cfg_file
+      cfg_file tls_config
       (fun client ->
          client # mgr_access # list_all_osds >>= fun (_, osds) ->
          let open Albamgr_protocol.Protocol in
@@ -257,16 +259,17 @@ let alba_deliver_messages cfg_file =
 
 let alba_deliver_messages_cmd =
   Term.(pure alba_deliver_messages
-        $ alba_cfg_file),
-  Term.info "deliver-messages" ~doc:"deliver all outstanding messages (note that this happens automatically by the maintenance process too, so you usually shouldn't need this.)"
+        $ alba_cfg_file
+        $ tls_config)
+  , Term.info "deliver-messages" ~doc:"deliver all outstanding messages (note that this happens automatically by the maintenance process too, so you usually shouldn't need this.)"
 
 let alba_rewrite_object
-    cfg_file
+    cfg_file tls_config
     namespace
     object_name =
   let t () =
     with_alba_client
-      cfg_file
+      cfg_file tls_config
       (fun client ->
          client # nsm_host_access # with_namespace_id ~namespace
            (fun namespace_id ->
@@ -288,6 +291,7 @@ let alba_rewrite_object
 let alba_rewrite_object_cmd =
   Term.(pure alba_rewrite_object
         $ alba_cfg_file
+        $ tls_config
         $ namespace 0
         $ object_name_upload 1),
   Term.info "rewrite-object" ~doc:"rewrite an object"

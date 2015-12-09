@@ -58,10 +58,10 @@ let upload_missing_fragments
       ok_fragments'
   in
   let live_ones =
-    let open Albamgr_protocol.Protocol in
+    let open Nsm_model in
     Hashtbl.fold
-      (fun id (info:Osd.t) acc ->
-       if info.Osd.decommissioned
+      (fun id (info:OsdInfo.t) acc ->
+       if info.OsdInfo.decommissioned
        then acc else id :: acc
       )
       osds_info_cache' []

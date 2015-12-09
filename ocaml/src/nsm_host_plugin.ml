@@ -189,10 +189,8 @@ let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (
       | EnableGcEpoch -> fun gc_epoch ->
         NSM.enable_new_gc_epoch db gc_epoch, ()
       | PutObject -> fun (overwrite, manifest, fragment_gc_epochs) ->
-        Plugin_helper.debug_f "NSM: putting object %s" (Manifest.show manifest);
         NSM.put_object db overwrite manifest fragment_gc_epochs
       | DeleteObject -> fun (overwrite, object_name) ->
-        Plugin_helper.debug_f "NSM: deleting object %s" object_name;
         NSM.delete_object db object_name overwrite
       | UpdateObject -> fun (object_name, object_id, new_fragments, gc_epoch, version_id) ->
         NSM.update_manifest db object_name object_id new_fragments gc_epoch version_id, ()

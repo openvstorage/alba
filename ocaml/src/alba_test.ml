@@ -20,11 +20,13 @@ open Encryption
 open Lwt
 
 let test_with_alba_client ?bad_fragment_callback f =
-  let albamgr_client_cfg = Albamgr_test.get_ccfg () in
+  let albamgr_client_cfg  = Albamgr_test.get_ccfg () in
+  let tls_config = Albamgr_test.get_tls_config () in
   Lwt_main.run begin
     Alba_client.with_client
       ?bad_fragment_callback
       (ref albamgr_client_cfg)
+      ~tls_config
       ~release_resources:true
       f
   end
@@ -256,10 +258,12 @@ let test_delete_namespace () =
 
          let assert_nsm_host_prefix prefix assertion =
            Lwt_io.printlf "asserting about nsm_host" >>= fun () ->
+           let cfg = Albamgr_test.get_ccfg () in
+           let tls_config = Albamgr_test.get_tls_config () in
+           let tls = Tls.to_client_context tls_config in
            Client_helper.with_master_client'
-             ~tls:None
-             (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg
-                (Albamgr_test.get_ccfg ()))
+             ~tls
+             (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg)
              (fun client ->
                 client # prefix_keys prefix (-1)
                 >>= fun keys ->
@@ -684,6 +688,11 @@ let test_encryption () =
 
 let test_discover_claimed () =
   let test_name = "test_discover_claimed" in
+  let tls_config = Albamgr_test.get_tls_config () in
+  let tlsPort = match tls_config with
+    | None -> None
+    | Some _ -> (*Some 8730 *) None
+  in
   test_with_alba_client
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
@@ -699,7 +708,9 @@ let test_discover_claimed () =
                                         used = 1L;
                                       });
                                     ips = ["127.0.0.1"];
-                                    port = 8230; })) >>= fun () ->
+                                    port = Some 8230;
+                                    tlsPort;
+                                  })) >>= fun () ->
 
             let is_osd_available () =
               alba_client # mgr_access # list_available_osds
@@ -707,7 +718,7 @@ let test_discover_claimed () =
               let res =
                 List.exists
                   (fun osd ->
-                     let open Albamgr_protocol.Protocol.Osd in
+                     let open Nsm_model.OsdInfo in
                      test_name = get_long_id osd.kind)
                   available_osds
               in
@@ -717,7 +728,7 @@ let test_discover_claimed () =
             (* check the osd is now 'available' *)
             is_osd_available () >>= fun r ->
             assert r;
-
+            Lwt_log.debug "so far so good (1)" >>= fun () ->
             let module IRK = Osd_keys.AlbaInstanceRegistration in
             let open Slice in
 
@@ -755,14 +766,16 @@ let test_discover_claimed () =
                   no_checksum true; ]
             >>= fun apply_result ->
             OUnit.assert_equal Osd.Ok apply_result;
+            Lwt_log.debug "applied sequence" >>= fun () ->
 
             (* this timeout should be enough... *)
             Lwt_unix.sleep 3. >>= fun () ->
 
             (* check the osd is no longer 'available' *)
             is_osd_available () >>= fun r ->
-            assert (not r);
-
+            let () =
+              OUnit.assert_bool "the osd should no longer be available, but it is!" (not r)
+            in
             Lwt.return ()
             ))
 
@@ -842,6 +855,7 @@ let test_change_osd_ip_port () =
               | None -> assert false
               | Some _ -> Lwt.return ()
             in
+
             (* it's ok to fail once while clearing the borked
              * connection(s) *)
             let n = 2 in
@@ -1171,7 +1185,9 @@ let test_disk_churn () =
                                             used = 1L;
                                           });
                                         ips = ["127.0.0.1"];
-                                        port = asd_port; })) >>= fun () ->
+                                        port = Some asd_port;
+                                        tlsPort = None;
+                                      })) >>= fun () ->
                 alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
                 with_asds
                   f
@@ -1234,7 +1250,7 @@ let test_disk_churn () =
               | None -> Lwt.fail_with "can't find osd"
               | Some osd_info ->
                 alba_client # decommission_osd
-                  ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+                  ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            used_osds
          >>= fun () ->
 
@@ -1322,7 +1338,7 @@ let test_disk_churn () =
                | None -> Lwt.fail_with "can't find osd"
                | Some osd_info ->
                   alba_client # decommission_osd
-                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+                              ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
                               ~deterministic:true
@@ -1368,7 +1384,7 @@ let test_disk_churn () =
                | None -> Lwt.fail_with "can't find osd"
                | Some osd_info ->
                   alba_client # decommission_osd
-                              ~long_id:Albamgr_protocol.Protocol.Osd.(get_long_id osd_info.kind))
+                              ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            >>= fun () ->
            maintenance_client # decommission_device
                               ~deterministic:true
@@ -1521,7 +1537,9 @@ let test_add_disk () =
                                         used = 1L;
                                       });
                                     ips = ["127.0.0.1"];
-                                    port = asd_port; })) >>= fun () ->
+                                    port = Some asd_port;
+                                    tlsPort = None;
+                                  })) >>= fun () ->
             alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
 
             alba_client # mgr_access # list_namespace_osds
@@ -1537,11 +1555,14 @@ let test_add_disk () =
 let test_invalidate_deleted_namespace () =
   let test_name = "test_invalidate_deleted_namespace" in
   let namespace = test_name in
+  let cfg = Albamgr_test.get_ccfg () in
+  let tls_config = Albamgr_test.get_tls_config() in
   test_with_alba_client
     (fun alba_client1 ->
        Alba_client.with_client
+         (ref cfg)
+         ~tls_config
          ~release_resources:true
-         (ref (Albamgr_test.get_ccfg ()))
          (fun alba_client2 ->
 
             (* alba_client1 is used to manipulate namespaces
@@ -1583,12 +1604,14 @@ let test_invalidate_deleted_namespace () =
 
 let test_master_switch () =
   let test_name = "test_master_switch" in
-  let ccfg =
-    Albamgr_test.get_ccfg()
-    |> Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg in
+  let ccfg  = Albamgr_test.get_ccfg() in
+  let tls_config = Albamgr_test.get_tls_config() in
+  let cfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config ccfg in
+
   let rec wait_until_master () =
     let open Client_helper in
-    find_master_loop ~tls:None ccfg
+    let tls = Tls.to_client_context tls_config in
+    find_master_loop ~tls cfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
       Lwt.return ()
@@ -1598,7 +1621,8 @@ let test_master_switch () =
   in
   let drop_master () =
     let open Client_helper in
-    find_master_loop ~tls:None ccfg
+    let tls = Tls.to_client_context tls_config in
+    find_master_loop ~tls cfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
        begin
@@ -1606,16 +1630,15 @@ let test_master_switch () =
          let open Arakoon_client_config in
          let ip = List.hd_exn (node_cfg.ips) in
          let port = node_cfg.port in
-         let sa = Networking2.make_address ip port in
-         Lwt_io.with_connection
-           sa
+         Networking2.with_connection
+           ip port ~tls_config
+           ~buffer_pool:Buffer_pool.default_buffer_pool
            (fun conn ->
-            Lwt_log.debug_f "dropping master (can take a while)"
-            >>= fun () ->
-            let cluster = ccfg.cluster_id in
+            Lwt_log.debug "dropping master (can take a while)" >>= fun () ->
+            let cluster = cfg.cluster_id in
             Protocol_common.prologue cluster conn >>= fun () ->
             Protocol_common.drop_master conn >>= fun () ->
-            Lwt_log.debug_f "dropped master call returned"
+            Lwt_log.debug "dropped master call returned"
            )
          >>=
          wait_until_master
@@ -1760,9 +1783,12 @@ let test_stale_manifest_download () =
        Lwt.return ()
      in
      let rewrite_obj () =
+       let cfg = Albamgr_test.get_ccfg () in
+       let tls_config = Albamgr_test.get_tls_config() in
        Alba_client.with_client
+         (ref cfg)
+         ~tls_config
          ~release_resources:true
-         (ref (Albamgr_test.get_ccfg ()))
          (fun alba_client2 ->
           let maintenance_client =
             new Maintenance.client (alba_client2 # get_base_client) in

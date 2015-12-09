@@ -271,13 +271,13 @@ module WriteBuffer = struct
 type 'a deserializer = 'a ReadBuffer.deserializer
 type 'a serializer = 'a WriteBuffer.serializer
 
-module FdReader = struct
+module NetFdReader = struct
     open Lwt.Infix
 
     let with_lwt_bytes fd len f =
       let buf = Lwt_bytes.create len in
       Lwt.finalize
-        (fun () -> Lwt_extra2.read_all_lwt_bytes_exact fd buf 0 len >>= fun () ->
+        (fun () -> Net_fd.read_all_lwt_bytes_exact buf 0 len fd >>= fun () ->
                    f buf)
         (fun () -> Lwt_bytes.unsafe_destroy buf;
                    Lwt.return_unit)
@@ -302,7 +302,7 @@ module FdReader = struct
 
     let raw_string_from fd length =
       let s = Bytes.create length in
-      Lwt_extra2.read_all_exact fd s 0 length >>= fun () ->
+      Net_fd.read_all_exact s 0 length fd >>= fun () ->
       Lwt.return s
 
     let string_from fd =

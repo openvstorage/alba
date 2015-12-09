@@ -487,7 +487,7 @@ let upds_for_delivered_msg
          let osd_info_v = db # get_exn osd_info_key in
          let _, osd_info = deserialize Osd.from_buffer_with_claim_info osd_info_v in
 
-         if osd_info.Osd.decommissioned
+         if osd_info.Nsm_model.OsdInfo.decommissioned
          then
            begin
              let add_work_items =
@@ -939,11 +939,30 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         Update.Assert (info_key, Some info_serialized)
         :: Update.Set (info_key,
                        serialize
-                         Osd.to_buffer_with_claim_info
+                         (Osd.to_buffer_with_claim_info ~version:2)
                          (claim_info, osd_info_new))
         :: acc;
       in
       upds
+    in
+    let add_osd osd =
+      (* this adds the osd to the albamgr without claiming it *)
+
+       let info_key =
+         Keys.Osd.info
+           ~long_id:(let open Nsm_model in OsdInfo.get_long_id osd.OsdInfo.kind)
+       in
+       if None <> (db # get info_key)
+       then Error.failwith Error.Osd_already_exists;
+
+
+       let upds = [ Update.Assert (info_key, None);
+                    Update.Set (info_key,
+                                serialize
+                                  (Osd.to_buffer_with_claim_info ~version:2)
+                                  (Osd.ClaimInfo.Available, osd)); ]
+       in
+       Lwt.return ((), upds)
     in
     function
     | AddNsmHost -> fun (id, nsm_host) ->
@@ -972,20 +991,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             [ Update.Set (nsm_host_info_key,
                                  serialize Nsm_host.to_buffer nsm_host) ]
       end
-    | AddOsd -> fun osd ->
-      (* this adds the osd to the albamgr without claiming it *)
-      let info_key = Keys.Osd.info ~long_id:(Osd.get_long_id osd.Osd.kind) in
-      if None <> (db # get info_key)
-      then Error.failwith Error.Osd_already_exists;
+    | AddOsd  -> fun osd -> add_osd osd
+    | AddOsd2 -> fun osd -> add_osd osd
 
-
-      let upds = [ Update.Assert (info_key, None);
-                   Update.Set (info_key,
-                               serialize
-                                 Osd.to_buffer_with_claim_info
-                                 (Osd.ClaimInfo.Available, osd)); ]
-      in
-      Lwt.return ((), upds)
     | UpdateOsd ->
        fun (long_id, osd_changes) ->
        let upds = make_update_osd_updates long_id osd_changes [] in
@@ -1020,10 +1028,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | AnotherAlba _
         | Available -> Error.(failwith ~payload:"osd not claimed by this instance" Unknown)
       in
-      if osd_info_current.Osd.decommissioned
+      if osd_info_current.Nsm_model.OsdInfo.decommissioned
       then Error.(failwith Osd_already_decommissioned);
 
-      let osd_info_new = Osd.({
+      let osd_info_new = Nsm_model.OsdInfo.({
           osd_info_current with
           decommissioned = true;
         }) in
@@ -1032,7 +1040,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         [ Update.Assert (info_key, Some info_serialized);
           Update.Set (info_key,
                       serialize
-                        Osd.to_buffer_with_claim_info
+                        (Osd.to_buffer_with_claim_info ~version:2)
                         (claim_info, osd_info_new)); ]
       in
 
@@ -1163,7 +1171,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           [ [ Update.Assert (info_key, Some info_serialized);
               Update.Set (info_key,
                           serialize
-                            Osd.to_buffer_with_claim_info
+                            (Osd.to_buffer_with_claim_info ~version:2)
                             (Osd.ClaimInfo.ThisAlba osd_id, osd_info));
               Update.Assert (next_id_key, next_id_so);
               Update.Set (next_id_key, serialize Llio.int32_to (Int32.succ osd_id));
@@ -1192,7 +1200,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         [ Update.Assert (info_key, Some info_serialized);
           Update.Set (info_key,
                       serialize
-                        Osd.to_buffer_with_claim_info
+                        (Osd.to_buffer_with_claim_info ~version:2)
                         (Osd.ClaimInfo.AnotherAlba alba_id', osd_info)); ]
       in
 
@@ -1249,7 +1257,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             List.filter
               (fun osd_id ->
                  let _, osd_info = Option.get_some (get_osd_by_id db ~osd_id) in
-                 not osd_info.Osd.decommissioned)
+                 not osd_info.Nsm_model.OsdInfo.decommissioned)
               ids
           in
 
@@ -1656,7 +1664,28 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                           serialize Maintenance_config.to_buffer new_cfg); ])
   in
 
-  let handle_query : type i o. (i, o) query -> i -> o = function
+  let handle_query : type i o. (i, o) query -> i -> o =
+  let list_decommissioning_osds { RangeQueryArgs.first; finc; last; reverse; max; } =
+    let module KV = WrapReadUserDb(struct
+          let db = db
+          let prefix = ""
+        end)
+      in
+      let module EKV = Key_value_store.Read_store_extensions(KV) in
+      EKV.map_range
+        db
+        ~first:(Keys.Osd.decommissioning ~osd_id:first) ~finc
+        ~last:(match last with
+            | Some (last, linc) -> Some (Keys.Osd.decommissioning ~osd_id:last, linc)
+            | None -> Keys.Osd.decommissioning_next_prefix)
+        ~max:(cap_max ~max ()) ~reverse
+        (fun cur key ->
+           let osd_id = Keys.Osd.decommissioning_extract_osd_id key in
+           let _, osd_info = Option.get_some (get_osd_by_id db ~osd_id) in
+           osd_id, osd_info)
+  in
+
+  function
     | ListNsmHosts -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
       let (cnt, hosts), has_more =
         list_nsm_hosts
@@ -1682,7 +1711,19 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~first ~finc ~last
         ~max:(cap_max ~max ())
         ~reverse
+    | ListOsdsByOsdId2 -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+      list_osds_by_osd_id
+        db
+        ~first ~finc ~last
+        ~max:(cap_max ~max ())
+        ~reverse
     | ListOsdsByLongId -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+      list_osds_by_long_id
+        db
+        ~first ~finc ~last
+        ~max:(cap_max ~max ())
+        ~reverse
+    | ListOsdsByLongId2 -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
       list_osds_by_long_id
         db
         ~first ~finc ~last
@@ -1789,24 +1830,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       fun long_id ->
         let _ = check_claim_osd long_id in
         ()
-    | ListDecommissioningOsds -> fun { RangeQueryArgs.first; finc; last; reverse; max; } ->
-      let module KV = WrapReadUserDb(struct
-          let db = db
-          let prefix = ""
-        end)
-      in
-      let module EKV = Key_value_store.Read_store_extensions(KV) in
-      EKV.map_range
-        db
-        ~first:(Keys.Osd.decommissioning ~osd_id:first) ~finc
-        ~last:(match last with
-            | Some (last, linc) -> Some (Keys.Osd.decommissioning ~osd_id:last, linc)
-            | None -> Keys.Osd.decommissioning_next_prefix)
-        ~max:(cap_max ~max ()) ~reverse
-        (fun cur key ->
-           let osd_id = Keys.Osd.decommissioning_extract_osd_id key in
-           let _, osd_info = Option.get_some (get_osd_by_id db ~osd_id) in
-           osd_id, osd_info)
+    | ListDecommissioningOsds  -> list_decommissioning_osds
+    | ListDecommissioningOsds2 -> list_decommissioning_osds
     | ListOsdNamespaces -> fun (osd_id,
                                 { RangeQueryArgs.first; finc; last; reverse; max; }) ->
       let module KV = WrapReadUserDb(struct

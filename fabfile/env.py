@@ -24,6 +24,9 @@ def env_or_default(key, default):
     else:
         return default
 
+def is_true(tls):
+    return tls == 'True' or tls == 'true' or tls == True
+
 ARAKOON_HOME = env_or_default("ARAKOON_HOME",
                               "%s/workspace/ARAKOON" % os.environ['HOME'])
 ARAKOON_BIN = env_or_default("ARAKOON_BIN",
@@ -58,15 +61,27 @@ env = {
     'voldrv_backend_test' : VOLDRV_BACKEND_TEST,
     'voldrv_tests' : VOLDRV_TEST,
     'failure_tester' : "%s/ocaml/disk_failure_tests.native" % cwd,
-    'osds_on_separate_fs' : False
+    'osds_on_separate_fs' : False,
+    'alba_tls' : env_or_default('ALBA_TLS', 'False'),
+    'alba.0.6' : env_or_default('ALBA_06', 'alba.0.6')
 }
 
 arakoon_nodes = ["arakoon_0", "arakoon_1", "witness_0"]
 arakoon_config_file = "%s/cfg/test.ini" % cwd
 
+TLS = {
+    'arakoon_config_file' : "%s/cfg/test_tls.ini" % cwd,
+    'root_dir' : ARAKOON_PATH,
+}
+
+for node in arakoon_nodes:
+    TLS[node] = '%s/%s' % (ARAKOON_PATH, node)
+
+
 # 2 node cluster that can evolve into 3 node cluster above
 arakoon_nodes_2 = ["arakoon_0", "witness_0"]
 arakoon_config_file_2 = "%s/cfg/test_2.ini" % cwd
+
 
 namespace = "demo"
 

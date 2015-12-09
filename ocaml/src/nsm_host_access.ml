@@ -92,6 +92,7 @@ let gc_grace_period = 120.
 
 class nsm_host_access
     (mgr : Albamgr_client.client)
+    ~tls_config
     nsm_host_connection_pool_size
     buffer_pool
   =
@@ -114,6 +115,7 @@ class nsm_host_access
   let nsm_hosts_pool =
     Pool.Nsm_host.make
       ~size:nsm_host_connection_pool_size
+      ~tls_config
       (fun nsm_host_id -> get_nsm_host_info ~nsm_host_id)
       buffer_pool
   in
