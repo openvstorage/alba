@@ -1412,7 +1412,7 @@ class client ?(retry_timeout = 60.)
       in
       let f () =
         MStats.stop ();
-        Lwt_log.debug_f
+        Lwt_log.info_f
           ~section
           "statistics:%s"
           (MStats.show_stats ())
