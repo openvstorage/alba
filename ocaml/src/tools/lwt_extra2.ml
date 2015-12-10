@@ -141,8 +141,9 @@ let _read_all read_to_target offset length =
        end >>= fun () ->
        Lwt.return length
     | todo ->
-       read_to_target offset todo >>= fun got ->
-       inner (offset + got) (count + 1) (todo - got)
+       read_to_target offset todo >>= function
+       | 0 -> Lwt.return (length - todo)
+       | got -> inner (offset + got) (count + 1) (todo - got)
   in
   inner offset 0 length
 
