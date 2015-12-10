@@ -691,9 +691,11 @@ let test_encryption () =
 let test_discover_claimed () =
   let test_name = "test_discover_claimed" in
   let tls_config = Albamgr_test.get_tls_config () in
-  let tlsPort = match tls_config with
-    | None -> None
-    | Some _ -> (*Some 8730 *) None
+  let port, tlsPort =
+    let p = 8230 in
+    match tls_config with
+    | None -> Some p, None
+    | Some _ -> None, Some p
   in
   test_with_alba_client
     (fun alba_client ->
@@ -710,7 +712,7 @@ let test_discover_claimed () =
                                         used = 1L;
                                       });
                                     ips = ["127.0.0.1"];
-                                    port = Some 8230;
+                                    port;
                                     tlsPort;
                                   })) >>= fun () ->
 

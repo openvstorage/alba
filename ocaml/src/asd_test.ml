@@ -48,7 +48,8 @@ let with_asd_client ?(is_restart=false) test_name port f =
     with
     | None -> Some port, None
     | Some _ ->
-       let path = "/tmp/arakoon/test_discover_claimed/" in
+       let path = (try Sys.getenv "WORKSPACE"
+                   with Not_found -> "") ^ "/tmp/arakoon/test_discover_claimed/" in
        let open Asd_config.Config in
        None,
        Some {cert = path ^ "test_discover_claimed.pem";
