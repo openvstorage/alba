@@ -132,23 +132,20 @@ let unlink ?(may_not_exist=false) file =
         Lwt.fail exn)
 
 let _read_all read_to_target offset length =
-  let rec inner offset = function
-    | 0 -> Lwt.return length
+  let rec inner offset count = function
+    | 0 ->
+       begin
+         if count < 2
+         then Lwt.return_unit
+         else Lwt_log.info_f "reading from fd: %iB in %i steps" length count
+       end >>= fun () ->
+       Lwt.return length
     | todo ->
-      read_to_target offset todo >>= function
-      | 0 -> Lwt.return (length - todo)
-      | got ->
-        (* only log if we can't read it all in 1 go *)
-        if got = todo
-        then Lwt.return length
-        else begin
-          Lwt_log.info_f
-            "reading from fd: got %i, requested %i"
-            got todo >>= fun () ->
-          inner (offset + got) (todo - got)
-        end
+       read_to_target offset todo >>= function
+       | 0 -> Lwt.return (length - todo)
+       | got -> inner (offset + got) (count + 1) (todo - got)
   in
-  inner offset length
+  inner offset 0 length
 
 let read_all_lwt_bytes fd target offset length =
   _read_all (Lwt_bytes.read fd target) offset length
