@@ -35,8 +35,11 @@ let connect_with ip port =
       Unix.SOCK_STREAM 0 in
   Lwt.catch
     (fun () ->
-     Lwt_unix.connect fd address >>= fun () ->
-     Lwt.return (fd, fun () -> Lwt_unix.close fd))
+     Lwt_unix.with_timeout
+       1.
+       (fun () ->
+        Lwt_unix.connect fd address >>= fun () ->
+        Lwt.return (fd, fun () -> Lwt_unix.close fd)))
     (fun exn ->
      Lwt_unix.close fd >>= fun () ->
      Lwt.fail exn)
