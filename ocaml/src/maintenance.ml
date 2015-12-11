@@ -100,41 +100,53 @@ class client ?(retry_timeout = 60.)
     else border, None              , false
   in
 
-
-  let _timed_repair_object_generic_and_update_manifest
-        ~namespace_id ~manifest ~problem_fragments ~problem_osds
-    =
-    Prelude.with_timing_lwt
-      (fun () ->
-       Repair.repair_object_generic_and_update_manifest
-         alba_client
-         ~namespace_id
-         ~manifest
-         ~problem_fragments
-         ~problem_osds
-      )
-    >>= fun (delta,()) ->
-    MStats.new_delta MStats.REPAIR_GENERIC_TIME delta;
-    MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int32Set.cardinal problem_osds |> float);
-    Lwt.return_unit
-  in
-  let _timed_rewrite_object ~namespace_id ~manifest =
-    Prelude.with_timing_lwt
-      (fun () ->
-       Repair.rewrite_object alba_client ~namespace_id ~manifest)
-    >>= fun (delta,()) ->
-    MStats.new_delta MStats.REWRITE_OBJECT delta;
-    Lwt.return_unit
-
-  in
-  object(self)
-
-    val throttle_pool =
+  let throttle_pool =
       let max_size = load in
       Lwt_pool2.create max_size
                        ~check:(fun _ _ -> false)
                        ~factory:(fun () -> Lwt.return_unit)
                        ~cleanup:(fun () -> Lwt.return_unit)
+  in
+  let _timed_repair_object_generic_and_update_manifest
+        ~namespace_id ~manifest ~problem_fragments ~problem_osds
+    =
+    Lwt_pool2.use
+      throttle_pool
+      (fun () ->
+       Prelude.with_timing_lwt
+         (fun () ->
+          Repair.repair_object_generic_and_update_manifest
+            alba_client
+            ~namespace_id
+            ~manifest
+            ~problem_fragments
+            ~problem_osds
+         )
+
+       >>= fun (delta,()) ->
+       MStats.new_delta MStats.REPAIR_GENERIC_TIME delta;
+       MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int32Set.cardinal problem_osds |> float);
+       Lwt.return_unit
+      )
+  in
+  let _timed_rewrite_object ~namespace_id ~manifest =
+    Lwt_pool2.use
+      throttle_pool
+      (fun () ->
+       Prelude.with_timing_lwt
+         (fun () ->
+          Repair.rewrite_object
+            alba_client
+            ~namespace_id
+            ~manifest
+         )
+       >>= fun (delta,()) ->
+       MStats.new_delta MStats.REWRITE_OBJECT delta;
+       Lwt.return_unit
+      )
+
+  in
+  object(self)
 
     method get_coordinator = coordinator
 
@@ -1011,7 +1023,7 @@ class client ?(retry_timeout = 60.)
               ~last:(Some (((k, m, best_actual_fragment_count, 0), ""), false))
               ~max:200 >>= fun ((cnt, objs), _) ->
 
-            let do_one manifest () =
+            let do_one manifest =
               let _, problem_fragments =
                  List.fold_left
                    (fun (chunk_id, acc) chunk_location ->
@@ -1046,12 +1058,7 @@ class client ?(retry_timeout = 60.)
                     ~manifest
                     ~problem_fragments
             in
-            Lwt_list.iter_s
-              (fun manifest ->
-               Lwt_pool2.use throttle_pool (do_one manifest)
-              )
-              objs
-            >>= fun () ->
+            Lwt_list.iter_s do_one objs >>= fun () ->
             Lwt.return (cnt > 0)
           end
           else begin
