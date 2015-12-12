@@ -85,10 +85,10 @@ class osd_access
   let osds_pool =
     Pool.Osd.make
       ~size:osd_connection_pool_size
-      (fun osd_id ->
-       get_osd_info ~osd_id >>= fun (osd_info, _) ->
-       let open Nsm_model.OsdInfo in
-       Lwt.return osd_info.kind)
+      ~get_osd_kind:(fun osd_id ->
+                     get_osd_info ~osd_id >>= fun (osd_info, _) ->
+                     let open Nsm_model.OsdInfo in
+                     Lwt.return osd_info.kind)
       osd_buffer_pool
       tls_config
   in
