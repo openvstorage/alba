@@ -26,6 +26,13 @@ let ignore_errors ?(logging=false) f =
          then Lwt_log.debug ~exn "ignoring"
          else Lwt.return ())
 
+let with_timeout ~msg d f =
+  Lwt.pick
+    [ (Lwt_unix.sleep d >>= fun () ->
+       Lwt_log.debug msg >>= fun () ->
+       Lwt.fail Lwt_unix.Timeout);
+      Lwt.apply f (); ]
+
 module CountDownLatch = struct
   type t = { mutable needed : int;
              mutable waiters : unit Lwt.u list; }
