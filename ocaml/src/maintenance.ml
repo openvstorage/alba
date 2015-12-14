@@ -107,43 +107,63 @@ class client ?(retry_timeout = 60.)
                        ~factory:(fun () -> Lwt.return_unit)
                        ~cleanup:(fun () -> Lwt.return_unit)
   in
+  let with_throttling f =
+    Lwt_pool2.use throttle_pool f
+  in
+  let _throttled_repair_object_generic_and_update_manifest
+        alba_client
+         ~namespace_id
+         ~manifest
+         ~problem_fragments
+         ~problem_osds
+    =
+    with_throttling
+      (fun () ->
+       Repair.repair_object_generic_and_update_manifest
+         alba_client
+         ~namespace_id
+         ~manifest
+         ~problem_fragments
+         ~problem_osds
+      )
+  in
+
   let _timed_repair_object_generic_and_update_manifest
         ~namespace_id ~manifest ~problem_fragments ~problem_osds
     =
-    Lwt_pool2.use
-      throttle_pool
+    Prelude.with_timing_lwt
       (fun () ->
-       Prelude.with_timing_lwt
-         (fun () ->
-          Repair.repair_object_generic_and_update_manifest
-            alba_client
-            ~namespace_id
-            ~manifest
-            ~problem_fragments
-            ~problem_osds
-         )
-
-       >>= fun (delta,()) ->
-       MStats.new_delta MStats.REPAIR_GENERIC_TIME delta;
-       MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int32Set.cardinal problem_osds |> float);
-       Lwt.return_unit
+       _throttled_repair_object_generic_and_update_manifest
+         alba_client
+         ~namespace_id
+         ~manifest
+         ~problem_fragments
+         ~problem_osds
+      )
+    >>= fun (delta,()) ->
+    MStats.new_delta MStats.REPAIR_GENERIC_TIME delta;
+    MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int32Set.cardinal problem_osds |> float);
+    Lwt.return_unit
+  in
+  let _throttled_rewrite_object alba_client ~namespace_id ~manifest =
+    with_throttling
+      (fun () ->
+       Repair.rewrite_object
+         alba_client
+         ~namespace_id
+         ~manifest
       )
   in
-  let _timed_rewrite_object ~namespace_id ~manifest =
-    Lwt_pool2.use
-      throttle_pool
+  let _timed_rewrite_object alba_Client ~namespace_id ~manifest =
+    Prelude.with_timing_lwt
       (fun () ->
-       Prelude.with_timing_lwt
-         (fun () ->
-          Repair.rewrite_object
-            alba_client
-            ~namespace_id
-            ~manifest
-         )
-       >>= fun (delta,()) ->
-       MStats.new_delta MStats.REWRITE_OBJECT delta;
-       Lwt.return_unit
+       _throttled_rewrite_object
+         alba_client
+         ~namespace_id ~manifest
       )
+    >>= fun (delta,()) ->
+    MStats.new_delta MStats.REWRITE_OBJECT delta;
+    Lwt.return_unit
 
   in
   object(self)
@@ -436,7 +456,7 @@ class client ?(retry_timeout = 60.)
               osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
             Lwt_extra2.ignore_errors
               ~logging:true
-              (fun () -> _timed_rewrite_object ~namespace_id ~manifest)
+              (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest)
            )
         )
         manifests >>= fun () ->
@@ -842,7 +862,7 @@ class client ?(retry_timeout = 60.)
             ~problem_osds
         end
       else
-        _timed_rewrite_object ~namespace_id ~manifest
+        _timed_rewrite_object alba_client ~namespace_id ~manifest
 
 
     method rebalance_namespace
@@ -1066,7 +1086,7 @@ class client ?(retry_timeout = 60.)
             if cnt > 0
             then
               Lwt_list.iter_s
-                (fun manifest -> Repair.rewrite_object alba_client ~namespace_id ~manifest)
+                (fun manifest -> _throttled_rewrite_object alba_client ~namespace_id ~manifest)
                 objs >>= fun () ->
               Lwt.return true
             else
@@ -1308,8 +1328,7 @@ class client ?(retry_timeout = 60.)
 
                 Lwt_list.iter_s
                   (fun manifest ->
-                   Repair.rewrite_object
-                     alba_client
+                   _throttled_rewrite_object alba_client
                      ~namespace_id
                      ~manifest)
                   objs >>= fun () ->
@@ -1327,11 +1346,16 @@ class client ?(retry_timeout = 60.)
                 get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
 
                 Lwt_list.map_s
-                  (Verify.verify_and_maybe_repair_object
-                     alba_client
-                     ~namespace_id
-                     ~verify_checksum:checksum
-                     ~repair_osd_unavailable)
+                  (fun obj ->
+                   with_throttling
+                     (fun () ->
+                      Verify.verify_and_maybe_repair_object
+                        alba_client
+                        ~namespace_id
+                        ~verify_checksum:checksum
+                        ~repair_osd_unavailable obj
+                     )
+                  )
                   objs >>= fun res ->
 
                 let fragments_detected_missing,
