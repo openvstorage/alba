@@ -80,12 +80,17 @@ let use t f =
               Lwt.return r)
            (fun exn ->
               if t.check a exn
-              then Lwt.fail exn
-              else begin
-                t.count <- t.count - 1;
-                t.cleanup a >>= fun () ->
-                Lwt.fail exn
-              end))
+              then
+                begin
+                  Queue.push a t.available_items;
+                  Lwt.fail exn
+                end
+              else
+                begin
+                  t.count <- t.count - 1;
+                  t.cleanup a >>= fun () ->
+                  Lwt.fail exn
+                end))
       (fun () ->
          (* wake up the first waiter *)
          (try Lwt.wakeup (Queue.pop t.waiters) ()
