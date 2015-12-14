@@ -132,7 +132,7 @@ module Pool = struct
 
     type t = {
       pools : (Osd.id, osd_pool) Hashtbl.t;
-      get_osd_kind : Osd.id -> OsdInfo.kind Lwt.t; (* TODO: should not have _ Lwt.t signature  *)
+      get_osd_kind : Osd.id -> OsdInfo.kind Lwt.t;
       pool_size : int;
       buffer_pool : Buffer_pool.t;
       tls_config: Tls.t option;
