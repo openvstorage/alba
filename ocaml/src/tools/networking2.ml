@@ -41,9 +41,12 @@ let connect_with ip port ~tls_config =
   | None ->
      Lwt.catch
        (fun () ->
-        Lwt_unix.connect fd address >>= fun () ->
-        let r = Net_fd.wrap_plain fd in
-        Lwt.return (r , fun () -> Lwt_unix.close fd)
+        Lwt_extra2.with_timeout
+          ~msg:(Printf.sprintf "timeout while connecting with %s %i" ip port)
+          (fun () ->
+           Lwt_unix.connect fd address >>= fun () ->
+           let r = Net_fd.wrap_plain fd in
+           Lwt.return (r , fun () -> Lwt_unix.close fd))
        )
        (fun exn ->
         Lwt_unix.close fd >>= fun () ->
@@ -52,10 +55,13 @@ let connect_with ip port ~tls_config =
      begin
        Lwt.catch
          (fun () ->
-          Lwt_unix.connect fd address >>= fun () ->
-          Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
-          let r = Net_fd.wrap_ssl lwt_s in
-          Lwt.return (r, fun () -> Lwt_unix.close fd)
+          Lwt_extra2.with_timeout
+            ~msg:(Printf.sprintf "timeout while connecting with %s %i (ssl)" ip port)
+            (fun () ->
+             Lwt_unix.connect fd address >>= fun () ->
+             Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
+             let r = Net_fd.wrap_ssl lwt_s in
+             Lwt.return (r, fun () -> Lwt_unix.close fd))
          )
          (fun exn ->
           Lwt_unix.close fd >>= fun () ->
