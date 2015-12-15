@@ -75,8 +75,8 @@ end
 
 
 class client ?(retry_timeout = 60.)
+             ?(load = 1)
              (alba_client : Alba_base_client.client)
-
   =
   let coordinator =
     let open Maintenance_coordination in
@@ -100,13 +100,40 @@ class client ?(retry_timeout = 60.)
     else border, None              , false
   in
 
+  let throttle_pool =
+      let max_size = load in
+      Lwt_pool2.create max_size
+                       ~check:(fun _ _ -> false)
+                       ~factory:(fun () -> Lwt.return_unit)
+                       ~cleanup:(fun () -> Lwt.return_unit)
+  in
+  let with_throttling f =
+    Lwt_pool2.use throttle_pool f
+  in
+  let _throttled_repair_object_generic_and_update_manifest
+        alba_client
+         ~namespace_id
+         ~manifest
+         ~problem_fragments
+         ~problem_osds
+    =
+    with_throttling
+      (fun () ->
+       Repair.repair_object_generic_and_update_manifest
+         alba_client
+         ~namespace_id
+         ~manifest
+         ~problem_fragments
+         ~problem_osds
+      )
+  in
 
   let _timed_repair_object_generic_and_update_manifest
         ~namespace_id ~manifest ~problem_fragments ~problem_osds
     =
     Prelude.with_timing_lwt
       (fun () ->
-       Repair.repair_object_generic_and_update_manifest
+       _throttled_repair_object_generic_and_update_manifest
          alba_client
          ~namespace_id
          ~manifest
@@ -118,10 +145,22 @@ class client ?(retry_timeout = 60.)
     MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int32Set.cardinal problem_osds |> float);
     Lwt.return_unit
   in
-  let _timed_rewrite_object ~namespace_id ~manifest =
+  let _throttled_rewrite_object alba_client ~namespace_id ~manifest =
+    with_throttling
+      (fun () ->
+       Repair.rewrite_object
+         alba_client
+         ~namespace_id
+         ~manifest
+      )
+  in
+  let _timed_rewrite_object alba_Client ~namespace_id ~manifest =
     Prelude.with_timing_lwt
       (fun () ->
-       Repair.rewrite_object alba_client ~namespace_id ~manifest)
+       _throttled_rewrite_object
+         alba_client
+         ~namespace_id ~manifest
+      )
     >>= fun (delta,()) ->
     MStats.new_delta MStats.REWRITE_OBJECT delta;
     Lwt.return_unit
@@ -417,7 +456,7 @@ class client ?(retry_timeout = 60.)
               osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
             Lwt_extra2.ignore_errors
               ~logging:true
-              (fun () -> _timed_rewrite_object ~namespace_id ~manifest)
+              (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest)
            )
         )
         manifests >>= fun () ->
@@ -538,7 +577,11 @@ class client ?(retry_timeout = 60.)
           alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, devices, _) ->
 
           Lwt_list.iter_p
-            (fun osd_id -> self # clean_device_obsolete_keys ~namespace_id ~osd_id)
+            (fun osd_id ->
+             with_throttling
+               (fun () ->
+                self # clean_device_obsolete_keys ~namespace_id ~osd_id)
+            )
             devices
         end
       else
@@ -814,7 +857,7 @@ class client ?(retry_timeout = 60.)
             ~problem_osds
         end
       else
-        _timed_rewrite_object ~namespace_id ~manifest
+        _timed_rewrite_object alba_client ~namespace_id ~manifest
 
 
     method rebalance_namespace
@@ -898,7 +941,11 @@ class client ?(retry_timeout = 60.)
            Lwt_log.debug_f "rebalance: moving %i fragments"
                            (List.length best)
            >>= fun ()->
-           Lwt_list.iter_s execute_move best
+           Lwt_list.iter_s
+             (fun move ->
+              with_throttling (fun () ->execute_move move)
+             )
+             best
            >>= fun () ->
            let delay =
              if !migrated
@@ -990,43 +1037,42 @@ class client ?(retry_timeout = 60.)
               ~last:(Some (((k, m, best_actual_fragment_count, 0), ""), false))
               ~max:200 >>= fun ((cnt, objs), _) ->
 
-            Lwt_list.iter_s
-              (fun manifest ->
-                 let _, problem_fragments =
-                   List.fold_left
-                     (fun (chunk_id, acc) chunk_location ->
-                        let actual_fragments = List.map_filter_rev fst chunk_location in
-                        let actual_fragments_count = List.length actual_fragments in
-                        let missing_fragments =
-                          List.map_filter
-                            (fun (fragment_id, (osd_id_o, _)) ->
-                               match osd_id_o with
-                               | None -> Some (chunk_id, fragment_id)
-                               | Some _ -> None)
-                            (List.mapi
-                               (fun fragment_id osd_id_o -> fragment_id, osd_id_o)
-                               chunk_location)
-                        in
-                        let to_generate =
-                          List.take
-                            (best_actual_fragment_count - actual_fragments_count)
-                            missing_fragments
-                        in
-                        let acc' =
-                          List.rev_append
-                            to_generate
-                            acc
-                        in
-                        chunk_id + 1, acc')
-                     (0, [])
-                     manifest.Nsm_model.Manifest.fragment_locations
-                 in
-                 self # repair_object
-                   ~namespace_id
-                   ~manifest
-                   ~problem_fragments)
-              objs >>= fun () ->
-
+            let do_one manifest =
+              let _, problem_fragments =
+                 List.fold_left
+                   (fun (chunk_id, acc) chunk_location ->
+                    let actual_fragments = List.map_filter_rev fst chunk_location in
+                    let actual_fragments_count = List.length actual_fragments in
+                    let missing_fragments =
+                      List.map_filter
+                        (fun (fragment_id, (osd_id_o, _)) ->
+                         match osd_id_o with
+                         | None -> Some (chunk_id, fragment_id)
+                         | Some _ -> None)
+                        (List.mapi
+                           (fun fragment_id osd_id_o -> fragment_id, osd_id_o)
+                           chunk_location)
+                    in
+                    let to_generate =
+                      List.take
+                        (best_actual_fragment_count - actual_fragments_count)
+                        missing_fragments
+                    in
+                    let acc' =
+                      List.rev_append
+                        to_generate
+                        acc
+                    in
+                    chunk_id + 1, acc')
+                   (0, [])
+                   manifest.Nsm_model.Manifest.fragment_locations
+               in
+               self # repair_object
+                    ~namespace_id
+                    ~manifest
+                    ~problem_fragments
+            in
+            Lwt_list.iter_s do_one objs >>= fun () ->
             Lwt.return (cnt > 0)
           end
           else begin
@@ -1034,7 +1080,7 @@ class client ?(retry_timeout = 60.)
             if cnt > 0
             then
               Lwt_list.iter_s
-                (fun manifest -> Repair.rewrite_object alba_client ~namespace_id ~manifest)
+                (fun manifest -> _throttled_rewrite_object alba_client ~namespace_id ~manifest)
                 objs >>= fun () ->
               Lwt.return true
             else
@@ -1276,8 +1322,7 @@ class client ?(retry_timeout = 60.)
 
                 Lwt_list.iter_s
                   (fun manifest ->
-                   Repair.rewrite_object
-                     alba_client
+                   _throttled_rewrite_object alba_client
                      ~namespace_id
                      ~manifest)
                   objs >>= fun () ->
@@ -1295,11 +1340,16 @@ class client ?(retry_timeout = 60.)
                 get_next_batch pb >>= fun (((cnt, objs), has_more) as batch) ->
 
                 Lwt_list.map_s
-                  (Verify.verify_and_maybe_repair_object
-                     alba_client
-                     ~namespace_id
-                     ~verify_checksum:checksum
-                     ~repair_osd_unavailable)
+                  (fun obj ->
+                   with_throttling
+                     (fun () ->
+                      Verify.verify_and_maybe_repair_object
+                        alba_client
+                        ~namespace_id
+                        ~verify_checksum:checksum
+                        ~repair_osd_unavailable obj
+                     )
+                  )
                   objs >>= fun res ->
 
                 let fragments_detected_missing,
@@ -1516,8 +1566,8 @@ class client ?(retry_timeout = 60.)
          let rec run_until_removed (msg, f) =
            Lwt.catch
              (fun () ->
-                f () >>= fun () ->
-                Lwt.return `Continue)
+              f () >>= fun () ->
+              Lwt.return `Continue)
              (function
                | Error.Albamgr_exn (Error.Namespace_does_not_exist, _)
                | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Namespace_id_not_found, _) ->

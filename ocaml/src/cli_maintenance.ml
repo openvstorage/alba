@@ -30,6 +30,7 @@ module Config = struct
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
     tls_client : Tls.t option [@default None];
+    load : (int [@default 10]);
   } [@@deriving yojson, show]
 end
 
@@ -144,7 +145,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~tls_config:cfg.tls_client
         (fun client ->
            let maintenance_client =
-             new Maintenance.client (client # get_base_client)
+             new Maintenance.client (client # get_base_client) ~load:cfg.load
            in
            let coordinator = maintenance_client # get_coordinator in
            Lwt.catch
