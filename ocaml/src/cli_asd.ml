@@ -185,7 +185,7 @@ let asd_multi_get hosts port tls_config asd_id (keys:string list) =
 
      client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys)
      >>= fun values ->
-     print_endline ([%show: (Bigstring_slice.t * Checksum.t) option list] values);
+     print_endline ([%show: (Lwt_bytes2.Lwt_bytes.t * Checksum.t) option list] values);
      Lwt.return ())
 
 let asd_multi_get_cmd =

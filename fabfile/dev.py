@@ -149,6 +149,12 @@ def run_tests_cli():
             alba._extend_alba_tls(cmd)
         return cmd
 
+    def _rough_compare_string(x,y):
+        if x.find(y) < 0:
+            msg = "expected %s to contain '%s'" % (v_s,v)
+            print msg
+            raise Exception(msg)
+
     def _run(cmd):
         cmd_line = ' '.join(cmd)
         result = where(cmd_line, capture = True)
@@ -175,7 +181,7 @@ def run_tests_cli():
 
         asd_get = _asd('asd-multi-get',[k])
         v_s = _run(asd_get)
-        assert (v_s.find(v) > 0)
+        _rough_compare_string(v_s,v)
 
         asd_delete = _asd('asd-delete',[k])
         _run(asd_delete)
