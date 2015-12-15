@@ -20,13 +20,6 @@ type t = {
   length : int;
 }
 
-let show =
-  let r = "<bigstring_slice>" in
-  fun t -> r
-
-let pp formatter t =
-  Format.pp_print_string formatter (show t)
-
 let from_bigstring bs offset length =
   assert (offset + length <= Lwt_bytes.length bs);
   { bs; offset; length; }
@@ -59,3 +52,12 @@ let to_string t =
 
 let of_string s =
   Lwt_bytes.of_string s |> wrap_bigstring
+
+let show (t:t) =
+  if t.length < 32
+  then Printf.sprintf "<bigstring_slice: length=%i %S>" t.length (to_string t)
+  else Printf.sprintf "<bigstring_slice: length=%i _ >" t.length
+
+
+let pp formatter t =
+  Format.pp_print_string formatter (show t)

@@ -17,5 +17,15 @@ limitations under the License.
 module Lwt_bytes = struct
   include Lwt_bytes
 
+  let show (t:t) =
+    let l = Lwt_bytes.length t in
+    if l < 32
+    then Printf.sprintf "<Lwt_bytes: length=%i %S>" l (to_string t)
+    else Printf.sprintf "<Lwt_bytes: length=%i _ >" l
+
+
+  let pp formatter t =
+    Format.pp_print_string formatter (show t)
+
   let unsafe_destroy (t : t) = Core_kernel.Bigstring.unsafe_destroy t
 end
