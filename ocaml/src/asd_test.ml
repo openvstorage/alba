@@ -23,7 +23,8 @@ let buffer_pool = Buffer_pool.osd_buffer_pool
 let rec wait_asd_connection port asd_id () =
   Lwt.catch
     (fun () ->
-     let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port None in
+     let tls_config = Albamgr_test.get_tls_config () in
+     let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port tls_config in
      Asd_client.with_client
        buffer_pool
        ~conn_info  asd_id
@@ -42,16 +43,18 @@ let rec wait_asd_connection port asd_id () =
 let with_asd_client ?(is_restart=false) test_name port f =
   let path = "/tmp/alba/" ^ test_name in
   let tls_config = Albamgr_test.get_tls_config () in (* client config *)
-  let tls =
+  let o_port, tls =
     match tls_config
     with
-    | None -> None
+    | None -> Some port, None
     | Some _ ->
-       let path = "/tmp/arakoon/test_discover_claimed/" in
+       let path = (try Sys.getenv "WORKSPACE"
+                   with Not_found -> "") ^ "/tmp/arakoon/test_discover_claimed/" in
        let open Asd_config.Config in
+       None,
        Some {cert = path ^ "test_discover_claimed.pem";
              key  = path ^ "test_discover_claimed.key";
-             port = (port + 500)
+             port;
             }
   in
   if not is_restart
@@ -65,7 +68,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
     Lwt.pick
       [ (Asd_server.run_server
            ~cancel
-           [] (Some port) path
+           [] o_port path
            ~asd_id
            ~node_id:"bla"
            ~slow:false
@@ -80,7 +83,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
           Lwt_unix.with_timeout
             5.
             (wait_asd_connection port asd_id)>>= fun () ->
-          let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port None in
+          let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port tls_config in
           Asd_client.with_client
             buffer_pool
             ~conn_info (Some test_name)
@@ -250,15 +253,11 @@ let test_startup port1 port2 () =
   Lwt_main.run t
 
 let test_protocol_version port () =
-  let test_name = "test_protocol_version" in
-  let path = "/tmp/alba/" ^ test_name in
-  Unix.system (Printf.sprintf "rm -rf %s" path) |> ignore;
-  Unix.mkdir path 0o777;
-  let asd_id = Some test_name in
   let protocol_test port =
     Lwt.catch
       (fun () ->
-       let conn_info = Networking2.make_conn_info ["127.0.0.1"] port None in
+       let tls_config = Albamgr_test.get_tls_config () in
+       let conn_info = Networking2.make_conn_info ["127.0.0.1"] port tls_config in
        Networking2.first_connection ~conn_info
        >>= fun (fd, closer) ->
        Lwt.finalize
@@ -281,27 +280,11 @@ let test_protocol_version port () =
       >>= fun () ->
     Lwt_log.debug "ok"
   in
-  let t =
-    Lwt.pick [
-        Asd_server.run_server
-          [] (Some port) path
-          ~asd_id
-          ~node_id:"node"
-          ~slow:false
-          ~fsync:false
-          ~buffer_size:(768*1024)
-          ~rocksdb_max_open_files:256
-          ~limit:90L
-          ~tls:None
-          ~multicast:(Some 10.0);
-        Lwt_unix.with_timeout
-          5.
-          (wait_asd_connection port asd_id)
-        >>= fun () ->
-        protocol_test port
-      ]
-  in
-  Lwt_main.run t
+  let test_name = "test_protocol_version" in
+  test_with_asd_client
+    test_name port
+    (fun _client ->
+     protocol_test port)
 
 let test_unknown_operation port () =
   test_with_asd_client
