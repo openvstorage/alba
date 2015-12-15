@@ -28,14 +28,23 @@ let string_of_address = function
   | Unix.ADDR_UNIX s -> Printf.sprintf "ADDR_UNIX %s" s
 
 let connect_with ip port ~tls_config =
-  Lwt_log.debug_f
-    "connect_with : %s %i %s" ip port ([%show: Tls.t option] tls_config)
-  >>= fun () ->
+
   let address = make_address ip port in
   let fd =
     Lwt_unix.socket
       (Unix.domain_of_sockaddr address)
       Unix.SOCK_STREAM 0
+  in
+  let (fdi:int) =
+    let fdu = Lwt_unix.unix_file_descr in
+    Obj.magic fdu
+  in
+  Lwt_log.debug_f
+    "connect_with : %s %i %s fd:%i" ip port ([%show: Tls.t option] tls_config) fdi
+  >>= fun () ->
+  let closer () =
+    Lwt_log.debug_f "closing fd:%i" fdi >>= fun () ->
+    Lwt_unix.close fd
   in
   match Tls.to_client_context tls_config with
   | None ->
@@ -43,10 +52,10 @@ let connect_with ip port ~tls_config =
        (fun () ->
         Lwt_unix.connect fd address >>= fun () ->
         let r = Net_fd.wrap_plain fd in
-        Lwt.return (r , fun () -> Lwt_unix.close fd)
+        Lwt.return (r , closer)
        )
        (fun exn ->
-        Lwt_unix.close fd >>= fun () ->
+        closer () >>= fun () ->
         Lwt.fail exn)
   | Some ctx ->
      begin
@@ -58,7 +67,7 @@ let connect_with ip port ~tls_config =
           Lwt.return (r, fun () -> Lwt_unix.close fd)
          )
          (fun exn ->
-          Lwt_unix.close fd >>= fun () ->
+          closer () >>= fun () ->
           begin
             match exn with
               | Ssl.Connection_error e ->

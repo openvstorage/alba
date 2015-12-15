@@ -138,7 +138,7 @@ module Pool = struct
       tls_config: Tls.t option;
     }
 
-    let make ~size get_osd_kind buffer_pool tls_config =
+    let make ~size ~get_osd_kind buffer_pool tls_config =
       let pools = Hashtbl.create 0 in
       { pools;
         get_osd_kind;
@@ -166,21 +166,28 @@ module Pool = struct
          Kinetic_client.make_client buffer_pool ~conn_info kinetic_id
 
     let use_osd t ~(osd_id:int32) f =
-      let pool =
-        try Hashtbl.find t.pools osd_id
+      let get_pool () =
+        try Hashtbl.find t.pools osd_id |> Lwt.return
         with Not_found ->
-          let p =
-            Lwt_pool2.create
-              t.pool_size
-              ~check:(fun _ exn ->
-                  (* TODO some exns shouldn't invalidate the connection *)
-                  false)
-              ~factory:(fun () -> t.get_osd_kind osd_id >>= factory t.tls_config t.buffer_pool)
-              ~cleanup:(fun (_, closer) -> closer ())
-          in
-          Hashtbl.add t.pools osd_id p;
-          p
+          begin
+            t.get_osd_kind osd_id >>= fun kind ->
+            let factory () =
+              factory t.tls_config t.buffer_pool kind
+            in
+            let p =
+              Lwt_pool2.create
+                t.pool_size
+                ~check:(fun _ exn ->
+                        (* TODO some exns shouldn't invalidate the connection *)
+                        false)
+                ~factory
+                ~cleanup:(fun (_, closer) -> closer ())
+            in
+            Hashtbl.add t.pools osd_id p;
+            Lwt.return p
+          end
       in
+      get_pool () >>= fun pool ->
       Lwt_pool2.use
         pool
         (fun p -> f (fst p))
