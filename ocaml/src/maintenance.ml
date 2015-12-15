@@ -578,8 +578,7 @@ class client ?(retry_timeout = 60.)
 
           Lwt_list.iter_p
             (fun osd_id ->
-             Lwt_pool2.use
-               throttle_pool
+             with_throttling
                (fun () ->
                 self # clean_device_obsolete_keys ~namespace_id ~osd_id)
             )
@@ -785,29 +784,25 @@ class client ?(retry_timeout = 60.)
                (if filter namespace_id
                 then
                   begin
-                    Lwt_pool2.use
-                      throttle_pool
-                      (fun () ->
-                       alba_client # nsm_host_access # get_namespace_info ~namespace_id
-                       >>= fun (_, devices, _) ->
-                       List.iter
-                         (fun osd_id ->
-                          if not (Hashtbl.mem threads osd_id)
-                          then begin
-                              Hashtbl.add threads osd_id ();
-                              Lwt.async
+                    alba_client # nsm_host_access # get_namespace_info ~namespace_id
+                    >>= fun (_, devices, _) ->
+                    List.iter
+                      (fun osd_id ->
+                       if not (Hashtbl.mem threads osd_id)
+                       then begin
+                           Hashtbl.add threads osd_id ();
+                           Lwt.async
+                             (fun () ->
+                              Lwt_extra2.ignore_errors
                                 (fun () ->
-                                 Lwt_extra2.ignore_errors
-                                   (fun () ->
-                                    self # garbage_collect_device
-                                         ~gc_epoch:latest_gc_epoch
-                                         ~namespace_id ~osd_id) >>= fun () ->
-                                 Hashtbl.remove threads osd_id;
-                                 Lwt.return ())
-                            end)
-                         devices;
-                       Lwt.return_unit
-                      )
+                                 self # garbage_collect_device
+                                      ~gc_epoch:latest_gc_epoch
+                                      ~namespace_id ~osd_id) >>= fun () ->
+                              Hashtbl.remove threads osd_id;
+                              Lwt.return ())
+                         end)
+                      devices;
+                    Lwt.return_unit
                   end
                 else
                   Lwt.return_unit) >>= fun () ->
@@ -948,8 +943,7 @@ class client ?(retry_timeout = 60.)
            >>= fun ()->
            Lwt_list.iter_s
              (fun move ->
-              Lwt_pool2.use throttle_pool
-                            (fun () ->execute_move move)
+              with_throttling (fun () ->execute_move move)
              )
              best
            >>= fun () ->
