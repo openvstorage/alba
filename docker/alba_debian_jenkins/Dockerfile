@@ -1,7 +1,6 @@
 FROM ubuntu:14.04.3
 RUN echo "deb http://archive.ubuntu.com/ubuntu/ trusty-backports main restricted universe multiverse" > /etc/apt/sources.list.d/trusty-backports-universe.list
-RUN apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         build-essential m4 apt-utils \
         libffi-dev libssl-dev \
         libbz2-dev \
