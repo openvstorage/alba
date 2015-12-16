@@ -91,7 +91,7 @@ let proxy_bench host port
                 scenarios robust
   =
   lwt_cmd_line
-    false
+    false false
     (fun () ->
      Proxy_bench.do_scenarios
        host port
@@ -120,7 +120,7 @@ let alba_bench alba_cfg_file tls_config
                scenarios robust
   =
   lwt_cmd_line
-    false
+    false false
     (fun () ->
      Alba_bench.do_scenarios
        (ref

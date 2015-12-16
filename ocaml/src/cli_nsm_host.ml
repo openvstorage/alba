@@ -18,7 +18,7 @@ open Cli_common
 open Cmdliner
 open Lwt.Infix
 
-let nsm_host_statistics cfg_file tls_config clear nsm_host =
+let nsm_host_statistics cfg_file tls_config clear nsm_host verbose =
   let t () =
     with_alba_client
       cfg_file
@@ -28,7 +28,7 @@ let nsm_host_statistics cfg_file tls_config clear nsm_host =
        Lwt_io.printlf "%s" (Nsm_host_protocol.Protocol.NSMHStatistics.show statistics)
       )
   in
-  lwt_cmd_line false t
+  lwt_cmd_line false verbose t
 
 let nsm_host_statistics_cmd =
   Term.(pure nsm_host_statistics
@@ -36,13 +36,17 @@ let nsm_host_statistics_cmd =
         $ tls_config
         $ clear
         $ nsm_host 0
+        $ verbose
   ),
   Term.info
     "nsm-host-statistics"
     ~doc:"namespace hosts' statistics"
 
 
-let list_device_objects cfg_file tls_config osd_id namespace_id first finc max reverse compact =
+let list_device_objects
+      cfg_file tls_config osd_id namespace_id first finc max reverse compact
+      verbose
+  =
   let t () =
     with_alba_client
       cfg_file
@@ -68,7 +72,7 @@ let list_device_objects cfg_file tls_config osd_id namespace_id first finc max r
           Lwt.return ()
       ))
   in
-  lwt_cmd_line false t
+  lwt_cmd_line false verbose t
 
 let list_device_objects_cmd =
   let osd_id default =
@@ -95,6 +99,7 @@ let list_device_objects_cmd =
         $ max
         $ reverse
         $ compact
+        $ verbose
   ),
   Term.info "dev-list-device-objects"
             ~doc:"objects from the namespace that have fragments on this device"

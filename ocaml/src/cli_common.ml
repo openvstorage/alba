@@ -17,8 +17,13 @@ limitations under the License.
 open Cmdliner
 open Lwt.Infix
 
-let install_logger ?(channel=Lwt_io.stdout) () =
-  Lwt_log.append_rule "*" Lwt_log.Debug;
+let install_logger ?(channel=Lwt_io.stdout) ~verbose () =
+  let level =
+    if verbose
+    then Lwt_log.Debug
+    else Lwt_log.Info
+  in
+  Lwt_log.append_rule "*" level;
   let logger =
     Lwt_log.channel
       ~template:"$(date).$(milliseconds) $(section) $(level): $(message)"
@@ -66,8 +71,8 @@ let exn_to_string_code = function
     "unknown", 0,
     Printexc.to_string exn
 
-let lwt_cmd_line to_json t =
-  let () = install_logger ~channel:Lwt_io.stderr () in
+let lwt_cmd_line to_json verbose t =
+  let () = install_logger ~channel:Lwt_io.stderr ~verbose () in
   let t' () =
     Lwt.catch
       t
@@ -95,23 +100,23 @@ let lwt_cmd_line to_json t =
   in
   Lwt_main.run (t' ())
 
-let lwt_cmd_line_result to_json t res_to_json =
+let lwt_cmd_line_result to_json verbose t res_to_json =
   lwt_cmd_line
-    to_json
+    to_json verbose
     (fun () ->
        t () >>= fun res ->
        if to_json
        then print_result res res_to_json
        else Lwt.return ())
 
-let lwt_cmd_line_unit to_json t =
+let lwt_cmd_line_unit to_json verbose t =
   lwt_cmd_line_result
-    to_json
+    to_json verbose
     t
     (fun () -> `Assoc [])
 
 let lwt_server t : unit =
-  let () = install_logger () in
+  let () = install_logger ~verbose:false () in
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run (t ())
 
@@ -127,6 +132,12 @@ let to_json =
   Arg.(value
        & flag
        & info ["to-json"] ~docv:"only output json to stdout")
+
+let verbose =
+  Arg.(value
+       & flag
+       & info ["verbose"] ~docv:"more output on cli"
+  )
 
 let port default =
   let doc = "tcp $(docv)" in
