@@ -81,7 +81,7 @@ let list_nsm_host_messages cfg_file tls_config attempts (destinations: string li
          ) xs
       )
   in
-  lwt_cmd_line false t
+  lwt_cmd_line false false t
 
 let list_nsm_host_messages_cmd =
   let nsm_hosts =
@@ -98,7 +98,7 @@ let list_nsm_host_messages_cmd =
         $ nsm_hosts),
   Term.(info "list-nsm-host-messages" ~doc:"list messages from mgr to nsm hosts")
 
-let list_osd_messages cfg_file tls_config attempts (destinations:int32 list) =
+let list_osd_messages cfg_file tls_config attempts (destinations:int32 list) verbose =
 
   let t () =
     with_albamgr_client
@@ -119,7 +119,7 @@ let list_osd_messages cfg_file tls_config attempts (destinations:int32 list) =
          ) xs
       )
   in
-  lwt_cmd_line false t
+  lwt_cmd_line false verbose t
 
 let list_osd_messages_cmd =
   let destinations  =
@@ -133,7 +133,7 @@ let list_osd_messages_cmd =
   Term.(pure list_osd_messages
         $ alba_cfg_file
         $ tls_config
-        $ attempts 1 $ destinations),
+        $ attempts 1 $ destinations $ verbose),
   Term.(info "list-osd-messages" ~doc:"list messages from mgr to osds")
 
 let cmds =[

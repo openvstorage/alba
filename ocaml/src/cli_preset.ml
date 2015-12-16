@@ -28,7 +28,7 @@ let preset_name p =
 
 let alba_create_preset
     cfg_file tls_config preset_name
-    to_json
+    to_json verbose
   =
   let t () =
     Lwt_io.read Lwt_io.stdin >>= fun txt ->
@@ -50,14 +50,16 @@ let alba_create_preset
            preset_name
            preset)
   in
-  lwt_cmd_line_unit to_json t
+  lwt_cmd_line_unit to_json verbose t
 
 let alba_create_preset_cmd =
   Term.(pure alba_create_preset
         $ alba_cfg_file
         $ tls_config
         $ preset_name 0
-        $ to_json),
+        $ to_json
+        $ verbose
+  ),
   Term.info
     "create-preset"
     ~doc:"create a new preset. the preset is read from stdin as json, pls have a look at cfg/preset.json for more details."
@@ -65,7 +67,7 @@ let alba_create_preset_cmd =
 let alba_update_preset
       cfg_file tls_config
       preset_name
-      to_json
+      to_json verbose
   =
   let t () =
     Lwt_io.read Lwt_io.stdin >>= fun txt ->
@@ -83,19 +85,19 @@ let alba_update_preset
            preset_name
            preset_updates)
   in
-  lwt_cmd_line_unit to_json t
+  lwt_cmd_line_unit to_json verbose t
 
 let alba_update_preset_cmd =
   Term.(pure alba_update_preset
         $ alba_cfg_file
         $ tls_config
         $ preset_name 0
-        $ to_json),
+        $ to_json $ verbose),
   Term.info
     "update-preset"
     ~doc:"update an existing preset. the preset is read from stdin as json, pls have a look at cfg/update_preset.json for more details."
 
-let alba_preset_set_default cfg_file tls_config preset_name to_json =
+let alba_preset_set_default cfg_file tls_config preset_name to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
@@ -104,17 +106,17 @@ let alba_preset_set_default cfg_file tls_config preset_name to_json =
       (fun client ->
          client # set_default_preset preset_name)
   in
-  lwt_cmd_line_unit to_json t
+  lwt_cmd_line_unit to_json verbose t
 
 let alba_preset_set_default_cmd =
   Term.(pure alba_preset_set_default
         $ alba_cfg_file
         $ tls_config
         $ preset_name 0
-        $ to_json),
+        $ to_json $ verbose ),
   Term.info "preset-set-default" ~doc:"make the specified preset the default preset"
 
-let alba_add_osds_to_preset cfg_file tls_config preset_name osd_ids to_json =
+let alba_add_osds_to_preset cfg_file tls_config preset_name osd_ids to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
@@ -123,7 +125,7 @@ let alba_add_osds_to_preset cfg_file tls_config preset_name osd_ids to_json =
       (fun client ->
          client # add_osds_to_preset ~preset_name ~osd_ids)
   in
-  lwt_cmd_line_unit to_json t
+  lwt_cmd_line_unit to_json verbose t
 
 let alba_add_osds_to_preset_cmd =
   Term.(pure alba_add_osds_to_preset
@@ -136,10 +138,11 @@ let alba_add_osds_to_preset_cmd =
                  ["osd-id"]
                  ~docv:"OSD_IDS"
                  ~doc:"the osds to be added to this preset")
-        $ to_json),
+        $ to_json
+        $ verbose),
   Term.info "add-osds-to-preset" ~doc:"add some osds to the specified preset"
 
-let alba_delete_preset cfg_file tls_config preset_name to_json =
+let alba_delete_preset cfg_file tls_config preset_name to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
@@ -148,17 +151,17 @@ let alba_delete_preset cfg_file tls_config preset_name to_json =
       (fun client ->
          client # delete_preset preset_name)
   in
-  lwt_cmd_line_unit to_json t
+  lwt_cmd_line_unit to_json verbose t
 
 let alba_delete_preset_cmd =
   Term.(pure alba_delete_preset
         $ alba_cfg_file
         $ tls_config
         $ preset_name 0
-        $ to_json),
+        $ to_json $ verbose),
   Term.info "delete-preset" ~doc:"delete the specified preset"
 
-let alba_list_presets cfg_file tls_config to_json =
+let alba_list_presets cfg_file tls_config to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
@@ -176,13 +179,14 @@ let alba_list_presets cfg_file tls_config to_json =
         cnt
         ([%show : (Preset.name * Preset.t * bool * bool) list] presets)
   in
-  lwt_cmd_line to_json t
+  lwt_cmd_line to_json verbose t
 
 let alba_list_presets_cmd =
   Term.(pure alba_list_presets
         $ alba_cfg_file
         $ tls_config
-        $ to_json),
+        $ to_json
+        $ verbose),
   Term.info "list-presets" ~doc:"list the presets available in the albamgr"
 
 let cmds = [

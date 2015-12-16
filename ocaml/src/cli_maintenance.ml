@@ -234,7 +234,7 @@ let alba_maintenance_cmd =
   ),
   Term.info "maintenance" ~doc:"run the maintenance process (garbage collection, obsolete fragment deletion, repair, ...)"
 
-let alba_deliver_messages cfg_file tls_config =
+let alba_deliver_messages cfg_file tls_config verbose =
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -256,18 +256,18 @@ let alba_deliver_messages cfg_file tls_config =
            nsms
       )
   in
-  lwt_cmd_line false t
+  lwt_cmd_line false verbose t
 
 let alba_deliver_messages_cmd =
   Term.(pure alba_deliver_messages
         $ alba_cfg_file
-        $ tls_config)
+        $ tls_config $ verbose)
   , Term.info "deliver-messages" ~doc:"deliver all outstanding messages (note that this happens automatically by the maintenance process too, so you usually shouldn't need this.)"
 
 let alba_rewrite_object
     cfg_file tls_config
     namespace
-    object_name =
+    object_name verbose =
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -287,14 +287,15 @@ let alba_rewrite_object
                   ~namespace_id
                   ~manifest))
   in
-  lwt_cmd_line false t
+  lwt_cmd_line false verbose t
 
 let alba_rewrite_object_cmd =
   Term.(pure alba_rewrite_object
         $ alba_cfg_file
         $ tls_config
         $ namespace 0
-        $ object_name_upload 1),
+        $ object_name_upload 1
+        $ verbose),
   Term.info "rewrite-object" ~doc:"rewrite an object"
 
 let cmds = [
