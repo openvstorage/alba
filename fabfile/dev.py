@@ -867,7 +867,6 @@ def run_everything_else(xml = False):
         r = x ()
         mega_suite.append(r)
 
-    print mega_suite
     if is_true(xml):
         from junit_xml import TestSuite, TestCase
         test_cases = []
