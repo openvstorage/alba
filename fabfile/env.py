@@ -64,6 +64,7 @@ env = {
     'osds_on_separate_fs' : False,
     'alba_tls' : env_or_default('ALBA_TLS', 'False'),
     'alba.0.6' : env_or_default('ALBA_06', 'alba.0.6')
+    , 'monitoring_file' : "%s/tmp/alba/monitor.txt" % WORKSPACE
 }
 
 arakoon_nodes = ["arakoon_0", "arakoon_1", "witness_0"]

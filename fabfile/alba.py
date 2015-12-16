@@ -51,6 +51,7 @@ def demo_kill(env = env):
         where("pkill -e -9 %s" % os.path.basename(env['arakoon_bin']))
         where("pkill -e -9 %s" % os.path.basename(env['alba_bin']))
         where("pkill -ef -9 'java.*SimulatorRunner.*'")
+        where("fuser -k -f %s" % env['monitoring_file'])
         for i in range(N):
             path = env['asd_path_t'] % i
             if os.path.exists(path + "_file"):
@@ -58,6 +59,7 @@ def demo_kill(env = env):
             where("rm -rf %s" % path)
         where("rm -rf %s" % ALBA_BASE_PATH)
         arakoon_remove_dir()
+
 
 
 @task
@@ -603,6 +605,36 @@ def start_osds(kind, n, slow, multicast=True,
         )
 
 @task
+def install_monitoring():
+    where = local
+
+    def get_lines(cmd):
+        return where(cmd, capture=True).split('\n')
+
+    arakoon_lines = get_lines('pgrep -a arakoon')
+    alba_lines    = get_lines('pgrep -a alba')
+
+    monitoring_file = env['monitoring_file']
+
+    with open(monitoring_file,'w')as f:
+        for l in arakoon_lines + alba_lines:
+            f.write(l)
+            f.write('\n')
+
+    def get_pids(lines):
+        return [line.split()[0] for line in lines]
+
+    alba_pids = get_pids(alba_lines)
+    arakoon_pids = get_pids(arakoon_lines)
+
+    all_pids = arakoon_pids + alba_pids
+    cmd = ['pidstat']
+    for pid in all_pids:
+        cmd.append('-p')
+        cmd.append(pid)
+    cmd.append('1')
+    cmd_line = _detach(cmd, out = monitoring_file)
+    where(cmd_line)
 
 
 @task
@@ -657,6 +689,7 @@ def demo_setup(kind = default_kind,
     claim_local_osds(N, abm_cfg = acf, multicast = multicast)
 
     create_namespace_demo()
+    install_monitoring()
 
 @task
 def smoke_test(sudo = 'False'):
