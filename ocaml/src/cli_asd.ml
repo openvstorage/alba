@@ -50,7 +50,14 @@ let asd_start cfg_file slow =
       (if not fsync
        then Lwt_log.warning "Fsync has been disabled, data will not be stored durably!!"
        else Lwt.return ()) >>= fun () ->
-
+      (
+        if port = None && tls = None
+        then
+          let msg = "neither port nor tls was configured" in
+          Lwt_log.fatal msg>>= fun () ->
+          Lwt.fail_with msg
+        else Lwt.return ()
+      ) >>= fun () ->
       verify_log_level log_level;
       Lwt_log.add_rule "*" (to_level log_level);
 
