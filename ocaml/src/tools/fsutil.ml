@@ -221,6 +221,8 @@ let sendfile_all ~fd_in ~fd_out =
            ~fd_out:fd_out'
            n
        in
-       inner (n - sent)
+       if sent = 0
+       then Lwt.fail End_of_file
+       else inner (n - sent)
   in
   inner
