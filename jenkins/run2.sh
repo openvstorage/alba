@@ -7,6 +7,7 @@ echo ${WORKSPACE}
 
 eval `${opam_env}`
 
+make clean
 make
 
 find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
