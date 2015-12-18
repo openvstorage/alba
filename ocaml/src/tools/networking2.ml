@@ -38,7 +38,7 @@ let connect_with ip port =
      Lwt_extra2.with_timeout
        ~msg:(Printf.sprintf
                "Timeout on Lwt_unix.connect to fd=%i ip=%s port=%i"
-               (Fsutil.lwt_unix_fd_to_fd fd) ip port)
+               (Lwt_extra2.lwt_unix_fd_to_fd fd) ip port)
        1.
        (fun () ->
         Lwt_unix.connect fd address >>= fun () ->
