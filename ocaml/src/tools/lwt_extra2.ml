@@ -98,6 +98,16 @@ let rec run_forever msg f delay =
   sleep_approx delay >>= fun () ->
   run_forever msg f delay
 
+let lwt_unix_fd_to_fd
+      (fd : Lwt_unix.file_descr) : int =
+  Obj.magic (Obj.field (Obj.repr fd) 0)
+
+let lwt_unix_fd_to_unix_fd
+      (fd : Lwt_unix.file_descr) : Unix.file_descr =
+  Obj.magic (Obj.field (Obj.repr fd) 0)
+
+let unix_fd_to_fd (fd : Unix.file_descr) : int =
+  Obj.magic fd
 
 let with_fd filename ~flags ~perm f =
   Lwt_unix.openfile filename flags perm >>= fun fd ->
