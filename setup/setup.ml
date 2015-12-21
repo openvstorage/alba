@@ -27,6 +27,7 @@ module Config = struct
   let asd_path_t = env_or_default "ALBA_ASD_PATH_T" (alba_base_path ^ "/asd/%02i")
 
   let _N = 12
+
 end
 
 module Shell = struct
@@ -120,7 +121,7 @@ object (self)
         "--node"; node;
         "-config"; cfg_file
        ] |> Shell.detach
-      ) Config.abm_nodes
+      ) nodes
 
   method remove_dirs =
     List.iter
@@ -274,6 +275,12 @@ module Demo = struct
     and base_port = 4000 in
     new arakoon id nodes base_port
 
+  let nsm =
+    let id = "nsm"
+    and nodes = ["nsm_0";"nsm_1"; "nsm_2"]
+    and base_port = 4100 in
+    new arakoon id nodes base_port
+
   let proxy = new proxy 0 (abm # config_file)
   let maintenance = new maintenance 0 (abm # config_file)
 
@@ -417,13 +424,16 @@ module Demo = struct
     let _ = _alba_cmd_line ["version"] in
     abm # write_config_file;
     abm # start ;
-    let _master = abm # wait_for_master () in
+    nsm # write_config_file;
+    nsm # start ;
+    let _ = abm # wait_for_master () in
+    let _ = nsm # wait_for_master () in
     proxy # write_config_file;
     proxy # start;
 
     maintenance # write_config_file;
     maintenance # start;
-    nsm_host_register abm;
+    nsm_host_register nsm;
     start_osds Config._N;
     claim_local_osds Config._N;
     proxy_create_namespace "demo";
@@ -443,10 +453,51 @@ module Demo = struct
 
 end
 
+module JUnit = struct
+  type testcase = {
+      classname:string;
+      name: string;
+      time: float;
+    }
+  let make_testcase classname name time = {classname;name;time}
+  type suite = { name:string; time:float; tests : testcase list}
+
+  let make_suite name tests time = {name;tests;time}
+
+  let dump_xml suites fn =
+    let dump_test oc test =
+      let element =
+        Printf.sprintf
+          "      <testcase classname=%S name=%S time=\"%f\" >\n"
+          test.classname test.name test.time
+      in
+      output_string oc element;
+      output_string oc "      </testcase>\n"
+    in
+    let dump_suite oc suite =
+      let element =
+        Printf.sprintf
+          "    <testsuite errors=\"0\" failures=\"0\" name=%S skipped=\"0\" tests=\"%i\" time=\"%f\" >\n"
+          suite.name (List.length suite.tests) suite.time
+      in
+      output_string oc element;
+      List.iter (fun test -> dump_test oc test) suite.tests;
+      output_string oc "    </testsuite>\n";
+    in
+    let oc = open_out fn in
+    output_string oc "<?xml version=\"1.0\" ?>\n";
+    output_string oc "  <testsuites >\n";
+    List.iter (fun suite -> dump_suite oc suite) suites;
+    output_string oc "  </testsuites>\n";
+    close_out oc
+
+end
 module Test = struct
+
   let stress ?(xml=false) () =
     Demo.kill();
     Demo.setup();
+    let t0 = Unix.gettimeofday() in
     let n = 3000 in
     let rec loop i =
       if i = n
@@ -459,21 +510,33 @@ module Test = struct
     in
     let () = loop 0 in
     let namespaces = Demo.list_namespaces () in
+    let t1 = Unix.gettimeofday () in
+    let d = t1 -. t0 in
     assert ((n+1) = List.length namespaces);
     if xml
     then
-      failwith "todo"
-    else
-      ()
+      begin
+        let open JUnit in
+        let time = d in
+        let testcase = make_testcase "package.test" "testname" time in
+        let suite    = make_suite "stress test suite" [testcase] time in
+        let suites   = [suite] in
+        dump_xml suites "testresults2.xml"
+      end
+    else ()
 
 
   let ocaml () =
     Demo.kill();
     Demo.setup();
 end
-(*
+
 
 let () =
-  Demo.kill ();
-  Demo.setup ()
- *)
+  let cmd_len = Array.length Sys.argv in
+  Printf.printf "cmd_len:%i\n%!" cmd_len;
+  if cmd_len = 2
+  then
+    match Sys.argv.(1) with
+    | "stress" -> Test.stress ~xml:true ()
+    | _  -> failwith "no test"
