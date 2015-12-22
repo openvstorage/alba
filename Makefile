@@ -9,7 +9,7 @@ clean:
 	rm -rf ./ocaml/_build
 
 build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin \
-	build-disk-failure-tests
+	build-disk-failure-tests build-tests
 
 build-alba:
 	cd ocaml && ocamlbuild -j 0 -use-ocamlfind alba.native
@@ -91,6 +91,8 @@ build-mgr-plugin: build-alba
 build-disk-failure-tests: build-alba
 	cd ocaml && ocamlbuild -use-ocamlfind disk_failure_tests.native
 
+build-tests :
+	cd setup && ocamlbuild -use-ocamlfind setup.native
 install: build-alba
 	mkdir -p $(START)/bin/
 	cp ./ocaml/alba.native $(START)/bin/alba

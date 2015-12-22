@@ -16,7 +16,7 @@ module Config = struct
 
   let abm_path = arakoon_path ^ "/" ^ "abm"
 
-  let alba_home = env_or_default "ALBA_HOME" (home ^ "/workspace/ALBA/alba")
+  let alba_home = env_or_default "ALBA_HOME" workspace
   let alba_base_path = workspace ^ "/tmp/alba"
 
   let alba_bin  = env_or_default "ALBA_BIN" (alba_home  ^ "/ocaml/alba.native")
@@ -26,10 +26,16 @@ module Config = struct
   let local_nodeid_prefix = Printf.sprintf "%08x" (Random.bits ())
   let asd_path_t = env_or_default "ALBA_ASD_PATH_T" (alba_base_path ^ "/asd/%02i")
 
+  let voldrv_test = env_or_default
+                      "VOLDRV_TEST"
+                      (home ^ "/workspace/VOLDRV/volume_driver_test")
+  let voldrv_backend_test = env_or_default
+                              "VOLDRV_BACKEND_TEST"
+                              (home ^ "/workspace/VOLDRV/backend_test")
   let _N = 12
 
   let tls =
-    let v = env_or_default "ALBA_TLS" "true" in
+    let v = env_or_default "ALBA_TLS" "false" in
     Scanf.sscanf v "%b" (fun x -> x)
 
   let generate_serial =
@@ -648,6 +654,9 @@ module Demo = struct
     "rm -rf " ^ Config.arakoon_path |> Shell.cmd;
     ()
 
+  let smoke_test () =
+    let n = "fuser -n tcp 10000" |> Shell.cmd_with_capture in
+    n
 end
 
 module JUnit = struct
@@ -691,7 +700,13 @@ module JUnit = struct
 end
 module Test = struct
 
-  let stress ?(xml=false) () =
+  let wrapper f =
+    Demo.kill ();
+    Demo.setup ();
+    f ();
+    Demo.smoke_test ()
+
+  let stress ?(xml=false) ?filter ?dump () =
     Demo.kill();
     Demo.setup();
     let t0 = Unix.gettimeofday() in
@@ -723,9 +738,63 @@ module Test = struct
     else ()
 
 
-  let ocaml () =
+  let ocaml ?(xml=false) ?filter ?dump () =
     Demo.kill();
     Demo.setup();
+    begin
+      (* make cert for extra asd (test_discover_claimed) *)
+      if Config.tls
+      then
+        begin failwith "todo"
+        end;
+      let cmd = [Config.alba_bin; "unit-tests"; "--config" ; Demo.abm # config_file ] in
+      let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
+      let cmd3 = match filter with
+        | None -> cmd2
+        | Some filter -> cmd2 @ ["--only-test=" ^ filter] in
+      let cmd4 = match dump with
+        | None -> cmd3
+        | Some dump -> cmd3 @ [" > " ^ dump] in
+      let cmd_s = cmd4 |> String.concat " " in
+      let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
+      cmd_s
+      |> Shell.cmd
+    end
+
+  let voldrv_backend ?(xml=false) ?filter ?dump ()=
+    Demo.kill ();
+    Demo.setup();
+    let cmd = [
+        Config.voldrv_backend_test;
+        "--skip-backend-setup"; "1";
+        "--backend-config-file"; Config.alba_home ^ "/cfg/backend.json";
+        "--loglevel=error";
+      ]
+    in
+    let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml"] else cmd in
+    let cmd3 = match filter with
+      | None -> cmd2
+      | Some dump -> cmd2 @ []
+    in
+    let cmd4 = match dump with
+      | None -> cmd3
+      | Some dump -> cmd3 @ ["> " ^ dump ^ " 2>&1"]
+    in
+
+    let cmd_s = cmd4 |> String.concat " " in
+    let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
+    cmd_s |> Shell.cmd
+
+  let voldrv ?(xml = false) ?filter ?dump () =
+    Demo.kill  ();
+    Demo.setup ();
+    let cmd = [Config.voldrv_test;
+               "--skip-backend-setup";"1";
+               "--backend-config-file"; Config.alba_home ^ "/cfg/backend.json";
+               "--gtest_filter=SimpleVolumeTests/SimpleVolumeTest*";
+               "--loglevel=error"] in
+    failwith "todo"
+
 end
 
 
@@ -734,6 +803,10 @@ let () =
   Printf.printf "cmd_len:%i\n%!" cmd_len;
   if cmd_len = 2
   then
-    match Sys.argv.(1) with
-    | "stress" -> Test.stress ~xml:true ()
+    let test = match Sys.argv.(1) with
+    | "stress"         -> Test.stress
+    | "ocaml"          -> Test.ocaml
+    | "voldrv_backend" -> Test.voldrv_backend
     | _  -> failwith "no test"
+    in
+    test ~xml:true ()
