@@ -4,6 +4,7 @@ env | sort
 
 export WORKSPACE=$PWD
 echo ${WORKSPACE}
+export DRIVER=./setup/setup.native
 
 eval `${opam_env}`
 
@@ -33,19 +34,16 @@ case "$1" in
         fab alba.smoke_test
         ;;
     stress)
-        ./setup/setup.native stress || true
+        ${DRIVER} stress || true
         ;;
     voldrv_backend)
-        fab dev.run_tests_voldrv_backend:xml=True || true
-        fab alba.smoke_test
+        ${DRIVER} voldrv_backend || true
         ;;
     voldrv_tests)
-        fab dev.run_tests_voldrv_tests:xml=True || true
-        fab alba.smoke_test
+        ${DRIVER} voldrv_tests || true
         ;;
     disk_failures)
-        fab dev.run_tests_disk_failures:xml=True || true
-        fab alba.smoke_test
+        ${DRIVER} disk_failures || true
         ;;
     compat)
         fab dev.run_tests_compat:xml=True || true

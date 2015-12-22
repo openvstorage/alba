@@ -21,6 +21,9 @@ module Config = struct
 
   let alba_bin  = env_or_default "ALBA_BIN" (alba_home  ^ "/ocaml/alba.native")
   let alba_plugin_path = env_or_default "ALBA_PLUGIN_HOME" (alba_home ^ "/ocaml")
+
+  let failure_tester = alba_home ^ "/ocaml/disk_failure_tests.native"
+
   let monitoring_file = workspace ^ "/tmp/alba/monitor.txt"
 
   let local_nodeid_prefix = Printf.sprintf "%08x" (Random.bits ())
@@ -712,8 +715,6 @@ module Test = struct
     Demo.smoke_test ()
 
   let stress ?(xml=false) ?filter ?dump () =
-    Demo.kill();
-    Demo.setup();
     let t0 = Unix.gettimeofday() in
     let n = 3000 in
     let rec loop i =
@@ -744,8 +745,6 @@ module Test = struct
 
 
   let ocaml ?(xml=false) ?filter ?dump () =
-    Demo.kill();
-    Demo.setup();
     begin
       (* make cert for extra asd (test_discover_claimed) *)
       if Config.tls
@@ -767,8 +766,6 @@ module Test = struct
     end
 
   let voldrv_backend ?(xml=false) ?filter ?dump ()=
-    Demo.kill ();
-    Demo.setup();
     let cmd = [
         Config.voldrv_backend_test;
         "--skip-backend-setup"; "1";
@@ -790,15 +787,55 @@ module Test = struct
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd
 
-  let voldrv ?(xml = false) ?filter ?dump () =
-    Demo.kill  ();
-    Demo.setup ();
+  let voldrv_tests ?(xml = false) ?filter ?dump () =
     let cmd = [Config.voldrv_test;
                "--skip-backend-setup";"1";
                "--backend-config-file"; Config.alba_home ^ "/cfg/backend.json";
-               "--gtest_filter=SimpleVolumeTests/SimpleVolumeTest*";
-               "--loglevel=error"] in
-    failwith "todo"
+               "--loglevel=error"]
+    in
+    let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml"] else cmd in
+    let cmd3 = match filter with
+      | None -> cmd2 @ ["--gtest_filter=SimpleVolumeTests/SimpleVolumeTest*"]
+      | Some filter -> cmd2 @ ["--gtest_filter=" ^ filter]
+    in
+    let cmd4 = match dump with
+      | None -> cmd3
+      | Some dump -> cmd3 @ ["> " ^ dump ^ " 2>&1"]
+    in
+    let cmd_s = cmd4 |> String.concat " " in
+    let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
+    cmd_s |> Shell.cmd
+
+
+  let disk_failures ?(xml= false) ?filter ?dump () =
+    let cmd = [
+        Config.failure_tester;
+        "--config" ; Demo.abm # config_file;
+      ]
+    in
+    let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
+    let cmd_s = cmd2 |> String.concat " " in
+    let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
+    cmd_s |> Shell.cmd
+
+  let asd_start ?(xml=false) ?filter ?dump () =
+    let object_location = Config.alba_base_path ^ "/obj" in
+    let cmd_s = Printf.sprintf "dd if=/dev/urandom of=%s bs=1M count=1" object_location in
+    cmd_s |> Shell.cmd;
+    let rec loop i =
+      if i = 1000
+      then ()
+      else
+        let ()= ["proxy-upload-object";
+                 "-h";"127.0.0.1";
+                 "demo"; object_location; string_of_int i]
+                |> _alba_cmd_line
+        in
+        loop (i+1)
+    in
+    loop 0;
+
+
 
 end
 
@@ -812,6 +849,9 @@ let () =
     | "stress"         -> Test.stress
     | "ocaml"          -> Test.ocaml
     | "voldrv_backend" -> Test.voldrv_backend
+    | "voldrv_tests"   -> Test.voldrv_tests
+    | "disk_failures"  -> Test.disk_failures
+
     | _  -> failwith "no test"
     in
-    test ~xml:true ()
+    let f () = test ~xml:true () in Test.wrapper f
