@@ -654,9 +654,14 @@ module Demo = struct
     "rm -rf " ^ Config.arakoon_path |> Shell.cmd;
     ()
 
+  let proxy_pid () =
+    let n = ["fuser";"-n";"tcp";"10000"] |> Shell.cmd_with_capture in
+    Scanf.sscanf n " %i" (fun i -> i)
+
   let smoke_test () =
-    let n = "fuser -n tcp 10000" |> Shell.cmd_with_capture in
-    n
+    let _  = proxy_pid () in
+    ()
+
 end
 
 module JUnit = struct
@@ -733,7 +738,7 @@ module Test = struct
         let testcase = make_testcase "package.test" "testname" time in
         let suite    = make_suite "stress test suite" [testcase] time in
         let suites   = [suite] in
-        dump_xml suites "testresults2.xml"
+        dump_xml suites "testresults.xml"
       end
     else ()
 

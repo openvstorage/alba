@@ -34,7 +34,6 @@ case "$1" in
         ;;
     stress)
         ./setup/setup.native stress || true
-        fab alba.smoke_test
         ;;
     voldrv_backend)
         fab dev.run_tests_voldrv_backend:xml=True || true
