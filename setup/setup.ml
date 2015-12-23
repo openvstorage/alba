@@ -751,12 +751,18 @@ module Demo = struct
 end
 
 module JUnit = struct
+  type result =
+    | Ok
+    | Err of string
+    | Fail of string
+
   type testcase = {
       classname:string;
       name: string;
       time: float;
+      result : result;
     }
-  let make_testcase classname name time = {classname;name;time}
+  let make_testcase classname name time result = {classname;name;time; result}
   type suite = { name:string; time:float; tests : testcase list}
 
   let make_suite name tests time = {name;tests;time}
@@ -768,14 +774,31 @@ module JUnit = struct
           "      <testcase classname=%S name=%S time=\"%f\" >\n"
           test.classname test.name test.time
       in
+      let () = match test.result with
+      | Ok -> ()
+      | Err s  -> output_string oc (Printf.sprintf "        <error>%s</error>\n" s)
+      | Fail s -> output_string oc (Printf.sprintf "        <failure>%s</failure" s)
+      in
       output_string oc element;
       output_string oc "      </testcase>\n"
     in
     let dump_suite oc suite =
       let element =
+        let errors,failures,size =
+          List.fold_left
+            (fun (n_errors,n_failures,n) test ->
+             match test.result with
+             | Ok     -> (n_errors,     n_failures    , n+1)
+             | Err _  -> (n_errors + 1, n_failures    , n+1)
+             | Fail _ -> (n_errors,     n_failures +1 , n+1)
+            ) (0,0,0) suite.tests
+        in
         Printf.sprintf
-          "    <testsuite errors=\"0\" failures=\"0\" name=%S skipped=\"0\" tests=\"%i\" time=\"%f\" >\n"
-          suite.name (List.length suite.tests) suite.time
+          ("    <testsuite errors=\"%i\" failures=\"%i\" name=%S skipped=\"0\""
+          ^^ "tests=\"%i\" time=\"%f\" >\n")
+          errors failures
+          suite.name size
+          suite.time
       in
       output_string oc element;
       List.iter (fun test -> dump_test oc test) suite.tests;
@@ -819,7 +842,7 @@ module Test = struct
       begin
         let open JUnit in
         let time = d in
-        let testcase = make_testcase "package.test" "testname" time in
+        let testcase = make_testcase "package.test" "testname" time JUnit.Ok in
         let suite    = make_suite "stress test suite" [testcase] time in
         let suites   = [suite] in
         dump_xml suites "testresults.xml"
@@ -947,7 +970,7 @@ module Test = struct
       begin
         let open JUnit in
         let time = d in
-        let testcase = make_testcase "package.test" "testname" time in
+        let testcase = make_testcase "package.test" "testname" time JUnit.Ok in
         let suite    = make_suite "stress test suite" [testcase] time in
         let suites   = [suite] in
         dump_xml suites "testresults.xml"
@@ -1003,7 +1026,41 @@ module Test = struct
         "< "; "./cfg/preset.json";
       ]
     in
-    _alba_cmd_line ~cwd:Config.alba_home cmd
+    try
+      _alba_cmd_line ~cwd:Config.alba_home cmd;
+      true
+    with | _ -> false
+
+  let cli ?(xml=false) ?filter ?dump () =
+    let suite_name = "run_tests_cli" in
+    let tests = ["asd_crud", asd_crud;
+                 "asd_get_version", asd_get_version;
+                 "asd_get_statistics", asd_get_statistics;
+                 "asd_cli_env", asd_cli_env;
+                 "create_example_preset", create_example_preset;
+                ]
+    in
+    let t0 = Unix.gettimeofday() in
+    let results =
+      List.fold_left (
+          fun acc (name,test) ->
+
+          let t0 = Unix.gettimeofday () in
+          let r = test () in
+          let result = if r then JUnit.Ok else JUnit.Err "?" in
+          let t1 = Unix.gettimeofday () in
+          let d = t1 -. t0 in
+          let testcase = JUnit.make_testcase name name d result in
+          testcase ::acc
+        ) [] tests
+    in
+    let t1 = Unix.gettimeofday() in
+    let d = t1 -. t0 in
+    let suite = JUnit.make_suite suite_name results d in
+    if xml
+    then
+       JUnit.dump_xml [suite] "./testresults.xml"
+    else ()
 end
 
 
@@ -1019,6 +1076,7 @@ let () =
     | "voldrv_tests"   -> Test.voldrv_tests
     | "disk_failures"  -> Test.disk_failures
     | "asd_start"      -> Test.asd_start
+    | "cli"            -> Test.cli
     | _  -> failwith "no test"
     in
     let f () = test ~xml:true () in Test.wrapper f
