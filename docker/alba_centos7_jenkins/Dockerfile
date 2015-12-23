@@ -93,7 +93,7 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
-RUN eval `${opam_env}` && opam install -y arakoon.1.8.12
+RUN eval `${opam_env}` && opam update && opam install -y arakoon.1.8.12
 
 # workarounds for limited rocksdb builder in orocksdb
 RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
@@ -105,8 +105,9 @@ RUN yum -y install sudo
 # Defaults    requiretty          # is line 56
 RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
 
-RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
-RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
+RUN eval `${opam_env}` && opam update && \
+    opam depext orocksdb.0.2.1 && \
+    opam install -y orocksdb.0.2.1
 
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/
