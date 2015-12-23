@@ -20,8 +20,7 @@ cat /proc/sys/kernel/core_pattern
 
 case "$1" in
     asd_start)
-        fab dev.run_test_asd_start:xml=True || true
-        fab alba.smoke_test
+        ${DRIVER} asd_start || true
         ;;
     cpp)
         ./jenkins/cpp/010-build_client.sh

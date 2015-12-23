@@ -38,7 +38,7 @@ module Config = struct
   let _N = 12
 
   let tls =
-    let v = env_or_default "ALBA_TLS" "false" in
+    let v = env_or_default "ALBA_TLS" "true" in
     Scanf.sscanf v "%b" (fun x -> x)
 
   let generate_serial =
@@ -398,19 +398,40 @@ let make_asd_config node_id asd_id home port tls=
 class asd node_id asd_id home port tls =
   let cfg = make_asd_config node_id asd_id home port tls in
   let cfg_file = home ^ "/cfg.json" in
-
+  let kill_port = match port with
+    | None ->
+       begin
+         match tls with
+         | Some tls -> tls.port
+         | None -> failwith "no port?"
+       end
+    | Some p -> p
+  in
   object
     method config_file = cfg_file
-    method write_config_file =
+
+    method write_config_files =
       "mkdir -p " ^ home |> Shell.cmd;
+      if Config.tls
+      then
+        begin
+        let base = Printf.sprintf "%s/%s" Config.arakoon_path asd_id in
+        "mkdir -p " ^ base |> Shell.cmd;
+        make_cert base asd_id;
+        end;
       let oc = open_out cfg_file in
       let json = asd_cfg_to_yojson cfg in
       Yojson.Safe.pretty_to_channel oc json ;
       close_out oc
+
     method start =
       let out = home ^ "/stdout" in
       [Config.alba_bin; "asd-start"; "--config"; cfg_file]
       |> Shell.detach ~out;
+
+    method stop =
+      Printf.sprintf "fuser -k -n tcp %i" kill_port
+      |> Shell.cmd
 end
 
 let _alba_extend_tls cmd =
@@ -448,6 +469,7 @@ module Demo = struct
     and base_port = 4100 in
     new arakoon id nodes base_port Config.tls
 
+
   let proxy = new proxy 0 (abm # config_file) Config.tls
   let maintenance = new maintenance 0 (abm # config_file) Config.tls
 
@@ -458,13 +480,14 @@ module Demo = struct
     in
     _alba_cmd_line cmd
 
-  let start_osds n =
-    let rec loop j =
-      if j = n
-      then ()
+  let osds =
+    let base_port = 8000 in
+    let rec loop asds j =
+      if j = Config._N
+      then List.rev asds |> Array.of_list
       else
         begin
-          let port = 8000 + j in
+          let port = base_port + j in
           let node_id = j lsr 2 in
           let node_id_s = Printf.sprintf "%s_%i" Config.local_nodeid_prefix node_id in
           let asd_id = Printf.sprintf "%04i_%02i_%s" port node_id Config.local_nodeid_prefix in
@@ -473,23 +496,26 @@ module Demo = struct
             if Config.tls
             then
               begin
+                let port = port + 500 in
                 let base = Printf.sprintf "%s/%s" Config.arakoon_path asd_id in
-                let () = "mkdir -p " ^ base |> Shell.cmd in
-                make_cert base asd_id;
                 Some { cert = Printf.sprintf "%s/%s.pem" base asd_id ;
                        key  = Printf.sprintf "%s/%s.key" base asd_id ;
-                       port =  port + 500;
+                       port ;
                      }
               end
             else None
           in
           let asd = new asd node_id_s asd_id home (Some port) tls in
-          asd # write_config_file;
-          asd # start;
-          loop (j+1)
+          loop (asd :: asds) (j+1)
         end
     in
-    loop 0
+    loop [] 0
+
+  let setup_osds n =
+    Array.iter (fun asd ->
+                asd # write_config_files;
+                asd # start
+               ) osds
 
   let claim_osd long_id =
     let cmd = [
@@ -562,6 +588,15 @@ module Demo = struct
     in
     loop 0 0
 
+  let stop_osds () =
+    Array.iter (fun asd -> asd # stop) osds
+
+
+  let restart_osds () =
+    stop_osds ();
+    Array.iter (fun asd -> asd # start) osds
+
+
   let proxy_create_namespace name =
     _alba_cmd_line ~ignore_tls:true ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
 
@@ -623,12 +658,16 @@ module Demo = struct
         "mkdir " ^ client_path |> Shell.cmd;
         make_cert client_path my_client
       end;
+
     abm # write_config_files;
     abm # start ;
+
     nsm # write_config_files;
     nsm # start ;
+
     let _ = abm # wait_for_master () in
     let _ = nsm # wait_for_master () in
+
     proxy # write_config_file;
     proxy # start;
 
@@ -638,7 +677,7 @@ module Demo = struct
 
     nsm_host_register nsm;
 
-    start_osds Config._N;
+    setup_osds Config._N;
 
     claim_local_osds Config._N;
 
@@ -819,6 +858,7 @@ module Test = struct
     cmd_s |> Shell.cmd
 
   let asd_start ?(xml=false) ?filter ?dump () =
+    let t0 = Unix.gettimeofday() in
     let object_location = Config.alba_base_path ^ "/obj" in
     let cmd_s = Printf.sprintf "dd if=/dev/urandom of=%s bs=1M count=1" object_location in
     cmd_s |> Shell.cmd;
@@ -829,13 +869,47 @@ module Test = struct
         let ()= ["proxy-upload-object";
                  "-h";"127.0.0.1";
                  "demo"; object_location; string_of_int i]
-                |> _alba_cmd_line
+                |> _alba_cmd_line ~ignore_tls:true
         in
         loop (i+1)
     in
     loop 0;
-
-
+    Demo.restart_osds ();
+    let attempt ()  =
+      try [
+        "proxy-upload-object";
+        "-h";"127.0.0.1";
+        "demo";object_location;
+        "some_other_name";"--allow-overwrite";
+        ] |> _alba_cmd_line ~ignore_tls:true;
+          true
+      with
+      | _ -> false
+    in
+    let () =
+        attempt () |> ignore;
+        attempt () |> ignore;
+        attempt () |> ignore;
+        Unix.sleep 2;
+        attempt () |> ignore;
+    in
+    let ok = attempt () in
+    Printf.printf "ok:%b\n%!" ok;
+    Demo.smoke_test();
+    let t1 = Unix.gettimeofday() in
+    let d = t1 -. t0 in
+    if xml
+    then
+      begin
+        let open JUnit in
+        let time = d in
+        let testcase = make_testcase "package.test" "testname" time in
+        let suite    = make_suite "stress test suite" [testcase] time in
+        let suites   = [suite] in
+        dump_xml suites "testresults.xml"
+      end
+    else
+      ()
 
 end
 
@@ -851,7 +925,7 @@ let () =
     | "voldrv_backend" -> Test.voldrv_backend
     | "voldrv_tests"   -> Test.voldrv_tests
     | "disk_failures"  -> Test.disk_failures
-
+    | "asd_start"      -> Test.asd_start
     | _  -> failwith "no test"
     in
     let f () = test ~xml:true () in Test.wrapper f
