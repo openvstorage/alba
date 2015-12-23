@@ -45,14 +45,16 @@ RUN mv cudf_remote_proxy /usr/local/bin/
 
 ENV OPAMEXTERNALSOLVER="cudf_remote_proxy %{input}% %{output}% %{criteria}%"
 
-RUN eval `${opam_env}` && opam install -y \
+RUN eval `${opam_env}` && \
+    opam update && \
+    opam install -y \
         ocamlfind \
-        ssl \
+        ssl.0.5.2 \
         camlbz2 \
         snappy \
         sexplib \
         bisect \
-        lwt.2.5.0 \
+        lwt.2.5.1 \
         camltc \
         cstruct \
         ctypes \
@@ -61,7 +63,6 @@ RUN eval `${opam_env}` && opam install -y \
         zarith \
         mirage-no-xen.1 \
         quickcheck.1.0.2 \
-        nocrypto.0.5.1 \
         cmdliner \
         conf-libev \
         depext \

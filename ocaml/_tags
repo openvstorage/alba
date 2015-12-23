@@ -19,7 +19,6 @@ true: package(snappy)
 true: package(tiny_json)
 true: package(uuidm)
 true: package(core_kernel)
-true: package(nocrypto)
 true: use_rocks
 true: package(kinetic-client)
 true: ppx_lwt

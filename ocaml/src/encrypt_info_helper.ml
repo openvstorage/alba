@@ -14,14 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-(* This module exists so no 'nocrypto' stuff is used
+(* This module exists so no ctypes stuff is used
  * inside the arakoon plugins. *)
+
+open Prelude
 
 let get_id_for_key key =
   let id =
-    Cstruct.to_string
-      (Nocrypto.Hash.SHA256.digest
-         (Cstruct.of_string key))
+    let open Gcrypt.Digest in
+    let hd = open_ SHA256 in
+    write hd key;
+    final hd;
+    let res = Option.get_some (read hd SHA256) in
+    close hd;
+    res
   in
   Nsm_model.EncryptInfo.KeySha1 id
 
