@@ -859,7 +859,6 @@ module Test = struct
       else
         let name = Printf.sprintf "%08i" i in
         let () = Demo.proxy_create_namespace name in
-        let () = Printf.printf "name:%s\n%!" name in
         loop (i+1)
     in
     let () = loop 0 in
