@@ -315,6 +315,32 @@ let make_proxy_config id abm_cfg_file base tls_client=
     tls_client;
   }
 
+let _alba_extend_tls cmd =
+  let cacert = Config.arakoon_path ^ "/cacert.pem" in
+  let my_client_pem = Config.arakoon_path ^ "/my_client/my_client.pem" in
+  let my_client_key = Config.arakoon_path ^ "/my_client/my_client.key" in
+  cmd @ [Printf.sprintf
+           "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
+
+let _alba_cmd_line ?cwd ?(ignore_tls=false) x =
+  let maybe_extend_tls cmd =
+    if not ignore_tls && Config.tls
+    then
+      begin
+        _alba_extend_tls cmd
+      end
+    else cmd
+  in
+  let cmd = (Config.alba_bin :: x) in
+  let cmd1 = match cwd with
+    | Some dir -> "cd":: dir ::"&&":: cmd
+    | None -> cmd
+  in
+  cmd1
+  |> maybe_extend_tls
+  |> String.concat " "
+  |> Shell.cmd ~ignore_rc:false
+
 class proxy id abm_cfg_file tls =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" Config.alba_base_path id in
   let cfg_file = proxy_base ^ "/proxy.cfg" in
@@ -335,6 +361,16 @@ class proxy id abm_cfg_file tls =
     [Config.alba_bin; "proxy-start"; "--config"; cfg_file]
     |> Shell.detach ~out
 
+  method upload_object namespace file name =
+    ["proxy-upload-object";
+     "-h";"127.0.0.1";
+     namespace; file ; name ]
+    |> _alba_cmd_line ~ignore_tls:true
+  method download_object namespace name file =
+    ["proxy-download-object";
+     "-h";"127.0.0.1";
+     namespace; name ;file ]
+    |> _alba_cmd_line ~ignore_tls:true
 end
 
 type maintenance_cfg = {
@@ -377,12 +413,7 @@ object
 
 end
 
-let _alba_extend_tls cmd =
-  let cacert = Config.arakoon_path ^ "/cacert.pem" in
-  let my_client_pem = Config.arakoon_path ^ "/my_client/my_client.pem" in
-  let my_client_key = Config.arakoon_path ^ "/my_client/my_client.key" in
-  cmd @ [Printf.sprintf
-           "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
+
 
 type tls = { cert:string; key:string; port : int} [@@ deriving yojson]
 
@@ -480,24 +511,7 @@ end
 
 
 
-let _alba_cmd_line ?cwd ?(ignore_tls=false) x =
-  let maybe_extend_tls cmd =
-    if not ignore_tls && Config.tls
-    then
-      begin
-        _alba_extend_tls cmd
-      end
-    else cmd
-  in
-  let cmd = (Config.alba_bin :: x) in
-  let cmd1 = match cwd with
-    | Some dir -> "cd":: dir ::"&&":: cmd
-    | None -> cmd
-  in
-  cmd1
-  |> maybe_extend_tls
-  |> String.concat " "
-  |> Shell.cmd ~ignore_rc:false
+
 
 module Demo = struct
 
@@ -796,7 +810,7 @@ module JUnit = struct
             ) (0,0,0) suite.tests
         in
         Printf.sprintf
-          ("    <testsuite errors=\"%i\" failures=\"%i\" name=%S skipped=\"0\""
+          ("    <testsuite errors=\"%i\" failures=\"%i\" name=%S skipped=\"0\" "
           ^^ "tests=\"%i\" time=\"%f\" >\n")
           errors failures
           suite.name size
@@ -937,11 +951,7 @@ module Test = struct
       if i = 1000
       then ()
       else
-        let ()= ["proxy-upload-object";
-                 "-h";"127.0.0.1";
-                 "demo"; object_location; string_of_int i]
-                |> _alba_cmd_line ~ignore_tls:true
-        in
+        let () = Demo.proxy # upload_object "demo" object_location (string_of_int i) in
         loop (i+1)
     in
     loop 0;
@@ -1066,10 +1076,42 @@ module Test = struct
     let suite = JUnit.make_suite suite_name results d in
     suite
 
+  let big_object () =
+    let inner () =
+      let preset = "preset_no_compression" in
+      let namespace ="big" in
+      let name = "big_object" in
+      _alba_cmd_line ~cwd:Config.alba_home [
+                       "create-preset"; preset;
+                       "--config"; Demo.abm # config_file;
+                       " < "; "./cfg/preset_no_compression.json";
+                     ];
+      _alba_cmd_line [
+          "create-namespace";namespace ;preset;
+          "--config"; Demo.abm # config_file;
+        ];
+      let object_file = Config.alba_base_path ^ "/obj" in
+      "truncate -s 2G " ^ object_file |> Shell.cmd;
+      Demo.proxy # upload_object   namespace object_file name;
+      Demo.proxy # download_object namespace name (Config.alba_base_path ^ "obj_download");
+    in
+    let test_name = "big_object" in
+    let t0 = Unix.gettimeofday () in
+    let result =
+      try inner () ; JUnit.Ok
+      with x -> JUnit.Err (Printexc.to_string x)
+    in
+    let t1 = Unix.gettimeofday () in
+    let d = t1 -. t0 in
+    let testcase = JUnit.make_testcase test_name test_name d result in
+    let suite = JUnit.make_suite "big_object" [testcase] d in
+    suite
 
   let everything_else ?(xml=false) ?filter ?dump() =
     let suites =
-      [ cli ]
+      [ cli;
+        big_object;
+      ]
     in
     let results = List.map (fun s -> s() ) suites in
     if xml
