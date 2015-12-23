@@ -755,15 +755,17 @@ module JUnit = struct
     | Ok
     | Err of string
     | Fail of string
+    [@@deriving show]
 
   type testcase = {
       classname:string;
       name: string;
       time: float;
       result : result;
-    }
+    } [@@deriving show]
+
   let make_testcase classname name time result = {classname;name;time; result}
-  type suite = { name:string; time:float; tests : testcase list}
+  type suite = { name:string; time:float; tests : testcase list}[@@deriving show]
 
   let make_suite name tests time = {name;tests;time}
 
@@ -811,6 +813,8 @@ module JUnit = struct
     output_string oc "  </testsuites>\n";
     close_out oc
 
+  let dump suites =
+    Printf.printf "%s\n" ([% show : suite list] suites)
 end
 module Test = struct
 
@@ -979,19 +983,22 @@ module Test = struct
       ()
 
   let asd_get_version() =
-    let version_s = Demo.osds.(1) # get_remote_version in
-    let ok =
-      version_s.[0] = '(' &&
-        String.length version_s > 4
-    in
-    ok
+    try
+      let version_s = Demo.osds.(1) # get_remote_version in
+      match
+        version_s.[0] = '(' &&
+          String.length version_s > 4
+      with
+      | true -> JUnit.Ok
+      | false ->JUnit.Fail "failed test"
+    with exn -> JUnit.Err (Printexc.to_string exn)
 
   let asd_get_statistics () =
     let stats_s = Demo.osds.(1) # get_statistics in
     try
       let _ = Yojson.Safe.from_string stats_s in
-      true
-    with _ -> false
+      JUnit.Ok
+    with x -> JUnit.Err (Printexc.to_string x)
 
   let asd_crud () =
     let k = "the_key"
@@ -999,9 +1006,10 @@ module Test = struct
     let osd = Demo.osds.(1) in
     osd # set k v;
     let v2 = osd # get k in
-    Printf.printf "%S<>%S\n" v v2;
-    let ok = Str.search_forward (Str.regexp v) v2 0  <> -1 in
-    ok
+    match Str.search_forward (Str.regexp v) v2 0  <> -1 with
+    | true      -> JUnit.Ok
+    | false     -> JUnit.Fail (Printf.sprintf "%S <---> %S\n" v v2)
+    | exception x -> JUnit.Err (Printexc.to_string x)
 
   let asd_cli_env () =
     if Config.tls
@@ -1014,9 +1022,9 @@ module Test = struct
                 ]
       in
       let _r = Shell.cmd_with_capture cmd in
-      true
+      JUnit.Ok
     else
-      true
+      JUnit.Ok
 
 
   let create_example_preset () =
@@ -1028,10 +1036,10 @@ module Test = struct
     in
     try
       _alba_cmd_line ~cwd:Config.alba_home cmd;
-      true
-    with | _ -> false
+      JUnit.Ok
+    with | x -> JUnit.Err (Printexc.to_string x)
 
-  let cli ?(xml=false) ?filter ?dump () =
+  let cli () =
     let suite_name = "run_tests_cli" in
     let tests = ["asd_crud", asd_crud;
                  "asd_get_version", asd_get_version;
@@ -1046,8 +1054,7 @@ module Test = struct
           fun acc (name,test) ->
 
           let t0 = Unix.gettimeofday () in
-          let r = test () in
-          let result = if r then JUnit.Ok else JUnit.Err "?" in
+          let result = test () in
           let t1 = Unix.gettimeofday () in
           let d = t1 -. t0 in
           let testcase = JUnit.make_testcase name name d result in
@@ -1057,10 +1064,19 @@ module Test = struct
     let t1 = Unix.gettimeofday() in
     let d = t1 -. t0 in
     let suite = JUnit.make_suite suite_name results d in
+    suite
+
+
+  let everything_else ?(xml=false) ?filter ?dump() =
+    let suites =
+      [ cli ]
+    in
+    let results = List.map (fun s -> s() ) suites in
     if xml
     then
-       JUnit.dump_xml [suite] "./testresults.xml"
-    else ()
+       JUnit.dump_xml results "./testresults.xml"
+    else
+      JUnit.dump results
 end
 
 
@@ -1070,13 +1086,13 @@ let () =
   if cmd_len = 2
   then
     let test = match Sys.argv.(1) with
-    | "stress"         -> Test.stress
-    | "ocaml"          -> Test.ocaml
-    | "voldrv_backend" -> Test.voldrv_backend
-    | "voldrv_tests"   -> Test.voldrv_tests
-    | "disk_failures"  -> Test.disk_failures
-    | "asd_start"      -> Test.asd_start
-    | "cli"            -> Test.cli
+    | "stress"          -> Test.stress
+    | "ocaml"           -> Test.ocaml
+    | "voldrv_backend"  -> Test.voldrv_backend
+    | "voldrv_tests"    -> Test.voldrv_tests
+    | "disk_failures"   -> Test.disk_failures
+    | "asd_start"       -> Test.asd_start
+    | "everything_else" -> Test.everything_else
     | _  -> failwith "no test"
     in
     let f () = test ~xml:true () in Test.wrapper f
