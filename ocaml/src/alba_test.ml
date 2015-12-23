@@ -26,6 +26,7 @@ let test_with_alba_client ?bad_fragment_callback f =
       ?bad_fragment_callback
       (ref albamgr_client_cfg)
       ~release_resources:true
+      ~tcp_keepalive:Tcp_keepalive2.default
       f
   end
 
@@ -258,6 +259,7 @@ let test_delete_namespace () =
            Lwt_io.printlf "asserting about nsm_host" >>= fun () ->
            Client_helper.with_master_client'
              ~tls:None
+             ~tcp_keepalive:Tcp_keepalive2.default
              (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg
                 (Albamgr_test.get_ccfg ()))
              (fun client ->
@@ -1541,6 +1543,7 @@ let test_invalidate_deleted_namespace () =
     (fun alba_client1 ->
        Alba_client.with_client
          ~release_resources:true
+         ~tcp_keepalive:Tcp_keepalive2.default
          (ref (Albamgr_test.get_ccfg ()))
          (fun alba_client2 ->
 
@@ -1588,7 +1591,10 @@ let test_master_switch () =
     |> Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg in
   let rec wait_until_master () =
     let open Client_helper in
-    find_master_loop ~tls:None ccfg
+    find_master_loop
+      ~tls:None
+      ~tcp_keepalive:Tcp_keepalive2.default
+      ccfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
       Lwt.return ()
@@ -1598,7 +1604,10 @@ let test_master_switch () =
   in
   let drop_master () =
     let open Client_helper in
-    find_master_loop ~tls:None ccfg
+    find_master_loop
+      ~tls:None
+      ~tcp_keepalive:Tcp_keepalive2.default
+      ccfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
        begin
@@ -1762,6 +1771,7 @@ let test_stale_manifest_download () =
      let rewrite_obj () =
        Alba_client.with_client
          ~release_resources:true
+         ~tcp_keepalive:Tcp_keepalive2.default
          (ref (Albamgr_test.get_ccfg ()))
          (fun alba_client2 ->
           let maintenance_client =

@@ -93,7 +93,7 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
-RUN eval `${opam_env}` && opam install -y arakoon.1.8.10
+RUN eval `${opam_env}` && opam install -y arakoon.1.8.12
 
 # workarounds for limited rocksdb builder in orocksdb
 RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8

@@ -124,6 +124,7 @@ let first_connection' ?close_msg buffer_pool ips port =
 let make_server
       ?(cancel = Lwt_condition.create ())
       ?max
+      ~tcp_keepalive
       hosts port protocol =
   let count = ref 0 in
   let allow_connection =
@@ -138,11 +139,12 @@ let make_server
           (Lwt_condition.wait cancel >>= fun () ->
            Lwt.fail Lwt.Canceled); ]
       >>= fun (fd, cl_socket_address) ->
-      Lwt_log.info "Got new client connection" >>= fun () ->
       Lwt.ignore_result
         begin
           Lwt.finalize
             (fun () ->
+             Tcp_keepalive.apply fd tcp_keepalive;
+             Lwt_log.info "Got new client connection" >>= fun () ->
              incr count;
              if allow_connection ()
              then

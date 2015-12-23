@@ -41,6 +41,7 @@ let test_with_albamgr f =
     with_client'
       (get_ccfg ())
       f
+      ~tcp_keepalive:Tcp_keepalive2.default
   end
 
 let test_add_namespace () =
@@ -57,6 +58,7 @@ let test_unknown_operation () =
     begin
       _with_client
         ~attempts:1 (get_ccfg ())
+        ~tcp_keepalive:Tcp_keepalive2.default
         (fun client ->
          client # do_unknown_operation >>= fun () ->
          let client' = new client (client :> basic_client) in

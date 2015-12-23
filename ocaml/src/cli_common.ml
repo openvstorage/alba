@@ -277,6 +277,8 @@ let with_albamgr_client ~attempts cfg_file f =
     Albamgr_protocol.Protocol.Arakoon_config.from_config_file
       cfg_file
   in
-  Albamgr_client.with_client' ~attempts
+  Albamgr_client.with_client'
+    ~attempts
+    ~tcp_keepalive:Tcp_keepalive2.default
     cfg
     f

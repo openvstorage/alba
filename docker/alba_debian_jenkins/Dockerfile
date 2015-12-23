@@ -88,7 +88,7 @@ RUN cd /usr/src/gtest \
         && mv libg* /usr/lib/
 
 
-RUN eval `${opam_env}` && opam install -y arakoon.1.8.10
+RUN eval `${opam_env}` && opam install -y arakoon.1.8.12
 RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
 RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins

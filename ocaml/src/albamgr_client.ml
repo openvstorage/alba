@@ -555,7 +555,7 @@ type refresh_result =
   | Retry
   | Res of Albamgr_protocol.Protocol.Arakoon_config.t
 
-let retrieve_cfg_from_any_node current_config =
+let retrieve_cfg_from_any_node current_config ~tcp_keepalive =
     Lwt_log.debug "retrieve_from_any_node" >>= fun () ->
     let cluster_id, node_hashtbl = current_config in
     let node_names = Hashtbl.fold (fun nn _  acc -> nn :: acc) node_hashtbl [] in
@@ -573,6 +573,7 @@ let retrieve_cfg_from_any_node current_config =
             Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->
             Client_helper.with_client'
               ~tls:None
+              ~tcp_keepalive
               cfg
               cluster_id
               (fun node_client ->
@@ -591,9 +592,12 @@ let retrieve_cfg_from_any_node current_config =
     in
     loop node_names
 
-let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
+let make_client buffer_pool (ccfg:Arakoon_client_config.t) ~tcp_keepalive =
   let open Client_helper in
-  find_master' ~tls:None ccfg >>= function
+  find_master'
+    ~tls:None
+    ~tcp_keepalive
+    ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->
      let open Arakoon_client_config in
      Networking2.first_connection'
@@ -625,12 +629,13 @@ let _msg_of_exception = function
      Printf.sprintf "%s: %s" (Arakoon_exc.string_of_rc rc) msg
   | exn -> Printexc.to_string exn
 
-let _with_client ~attempts cfg f =
+let _with_client ~attempts ~tcp_keepalive cfg f =
   let attempt_it () =
     Lwt.catch
       (fun () ->
        Client_helper.with_master_client'
          ~tls:None
+         ~tcp_keepalive
          (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg cfg)
          (fun c -> wrap_around ~consistency:Arakoon_client.Consistent c >>= fun wc -> f wc)
        >>= fun r ->

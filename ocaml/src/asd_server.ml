@@ -1020,7 +1020,7 @@ class check_garbage_from_advancer check_garbage_from kv =
   end
 
 let run_server
-      ?cancel
+      ?cancel ~tcp_keepalive
       hosts port path
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1248,7 +1248,9 @@ let run_server
            ~get_next_fnr
            asd_id fd ic)
     in
-    Networking2.make_server ?cancel hosts port protocol
+    Networking2.make_server
+      ?cancel ~tcp_keepalive
+      hosts port protocol
   in
 
   let reporting_t =

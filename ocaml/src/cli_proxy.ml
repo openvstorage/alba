@@ -36,6 +36,7 @@ module Config = struct
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
     max_client_connections : int [@default 128];
+    tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
   } [@@deriving yojson, show]
 end
 
@@ -71,7 +72,7 @@ let proxy_start cfg_file =
         nsm_host_connection_pool_size,
         osd_connection_pool_size, osd_timeout,
         lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size,
-        max_client_connections
+        max_client_connections, tcp_keepalive
         =
         cfg.fragment_cache_dir,
         cfg.manifest_cache_size,
@@ -83,7 +84,7 @@ let proxy_start cfg_file =
         cfg.nsm_host_connection_pool_size,
         cfg.osd_connection_pool_size, cfg.osd_timeout,
         cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
-        cfg.max_client_connections
+        cfg.max_client_connections, cfg.tcp_keepalive
       in
       let () = match cfg.chattiness with
         | None -> ()
@@ -133,6 +134,7 @@ let proxy_start cfg_file =
         ~osd_timeout
         ~albamgr_cfg_file
         ~max_client_connections
+        ~tcp_keepalive
   in
   lwt_server t
 

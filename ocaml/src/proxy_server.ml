@@ -490,6 +490,7 @@ let refresh_albamgr_cfg
     ~loop
     albamgr_client_cfg
     (alba_client : Alba_client.alba_client)
+    ~tcp_keepalive
     destination =
 
   let rec inner () =
@@ -504,7 +505,7 @@ let refresh_albamgr_cfg
        function
        | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, master)
        | Error (Unknown_node (master, (_, _))) ->
-          retrieve_cfg_from_any_node !albamgr_client_cfg
+          retrieve_cfg_from_any_node !albamgr_client_cfg ~tcp_keepalive
        | exn ->
           Lwt_log.debug_f ~exn "refresh_albamgr_cfg failed" >>= fun () ->
           Lwt.return Retry
@@ -533,6 +534,7 @@ let run_server hosts port
                ~osd_timeout
                ~albamgr_cfg_file
                ~max_client_connections
+               ~tcp_keepalive
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -580,6 +582,7 @@ let run_server hosts port
          ~osd_connection_pool_size
          ~osd_timeout
          ~default_osd_priority:Osd.High
+         ~tcp_keepalive
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());
@@ -589,11 +592,13 @@ let run_server hosts port
                  albamgr_client_cfg
                  alba_client
                  albamgr_cfg_file
+                 ~tcp_keepalive
               );
               (let buffer_size = 8192 in
                let buffer_pool = Buffer_pool.create ~buffer_size in
                Networking2.make_server
                  ~max:max_client_connections
+                 ~tcp_keepalive
                  hosts port
                  (fun fd ->
                   Buffer_pool.with_buffer
