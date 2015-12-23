@@ -1,3 +1,7 @@
+let get_some = function
+  | Some x -> x
+  | None -> failwith "get_some"
+
 module Config = struct
   let env_or_default x y =
     try
@@ -38,7 +42,7 @@ module Config = struct
   let _N = 12
 
   let tls =
-    let v = env_or_default "ALBA_TLS" "true" in
+    let v = env_or_default "ALBA_TLS" "false" in
     Scanf.sscanf v "%b" (fun x -> x)
 
   let generate_serial =
@@ -159,13 +163,17 @@ let make_cert path name =
 
 let _arakoon_cmd_line x = String.concat " " (Config.arakoon_bin :: x) |> Shell.cmd
 
+let _get_client_tls () =
+  let cacert = Config.arakoon_path ^ "/cacert.pem" in
+  let pem    = Config.arakoon_path ^ "/my_client/my_client.pem" in
+  let key    = Config.arakoon_path ^ "/my_client/my_client.key" in
+  (cacert,pem,key)
+
 class arakoon cluster_id nodes base_port tls =
   let cluster_path = Config.arakoon_path ^ "/" ^ cluster_id in
   let cfg_file = Config.arakoon_path ^ "/" ^ cluster_id ^ ".ini" in
   let _extend_tls cmd =
-    let cacert        = Config.arakoon_path ^ "/cacert.pem" in
-    let my_client_pem = Config.arakoon_path ^ "/my_client/my_client.pem" in
-    let my_client_key = Config.arakoon_path ^ "/my_client/my_client.key" in
+    let cacert,my_client_pem,my_client_key = _get_client_tls () in
     cmd @ [
         "-tls-ca-cert"; cacert;
         "-tls-cert"; my_client_pem;
@@ -369,6 +377,13 @@ object
 
 end
 
+let _alba_extend_tls cmd =
+  let cacert = Config.arakoon_path ^ "/cacert.pem" in
+  let my_client_pem = Config.arakoon_path ^ "/my_client/my_client.pem" in
+  let my_client_key = Config.arakoon_path ^ "/my_client/my_client.key" in
+  cmd @ [Printf.sprintf
+           "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
+
 type tls = { cert:string; key:string; port : int} [@@ deriving yojson]
 
 type asd_cfg = {
@@ -407,8 +422,10 @@ class asd node_id asd_id home port tls =
        end
     | Some p -> p
   in
-  object
+  object(self)
     method config_file = cfg_file
+
+    method tls = tls
 
     method write_config_files =
       "mkdir -p " ^ home |> Shell.cmd;
@@ -432,16 +449,38 @@ class asd node_id asd_id home port tls =
     method stop =
       Printf.sprintf "fuser -k -n tcp %i" kill_port
       |> Shell.cmd
+
+    method private build_remote_cli ?(json=true) what  =
+      let p = match tls with
+        | Some tls -> tls.port
+        | None -> begin match port with | Some p -> p | None -> failwith "bad config" end
+      in
+      let cmd0 = [ Config.alba_bin;]
+                 @ what
+                 @ ["-h"; "127.0.0.1";"-p"; string_of_int p;]
+      in
+      let cmd1 = if Config.tls then _alba_extend_tls cmd0 else cmd0 in
+      let cmd2 = if json then cmd1 @ ["--to-json"] else cmd1 in
+      cmd2
+    method get_remote_version =
+      let cmd = self # build_remote_cli ["asd-get-version"] ~json:false in
+      cmd |> Shell.cmd_with_capture
+
+    method get_statistics =
+      let cmd = self # build_remote_cli ["asd-statistics"] in
+      cmd |> Shell.cmd_with_capture
+
+    method set k v =
+      let cmd = self # build_remote_cli ["asd-set";k;v] ~json:false in
+      cmd |> String.concat " " |> Shell.cmd
+    method get k =
+      let cmd = self # build_remote_cli ["asd-multi-get"; k] ~json:false in
+      cmd |> Shell.cmd_with_capture
 end
 
-let _alba_extend_tls cmd =
-  let cacert = Config.arakoon_path ^ "/cacert.pem" in
-  let my_client_pem = Config.arakoon_path ^ "/my_client/my_client.pem" in
-  let my_client_key = Config.arakoon_path ^ "/my_client/my_client.key" in
-  cmd @ [Printf.sprintf
-           "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
 
-let _alba_cmd_line ?(ignore_tls=false) x =
+
+let _alba_cmd_line ?cwd ?(ignore_tls=false) x =
   let maybe_extend_tls cmd =
     if not ignore_tls && Config.tls
     then
@@ -450,7 +489,12 @@ let _alba_cmd_line ?(ignore_tls=false) x =
       end
     else cmd
   in
-  (Config.alba_bin :: x)
+  let cmd = (Config.alba_bin :: x) in
+  let cmd1 = match cwd with
+    | Some dir -> "cd":: dir ::"&&":: cmd
+    | None -> cmd
+  in
+  cmd1
   |> maybe_extend_tls
   |> String.concat " "
   |> Shell.cmd ~ignore_rc:false
@@ -911,6 +955,55 @@ module Test = struct
     else
       ()
 
+  let asd_get_version() =
+    let version_s = Demo.osds.(1) # get_remote_version in
+    let ok =
+      version_s.[0] = '(' &&
+        String.length version_s > 4
+    in
+    ok
+
+  let asd_get_statistics () =
+    let stats_s = Demo.osds.(1) # get_statistics in
+    try
+      let _ = Yojson.Safe.from_string stats_s in
+      true
+    with _ -> false
+
+  let asd_crud () =
+    let k = "the_key"
+    and v = "the_value" in
+    let osd = Demo.osds.(1) in
+    osd # set k v;
+    let v2 = osd # get k in
+    Printf.printf "%S<>%S\n" v v2;
+    let ok = Str.search_forward (Str.regexp v) v2 0  <> -1 in
+    ok
+
+  let asd_cli_env () =
+    if Config.tls
+    then
+      let cert,pem,key = _get_client_tls () in
+      let cmd = [Printf.sprintf "'%s,%s,%s'" cert pem key;
+                 "&&" ;
+                 "asd-get-version";
+                 "-p" ; "8501"
+                ]
+      in
+      let _r = Shell.cmd_with_capture cmd in
+      true
+    else
+      true
+
+
+  let create_example_preset () =
+    let cmd = [
+        "create-preset"; "example";
+        "--config"; Demo.abm # config_file;
+        "< "; "./cfg/preset.json";
+      ]
+    in
+    _alba_cmd_line ~cwd:Config.alba_home cmd
 end
 
 
