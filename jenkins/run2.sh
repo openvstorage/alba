@@ -24,9 +24,7 @@ case "$1" in
         ;;
     cpp)
         ./jenkins/cpp/010-build_client.sh
-        export LD_LIBRARY_PATH=$WORKSPACE/cpp/lib
-        fab dev.run_tests_cpp:xml=True || true
-        fab alba.smoke_test
+        ${DRIVER} cpp  || true
         ;;
     ocaml)
         fab dev.run_tests_ocaml:xml=True || true

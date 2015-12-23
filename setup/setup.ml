@@ -838,6 +838,18 @@ module Test = struct
     f ();
     Demo.smoke_test ()
 
+  let cpp ?(xml=false) ?filter ?dump () =
+    let cmd =
+      ["cd";Config.alba_home; "&&"; "LD_LIBRARY_PATH=./cpp/lib"; "./cpp/bin/unit_tests.out";
+      ]
+    in
+    let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml" ] else cmd in
+    let cmd3 = match filter with
+      | None -> cmd2
+      | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
+    in
+    cmd3 |> String.concat " " |> Shell.cmd
+
   let stress ?(xml=false) ?filter ?dump () =
     let t0 = Unix.gettimeofday() in
     let n = 3000 in
@@ -1128,13 +1140,14 @@ let () =
   if cmd_len = 2
   then
     let test = match Sys.argv.(1) with
-    | "stress"          -> Test.stress
-    | "ocaml"           -> Test.ocaml
-    | "voldrv_backend"  -> Test.voldrv_backend
-    | "voldrv_tests"    -> Test.voldrv_tests
-    | "disk_failures"   -> Test.disk_failures
-    | "asd_start"       -> Test.asd_start
-    | "everything_else" -> Test.everything_else
-    | _  -> failwith "no test"
+      | "ocaml"           -> Test.ocaml
+      | "cpp"             -> Test.cpp
+      | "voldrv_backend"  -> Test.voldrv_backend
+      | "voldrv_tests"    -> Test.voldrv_tests
+      | "disk_failures"   -> Test.disk_failures
+      | "stress"          -> Test.stress
+      | "asd_start"       -> Test.asd_start
+      | "everything_else" -> Test.everything_else
+      | _  -> failwith "no test"
     in
     let f () = test ~xml:true () in Test.wrapper f
