@@ -43,6 +43,7 @@ let alba_create_preset
     let open Albamgr_protocol.Protocol in
     Lwt_log.debug_f "Storing preset %s" (Preset.show preset) >>= fun () ->
     Albamgr_client.with_client'
+      ~tcp_keepalive:Tcp_keepalive2.default
       (Arakoon_config.from_config_file cfg_file)
       ~tls_config
       (fun client ->
@@ -80,6 +81,7 @@ let alba_update_preset
     in
     Albamgr_client.with_client'
       (Arakoon_config.from_config_file cfg_file) ~tls_config
+      ~tcp_keepalive:Tcp_keepalive2.default
       (fun client ->
          client # update_preset
            preset_name
@@ -101,6 +103,7 @@ let alba_preset_set_default cfg_file tls_config preset_name to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
+      ~tcp_keepalive:Tcp_keepalive2.default
       (Arakoon_config.from_config_file cfg_file)
       ~tls_config
       (fun client ->
@@ -120,6 +123,7 @@ let alba_add_osds_to_preset cfg_file tls_config preset_name osd_ids to_json verb
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
+      ~tcp_keepalive:Tcp_keepalive2.default
       (Arakoon_config.from_config_file cfg_file)
       ~tls_config
       (fun client ->
@@ -146,6 +150,7 @@ let alba_delete_preset cfg_file tls_config preset_name to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
+      ~tcp_keepalive:Tcp_keepalive2.default
       (Arakoon_config.from_config_file cfg_file)
       ~tls_config
       (fun client ->
@@ -165,6 +170,7 @@ let alba_list_presets cfg_file tls_config to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
     Albamgr_client.with_client'
+      ~tcp_keepalive:Tcp_keepalive2.default
       (Arakoon_config.from_config_file cfg_file)
       ~tls_config
       (fun client ->

@@ -109,13 +109,14 @@ module RecoveryInfo = struct
          ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
     >>= fun encrypted ->
     let payload = Bigstring_slice.to_string encrypted in
-    let encrypt_info = EncryptInfo.from_encryption encryption in
+    let encrypt_info = Encrypt_info_helper.from_encryption encryption in
+
     Lwt.return { payload; encrypt_info; }
 
   let t_to_t' t encryption ~object_id =
     let open Lwt.Infix in
 
-    let encrypt_info' = EncryptInfo.from_encryption encryption in
+    let encrypt_info' = Encrypt_info_helper.from_encryption encryption in
     assert (encrypt_info' = t.encrypt_info);
 
     Fragment_helper.maybe_decrypt

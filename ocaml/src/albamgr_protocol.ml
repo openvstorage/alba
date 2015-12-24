@@ -517,24 +517,6 @@ module Protocol = struct
         object_checksum; fragment_checksum_algo;
         fragment_encryption; }
 
-    let get_encryption t encrypt_info =
-      let open Nsm_model in
-      let open Encryption.Encryption in
-      match t.fragment_encryption, encrypt_info with
-      | NoEncryption, EncryptInfo.NoEncryption ->
-        t.fragment_encryption
-      | AlgoWithKey (algo, key), EncryptInfo.Encrypted (algo', id) ->
-        if algo = algo'
-        then begin
-          let id' = EncryptInfo.get_id_for_key key in
-          if id = id'
-          then t.fragment_encryption
-          else failwith "encrypted with another key"
-        end else failwith "algo mismatch for decryption"
-      | NoEncryption, EncryptInfo.Encrypted _
-      | AlgoWithKey _, EncryptInfo.NoEncryption ->
-        failwith "encryption & enc_info mismatch during decryption"
-
 
     let _DEFAULT = {
         policies = [(5, 4, 8, 3); (2, 2, 3, 4);];

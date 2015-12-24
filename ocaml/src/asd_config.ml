@@ -33,6 +33,7 @@ module Config = struct
     buffer_size : (int         [@default (768*1024)]);
     multicast: (float option   [@default (Some 10.0)]);
     tls : (tls option          [@default None]);
+    tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
   } [@@deriving yojson, show]
 end
 open Lwt.Infix

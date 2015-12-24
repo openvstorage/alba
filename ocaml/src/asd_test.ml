@@ -68,6 +68,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
     Lwt.pick
       [ (Asd_server.run_server
            ~cancel
+           ~tcp_keepalive:Tcp_keepalive2.default
            [] o_port path
            ~asd_id
            ~node_id:"bla"

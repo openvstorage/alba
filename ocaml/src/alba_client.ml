@@ -404,6 +404,7 @@ let with_client albamgr_client_cfg
                 ?(default_osd_priority = Osd.Low)
                 ~tls_config
                 ?(release_resources = false)
+                ?(tcp_keepalive = Tcp_keepalive2.default)
                 f
   =
   begin
@@ -424,6 +425,7 @@ let with_client albamgr_client_cfg
       albamgr_client_cfg
       tls_config
       default_buffer_pool
+      ~tcp_keepalive
   in
   let mgr_access =
     new Albamgr_client.client (new basic_mgr_pooled albamgr_pool)
@@ -438,6 +440,7 @@ let with_client albamgr_client_cfg
                         ~osd_timeout
                         ~default_osd_priority
                         ~tls_config
+                        ~tcp_keepalive
   in
   let client = new alba_client base_client in
   Lwt.finalize

@@ -23,30 +23,31 @@ module Pool = struct
     type t = (Albamgr_client.single_connection_client *
               (unit -> unit Lwt.t)) Lwt_pool2.t
 
-    let make ~size cfg tls_config buffer_pool =
+    let make ~size cfg tls_config ~tcp_keepalive buffer_pool =
       let factory () =
         let ccfg = Arakoon_config.to_arakoon_client_cfg tls_config !cfg in
         let tls = Tls.to_client_context tls_config in
         let open Albamgr_client in
         Lwt.catch
-          (fun () -> make_client buffer_pool ccfg)
+          (fun () -> make_client buffer_pool ccfg ~tcp_keepalive)
           (let open Client_helper in
            let open MasterLookupResult in
            function
             | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, _master)
             | Error (Unknown_node (_master, (_, _))) ->
                begin
-                 retrieve_cfg_from_any_node ~tls !cfg >>= fun cfg' ->
+                 retrieve_cfg_from_any_node ~tls ~tcp_keepalive !cfg >>= fun cfg' ->
                  match cfg' with
                  | Res cfg' ->
                     let () = cfg := cfg' in
                     make_client
                       buffer_pool
                       (Arakoon_config.to_arakoon_client_cfg tls_config !cfg)
+                      ~tcp_keepalive
                  | Retry -> Lwt.fail_with "retry later"
                end
-            | exn ->
-              Lwt.fail exn)
+            | exn -> Lwt.fail exn
+          )
         >>= fun (c, node_name, closer) ->
         Lwt.return (c, closer)
       in
@@ -85,7 +86,7 @@ module Pool = struct
         pool_size = size;
       }
 
-    let use_nsm_host t ~nsm_host_id f =
+    let use_nsm_host t ~nsm_host_id f ~tcp_keepalive =
       let pool =
         try Hashtbl.find t.pools nsm_host_id with
         | Not_found ->
@@ -102,8 +103,8 @@ module Pool = struct
                  | Nsm_host.Arakoon cfg ->
                     let ccfg = Arakoon_config.to_arakoon_client_cfg t.tls_config cfg in
                     Nsm_host_client.make_client
-                      t.buffer_pool ccfg
-                      )
+                      t.buffer_pool ccfg ~tcp_keepalive
+                       )
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools nsm_host_id p;
