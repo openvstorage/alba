@@ -29,6 +29,7 @@ module Config = struct
     lwt_preemptive_thread_pool_min_size : (int [@default 6]);
     lwt_preemptive_thread_pool_max_size : (int [@default 8]);
     chattiness : float option [@default None];
+    tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
   } [@@deriving yojson, show]
 end
 
@@ -92,6 +93,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
       and osd_timeout                         = cfg.osd_timeout
       and lwt_preemptive_thread_pool_min_size = cfg.lwt_preemptive_thread_pool_min_size
       and lwt_preemptive_thread_pool_max_size = cfg.lwt_preemptive_thread_pool_max_size
+      and tcp_keepalive                       = cfg.tcp_keepalive
       in
       let () = match cfg.chattiness with
         | None -> ()
@@ -140,6 +142,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
         ~osd_timeout
+        ~tcp_keepalive
         (fun client ->
            let maintenance_client =
              new Maintenance.client (client # get_base_client)

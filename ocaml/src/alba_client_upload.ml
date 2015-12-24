@@ -252,7 +252,7 @@ let upload_object''
     Storage_scheme.EncodeCompressEncrypt
       (Encoding_scheme.RSVM (k, m, w),
        compression),
-    EncryptInfo.from_encryption encryption
+    Encrypt_info_helper.from_encryption encryption
   in
 
   let object_checksum_algo =

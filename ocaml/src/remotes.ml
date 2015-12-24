@@ -23,25 +23,26 @@ module Pool = struct
     type t = (Albamgr_client.single_connection_client *
               (unit -> unit Lwt.t)) Lwt_pool2.t
 
-    let make ~size cfg buffer_pool =
+    let make ~size cfg buffer_pool ~tcp_keepalive =
       let factory () =
         let ccfg = Arakoon_config.to_arakoon_client_cfg !cfg in
         let open Albamgr_client in
         Lwt.catch
-          (fun () -> make_client buffer_pool ccfg)
+          (fun () -> make_client buffer_pool ccfg ~tcp_keepalive)
           (let open Client_helper in
            let open MasterLookupResult in
            function
            | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, _master)
            | Error (Unknown_node (_master, (_, _))) ->
               begin
-                retrieve_cfg_from_any_node !cfg >>= fun cfg' ->
+                retrieve_cfg_from_any_node !cfg ~tcp_keepalive >>= fun cfg' ->
                 match cfg' with
                 | Res cfg' ->
                    let () = cfg := cfg' in
                    Albamgr_client.make_client
                      buffer_pool
                      (Arakoon_config.to_arakoon_client_cfg !cfg)
+                     ~tcp_keepalive
                 | Retry -> Lwt.fail_with "retry later"
               end
            | exn ->
@@ -87,7 +88,7 @@ module Pool = struct
         pool_size = size;
       }
 
-    let use_nsm_host t ~nsm_host_id f =
+    let use_nsm_host t ~nsm_host_id f ~tcp_keepalive =
       let pool =
         try Hashtbl.find t.pools nsm_host_id with
         | Not_found ->
@@ -104,7 +105,8 @@ module Pool = struct
                  | Nsm_host.Arakoon cfg ->
                     Nsm_host_client.make_client
                       t.buffer_pool
-                      (Arakoon_config.to_arakoon_client_cfg cfg))
+                      (Arakoon_config.to_arakoon_client_cfg cfg)
+                      ~tcp_keepalive)
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools nsm_host_id p;

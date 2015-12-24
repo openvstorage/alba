@@ -233,14 +233,6 @@ module EncryptInfo = struct
     then raise_bad_tag "EncryptInfo.key_identification" k;
     KeySha1 (Llio.string_from buf)
 
-  let get_id_for_key key =
-    let id =
-      Cstruct.to_string
-        (Nocrypto.Hash.SHA256.digest
-           (Cstruct.of_string key))
-    in
-    KeySha1 id
-
   type t =
     | NoEncryption
     | Encrypted of Encryption.algo * key_identification
@@ -264,12 +256,6 @@ module EncryptInfo = struct
       Encrypted (algo, id)
     | k ->
       raise_bad_tag "Nsm_model.Encryption" k
-
-  let from_encryption = function
-    | Encryption.NoEncryption ->
-      NoEncryption
-    | Encryption.AlgoWithKey (algo, key) ->
-      Encrypted (algo, get_id_for_key key)
 end
 
 module Storage_scheme = struct

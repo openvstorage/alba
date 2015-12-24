@@ -356,7 +356,7 @@ let gather_and_push_objects
           ~storage_scheme
           ~size
           ~checksum
-          ~encrypt_info:(EncryptInfo.from_encryption encryption)
+          ~encrypt_info:(Encrypt_info_helper.from_encryption encryption)
           ~timestamp
           ~chunk_sizes
           ~fragment_locations

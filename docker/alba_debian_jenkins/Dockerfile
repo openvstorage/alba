@@ -49,14 +49,16 @@ RUN sh ./opam_installer.sh /usr/local/bin 4.02.3
 
 ENV opam_env='opam config env --root=/home/alba/OPAM'
 RUN opam init --root=/home/alba/OPAM --comp 4.02.3
-RUN eval `${opam_env}` && opam install -y \
+RUN eval `${opam_env}` && \
+    opam update && \
+    opam install -y \
         ocamlfind \
-        ssl \
+        ssl.0.5.2 \
         camlbz2 \
         snappy \
         sexplib \
         bisect \
-        lwt.2.5.0 \
+        lwt.2.5.1 \
         camltc \
         cstruct \
         ctypes \
@@ -65,7 +67,6 @@ RUN eval `${opam_env}` && opam install -y \
         zarith \
         mirage-no-xen.1 \
         quickcheck.1.0.2 \
-        nocrypto.0.5.1 \
         cmdliner \
         conf-libev \
         depext \
@@ -88,9 +89,11 @@ RUN cd /usr/src/gtest \
         && mv libg* /usr/lib/
 
 
-RUN eval `${opam_env}` && opam install -y arakoon.1.8.10
-RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
-RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
+RUN eval `${opam_env}` && opam update && \
+    opam install -y arakoon.1.8.12 && \
+    opam depext orocksdb.0.2.1 && \
+    opam install -y orocksdb.0.2.1
+
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 RUN apt-get -y install clang-3.5

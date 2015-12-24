@@ -244,7 +244,7 @@ class client ?(retry_timeout = 60.)
 
       let enc = manifest.encrypt_info in
       let encryption =
-        Albamgr_protocol.Protocol.Preset.get_encryption preset enc
+        Encrypt_info_helper.get_encryption preset enc
       in
       Lwt_list.map_s
         (fun (chunk_id, chunk_location) ->

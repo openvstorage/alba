@@ -156,9 +156,12 @@ let wrap_around (client:Arakoon_client.client) =
     >>= fun ()->
     Lwt.fail_with "the nsm host user function could not be found"
 
-let make_client buffer_pool cfg =
+let make_client buffer_pool cfg ~tcp_keepalive =
   let open Client_helper in
-  find_master' ~tls:None cfg >>= function
+  find_master'
+    ~tls:None
+    ~tcp_keepalive
+    cfg >>= function
   | MasterLookupResult.Found (m, ncfg) ->
     let open Arakoon_client_config in
     Networking2.first_connection'
@@ -177,12 +180,13 @@ let make_client buffer_pool cfg =
   | r -> Lwt.fail (Client_helper.MasterLookupResult.Error r)
 
 
-let with_client cfg f =
+let with_client cfg f ~tcp_keepalive =
   let open Nsm_model in
   Lwt.catch
     (fun () ->
        Client_helper.with_master_client'
          ~tls:None
+         ~tcp_keepalive
          (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg cfg)
          (fun client ->
             wrap_around client >>= fun wc ->

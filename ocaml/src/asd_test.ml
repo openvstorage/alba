@@ -50,7 +50,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
   let t =
     Lwt.pick
       [ (Asd_server.run_server
-           ~cancel
+           ~cancel ~tcp_keepalive:Tcp_keepalive2.default
            [] port path
            ~asd_id
            ~node_id:"bla"
@@ -275,7 +275,8 @@ let test_protocol_version port () =
           ~buffer_size:(768*1024)
           ~rocksdb_max_open_files:256
           ~limit:90L
-          ~multicast:(Some 10.0);
+          ~multicast:(Some 10.0)
+          ~tcp_keepalive:Tcp_keepalive2.default;
         Lwt_unix.with_timeout
           5.
           (wait_asd_connection port asd_id)

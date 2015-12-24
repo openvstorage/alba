@@ -37,6 +37,7 @@ let test_unknown_operation () =
     begin
       let open Nsm_host_client in
       with_client
+        ~tcp_keepalive:Tcp_keepalive2.default
         (Albamgr_test.get_ccfg ())
         (fun client ->
          client # do_unknown_operation >>= fun () ->

@@ -22,7 +22,9 @@ class basic_nsm_host_pooled
     (mgr_access : Albamgr_client.client)
     nsm_hosts_pool
     forget
-    nsm_host_id =
+    nsm_host_id
+    ~tcp_keepalive
+  =
 
   let with_nsm_host_from_pool ~nsm_host_id f =
     let try_f () =
@@ -30,6 +32,7 @@ class basic_nsm_host_pooled
         nsm_hosts_pool
         ~nsm_host_id
         f
+        ~tcp_keepalive
     in
     Lwt.catch
       try_f
@@ -94,6 +97,7 @@ class nsm_host_access
     (mgr : Albamgr_client.client)
     nsm_host_connection_pool_size
     buffer_pool
+    ~tcp_keepalive
   =
 
   let nsm_hosts_info_cache = Hashtbl.create 3 in
@@ -123,7 +127,7 @@ class nsm_host_access
 
   let get_basic ~nsm_host_id =
     (* TODO pool met clients bijhouden *)
-    new basic_nsm_host_pooled mgr nsm_hosts_pool forget nsm_host_id
+    new basic_nsm_host_pooled mgr nsm_hosts_pool forget nsm_host_id ~tcp_keepalive
   in
 
   let get ~nsm_host_id =

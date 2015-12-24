@@ -33,6 +33,7 @@ module Config = struct
     limit : (int64           [@default 99L]);
     buffer_size : (int       [@default (768*1024)]);
     multicast: (float option [@default (Some 10.0)]);
+    tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
   } [@@deriving yojson, show]
 end
 
@@ -57,7 +58,7 @@ let asd_start cfg_file slow =
     | `Ok cfg ->
 
       let ips, port, home, node_id, log_level, asd_id,
-          fsync, limit, multicast, buffer_size
+          fsync, limit, multicast, buffer_size, tcp_keepalive
         =
         let open Config in
         cfg.ips, cfg.port,
@@ -68,7 +69,8 @@ let asd_start cfg_file slow =
         cfg.__sync_dont_use,
         cfg.limit,
         cfg.multicast,
-        cfg.buffer_size
+        cfg.buffer_size,
+        cfg.tcp_keepalive
       in
 
       (if not fsync
@@ -96,6 +98,7 @@ let asd_start cfg_file slow =
       Asd_server.run_server ips port home ~asd_id ~node_id ~slow
                             ~fsync ~limit ~multicast ~buffer_size
                             ~rocksdb_max_open_files:256
+                            ~tcp_keepalive
   in
 
   lwt_server t
