@@ -2,5 +2,5 @@ PRJ alba
 S src
 S src/kinetic
 PKG arakoon_client ctypes ocplib-endian 
-PKG lwt nocrypto 
+PKG lwt
 PKG kinetic-client

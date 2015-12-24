@@ -9,10 +9,10 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
              aspcud"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
-         ssl.0.5.0 \
+         ssl.0.5.2 \
          camlbz2.0.6.0 \
          snappy.0.1.0 \
-         lwt.2.5.0 \
+         lwt.2.5.1 \
          camltc.0.9.2 \
          cstruct.1.7.0 \
          ctypes.0.4.1 \
@@ -20,10 +20,9 @@ OPAM_DEPENDS="ocamlfind \
          bisect.1.3 \
          ocplib-endian.0.8 \
          quickcheck.1.0.2 \
-         nocrypto.0.5.1 \
          uuidm.0.9.5 \
          zarith.1.3 \
-         arakoon.1.8.10 \
+         arakoon.1.8.12 \
          orocksdb.0.2.1 \
          kinetic-client \
          tiny_json \
@@ -106,7 +105,7 @@ install () {
     sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so
 
     opam install ${OPAM_DEPENDS} || true
-    opam depext arakoon.1.8.6 orocksdb.0.2.0
+    opam depext arakoon.1.8.12 orocksdb.0.2.1
     opam install ${OPAM_DEPENDS}
 
     date

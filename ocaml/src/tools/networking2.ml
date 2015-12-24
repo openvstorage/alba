@@ -200,11 +200,13 @@ let first_connection' ?close_msg buffer_pool ~conn_info =
   Lwt.return (nfd, conn, closer)
 
 
-let make_server ?(cancel = Lwt_condition.create ())
-                ?(server_name = "server")
-                ?max
-                hosts port
-                ~ctx protocol =
+let make_server
+      ?(cancel = Lwt_condition.create ())
+      ?(server_name = "server")
+      ?max
+      hosts port
+      ~tcp_keepalive
+      ~ctx protocol =
   let count = ref 0 in
   let allow_connection =
     match max with
@@ -218,6 +220,7 @@ let make_server ?(cancel = Lwt_condition.create ())
           (Lwt_condition.wait cancel >>= fun () ->
            Lwt.fail Lwt.Canceled); ]
       >>= fun (_fd, cl_socket_address) ->
+      Tcp_keepalive.apply _fd tcp_keepalive; (* TODO: is this the correct place? *)
       Lwt_log.info_f "%s: new client connection" server_name >>= fun () ->
       wrap_socket ctx _fd >>= fun nfdo ->
       let () =

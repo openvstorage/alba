@@ -577,8 +577,9 @@ type refresh_result =
   | Retry
   | Res of Albamgr_protocol.Protocol.Arakoon_config.t
 
-let retrieve_cfg_from_any_node ~tls current_config =
+let retrieve_cfg_from_any_node ~tls current_config ~tcp_keepalive =
     Lwt_log.debug "retrieve_cfg_from_any_node" >>= fun () ->
+
     let cluster_id, node_hashtbl = current_config in
     let node_names = Hashtbl.fold (fun nn _  acc -> nn :: acc) node_hashtbl [] in
 
@@ -595,6 +596,7 @@ let retrieve_cfg_from_any_node ~tls current_config =
             Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->
             Client_helper.with_client'
               ~tls
+              ~tcp_keepalive
               cfg
               cluster_id
               (fun node_client ->
@@ -613,8 +615,9 @@ let retrieve_cfg_from_any_node ~tls current_config =
     in
     loop node_names
 
-let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
+let make_client buffer_pool (ccfg:Arakoon_client_config.t) ~tcp_keepalive =
   let open Client_helper in
+
   let tls_config =
     let open Arakoon_client_config in
     ccfg.ssl_cfg |> Option.map Tls.of_ssl_cfg
@@ -624,7 +627,7 @@ let make_client buffer_pool (ccfg:Arakoon_client_config.t) =
   in
   Lwt_log.debug_f "Albamgr_client.make_client :%s " ([%show : Tls.t option] tls_config)
   >>= fun () ->
-  find_master' ~tls ccfg >>= function
+  find_master' ~tls ~tcp_keepalive ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->
      let open Arakoon_client_config in
      let conn_info = Networking2.make_conn_info ncfg.ips ncfg.port tls_config in
@@ -657,7 +660,8 @@ let _msg_of_exception = function
      Printf.sprintf "%s: %s" (Arakoon_exc.string_of_rc rc) msg
   | exn -> Printexc.to_string exn
 
-let _with_client ~attempts cfg tls_config f =
+
+let _with_client ~attempts cfg tls_config ~tcp_keepalive f =
   let ccfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg in
   let tls = Tls.to_client_context tls_config in
   let attempt_it () =
@@ -667,6 +671,7 @@ let _with_client ~attempts cfg tls_config f =
        >>= fun () ->
        Client_helper.with_master_client'
          ~tls
+         ~tcp_keepalive
          ccfg
          (fun c -> wrap_around ~consistency:Arakoon_client.Consistent c >>= fun wc -> f wc)
        >>= fun r ->

@@ -45,14 +45,16 @@ RUN mv cudf_remote_proxy /usr/local/bin/
 
 ENV OPAMEXTERNALSOLVER="cudf_remote_proxy %{input}% %{output}% %{criteria}%"
 
-RUN eval `${opam_env}` && opam install -y \
+RUN eval `${opam_env}` && \
+    opam update && \
+    opam install -y \
         ocamlfind \
-        ssl \
+        ssl.0.5.2 \
         camlbz2 \
         snappy \
         sexplib \
         bisect \
-        lwt.2.5.0 \
+        lwt.2.5.1 \
         camltc \
         cstruct \
         ctypes \
@@ -61,7 +63,6 @@ RUN eval `${opam_env}` && opam install -y \
         zarith \
         mirage-no-xen.1 \
         quickcheck.1.0.2 \
-        nocrypto.0.5.1 \
         cmdliner \
         conf-libev \
         depext \
@@ -93,7 +94,7 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
-RUN eval `${opam_env}` && opam install -y arakoon.1.8.10
+RUN eval `${opam_env}` && opam update && opam install -y arakoon.1.8.12
 
 # workarounds for limited rocksdb builder in orocksdb
 RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
@@ -105,8 +106,9 @@ RUN yum -y install sudo
 # Defaults    requiretty          # is line 56
 RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
 
-RUN eval `${opam_env}` && opam depext orocksdb.0.2.1
-RUN eval `${opam_env}` && opam install -y orocksdb.0.2.1
+RUN eval `${opam_env}` && opam update && \
+    opam depext orocksdb.0.2.1 && \
+    opam install -y orocksdb.0.2.1
 
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/

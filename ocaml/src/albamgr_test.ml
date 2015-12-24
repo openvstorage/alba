@@ -43,7 +43,10 @@ let test_with_albamgr f =
   let ccfg = get_ccfg () in
   let tls_config = !_tls_config_ref in
   Lwt_main.run
-    (Albamgr_client.with_client' ccfg ~tls_config f)
+    (Albamgr_client.with_client' ccfg
+                                 ~tls_config
+                                 ~tcp_keepalive:Tcp_keepalive2.default
+                                 f)
 
 
 let test_add_namespace () =
@@ -60,7 +63,9 @@ let test_unknown_operation () =
     begin
       let tls_config =  get_tls_config() in
       Albamgr_client._with_client
-        ~attempts:1 (get_ccfg ()) tls_config
+        ~attempts:1 (get_ccfg ())
+        ~tcp_keepalive:Tcp_keepalive2.default
+        tls_config
         (fun client ->
          client # do_unknown_operation >>= fun () ->
          let client' = new Albamgr_client.client (client :> Albamgr_client.basic_client) in

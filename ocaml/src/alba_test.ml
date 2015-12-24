@@ -28,6 +28,7 @@ let test_with_alba_client ?bad_fragment_callback f =
       (ref albamgr_client_cfg)
       ~tls_config
       ~release_resources:true
+      ~tcp_keepalive:Tcp_keepalive2.default
       f
   end
 
@@ -263,6 +264,7 @@ let test_delete_namespace () =
            let tls = Tls.to_client_context tls_config in
            Client_helper.with_master_client'
              ~tls
+             ~tcp_keepalive:Tcp_keepalive2.default
              (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg)
              (fun client ->
                 client # prefix_keys prefix (-1)
@@ -1567,6 +1569,7 @@ let test_invalidate_deleted_namespace () =
          (ref cfg)
          ~tls_config
          ~release_resources:true
+         ~tcp_keepalive:Tcp_keepalive2.default
          (fun alba_client2 ->
 
             (* alba_client1 is used to manipulate namespaces
@@ -1615,7 +1618,7 @@ let test_master_switch () =
   let rec wait_until_master () =
     let open Client_helper in
     let tls = Tls.to_client_context tls_config in
-    find_master_loop ~tls cfg
+    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default cfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
       Lwt.return ()
@@ -1626,7 +1629,7 @@ let test_master_switch () =
   let drop_master () =
     let open Client_helper in
     let tls = Tls.to_client_context tls_config in
-    find_master_loop ~tls cfg
+    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default cfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
        begin
@@ -1794,6 +1797,7 @@ let test_stale_manifest_download () =
          (ref cfg)
          ~tls_config
          ~release_resources:true
+         ~tcp_keepalive:Tcp_keepalive2.default
          (fun alba_client2 ->
           let maintenance_client =
             new Maintenance.client (alba_client2 # get_base_client) in
