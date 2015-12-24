@@ -41,6 +41,7 @@ class client
     ~osd_timeout
     ~default_osd_priority
     ~tls_config
+    ~tcp_keepalive
   =
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
@@ -49,6 +50,7 @@ class client
         nsm_host_connection_pool_size
         ~tls_config
         default_buffer_pool
+        ~tcp_keepalive
   in
 
   let osd_access =
@@ -514,7 +516,7 @@ class client
                let open Albamgr_protocol.Protocol in
                nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
                get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-               let encryption = Preset.get_encryption preset enc in
+               let encryption = Encrypt_info_helper.get_encryption preset enc in
 
                let _, _, intersections_rev =
                  List.fold_left
@@ -807,7 +809,7 @@ class client
       let open Albamgr_protocol.Protocol in
       nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
       get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-      let encryption = Preset.get_encryption preset enc in
+      let encryption = Encrypt_info_helper.get_encryption preset enc in
 
       let open Manifest in
 

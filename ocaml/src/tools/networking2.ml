@@ -35,10 +35,7 @@ let connect_with ip port ~tls_config =
       (Unix.domain_of_sockaddr address)
       Unix.SOCK_STREAM 0
   in
-  let (fdi:int) =
-    let fdu = Lwt_unix.unix_file_descr in
-    Obj.magic fdu
-  in
+  let (fdi:int) = Lwt_extra2.lwt_unix_fd_to_fd fd in
   Lwt_log.debug_f
     "connect_with : %s %i %s fd:%i" ip port ([%show: Tls.t option] tls_config) fdi
   >>= fun () ->
@@ -51,7 +48,9 @@ let connect_with ip port ~tls_config =
      Lwt.catch
        (fun () ->
         Lwt_extra2.with_timeout
-          ~msg:(Printf.sprintf "timeout while connecting with %s %i" ip port)
+          ~msg:(Printf.sprintf
+                  "timeout while connecting to fd=%i ip=%s port=%i"
+                  fdi ip port)
           1.
           (fun () ->
            Lwt_unix.connect fd address >>= fun () ->
@@ -67,7 +66,9 @@ let connect_with ip port ~tls_config =
          (fun () ->
           Lwt_extra2.with_timeout
             1.
-            ~msg:(Printf.sprintf "timeout while connecting with %s %i (ssl)" ip port)
+            ~msg:(Printf.sprintf
+                    "timeout while connecting to fd=%i ip=%s port=%i (ssl)"
+                    fdi ip port)
             (fun () ->
              Lwt_unix.connect fd address >>= fun () ->
              Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
@@ -199,11 +200,13 @@ let first_connection' ?close_msg buffer_pool ~conn_info =
   Lwt.return (nfd, conn, closer)
 
 
-let make_server ?(cancel = Lwt_condition.create ())
-                ?(server_name = "server")
-                ?max
-                hosts port
-                ~ctx protocol =
+let make_server
+      ?(cancel = Lwt_condition.create ())
+      ?(server_name = "server")
+      ?max
+      hosts port
+      ~tcp_keepalive
+      ~ctx protocol =
   let count = ref 0 in
   let allow_connection =
     match max with
@@ -217,6 +220,7 @@ let make_server ?(cancel = Lwt_condition.create ())
           (Lwt_condition.wait cancel >>= fun () ->
            Lwt.fail Lwt.Canceled); ]
       >>= fun (_fd, cl_socket_address) ->
+      Tcp_keepalive.apply _fd tcp_keepalive; (* TODO: is this the correct place? *)
       Lwt_log.info_f "%s: new client connection" server_name >>= fun () ->
       wrap_socket ctx _fd >>= fun nfdo ->
       let () =

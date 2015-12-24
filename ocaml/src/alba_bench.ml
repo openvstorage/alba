@@ -69,6 +69,7 @@ let do_scenarios
       scenarios =
   let period = period_of_power power in
   Alba_client.with_client
+    ~tcp_keepalive:Tcp_keepalive2.default
     albamgr_cfg
     (fun alba_client ->
      let client = new alba_bench_client alba_client in

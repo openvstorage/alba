@@ -1112,6 +1112,7 @@ let run_server
       ~limit
       ~multicast
       ~tls
+      ~tcp_keepalive
   =
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
   Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls) >>= fun () ->
@@ -1334,7 +1335,12 @@ let run_server
     match port with
     | None -> threads
     | Some port ->
-       let t = Networking2.make_server ?cancel hosts port ~ctx:None protocol in
+       let t = Networking2.make_server
+                 ?cancel
+                 hosts port
+                 ~tcp_keepalive
+                 ~ctx:None protocol
+       in
        t :: threads
   in
   let maybe_add_tls_server threads =
@@ -1343,7 +1349,7 @@ let run_server
       | Some tls ->
          let open Asd_config.Config in
          let tlsPort = tls.port in
-         let t = Networking2.make_server ?cancel hosts tlsPort ~ctx protocol in
+         let t = Networking2.make_server ?cancel hosts tlsPort ~tcp_keepalive ~ctx protocol in
          t :: threads
   in
   let maybe_add_multicast threads =

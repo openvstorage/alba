@@ -284,7 +284,7 @@ class client ?(retry_timeout = 60.)
 
       let enc = manifest.encrypt_info in
       let encryption =
-        Albamgr_protocol.Protocol.Preset.get_encryption preset enc
+        Encrypt_info_helper.get_encryption preset enc
       in
       Lwt_list.map_s
         (fun (chunk_id, chunk_location) ->
@@ -1615,7 +1615,7 @@ class client ?(retry_timeout = 60.)
         (fun () ->
            alba_client # mgr_access # list_namespaces_by_id
              ~first:!next_id ~finc:true ~last:None
-             ~max:(-1)
+             ~max:100
            >>= fun ((cnt, namespaces), has_more) ->
 
            List.iter

@@ -324,4 +324,4 @@ let with_albamgr_client ~attempts cfg_file tls_config f =
       cfg_file
   in
   Albamgr_client.with_client' ~attempts
-    cfg ~tls_config f
+    cfg ~tls_config ~tcp_keepalive:Tcp_keepalive2.default f

@@ -38,6 +38,7 @@ let test_unknown_operation () =
       let open Nsm_host_client in
       let tls_config = Albamgr_test.get_tls_config() in
       with_client
+        ~tcp_keepalive:Tcp_keepalive2.default
         (Albamgr_test.get_ccfg ())
         tls_config
         (fun client ->

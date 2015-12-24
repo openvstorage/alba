@@ -20,7 +20,6 @@ open Cli_common
 open Checksum
 open Slice
 open Asd_protocol
-
 open Asd_config
 
 
@@ -31,20 +30,16 @@ let asd_start cfg_file slow =
     | `Error err -> failwith err
     | `Ok cfg ->
 
-      let ips, port, home, node_id, log_level, asd_id,
-          fsync, limit, multicast, buffer_size, tls
+       let ips,         port,      home,
+           node_id,     log_level, asd_id,
+           fsync,       limit,     multicast,
+           buffer_size, tls,       tcp_keepalive
         =
         let open Config in
-        cfg.ips, cfg.port,
-        cfg.home,
-        cfg.node_id,
-        cfg.log_level,
-        cfg.asd_id,
-        cfg.__sync_dont_use,
-        cfg.limit,
-        cfg.multicast,
-        cfg.buffer_size,
-        cfg.tls
+        cfg.ips,     cfg.port,      cfg.home,
+        cfg.node_id, cfg.log_level, cfg.asd_id,
+        cfg.__sync_dont_use, cfg.limit, cfg.multicast,
+        cfg.buffer_size, cfg.tls,   cfg.tcp_keepalive
       in
 
       (if not fsync
@@ -80,6 +75,7 @@ let asd_start cfg_file slow =
                             ~fsync ~limit ~multicast ~buffer_size
                             ~tls
                             ~rocksdb_max_open_files:256
+                            ~tcp_keepalive
   in
 
   lwt_server t
