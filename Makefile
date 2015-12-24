@@ -10,7 +10,7 @@ clean:
 	cd ./setup && ocamlbuild -clean
 
 build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin \
-	build-disk-failure-tests build-tests
+	build-disk-failure-tests setup
 
 build-alba:
 	cd ocaml && ocamlbuild -j 0 -use-ocamlfind alba.native
@@ -94,7 +94,7 @@ build-mgr-plugin: build-alba
 build-disk-failure-tests: build-alba
 	cd ocaml && ocamlbuild -use-ocamlfind disk_failure_tests.native
 
-build-tests :
+setup:
 	cd ./setup && ocamlbuild -use-ocamlfind setup.native
 
 install: build-alba
@@ -124,4 +124,4 @@ uninstall:
 doc :
 	emacs -u $(USER) --script ./doc/export.el
 
-.PHONY: install build doc
+.PHONY: install build doc setup

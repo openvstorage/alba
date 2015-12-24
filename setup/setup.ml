@@ -182,8 +182,18 @@ class arakoon cluster_id nodes base_port tls =
   in
 object (self)
   method config_file = cfg_file
-  method write_config_files =
-    "mkdir -p " ^ cluster_path |> Shell.cmd;
+  method write_node_config_files node =
+    let dir_path = cluster_path ^ "/" ^ node in
+    "mkdir -p " ^ dir_path |> Shell.cmd;
+    Printf.sprintf
+      "ln -fs %s/nsm_host_plugin.cmxs %s/nsm_host_plugin.cmxs"
+      Config.alba_plugin_path dir_path |> Shell.cmd;
+    Printf.sprintf
+      "ln -fs %s/albamgr_plugin.cmxs %s/albamgr_plugin.cmxs"
+      Config.alba_plugin_path dir_path |> Shell.cmd;
+    if tls then make_cert dir_path node
+
+  method write_cluster_config_file =
     let oc = open_out cfg_file in
     let w x = Printf.ksprintf (fun s -> output_string oc s) (x ^^ "\n") in
     w "[global]";
@@ -219,36 +229,30 @@ object (self)
 
       )
       nodes;
-    close_out oc;
-    if tls
-    then
-      begin
-        List.iter (fun node ->
-                   let node_path = cluster_path ^ "/" ^ node in
-                   "mkdir -p " ^ node_path |> Shell.cmd;
-                   make_cert node_path node)
-                  nodes
-      end
+    close_out oc
+
+  method write_config_files =
+    List.iter (self # write_node_config_files) nodes;
+    self # write_cluster_config_file
 
 
 
-  method start =
-    List.iter
-      (fun node ->
-       let dir_path = cluster_path ^ "/" ^ node in
-       "mkdir -p " ^ dir_path |> Shell.cmd;
-       Printf.sprintf
-         "ln -fs %s/nsm_host_plugin.cmxs %s/nsm_host_plugin.cmxs"
-         Config.alba_plugin_path dir_path |> Shell.cmd;
-       Printf.sprintf
-         "ln -fs %s/albamgr_plugin.cmxs %s/albamgr_plugin.cmxs"
-         Config.alba_plugin_path dir_path |> Shell.cmd;
-
-       [Config.arakoon_bin;
+  method start_node node =
+    [Config.arakoon_bin;
         "--node"; node;
         "-config"; cfg_file
-       ] |> Shell.detach
-      ) nodes
+    ] |> Shell.detach
+
+  method start =
+    List.iter (self # start_node) nodes
+
+  method stop_node name =
+    let pid_line = ["pgrep -a arakoon"; "| grep "; name ] |> Shell.cmd_with_capture in
+    let pid = Scanf.sscanf pid_line " %i " (fun i -> i) in
+    Printf.sprintf "kill %i" pid |> Shell.cmd
+
+  method stop_all =
+    List.iter (self # stop_node) nodes
 
   method remove_dirs =
     List.iter
@@ -267,7 +271,9 @@ object (self)
                 else line
     in
     let step () =
-      try  Some (Shell.cmd_with_capture line')
+      try
+        let r = Shell.cmd_with_capture line' in
+        Some r
       with _ -> None
     in
     let rec loop n =
@@ -395,21 +401,31 @@ class maintenance id abm_cfg_file tls =
   let cfg_file = maintenance_base ^ "/maintenance.cfg" in
 
 
-object
-  method write_config_file : unit =
-    "mkdir -p " ^ maintenance_base |> Shell.cmd;
-    let () =
-      Printf.sprintf "cp %s %s" abm_cfg_file maintenance_abm_cfg_file |> Shell.cmd
-    in
-    let oc = open_out cfg_file in
-    let json = maintenance_cfg_to_yojson cfg in
-    Yojson.Safe.pretty_to_channel oc json;
-    close_out oc
+  object
+    method abm_config_file = maintenance_abm_cfg_file
 
-  method start =
-    let out = Printf.sprintf "%s/maintenance.out" maintenance_base in
-    [Config.alba_bin; "maintenance"; "--config"; cfg_file]
-    |> Shell.detach ~out
+    method write_config_file : unit =
+      "mkdir -p " ^ maintenance_base |> Shell.cmd;
+      let () =
+        Printf.sprintf "cp %s %s" abm_cfg_file maintenance_abm_cfg_file |> Shell.cmd
+      in
+      let oc = open_out cfg_file in
+      let json = maintenance_cfg_to_yojson cfg in
+      Yojson.Safe.pretty_to_channel oc json;
+      close_out oc
+
+    method start =
+      let out = Printf.sprintf "%s/maintenance.out" maintenance_base in
+      [Config.alba_bin; "maintenance"; "--config"; cfg_file]
+      |> Shell.detach ~out
+
+    method signal s=
+      let pid_line = ["pgrep -a alba"; "| grep 'maintenance' " ]
+                     |> Shell.cmd_with_capture
+      in
+      let pid = Scanf.sscanf pid_line " %i " (fun i -> i) in
+      Printf.sprintf "kill -s %s %i" s pid |> Shell.cmd
+
 
 end
 
@@ -703,7 +719,7 @@ module Demo = struct
 
 
 
-  let setup () =
+  let setup ?(abm=abm) () =
     let _ = _arakoon_cmd_line ["--version"] in
     let _ = _alba_cmd_line ~ignore_tls:true ["version"] in
     if Config.tls
@@ -1118,10 +1134,68 @@ module Test = struct
     let suite = JUnit.make_suite "big_object" [testcase] d in
     suite
 
+  let arakoon_changes () =
+    let inner () =
+      let wait_for x =
+        let rec loop j =
+          if j = 0
+          then ()
+          else
+            let () = Printf.printf "%i\n%!" j in
+            let () = Unix.sleep 1 in
+            loop (j-1)
+        in
+        loop x
+      in
+      Demo.kill ();
+      let two_nodes = new arakoon "abm" ["abm_0";"abm_1"] 4000 Config.tls in
+      Demo.setup ~abm:two_nodes ();
+      wait_for 10;
+      two_nodes # stop_node "abm_0";
+      two_nodes # stop_node "abm_1";
+
+      (* restart with other config *)
+      let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000 Config.tls in
+      three_nodes # write_cluster_config_file ;
+      three_nodes # write_node_config_files "abm_2";
+      three_nodes # start_node "abm_1";
+      three_nodes # start_node "abm_2";
+      wait_for 20;
+      three_nodes # start_node "abm_0";
+
+      (* update maintenance *)
+      Printf.sprintf
+        "cp %s %s"
+        (three_nodes # config_file)
+        (Demo.maintenance # abm_config_file) |> Shell.cmd;
+
+      Demo.maintenance # signal "USR1";
+      wait_for(120);
+      let r = [Config.alba_bin; "proxy-client-cfg | grep port | wc" ] |> Shell.cmd_with_capture in
+      let c = Scanf.sscanf r " %i " (fun i -> i) in
+      assert (c = 3);
+      ()
+    in
+    let test_name = "arakoon_changes" in
+    let t0 = Unix.gettimeofday () in
+    let result =
+      try inner () ; JUnit.Ok
+      with x -> JUnit.Err (Printexc.to_string x)
+    in
+    let t1 = Unix.gettimeofday () in
+    let d = t1 -. t0 in
+    let testcase = JUnit.make_testcase test_name test_name d result in
+    let suite = JUnit.make_suite "arakoon_changes" [testcase] d in
+    suite
+
+
+
+
   let everything_else ?(xml=false) ?filter ?dump() =
     let suites =
-      [ cli;
-        big_object;
+      [big_object;
+       cli;
+       arakoon_changes;
       ]
     in
     let results = List.map (fun s -> s() ) suites in
@@ -1130,6 +1204,8 @@ module Test = struct
        JUnit.dump_xml results "./testresults.xml"
     else
       JUnit.dump results
+
+
 end
 
 
