@@ -153,7 +153,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
 
                 let rec inner () =
                   Lwt_condition.wait albamgr_cfg_changed >>= fun () ->
-                  (* upload (the possible changed) client config to the albamgr *)
+                  Lwt_log.info_f "Uploading possibly changed client config to the albamgr" >>= fun () ->
                   Lwt.ignore_result (upload_albamgr_cfg albamgr_cfg client);
                   inner ()
                 in

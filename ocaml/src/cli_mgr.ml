@@ -799,6 +799,58 @@ let alba_update_maintenance_config_cmd =
   ),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"
 
+let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
+  let t () =
+    begin
+      if allow_dirty
+      then
+        begin
+          let cfg = Albamgr_protocol.Protocol.Arakoon_config.from_config_file cfg_file in
+          let tls = Tls.to_client_context tls_config in
+          let open Albamgr_client in
+          retrieve_cfg_from_any_node ~tls cfg >>= function
+          | Retry -> Lwt.fail_with "could not fetch abm client config from any of the nodes"
+          | Res cfg -> Lwt.return cfg
+        end
+      else
+        with_albamgr_client
+          cfg_file ~attempts:1 tls_config
+          (fun client ->
+           client # get_client_config)
+    end >>= fun ccfg ->
+    Lwt_log.info_f "Get client config: %s" (Albamgr_protocol.Protocol.Arakoon_config.show ccfg)
+  in
+  lwt_cmd_line false verbose t
+
+let alba_get_abm_client_config_cmd =
+  Term.(pure alba_get_abm_client_config
+        $ alba_cfg_file
+        $ tls_config
+        $ Arg.(value
+               & flag
+               & info ["allow-dirty"] ~docv:"allow fetching the config from a non slave node")
+        $ verbose),
+  Term.info "get-abm-client-config"
+
+let alba_update_abm_client_config cfg_file tls_config verbose attempts =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts tls_config
+      (fun client ->
+       client # store_client_config
+              (Albamgr_protocol.Protocol.Arakoon_config.from_config_file
+                 cfg_file))
+  in
+  lwt_cmd_line false verbose t
+
+let alba_update_abm_client_config_cmd =
+  Term.(pure alba_update_abm_client_config
+        $ alba_cfg_file
+        $ tls_config
+        $ verbose
+        $ attempts 1),
+  Term.info "update-abm-client-config"
+
 
 let cmds = [
     alba_list_namespaces_cmd;
@@ -828,4 +880,7 @@ let cmds = [
 
     alba_get_maintenance_config_cmd;
     alba_update_maintenance_config_cmd;
+
+    alba_get_abm_client_config_cmd;
+    alba_update_abm_client_config_cmd;
 ]
