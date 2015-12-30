@@ -1519,6 +1519,50 @@ let test_replication () =
        end
     )
 
+let test_striping () =
+  test_with_alba_client
+    (fun client ->
+
+     let test_name = "test_striping" in
+
+     let inner preset_name preset =
+       client # mgr_access # create_preset preset_name preset >>= fun () ->
+       let namespace = preset_name in
+       client # create_namespace
+              ~namespace
+              ~preset_name:(Some preset_name) () >>= fun _ ->
+
+       let object_name = test_name in
+       let object_data = test_name in
+
+       client # get_base_client # upload_object_from_string
+              ~namespace
+              ~object_name
+              ~object_data
+              ~checksum_o:None
+              ~allow_overwrite:Nsm_model.NoPrevious >>= fun _ ->
+
+       client # download_object_to_string
+              ~namespace
+              ~object_name
+              ~consistent_read:true
+              ~should_cache:false
+       >>= fun data_o ->
+       assert (Some object_data = data_o);
+       Lwt.return ()
+     in
+
+     let open Albamgr_protocol.Protocol in
+     inner
+       (test_name ^ "_1")
+       Preset.({ _DEFAULT with
+                 policies = [(1,0,1,1);]; }) >>= fun () ->
+
+     inner
+       (test_name ^ "_2")
+       Preset.({ _DEFAULT with
+                 policies = [(3,0,3,3);]; }))
+
 let test_add_disk () =
   test_with_alba_client
     (fun alba_client ->
@@ -1997,6 +2041,7 @@ let suite = "alba_test" >:::[
     "test_full_asd" >:: test_full_asd;
     "test_versions" >:: test_versions;
     "test_replication" >:: test_replication;
+    "test_striping" >:: test_striping;
     "test_add_disk" >:: test_add_disk;
     "test_invalidate_deleted_namespace" >:: test_invalidate_deleted_namespace;
     "test_master_switch" >:: test_master_switch;
