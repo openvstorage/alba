@@ -47,37 +47,45 @@ type kind =
   | Isa_l
 
 let _encode ?(kind=Isa_l) ~k ~m ~w data_ptrs parity_ptrs size =
-  match kind with
-  | Jerasure ->
-    with_free_lwt
-      (fun () -> Jerasure.reed_sol_vandermonde_coding_matrix ~k ~m ~w)
-      (fun cm ->
-       Jerasure.jerasure_matrix_encode
-         k m w
-         cm
-         data_ptrs parity_ptrs
-         size)
-  | Isa_l ->
-    let rsm =
-      Isa_l.gen_rs_vandermonde_matrix_jerasure ~k ~m
-      |> bigarray_start array1
-    in
-    let gftbls =
-      Isa_l.init_tables
-        ~k ~rows:(k + m)
-        (rsm
-         |> to_voidp |> from_voidp uchar
-         |> fun x -> x +@ k*k) in
-    Lwt_preemptive.detach
-      (fun () ->
-       Isa_l.encode_data
-         ~release_runtime_lock:true
-         ~len:size
-         ~k ~rows:m
-         ~gftbls
-         ~data_in:data_ptrs
-         ~data_out:parity_ptrs)
-      ()
+  if m = 0
+  then
+    (* no encoding has to happen when m=0
+     * (and it caused a segfault) *)
+    Lwt.return_unit
+  else
+    begin
+      match kind with
+      | Jerasure ->
+         with_free_lwt
+           (fun () -> Jerasure.reed_sol_vandermonde_coding_matrix ~k ~m ~w)
+           (fun cm ->
+            Jerasure.jerasure_matrix_encode
+              k m w
+              cm
+              data_ptrs parity_ptrs
+              size)
+      | Isa_l ->
+         let rsm =
+           Isa_l.gen_rs_vandermonde_matrix_jerasure ~k ~m
+           |> bigarray_start array1
+         in
+         let gftbls =
+           Isa_l.init_tables
+             ~k ~rows:(k + m)
+             (rsm
+              |> to_voidp |> from_voidp uchar
+              |> fun x -> x +@ k*k) in
+         Lwt_preemptive.detach
+           (fun () ->
+            Isa_l.encode_data
+              ~release_runtime_lock:true
+              ~len:size
+              ~k ~rows:m
+              ~gftbls
+              ~data_in:data_ptrs
+              ~data_out:parity_ptrs)
+           ()
+    end
 
 let encode ?kind ~k ~m ~w data parity size =
   let data_ptrs = bigstring_list_to_carray data in
