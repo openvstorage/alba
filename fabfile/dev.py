@@ -829,6 +829,7 @@ def run_test_arakoon_changes ():
 
         # 2 node cluster, and arakoon_0 is master.
         wait_for(10)
+        # expand the cluster
         stop_node('arakoon_0')
         stop_node('witness_0')
         # restart them with other config
@@ -847,6 +848,23 @@ def run_test_arakoon_changes ():
         cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
         c = cfg_s.split()[0]
         assert (c == '3') # 3 nodes in config
+
+        # shrink the cluster
+        stop_node('arakoon_0')
+        stop_node('arakoon_1')
+        stop_node('witness_0')
+
+        start_node('arakoon_0', arakoon_config_file_2)
+        start_node('witness_0', arakoon_config_file_2)
+
+        local("cp %s %s" % (arakoon_config_file_2, maintenance_cfg))
+
+        # TODO use alba update-abm-client-config
+        signal_alba('maintenance', 'USR1')
+        wait_for(120)
+        cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
+        c = cfg_s.split()[0]
+        assert (c == '2') # 2 nodes in config
 
     test_name = "arakoon_changes"
     result = timed_test(test_name, _inner)
