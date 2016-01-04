@@ -48,6 +48,18 @@ let rec upload_albamgr_cfg albamgr_cfg (client : Alba_client.alba_client) =
     Lwt_extra2.sleep_approx 60. >>= fun () ->
     upload_albamgr_cfg albamgr_cfg client
 
+let rec refresh_albamgr_cfg albamgr_cfg_file albamgr_cfg_ref =
+  begin
+    try
+      albamgr_cfg_ref :=
+        Albamgr_protocol.Protocol.Arakoon_config.from_config_file
+          albamgr_cfg_file;
+      Lwt.return ()
+    with exn ->
+      Lwt_log.info_f ~exn "Exception while refreshing albamgr cfg from disk"
+  end >>= fun () ->
+  Lwt_unix.sleep 60. >>= fun () ->
+  refresh_albamgr_cfg albamgr_cfg_file albamgr_cfg_ref
 
 
 type deprecated =
@@ -180,7 +192,8 @@ let alba_maintenance cfg_file modulo remainder flavour =
                     (Mem_stats.reporting_t
                        ~section:Lwt_log.Section.main
                        ());
-                    (maintenance_client # report_stats 60. )
+                    (maintenance_client # report_stats 60. );
+                    (refresh_albamgr_cfg albamgr_cfg_file albamgr_cfg);
                   ]
                 in
 
