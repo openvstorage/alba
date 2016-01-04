@@ -25,8 +25,7 @@ case "$1" in
         ${DRIVER} cpp  || true
         ;;
     ocaml)
-        fab dev.run_tests_ocaml:xml=True || true
-        fab alba.smoke_test
+        ${DRIVER} ocaml || true
         ;;
     stress)
         ${DRIVER} stress || true
