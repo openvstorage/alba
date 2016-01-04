@@ -1307,4 +1307,6 @@ let () =
       | "everything_else" -> Test.everything_else
       | _  -> failwith "no test"
     in
-    let f () = test ~xml:true ()  in Test.wrapper f
+    let f () =
+      test ~xml:true ()
+    in Test.wrapper f
