@@ -869,12 +869,12 @@ module JUnit = struct
           "      <testcase classname=%S name=%S time=\"%f\" >\n"
           test.classname test.name test.time
       in
+      output_string oc element;
       let () = match test.result with
       | Ok -> ()
       | Err s  -> output_string oc (Printf.sprintf "        <error>%s</error>\n" s)
       | Fail s -> output_string oc (Printf.sprintf "        <failure>%s</failure" s)
       in
-      output_string oc element;
       output_string oc "      </testcase>\n"
     in
     let dump_suite oc suite =
@@ -1095,6 +1095,7 @@ module Test = struct
   let asd_get_version() =
     try
       let version_s = Demo.osds.(1) # get_remote_version in
+      Printf.printf "version_s=%S\n%!" version_s;
       match
         version_s.[0] = '(' &&
           String.length version_s > 4
@@ -1124,15 +1125,19 @@ module Test = struct
   let asd_cli_env () =
     if Demo.cfg.tls
     then
-      let cert,pem,key = _get_client_tls () in
-      let cmd = [Printf.sprintf "'%s,%s,%s'" cert pem key;
-                 "&&" ;
-                 "asd-get-version";
-                 "-p" ; "8501"
-                ]
-      in
-      let _r = Shell.cmd_with_capture cmd in
-      JUnit.Ok
+      try
+        let cert,pem,key = _get_client_tls () in
+        let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
+                   Demo.cfg.alba_bin;
+                   "asd-get-version";
+                   "-h 127.0.0.1";
+                   "-p" ; "8501"
+                  ]
+        in
+        let _r = Shell.cmd_with_capture cmd in
+        JUnit.Ok
+      with exn ->
+        JUnit.Err (Printexc.to_string exn)
     else
       JUnit.Ok
 
@@ -1271,13 +1276,11 @@ module Test = struct
     in
     ()
 
-
-
   let everything_else ?(xml=false) ?filter ?dump() =
     let suites =
       [ big_object;
         cli;
-       arakoon_changes;
+        arakoon_changes;
       ]
     in
     let results = List.map (fun s -> s() ) suites in
