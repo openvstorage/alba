@@ -813,6 +813,13 @@ def run_test_arakoon_changes ():
             cmd_line = alba._detach(inner)
             local(cmd_line)
 
+        def upload_albamgr_cfg(cfg):
+            local(' '.join([
+                env['alba_bin'], 'update-abm-client-config',
+                '--attempts', '5',
+                '--config', cfg
+            ]))
+
         def signal_alba(process_name,signal):
             r = local("pgrep -a alba | grep %s" % process_name, capture = True)
             info = r.split()
@@ -829,6 +836,7 @@ def run_test_arakoon_changes ():
 
         # 2 node cluster, and arakoon_0 is master.
         wait_for(10)
+        # expand the cluster
         stop_node('arakoon_0')
         stop_node('witness_0')
         # restart them with other config
@@ -842,11 +850,26 @@ def run_test_arakoon_changes ():
         maintenance_home = "%s/maintenance" % ALBA_BASE_PATH
         maintenance_cfg = maintenance_home + "/albamgr.cfg"
         local("cp %s %s" % (arakoon_config_file, maintenance_cfg))
-        signal_alba('maintenance','USR1')
+        signal_alba('maintenance', 'USR1')
         wait_for(120)
         cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
         c = cfg_s.split()[0]
         assert (c == '3') # 3 nodes in config
+
+        # shrink the cluster
+        stop_node('arakoon_0')
+        stop_node('arakoon_1')
+        stop_node('witness_0')
+
+        start_node('arakoon_0', arakoon_config_file_2)
+        start_node('witness_0', arakoon_config_file_2)
+
+        local("cp %s %s" % (arakoon_config_file_2, maintenance_cfg))
+        upload_albamgr_cfg(arakoon_config_file_2)
+        wait_for(120)
+        cfg_s = local("%s proxy-client-cfg | grep port | wc" % env['alba_bin'], capture=True)
+        c = cfg_s.split()[0]
+        assert (c == '2') # 2 nodes in config
 
     test_name = "arakoon_changes"
     result = timed_test(test_name, _inner)
