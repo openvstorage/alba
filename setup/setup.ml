@@ -962,24 +962,29 @@ module Test = struct
 
   let ocaml ?(xml=false) ?filter ?dump () =
     begin
-      (* make cert for extra asd (test_discover_claimed) *)
+
       let cfg = Demo.cfg in
       if cfg.tls
       then
-        begin failwith "todo"
+        begin (* make cert for extra asd (test_discover_claimed) *)
+          let asd_id = "test_discover_claimed" in
+          let base = Printf.sprintf "%s/%s" cfg.arakoon_path asd_id in
+          "mkdir -p " ^ base |> Shell.cmd;
+          make_cert base asd_id;
         end;
       let cmd = [
           (*"valgrind"; "--track-origins=yes";*)
           cfg.alba_bin; "unit-tests"; "--config" ; Demo.abm # config_file ]
       in
       let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
-      let cmd3 = match filter with
-        | None -> cmd2
-        | Some filter -> cmd2 @ ["--only-test=" ^ filter] in
-      let cmd4 = match dump with
+      let cmd3 = if cfg.tls then _alba_extend_tls cmd else cmd2 in
+      let cmd4 = match filter with
         | None -> cmd3
-        | Some dump -> cmd3 @ [" > " ^ dump] in
-      let cmd_s = cmd4 |> String.concat " " in
+        | Some filter -> cmd3 @ ["--only-test=" ^ filter] in
+      let cmd5 = match dump with
+        | None -> cmd4
+        | Some dump -> cmd4 @ [" > " ^ dump] in
+      let cmd_s = cmd5 |> String.concat " " in
       let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
       cmd_s
       |> Shell.cmd
