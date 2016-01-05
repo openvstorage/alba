@@ -20,6 +20,7 @@ module Config = struct
       alba_home : string;
       alba_base_path : string;
       alba_bin : string;
+      alba_06_bin : string;
       alba_plugin_path : string;
       tls : bool;
 
@@ -47,7 +48,8 @@ module Config = struct
     let alba_home = env_or_default "ALBA_HOME" workspace in
     let alba_base_path = workspace ^ "/tmp/alba" in
 
-    let alba_bin  = env_or_default "ALBA_BIN" (alba_home  ^ "/ocaml/alba.native") in
+    let alba_bin    = env_or_default "ALBA_BIN" (alba_home  ^ "/ocaml/alba.native") in
+    let alba_06_bin = env_or_default "ALBA_06"  ("alba.0.6") in
     let alba_plugin_path = env_or_default "ALBA_PLUGIN_HOME" (alba_home ^ "/ocaml") in
 
     let failure_tester = alba_home ^ "/ocaml/disk_failure_tests.native" in
@@ -81,6 +83,7 @@ module Config = struct
       alba_home;
       alba_base_path;
       alba_bin;
+      alba_06_bin;
       alba_plugin_path;
       tls;
       local_nodeid_prefix;
@@ -320,16 +323,19 @@ object (self)
       )
       nodes
 
-  method wait_for_master ?(max=15) () : string =
-    let line = [cfg.arakoon_bin; "--who-master";"-config"; cfg_file]
-    in
+  method who_master () : string =
+    let line = [cfg.arakoon_bin; "--who-master";"-config"; cfg_file] in
     let line' = if cfg.tls
                 then _extend_tls line
                 else line
     in
+    Shell.cmd_with_capture line'
+
+  method wait_for_master ?(max=20) () : string =
+
     let step () =
       try
-        let r = Shell.cmd_with_capture line' in
+        let r = self # who_master () in
         Some r
       with _ -> None
     in
@@ -337,7 +343,8 @@ object (self)
       if n = 0
       then failwith "No_master"
       else
-        match step () with
+        let mo = step () in
+        match mo with
         | None ->
            let () = Printf.printf "%i\n%!" n; Unix.sleep 1 in
            loop (n-1)
@@ -407,7 +414,19 @@ let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
   |> String.concat " "
   |> Shell.cmd ~ignore_rc:false
 
-class proxy id cfg abm_cfg_file  =
+
+let suppress_tags tags = function
+  | `Assoc xs ->
+     let xs' =
+       List.filter
+         (fun (tag, value ) ->
+          not (List.mem tag tags)
+          && value <> `Null
+         ) xs in
+     `Assoc xs'
+  | _ -> failwith "unexpected json"
+
+class proxy id cfg alba_bin abm_cfg_file  =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
   let p_cfg_file = proxy_base ^ "/proxy.cfg" in
   let tls_client = make_tls_client cfg in
@@ -418,13 +437,14 @@ class proxy id cfg abm_cfg_file  =
     "mkdir -p " ^ proxy_base |> Shell.cmd;
     let oc = open_out p_cfg_file in
     let json = proxy_cfg_to_yojson p_cfg in
-    Yojson.Safe.pretty_to_channel oc json ;
+    let json' = suppress_tags [] json in
+    Yojson.Safe.pretty_to_channel oc json' ;
     close_out oc
 
   method start : unit =
     let out = Printf.sprintf "%s/proxy.out" proxy_base in
     "mkdir -p " ^ p_cfg.fragment_cache_dir |> Shell.cmd;
-    [cfg.alba_bin; "proxy-start"; "--config"; p_cfg_file]
+    [alba_bin; "proxy-start"; "--config"; p_cfg_file]
     |> Shell.detach ~out
 
   method upload_object namespace file name =
@@ -438,6 +458,9 @@ class proxy id cfg abm_cfg_file  =
      "-h";"127.0.0.1";
      namespace; name ;file ]
     |> _alba_cmd_line ~ignore_tls:true
+
+  method create_namespace name =
+    _alba_cmd_line ~ignore_tls:true ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
 end
 
 type maintenance_cfg = {
@@ -498,6 +521,7 @@ type asd_cfg = {
     node_id: string;
     home : string;
     log_level : string;
+    ips : string list;
     port : int option;
     asd_id : string;
     limit : int;
@@ -511,6 +535,7 @@ let make_asd_config node_id asd_id home port tls=
    asd_id;
    home;
    port;
+   ips = [];
    log_level = "debug";
    limit= 99;
    __sync_dont_use = false;
@@ -518,7 +543,10 @@ let make_asd_config node_id asd_id home port tls=
    tls;
   }
 
-class asd node_id asd_id (cfg:Config.t) home port tls =
+
+
+class asd node_id asd_id alba_bin arakoon_path home port tls =
+  let use_tls = tls <> None in
   let a_cfg = make_asd_config node_id asd_id home port tls in
   let a_cfg_file = home ^ "/cfg.json" in
   let kill_port = match port with
@@ -537,21 +565,26 @@ class asd node_id asd_id (cfg:Config.t) home port tls =
 
     method write_config_files =
       "mkdir -p " ^ home |> Shell.cmd;
-      if cfg.tls
+      if use_tls
       then
         begin
-        let base = Printf.sprintf "%s/%s" cfg.arakoon_path asd_id in
+        let base = Printf.sprintf "%s/%s" arakoon_path asd_id in
         "mkdir -p " ^ base |> Shell.cmd;
         make_cert base asd_id;
         end;
       let oc = open_out a_cfg_file in
       let json = asd_cfg_to_yojson a_cfg in
-      Yojson.Safe.pretty_to_channel oc json ;
+      let json' =
+        if use_tls
+        then json
+        else suppress_tags ["multicast"] json
+      in
+      Yojson.Safe.pretty_to_channel oc json' ;
       close_out oc
 
     method start =
       let out = home ^ "/stdout" in
-      [cfg.alba_bin; "asd-start"; "--config"; a_cfg_file]
+      [alba_bin; "asd-start"; "--config"; a_cfg_file]
       |> Shell.detach ~out;
 
     method stop =
@@ -563,11 +596,11 @@ class asd node_id asd_id (cfg:Config.t) home port tls =
         | Some tls -> tls.port
         | None -> begin match port with | Some p -> p | None -> failwith "bad config" end
       in
-      let cmd0 = [ cfg.alba_bin;]
+      let cmd0 = [ alba_bin;]
                  @ what
                  @ ["-h"; "127.0.0.1";"-p"; string_of_int p;]
       in
-      let cmd1 = if cfg.tls then _alba_extend_tls cmd0 else cmd0 in
+      let cmd1 = if use_tls then _alba_extend_tls cmd0 else cmd0 in
       let cmd2 = if json then cmd1 @ ["--to-json"] else cmd1 in
       cmd2
     method get_remote_version =
@@ -590,51 +623,42 @@ end
 
 
 
-module Demo = struct
+module Deployment = struct
+  type t = {
+      cfg : Config.t;
+      abm : arakoon;
+      nsm : arakoon;
+      proxy : proxy;
+      maintenance : maintenance;
+      osds : asd array;
+    }
 
-  let cfg = Config.default
-
-  let abm =
-    let id = "abm"
-    and nodes = ["abm_0"; "abm_1"; "abm_2"]
-    and base_port = 4000 in
-    new arakoon id nodes base_port
-
-  let nsm =
-    let id = "nsm"
-    and nodes = ["nsm_0";"nsm_1"; "nsm_2"]
-    and base_port = 4100 in
-    new arakoon id nodes base_port
-
-
-  let proxy       = new proxy       0 cfg (abm # config_file)
-  let maintenance = new maintenance 0 cfg (abm # config_file)
-
-  let nsm_host_register ~(nsm:arakoon) : unit =
-    let cfg_file = nsm # config_file in
+  let nsm_host_register t : unit =
+    let cfg_file = t.nsm # config_file in
     let cmd = ["add-nsm-host"; cfg_file ;
-               "--config" ; abm # config_file ]
+               "--config" ; t.abm # config_file ]
     in
     _alba_cmd_line cmd
 
-  let osds =
+
+  let make_osds n local_nodeid_prefix base_path arakoon_path alba_bin (tls:bool) =
     let base_port = 8000 in
     let rec loop asds j =
-      if j = cfg.n_osds
+      if j = n
       then List.rev asds |> Array.of_list
       else
         begin
           let port = base_port + j in
           let node_id = j lsr 2 in
-          let node_id_s = Printf.sprintf "%s_%i" cfg.local_nodeid_prefix node_id in
-          let asd_id = Printf.sprintf "%04i_%02i_%s" port node_id cfg.local_nodeid_prefix in
-          let home = cfg.alba_base_path ^ (Printf.sprintf "/asd/%02i" j) in
-          let tls =
-            if cfg.tls
+          let node_id_s = Printf.sprintf "%s_%i" local_nodeid_prefix node_id in
+          let asd_id = Printf.sprintf "%04i_%02i_%s" port node_id local_nodeid_prefix in
+          let home = base_path ^ (Printf.sprintf "/asd/%02i" j) in
+          let tls_cfg =
+            if tls
             then
               begin
                 let port = port + 500 in
-                let base = Printf.sprintf "%s/%s" cfg.arakoon_path asd_id in
+                let base = Printf.sprintf "%s/%s" arakoon_path asd_id in
                 Some { cert = Printf.sprintf "%s/%s.pem" base asd_id ;
                        key  = Printf.sprintf "%s/%s.key" base asd_id ;
                        port ;
@@ -642,48 +666,70 @@ module Demo = struct
               end
             else None
           in
-          let asd = new asd node_id_s asd_id cfg home (Some port) tls in
+          let asd = new asd node_id_s asd_id
+                        alba_bin
+                        arakoon_path
+                        home (Some port) tls_cfg
+          in
           loop (asd :: asds) (j+1)
         end
     in
     loop [] 0
 
-  let setup_osds n =
+  let make_default () =
+    let cfg = Config.default in
+    let abm =
+      let id = "abm"
+      and nodes = ["abm_0"; "abm_1"; "abm_2"]
+      and base_port = 4000 in
+      new arakoon id nodes base_port
+    in
+    let nsm =
+      let id = "nsm"
+      and nodes = ["nsm_0";"nsm_1"; "nsm_2"]
+      and base_port = 4100 in
+      new arakoon id nodes base_port
+    in
+    let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_file) in
+    let maintenance = new maintenance 0 cfg (abm # config_file) in
+    let osds = make_osds cfg.n_osds
+                         cfg.local_nodeid_prefix
+                         cfg.alba_base_path
+                         cfg.arakoon_path
+                         cfg.alba_bin
+                         cfg.tls
+    in
+    { cfg; abm;nsm; proxy ; maintenance; osds }
+
+  let setup_osds t =
     Array.iter (fun asd ->
                 asd # write_config_files;
                 asd # start
-               ) osds
+               ) t.osds
 
-  let claim_osd long_id =
+  let claim_osd t long_id =
     let cmd = [
         "claim-osd";
         "--long-id"; long_id;
-        "--config" ; abm # config_file;
+        "--config" ; t.abm # config_file;
       ]
     in
     _alba_cmd_line cmd
 
 
-  let claim_osds long_ids =
+  let claim_osds t long_ids =
     List.fold_left
       (fun acc long_id ->
-       try let () = claim_osd long_id in long_id :: acc
+       try
+         let () = claim_osd t long_id in
+         long_id :: acc
        with _ -> acc
       )
       [] long_ids
 
 
-  let harvest_available_osds () =
-    let available_json_s =
-      let cmd =
-        [cfg.alba_bin;
-         "list-available-osds"; "--config"; abm # config_file ; "--to-json"
-        ]
-      in
-      let cmd' = if cfg.tls then _alba_extend_tls cmd else cmd in
-      cmd' |> Shell.cmd_with_capture
-    in
-    let json = Yojson.Safe.from_string available_json_s in
+  let parse_harvest osds_json_s =
+    let json = Yojson.Safe.from_string osds_json_s in
     (*let () = Printf.printf "available_json:%S" available_json_s in*)
     let basic = Yojson.Safe.to_basic json  in
     match basic with
@@ -706,13 +752,25 @@ module Demo = struct
              | _ -> acc
             ) [] result)
        end
-    | _ -> failwith "?"
+    | _ -> failwith "unexpected json format"
 
-  let claim_local_osds n =
+  let harvest_available_osds t =
+    let available_json_s =
+      let cmd =
+        [t.cfg.alba_bin;
+         "list-available-osds"; "--config"; t.abm # config_file ; "--to-json"
+        ]
+      in
+      let cmd' = if t.cfg.tls then _alba_extend_tls cmd else cmd in
+      cmd' |> Shell.cmd_with_capture
+    in
+    parse_harvest available_json_s
+
+  let claim_local_osds t n =
     let do_round() =
-      let long_ids = harvest_available_osds () in
+      let long_ids = harvest_available_osds t in
       let locals = List.filter (fun x -> true) long_ids in
-      let claimed = claim_osds locals in
+      let claimed = claim_osds t locals in
       List.length claimed
     in
     let rec loop j c =
@@ -725,21 +783,22 @@ module Demo = struct
     in
     loop 0 0
 
-  let stop_osds () =
-    Array.iter (fun asd -> asd # stop) osds
+  let stop_osds t =
+    Array.iter (fun asd -> asd # stop) t.osds
 
 
-  let restart_osds () =
-    stop_osds ();
-    Array.iter (fun asd -> asd # start) osds
+  let restart_osds t =
+    stop_osds t ;
+    Array.iter
+      (fun asd -> asd # start)
+      t.osds
 
 
-  let proxy_create_namespace name =
-    _alba_cmd_line ~ignore_tls:true ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
 
-  let list_namespaces () =
-    let r = [cfg.alba_bin; "list-namespaces";
-             "--config"; abm # config_file;
+
+  let list_namespaces t  =
+    let r = [t.cfg.alba_bin; "list-namespaces";
+             "--config"; t.abm # config_file;
              "--to-json";
             ] |> Shell.cmd_with_capture in
     let json = Yojson.Safe.from_string r in
@@ -760,10 +819,10 @@ module Demo = struct
          result
     | _ -> failwith "?"
 
-  let install_monitoring () =
+  let install_monitoring t =
     let arakoons = ["pgrep";"-a";"arakoon"] |> Shell.cmd_with_capture in
     let albas    = ["pgrep";"-a";"alba"]    |> Shell.cmd_with_capture in
-    let oc = open_out cfg.monitoring_file in
+    let oc = open_out t.cfg.monitoring_file in
     output_string oc arakoons;
     output_string oc "\n";
     output_string oc albas;
@@ -777,12 +836,13 @@ module Demo = struct
     let alba_pids = get_pids albas in
     let pids = arakoon_pids @ alba_pids in
     let args = List.fold_left (fun acc pid -> "-p"::(string_of_int pid):: acc) ["1"] pids in
-    "pidstat" :: args |> Shell.detach ~out:cfg.monitoring_file
+    "pidstat" :: args |> Shell.detach ~out:t.cfg.monitoring_file
 
 
 
 
-  let setup ?(abm=abm) () =
+  let setup t =
+    let cfg = t.cfg in
     let _ = _arakoon_cmd_line ["--version"] in
     let _ = _alba_cmd_line ~ignore_tls:true ["version"] in
     if cfg.tls
@@ -796,48 +856,49 @@ module Demo = struct
         make_cert client_path my_client
       end;
 
-    abm # write_config_files;
-    abm # start ;
+    t.abm # write_config_files;
+    t.abm # start ;
 
-    nsm # write_config_files;
-    nsm # start ;
+    t.nsm # write_config_files;
+    t.nsm # start ;
 
-    let _ = abm # wait_for_master () in
-    let _ = nsm # wait_for_master () in
+    let _ = t.abm # wait_for_master () in
+    let _ = t.nsm # wait_for_master () in
 
-    proxy # write_config_file;
-    proxy # start;
-
-
-    maintenance # write_config_file;
-    maintenance # start;
-
-    nsm_host_register nsm;
-
-    setup_osds cfg.n_osds;
-
-    claim_local_osds cfg.n_osds;
-
-    proxy_create_namespace "demo";
-    install_monitoring ()
+    t.proxy # write_config_file;
+    t.proxy # start;
 
 
-  let kill () =
+    t.maintenance # write_config_file;
+    t.maintenance # start;
+
+    nsm_host_register t;
+
+    setup_osds t;
+
+    claim_local_osds t t.cfg.n_osds;
+
+    t.proxy # create_namespace "demo";
+    install_monitoring t
+
+
+  let kill t =
+    let cfg = t.cfg in
     let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
     pkill (Filename.basename cfg.arakoon_bin);
     pkill (Filename.basename cfg.alba_bin);
     pkill "'java.*SimulatorRunner.*'";
     "fuser -k -f " ^ cfg.monitoring_file |> Shell.cmd ~ignore_rc:true ;
-    abm # remove_dirs;
+    t.abm # remove_dirs;
     "rm -rf " ^ cfg.alba_base_path |> Shell.cmd;
     "rm -rf " ^ cfg.arakoon_path   |> Shell.cmd;
     ()
 
-  let proxy_pid () =
+  let proxy_pid t =
     let n = ["fuser";"-n";"tcp";"10000"] |> Shell.cmd_with_capture in
     Scanf.sscanf n " %i" (fun i -> i)
 
-  let smoke_test () =
+  let smoke_test t =
     let _  = proxy_pid () in
     ()
 
@@ -911,15 +972,21 @@ module JUnit = struct
 end
 
 module Test = struct
+  open Deployment
+  let wrapper f t =
+    let t = Deployment.make_default () in
+    Deployment.kill t;
+    Deployment.setup t;
+    f t;
+    Deployment.smoke_test t
 
-  let wrapper f =
-    Demo.kill ();
-    Demo.setup ();
-    f ();
-    Demo.smoke_test ()
+  let no_wrapper f t =
+    let _ = f t
+    in ()
 
-  let cpp ?(xml=false) ?filter ?dump () =
-    let cfg = Demo.cfg in
+
+  let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
+    let cfg = t.Deployment.cfg in
     let cmd =
       ["cd";cfg.alba_home; "&&"; "LD_LIBRARY_PATH=./cpp/lib"; "./cpp/bin/unit_tests.out";
       ]
@@ -931,7 +998,7 @@ module Test = struct
     in
     cmd3 |> String.concat " " |> Shell.cmd
 
-  let stress ?(xml=false) ?filter ?dump () =
+  let stress ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let t0 = Unix.gettimeofday() in
     let n = 3000 in
     let rec loop i =
@@ -939,11 +1006,11 @@ module Test = struct
       then ()
       else
         let name = Printf.sprintf "%08i" i in
-        let () = Demo.proxy_create_namespace name in
+        let () = t.Deployment.proxy # create_namespace name in
         loop (i+1)
     in
     let () = loop 0 in
-    let namespaces = Demo.list_namespaces () in
+    let namespaces = Deployment.list_namespaces t in
     let t1 = Unix.gettimeofday () in
     let d = t1 -. t0 in
     assert ((n+1) = List.length namespaces);
@@ -960,10 +1027,10 @@ module Test = struct
     else ()
 
 
-  let ocaml ?(xml=false) ?filter ?dump () =
+  let ocaml ?(xml=false) ?filter ?dump t =
     begin
 
-      let cfg = Demo.cfg in
+      let cfg = t.Deployment.cfg in
       if cfg.tls
       then
         begin (* make cert for extra asd (test_discover_claimed) *)
@@ -974,7 +1041,7 @@ module Test = struct
         end;
       let cmd = [
           (*"valgrind"; "--track-origins=yes";*)
-          cfg.alba_bin; "unit-tests"; "--config" ; Demo.abm # config_file ]
+          cfg.alba_bin; "unit-tests"; "--config" ; t.abm # config_file ]
       in
       let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
       let cmd3 = if cfg.tls then _alba_extend_tls cmd else cmd2 in
@@ -990,8 +1057,8 @@ module Test = struct
       |> Shell.cmd
     end
 
-  let voldrv_backend ?(xml=false) ?filter ?dump ()=
-    let cfg = Demo.cfg in
+  let voldrv_backend ?(xml=false) ?filter ?dump t =
+    let cfg = t.Deployment.cfg in
     let cmd = [
         cfg.voldrv_backend_test;
         "--skip-backend-setup"; "1";
@@ -1013,8 +1080,8 @@ module Test = struct
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd
 
-  let voldrv_tests ?(xml = false) ?filter ?dump () =
-    let cfg = Demo.cfg in
+  let voldrv_tests ?(xml = false) ?filter ?dump t =
+    let cfg = t.Deployment.cfg in
     let cmd = [cfg.voldrv_test;
                "--skip-backend-setup";"1";
                "--backend-config-file"; cfg.alba_home ^ "/cfg/backend.json";
@@ -1034,11 +1101,11 @@ module Test = struct
     cmd_s |> Shell.cmd
 
 
-  let disk_failures ?(xml= false) ?filter ?dump () =
-    let cfg = Demo.cfg in
+  let disk_failures ?(xml= false) ?filter ?dump t =
+    let cfg = t.Deployment.cfg in
     let cmd = [
         cfg.failure_tester;
-        "--config" ; Demo.abm # config_file;
+        "--config" ; t.abm # config_file;
       ]
     in
     let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
@@ -1046,8 +1113,8 @@ module Test = struct
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd
 
-  let asd_start ?(xml=false) ?filter ?dump () =
-    let cfg = Demo.cfg in
+  let asd_start ?(xml=false) ?filter ?dump t =
+    let cfg = t.Deployment.cfg in
     let t0 = Unix.gettimeofday() in
     let object_location = cfg.alba_base_path ^ "/obj" in
     let cmd_s = Printf.sprintf "dd if=/dev/urandom of=%s bs=1M count=1" object_location in
@@ -1056,11 +1123,11 @@ module Test = struct
       if i = 1000
       then ()
       else
-        let () = Demo.proxy # upload_object "demo" object_location (string_of_int i) in
+        let () = t.proxy # upload_object "demo" object_location (string_of_int i) in
         loop (i+1)
     in
     loop 0;
-    Demo.restart_osds ();
+    Deployment.restart_osds t;
     let attempt ()  =
       try [
         "proxy-upload-object";
@@ -1081,7 +1148,7 @@ module Test = struct
     in
     let ok = attempt () in
     Printf.printf "ok:%b\n%!" ok;
-    Demo.smoke_test();
+    Deployment.smoke_test t;
     let t1 = Unix.gettimeofday() in
     let d = t1 -. t0 in
     if xml
@@ -1097,9 +1164,9 @@ module Test = struct
     else
       ()
 
-  let asd_get_version() =
+  let asd_get_version t =
     try
-      let version_s = Demo.osds.(1) # get_remote_version in
+      let version_s = t.Deployment.osds.(1) # get_remote_version in
       Printf.printf "version_s=%S\n%!" version_s;
       match
         version_s.[0] = '(' &&
@@ -1109,17 +1176,17 @@ module Test = struct
       | false ->JUnit.Fail "failed test"
     with exn -> JUnit.Err (Printexc.to_string exn)
 
-  let asd_get_statistics () =
-    let stats_s = Demo.osds.(1) # get_statistics in
+  let asd_get_statistics t =
+    let stats_s = t.Deployment.osds.(1) # get_statistics in
     try
       let _ = Yojson.Safe.from_string stats_s in
       JUnit.Ok
     with x -> JUnit.Err (Printexc.to_string x)
 
-  let asd_crud () =
+  let asd_crud t  =
     let k = "the_key"
     and v = "the_value" in
-    let osd = Demo.osds.(1) in
+    let osd = t.Deployment.osds.(1) in
     osd # set k v;
     let v2 = osd # get k in
     match Str.search_forward (Str.regexp v) v2 0  <> -1 with
@@ -1127,13 +1194,13 @@ module Test = struct
     | false     -> JUnit.Fail (Printf.sprintf "%S <---> %S\n" v v2)
     | exception x -> JUnit.Err (Printexc.to_string x)
 
-  let asd_cli_env () =
-    if Demo.cfg.tls
+  let asd_cli_env t =
+    if t.Deployment.cfg.tls
     then
       try
         let cert,pem,key = _get_client_tls () in
         let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
-                   Demo.cfg.alba_bin;
+                   t.cfg.alba_bin;
                    "asd-get-version";
                    "-h 127.0.0.1";
                    "-p" ; "8501"
@@ -1147,19 +1214,19 @@ module Test = struct
       JUnit.Ok
 
 
-  let create_example_preset () =
+  let create_example_preset t =
     let cmd = [
         "create-preset"; "example";
-        "--config"; Demo.abm # config_file;
+        "--config"; t.Deployment.abm # config_file;
         "< "; "./cfg/preset.json";
       ]
     in
     try
-      _alba_cmd_line ~cwd:Demo.cfg.alba_home cmd;
+      _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
       JUnit.Ok
     with | x -> JUnit.Err (Printexc.to_string x)
 
-  let cli () =
+  let cli t =
     let suite_name = "run_tests_cli" in
     let tests = ["asd_crud", asd_crud;
                  "asd_get_version", asd_get_version;
@@ -1174,7 +1241,7 @@ module Test = struct
           fun acc (name,test) ->
 
           let t0 = Unix.gettimeofday () in
-          let result = test () in
+          let result = test t in
           let t1 = Unix.gettimeofday () in
           let d = t1 -. t0 in
           let testcase = JUnit.make_testcase name name d result in
@@ -1186,24 +1253,25 @@ module Test = struct
     let suite = JUnit.make_suite suite_name results d in
     suite
 
-  let big_object () =
+  let big_object t =
     let inner () =
       let preset = "preset_no_compression" in
       let namespace ="big" in
       let name = "big_object" in
-      _alba_cmd_line ~cwd:Demo.cfg.alba_home [
+      _alba_cmd_line ~cwd:t.Deployment.cfg.alba_home [
                        "create-preset"; preset;
-                       "--config"; Demo.abm # config_file;
+                       "--config"; t.abm # config_file;
                        " < "; "./cfg/preset_no_compression.json";
                      ];
       _alba_cmd_line [
           "create-namespace";namespace ;preset;
-          "--config"; Demo.abm # config_file;
+          "--config"; t.abm # config_file;
         ];
-      let object_file = Demo.cfg.alba_base_path ^ "/obj" in
+      let cfg = t.cfg in
+      let object_file = cfg.alba_base_path ^ "/obj" in
       "truncate -s 2G " ^ object_file |> Shell.cmd;
-      Demo.proxy # upload_object   namespace object_file name;
-      Demo.proxy # download_object namespace name (Demo.cfg.alba_base_path ^ "obj_download");
+      t.proxy # upload_object   namespace object_file name;
+      t.proxy # download_object namespace name (cfg.alba_base_path ^ "obj_download");
     in
     let test_name = "big_object" in
     let t0 = Unix.gettimeofday () in
@@ -1217,7 +1285,7 @@ module Test = struct
     let suite = JUnit.make_suite "big_object" [testcase] d in
     suite
 
-  let arakoon_changes () =
+  let arakoon_changes t =
     let inner () =
       let wait_for x =
         let rec loop j =
@@ -1230,9 +1298,11 @@ module Test = struct
         in
         loop x
       in
-      Demo.kill ();
+      Deployment.kill t;
       let two_nodes = new arakoon "abm" ["abm_0";"abm_1"] 4000 in
-      Demo.setup ~abm:two_nodes ();
+      let t' = {t with abm = two_nodes } in
+
+      Deployment.setup t';
       wait_for 10;
       two_nodes # stop_node "abm_0";
       two_nodes # stop_node "abm_1";
@@ -1250,11 +1320,11 @@ module Test = struct
       Printf.sprintf
         "cp %s %s"
         (three_nodes # config_file)
-        (Demo.maintenance # abm_config_file) |> Shell.cmd;
+        (t'.maintenance # abm_config_file) |> Shell.cmd;
 
-      Demo.maintenance # signal "USR1";
+      t'.maintenance # signal "USR1";
       wait_for(120);
-      let r = [Demo.cfg.alba_bin; "proxy-client-cfg | grep port | wc" ] |> Shell.cmd_with_capture in
+      let r = [t'.cfg.alba_bin; "proxy-client-cfg | grep port | wc" ] |> Shell.cmd_with_capture in
       let c = Scanf.sscanf r " %i " (fun i -> i) in
       assert (c = 3);
       ()
@@ -1271,24 +1341,157 @@ module Test = struct
     let suite = JUnit.make_suite "arakoon_changes" [testcase] d in
     suite
 
-  let compat () =
-    let test () =
-      Demo.smoke_test ()
-    in
-    let deploy_and_test () =
-      let old_env = failwith "todo" in
-      Demo.kill()
-    in
-    ()
+  let compat ?(xml=false) ?filter ?dump t =
+    let test old_proxy old_plugins old_asd t =
+      let cfg = t.cfg in
+      try
+        Deployment.smoke_test t;
+        let make_cli ?(old=false) extra =
+          let bin = if old then failwith "old bin?" else cfg.alba_bin in
+          bin :: extra
+        in
+        let obj_name = "alba_binary"
+        and ns = "demo"
+        and host = "127.0.0.1"
+        in
+        let basic_tests =
+          [
+            ["proxy-upload-object"; "-h"; host; ns; cfg.alba_bin; obj_name];
+            ["proxy-download-object"; "-h"; host; ns; obj_name; "/tmp/downloaded.bin"];
+            ["delete-object"; ns; obj_name; "--config"; t.abm # config_file];
+          ]
+        in
+        List.iter
+          (fun t -> t |> make_cli |> String.concat " " |> Shell.cmd )
+          basic_tests;
 
-  let everything_else ?(xml=false) ?filter ?dump() =
+        (* explicit backward compatible operations *)
+        let r = make_cli ["list-all-osds"; "--config"; t.abm # config_file; "--to-json"]
+              |> Shell.cmd_with_capture
+        in
+        let osds = Deployment.parse_harvest r in
+        let long_id = List.hd osds in
+
+        (* decommission 1 asd *)
+        make_cli ["decommission-osd";"--long-id"; long_id;
+                  "--config"; t.abm # config_file ]
+        |> String.concat " "
+        |> Shell.cmd;
+        (* list them *)
+        let decommissioning_s=
+          make_cli ["list-decommissioning-osds";
+                    "--config"; t.abm # config_file; "--to-json"]
+          |> Shell.cmd_with_capture
+        in
+        let decommissioning = decommissioning_s |> Deployment.parse_harvest in
+        assert (List.length decommissioning = 1 )
+    with exn ->
+      Shell.cmd "pgrep -a alba";
+      Shell.cmd "pgrep -a arakoon";
+      Shell.cmd "which fuser";
+      raise exn
+    in
+    let deploy_and_test old_proxy old_plugins old_asds =
+      let t =
+        let maybe_old_asds tx =
+          if old_asds
+          then
+            {tx with osds = make_osds tx.cfg.n_osds
+                                      tx.cfg.local_nodeid_prefix
+                                      tx.cfg.alba_base_path
+                                      tx.cfg.arakoon_path
+                                      tx.cfg.alba_06_bin
+                                      false
+            }
+          else tx
+        in
+        let maybe_old_plugins tx =
+          if old_plugins
+          then
+            failwith "old_plugins"
+          else tx
+        in
+        let maybe_old_proxy tx =
+          if old_proxy
+          then
+            let old_proxy =
+              new proxy 0 tx.cfg
+                  tx.cfg.alba_06_bin
+                  (tx.abm # config_file)
+            in
+            {tx with proxy = old_proxy }
+          else tx
+        in
+        Deployment.make_default ()
+        |> maybe_old_asds
+        |> maybe_old_plugins
+        |> maybe_old_proxy
+      in
+      Deployment.kill t;
+      t.abm # write_config_files;
+      t.abm # start;
+
+      t.nsm # write_config_files;
+      t.nsm # start;
+
+      let _ = t.abm # wait_for_master () in
+      let _ = t.nsm # wait_for_master () in
+
+      t.proxy # write_config_file;
+      t.proxy # start;
+
+      t.maintenance # write_config_file;
+      t.maintenance # start;
+
+      Deployment.nsm_host_register t;
+      Deployment.setup_osds t;
+      Deployment.claim_local_osds t t.cfg.n_osds;
+      t.proxy # create_namespace "demo";
+
+      test old_proxy old_plugins old_asds t
+    in
+    let rec loop acc flavour =
+      if flavour = 3
+      then acc
+      else
+        let old_proxy   = flavour land 4 = 4
+        and old_plugins = flavour land 2 = 2
+        and old_asds    = flavour land 1 = 1
+        and test_name   = Printf.sprintf "flavour_%i" flavour
+        in
+        let t0 = Unix.gettimeofday() in
+        let result =
+          try
+            deploy_and_test old_proxy old_plugins old_asds;
+            JUnit.Ok;
+          with exn ->
+            JUnit.Err (Printexc.to_string exn)
+        in
+        let t1 = Unix.gettimeofday() in
+        let d = t1 -. t0 in
+        let testcase = JUnit.make_testcase "TestCompat" test_name d result in
+        loop (testcase :: acc) (flavour +1)
+    in
+    let t0 = Unix.gettimeofday () in
+    let testcases = loop [] 2 in
+    let t1 = Unix.gettimeofday () in
+    let d = t1 -. t0 in
+    let suite = JUnit.make_suite "compatibility" testcases d in
+    let results = [suite] in
+    if xml
+    then JUnit.dump_xml results "./testresults.xml"
+    else JUnit.dump results
+
+
+
+  let everything_else ?(xml=false) ?filter ?dump t =
     let suites =
       [ big_object;
         cli;
         arakoon_changes;
       ]
     in
-    let results = List.map (fun s -> s() ) suites in
+    let results = List.map (fun s -> s t) suites in
     if xml
     then
        JUnit.dump_xml results "./testresults.xml"
@@ -1304,17 +1507,22 @@ let () =
   Printf.printf "cmd_len:%i\n%!" cmd_len;
   if cmd_len = 2
   then
-    let test = match Sys.argv.(1) with
-      | "ocaml"           -> Test.ocaml
-      | "cpp"             -> Test.cpp
-      | "voldrv_backend"  -> Test.voldrv_backend
-      | "voldrv_tests"    -> Test.voldrv_tests
-      | "disk_failures"   -> Test.disk_failures
-      | "stress"          -> Test.stress
-      | "asd_start"       -> Test.asd_start
-      | "everything_else" -> Test.everything_else
+    let test, setup = match Sys.argv.(1) with
+      | "ocaml"           -> Test.ocaml, true
+      | "cpp"             -> Test.cpp, true
+      | "voldrv_backend"  -> Test.voldrv_backend, true
+      | "voldrv_tests"    -> Test.voldrv_tests, true
+      | "disk_failures"   -> Test.disk_failures, true
+      | "stress"          -> Test.stress,true
+      | "asd_start"       -> Test.asd_start,true
+      | "everything_else" -> Test.everything_else, true
+      | "compat"          -> Test.compat, false
       | _  -> failwith "no test"
     in
-    let f () =
-      test ~xml:true ()
-    in Test.wrapper f
+    let t = Deployment.make_default () in
+    let w =
+      if setup
+      then Test.wrapper
+      else Test.no_wrapper
+    in
+    w (test ~xml:true) t
