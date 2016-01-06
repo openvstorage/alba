@@ -40,7 +40,7 @@ case "$1" in
         ${DRIVER} disk_failures || true
         ;;
     compat)
-        fab dev.run_tests_compat:xml=True || true
+        ${DRIVER} compat || true
         ;;
     everything_else)
         ${DRIVER} everything_else  || true

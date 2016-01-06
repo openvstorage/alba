@@ -29,6 +29,7 @@ module Config = struct
       workspace : string;
       arakoon_home: string;
       arakoon_bin : string;
+      arakoon_189_bin: string;
       arakoon_path : string;
       abm_nodes : string list;
       abm_path : string;
@@ -36,8 +37,10 @@ module Config = struct
       alba_home : string;
       alba_base_path : string;
       alba_bin : string;
-      alba_06_bin : string;
       alba_plugin_path : string;
+      alba_06_bin : string;
+      alba_06_plugin_path :string;
+      license_file : string;
       tls : bool;
 
       local_nodeid_prefix : string;
@@ -55,6 +58,7 @@ module Config = struct
     let workspace = env_or_default "WORKSPACE" "" in
     let arakoon_home = env_or_default "ARAKOON_HOME" (home ^ "/workspace/ARAKOON/arakoon") in
     let arakoon_bin = env_or_default "ARAKOON_BIN" (arakoon_home ^ "/arakoon.native") in
+    let arakoon_189_bin = env_or_default "ARAKOON_189_BIN" "/usr/bin/arakoon" in
     let arakoon_path = workspace ^ "/tmp/arakoon" in
 
     let abm_nodes = ["abm_0";"abm_1";"abm_2"] in
@@ -65,9 +69,10 @@ module Config = struct
     let alba_base_path = workspace ^ "/tmp/alba" in
 
     let alba_bin    = env_or_default "ALBA_BIN" (alba_home  ^ "/ocaml/alba.native") in
-    let alba_06_bin = env_or_default "ALBA_06"  ("alba.0.6") in
     let alba_plugin_path = env_or_default "ALBA_PLUGIN_HOME" (alba_home ^ "/ocaml") in
-
+    let alba_06_bin = env_or_default "ALBA_06"  "/usr/bin/alba" in
+    let alba_06_plugin_path = env_or_default "ALBA_06_PLUGIN_PATH" "/usr/lib/alba" in
+    let license_file = alba_home ^ "/bin/0.6/community_license" in
     let failure_tester = alba_home ^ "/ocaml/disk_failure_tests.native" in
 
     let monitoring_file = workspace ^ "/tmp/alba/monitor.txt" in
@@ -92,6 +97,7 @@ module Config = struct
       workspace;
       arakoon_home;
       arakoon_bin;
+      arakoon_189_bin;
       arakoon_path;
       abm_nodes;
       abm_path;
@@ -99,8 +105,10 @@ module Config = struct
       alba_home;
       alba_base_path;
       alba_bin;
-      alba_06_bin;
       alba_plugin_path;
+      alba_06_bin;
+      alba_06_plugin_path;
+      license_file;
       tls;
       local_nodeid_prefix;
       n_osds;
@@ -258,116 +266,123 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port =
         "-tls-key"; my_client_key;
       ]
   in
-object (self)
-  method config_file = cfg_file
-  method write_node_config_files node =
-    let dir_path = cluster_path ^ "/" ^ node in
-    "mkdir -p " ^ dir_path |> Shell.cmd;
-    Printf.sprintf
-      "ln -fs %s/nsm_host_plugin.cmxs %s/nsm_host_plugin.cmxs"
-      cfg.alba_plugin_path dir_path |> Shell.cmd;
-    Printf.sprintf
-      "ln -fs %s/albamgr_plugin.cmxs %s/albamgr_plugin.cmxs"
-      cfg.alba_plugin_path dir_path |> Shell.cmd;
-    if cfg.tls then make_cert dir_path node
+  object (self)
+    val mutable _binary = cfg.arakoon_bin
+    val mutable _plugin_path = cfg.alba_plugin_path
 
-  method write_cluster_config_file =
-    let oc = open_out cfg_file in
-    let w x = Printf.ksprintf (fun s -> output_string oc s) (x ^^ "\n") in
-    w "[global]";
-    w "cluster = %s" (String.concat ", " nodes);
-    w "cluster_id = %s" cluster_id;
-    w "plugins = albamgr_plugin nsm_host_plugin";
-    w "";
-    if cfg.tls
-    then
-      begin
-        w "tls_ca_cert = %s/cacert.pem" cfg.arakoon_path;
-        w "tls_service = true";
-        w "tls_service_validate_peer = false";
-        w "";
-      end;
-    List.iteri
-      (fun i node ->
-       w "[%s]" node;
-       w "ip = 127.0.0.1";
-       w "client_port = %i" (base_port + i);
-       w "messaging_port = %i" (base_port + i + 10);
-       let home = cfg.arakoon_path ^ "/" ^ cluster_id ^ "/" ^ node in
-       w "home = %s" home;
-       w "log_level = debug";
-       w "fsync = false";
-       w "";
-       if cfg.tls then
-         begin
-           w "tls_cert = %s/%s.pem" home node;
-           w "tls_key =  %s/%s.key" home node;
-           w "";
-         end;
+    method to_arakoon_189  =
+      _binary <- cfg.arakoon_189_bin;
+      _plugin_path <- cfg.alba_06_plugin_path
 
-      )
-      nodes;
-    close_out oc
+    method config_file = cfg_file
+    method write_node_config_files node =
+      let dir_path = cluster_path ^ "/" ^ node in
+      "mkdir -p " ^ dir_path |> Shell.cmd;
+      Printf.sprintf
+        "ln -fs %s/nsm_host_plugin.cmxs %s/nsm_host_plugin.cmxs"
+        _plugin_path dir_path |> Shell.cmd;
+      Printf.sprintf
+        "ln -fs %s/albamgr_plugin.cmxs %s/albamgr_plugin.cmxs"
+        _plugin_path dir_path |> Shell.cmd;
+      if cfg.tls then make_cert dir_path node
 
-  method write_config_files =
-    List.iter (self # write_node_config_files) nodes;
-    self # write_cluster_config_file
+    method write_cluster_config_file =
+      let oc = open_out cfg_file in
+      let w x = Printf.ksprintf (fun s -> output_string oc s) (x ^^ "\n") in
+      w "[global]";
+      w "cluster = %s" (String.concat ", " nodes);
+      w "cluster_id = %s" cluster_id;
+      w "plugins = albamgr_plugin nsm_host_plugin";
+      w "";
+      if cfg.tls
+      then
+        begin
+          w "tls_ca_cert = %s/cacert.pem" cfg.arakoon_path;
+          w "tls_service = true";
+          w "tls_service_validate_peer = false";
+          w "";
+        end;
+      List.iteri
+        (fun i node ->
+         w "[%s]" node;
+         w "ip = 127.0.0.1";
+         w "client_port = %i" (base_port + i);
+         w "messaging_port = %i" (base_port + i + 10);
+         let home = cfg.arakoon_path ^ "/" ^ cluster_id ^ "/" ^ node in
+         w "home = %s" home;
+         w "log_level = debug";
+         w "fsync = false";
+         w "";
+         if cfg.tls then
+           begin
+             w "tls_cert = %s/%s.pem" home node;
+             w "tls_key =  %s/%s.key" home node;
+             w "";
+           end;
+
+        )
+        nodes;
+      close_out oc
+
+    method write_config_files =
+      List.iter (self # write_node_config_files) nodes;
+      self # write_cluster_config_file
 
 
 
-  method start_node node =
-    [cfg.arakoon_bin;
-        "--node"; node;
-        "-config"; cfg_file
-    ] |> Shell.detach
+    method start_node node =
+      [_binary;
+       "--node"; node;
+       "-config"; cfg_file
+      ] |> Shell.detach
 
-  method start =
-    List.iter (self # start_node) nodes
+    method start =
+      List.iter (self # start_node) nodes
 
-  method stop_node name =
-    let pid_line = ["pgrep -a arakoon"; "| grep "; name ] |> Shell.cmd_with_capture in
-    let pid = Scanf.sscanf pid_line " %i " (fun i -> i) in
-    Printf.sprintf "kill %i" pid |> Shell.cmd
+    method stop_node name =
+      let pid_line = ["pgrep -a arakoon"; "| grep "; name ] |> Shell.cmd_with_capture in
+      let pid = Scanf.sscanf pid_line " %i " (fun i -> i) in
+      Printf.sprintf "kill %i" pid |> Shell.cmd
 
-  method stop =
-    List.iter (self # stop_node) nodes
+    method stop =
+      List.iter (self # stop_node) nodes
 
-  method remove_dirs =
-    List.iter
-      (fun node ->
-       let rm = Printf.sprintf "rm -rf %s/%s" cluster_path node in
-       let _ = Shell.cmd rm in
-       ()
-      )
-      nodes
+    method remove_dirs =
+      List.iter
+        (fun node ->
+         let rm = Printf.sprintf "rm -rf %s/%s" cluster_path node in
+         let _ = Shell.cmd rm in
+         ()
+        )
+        nodes
 
-  method who_master () : string =
-    let line = [cfg.arakoon_bin; "--who-master";"-config"; cfg_file] in
-    let line' = if cfg.tls
-                then _extend_tls line
-                else line
-    in
-    Shell.cmd_with_capture line'
+    method who_master () : string =
+      let line = [cfg.arakoon_bin; "--who-master";"-config"; cfg_file] in
+      let line' = if cfg.tls
+                  then _extend_tls line
+                  else line
+      in
+      Shell.cmd_with_capture line'
 
-  method wait_for_master ?(max=20) () : string =
+    method wait_for_master ?(max=20) () : string =
 
-    let step () =
-      try
-        let r = self # who_master () in
-        Some r
-      with _ -> None
-    in
-    let rec loop n =
-      if n = 0
-      then failwith "No_master"
-      else
-        let mo = step () in
-        match mo with
-        | None ->
-           let () = Printf.printf "%i\n%!" n; Unix.sleep 1 in
-           loop (n-1)
-        | Some master -> master
-    in loop max
+      let step () =
+        try
+          let r = self # who_master () in
+          Some r
+        with _ -> None
+      in
+      let rec loop n =
+        if n = 0
+        then failwith "No_master"
+        else
+          let mo = step () in
+          match mo with
+          | None ->
+             let () = Printf.printf "%i\n%!" n; Unix.sleep 1 in
+             loop (n-1)
+          | Some master -> master
+      in loop max
 end
 
 type tls_client =
@@ -716,6 +731,20 @@ module Deployment = struct
                          cfg.tls
     in
     { cfg; abm;nsm; proxy ; maintenance; osds }
+
+  let to_arakoon_189 t =
+    let new_binary = t.cfg.arakoon_189_bin in
+    let new_plugin_path = t.cfg.alba_06_plugin_path in
+    let t' = { t with
+               cfg = { t.cfg with
+                       arakoon_bin = new_binary;
+                       alba_plugin_path = new_plugin_path;
+                     };
+             }
+    in
+    t'.abm # to_arakoon_189;
+    t'.nsm # to_arakoon_189;
+    t'
 
   let setup_osds t =
     Array.iter (fun asd ->
@@ -1422,7 +1451,6 @@ module Test = struct
     with exn ->
       Shell.cmd "pgrep -a alba";
       Shell.cmd "pgrep -a arakoon";
-      Shell.cmd "which fuser";
       raise exn
     in
     let deploy_and_test old_proxy old_plugins old_asds =
@@ -1442,7 +1470,7 @@ module Test = struct
         let maybe_old_plugins tx =
           if old_plugins
           then
-            failwith "old_plugins"
+            Deployment.to_arakoon_189 tx
           else tx
         in
         let maybe_old_proxy tx =
@@ -1461,7 +1489,10 @@ module Test = struct
         |> maybe_old_plugins
         |> maybe_old_proxy
       in
-      Deployment.kill t;
+      Deployment.kill t; (* too precise, previous deployment is slightly different  *)
+      Shell.cmd "pkill alba" ~ignore_rc:true;
+      Shell.cmd "pkill arakoon" ~ignore_rc:true;
+
       t.abm # write_config_files;
       t.abm # start;
 
@@ -1471,6 +1502,17 @@ module Test = struct
       let _ = t.abm # wait_for_master () in
       let _ = t.nsm # wait_for_master () in
 
+      if old_plugins
+      then
+        begin
+          let signature = "3cd787f7a0bcb6c8dbf40a8b4a3a5f350fa87d1bff5b33f5d099ab850e44aaeca6e3206b595d7cb361eed28c5dd3c0f3b95531d931a31a058f3c054b04917797b7363457f7a156b5f36c9bf3e1a43b46e5c1e9ca3025c695ef366be6c36a1fc28f5648256a82ca392833a3050e1808e21ef3838d0c027cf6edaafedc8cfe2f2fc37bd95102b92e7de28042acc65b8b6af4cfb3a11dadce215986da3743f1be275200860d24446865c50cdae2ebe2d77c86f6d8b3907b20725cdb7489e0a1ba7e306c90ff0189c5299194598c44a537b0a460c2bf2569ab9bb99c72f6415a2f98c614d196d0538c8c19ef956d42094658dba8d59cfc4a024c18c1c677eb59299425ac2c225a559756dee125ef93c38c211cda69c892d26ca33b7bd2ca95f15bbc1bb755c46574432005b8afcab48a0a5ed489854cec24207cddc7ab632d8715c1fb4b1309b45376a49e4c2b4819f27d9d6c8170c59422a0b778b9c3ac18e677bc6fa6e2a2527365aca5d16d4bc6e22007debef1989d08adc9523be0a5d50309ef9393eace644260345bb3d442004c70097fffd29fe315127f6d19edd4f0f46ae2f10df4f162318c4174b1339286f8c07d5febdf24dc049a875347f6b2860ba3a71b82aba829f890192511d6eddaacb0c8be890799fb5cb353bce7366e8047c9a66b8ee07bf78af40b09b4b278d8af2a9333959213df6101c85dda61f2944237c8" in
+          [t.cfg.alba_06_bin;
+           "apply-license";
+           t.cfg.license_file;
+           signature;
+           "--config"; t.abm # config_file
+          ] |> String.concat " " |> Shell.cmd
+        end;
       t.proxy # write_config_file;
       t.proxy # start;
 
@@ -1485,7 +1527,7 @@ module Test = struct
       test old_proxy old_plugins old_asds t
     in
     let rec loop acc flavour =
-      if flavour = 3
+      if flavour = 8
       then acc
       else
         let old_proxy   = flavour land 4 = 4
@@ -1507,7 +1549,7 @@ module Test = struct
         loop (testcase :: acc) (flavour +1)
     in
     let t0 = Unix.gettimeofday () in
-    let testcases = loop [] 2 in
+    let testcases = loop [] 0 in
     let t1 = Unix.gettimeofday () in
     let d = t1 -. t0 in
     let suite = JUnit.make_suite "compatibility" testcases d in
