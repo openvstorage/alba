@@ -1,3 +1,19 @@
+(*
+Copyright 2015 iNuron NV
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*)
+
 let get_some = function
   | Some x -> x
   | None -> failwith "get_some"
@@ -152,6 +168,8 @@ module Shell = struct
       ]
     in
     String.concat " " x |> cmd
+
+  let cp src tgt = Printf.sprintf "cp %s %s" src tgt |> cmd
 end
 
 open Config
@@ -311,7 +329,7 @@ object (self)
     let pid = Scanf.sscanf pid_line " %i " (fun i -> i) in
     Printf.sprintf "kill %i" pid |> Shell.cmd
 
-  method stop_all =
+  method stop =
     List.iter (self # stop_node) nodes
 
   method remove_dirs =
@@ -490,9 +508,7 @@ class maintenance id cfg abm_cfg_file =
 
     method write_config_file : unit =
       "mkdir -p " ^ maintenance_base |> Shell.cmd;
-      let () =
-        Printf.sprintf "cp %s %s" abm_cfg_file maintenance_abm_cfg_file |> Shell.cmd
-      in
+      let () = Shell.cp abm_cfg_file maintenance_abm_cfg_file in
       let oc = open_out m_cfg_file in
       let json = maintenance_cfg_to_yojson m_cfg in
       Yojson.Safe.pretty_to_channel oc json;
@@ -1302,12 +1318,20 @@ module Test = struct
       let two_nodes = new arakoon "abm" ["abm_0";"abm_1"] 4000 in
       let t' = {t with abm = two_nodes } in
 
+      let upload_albamgr_cfg cfg =
+        _alba_cmd_line ["update-abm-client-config";"--attempts";"5";
+                        "--config"; cfg]
+      in
+      let n_nodes_in_config () =
+        let r = [t'.cfg.alba_bin; "proxy-client-cfg | grep port | wc" ] |> Shell.cmd_with_capture in
+        let c = Scanf.sscanf r " %i " (fun i -> i) in
+        c
+      in
       Deployment.setup t';
       wait_for 10;
-      two_nodes # stop_node "abm_0";
-      two_nodes # stop_node "abm_1";
+      two_nodes # stop;
 
-      (* restart with other config *)
+      print_endline "grow the cluster";
       let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000 in
       three_nodes # write_cluster_config_file ;
       three_nodes # write_node_config_files "abm_2";
@@ -1316,18 +1340,28 @@ module Test = struct
       wait_for 20;
       three_nodes # start_node "abm_0";
 
+      let maintenance_cfg = t'.maintenance # abm_config_file in
+
       (* update maintenance *)
-      Printf.sprintf
-        "cp %s %s"
-        (three_nodes # config_file)
-        (t'.maintenance # abm_config_file) |> Shell.cmd;
+      Shell.cp (three_nodes # config_file) maintenance_cfg;
 
       t'.maintenance # signal "USR1";
       wait_for(120);
-      let r = [t'.cfg.alba_bin; "proxy-client-cfg | grep port | wc" ] |> Shell.cmd_with_capture in
-      let c = Scanf.sscanf r " %i " (fun i -> i) in
+      let c = n_nodes_in_config () in
       assert (c = 3);
+
+      print_endline "shrink the cluster";
+      three_nodes # stop;
+      two_nodes # write_cluster_config_file;
+      two_nodes # start;
+      Shell.cp (t'.abm # config_file) maintenance_cfg;
+
+      upload_albamgr_cfg (two_nodes # config_file);
+      wait_for(120);
+      let c = n_nodes_in_config () in
+      assert (c = 2);
       ()
+
     in
     let test_name = "arakoon_changes" in
     let t0 = Unix.gettimeofday () in
