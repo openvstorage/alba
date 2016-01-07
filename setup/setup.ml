@@ -1089,7 +1089,7 @@ module Test = struct
           cfg.alba_bin; "unit-tests"; "--config" ; t.abm # config_file ]
       in
       let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
-      let cmd3 = if cfg.tls then _alba_extend_tls cmd else cmd2 in
+      let cmd3 = if cfg.tls then _alba_extend_tls cmd2 else cmd2 in
       let cmd4 = match filter with
         | None -> cmd3
         | Some filter -> cmd3 @ ["--only-test=" ^ filter] in

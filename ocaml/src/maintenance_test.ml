@@ -692,7 +692,9 @@ let test_automatic_repair () =
        maintenance_client # should_repair ~osd_id >>= function
        | true -> Lwt.return ()
        | false ->
+          Lwt_log.debug_f "wait some more" >>= fun () ->
           Lwt_unix.sleep 1. >>= fun () ->
+
           wait_until_detected ()
      in
      Lwt_unix.with_timeout 30. wait_until_detected >>= fun () ->
