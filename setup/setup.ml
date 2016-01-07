@@ -133,8 +133,12 @@ module Config = struct
 end
 
 module Shell = struct
+  let _print x =
+    let colour = 2 in
+    Printf.printf "\027[38;5;%dm[%s] \027[0m%s\n%!" colour "shell" x
+
   let cmd ?(ignore_rc=false) x =
-    Printf.printf "%s\n%!" x;
+    _print x;
     let rc = x |> Sys.command in
     if not ignore_rc && rc <> 0
     then failwith (Printf.sprintf "%S=x => rc=%i" x rc)
@@ -142,7 +146,7 @@ module Shell = struct
 
   let cmd_with_capture cmd =
     let line = String.concat " " cmd in
-    Printf.printf "%s\n" line;
+    _print line;
     let open Unix in
     let ic = open_process_in line in
     let read_line () =
@@ -1085,7 +1089,7 @@ module Test = struct
           make_cert base asd_id;
         end;
       let cmd = [
-          (*"valgrind"; "--track-origins=yes";*)
+          (*"valgrind"; "--track-origins=yes"; *)
           cfg.alba_bin; "unit-tests"; "--config" ; t.abm # config_file ]
       in
       let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
@@ -1097,7 +1101,6 @@ module Test = struct
         | None -> cmd4
         | Some dump -> cmd4 @ [" > " ^ dump] in
       let cmd_s = cmd5 |> String.concat " " in
-      let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
       cmd_s
       |> Shell.cmd
     end
@@ -1314,7 +1317,7 @@ module Test = struct
         ];
       let cfg = t.cfg in
       let object_file = cfg.alba_base_path ^ "/obj" in
-      "truncate -s 2G " ^ object_file |> Shell.cmd;
+      "truncate -s 1G " ^ object_file |> Shell.cmd;
       t.proxy # upload_object   namespace object_file name;
       t.proxy # download_object namespace name (cfg.alba_base_path ^ "obj_download");
     in
