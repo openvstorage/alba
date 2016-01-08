@@ -55,7 +55,7 @@ let test_rebalance_one () =
        ~checksum_o:None
        ~allow_overwrite:NoPrevious
      >>= fun (manifest,stats) ->
-     Lwt_log.debug "uploaded object" >>= fun () ->
+     Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest) >>= fun () ->
 
      let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
      let set2s set= DeviceSet.elements set |> [%show : int32 list] in
