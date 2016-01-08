@@ -18,46 +18,59 @@ open Prelude
 open Lwt_buffer
 open Lwt.Infix
 
-(* performs some IO and returns how costly it was *)
-type 'a io = unit -> ('a * int) Lwt.t
+type 'a input = (unit -> ('a * int) Lwt.t) * 'a Lwt.u
+type output_blobs = (int64 * Asd_protocol.Blob.t) list * unit Lwt.u
+type sync_rocks   = unit Lwt.u
 
-type 'a io_with_waiter = 'a Lwt.u * 'a io
-type output = unit  io_with_waiter
-type input  = (Llio2.WriteBuffer.t * (Net_fd.t -> unit Lwt.t)) io_with_waiter
-
-type t = {
-    high_prio_reads  : input  Lwt_buffer.t;
-    high_prio_writes : output Lwt_buffer.t;
-    low_prio_reads   : input  Lwt_buffer.t;
-    low_prio_writes  : output Lwt_buffer.t;
+type 'a t = {
+    high_prio_reads  : 'a input     Lwt_buffer.t;
+    high_prio_writes : output_blobs Lwt_buffer.t;
+    low_prio_reads   : 'a input     Lwt_buffer.t;
+    low_prio_writes  : output_blobs Lwt_buffer.t;
+    rocksdb_sync     : sync_rocks   Lwt_buffer.t;
+    sync_rocksdb     : unit -> unit;
+    write_blob       : int64 -> Asd_protocol.Blob.t ->
+                       (Lwt_unix.file_descr -> unit Lwt.t) ->
+                       string Lwt.t;
   }
 
-let make () =
+let make sync_rocksdb write_blob =
   { high_prio_reads  = Lwt_buffer.create ();
     high_prio_writes = Lwt_buffer.create ();
     low_prio_reads   = Lwt_buffer.create ();
-    low_prio_writes  = Lwt_buffer.create (); }
+    low_prio_writes  = Lwt_buffer.create ();
+    rocksdb_sync     = Lwt_buffer.create ();
+    sync_rocksdb;
+    write_blob;
+  }
 
-type priority =
-  | High
-  | Low
+type priority = Asd_protocol.Protocol.priority =
+              | High
+              | Low
 
 let perform_read t prio r =
   let sleep, waker = Lwt.wait () in
   Lwt_buffer.add
-    (waker, r)
+    (r, waker)
     (match prio with
      | High -> t.high_prio_reads
      | Low  -> t.low_prio_reads) >>= fun () ->
   sleep
 
-let perform_write t prio w =
+let perform_write t prio blobs =
   let sleep, waker = Lwt.wait () in
   Lwt_buffer.add
-    (waker, w)
+    (blobs, waker)
     (match prio with
      | High -> t.high_prio_writes
      | Low  -> t.low_prio_writes) >>= fun () ->
+  sleep
+
+let sync_rocksdb t =
+  let sleep, waker = Lwt.wait () in
+  Lwt_buffer.add
+    waker
+    t.rocksdb_sync >>= fun () ->
   sleep
 
 let rec _harvest_from_buffer buffer acc cost threshold =
@@ -65,7 +78,7 @@ let rec _harvest_from_buffer buffer acc cost threshold =
   then Lwt.return (acc, cost)
   else
     begin
-      Lwt_buffer.take buffer >>= fun (waiter, item) ->
+      Lwt_buffer.take buffer >>= fun (item, waiter) ->
       Lwt.catch
         (fun () ->
          item () >>= fun (res, cost) ->
@@ -98,6 +111,7 @@ let run t ~fsync ~fs_fd =
         Lwt_buffer.wait_for_item t.high_prio_reads;
         Lwt_buffer.wait_for_item t.low_prio_writes;
         Lwt_buffer.wait_for_item t.low_prio_reads;
+        Lwt_buffer.wait_for_item t.rocksdb_sync;
       ] >>= fun () ->
 
     _perform_reads_from_buffer t.high_prio_reads 10_000_000 >>= fun _ ->
@@ -105,49 +119,124 @@ let run t ~fsync ~fs_fd =
 
     begin
       (* batch up writes *)
+
+      let rec harvest buf acc cost threshold =
+        if cost >= threshold
+        then acc, cost
+        else
+          match Lwt_buffer.take_no_wait buf with
+          | None -> acc, cost
+          | Some (blobs, waker) ->
+             let cost' =
+               List.fold_left
+                 (fun cost (fnr, blob) ->
+                  cost + Asd_protocol.Blob.length blob)
+                 cost
+                 blobs
+             in
+             harvest
+               buf
+               ((blobs, waker) :: acc)
+               cost'
+               threshold
+      in
+
       let write_batch_cost = 10_000_000 in
       let write_batch_reserved_for_high_prio = 7_000_000 in
 
       (* first fill reserved slot with high prio writes *)
-      _harvest_from_buffer
-        t.high_prio_writes
-        [] 0 write_batch_reserved_for_high_prio
-      >>= fun (res, cost) ->
-
+      let acc, cost =
+        harvest
+          t.high_prio_writes
+          [] 0 write_batch_reserved_for_high_prio
+      in
       (* next fill up the rest with low prio writes *)
-      _harvest_from_buffer
-        t.low_prio_writes
-        res cost write_batch_cost
-      >>= fun (res, cost) ->
-
+      let acc, cost =
+        harvest
+          t.low_prio_writes
+          acc cost write_batch_cost
+      in
       (* finally if the batch is not yet full add some
        * more high prio writes *)
-      _harvest_from_buffer
-        t.high_prio_writes
-        res cost write_batch_cost
-      >>= fun (res, cost) ->
+      let acc, cost =
+        harvest
+          t.high_prio_writes
+          acc cost write_batch_cost
+      in
 
       (if fsync
           (* no need to sync if there are no waiters! *)
-          && res <> []
+          && acc <> []
        then begin
-           let waiters_len = List.length res in
-           Lwt_log.debug_f "Starting syncfs for %i waiters" waiters_len >>= fun () ->
+           let waiters_len = List.length acc in
+           Lwt_log.debug_f "Starting batched fsync for %i waiters" waiters_len >>= fun () ->
            with_timing_lwt
-             (fun () -> Syncfs.lwt_syncfs fs_fd) >>= fun (t_syncfs, rc) ->
-           assert (rc = 0);
+             (fun () ->
+              Lwt_list.map_p
+                (fun (blobs, waker) ->
+                 Lwt_list.map_p
+                   (fun (fnr, blob) ->
+                    t.write_blob
+                      fnr blob
+                      (fun fd ->
+                       (* TODO ideally we would synchronize here
+                        * so that first all data is pushed to the
+                        * kernel and then all fsyncs are scheduled
+                        *)
+                       Lwt_unix.fsync fd))
+                   blobs >>= fun parent_dirs ->
+                 Lwt.return (parent_dirs, waker))
+                acc >>= fun items ->
+
+              let parent_dirs =
+                List.fold_left
+                  (fun acc (parent_fds, _) ->
+                   List.fold_left
+                     (fun acc parent_dir ->
+                      if List.mem parent_dir acc
+                      then acc
+                      else parent_dir :: acc)
+                     acc
+                     parent_fds)
+                  []
+                  items
+              in
+              Lwt_log.debug_f "Syncing parent dirs %s" ([%show : string list] parent_dirs) >>= fun () ->
+              Lwt_list.iter_p
+                (fun parent_dir ->
+                 Lwt_extra2.fsync_dir parent_dir)
+                parent_dirs >>= fun () ->
+
+              List.iter
+                (fun (_, waker) ->
+                 Lwt.wakeup_later waker ())
+                items;
+
+              Lwt.return_unit) >>= fun (t_fsyncs, ()) ->
+
            let logger =
-             if t_syncfs < 0.5 then Lwt_log.debug_f
-             else if t_syncfs < 4.0 then Lwt_log.info_f
+             if t_fsyncs < 0.5 then Lwt_log.debug_f
+             else if t_fsyncs < 4.0 then Lwt_log.info_f
              else Lwt_log.warning_f
            in
-           logger "syncfs took %f for %i waiters, cost %i" t_syncfs waiters_len cost
-         end else
+           logger "fsyncs took %f for %i waiters, cost %i" t_fsyncs waiters_len cost
+         end
+       else
          Lwt.return_unit)
-      >>= fun () ->
-      _notify_waiters res;
-      Lwt.return_unit
     end >>= fun () ->
+
+    (if Lwt_buffer.has_item t.rocksdb_sync
+     then
+       begin
+         Lwt_buffer.harvest t.rocksdb_sync >>= fun wakers ->
+         t.sync_rocksdb ();
+         List.iter
+           (fun waker -> Lwt.wakeup_later waker ())
+           wakers;
+         Lwt.return_unit
+       end
+     else
+       Lwt.return_unit) >>= fun () ->
 
     inner ()
   in

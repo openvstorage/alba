@@ -63,7 +63,7 @@ let albamgr_cfg_to_ini_string (cluster_id, nodes) =
 let write_albamgr_cfg albamgr_cfg destination =
   let s = albamgr_cfg_to_ini_string albamgr_cfg in
   let tmp = destination ^ ".tmp" in
-  Lwt_extra2.unlink ~may_not_exist:true tmp >>= fun () ->
+  Lwt_extra2.unlink ~fsync_parent_dir:false ~may_not_exist:true tmp >>= fun () ->
   Lwt_extra2.with_fd
     tmp
     ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
@@ -73,7 +73,7 @@ let write_albamgr_cfg albamgr_cfg destination =
          fd
          s 0 (String.length s) >>= fun () ->
        Lwt_unix.fsync fd) >>= fun () ->
-  Lwt_unix.rename tmp destination
+  Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
 
 let read_objects_slices
       (alba_client : Alba_client.alba_client)

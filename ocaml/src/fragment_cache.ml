@@ -638,7 +638,12 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let path0 = path_of_fsid bid0 fsid0 in
       let full_path0 = canonical path0 in
       Lwt_extra2.ignore_errors
-        (fun () -> Lwt_unix.unlink full_path0) >>= fun () ->
+        (fun () ->
+         Lwt_extra2.unlink
+           (* this will be synced by the syncfs when closing
+            * the fragment cache *)
+           ~fsync_parent_dir:false
+           full_path0) >>= fun () ->
 
       (* might have been the last of it's kind *)
       let rec delete dir =
@@ -994,7 +999,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
            >>= fun () ->
            let full_path = canonical path in
            Lwt.catch
-             (fun ()  -> Lwt_unix.unlink full_path)
+             (fun () -> Lwt_extra2.unlink ~fsync_parent_dir:false full_path)
              (fun ex -> Lwt_log.warning_f ~section ~exn:ex "%s: cleanup failed" full_path
              )
           )
@@ -1040,7 +1045,7 @@ let safe_create root ~max_size ~rocksdb_max_open_files =
   let fn = marker_name root in
   Lwt.catch
     (fun () ->
-     Lwt_unix.unlink fn >>= fun () ->
+     Lwt_extra2.unlink ~fsync_parent_dir:true fn >>= fun () ->
      Lwt_log.info_f "removed marker:%s" fn
     )
     (fun exn ->
