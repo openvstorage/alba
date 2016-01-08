@@ -122,7 +122,8 @@ script () {
 
     eval `opam config env`
     export ARAKOON_BIN=arakoon
-
+    export WORKSPACE=$(pwd)
+    env | sort
     ./ocaml/alba.native version
 
     case "$SUITE" in
@@ -130,12 +131,12 @@ script () {
             true
             ;;
         system2)
-            fab dev.run_tests_ocaml | tail -n256
+            ./setup/setup.native ocaml | tail -n256
             expr $PIPESTATUS && false
             fab alba.smoke_test
             ;;
         disk_failures)
-            fab dev.run_tests_disk_failures
+            ./setup/setup.native disk_failures
             fab alba.smoke_test
             ;;
         recovery)
@@ -152,7 +153,7 @@ script () {
             sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
 
             ./jenkins/cpp/010-build_client.sh
-            fab dev.run_tests_cpp
+            ./setup/setup.native cpp
             fab alba.smoke_test
             ;;
         *)
