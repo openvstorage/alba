@@ -144,6 +144,10 @@ module Shell = struct
     then failwith (Printf.sprintf "%S=x => rc=%i" x rc)
     else ()
 
+  let cmd_with_rc x =
+    _print x;
+    Sys.command x
+
   let cmd_with_capture cmd =
     let line = String.concat " " cmd in
     _print line;
@@ -972,6 +976,15 @@ module JUnit = struct
 
   let make_suite name tests time = {name;tests;time}
 
+  let summary suite =
+    List.fold_left
+      (fun (n_errors,n_failures,n) test ->
+       match test.result with
+       | Ok     -> (n_errors,     n_failures    , n+1)
+       | Err _  -> (n_errors + 1, n_failures    , n+1)
+       | Fail _ -> (n_errors,     n_failures +1 , n+1)
+      ) (0,0,0) suite.tests
+
   let dump_xml suites fn =
     let dump_test oc test =
       let element =
@@ -989,15 +1002,7 @@ module JUnit = struct
     in
     let dump_suite oc suite =
       let element =
-        let errors,failures,size =
-          List.fold_left
-            (fun (n_errors,n_failures,n) test ->
-             match test.result with
-             | Ok     -> (n_errors,     n_failures    , n+1)
-             | Err _  -> (n_errors + 1, n_failures    , n+1)
-             | Fail _ -> (n_errors,     n_failures +1 , n+1)
-            ) (0,0,0) suite.tests
-        in
+        let errors,failures,size = summary suite in
         Printf.sprintf
           ("    <testsuite errors=\"%i\" failures=\"%i\" name=%S skipped=\"0\" "
           ^^ "tests=\"%i\" time=\"%f\" >\n")
@@ -1018,6 +1023,10 @@ module JUnit = struct
 
   let dump suites =
     Printf.printf "%s\n" ([% show : suite list] suites)
+
+  let rc suites = List.fold_left (fun acc s ->
+                                 let e,f,_ = summary s in e + f + acc
+                                ) 0 suites
 end
 
 module Test = struct
@@ -1026,13 +1035,11 @@ module Test = struct
     let t = Deployment.make_default () in
     Deployment.kill t;
     Deployment.setup t;
-    f t;
-    Deployment.smoke_test t
+    let r = f t in
+    let () = Deployment.smoke_test t in
+    r
 
-  let no_wrapper f t =
-    let _ = f t
-    in ()
-
+  let no_wrapper f t = f t
 
   let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let cfg = t.Deployment.cfg in
@@ -1045,7 +1052,7 @@ module Test = struct
       | None -> cmd2
       | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
     in
-    cmd3 |> String.concat " " |> Shell.cmd
+    cmd3 |> String.concat " " |> Shell.cmd_with_rc
 
   let stress ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let t0 = Unix.gettimeofday() in
@@ -1063,17 +1070,17 @@ module Test = struct
     let t1 = Unix.gettimeofday () in
     let d = t1 -. t0 in
     assert ((n+1) = List.length namespaces);
-    if xml
-    then
-      begin
-        let open JUnit in
-        let time = d in
-        let testcase = make_testcase "package.test" "testname" time JUnit.Ok in
-        let suite    = make_suite "stress test suite" [testcase] time in
-        let suites   = [suite] in
-        dump_xml suites "testresults.xml"
-      end
-    else ()
+    let open JUnit in
+    let time = d in
+    let testcase = make_testcase "package.test" "testname" time JUnit.Ok in
+    let suite    = make_suite "stress test suite" [testcase] time in
+    let suites   = [suite] in
+    let () =
+      if xml
+      then dump_xml suites "testresults.xml"
+      else dump suites
+    in
+    rc suites
 
 
   let ocaml ?(xml=false) ?filter ?dump t =
@@ -1102,7 +1109,7 @@ module Test = struct
         | Some dump -> cmd4 @ [" > " ^ dump] in
       let cmd_s = cmd5 |> String.concat " " in
       cmd_s
-      |> Shell.cmd
+      |> Shell.cmd_with_rc
     end
 
   let voldrv_backend ?(xml=false) ?filter ?dump t =
@@ -1111,7 +1118,7 @@ module Test = struct
         cfg.voldrv_backend_test;
         "--skip-backend-setup"; "1";
         "--backend-config-file"; cfg.alba_home ^ "/cfg/backend.json";
-        "--loglevel=error";
+        (*"--loglevel=error"; *)
       ]
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml"] else cmd in
@@ -1126,7 +1133,7 @@ module Test = struct
 
     let cmd_s = cmd4 |> String.concat " " in
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
-    cmd_s |> Shell.cmd
+    cmd_s |> Shell.cmd_with_rc
 
   let voldrv_tests ?(xml = false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
@@ -1146,7 +1153,7 @@ module Test = struct
     in
     let cmd_s = cmd4 |> String.concat " " in
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
-    cmd_s |> Shell.cmd
+    cmd_s |> Shell.cmd_with_rc
 
 
   let disk_failures ?(xml= false) ?filter ?dump t =
@@ -1159,7 +1166,7 @@ module Test = struct
     let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
     let cmd_s = cmd2 |> String.concat " " in
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
-    cmd_s |> Shell.cmd
+    cmd_s |> Shell.cmd_with_rc
 
   let asd_start ?(xml=false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
@@ -1199,18 +1206,17 @@ module Test = struct
     Deployment.smoke_test t;
     let t1 = Unix.gettimeofday() in
     let d = t1 -. t0 in
-    if xml
-    then
-      begin
-        let open JUnit in
-        let time = d in
-        let testcase = make_testcase "package.test" "testname" time JUnit.Ok in
-        let suite    = make_suite "stress test suite" [testcase] time in
-        let suites   = [suite] in
-        dump_xml suites "testresults.xml"
-      end
-    else
-      ()
+    let open JUnit in
+    let time = d in
+    let testcase = make_testcase "package.test" "testname" time JUnit.Ok in
+    let suite    = make_suite "stress test suite" [testcase] time in
+    let suites   = [suite] in
+    let () =
+      if xml
+      then dump_xml suites "testresults.xml"
+      else dump suites
+    in
+    JUnit.rc suites
 
   let asd_get_version t =
     try
@@ -1557,9 +1563,12 @@ module Test = struct
     let d = t1 -. t0 in
     let suite = JUnit.make_suite "compatibility" testcases d in
     let results = [suite] in
-    if xml
-    then JUnit.dump_xml results "./testresults.xml"
-    else JUnit.dump results
+    let () =
+      if xml
+      then JUnit.dump_xml results "./testresults.xml"
+      else JUnit.dump results
+    in
+    JUnit.rc results
 
 
 
@@ -1571,12 +1580,13 @@ module Test = struct
       ]
     in
     let results = List.map (fun s -> s t) suites in
-    if xml
-    then
-       JUnit.dump_xml results "./testresults.xml"
-    else
-      JUnit.dump results
-
+    let () =
+      if xml
+      then JUnit.dump_xml results "./testresults.xml"
+      else JUnit.dump results
+    in
+    let (rc:int) = JUnit.rc results in
+    rc
 
 end
 
@@ -1604,4 +1614,7 @@ let () =
       then Test.wrapper
       else Test.no_wrapper
     in
-    w (test ~xml:true) t
+    let rc = w (test ~xml:true) t in
+    exit rc
+  else
+    exit 1
