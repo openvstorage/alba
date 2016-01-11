@@ -58,10 +58,10 @@ let test_safety () =
          let policy, cnt, applicable_dead_osds, remaining_safety =
            Option.get_some (snd (List.hd_exn res))
          in
-         assert (policy = policy');
-         assert (cnt = cnt');
-         assert (applicable_dead_osds = applicable_dead_osds');
-         assert (remaining_safety = remaining_safety');
+         OUnit.assert_equal ~msg:"policy" policy policy' ~printer:Policy.show_policy;
+         OUnit.assert_equal ~msg:"cnt" cnt  cnt';
+         OUnit.assert_equal ~msg:"applicable_dead_osds" applicable_dead_osds applicable_dead_osds';
+         OUnit.assert_equal ~msg:"remaining_safety" remaining_safety remaining_safety';
        in
 
        Disk_safety.get_disk_safety client [ ns; ] [] >>= fun res ->
@@ -70,7 +70,7 @@ let test_safety () =
        Disk_safety.get_disk_safety client [ ns; ] [ 0l; ] >>= fun res ->
        assert_some_res res (5,3,8,3) 1L 1 2;
 
-       (* get all osds belonging to the _2002 node *)
+       (* get all osds belonging to node 2 *)
        begin
          client # mgr_access # list_all_osds >>= fun (_, osds) ->
          let osd_ids =
@@ -79,7 +79,7 @@ let test_safety () =
                | (Osd.ClaimInfo.ThisAlba id, osd_info) ->
                  let node_id = osd_info.OsdInfo.node_id in
                  if String.length node_id > 5
-                 then "_2002" = Str.last_chars node_id 5
+                 then "_2" = Str.last_chars node_id 2
                  else false
                | _ -> false)
              osds |>
@@ -88,7 +88,7 @@ let test_safety () =
                | (Osd.ClaimInfo.ThisAlba id, _) -> id
                | _ -> failwith "can't happen")
          in
-         assert (4 = List.length osd_ids);
+         OUnit.assert_equal ~msg:"osd_ids?" 4 (List.length osd_ids) ~printer:string_of_int;
          Lwt.return osd_ids
        end >>= fun osd_ids ->
 

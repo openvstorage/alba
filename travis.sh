@@ -122,6 +122,9 @@ script () {
 
     eval `opam config env`
     export ARAKOON_BIN=arakoon
+    export WORKSPACE=$(pwd)
+    export TEST_DRIVER=./setup/setup.native
+    env | sort
 
     ./ocaml/alba.native version
 
@@ -130,15 +133,13 @@ script () {
             true
             ;;
         system2)
-            fab dev.run_tests_ocaml | tail -n256
-            expr $PIPESTATUS && false
-            fab alba.smoke_test
+            ${TEST_DRIVER} ocaml | tail -n256
             ;;
         disk_failures)
-            fab dev.run_tests_disk_failures
-            fab alba.smoke_test
+            ${TEST_DRIVER} disk_failures
             ;;
         recovery)
+            find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
             fab dev.run_tests_recovery
             ;;
         cpp)
@@ -152,7 +153,7 @@ script () {
             sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
 
             ./jenkins/cpp/010-build_client.sh
-            fab dev.run_tests_cpp
+            ${TEST_DRIVER} cpp
             fab alba.smoke_test
             ;;
         *)

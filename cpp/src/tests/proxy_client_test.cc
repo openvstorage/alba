@@ -107,7 +107,7 @@ TEST(proxy_client, get_object_info) {
   Proxy_client client(HOSTNAME, PORT, TIMEOUT);
 
   string name("object name");
-  string file("./proxy.cfg");
+  string file("./ocaml/alba.native");
 
   client.write_object_fs(NAMESPACE, name, file,
                          proxy_client::allow_overwrite::T, nullptr);
