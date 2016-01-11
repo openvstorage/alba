@@ -38,10 +38,9 @@ module Config = struct
 end
 open Lwt.Infix
 
-let read_cfg cfg_file =
-  Lwt_extra2.read_file cfg_file >>= fun txt ->
-  Lwt_log.debug_f "Found the following config: %s" txt >>= fun () ->
-  let config = Config.of_yojson (Yojson.Safe.from_string txt) in
+
+let retrieve_cfg_from_string cfg_string =
+  let config = Config.of_yojson (Yojson.Safe.from_string cfg_string) in
   (match config with
    | `Error err ->
       Lwt_log.warning_f "Error while parsing cfg file: %s" err
@@ -50,3 +49,20 @@ let read_cfg cfg_file =
         "Interpreted the config as: %s"
         ([%show : Config.t] cfg)) >>= fun () ->
   Lwt.return config
+
+let retrieve_cfg_from_file cfg_file =
+  Lwt_extra2.read_file cfg_file >>= fun txt ->
+  Lwt_log.debug_f "Found the following config: %s" txt >>= fun () ->
+  retrieve_cfg_from_string txt
+
+
+
+let retrieve_cfg cfg_url =
+  let open Config_common in
+  get_src cfg_url >>= fun src ->
+  Lwt_io.eprintlf "config src:%s" (show_src_type src) >>= fun () ->
+  match src with
+  | File cfg_file -> retrieve_cfg_from_file cfg_file
+  | Etcd (peers,path)->
+     Etcd.retrieve_value peers path >>= fun txt ->
+     retrieve_cfg_from_string txt

@@ -548,7 +548,7 @@ let run_server hosts port
                ~nsm_host_connection_pool_size
                ~osd_connection_pool_size
                ~osd_timeout
-               ~albamgr_cfg_file
+               ~albamgr_cfg_url
                ~max_client_connections
                ~tls_config
                ~tcp_keepalive
@@ -609,7 +609,7 @@ let run_server hosts port
                  ~loop:true
                  albamgr_client_cfg
                  alba_client
-                 albamgr_cfg_file
+                 albamgr_cfg_url
                  ~tcp_keepalive
               );
               (let buffer_size = 8192 in
