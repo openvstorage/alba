@@ -36,9 +36,7 @@ let ini_hash_to_string tbl =
   Buffer.contents buf
 
 let albamgr_cfg_to_ini_string (cluster_id, nodes) =
-  let transform_node_cfg
-      { Albamgr_protocol.Protocol.Arakoon_config.ips;
-        port; } =
+  let transform_node_cfg { Alba_arakoon.Config.ips; port; } =
     Hashtbl.from_assoc_list
       [ ("ip", String.concat ", " ips);
         ("client_port", string_of_int port); ]
@@ -187,7 +185,7 @@ let log_request code maybe_renderer time =
 
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
-                   (albamgr_client_cfg:Albamgr_protocol.Protocol.Arakoon_config.t ref)
+                   (albamgr_client_cfg:Alba_arakoon.Config.t ref)
                    (stats: ProxyStatistics.t')
                    (nfd:Net_fd.t) ic =
 

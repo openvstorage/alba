@@ -327,7 +327,7 @@ module Protocol = struct
                        * (Albamgr_protocol.Protocol.Osd.id
                           * Nsm_model.OsdInfo.t
                           * Osd_state.t) Std.counted_list) request
-    | GetClientConfig : (unit, Albamgr_protocol.Protocol.Arakoon_config.t) request
+    | GetClientConfig : (unit, Alba_arakoon.Config.t) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -484,6 +484,5 @@ module Protocol = struct
             (Deser.tuple3 deser_int32 deser_osd Osd_state.deser_state))
 
     | GetClientConfig ->
-       let open Albamgr_protocol.Protocol in
-       Arakoon_config.from_buffer, Arakoon_config.to_buffer
+       Alba_arakoon.Config.from_buffer, Alba_arakoon.Config.to_buffer
 end

@@ -1,8 +1,8 @@
 open Lwt.Infix
 
-let parse_uri uri =
+let parse_url url =
   let host,port,path =
-    Scanf.sscanf uri "%s@:%i/%s" (fun h i p -> h,i,p)
+    Scanf.sscanf url "%s@:%i/%s" (fun h i p -> h,i,p)
   in
   let peers = [host,port] in
   peers, path

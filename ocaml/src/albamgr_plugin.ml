@@ -1610,7 +1610,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | StoreClientConfig -> fun ccfg ->
       return_upds [ Update.Set
                       (Keys.client_config,
-                       serialize Arakoon_config.to_buffer ccfg); ]
+                       serialize Alba_arakoon.Config.to_buffer ccfg); ]
     | TryGetLease -> fun (lease_name, counter) ->
       let lease_key, lease_so, lease = get_lease ~lease_name in
       if lease <> counter
@@ -1793,7 +1793,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~reverse
     | GetClientConfig -> fun () ->
       db # get_exn Keys.client_config |>
-      deserialize Arakoon_config.from_buffer
+      deserialize Alba_arakoon.Config.from_buffer
     | ListNamespacesById ->
        fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
        let module KV = WrapReadUserDb(

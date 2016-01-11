@@ -54,7 +54,7 @@ let alba_get_id cfg_file tls_config to_json verbose attempts =
 
 let alba_get_id_cmd =
   Term.(pure alba_get_id
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json $ verbose $ attempts 1),
   Term.info "get-alba-id" ~doc:"Get the unique alba instance id"
@@ -86,7 +86,8 @@ let osd_multi_get_cmd =
                  pos_all string [] &
                  info [] ~docv:"KEYS" ~doc:"$(docv)") in
   Term.(pure osd_multi_get $ osd_id
-        $ alba_cfg_file $ tls_config $ keys
+        $ alba_cfg_url
+        $ tls_config $ keys
         $ unescape
         $ verbose
   ),
@@ -114,7 +115,7 @@ let osd_range osd_id cfg_file tls_config verbose =
 let osd_range_cmd =
   Term.(pure osd_range
         $ osd_id
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ verbose),
   Term.info "osd-range" ~doc:"range query on an OSD"
@@ -133,7 +134,7 @@ let alba_claim_osd alba_cfg_file tls_config long_id to_json verbose =
 
 let alba_claim_osd_cmd =
   Term.(pure alba_claim_osd
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ Arg.(required
                & opt (some string) None
@@ -153,7 +154,7 @@ let alba_decommission_osd alba_cfg_file tls_config long_id to_json verbose =
 
 let alba_decommission_osd_cmd =
   Term.(pure alba_decommission_osd
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ Arg.(required
                & opt (some string) None
@@ -186,7 +187,7 @@ let alba_list_ns_osds cfg_file tls_config namespace verbose =
 let alba_list_ns_osds_cmd =
   let alba_list_ns_osds_t =
     Term.(pure alba_list_ns_osds
-          $ alba_cfg_file
+          $ alba_cfg_url
           $ tls_config
           $ namespace 0
           $ verbose)
@@ -252,7 +253,7 @@ let alba_show_namespace cfg_file tls_config namespace to_json verbose =
 
 let alba_show_namespace_cmd =
   Term.(pure alba_show_namespace
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ to_json $ verbose
@@ -346,7 +347,7 @@ let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json
 
 let alba_show_namespaces_cmd =
   Term.(pure alba_show_namespaces
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ first $ finc $ last $ max $ reverse
         $ to_json $ verbose
@@ -382,7 +383,7 @@ let alba_upload_object
 
 let alba_upload_object_cmd =
   Term.(pure alba_upload_object
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ file_upload 1
@@ -421,7 +422,7 @@ let alba_download_object
 
 let alba_download_object_cmd =
   Term.(pure alba_download_object
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ object_name_download 1
@@ -480,7 +481,7 @@ let alba_show_object
 
 let alba_show_object_cmd =
   Term.(pure alba_show_object
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ Arg.(required &
@@ -495,7 +496,7 @@ let alba_show_object_cmd =
 
 let alba_delete_object_cmd =
   Term.(pure alba_delete_object
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ Arg.(required &
@@ -523,7 +524,7 @@ let alba_list_objects cfg_file tls_config namespace verbose =
 
 let alba_list_objects_cmd =
   Term.(pure alba_list_objects
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ verbose
@@ -545,7 +546,7 @@ let alba_get_nsm_version cfg_file tls_config nsm_host_id verbose =
 
 let alba_get_nsm_version_cmd =
   Term.(pure alba_get_nsm_version
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ nsm_host 0
         $ verbose
@@ -567,7 +568,7 @@ let alba_create_namespace cfg_file tls_config namespace preset_name verbose =
 
 let alba_create_namespace_cmd =
   Term.(pure alba_create_namespace
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ preset_name_namespace_creation 1
@@ -588,7 +589,7 @@ let alba_delete_namespace cfg_file tls_config namespace verbose =
 
 let alba_delete_namespace_cmd =
   Term.(pure alba_delete_namespace
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ verbose
@@ -707,7 +708,7 @@ let alba_get_disk_safety_cmd =
            ~doc:"assume all previously decommissioned disks are no longer available")
   in
   Term.(pure alba_get_disk_safety
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ long_ids
         $ namespaces
@@ -736,7 +737,7 @@ let namespace_recovery_agent
 
 let namespace_recovery_agent_cmd =
   Term.(pure namespace_recovery_agent
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ Arg.(required &
@@ -757,9 +758,8 @@ let namespace_recovery_agent_cmd =
   ),
   Term.info "namespace-recovery-agent" ~doc:"recover the contents of a namespace from the osds"
 
-let unit_tests produce_xml alba_cfg_file tls_config only_test =
-  Albamgr_test.ccfg_ref :=
-    Some (Albamgr_protocol.Protocol.Arakoon_config.from_config_file alba_cfg_file);
+let unit_tests produce_xml alba_cfg_url tls_config only_test =
+  Albamgr_test.ccfg_url_ref := Some alba_cfg_url;
   let () = Albamgr_test._tls_config_ref := tls_config in
   let () = install_logger ~channel:Lwt_io.stdout ~verbose:true () in
 
@@ -806,7 +806,7 @@ let unit_tests_cmd =
 
   Term.(pure unit_tests
         $ produce_xml false
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ only_test
   ),

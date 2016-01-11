@@ -18,10 +18,9 @@ let get_src cfg_uri =
 
      match protocol with
      | "etcd" ->
-        let peers, path = Etcd.parse_uri rest in
+        let peers, path = Etcd.parse_url rest in
         Lwt.return (Etcd (peers,path))
      | "file" ->
-        let rest = String.sub cfg_uri 7 (String.length cfg_uri -7) in
         Lwt.return (File rest)
      | _ -> Lwt.fail_with "todo"
     )

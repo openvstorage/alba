@@ -128,10 +128,8 @@ let proxy_start cfg_url =
       verify_log_level log_level;
 
       Lwt_log.add_rule "*" (to_level log_level);
-
-      let albamgr_cfg =
-        ref (Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-               albamgr_cfg_url) in
+      Alba_arakoon.config_from_url albamgr_cfg_url >>= fun abm_cfg ->
+      let abm_cfg_ref = ref abm_cfg in
 
       let _ : Lwt_unix.signal_handler_id =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
@@ -141,13 +139,12 @@ let proxy_start cfg_url =
               | `Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
               | `Ok cfg ->
-                albamgr_cfg :=
-                  Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-                    albamgr_cfg_url;
-                let log_level = cfg.Config.log_level in
-                Lwt_log.reset_rules ();
-                Lwt_log.add_rule "*" (to_level log_level);
-                Lwt_log.info_f "Reloaded albamgr config file + changed log level to %s" log_level
+                 Alba_arakoon.config_from_url albamgr_cfg_url >>= fun abm_cfg' ->
+                 let () = abm_cfg_ref := abm_cfg' in
+                 let log_level = cfg.Config.log_level in
+                 Lwt_log.reset_rules ();
+                 Lwt_log.add_rule "*" (to_level log_level);
+                 Lwt_log.info_f "Reloaded albamgr config file + changed log level to %s" log_level
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors handle)) in
 
@@ -155,7 +152,7 @@ let proxy_start cfg_url =
         ips
         port
         cache_dir
-        albamgr_cfg
+        abm_cfg_ref
         ~manifest_cache_size
         ~fragment_cache_size
         ~albamgr_connection_pool_size
@@ -172,7 +169,7 @@ let proxy_start cfg_url =
 let proxy_start_cmd =
   Term.(pure proxy_start
         $ Arg.(required
-               & opt (some file) None
+               & opt (some url_converter) None
                & info ["config"] ~docv:"CONFIG_FILE" ~doc:"proxy config file")),
   Term.info "proxy-start" ~doc:"start a proxy server"
 
@@ -389,7 +386,7 @@ let proxy_client_cfg host port verbose =
     host port verbose
     (fun client ->
      client # get_client_config >>= fun cfg ->
-     Lwt_io.printlf "client_cfg:\n%s" (Albamgr_protocol.Protocol.Arakoon_config.show cfg)
+     Lwt_io.printlf "client_cfg:\n%s" (Alba_arakoon.Config.show cfg)
     )
 
 let proxy_client_cfg_cmd =

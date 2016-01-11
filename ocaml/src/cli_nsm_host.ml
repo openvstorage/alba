@@ -32,7 +32,7 @@ let nsm_host_statistics cfg_file tls_config clear nsm_host verbose =
 
 let nsm_host_statistics_cmd =
   Term.(pure nsm_host_statistics
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ clear
         $ nsm_host 0
@@ -91,7 +91,7 @@ let list_device_objects_cmd =
   let compact = make_opt_bool "compact" in
   let reverse = make_opt_bool "reverse" in
   Term.(pure list_device_objects
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ osd_id 0l
         $ namespace_id 0l

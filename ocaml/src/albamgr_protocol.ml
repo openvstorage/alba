@@ -21,86 +21,7 @@ module Protocol = struct
 
   type alba_id = string
 
-  module Arakoon_config = struct
-    type cluster_id = string [@@deriving show]
-    (* TODO tls/ssl stuff *)
-    type node_name = string [@@deriving show]
-    type node_client_cfg = { ips : string list;
-                             port : int; }
-    [@@deriving show]
-    type t = cluster_id *  (node_name, node_client_cfg) Hashtbl.t
 
-    let show ((cluster_id,  cfgs):t) =
-      Printf.sprintf
-        "cluster_id = %s , %s"
-        cluster_id
-        (*([%show : Tls.t option] tlso)*)
-        ([%show : (string * node_client_cfg) list]
-           (Hashtbl.fold (fun k v acc -> (k,v) :: acc) cfgs []))
-    let pp formatter t =
-      Format.pp_print_string formatter (show t)
-
-
-    let to_buffer buf (cluster_id, cfgs) =
-      let ser_version = 1 in Llio.int8_to buf ser_version;
-      Llio.string_to buf cluster_id;
-      Llio.hashtbl_to
-        Llio.string_to
-        (fun buf ncfg ->
-           Llio.list_to Llio.string_to buf ncfg.ips;
-           Llio.int_to buf ncfg.port)
-        buf
-        cfgs
-
-    let from_buffer buf =
-      let ser_version = Llio.int8_from buf in
-      assert (ser_version = 1);
-      let cluster_id = Llio.string_from buf in
-      let cfgs =
-        Llio.hashtbl_from
-          (Llio.pair_from
-             Llio.string_from
-             (fun buf ->
-                let ips = Llio.list_from Llio.string_from buf in
-                let port = Llio.int_from buf in
-                { ips; port; }))
-          buf in
-      (cluster_id, cfgs)
-
-    let from_config_file fn =
-      let inifile = new Inifiles.inifile fn in
-      let cluster_id =
-        try
-          let cids = inifile # getval "global" "cluster_id" in
-          Scanf.sscanf cids "%s" (fun s -> s)
-        with (Inifiles.Invalid_element _ ) -> failwith "config has no cluster_id" in
-      let node_names = Ini.get inifile "global" "cluster" Ini.p_string_list Ini.required in
-      let node_cfgs = Hashtbl.create 3 in
-      List.iter
-        (fun node_name ->
-           let ips = Ini.get inifile node_name "ip" Ini.p_string_list Ini.required in
-           let get_int x = Ini.get inifile node_name x Ini.p_int Ini.required in
-           let port = get_int "client_port" in
-           let cfg = { ips; port } in
-           Hashtbl.add node_cfgs node_name cfg)
-        node_names;
-      (cluster_id, node_cfgs)
-
-      let from_node_client_cfg cfg =
-        { Arakoon_client_config.ips = cfg.ips;
-          port = cfg.port }
-    let to_arakoon_client_cfg tlso ((cluster_id, cfgs) : t) : Arakoon_client_config.t =
-      {
-        Arakoon_client_config.cluster_id;
-        node_cfgs =
-          Hashtbl.fold
-            (fun name (cfg : node_client_cfg) acc ->
-               (name, from_node_client_cfg cfg) :: acc)
-            cfgs
-            [];
-        ssl_cfg = (Option.map Tls.to_ssl_cfg tlso);
-      }
-  end
 
   module Nsm_host = struct
     (* in theory this could be anything,
@@ -108,7 +29,7 @@ module Protocol = struct
     type id = string [@@deriving show, yojson]
 
     type kind =
-      | Arakoon of Arakoon_config.t
+      | Arakoon of Alba_arakoon.Config.t
     [@@deriving show]
 
     type t = {
@@ -122,12 +43,12 @@ module Protocol = struct
       match t.kind with
       | Arakoon cfg ->
         Llio.int8_to buf 1;
-        Arakoon_config.to_buffer buf cfg
+        Alba_arakoon.Config.to_buffer buf cfg
 
     let from_buffer buf =
       let lost = Llio.bool_from buf in
       let kind = match Llio.int8_from buf with
-        | 1 -> Arakoon (Arakoon_config.from_buffer buf)
+        | 1 -> Arakoon (Alba_arakoon.Config.from_buffer buf)
         | k -> raise_bad_tag "Nsm_host" k
       in
       { lost; kind; }
@@ -845,7 +766,7 @@ module Protocol = struct
     | GetAlbaId : (unit, alba_id) query
     | ListPresets : (string RangeQueryArgs.t,
                      (Preset.name * Preset.t * bool * bool) counted_list_more) query
-    | GetClientConfig : (unit, Arakoon_config.t) query
+    | GetClientConfig : (unit, Alba_arakoon.Config.t) query
     | ListNamespacesById : (Namespace.id RangeQueryArgs.t,
                            (Namespace.id *
                               Namespace.name *
@@ -887,7 +808,7 @@ module Protocol = struct
     | SetDefaultPreset : (Preset.name, unit) update
     | AddOsdsToPreset : (Preset.name * Osd.id Std.counted_list, unit) update
     | UpdatePreset : (Preset.name * Preset.Update.t, unit) update
-    | StoreClientConfig : (Arakoon_config.t, unit) update
+    | StoreClientConfig : (Alba_arakoon.Config.t, unit) update
     | TryGetLease : (string * int, unit) update
     | RegisterParticipant : (string * (string * int), unit) update
     | RemoveParticipant : (string * (string * int), unit) update
@@ -1010,7 +931,7 @@ module Protocol = struct
            Llio.bool_from
            Llio.bool_from)
     | GetClientConfig ->
-      Arakoon_config.from_buffer
+      Alba_arakoon.Config.from_buffer
     | ListNamespacesById ->
        counted_list_more_from
          (Llio.tuple3_from
@@ -1099,7 +1020,7 @@ module Protocol = struct
            Llio.bool_to
            Llio.bool_to)
     | GetClientConfig ->
-      Arakoon_config.to_buffer
+      Alba_arakoon.Config.to_buffer
     | ListNamespacesById ->
        counted_list_more_to
          (Llio.tuple3_to
@@ -1186,7 +1107,7 @@ module Protocol = struct
         Llio.string_from
         Preset.Update.from_buffer
     | StoreClientConfig ->
-       Arakoon_config.from_buffer
+       Alba_arakoon.Config.from_buffer
     | TryGetLease ->
        Llio.pair_from Llio.string_from Llio.int_from
     | RegisterParticipant ->
@@ -1244,7 +1165,7 @@ module Protocol = struct
         Llio.string_to
         Preset.Update.to_buffer
     | StoreClientConfig ->
-       Arakoon_config.to_buffer
+       Alba_arakoon.Config.to_buffer
     | TryGetLease ->
        Llio.pair_to Llio.string_to Llio.int_to
     | RegisterParticipant ->

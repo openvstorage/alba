@@ -19,13 +19,12 @@ open Prelude
 
 module Pool = struct
   module Albamgr = struct
-    open Albamgr_protocol.Protocol
     type t = (Albamgr_client.single_connection_client *
-              (unit -> unit Lwt.t)) Lwt_pool2.t
+                (unit -> unit Lwt.t)) Lwt_pool2.t
 
     let make ~size cfg tls_config ~tcp_keepalive buffer_pool =
       let factory () =
-        let ccfg = Arakoon_config.to_arakoon_client_cfg tls_config !cfg in
+        let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config !cfg in
         let tls = Tls.to_client_context tls_config in
         let open Albamgr_client in
         Lwt.catch
@@ -42,7 +41,7 @@ module Pool = struct
                     let () = cfg := cfg' in
                     make_client
                       buffer_pool
-                      (Arakoon_config.to_arakoon_client_cfg tls_config !cfg)
+                      (Alba_arakoon.Config.to_arakoon_client_cfg tls_config !cfg)
                       ~tcp_keepalive
                  | Retry -> Lwt.fail_with "retry later"
                end
@@ -101,7 +100,7 @@ module Pool = struct
                  >>= fun nsm ->
                  match nsm.Nsm_host.kind with
                  | Nsm_host.Arakoon cfg ->
-                    let ccfg = Arakoon_config.to_arakoon_client_cfg t.tls_config cfg in
+                    let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg t.tls_config cfg in
                     Nsm_host_client.make_client
                       t.buffer_pool ccfg ~tcp_keepalive
                        )

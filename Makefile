@@ -71,6 +71,8 @@ build-mgr-plugin: build-alba
 	_build/src/tools/networking2.cmx \
 	_build/src/tools/checksum.cmx \
 	_build/src/tools/alba_compression.cmx \
+	_build/src/tools/etcd.cmx \
+	_build/src/alba_arakoon.cmx \
 	_build/src/arith64.cmx \
 	_build/src/key_value_store.cmx \
 	_build/src/mem_key_value_store.cmx \

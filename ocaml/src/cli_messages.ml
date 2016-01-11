@@ -92,7 +92,7 @@ let list_nsm_host_messages_cmd =
     )
   in
   Term.(pure list_nsm_host_messages
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ attempts 1
         $ nsm_hosts),
@@ -131,7 +131,7 @@ let list_osd_messages_cmd =
     )
   in
   Term.(pure list_osd_messages
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ attempts 1 $ destinations $ verbose),
   Term.(info "list-osd-messages" ~doc:"list messages from mgr to osds")

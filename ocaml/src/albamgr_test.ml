@@ -20,9 +20,9 @@ open Albamgr_protocol.Protocol
 
 let host = "127.0.0.1"
 let hosts = [ host ]
-let ccfg_ref = ref None
+let ccfg_url_ref = ref None
 
-let get_ccfg () = Option.get_some (!ccfg_ref)
+let get_ccfg_url () = Option.get_some (!ccfg_url_ref)
 
 let _tls_config_ref = ref None
 let get_tls_config () = !_tls_config_ref
@@ -40,13 +40,18 @@ let assert_throws e msg f =
       | exn -> Lwt.fail exn)
 
 let test_with_albamgr f =
-  let ccfg = get_ccfg () in
+  let ccfg_url = get_ccfg_url () in
   let tls_config = !_tls_config_ref in
-  Lwt_main.run
-    (Albamgr_client.with_client' ccfg
-                                 ~tls_config
-                                 ~tcp_keepalive:Tcp_keepalive2.default
-                                 f)
+  let t =
+    Alba_arakoon.config_from_url ccfg_url >>= fun ccfg ->
+    Albamgr_client.with_client'
+       ccfg
+       ~tls_config
+       ~tcp_keepalive:Tcp_keepalive2.default
+       f
+  in
+  Lwt_main.run t
+
 
 
 let test_add_namespace () =
@@ -59,11 +64,13 @@ let test_add_namespace () =
        Lwt.return ())
 
 let test_unknown_operation () =
-  Lwt_main.run
+  let t =
     begin
       let tls_config =  get_tls_config() in
+      let ccfg_url = get_ccfg_url () in
+      Alba_arakoon.config_from_url ccfg_url >>= fun ccfg ->
       Albamgr_client._with_client
-        ~attempts:1 (get_ccfg ())
+        ~attempts:1 ccfg
         ~tcp_keepalive:Tcp_keepalive2.default
         tls_config
         (fun client ->
@@ -73,6 +80,8 @@ let test_unknown_operation () =
          client # do_unknown_operation >>= fun () ->
          Lwt.return ())
     end
+  in
+  Lwt_main.run t
 
 open OUnit
 

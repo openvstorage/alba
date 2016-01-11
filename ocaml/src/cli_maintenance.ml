@@ -21,7 +21,8 @@ open Cli_common
 module Config = struct
   type t = {
     log_level : string;
-    albamgr_cfg_file : string;
+    albamgr_cfg_file : string option [@default None];
+    albamgr_cfg_url  : string option [@default None];
     albamgr_connection_pool_size : (int [@default 10]);
     nsm_host_connection_pool_size : (int [@default 10]);
     osd_connection_pool_size : (int [@default 10]);
@@ -32,7 +33,15 @@ module Config = struct
     tls_client : Tls.t option [@default None];
     load : (int [@default 10]);
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
-  } [@@deriving yojson, show]
+    } [@@deriving yojson, show]
+
+  let abm_cfg_url_from_cfg (t:t) =
+    match t.albamgr_cfg_file, t.albamgr_cfg_url with
+    | None, Some url -> url
+    | Some file, None -> "file://" ^ file
+    | Some file, Some url -> failwith "only set `albamgr_cfg_url`"
+    | None,None -> failwith "should set `albamgr_cfg_url` attribute"
+
 end
 
 let rec upload_albamgr_cfg albamgr_cfg (client : Alba_client.alba_client) =
@@ -48,25 +57,29 @@ let rec upload_albamgr_cfg albamgr_cfg (client : Alba_client.alba_client) =
     Lwt_extra2.sleep_approx 60. >>= fun () ->
     upload_albamgr_cfg albamgr_cfg client
 
-let rec refresh_albamgr_cfg albamgr_cfg_file albamgr_cfg_ref =
+
+
+let rec refresh_albamgr_cfg albamgr_cfg_url albamgr_cfg_ref =
   begin
-    try
-      albamgr_cfg_ref :=
-        Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-          albamgr_cfg_file;
-      Lwt.return ()
-    with exn ->
-      Lwt_log.info_f ~exn "Exception while refreshing albamgr cfg from disk"
+    Lwt.catch
+      (fun () ->
+       Alba_arakoon.config_from_url albamgr_cfg_url >>= fun abm_cfg ->
+       let () = albamgr_cfg_ref := abm_cfg in
+       Lwt.return ()
+      )
+      (fun exn ->
+       Lwt_log.info_f ~exn "Exception while refreshing albamgr cfg from disk"
+      )
   end >>= fun () ->
   Lwt_unix.sleep 60. >>= fun () ->
-  refresh_albamgr_cfg albamgr_cfg_file albamgr_cfg_ref
+  refresh_albamgr_cfg albamgr_cfg_url albamgr_cfg_ref
 
 
 type deprecated =
   | Default
   | Custom of string
 
-let alba_maintenance cfg_file modulo remainder flavour =
+let alba_maintenance cfg_url modulo remainder flavour =
   if modulo <> None
   then Lwt_log.ign_warning "modulo was deprecated and won't be used";
   if remainder <> None
@@ -78,8 +91,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
     | Custom s -> Lwt_log.ign_warning_f "option --%s was deprecated and won't be used" s
   in
 
-  let read_cfg () =
-    Lwt_extra2.read_file cfg_file >>= fun txt ->
+  let retrieve_cfg_from_string txt =
     Lwt_log.info_f "Found the following config: %s" txt >>= fun () ->
     let config = Config.of_yojson (Yojson.Safe.from_string txt) in
     (match config with
@@ -90,17 +102,30 @@ let alba_maintenance cfg_file modulo remainder flavour =
          "Interpreted the config as: %s"
          ([%show : Config.t] cfg))
     >>= fun () ->
-
     Lwt.return config
+  in
+  let retrieve_cfg_from_file cfg_file =
+    Lwt_extra2.read_file cfg_file >>= fun txt ->
+    retrieve_cfg_from_string txt
+  in
+  let retrieve_cfg_from_etcd peers path =
+    Etcd.retrieve_value peers path >>= fun txt ->
+    retrieve_cfg_from_string txt
+  in
+  let retrieve_cfg cfg_url =
+    let open Config_common in
+    get_src cfg_url >>= fun src ->
+    match src with
+    | File cfg_file     -> retrieve_cfg_from_file cfg_file
+    | Etcd (peers,path) -> retrieve_cfg_from_etcd peers path
   in
 
   let t () =
-    read_cfg () >>= function
+    retrieve_cfg cfg_url >>= function
     | `Error err -> failwith err
     | `Ok cfg ->
       let open Config in
       let log_level                           = cfg.log_level
-      and albamgr_cfg_file                    = cfg.albamgr_cfg_file
       and albamgr_connection_pool_size        = cfg.albamgr_connection_pool_size
       and nsm_host_connection_pool_size       = cfg.nsm_host_connection_pool_size
       and osd_connection_pool_size            = cfg.osd_connection_pool_size
@@ -120,26 +145,22 @@ let alba_maintenance cfg_file modulo remainder flavour =
       verify_log_level log_level;
 
       Lwt_log.add_rule "*" (to_level log_level);
-
-      let albamgr_cfg =
-        ref (Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-               albamgr_cfg_file) in
-
-      let albamgr_cfg_changed = Lwt_condition.create () in
+      let abm_cfg_url = Config.abm_cfg_url_from_cfg cfg in
+      Alba_arakoon.config_from_url abm_cfg_url >>= fun abm_cfg ->
+      let abm_cfg_ref = ref abm_cfg in
+      let abm_cfg_changed = Lwt_condition.create () in
 
       let _ : Lwt_unix.signal_handler_id =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
             let handle () =
               Lwt_log.info_f "Received USR1, reloading log level from config file" >>= fun () ->
-              read_cfg () >>= function
+              retrieve_cfg cfg_url >>= function
               | `Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
               | `Ok cfg ->
-                albamgr_cfg :=
-                  Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-                    albamgr_cfg_file;
-                Lwt_condition.signal albamgr_cfg_changed ();
-
+                Alba_arakoon.config_from_url abm_cfg_url >>= fun abm_cfg' ->
+                let () = abm_cfg_ref := abm_cfg' in
+                let () = Lwt_condition.signal abm_cfg_changed () in
                 let log_level = cfg.Config.log_level in
                 Lwt_log.reset_rules();
                 Lwt_log.add_rule "*" (to_level log_level);
@@ -151,7 +172,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
       >>= fun () ->
 
       Alba_client.with_client
-        albamgr_cfg
+        abm_cfg_ref
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
@@ -167,15 +188,15 @@ let alba_maintenance cfg_file modulo remainder flavour =
              (fun () ->
 
                 let rec inner () =
-                  Lwt_condition.wait albamgr_cfg_changed >>= fun () ->
+                  Lwt_condition.wait abm_cfg_changed >>= fun () ->
                   Lwt_log.info_f "Uploading possibly changed client config to the albamgr" >>= fun () ->
-                  Lwt.ignore_result (upload_albamgr_cfg albamgr_cfg client);
+                  Lwt.ignore_result (upload_albamgr_cfg abm_cfg_ref client);
                   inner ()
                 in
                 Lwt.ignore_result (inner ());
 
                 (* upload current config at maintenance startup *)
-                Lwt.ignore_result (upload_albamgr_cfg albamgr_cfg client);
+                Lwt.ignore_result (upload_albamgr_cfg abm_cfg_ref client);
                 let maintenance_threads =
                   [
                     (Lwt_extra2.make_fuse_thread ());
@@ -193,7 +214,7 @@ let alba_maintenance cfg_file modulo remainder flavour =
                        ~section:Lwt_log.Section.main
                        ());
                     (maintenance_client # report_stats 60. );
-                    (refresh_albamgr_cfg albamgr_cfg_file albamgr_cfg);
+                    (refresh_albamgr_cfg abm_cfg_url abm_cfg_ref);
                   ]
                 in
 
@@ -242,7 +263,7 @@ let alba_maintenance_cmd =
   in
   Term.(pure alba_maintenance
         $ Arg.(required
-               & opt (some file) None
+               & opt (some url_converter) None
                & info ["config"] ~docv:"CONFIG_FILE" ~doc:"maintenance config file")
         $ modulo
         $ remainder
@@ -276,7 +297,7 @@ let alba_deliver_messages cfg_file tls_config verbose =
 
 let alba_deliver_messages_cmd =
   Term.(pure alba_deliver_messages
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config $ verbose)
   , Term.info "deliver-messages" ~doc:"deliver all outstanding messages (note that this happens automatically by the maintenance process too, so you usually shouldn't need this.)"
 
@@ -307,7 +328,7 @@ let alba_rewrite_object
 
 let alba_rewrite_object_cmd =
   Term.(pure alba_rewrite_object
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ object_name_upload 1

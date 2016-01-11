@@ -575,7 +575,7 @@ let wrap_around' ?(consistency=Arakoon_client.Consistent) ara_c =
 
 type refresh_result =
   | Retry
-  | Res of Albamgr_protocol.Protocol.Arakoon_config.t
+  | Res of Alba_arakoon.Config.t
 
 let retrieve_cfg_from_any_node ~tls current_config ~tcp_keepalive =
     Lwt_log.debug "retrieve_cfg_from_any_node" >>= fun () ->
@@ -591,7 +591,7 @@ let retrieve_cfg_from_any_node ~tls current_config ~tcp_keepalive =
             let node_cfg  =
               Hashtbl.find node_hashtbl node_name
             in
-            let open Albamgr_protocol.Protocol.Arakoon_config in
+            let open Alba_arakoon.Config in
             let cfg = from_node_client_cfg node_cfg in
             Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->
             Client_helper.with_client'
@@ -662,7 +662,7 @@ let _msg_of_exception = function
 
 
 let _with_client ~attempts cfg tls_config ~tcp_keepalive f =
-  let ccfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg in
+  let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config cfg in
   let tls = Tls.to_client_context tls_config in
   let attempt_it () =
     Lwt.catch
