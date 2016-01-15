@@ -73,6 +73,7 @@ module Config = struct
       voldrv_test : string;
       voldrv_backend_test : string;
       failure_tester : string;
+      etcd_home:string;
       etcd : ((string * int) list * string) option;
     }
 
@@ -110,6 +111,7 @@ module Config = struct
                               "VOLDRV_BACKEND_TEST"
                               (home ^ "/workspace/VOLDRV/backend_test") in
     let n_osds = 12 in
+    let etcd_home = env_or_default "ETCD_HOME" (workspace ^ "/tmp/etcd") in
     let etcd =
       try
         let url = Sys.getenv "ALBA_ETCD" in
@@ -150,6 +152,7 @@ module Config = struct
       voldrv_test;
       voldrv_backend_test;
       failure_tester;
+      etcd_home;
       etcd;
     }
 
@@ -207,8 +210,8 @@ module Shell = struct
 
   let cat f = cmd_with_capture ["cat" ; f]
 
-  let detach ?(out = "/dev/null") inner =
-    let x = [
+  let detach ?(out = "/dev/null") ?(pre=[]) inner =
+    let x = pre @ [
         "nohup";
         String.concat " " inner;
         ">> " ^ out;
@@ -295,14 +298,14 @@ let _get_client_tls ?(cfg=Config.default) ()=
   let key    = arakoon_path ^ "/my_client/my_client.key" in
   (cacert,pem,key)
 
-module Etcd = struct
+module Etcdctl = struct
   let path (peers,prefix) key = prefix ^ key
 
   let set ((peers,prefix) as t) key value =
     let p_s = peers_s peers in
     let _key  = path t key in
     let cmd = [
-        "etcdctl";
+        "etcdctl"; (* should be in path *)
         "--peers=" ^ p_s;
         "set";
         _key;
@@ -316,6 +319,12 @@ module Etcd = struct
     Url.Etcd (peers, prefix ^ key)
 end
 
+class type component =
+  object
+    method persist_config : unit
+    method start : unit
+    method stop  : unit
+  end
 
 class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
   let arakoon_path = cfg.arakoon_path in
@@ -383,12 +392,12 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
        let key = Printf.sprintf "/arakoons/%s" cluster_id in
        let persister () =
          let value = _make_cfg_value () in
-         Etcd.set etcd key value
+         Etcdctl.set etcd key value
        in
-       let url = Etcd.url etcd key in
+       let url = Etcdctl.url etcd key in
        persister, url
   in
-  object (self)
+  object (self : # component)
     val mutable _binary = cfg.arakoon_bin
     val mutable _plugin_path = cfg.alba_plugin_path
 
@@ -397,6 +406,8 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
       _plugin_path <- cfg.alba_06_plugin_path
 
     method config_url : Url.t = cfg_url
+    method cluster_id = cluster_id
+
     method link_plugins node =
       let dir_path = cluster_path ^ "/" ^ node in
       "mkdir -p " ^ dir_path |> Shell.cmd;
@@ -516,7 +527,7 @@ let _alba_extend_tls ?(cfg=Config.default) cmd =
   cmd @ [Printf.sprintf
            "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
 
-let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
+let _alba_cmd ~cfg ~cwd ~ignore_tls x =
   let maybe_extend_tls cmd =
     if not ignore_tls && cfg.tls
     then
@@ -532,6 +543,9 @@ let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
   in
   cmd1
   |> maybe_extend_tls
+
+let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
+  _alba_cmd ~cfg ~cwd ~ignore_tls x
   |> String.concat " "
   |> Shell.cmd ~ignore_rc:false
 
@@ -569,22 +583,26 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd =
        let persister cfg =
          let json = proxy_cfg_to_yojson cfg in
          let value = Yojson.Safe.pretty_to_string json in
-         Etcd.set etcd key value
+         Etcdctl.set etcd key value
        in
-       let url = Etcd.url etcd key in
+       let url = Etcdctl.url etcd key in
        persister, url
   in
-  object
+  object (self : # component)
 
   method persist_config :unit =
     "mkdir -p " ^ proxy_base |> Shell.cmd;
     config_persister p_cfg
 
-  method start : unit =
+  method start =
     let out = Printf.sprintf "%s/proxy.out" proxy_base in
     "mkdir -p " ^ p_cfg.fragment_cache_dir |> Shell.cmd;
     [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
     |> Shell.detach ~out
+
+  method stop =
+    let kill_port = p_cfg.port in
+    Printf.sprintf "fuser -k -n tcp %i" kill_port |> Shell.cmd ~ignore_rc:true
 
   method upload_object namespace file name =
     ["proxy-upload-object";
@@ -639,9 +657,9 @@ class maintenance id cfg (abm_cfg_url:Url.t) etcd =
        let persister cfg =
          let json = maintenance_cfg_to_yojson cfg in
          let value = Yojson.Safe.pretty_to_string json in
-         Etcd.set etcd key value
+         Etcdctl.set etcd key value
        in
-       let url = Etcd.url etcd key in
+       let url = Etcdctl.url etcd key in
        persister, url
   in
   object
@@ -746,13 +764,13 @@ class asd node_id asd_id alba_bin arakoon_path home port ~etcd tls =
            else suppress_tags ["multicast"] json
          in
          let value = Yojson.Safe.to_string json' in
-         Etcd.set etcd key value
+         Etcdctl.set etcd key value
        in
-       let url = Etcd.url etcd key in
+       let url = Etcdctl.url etcd key in
        persister, url
 
   in
-  object(self)
+  object(self : # component)
     method long_id = asd_cfg.asd_id
 
     method config_url = cfg_url
@@ -808,9 +826,26 @@ class asd node_id asd_id alba_bin arakoon_path home port ~etcd tls =
       cmd |> Shell.cmd_with_capture
 end
 
+class etcd host port home =
+  object(self : #component)
+    method persist_config =
+      "mkdir -p " ^ home |> Shell.cmd
 
+    method start =
+      (* ETCD_LISTEN_CLIENT_URLS=http://127.0.0.1:5000 \
+           ./etcd -advertise-client-urls=http://127.0.0.1:5000
+       *)
+      let out = home ^ "/stdout" in
+      let url = Printf.sprintf "http://%s:%i" host port in
+      let var = Printf.sprintf "ETCD_LISTEN_CLIENT_URLS=%s" url in
+      let advertise = Printf.sprintf "-advertise-client-urls=%s" url in
+      ["etcd"; advertise;"-data-dir";home] |> Shell.detach ~pre:[var] ~out;
+      Unix.sleep 1; ()
 
-
+    method stop =
+      Printf.sprintf "fuser -k -n tcp %i" port
+      |> Shell.cmd ~ignore_rc:true
+  end
 
 module Deployment = struct
   type t = {
@@ -820,6 +855,7 @@ module Deployment = struct
       proxy : proxy;
       maintenance : maintenance;
       osds : asd array;
+      etcd: etcd option;
     }
 
   let nsm_host_register t : unit =
@@ -880,6 +916,15 @@ module Deployment = struct
       and base_port = 4100 in
       new arakoon id nodes base_port cfg.etcd
     in
+    let etcd = match cfg.etcd with
+      | None -> None
+      | Some (peers,prefix) ->
+         begin
+           let (host,port) = List.hd peers in
+           let etcd = new etcd host port cfg.etcd_home in
+           Some etcd
+         end
+    in
     let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_url) cfg.etcd in
     let maintenance = new maintenance 0 cfg              (abm # config_url) cfg.etcd in
     let osds = make_osds cfg.n_osds
@@ -890,7 +935,7 @@ module Deployment = struct
                          cfg.etcd
                          cfg.tls
     in
-    { cfg; abm;nsm; proxy ; maintenance; osds }
+    { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
 
   let to_arakoon_189 t =
     let new_binary = t.cfg.arakoon_189_bin in
@@ -1062,6 +1107,13 @@ module Deployment = struct
         "mkdir " ^ client_path |> Shell.cmd;
         make_cert client_path my_client
       end;
+    let () =
+      match t.etcd with
+      | None -> ()
+      | Some etcd ->
+         etcd # persist_config;
+         etcd # start;
+    in
 
     t.abm # persist_config;
     t.abm # start ;
@@ -1091,6 +1143,10 @@ module Deployment = struct
 
   let kill t =
     let cfg = t.cfg in
+    let () = match t.etcd with
+      | None -> ()
+      | Some etcd -> etcd # stop
+    in
     let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
     pkill (Filename.basename cfg.arakoon_bin);
     pkill (Filename.basename cfg.alba_bin);
@@ -1374,7 +1430,7 @@ module Test = struct
     in
     JUnit.rc suites
 
-  let asd_get_version t =
+  let asd_version t =
     try
       let version_s = t.Deployment.osds.(1) # get_remote_version in
       Printf.printf "version_s=%S\n%!" version_s;
@@ -1386,14 +1442,40 @@ module Test = struct
       | false ->JUnit.Fail "failed test"
     with exn -> JUnit.Err (Printexc.to_string exn)
 
-  let asd_get_statistics t =
-    let stats_s = t.Deployment.osds.(1) # get_statistics in
+  let _assert_parseable json =
     try
-      let _ = Yojson.Safe.from_string stats_s in
+      let _ = Yojson.Safe.from_string json in
       JUnit.Ok
     with x -> JUnit.Err (Printexc.to_string x)
 
-  let asd_get_statistics_via_abm t =
+  let asd_statistics t =
+    let stats_s = t.Deployment.osds.(1) # get_statistics in
+    _assert_parseable stats_s
+
+  let abm_statistics t =
+    let cmd =
+      [t.cfg.alba_bin;
+       "mgr-statistics";
+         "--config"; t.abm # config_url |> Url.canonical;
+         (*"--to-json"*)
+        ]
+    in
+    let stats_s = Shell.cmd_with_capture cmd in
+    _assert_parseable stats_s
+
+  let nsm_host_statistics t =
+    let cmd =
+      [t.cfg.alba_bin;
+       "nsm-host-statistics";
+       "--config";t.abm # config_url |> Url.canonical;
+       t.nsm # cluster_id ;
+       (*"--to-json";*)
+      ]
+    in
+    let stats_s = Shell.cmd_with_capture cmd in
+    _assert_parseable stats_s
+
+  let asd_statistics_via_abm t =
     let long_id = t.Deployment.osds.(1) # long_id in
 
     let stats_cmd= [
@@ -1404,11 +1486,8 @@ module Test = struct
         "--to-json";
       ]
     in
-    try
-      let stats_s = Shell.cmd_with_capture stats_cmd in
-      let _ = Yojson.Safe.from_string stats_s in
-      JUnit.Ok
-    with x -> JUnit.Err (Printexc.to_string x)
+    let stats_s = Shell.cmd_with_capture stats_cmd in
+    _assert_parseable stats_s
 
   let asd_crud t  =
     let k = "the_key"
@@ -1424,19 +1503,16 @@ module Test = struct
   let asd_cli_env t =
     if t.Deployment.cfg.tls
     then
-      try
-        let cert,pem,key = _get_client_tls () in
-        let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
-                   t.cfg.alba_bin;
-                   "asd-get-version";
-                   "-h 127.0.0.1";
-                   "-p" ; "8501"
-                  ]
-        in
-        let _r = Shell.cmd_with_capture cmd in
-        JUnit.Ok
-      with exn ->
-        JUnit.Err (Printexc.to_string exn)
+      let cert,pem,key = _get_client_tls () in
+      let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
+                 t.cfg.alba_bin;
+                 "asd-get-version";
+                 "-h 127.0.0.1";
+                 "-p" ; "8501"
+                ]
+      in
+      let _r = Shell.cmd_with_capture cmd in
+      JUnit.Ok
     else
       JUnit.Ok
 
@@ -1448,17 +1524,17 @@ module Test = struct
         "< "; "./cfg/preset.json";
       ]
     in
-    try
-      _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
-      JUnit.Ok
-    with | x -> JUnit.Err (Printexc.to_string x)
+    _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
+    JUnit.Ok
 
   let cli t =
     let suite_name = "run_tests_cli" in
     let tests = ["asd_crud", asd_crud;
-                 "asd_get_version", asd_get_version;
-                 "asd_get_statistics", asd_get_statistics;
-                 "asd_get_statistics_via_abm", asd_get_statistics_via_abm;
+                 "asd_version", asd_version;
+                 "asd_statistics", asd_statistics;
+                 "asd_statistics_via_abm", asd_statistics_via_abm;
+                 "abm_statistics", abm_statistics;
+                 "nsm_host_statistics", nsm_host_statistics;
                  "asd_cli_env", asd_cli_env;
                  "create_example_preset", create_example_preset;
                 ]
@@ -1469,7 +1545,11 @@ module Test = struct
           fun acc (name,test) ->
 
           let t0 = Unix.gettimeofday () in
-          let result = test t in
+          let result =
+            try
+              test t
+            with x -> JUnit.Err (Printexc.to_string x)
+          in
           let t1 = Unix.gettimeofday () in
           let d = t1 -. t0 in
           let testcase = JUnit.make_testcase name name d result in
