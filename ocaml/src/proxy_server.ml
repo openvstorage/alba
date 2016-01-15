@@ -61,17 +61,24 @@ let albamgr_cfg_to_ini_string (cluster_id, nodes) =
 let write_albamgr_cfg albamgr_cfg destination =
   let s = albamgr_cfg_to_ini_string albamgr_cfg in
   let tmp = destination ^ ".tmp" in
-  Lwt_extra2.unlink ~may_not_exist:true tmp >>= fun () ->
-  Lwt_extra2.with_fd
-    tmp
-    ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
-    ~perm:0o664
-    (fun fd ->
-       Lwt_extra2.write_all
-         fd
-         s 0 (String.length s) >>= fun () ->
-       Lwt_unix.fsync fd) >>= fun () ->
-  Lwt_unix.rename tmp destination
+  Lwt.catch
+    (fun () ->
+     Lwt_extra2.unlink ~may_not_exist:true tmp >>= fun () ->
+     Lwt_extra2.with_fd
+       tmp
+       ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
+       ~perm:0o664
+       (fun fd ->
+        Lwt_extra2.write_all
+          fd
+          s 0 (String.length s) >>= fun () ->
+        Lwt_unix.fsync fd) >>= fun () ->
+     Lwt_unix.rename tmp destination
+    )
+    (fun exn ->
+     Lwt_log.info_f ~exn
+                    "couldn't write config to destination:%s" destination
+    )
 
 let read_objects_slices
       (alba_client : Alba_client.alba_client)
