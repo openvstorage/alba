@@ -132,9 +132,9 @@ let url_converter : string Arg.converter =
   url_parser, url_printer
 
 let alba_cfg_url =
-  let doc = "config url for the alba mgr (fe file:///.... or etcd://127.0.0.1:5000...)" in
+  let doc = "config url for the alba mgr (fe file:///.... or etcd://127.0.0.1:5000/...)" in
   let env = Arg.env_var "ALBA_CONFIG" ~doc in
-  let docv = "??docv??" in
+  let docv = "<abm config url>" in
   Arg.(required
        & opt (some url_converter) None
        & info ["config"]

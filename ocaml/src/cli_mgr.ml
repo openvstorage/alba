@@ -192,10 +192,10 @@ let alba_list_osds_cmd =
   in
   alba_list_osds_t, info
 
-let alba_list_all_osds cfg_file tls_config node_id to_json verbose attempts =
+let alba_list_all_osds alba_cfg_url tls_config node_id to_json verbose attempts =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts tls_config
+      alba_cfg_url ~attempts tls_config
       (fun client ->
          client # list_all_osds
          >>= fun (i,devices) ->

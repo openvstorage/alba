@@ -298,7 +298,6 @@ let _get_client_tls ?(cfg=Config.default) ()=
 module Etcd = struct
   let path (peers,prefix) key = prefix ^ key
 
-
   let set ((peers,prefix) as t) key value =
     let p_s = peers_s peers in
     let _key  = path t key in
@@ -754,6 +753,8 @@ class asd node_id asd_id alba_bin arakoon_path home port ~etcd tls =
 
   in
   object(self)
+    method long_id = asd_cfg.asd_id
+
     method config_url = cfg_url
 
     method tls = tls
@@ -1392,6 +1393,23 @@ module Test = struct
       JUnit.Ok
     with x -> JUnit.Err (Printexc.to_string x)
 
+  let asd_get_statistics_via_abm t =
+    let long_id = t.Deployment.osds.(1) # long_id in
+
+    let stats_cmd= [
+        t.cfg.alba_bin;
+        "asd-statistics";
+        "--config"; t.abm # config_url |> Url.canonical;
+        "--long-id"; long_id;
+        "--to-json";
+      ]
+    in
+    try
+      let stats_s = Shell.cmd_with_capture stats_cmd in
+      let _ = Yojson.Safe.from_string stats_s in
+      JUnit.Ok
+    with x -> JUnit.Err (Printexc.to_string x)
+
   let asd_crud t  =
     let k = "the_key"
     and v = "the_value" in
@@ -1440,6 +1458,7 @@ module Test = struct
     let tests = ["asd_crud", asd_crud;
                  "asd_get_version", asd_get_version;
                  "asd_get_statistics", asd_get_statistics;
+                 "asd_get_statistics_via_abm", asd_get_statistics_via_abm;
                  "asd_cli_env", asd_cli_env;
                  "create_example_preset", create_example_preset;
                 ]

@@ -421,8 +421,8 @@ let asd_statistics_cmd =
   in
   let config_o =
     Arg.(value
-         & opt (some non_dir_file) None
-         & info ["config"] ~docv:"CONFIG" ~doc:"the alba mgr config file (arakoon cfg)"
+         & opt (some url_converter) None
+         & info ["config"] ~docv:"CONFIG" ~doc:"the alba mgr config url (arakoon cfg)"
     )
   in
 
