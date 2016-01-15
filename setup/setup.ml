@@ -14,31 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-let get_some = function
-  | Some x -> x
-  | None -> failwith "get_some"
-
-let peers_s peers =
-  String.concat "," (List.map (fun (h,p) -> Printf.sprintf "%s:%i" h p) peers)
-
-module Url = struct
-  type t =
-    | File of string
-    | Etcd of ((string * int) list * string)
-
-  let canonical = function
-    | File f -> (*Printf.sprintf "file://%s" f*) f
-    | Etcd (peers,path) -> Printf.sprintf "etcd://%s%s" (peers_s peers) path
-
-  let to_yojson t =
-    `String (canonical t)
-
-  let of_yojson = function
-    | _ -> failwith "todo"
-  let as_file = function
-    | File f -> f
-    | _ -> failwith "not supported"
-end
+open Prul
 
 module Config = struct
   let env_or_default x y =
@@ -167,63 +143,6 @@ module Config = struct
 
 
 end
-
-module Shell = struct
-  let _print x =
-    let colour = 2 in
-    Printf.printf "\027[38;5;%dm[%s] \027[0m%s\n%!" colour "shell" x
-
-  let cmd ?(ignore_rc=false) x =
-    _print x;
-    let rc = x |> Sys.command in
-    if not ignore_rc && rc <> 0
-    then failwith (Printf.sprintf "%S=x => rc=%i" x rc)
-    else ()
-
-  let cmd_with_rc x =
-    _print x;
-    Sys.command x
-
-  let cmd_with_capture cmd =
-    let line = String.concat " " cmd in
-    _print line;
-    let open Unix in
-    let ic = open_process_in line in
-    let read_line () =
-      try
-        Some (input_line ic)
-      with End_of_file -> None
-    in
-    let rec loop acc =
-      match read_line() with
-      | None      -> String.concat "\n" (List.rev acc)
-      | Some line -> loop (line :: acc)
-    in
-    let result = loop [] in
-    let status = close_process_in ic in
-    match status with
-    | WEXITED rc ->
-       if rc = 0 then result
-       else failwith "bad_rc"
-    | WSIGNALED signal -> failwith "signal?"
-    | WSTOPPED x -> failwith "stopped?"
-
-  let cat f = cmd_with_capture ["cat" ; f]
-
-  let detach ?(out = "/dev/null") ?(pre=[]) inner =
-    let x = pre @ [
-        "nohup";
-        String.concat " " inner;
-        ">> " ^ out;
-        "2>&1";
-        "&"
-      ]
-    in
-    String.concat " " x |> cmd
-
-  let cp src tgt = Printf.sprintf "cp %s %s" src tgt |> cmd
-end
-
 open Config
 
 let make_ca (cfg:Config.t) =
@@ -298,33 +217,8 @@ let _get_client_tls ?(cfg=Config.default) ()=
   let key    = arakoon_path ^ "/my_client/my_client.key" in
   (cacert,pem,key)
 
-module Etcdctl = struct
-  let path (peers,prefix) key = prefix ^ key
 
-  let set ((peers,prefix) as t) key value =
-    let p_s = peers_s peers in
-    let _key  = path t key in
-    let cmd = [
-        "etcdctl"; (* should be in path *)
-        "--peers=" ^ p_s;
-        "set";
-        _key;
-        Printf.sprintf "'%s'" value; (* TODO: don't think this is safe *)
-      ]
-    in
-    let cmd_s = String.concat " " cmd in
-    Shell.cmd cmd_s
 
-  let url ((peers,prefix) as t) key =
-    Url.Etcd (peers, prefix ^ key)
-end
-
-class type component =
-  object
-    method persist_config : unit
-    method start : unit
-    method stop  : unit
-  end
 
 class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
   let arakoon_path = cfg.arakoon_path in
@@ -1088,7 +982,7 @@ module Deployment = struct
     let alba_pids = get_pids albas in
     let pids = arakoon_pids @ alba_pids in
     let args = List.fold_left (fun acc pid -> "-p"::(string_of_int pid):: acc) ["1"] pids in
-    "pidstat" :: args |> Shell.detach ~out:t.cfg.monitoring_file
+    "pidstat" :: "-hud" :: args |> Shell.detach ~out:t.cfg.monitoring_file
 
 
 
@@ -1894,4 +1788,8 @@ let () =
     let rc = w (test ~xml:true) t in
     exit rc
   else
-    exit 1
+    ()
+
+let top_level_run test =
+  let t = Deployment.make_default () in
+  Test.wrapper test t

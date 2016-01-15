@@ -4,3 +4,7 @@
 #require "str";;
 #require "ppx_deriving_yojson";;
 #require "ppx_deriving.show";;
+#directory "./_build";;
+#load "prul.cmo";;
+
+open Prul;;
