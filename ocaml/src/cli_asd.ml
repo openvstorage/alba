@@ -23,10 +23,10 @@ open Asd_protocol
 open Asd_config
 
 
-let asd_start cfg_uri slow =
+let asd_start cfg_url slow =
 
   let t () =
-    Asd_config.retrieve_cfg cfg_uri >>= function
+    Asd_config.retrieve_cfg cfg_url >>= function
     | `Error err -> failwith err
     | `Ok cfg ->
 
@@ -59,9 +59,10 @@ let asd_start cfg_uri slow =
       let _ : Lwt_unix.signal_handler_id =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
             let handle () =
-              Lwt_log.info_f "Received USR1, refetching log level from config %s" cfg_uri
+              Lwt_log.info_f "Received USR1, refetching log level from config %s"
+                             (Prelude.Url.show cfg_url)
               >>= fun () ->
-              Asd_config.retrieve_cfg cfg_uri >>= function
+              Asd_config.retrieve_cfg cfg_url >>= function
               | `Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
               | `Ok cfg ->
@@ -82,14 +83,14 @@ let asd_start cfg_uri slow =
   lwt_server t
 
 let asd_start_cmd =
-  let cfg_uri =
+  let cfg_url =
     Arg.(required
-         & opt (some string) None
+         & opt (some url_converter) None
          & info ["config"] ~docv:"CONFIG_FILE" ~doc:"asd config uri")
   in
   let asd_start_t =
     Term.(pure asd_start
-          $ cfg_uri
+          $ cfg_url
           $ Arg.(value
                  & flag
                  & info ["slow"] ~docv:"artifically slow down an asd (only for testing purposes!)"))

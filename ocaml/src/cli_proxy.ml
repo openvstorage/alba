@@ -64,25 +64,24 @@ let retrieve_cfg_from_file cfg_file =
   Lwt_extra2.read_file cfg_file >>= fun txt ->
   retrieve_cfg_from_string txt
 
-let retrieve_cfg cfg_url =
-  let open Config_common in
-  get_src cfg_url >>= fun src ->
-  match src with
-  | File cfg_file     -> retrieve_cfg_from_file cfg_file
-  | Etcd (peers,path) -> retrieve_cfg_from_etcd peers path
+let retrieve_cfg =
+  function
+  | Url.File cfg_file    -> retrieve_cfg_from_file cfg_file
+  | Url.Etcd(peers,path) -> retrieve_cfg_from_etcd peers path
 
-let proxy_start cfg_url =
+let proxy_start (cfg_url:Url.t) =
   let t () =
     retrieve_cfg cfg_url >>= function
     | `Error err -> failwith err
     | `Ok cfg ->
        let url_from_cfg cfg =
          let open Config in
-         match cfg.albamgr_cfg_file,cfg.albamgr_cfg_url with
+         let abm_cfg_url = Prelude.Option.map Url.make cfg.albamgr_cfg_url in
+         match cfg.albamgr_cfg_file, abm_cfg_url with
          | None,Some u -> u
          | Some f,None   ->
             Lwt_log.ign_warning_f "albamgr_cfg_file is deprecated, please use albamgr_cfg_url";
-            "file://" ^ f
+            (Url.File f)
          | Some _,Some u ->
             failwith "both albamgr_file and albamgr_cfg_url were confiured; just use later"
          | None,None     ->

@@ -35,10 +35,11 @@ module Config = struct
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
     } [@@deriving yojson, show]
 
-  let abm_cfg_url_from_cfg (t:t) =
+  let abm_cfg_url_from_cfg (t:t) : Prelude.Url.t =
+    let open Prelude in
     match t.albamgr_cfg_file, t.albamgr_cfg_url with
-    | None, Some url -> url
-    | Some file, None -> "file://" ^ file
+    | None, Some url_s -> Url.make url_s
+    | Some file, None -> Url.File file
     | Some file, Some url -> failwith "only set `albamgr_cfg_url`"
     | None,None -> failwith "should set `albamgr_cfg_url` attribute"
 
@@ -113,9 +114,8 @@ let alba_maintenance cfg_url modulo remainder flavour =
     retrieve_cfg_from_string txt
   in
   let retrieve_cfg cfg_url =
-    let open Config_common in
-    get_src cfg_url >>= fun src ->
-    match src with
+    let open Prelude.Url in
+    match cfg_url with
     | File cfg_file     -> retrieve_cfg_from_file cfg_file
     | Etcd (peers,path) -> retrieve_cfg_from_etcd peers path
   in

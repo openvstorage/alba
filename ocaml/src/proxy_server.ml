@@ -58,27 +58,30 @@ let albamgr_cfg_to_ini_string (cluster_id, nodes) =
 
   ini_hash_to_string h
 
-let write_albamgr_cfg albamgr_cfg destination =
-  let s = albamgr_cfg_to_ini_string albamgr_cfg in
-  let tmp = destination ^ ".tmp" in
-  Lwt.catch
-    (fun () ->
-     Lwt_extra2.unlink ~may_not_exist:true tmp >>= fun () ->
-     Lwt_extra2.with_fd
-       tmp
-       ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
-       ~perm:0o664
-       (fun fd ->
-        Lwt_extra2.write_all
-          fd
-          s 0 (String.length s) >>= fun () ->
-        Lwt_unix.fsync fd) >>= fun () ->
-     Lwt_unix.rename tmp destination
-    )
-    (fun exn ->
-     Lwt_log.info_f ~exn
-                    "couldn't write config to destination:%s" destination
-    )
+let maybe_write_albamgr_cfg albamgr_cfg = function
+  | Url.File destination ->
+     let s = albamgr_cfg_to_ini_string albamgr_cfg in
+     let tmp = destination ^ ".tmp" in
+     Lwt.catch
+       (fun () ->
+        Lwt_extra2.unlink ~may_not_exist:true tmp >>= fun () ->
+        Lwt_extra2.with_fd
+          tmp
+          ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
+          ~perm:0o664
+          (fun fd ->
+           Lwt_extra2.write_all
+             fd
+             s 0 (String.length s) >>= fun () ->
+           Lwt_unix.fsync fd) >>= fun () ->
+        Lwt_unix.rename tmp destination
+       )
+       (fun exn ->
+        Lwt_log.info_f ~exn
+                       "couldn't write config to destination:%s" destination
+       )
+  | (Url.Etcd etcd) as destination ->
+     Lwt_log.info_f "refresh NOT pushing to %s" (Url.show destination)
 
 let read_objects_slices
       (alba_client : Alba_client.alba_client)
@@ -537,7 +540,7 @@ let refresh_albamgr_cfg
       inner ()
     | Res ccfg ->
       albamgr_client_cfg := ccfg;
-      write_albamgr_cfg ccfg destination >>= fun () ->
+      maybe_write_albamgr_cfg ccfg destination >>= fun () ->
       Lwt_extra2.sleep_approx 60. >>= fun () ->
       if loop
       then inner ()
@@ -553,7 +556,7 @@ let run_server hosts port
                ~nsm_host_connection_pool_size
                ~osd_connection_pool_size
                ~osd_timeout
-               ~albamgr_cfg_url
+               ~(albamgr_cfg_url: Url.t)
                ~max_client_connections
                ~tls_config
                ~tcp_keepalive

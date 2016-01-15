@@ -58,10 +58,9 @@ let retrieve_cfg_from_file cfg_file =
 
 
 let retrieve_cfg cfg_url =
-  let open Config_common in
-  get_src cfg_url >>= fun src ->
-  Lwt_io.eprintlf "config src:%s" (show_src_type src) >>= fun () ->
-  match src with
+  let open Prelude.Url in
+  Lwt_io.eprintlf "config %s" (show cfg_url) >>= fun () ->
+  match cfg_url with
   | File cfg_file -> retrieve_cfg_from_file cfg_file
   | Etcd (peers,path)->
      Etcd.retrieve_value peers path >>= fun txt ->

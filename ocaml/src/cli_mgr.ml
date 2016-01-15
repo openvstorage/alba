@@ -348,7 +348,10 @@ let alba_add_nsm_host_cmd =
   ),
   Term.info "add-nsm-host" ~doc:"add a nsm host"
 
-let alba_update_nsm_host alba_cfg_url tls_config nsm_host_cfg_url lost to_json verbose attempts =
+let alba_update_nsm_host
+      (alba_cfg_url:Url.t)
+      tls_config nsm_host_cfg_url lost to_json verbose attempts
+  =
   let t () =
     let open Albamgr_protocol.Protocol in
     with_albamgr_client
@@ -367,7 +370,7 @@ let alba_update_nsm_host_cmd =
         $ alba_cfg_url
         $ tls_config
         $ Arg.(required &
-               pos 0 (some file) None &
+               pos 0 (some url_converter) None &
                info [] ~docv:"CONFIG_FILE" ~doc:"config file for the nsm host")
         $ Arg.(value &
                flag &

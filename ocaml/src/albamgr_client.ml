@@ -157,9 +157,9 @@ object(self)
         ~last:(Some (namespace_id,true))
         ~max:1 >>= fun ((_, namespaces),_) ->
       match namespaces with
-      | [] -> Error.(failwith_lwt Error.Namespace_does_not_exist)
+      | []  -> Error.(failwith_lwt Error.Namespace_does_not_exist)
       | [x] -> Lwt.return x
-      | _ -> Lwt.fail_with "nou moe"
+      | _   -> Lwt.fail_with "nou moe"
 
 
     method list_all_namespaces =

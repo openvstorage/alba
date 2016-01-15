@@ -120,14 +120,15 @@ let lwt_server t : unit =
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run (t ())
 
-let url_converter : string Arg.converter =
+let url_converter :Prelude.Url.t Arg.converter =
+  let open Prelude in
   let url_parser s =
     try
-      Scanf.sscanf s "%s@://%s" (fun scheme rest -> `Ok s)
-    with _ ->
-      `Ok ("file://" ^ s)
+      `Ok (Url.make s)
+    with exn ->
+      `Error (Printexc.to_string exn)
   in
-  let url_printer fmt s= Format.pp_print_string fmt s
+  let url_printer fmt s= Format.pp_print_string fmt (Url.show s)
   in
   url_parser, url_printer
 

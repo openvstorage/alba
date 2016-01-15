@@ -17,11 +17,12 @@ limitations under the License.
 open Cli_common
 open Cmdliner
 open Lwt.Infix
+open Prelude
 
-let nsm_host_statistics cfg_file tls_config clear nsm_host verbose =
+let nsm_host_statistics (cfg_url:Url.t) tls_config clear nsm_host verbose =
   let t () =
     with_alba_client
-      cfg_file
+      cfg_url
       tls_config
       (fun client ->
        client # nsm_host_access # statistics nsm_host clear >>= fun statistics ->

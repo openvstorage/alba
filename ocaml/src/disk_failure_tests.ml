@@ -20,7 +20,7 @@ open Lwt
 open OUnit
 open Cmdliner
 
-let cfg_url = ref "file://./cfg/test.ini"
+let cfg_url = ref (Url.File "./cfg/test.ini")
 let tls_config = ref None
 
 let _easiest_upload () =
