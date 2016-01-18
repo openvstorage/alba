@@ -163,7 +163,7 @@ module DirectoryInfo = struct
            ensure_dir_exists t parent_dir >>= fun () ->
 
            Lwt_extra2.create_dir
-             ~sync:false
+             ~sync:true
              (Filename.concat t.files_path dir))
         (function
           | Unix.Unix_error (Unix.EEXIST, _, _) ->
