@@ -141,7 +141,7 @@ module DirectoryInfo = struct
     Lwt_log.debug_f "got blob %Li" fnr >>= fun () ->
     Lwt.return bs
 
-  let rec ensure_dir_exists t dir =
+  let rec ensure_dir_exists t dir ~sync =
     Lwt_log.debug_f "ensure_dir_exists: %s" dir >>= fun () ->
     match Hashtbl.find t.directory_cache dir with
     | Exists -> Lwt.return ()
@@ -160,10 +160,10 @@ module DirectoryInfo = struct
            Hashtbl.add t.directory_cache dir (Creating sleep);
 
            let parent_dir = Filename.dirname dir in
-           ensure_dir_exists t parent_dir >>= fun () ->
+           ensure_dir_exists t parent_dir ~sync >>= fun () ->
 
            Lwt_extra2.create_dir
-             ~sync:true
+             ~sync
              (Filename.concat t.files_path dir))
         (function
           | Unix.Unix_error (Unix.EEXIST, _, _) ->
@@ -194,12 +194,12 @@ module DirectoryInfo = struct
                     Lwt_unix.rmdir full_dir
       end
 
-  let write_blob ?(post_write=fun _fd -> Lwt.return_unit) t fnr blob =
+  let write_blob ?(post_write=fun _fd -> Lwt.return_unit) t fnr blob ~sync_parent_dirs =
     Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->
     with_timing_lwt
       (fun () ->
          let dir, _, file_path = get_file_dir_name_path t fnr in
-         ensure_dir_exists t dir >>= fun () ->
+         ensure_dir_exists t dir ~sync:sync_parent_dirs >>= fun () ->
          Lwt_extra2.with_fd
            file_path
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
@@ -1173,9 +1173,16 @@ let run_server
         * written to the WAL, see
         * https://www.facebook.com/groups/rocksdb.dev/permalink/846034015495114/
         *)
-       Rocks.RocksDb.write kv wo_sync wb)
+       if fsync
+       then Rocks.RocksDb.write kv wo_sync wb)
       (fun fnr blob post_write ->
-       DirectoryInfo.write_blob ~post_write dir_info fnr blob >>= fun () ->
+       DirectoryInfo.write_blob
+         ~post_write
+         dir_info
+         fnr
+         blob
+         ~sync_parent_dirs:fsync
+       >>= fun () ->
        let parent_dir = DirectoryInfo.get_file_path dir_info fnr in
        Lwt.return parent_dir)
   in
@@ -1313,7 +1320,7 @@ let run_server
             DirectoryInfo.get_file_dir_name_path
               dir_info
               (Int64.add !counter 256L) in
-          DirectoryInfo.ensure_dir_exists dir_info dir
+          DirectoryInfo.ensure_dir_exists dir_info dir ~sync:fsync
         end;
 
       !counter

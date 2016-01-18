@@ -967,7 +967,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
            let dir = Filename.dirname path in
            Lwt_log.debug_f "add...path=%s dir=%s" path dir
            >>= fun () ->
-           Asd_server.DirectoryInfo.ensure_dir_exists dirs dir
+           Asd_server.DirectoryInfo.ensure_dir_exists dirs dir ~sync:false
            >>= fun () ->
            let total_count = get_int64 db _TOTAL_COUNT in
            let total_size  = get_int64 db _TOTAL_SIZE in
