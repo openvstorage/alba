@@ -531,7 +531,11 @@ class maintenance id cfg (abm_cfg_url:Url.t) etcd =
     Printf.sprintf "%s/maintenance/%02i" cfg.alba_base_path id
   in
   let maintenance_abm_cfg_file = maintenance_base ^ "/abm.ini" in
-  let maintenance_abm_cfg_url = Url.File maintenance_abm_cfg_file in
+  let maintenance_abm_cfg_url =
+    match etcd with
+    | None      -> Url.File maintenance_abm_cfg_file
+    | Some etcd -> abm_cfg_url
+  in
   let tls_client = make_tls_client cfg in
   let m_cfg = make_maintenance_config maintenance_abm_cfg_url tls_client in
 
@@ -547,13 +551,14 @@ class maintenance id cfg (abm_cfg_url:Url.t) etcd =
        in
        persister, url
     | Some etcd ->
-       let key = Printf.sprintf "/maintenance/%02i" id in
+       let key = Printf.sprintf "/maintenance/%02i_cfg" id in
+       let url = Etcdctl.url etcd key in
        let persister cfg =
          let json = maintenance_cfg_to_yojson cfg in
          let value = Yojson.Safe.pretty_to_string json in
          Etcdctl.set etcd key value
        in
-       let url = Etcdctl.url etcd key in
+
        persister, url
   in
   object
@@ -1549,13 +1554,10 @@ module Test = struct
       two_nodes # persist_cluster_config;
       two_nodes # start;
       maybe_copy (t'.abm # config_url) ;
-      failwith "todo";
-      (*
-      upload_albamgr_cfg (two_nodes # config_url);
+      upload_albamgr_cfg (two_nodes # config_url |> Url.canonical);
       wait_for(120);
       let c = n_nodes_in_config () in
       assert (c = 2);
-       *)
       ()
 
     in

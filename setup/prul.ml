@@ -83,21 +83,27 @@ end
 module Etcdctl = struct
   let path (peers,prefix) key = prefix ^ key
 
-  let set ((peers,prefix) as t) key value =
+  let _cmd ((peers, prefix) as t) command key extra =
     let p_s = peers_s peers in
     let _key  = path t key in
     let cmd = [
         "etcdctl"; (* should be in path *)
         "--peers=" ^ p_s;
-        "set";
+        command;
         _key;
-        Printf.sprintf "'%s'" value; (* TODO: don't think this is safe *)
-      ]
+
+      ] @ extra
     in
     let cmd_s = String.concat " " cmd in
     Shell.cmd cmd_s
 
-  let url ((peers,prefix) as t) key =
+  let set t key value =
+    _cmd t "set" key [Printf.sprintf "'%s'" value;]
+
+  let mkdir t dir =
+    _cmd t "mkdir" dir []
+
+  let url (peers,prefix) key =
     Url.Etcd (peers, prefix ^ key)
 end
 
