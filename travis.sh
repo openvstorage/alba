@@ -108,6 +108,16 @@ install () {
     opam depext arakoon.1.8.12 orocksdb.0.2.1
     opam install ${OPAM_DEPENDS}
 
+    echo "Installing etcd based arakoon"
+    git clone https://github.com/openvstorage/arakoon.git
+    cd arakoon
+    git checkout aeca98e7efc5658702cb586777e46ae5b143957f
+    make
+    export PREFIX=/home/travis/.opam/system
+    export OCAML_LIBDIR=`ocamlfind printconf destdir`
+    make install
+    cd ..
+
     date
 
     ./jenkins/system2/020-build_ocaml.sh
