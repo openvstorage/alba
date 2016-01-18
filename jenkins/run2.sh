@@ -11,6 +11,11 @@ eval `${opam_env}`
 make clean
 make
 
+if (${ALBA_USE_ETCD:-false} -eq true)
+then
+    export ALBA_ETCD=127.0.0.1:5000/albas/xxxx/
+fi
+
 id
 ulimit -n 1024
 ulimit -c unlimited

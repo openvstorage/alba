@@ -96,7 +96,7 @@ RUN git clone https://github.com/openvstorage/arakoon.git
 RUN cd arakoon && git checkout aeca98e7efc5658702cb586777e46ae5b143957f
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
-    && export PREFIX=${opam_root}/4.02.3/bin \
+    && export PREFIX=${opam_root}/4.02.3 \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
@@ -123,6 +123,14 @@ ENV UID 1001
 ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
 ENV VOLDRV_BACKEND_TEST=backend_test
+
+# Install etcd:
+RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
+RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
+RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
+    && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
+
+
 CMD eval `${opam_env}` \
     && echo ${SUITE} \
     && ./jenkins/run.sh ${SUITE}
