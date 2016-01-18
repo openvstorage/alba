@@ -164,65 +164,75 @@ let run t ~fsync ~fs_fd =
           acc cost write_batch_cost
       in
 
-      (if fsync
-          (* no need to sync if there are no waiters! *)
-          && acc <> []
-       then begin
-           let waiters_len = List.length acc in
-           Lwt_log.debug_f "Starting batched fsync for %i waiters" waiters_len >>= fun () ->
-           with_timing_lwt
-             (fun () ->
-              Lwt_list.map_p
-                (fun (blobs, waker) ->
-                 Lwt_list.map_p
-                   (fun (fnr, blob) ->
-                    t.write_blob
-                      fnr blob
-                      (fun fd ->
-                       (* TODO ideally we would synchronize here
-                        * so that first all data is pushed to the
-                        * kernel and then all fsyncs are scheduled
-                        *)
-                       Lwt_unix.fsync fd))
-                   blobs >>= fun parent_dirs ->
-                 Lwt.return (parent_dirs, waker))
-                acc >>= fun items ->
+      let waiters_len = List.length acc in
 
-              let parent_dirs =
-                List.fold_left
-                  (fun acc (parent_fds, _) ->
-                   List.fold_left
-                     (fun acc parent_dir ->
-                      if List.mem parent_dir acc
-                      then acc
-                      else parent_dir :: acc)
-                     acc
-                     parent_fds)
-                  []
-                  items
-              in
-              Lwt_log.debug_f "Syncing parent dirs %s" ([%show : string list] parent_dirs) >>= fun () ->
-              Lwt_list.iter_p
-                (fun parent_dir ->
-                 Lwt_extra2.fsync_dir parent_dir)
-                parent_dirs >>= fun () ->
+      if waiters_len > 0
+      then
+        begin
+          with_timing_lwt
+            (fun () ->
+             Lwt_list.map_p
+               (fun (blobs, waker) ->
+                Lwt_list.map_p
+                  (fun (fnr, blob) ->
+                   t.write_blob
+                     fnr blob
+                     (fun fd ->
+                      (* TODO ideally we would synchronize here
+                       * so that first all data is pushed to the
+                       * kernel and then all fsyncs are scheduled
+                       *)
+                      if fsync
+                      then Lwt_unix.fsync fd
+                      else Lwt.return_unit))
+                  blobs >>= fun parent_dirs ->
+                Lwt.return (parent_dirs, waker))
+               acc >>= fun items ->
 
-              List.iter
-                (fun (_, waker) ->
-                 Lwt.wakeup_later waker ())
-                items;
+             (if fsync
+              then
+                begin
+                  let parent_dirs =
+                    List.fold_left
+                      (fun acc (parent_fds, _) ->
+                       List.fold_left
+                         (fun acc parent_dir ->
+                          if List.mem parent_dir acc
+                          then acc
+                          else parent_dir :: acc)
+                         acc
+                         parent_fds)
+                      []
+                      items
+                  in
 
-              Lwt.return_unit) >>= fun (t_fsyncs, ()) ->
+                  Lwt_log.debug_f "Syncing parent dirs %s" ([%show : string list] parent_dirs) >>= fun () ->
+                  Lwt_list.iter_p
+                    (fun parent_dir ->
+                     Lwt_extra2.fsync_dir parent_dir)
+                    parent_dirs
+                end
+              else
+                Lwt.return_unit)
+             >>= fun () ->
 
-           let logger =
-             if t_fsyncs < 0.5 then Lwt_log.debug_f
-             else if t_fsyncs < 4.0 then Lwt_log.info_f
-             else Lwt_log.warning_f
-           in
-           logger "fsyncs took %f for %i waiters, cost %i" t_fsyncs waiters_len cost
-         end
-       else
-         Lwt.return_unit)
+             List.iter
+               (fun (_, waker) ->
+                Lwt.wakeup_later waker ())
+               acc;
+
+             Lwt.return_unit) >>= fun (t_fsyncs, ()) ->
+
+          let logger =
+            if t_fsyncs < 0.5 then Lwt_log.debug_f
+            else if t_fsyncs < 4.0 then Lwt_log.info_f
+            else Lwt_log.warning_f
+          in
+          logger "writing blobs + syncing(%b) took %f for %i waiters, cost %i"
+                 fsync t_fsyncs waiters_len cost
+        end
+      else
+        Lwt.return_unit
     end >>= fun () ->
 
     (if Lwt_buffer.has_item t.rocksdb_sync
