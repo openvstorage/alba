@@ -55,7 +55,7 @@ let test_rebalance_one () =
        ~checksum_o:None
        ~allow_overwrite:NoPrevious
      >>= fun (manifest,stats) ->
-     Lwt_log.debug "uploaded object" >>= fun () ->
+     Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest) >>= fun () ->
 
      let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
      let set2s set= DeviceSet.elements set |> [%show : int32 list] in
@@ -692,7 +692,9 @@ let test_automatic_repair () =
        maintenance_client # should_repair ~osd_id >>= function
        | true -> Lwt.return ()
        | false ->
+          Lwt_log.debug_f "wait some more" >>= fun () ->
           Lwt_unix.sleep 1. >>= fun () ->
+
           wait_until_detected ()
      in
      Lwt_unix.with_timeout 30. wait_until_detected >>= fun () ->

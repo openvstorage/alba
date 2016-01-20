@@ -234,11 +234,13 @@ let test_upload_download () =
 
          Lwt.return ())
 
+let nsm_host_id = "nsm"
+
 let test_delete_namespace () =
   test_with_alba_client
       (fun client ->
          let namespace = "test_delete_namespace" in
-         client # create_namespace ~namespace ~preset_name:None ~nsm_host_id:"ricky" ()
+         client # create_namespace ~namespace ~preset_name:None ~nsm_host_id ()
          >>= fun namespace_id ->
          Lwt_io.printlf "created namespace with id %li" namespace_id >>= fun () ->
 
@@ -259,18 +261,26 @@ let test_delete_namespace () =
 
          let assert_nsm_host_prefix prefix assertion =
            Lwt_io.printlf "asserting about nsm_host" >>= fun () ->
-           let cfg = Albamgr_test.get_ccfg () in
-           let tls_config = Albamgr_test.get_tls_config () in
-           let tls = Tls.to_client_context tls_config in
-           Client_helper.with_master_client'
-             ~tls
-             ~tcp_keepalive:Tcp_keepalive2.default
-             (Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg)
-             (fun client ->
-                client # prefix_keys prefix (-1)
-                >>= fun keys ->
-                assert (assertion keys);
-                Lwt_io.printlf "done asserting about nsm_host") in
+           client # mgr_access # get_nsm_host ~nsm_host_id >>= fun maybe_host ->
+           match maybe_host with
+           | None   -> Lwt.fail_with "host not found"
+           | Some (_, host,_) ->
+              begin
+                let open Albamgr_protocol.Protocol in
+                let (Nsm_host.Arakoon cfg) = host.Nsm_host.kind in
+                let tls_config = Albamgr_test.get_tls_config () in
+                let tls = Tls.to_client_context tls_config in
+                Client_helper.with_master_client'
+                  ~tls
+                  ~tcp_keepalive:Tcp_keepalive2.default
+                  (Arakoon_config.to_arakoon_client_cfg tls_config cfg)
+                  (fun client ->
+                   client # prefix_keys prefix (-1)
+                   >>= fun keys ->
+                   assert (assertion keys);
+                   Lwt_io.printlf "done asserting about nsm_host")
+              end
+           in
          let assert_nsm_host_info assertion =
            assert_nsm_host_prefix
              (Nsm_host_plugin.Keys.namespace_info namespace_id)
@@ -335,7 +345,8 @@ let test_delete_namespace () =
          assert_nsm_host_info ((=) []) >>= fun () ->
          assert_nsm_host_content ((=) []) >>= fun () ->
 
-         Lwt.return ())
+         Lwt.return ()
+      )
 
 let test_clean_obsolete_keys () =
   test_with_alba_client
@@ -344,7 +355,7 @@ let test_clean_obsolete_keys () =
          let maintenance_client = new Maintenance.client (client # get_base_client) in
 
          let namespace = "test_clean_obsolete_keys" in
-         client # create_namespace ~preset_name:None ~namespace ~nsm_host_id:"ricky" ()
+         client # create_namespace ~preset_name:None ~namespace ~nsm_host_id ()
          >>= fun namespace_id ->
 
          let open Nsm_model in
@@ -404,7 +415,7 @@ let test_garbage_collect () =
   test_with_alba_client
       (fun client ->
          let namespace = "test_garbage_collect" in
-         client # create_namespace ~preset_name:None ~namespace ~nsm_host_id:"ricky" ()
+         client # create_namespace ~preset_name:None ~namespace ~nsm_host_id ()
          >>= fun namespace_id ->
 
          client # with_nsm_client'
@@ -471,7 +482,7 @@ let test_create_namespaces () =
            | n ->
              let namespace = string_of_int n in
              Lwt_log.debug_f "creating namespace %s" namespace >>= fun () ->
-             client # create_namespace ~preset_name:None ~namespace ~nsm_host_id:"ricky" () >>= fun namespace_id ->
+             client # create_namespace ~preset_name:None ~namespace ~nsm_host_id () >>= fun namespace_id ->
              Lwt_log.debug_f "created namespace %s with id %li" namespace namespace_id >>= fun () ->
 
              let object_name = "bla" in
@@ -921,7 +932,6 @@ let test_repair_by_policy () =
                   osds = Explicit [ 0l ];
                 }) >>= fun () ->
 
-       let nsm_host_id = "ricky" in
        let namespace = test_name in
        alba_client # create_namespace
          ~preset_name:(Some preset_name)
@@ -1150,7 +1160,6 @@ let test_versions () =
   test_with_alba_client
     (fun alba_client ->
      alba_client # mgr_access # get_version >>= fun mgr_version ->
-     let nsm_host_id = "ricky" in
      let nsm = alba_client # nsm_host_access # get ~nsm_host_id in
      nsm # get_version >>= fun nsm_version ->
      alba_client # with_osd ~osd_id:0l
@@ -1260,7 +1269,7 @@ let test_disk_churn () =
            used_osds
          >>= fun () ->
 
-         alba_client # deliver_nsm_host_messages ~nsm_host_id:"ricky" >>= fun () ->
+         alba_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->
 
          let maintenance_client =
            new Maintenance.client
@@ -1518,6 +1527,50 @@ let test_replication () =
          Lwt.return ()
        end
     )
+
+let test_striping () =
+  test_with_alba_client
+    (fun client ->
+
+     let test_name = "test_striping" in
+
+     let inner preset_name preset =
+       client # mgr_access # create_preset preset_name preset >>= fun () ->
+       let namespace = preset_name in
+       client # create_namespace
+              ~namespace
+              ~preset_name:(Some preset_name) () >>= fun _ ->
+
+       let object_name = test_name in
+       let object_data = test_name in
+
+       client # get_base_client # upload_object_from_string
+              ~namespace
+              ~object_name
+              ~object_data
+              ~checksum_o:None
+              ~allow_overwrite:Nsm_model.NoPrevious >>= fun _ ->
+
+       client # download_object_to_string
+              ~namespace
+              ~object_name
+              ~consistent_read:true
+              ~should_cache:false
+       >>= fun data_o ->
+       assert (Some object_data = data_o);
+       Lwt.return ()
+     in
+
+     let open Albamgr_protocol.Protocol in
+     inner
+       (test_name ^ "_1")
+       Preset.({ _DEFAULT with
+                 policies = [(1,0,1,1);]; }) >>= fun () ->
+
+     inner
+       (test_name ^ "_2")
+       Preset.({ _DEFAULT with
+                 policies = [(3,0,3,3);]; }))
 
 let test_add_disk () =
   test_with_alba_client
@@ -1997,6 +2050,7 @@ let suite = "alba_test" >:::[
     "test_full_asd" >:: test_full_asd;
     "test_versions" >:: test_versions;
     "test_replication" >:: test_replication;
+    "test_striping" >:: test_striping;
     "test_add_disk" >:: test_add_disk;
     "test_invalidate_deleted_namespace" >:: test_invalidate_deleted_namespace;
     "test_master_switch" >:: test_master_switch;

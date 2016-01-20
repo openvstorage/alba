@@ -814,6 +814,7 @@ let unit_tests_cmd =
 
 
 let () =
+  let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   let print_version terse =
     let open Alba_version in
     Printf.printf "%i.%i.%i\n" major minor patch;

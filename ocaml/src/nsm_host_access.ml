@@ -109,7 +109,7 @@ class nsm_host_access
       mgr # get_nsm_host ~nsm_host_id
       >>= function
       | None ->
-        Lwt.fail_with "nsm host not found"
+        Lwt.fail_with (Printf.sprintf "nsm host %S not found" nsm_host_id)
       | Some (_, info, lost) ->
         Hashtbl.replace nsm_hosts_info_cache nsm_host_id info;
         Lwt.return info

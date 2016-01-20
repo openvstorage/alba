@@ -1,0 +1,6 @@
+true:debug,annot
+true:package(yojson)
+true:package(ppx_deriving_yojson)
+true:package(ppx_deriving.show)
+true:package(unix)
+true:package(str)
