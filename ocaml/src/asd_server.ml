@@ -194,7 +194,9 @@ module DirectoryInfo = struct
                     Lwt_unix.rmdir full_dir
       end
 
-  let write_blob ?(post_write=fun _fd -> Lwt.return_unit) t fnr blob ~sync_parent_dirs =
+  let write_blob
+        ?(post_write=fun _fd _parent_dir -> Lwt.return_unit)
+        t fnr blob ~sync_parent_dirs =
     Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->
     with_timing_lwt
       (fun () ->
@@ -207,26 +209,29 @@ module DirectoryInfo = struct
            (fun fd ->
             let open Blob in
             (* TODO push to blob module? *)
-            match blob with
-            | Lwt_bytes s ->
-               Lwt_extra2.write_all_lwt_bytes
-                 fd
-                 s 0 (Lwt_bytes.length s)
-            | Bigslice s ->
-               let open Bigstring_slice in
-               Lwt_extra2.write_all_lwt_bytes
-                 fd
-                 s.bs s.offset s.length
-            | Bytes s ->
-               Lwt_extra2.write_all
-                 fd
-                 s 0 (Bytes.length s)
-            | Slice s ->
-               let open Slice in
-               Lwt_extra2.write_all
-                 fd
-                 s.buf s.offset s.length
-           )) >>= fun (t_write, ()) ->
+            (match blob with
+             | Lwt_bytes s ->
+                Lwt_extra2.write_all_lwt_bytes
+                  fd
+                  s 0 (Lwt_bytes.length s)
+             | Bigslice s ->
+                let open Bigstring_slice in
+                Lwt_extra2.write_all_lwt_bytes
+                  fd
+                  s.bs s.offset s.length
+             | Bytes s ->
+                Lwt_extra2.write_all
+                  fd
+                  s 0 (Bytes.length s)
+             | Slice s ->
+                let open Slice in
+                Lwt_extra2.write_all
+                  fd
+                  s.buf s.offset s.length
+            ) >>= fun () ->
+            let parent_dir = t.files_path ^ "/" ^ dir in
+            post_write fd parent_dir))
+    >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
      then Lwt_log.info_f
@@ -1181,10 +1186,7 @@ let run_server
          dir_info
          fnr
          blob
-         ~sync_parent_dirs:fsync
-       >>= fun () ->
-       let parent_dir = DirectoryInfo.get_file_path dir_info fnr in
-       Lwt.return parent_dir)
+         ~sync_parent_dirs:fsync)
   in
   Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
   let io_sched_t = run io_sched ~fsync ~fs_fd in

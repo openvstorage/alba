@@ -30,8 +30,8 @@ type 'a t = {
     rocksdb_sync     : sync_rocks   Lwt_buffer.t;
     sync_rocksdb     : unit -> unit;
     write_blob       : int64 -> Asd_protocol.Blob.t ->
-                       (Lwt_unix.file_descr -> unit Lwt.t) ->
-                       string Lwt.t;
+                       (Lwt_unix.file_descr -> string -> unit Lwt.t) ->
+                       unit Lwt.t;
   }
 
 let make sync_rocksdb write_blob =
@@ -171,50 +171,67 @@ let run t ~fsync ~fs_fd =
         begin
           with_timing_lwt
             (fun () ->
+
+             let blobs_count =
+               List.fold_left
+                 (fun acc (blobs, _) ->
+                  acc + List.length blobs)
+                 0
+                 acc
+             in
+
+             let module FL = Lwt_extra2.FoldingCountDownLatch in
+             let latch = FL.create
+                           ~count:blobs_count
+                           ~acc:[]
+                           ~f:(fun acc parent_dir ->
+                               if List.mem parent_dir acc
+                               then acc
+                               else parent_dir :: acc)
+             in
+
+             let sync_parent_dirs_t =
+               if fsync
+               then
+                 begin
+                   FL.await latch >>= fun parent_dirs ->
+                   Lwt_log.debug_f
+                     "Syncing parent dirs %s"
+                     ([%show : string list] parent_dirs) >>= fun () ->
+                   Lwt_list.iter_p
+                     (fun parent_dir ->
+                      Lwt_extra2.fsync_dir parent_dir)
+                     parent_dirs
+                 end
+               else
+                 Lwt.return ()
+             in
+
              Lwt_list.map_p
                (fun (blobs, waker) ->
-                Lwt_list.map_p
+                Lwt_list.iter_p
                   (fun (fnr, blob) ->
                    t.write_blob
                      fnr blob
-                     (fun fd ->
-                      (* TODO ideally we would synchronize here
-                       * so that first all data is pushed to the
-                       * kernel and then all fsyncs are scheduled
-                       *)
+                     (fun fd parent_dir ->
+
                       if fsync
-                      then Lwt_unix.fsync fd
-                      else Lwt.return_unit))
-                  blobs >>= fun parent_dirs ->
-                Lwt.return (parent_dirs, waker))
-               acc >>= fun items ->
+                      then
+                        begin
+                          (* wait for all the other blobs to be pushed to
+                           * the filesystem too before syncing *)
+                          FL.notify latch parent_dir;
+                          FL.await latch >>= fun _ ->
 
-             (if fsync
-              then
-                begin
-                  let parent_dirs =
-                    List.fold_left
-                      (fun acc (parent_fds, _) ->
-                       List.fold_left
-                         (fun acc parent_dir ->
-                          if List.mem parent_dir acc
-                          then acc
-                          else parent_dir :: acc)
-                         acc
-                         parent_fds)
-                      []
-                      items
-                  in
+                          Lwt_unix.fsync fd
+                        end
+                      else
+                        Lwt.return_unit))
+                  blobs >>= fun () ->
+                Lwt.return waker)
+               acc >>= fun wakers ->
 
-                  Lwt_log.debug_f "Syncing parent dirs %s" ([%show : string list] parent_dirs) >>= fun () ->
-                  Lwt_list.iter_p
-                    (fun parent_dir ->
-                     Lwt_extra2.fsync_dir parent_dir)
-                    parent_dirs
-                end
-              else
-                Lwt.return_unit)
-             >>= fun () ->
+             sync_parent_dirs_t >>= fun () ->
 
              List.iter
                (fun (_, waker) ->
