@@ -50,18 +50,5 @@ let retrieve_cfg_from_string cfg_string =
         ([%show : Config.t] cfg)) >>= fun () ->
   Lwt.return config
 
-let retrieve_cfg_from_file cfg_file =
-  Lwt_extra2.read_file cfg_file >>= fun txt ->
-  Lwt_log.debug_f "Found the following config: %s" txt >>= fun () ->
-  retrieve_cfg_from_string txt
-
-
-
 let retrieve_cfg cfg_url =
-  let open Prelude.Url in
-  Lwt_io.eprintlf "config %s" (show cfg_url) >>= fun () ->
-  match cfg_url with
-  | File cfg_file -> retrieve_cfg_from_file cfg_file
-  | Etcd (peers,path)->
-     Etcd.retrieve_value peers path >>= fun txt ->
-     retrieve_cfg_from_string txt
+  Prelude.Etcd.retrieve_cfg cfg_url retrieve_cfg_from_string

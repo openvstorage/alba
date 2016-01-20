@@ -93,7 +93,7 @@ RUN eval `${opam_env}` && opam update
 
 # install specific etcd based arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git checkout aeca98e7efc5658702cb586777e46ae5b143957f
+RUN cd arakoon && git pull && git checkout db3a24e3380e1d7d26c289ff77a9881bb2d6295c
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \

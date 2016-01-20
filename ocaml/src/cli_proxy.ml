@@ -56,18 +56,9 @@ let retrieve_cfg_from_string txt =
         ([%show : Config.t] cfg)) >>= fun () ->
   Lwt.return config
 
-let retrieve_cfg_from_etcd peers path  =
-  Etcd.retrieve_value peers path >>= fun txt ->
-  retrieve_cfg_from_string txt
+let retrieve_cfg cfg_url =
+  Prelude.Etcd.retrieve_cfg cfg_url retrieve_cfg_from_string
 
-let retrieve_cfg_from_file cfg_file =
-  Lwt_extra2.read_file cfg_file >>= fun txt ->
-  retrieve_cfg_from_string txt
-
-let retrieve_cfg =
-  function
-  | Url.File cfg_file    -> retrieve_cfg_from_file cfg_file
-  | Url.Etcd(peers,path) -> retrieve_cfg_from_etcd peers path
 
 let proxy_start (cfg_url:Url.t) =
   let t () =
@@ -83,7 +74,7 @@ let proxy_start (cfg_url:Url.t) =
             Lwt_log.ign_warning_f "albamgr_cfg_file is deprecated, please use albamgr_cfg_url";
             (Url.File f)
          | Some _,Some u ->
-            failwith "both albamgr_file and albamgr_cfg_url were confiured; just use later"
+            failwith "both albamgr_file and albamgr_cfg_url were configured; just use albamgr_cfg_url"
          | None,None     ->
             failwith "neither albamgr_cfg_file nor albamgr_cfg_url configured"
 

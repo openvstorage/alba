@@ -712,3 +712,16 @@ module Url = struct
        Printf.sprintf "etcd://%s%s" peers_s path
   let make = Arakoon_url.make
   end
+
+module Etcd = struct
+  include Arakoon_etcd
+  open Url
+  let retrieve_cfg cfg_url parser =
+    match cfg_url with
+    | File cfg_file ->
+       Lwt_extra2.read_file cfg_file >>= fun txt ->
+       (parser txt)
+    | Etcd (peers,path)->
+       retrieve_value peers path >>= fun txt ->
+       (parser txt)
+end

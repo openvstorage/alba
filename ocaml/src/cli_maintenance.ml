@@ -105,19 +105,8 @@ let alba_maintenance cfg_url modulo remainder flavour =
     >>= fun () ->
     Lwt.return config
   in
-  let retrieve_cfg_from_file cfg_file =
-    Lwt_extra2.read_file cfg_file >>= fun txt ->
-    retrieve_cfg_from_string txt
-  in
-  let retrieve_cfg_from_etcd peers path =
-    Etcd.retrieve_value peers path >>= fun txt ->
-    retrieve_cfg_from_string txt
-  in
   let retrieve_cfg cfg_url =
-    let open Prelude.Url in
-    match cfg_url with
-    | File cfg_file     -> retrieve_cfg_from_file cfg_file
-    | Etcd (peers,path) -> retrieve_cfg_from_etcd peers path
+    Prelude.Etcd.retrieve_cfg cfg_url retrieve_cfg_from_string
   in
 
   let t () =

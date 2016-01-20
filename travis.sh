@@ -111,7 +111,7 @@ install () {
     echo "Installing etcd based arakoon"
     git clone https://github.com/openvstorage/arakoon.git
     cd arakoon
-    git checkout aeca98e7efc5658702cb586777e46ae5b143957f
+    git checkout db3a24e3380e1d7d26c289ff77a9881bb2d6295c
     make
     export PREFIX=/home/travis/.opam/system
     export OCAML_LIBDIR=`ocamlfind printconf destdir`
