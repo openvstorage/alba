@@ -78,7 +78,7 @@ module Config = struct
     let monitoring_file = workspace ^ "/tmp/alba/monitor.txt" in
 
     let local_nodeid_prefix = Printf.sprintf "%08x" (Random.bits ()) in
-    let asd_path_t = env_or_default "ALBA_ASD_PATH_T" (alba_base_path ^ "/asd/%02i") in
+    (* let asd_path_t = env_or_default "ALBA_ASD_PATH_T" (alba_base_path ^ "/asd/%02i") in *)
 
     let voldrv_test = env_or_default
                       "VOLDRV_TEST"
@@ -500,8 +500,20 @@ class proxy id cfg alba_bin abm_cfg_file  =
      namespace; name ;file ]
     |> _alba_cmd_line ~ignore_tls:true
 
+  method delete_object namespace name =
+    ["proxy-delete-object";
+     "-h";"127.0.0.1";
+     namespace; name ]
+    |> _alba_cmd_line ~ignore_tls:true
+
   method create_namespace name =
-    _alba_cmd_line ~ignore_tls:true ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
+    ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
+    |> _alba_cmd_line ~ignore_tls:true
+
+  method delete_namespace name =
+    ["proxy-delete-namespace"; "-h"; "127.0.0.1"; name]
+    |> _alba_cmd_line ~ignore_tls:true
+
 end
 
 type maintenance_cfg = {
@@ -567,9 +579,10 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
+    __warranty_void__write_blobs : bool option;
   }[@@deriving yojson]
 
-let make_asd_config node_id asd_id home port tls=
+let make_asd_config ?write_blobs node_id asd_id home port tls=
   {node_id;
    asd_id;
    home;
@@ -580,13 +593,14 @@ let make_asd_config node_id asd_id home port tls=
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
+   __warranty_void__write_blobs = write_blobs;
   }
 
 
 
-class asd node_id asd_id alba_bin arakoon_path home port tls =
+class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port tls =
   let use_tls = tls <> None in
-  let a_cfg = make_asd_config node_id asd_id home port tls in
+  let a_cfg = make_asd_config ?write_blobs node_id asd_id home port tls in
   let a_cfg_file = home ^ "/cfg.json" in
   let kill_port = match port with
     | None ->
@@ -680,7 +694,7 @@ module Deployment = struct
     _alba_cmd_line cmd
 
 
-  let make_osds n local_nodeid_prefix base_path arakoon_path alba_bin (tls:bool) =
+  let make_osds ?write_blobs n local_nodeid_prefix base_path arakoon_path alba_bin (tls:bool) =
     let base_port = 8000 in
     let rec loop asds j =
       if j = n
@@ -705,7 +719,9 @@ module Deployment = struct
               end
             else None
           in
-          let asd = new asd node_id_s asd_id
+          let asd = new asd
+                        ?write_blobs
+                        node_id_s asd_id
                         alba_bin
                         arakoon_path
                         home (Some port) tls_cfg
@@ -715,7 +731,7 @@ module Deployment = struct
     in
     loop [] 0
 
-  let make_default () =
+  let make_default ?write_blobs () =
     let cfg = Config.default in
     let abm =
       let id = "abm"
@@ -731,7 +747,8 @@ module Deployment = struct
     in
     let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_file) in
     let maintenance = new maintenance 0 cfg (abm # config_file) in
-    let osds = make_osds cfg.n_osds
+    let osds = make_osds ?write_blobs
+                         cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
@@ -1588,6 +1605,27 @@ module Test = struct
     let (rc:int) = JUnit.rc results in
     rc
 
+  let test_asd_no_blobs ?(xml=false) ?filter ?dump _t =
+    let t = Deployment.make_default ~write_blobs:false () in
+    Deployment.kill t;
+    Deployment.setup t;
+    let object_location = t.cfg.alba_base_path ^ "/obj" in
+    let cmd_s = Printf.sprintf "dd if=/dev/urandom of=%s bs=1M count=1" object_location in
+    cmd_s |> Shell.cmd;
+    let ns = "test_asd_no_blobs" in
+    let objname = "x" in
+    t.proxy # create_namespace ns;
+    t.proxy # upload_object ns object_location objname;
+    let downloaded =
+      try t.proxy # download_object ns objname (t.cfg.alba_base_path ^ "/obj_download_dest");
+          true
+      with _ -> false
+    in
+    assert (not downloaded);
+    t.proxy # delete_object ns objname;
+    t.proxy # delete_namespace ns;
+    0
+
 end
 
 
@@ -1606,6 +1644,7 @@ let () =
       | "asd_start"       -> Test.asd_start,true
       | "everything_else" -> Test.everything_else, true
       | "compat"          -> Test.compat, false
+      | "asd_no_blobs"    -> Test.test_asd_no_blobs, false
       | _  -> failwith "no test"
     in
     let t = Deployment.make_default () in

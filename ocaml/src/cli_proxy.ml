@@ -248,6 +248,26 @@ let proxy_download_object_cmd =
   ),
   Term.info "proxy-download-object" ~doc:"download an object from alba"
 
+let proxy_delete_object host port namespace object_name verbose =
+  proxy_client_cmd_line
+    host port verbose
+    (fun client ->
+       client # delete_object
+         ~namespace
+         ~object_name
+         ~may_not_exist:false
+    )
+
+let proxy_delete_object_cmd =
+  Term.(pure proxy_delete_object
+        $ host
+        $ port 10000
+        $ namespace 0
+        $ object_name_upload 1
+        $ verbose
+  ),
+  Term.info "proxy-delete-object" ~doc:"delete an object from alba"
+
 let proxy_invalidate_cache host port namespace verbose =
   proxy_client_cmd_line
     host port verbose
@@ -377,6 +397,7 @@ let cmds = [
   proxy_create_namespace_cmd;
   proxy_upload_object_cmd;
   proxy_download_object_cmd;
+  proxy_delete_object_cmd;
   proxy_invalidate_cache_cmd;
   proxy_statistics_cmd;
   proxy_delete_namespace_cmd;

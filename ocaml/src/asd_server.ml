@@ -1106,6 +1106,7 @@ class check_garbage_from_advancer check_garbage_from kv =
 
 let run_server
       ?cancel
+      ?(write_blobs = true)
       (hosts:string list)
       (port:int option)
       (path:string)
@@ -1180,13 +1181,19 @@ let run_server
         *)
        if fsync
        then Rocks.RocksDb.write kv wo_sync wb)
-      (fun fnr blob post_write ->
-       DirectoryInfo.write_blob
-         ~post_write
-         dir_info
-         fnr
-         blob
-         ~sync_parent_dirs:fsync)
+      (if write_blobs
+       then
+         (fun fnr blob post_write ->
+          DirectoryInfo.write_blob
+            ~post_write
+            dir_info
+            fnr
+            blob
+            ~sync_parent_dirs:fsync)
+       else
+         (fun fnr blob post_write ->
+          Lwt.return_unit)
+      )
   in
   Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
   let io_sched_t = run io_sched ~fsync ~fs_fd in

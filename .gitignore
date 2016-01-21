@@ -58,3 +58,5 @@
 /redhat/SOURCES/
 /redhat/SRPMS/
 /oUnit-anon.cache
+/setup/_build/
+/setup/setup.native
