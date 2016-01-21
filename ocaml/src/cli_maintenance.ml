@@ -93,25 +93,25 @@ let alba_maintenance cfg_url modulo remainder flavour =
   in
 
   let retrieve_cfg_from_string txt =
-    Lwt_log.info_f "Found the following config: %s" txt >>= fun () ->
+    let () = Lwt_log.ign_info_f "Found the following config: %s" txt  in
     let config = Config.of_yojson (Yojson.Safe.from_string txt) in
-    (match config with
+    let () = match config with
      | `Error err ->
-       Lwt_log.warning_f "Error while parsing cfg file: %s" err
+       Lwt_log.ign_warning_f "Error while parsing cfg file: %s" err
      | `Ok cfg ->
-       Lwt_log.info_f
+       Lwt_log.ign_info_f
          "Interpreted the config as: %s"
-         ([%show : Config.t] cfg))
-    >>= fun () ->
-    Lwt.return config
+         ([%show : Config.t] cfg)
+    in
+    config |> Lwt.return
   in
   let retrieve_cfg cfg_url =
-    Prelude.Etcd.retrieve_cfg cfg_url retrieve_cfg_from_string
+    Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
   in
 
   let t () =
     retrieve_cfg cfg_url >>= function
-    | `Error err -> failwith err
+    | `Error err -> Lwt.fail_with err
     | `Ok cfg ->
       let open Config in
       let log_level                           = cfg.log_level

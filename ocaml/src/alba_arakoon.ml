@@ -97,22 +97,6 @@ let _cfg_from_txt txt =
      let cfg = Config.{ ips; port } in
      Hashtbl.add node_cfgs node_name cfg)
     node_names;
-  (cluster_id, node_cfgs)
+  (cluster_id, node_cfgs) |> Lwt.return
 
-let _cfg_from_file fn () =
-  let open Lwt.Infix in
-  Lwt_extra2.read_file fn >>= fun txt ->
-  _cfg_from_txt txt |> Lwt.return
-
-let _cfg_from_etcd (peers, path) () =
-  let open Lwt.Infix in
-  Etcd.retrieve_value peers path >>= fun txt ->
-  _cfg_from_txt txt |> Lwt.return
-
-let config_from_url url =
-  let fetcher =
-    match url with
-    | Prelude.Url.File f -> _cfg_from_file f
-    | Prelude.Url.Etcd etcd -> _cfg_from_etcd etcd
-  in
-  fetcher ()
+let config_from_url url = Etcd.retrieve_cfg _cfg_from_txt url

@@ -27,7 +27,7 @@ let asd_start cfg_url slow =
 
   let t () =
     Asd_config.retrieve_cfg cfg_url >>= function
-    | `Error err -> failwith err
+    | `Error err -> Lwt.fail_with err
     | `Ok cfg ->
 
        let ips,         port,      home,
