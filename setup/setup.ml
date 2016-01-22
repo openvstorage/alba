@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+let () = Random.self_init ()
+
 let get_some = function
   | Some x -> x
   | None -> failwith "get_some"
