@@ -582,7 +582,7 @@ type asd_cfg = {
     __warranty_void__no_blobs : bool option;
   }[@@deriving yojson]
 
-let make_asd_config ?write_blobs node_id asd_id home port tls=
+let make_asd_config ?no_blobs node_id asd_id home port tls=
   {node_id;
    asd_id;
    home;
@@ -593,14 +593,14 @@ let make_asd_config ?write_blobs node_id asd_id home port tls=
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
-   __warranty_void__no_blobs = write_blobs;
+   __warranty_void__no_blobs = no_blobs;
   }
 
 
 
-class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port tls =
+class asd ?no_blobs node_id asd_id alba_bin arakoon_path home port tls =
   let use_tls = tls <> None in
-  let a_cfg = make_asd_config ?write_blobs node_id asd_id home port tls in
+  let a_cfg = make_asd_config ?no_blobs node_id asd_id home port tls in
   let a_cfg_file = home ^ "/cfg.json" in
   let kill_port = match port with
     | None ->
@@ -694,7 +694,7 @@ module Deployment = struct
     _alba_cmd_line cmd
 
 
-  let make_osds ?write_blobs n local_nodeid_prefix base_path arakoon_path alba_bin (tls:bool) =
+  let make_osds ?no_blobs n local_nodeid_prefix base_path arakoon_path alba_bin (tls:bool) =
     let base_port = 8000 in
     let rec loop asds j =
       if j = n
@@ -720,7 +720,7 @@ module Deployment = struct
             else None
           in
           let asd = new asd
-                        ?write_blobs
+                        ?no_blobs
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
@@ -731,7 +731,7 @@ module Deployment = struct
     in
     loop [] 0
 
-  let make_default ?write_blobs () =
+  let make_default ?no_blobs () =
     let cfg = Config.default in
     let abm =
       let id = "abm"
@@ -747,7 +747,7 @@ module Deployment = struct
     in
     let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_file) in
     let maintenance = new maintenance 0 cfg (abm # config_file) in
-    let osds = make_osds ?write_blobs
+    let osds = make_osds ?no_blobs
                          cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
@@ -1606,19 +1606,30 @@ module Test = struct
     rc
 
   let test_asd_no_blobs ?(xml=false) ?filter ?dump _t =
-    let t = Deployment.make_default ~write_blobs:false () in
+    let t = Deployment.make_default ~no_blobs:true () in
     Deployment.kill t;
     Deployment.setup t;
+
+    let preset = "preset_no_checksums" in
+    _alba_cmd_line ~cwd:t.Deployment.cfg.alba_home [
+                     "create-preset"; preset;
+                     "--config"; t.abm # config_file;
+                     " < "; "./cfg/preset_no_checksums.json"; ];
+
+    let ns = "test_asd_no_blobs" in
+    _alba_cmd_line [
+        "create-namespace"; ns ;preset;
+        "--config"; t.abm # config_file;
+      ];
+
+    let objname = "x" in
     let object_location = t.cfg.alba_base_path ^ "/obj" in
     let cmd_s = Printf.sprintf "dd if=/dev/urandom of=%s bs=1M count=1" object_location in
     cmd_s |> Shell.cmd;
-    (* TODO create preset which doesn't do any checksum verification *)
-    let ns = "test_asd_no_blobs" in
-    let objname = "x" in
-    t.proxy # create_namespace ns;
     t.proxy # upload_object ns object_location objname;
     t.proxy # download_object ns objname (t.cfg.alba_base_path ^ "/obj_download_dest");
     t.proxy # delete_object ns objname;
+
     t.proxy # delete_namespace ns;
     0
 
