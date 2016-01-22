@@ -82,16 +82,20 @@ module DirectoryInfo = struct
 
   type t = {
     files_path : string;
-    directory_cache : (string, directory_status) Hashtbl.t
+    directory_cache : (string, directory_status) Hashtbl.t;
+    no_blobs : bool;
   }
 
-  let make files_path =
+  let make ?(no_blobs = false) files_path =
     if files_path.[0] <> '/'
     then
       failwith (Printf.sprintf "'%s' should be an absolute path" files_path);
     let directory_cache = Hashtbl.create 3 in
     Hashtbl.add directory_cache "." Exists;
-    { files_path; directory_cache; }
+    { files_path;
+      directory_cache;
+      no_blobs;
+    }
 
   let get_file_name fnr =
     Printf.sprintf "%016Lx" fnr
@@ -124,7 +128,9 @@ module DirectoryInfo = struct
 
   let with_blob_fd t fnr f =
     Lwt_extra2.with_fd
-      (get_file_path t fnr)
+      (if t.no_blobs
+       then "/dev/zero"
+       else get_file_path t fnr)
       ~flags:Lwt_unix.([O_RDONLY;])
       ~perm:0600
       f
@@ -472,6 +478,14 @@ let execute_query : type req res.
                     res)
            res)
     | MultiGet2 -> fun (keys, prio) ->
+      if dir_info.DirectoryInfo.no_blobs
+      then
+        (* the trick with /dev/zero doesn't work with
+         * sendfile, so let's avoid sendfile by pretending this
+         * asd doesn't support multiget2 *)
+        Error.failwith Error.Unknown_operation
+      else
+        begin
       perform_read
         io_sched
         prio
@@ -518,6 +532,7 @@ let execute_query : type req res.
                     size)
               )
               (List.rev !write_laters)))
+        end
     | MultiExists -> fun (keys, prio) ->
                      perform_read
                        io_sched prio
@@ -547,7 +562,7 @@ let cleanup_files_to_delete ignore_unlink_error io_sched kv dir_info fnrs =
 
          (* TODO bulk sync of (unique) parent filedescriptors *)
          Lwt_extra2.unlink
-           ~may_not_exist:ignore_unlink_error
+           ~may_not_exist:(ignore_unlink_error || dir_info.DirectoryInfo.no_blobs)
            ~fsync_parent_dir:true
            path)
       fnrs >>= fun () ->
@@ -1106,7 +1121,7 @@ class check_garbage_from_advancer check_garbage_from kv =
 
 let run_server
       ?cancel
-      ?(write_blobs = true)
+      ?(no_blobs = false)
       (hosts:string list)
       (port:int option)
       (path:string)
@@ -1157,7 +1172,7 @@ let run_server
       | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
       | exn -> Lwt.fail exn) >>= fun () ->
 
-  let dir_info = DirectoryInfo.make files_path in
+  let dir_info = DirectoryInfo.make ~no_blobs files_path in
 
   let parse_filename_to_fnr name =
     try
@@ -1181,8 +1196,11 @@ let run_server
         *)
        if fsync
        then Rocks.RocksDb.write kv wo_sync wb)
-      (if write_blobs
+      (if no_blobs
        then
+         (fun fnr blob post_write ->
+          Lwt.return_unit)
+       else
          (fun fnr blob post_write ->
           DirectoryInfo.write_blob
             ~post_write
@@ -1190,9 +1208,6 @@ let run_server
             fnr
             blob
             ~sync_parent_dirs:fsync)
-       else
-         (fun fnr blob post_write ->
-          Lwt.return_unit)
       )
   in
   Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->

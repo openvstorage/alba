@@ -34,14 +34,14 @@ module Config = struct
     multicast: (float option   [@default (Some 10.0)]);
     tls : (tls option          [@default None]);
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
-    __warranty_void__write_blobs : (bool [@default true]);
+    __warranty_void__no_blobs : (bool [@default false]);
   } [@@deriving yojson, show]
 end
 open Lwt.Infix
 
 let read_cfg cfg_file =
   Lwt_extra2.read_file cfg_file >>= fun txt ->
-  Lwt_log.debug_f "Found the following config: %s" txt >>= fun () ->
+  Lwt_log.info_f "Found the following config: %s" txt >>= fun () ->
   let config = Config.of_yojson (Yojson.Safe.from_string txt) in
   (match config with
    | `Error err ->

@@ -579,7 +579,7 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
-    __warranty_void__write_blobs : bool option;
+    __warranty_void__no_blobs : bool option;
   }[@@deriving yojson]
 
 let make_asd_config ?write_blobs node_id asd_id home port tls=
@@ -593,7 +593,7 @@ let make_asd_config ?write_blobs node_id asd_id home port tls=
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
-   __warranty_void__write_blobs = write_blobs;
+   __warranty_void__no_blobs = write_blobs;
   }
 
 
@@ -1612,16 +1612,12 @@ module Test = struct
     let object_location = t.cfg.alba_base_path ^ "/obj" in
     let cmd_s = Printf.sprintf "dd if=/dev/urandom of=%s bs=1M count=1" object_location in
     cmd_s |> Shell.cmd;
+    (* TODO create preset which doesn't do any checksum verification *)
     let ns = "test_asd_no_blobs" in
     let objname = "x" in
     t.proxy # create_namespace ns;
     t.proxy # upload_object ns object_location objname;
-    let downloaded =
-      try t.proxy # download_object ns objname (t.cfg.alba_base_path ^ "/obj_download_dest");
-          true
-      with _ -> false
-    in
-    assert (not downloaded);
+    t.proxy # download_object ns objname (t.cfg.alba_base_path ^ "/obj_download_dest");
     t.proxy # delete_object ns objname;
     t.proxy # delete_namespace ns;
     0
@@ -1632,20 +1628,35 @@ end
 let () =
   let cmd_len = Array.length Sys.argv in
   Printf.printf "cmd_len:%i\n%!" cmd_len;
+  let suites =
+    [ "ocaml",           Test.ocaml, true;
+      "cpp",             Test.cpp, true;
+      "voldrv_backend",  Test.voldrv_backend, true;
+      "voldrv_tests",    Test.voldrv_tests, true;
+      "disk_failures",   Test.disk_failures, true;
+      "stress",          Test.stress,true;
+      "asd_start",       Test.asd_start,true;
+      "everything_else", Test.everything_else, true;
+      "compat",          Test.compat, false;
+      "asd_no_blobs",    Test.test_asd_no_blobs, false; ]
+  in
+  let print_suites () =
+    Printf.printf "Available suites:\n   %s\n"
+                  (String.concat
+                     "\n   "
+                     (List.map (fun (cmd, _, _) -> cmd) suites))
+  in
   if cmd_len = 2
   then
-    let test, setup = match Sys.argv.(1) with
-      | "ocaml"           -> Test.ocaml, true
-      | "cpp"             -> Test.cpp, true
-      | "voldrv_backend"  -> Test.voldrv_backend, true
-      | "voldrv_tests"    -> Test.voldrv_tests, true
-      | "disk_failures"   -> Test.disk_failures, true
-      | "stress"          -> Test.stress,true
-      | "asd_start"       -> Test.asd_start,true
-      | "everything_else" -> Test.everything_else, true
-      | "compat"          -> Test.compat, false
-      | "asd_no_blobs"    -> Test.test_asd_no_blobs, false
-      | _  -> failwith "no test"
+    let _, test, setup =
+      try
+        List.find
+          (fun (cmd, _, _) -> Sys.argv.(1) = cmd)
+          suites
+      with Not_found ->
+        Printf.printf "Could not find suite %s\n" Sys.argv.(1);
+        print_suites ();
+        exit 1
     in
     let t = Deployment.make_default () in
     let w =
@@ -1656,4 +1667,7 @@ let () =
     let rc = w (test ~xml:true) t in
     exit rc
   else
-    exit 1
+    begin
+      print_suites ();
+      exit 1
+    end
