@@ -699,3 +699,18 @@ module Error = struct
       Lwt.return (map (fun a -> (delta, a)) res)
   end
 end
+
+module Url = struct
+
+  type t = Arakoon_url.url = File of string | Etcd of (((string * int) list) * string)
+  let show = function
+    | File f -> "file://" ^ f
+    | Etcd (peers,path) ->
+       let peers_s =
+         String.concat "," (List.map (fun (h,p) -> Printf.sprintf "%s:%i" h p) peers)
+       in
+       Printf.sprintf "etcd://%s%s" peers_s path
+  let make = Arakoon_url.make
+  end
+
+module Etcd = Arakoon_etcd

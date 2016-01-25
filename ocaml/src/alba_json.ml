@@ -164,7 +164,7 @@ module Nsm_host = struct
     { id; kind = "arakoon"; cluster_id;
       nodes =
         Hashtbl.fold
-          (fun name { Arakoon_config.ips; port; } acc ->
+          (fun name { Alba_arakoon.Config.ips; port; } acc ->
              { name; ips; port; } :: acc)
           nodes_hashtbl
           [];

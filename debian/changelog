@@ -1,3 +1,8 @@
+alba (0.8.1+etcd.03) unstable; urgency=low
+  * v 0.8.1
+
+ -- Romain Slootmaekers <romain.slootmaekers@openvstorage.com>  Fri, 15 Jan 2016 15:00:00 +0100
+
 alba (0.8.1) unstable; urgency=low
   * v 0.8.1
 

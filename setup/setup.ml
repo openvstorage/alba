@@ -14,11 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-let () = Random.self_init ()
-
-let get_some = function
-  | Some x -> x
-  | None -> failwith "get_some"
+open Prul
 
 module Config = struct
   let env_or_default x y =
@@ -53,6 +49,8 @@ module Config = struct
       voldrv_test : string;
       voldrv_backend_test : string;
       failure_tester : string;
+      etcd_home:string;
+      etcd : ((string * int) list * string) option;
     }
 
   let make () =
@@ -89,7 +87,17 @@ module Config = struct
                               "VOLDRV_BACKEND_TEST"
                               (home ^ "/workspace/VOLDRV/backend_test") in
     let n_osds = 12 in
-
+    let etcd_home = env_or_default "ETCD_HOME" (workspace ^ "/tmp/etcd") in
+    let etcd =
+      try
+        let url = Sys.getenv "ALBA_ETCD" in
+        let host,port,path =
+          Scanf.sscanf url "%s@:%i/%s" (fun h i p -> h,i, "/" ^ p)
+        in
+        let peers = [host,port] in
+        Some (peers, path)
+      with Not_found -> None
+    in
     let tls =
       let v = env_or_default "ALBA_TLS" "false" in
       Scanf.sscanf v "%b" (fun x -> x)
@@ -120,6 +128,8 @@ module Config = struct
       voldrv_test;
       voldrv_backend_test;
       failure_tester;
+      etcd_home;
+      etcd;
     }
 
   let default = make ()
@@ -133,63 +143,6 @@ module Config = struct
 
 
 end
-
-module Shell = struct
-  let _print x =
-    let colour = 2 in
-    Printf.printf "\027[38;5;%dm[%s] \027[0m%s\n%!" colour "shell" x
-
-  let cmd ?(ignore_rc=false) x =
-    _print x;
-    let rc = x |> Sys.command in
-    if not ignore_rc && rc <> 0
-    then failwith (Printf.sprintf "%S=x => rc=%i" x rc)
-    else ()
-
-  let cmd_with_rc x =
-    _print x;
-    Sys.command x
-
-  let cmd_with_capture cmd =
-    let line = String.concat " " cmd in
-    _print line;
-    let open Unix in
-    let ic = open_process_in line in
-    let read_line () =
-      try
-        Some (input_line ic)
-      with End_of_file -> None
-    in
-    let rec loop acc =
-      match read_line() with
-      | None      -> String.concat "\n" (List.rev acc)
-      | Some line -> loop (line :: acc)
-    in
-    let result = loop [] in
-    let status = close_process_in ic in
-    match status with
-    | WEXITED rc ->
-       if rc = 0 then result
-       else failwith "bad_rc"
-    | WSIGNALED signal -> failwith "signal?"
-    | WSTOPPED x -> failwith "stopped?"
-
-  let cat f = cmd_with_capture ["cat" ; f]
-
-  let detach ?(out = "/dev/null") inner =
-    let x = [
-        "nohup";
-        String.concat " " inner;
-        ">> " ^ out;
-        "2>&1";
-        "&"
-      ]
-    in
-    String.concat " " x |> cmd
-
-  let cp src tgt = Printf.sprintf "cp %s %s" src tgt |> cmd
-end
-
 open Config
 
 let make_ca (cfg:Config.t) =
@@ -264,10 +217,12 @@ let _get_client_tls ?(cfg=Config.default) ()=
   let key    = arakoon_path ^ "/my_client/my_client.key" in
   (cacert,pem,key)
 
-class arakoon ?(cfg=Config.default) cluster_id nodes base_port =
+
+
+
+class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
   let arakoon_path = cfg.arakoon_path in
   let cluster_path = arakoon_path ^ "/" ^ cluster_id in
-  let cfg_file = arakoon_path ^ "/" ^ cluster_id ^ ".ini" in
   let _extend_tls cmd =
     let cacert,my_client_pem,my_client_key = _get_client_tls () in
     cmd @ [
@@ -276,7 +231,67 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port =
         "-tls-key"; my_client_key;
       ]
   in
-  object (self)
+  let _make_cfg_value () =
+    let buf = Buffer.create 128 in
+    let w x = Printf.ksprintf (fun s -> Buffer.add_string buf s) (x ^^ "\n") in
+    w "[global]";
+    w "cluster = %s" (String.concat ", " nodes);
+    w "cluster_id = %s" cluster_id;
+    w "plugins = albamgr_plugin nsm_host_plugin";
+    w "";
+    if cfg.tls
+    then
+      begin
+        w "tls_ca_cert = %s/cacert.pem" cfg.arakoon_path;
+        w "tls_service = true";
+        w "tls_service_validate_peer = false";
+        w "";
+      end;
+    List.iteri
+      (fun i node ->
+       w "[%s]" node;
+       w "ip = 127.0.0.1";
+       w "client_port = %i" (base_port + i);
+       w "messaging_port = %i" (base_port + i + 10);
+       let home = cfg.arakoon_path ^ "/" ^ cluster_id ^ "/" ^ node in
+       w "home = %s" home;
+       w "log_level = debug";
+       w "fsync = false";
+       w "";
+       if cfg.tls then
+         begin
+           w "tls_cert = %s/%s.pem" home node;
+           w "tls_key =  %s/%s.key" home node;
+           w "";
+         end;
+
+      )
+      nodes;
+    Buffer.contents buf
+  in
+  let config_persister, cfg_url =
+    match etcd with
+    | None ->
+       let cfg_file = arakoon_path ^ "/" ^ cluster_id ^ ".ini" in
+       let persister () =
+         let cluster_path = arakoon_path ^ "/" ^ cluster_id in
+         let cfg_txt = _make_cfg_value () in
+         let oc = open_out cfg_file in
+         let () = output_string oc cfg_txt in
+         close_out oc
+       in
+       let url = Url.File cfg_file in
+       persister, url
+    | Some etcd ->
+       let key = Printf.sprintf "/arakoons/%s" cluster_id in
+       let persister () =
+         let value = _make_cfg_value () in
+         Etcdctl.set etcd key value
+       in
+       let url = Etcdctl.url etcd key in
+       persister, url
+  in
+  object (self : # component)
     val mutable _binary = cfg.arakoon_bin
     val mutable _plugin_path = cfg.alba_plugin_path
 
@@ -284,8 +299,10 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port =
       _binary <- cfg.arakoon_189_bin;
       _plugin_path <- cfg.alba_06_plugin_path
 
-    method config_file = cfg_file
-    method write_node_config_files node =
+    method config_url : Url.t = cfg_url
+    method cluster_id = cluster_id
+
+    method link_plugins node =
       let dir_path = cluster_path ^ "/" ^ node in
       "mkdir -p " ^ dir_path |> Shell.cmd;
       Printf.sprintf
@@ -296,54 +313,20 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port =
         _plugin_path dir_path |> Shell.cmd;
       if cfg.tls then make_cert dir_path node
 
-    method write_cluster_config_file =
-      let oc = open_out cfg_file in
-      let w x = Printf.ksprintf (fun s -> output_string oc s) (x ^^ "\n") in
-      w "[global]";
-      w "cluster = %s" (String.concat ", " nodes);
-      w "cluster_id = %s" cluster_id;
-      w "plugins = albamgr_plugin nsm_host_plugin";
-      w "";
-      if cfg.tls
-      then
-        begin
-          w "tls_ca_cert = %s/cacert.pem" cfg.arakoon_path;
-          w "tls_service = true";
-          w "tls_service_validate_peer = false";
-          w "";
-        end;
-      List.iteri
-        (fun i node ->
-         w "[%s]" node;
-         w "ip = 127.0.0.1";
-         w "client_port = %i" (base_port + i);
-         w "messaging_port = %i" (base_port + i + 10);
-         let home = cfg.arakoon_path ^ "/" ^ cluster_id ^ "/" ^ node in
-         w "home = %s" home;
-         w "log_level = debug";
-         w "fsync = false";
-         w "";
-         if cfg.tls then
-           begin
-             w "tls_cert = %s/%s.pem" home node;
-             w "tls_key =  %s/%s.key" home node;
-             w "";
-           end;
-
-        )
-        nodes;
-      close_out oc
-
-    method write_config_files =
-      List.iter (self # write_node_config_files) nodes;
-      self # write_cluster_config_file
 
 
+    method persist_cluster_config =
+      config_persister ()
+
+
+    method persist_config =
+      List.iter (self # link_plugins) nodes;
+      self # persist_cluster_config
 
     method start_node node =
       [_binary;
        "--node"; node;
-       "-config"; cfg_file
+       "-config"; Url.canonical cfg_url
       ] |> Shell.detach
 
     method start =
@@ -367,7 +350,7 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port =
         nodes
 
     method who_master () : string =
-      let line = [cfg.arakoon_bin; "--who-master";"-config"; cfg_file] in
+      let line = [cfg.arakoon_bin; "--who-master";"-config"; Url.canonical cfg_url] in
       let line' = if cfg.tls
                   then _extend_tls line
                   else line
@@ -412,7 +395,7 @@ let make_tls_client (cfg:Config.t) =
 
 type proxy_cfg =
   { port: int;
-    albamgr_cfg_file : string;
+    albamgr_cfg_url : Url.t;
     log_level : string;
     fragment_cache_dir : string;
     manifest_cache_size : int;
@@ -420,9 +403,9 @@ type proxy_cfg =
     tls_client : tls_client option;
   } [@@deriving yojson]
 
-let make_proxy_config id abm_cfg_file base tls_client=
+let make_proxy_config id abm_cfg_url base tls_client=
   { port = 10000 + id;
-    albamgr_cfg_file = abm_cfg_file;
+    albamgr_cfg_url = abm_cfg_url;
     log_level = "debug";
     fragment_cache_dir  = base ^ "/fragment_cache";
     manifest_cache_size = 100 * 1000;
@@ -438,7 +421,7 @@ let _alba_extend_tls ?(cfg=Config.default) cmd =
   cmd @ [Printf.sprintf
            "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
 
-let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
+let _alba_cmd ~cfg ~cwd ~ignore_tls x =
   let maybe_extend_tls cmd =
     if not ignore_tls && cfg.tls
     then
@@ -454,6 +437,9 @@ let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
   in
   cmd1
   |> maybe_extend_tls
+
+let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
+  _alba_cmd ~cfg ~cwd ~ignore_tls x
   |> String.concat " "
   |> Shell.cmd ~ignore_rc:false
 
@@ -469,26 +455,48 @@ let suppress_tags tags = function
      `Assoc xs'
   | _ -> failwith "unexpected json"
 
-class proxy id cfg alba_bin abm_cfg_file  =
+class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
-  let p_cfg_file = proxy_base ^ "/proxy.cfg" in
   let tls_client = make_tls_client cfg in
-  let p_cfg = make_proxy_config id abm_cfg_file proxy_base tls_client in
-  object
+  let p_cfg = make_proxy_config id abm_cfg_url proxy_base tls_client in
+  let config_persister, cfg_url =
+    match etcd with
+    | None ->
+       let p_cfg_file = proxy_base ^ "/proxy.cfg" in
+       let cfg_url = Url.File p_cfg_file in
+       let persister cfg =
+         let oc = open_out p_cfg_file in
+         let json = proxy_cfg_to_yojson cfg in
+         let json' = suppress_tags [] json in
+         Yojson.Safe.pretty_to_channel oc json' ;
+         close_out oc
+       in
+       persister, cfg_url
+    | Some etcd ->
+       let key = Printf.sprintf "/proxies/%02i" id in
+       let persister cfg =
+         let json = proxy_cfg_to_yojson cfg in
+         let value = Yojson.Safe.pretty_to_string json in
+         Etcdctl.set etcd key value
+       in
+       let url = Etcdctl.url etcd key in
+       persister, url
+  in
+  object (self : # component)
 
-  method write_config_file :unit =
+  method persist_config :unit =
     "mkdir -p " ^ proxy_base |> Shell.cmd;
-    let oc = open_out p_cfg_file in
-    let json = proxy_cfg_to_yojson p_cfg in
-    let json' = suppress_tags [] json in
-    Yojson.Safe.pretty_to_channel oc json' ;
-    close_out oc
+    config_persister p_cfg
 
-  method start : unit =
+  method start =
     let out = Printf.sprintf "%s/proxy.out" proxy_base in
     "mkdir -p " ^ p_cfg.fragment_cache_dir |> Shell.cmd;
-    [alba_bin; "proxy-start"; "--config"; p_cfg_file]
+    [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
     |> Shell.detach ~out
+
+  method stop =
+    let kill_port = p_cfg.port in
+    Printf.sprintf "fuser -k -n tcp %i" kill_port |> Shell.cmd ~ignore_rc:true
 
   method upload_object namespace file name =
     ["proxy-upload-object";
@@ -507,41 +515,72 @@ class proxy id cfg alba_bin abm_cfg_file  =
 end
 
 type maintenance_cfg = {
-    albamgr_cfg_file : string;
+    albamgr_cfg_url : Url.t;
     log_level : string;
     tls_client : tls_client option;
   } [@@deriving yojson]
 
-let make_maintenance_config abm_cfg_file tls_client =
-  { albamgr_cfg_file = abm_cfg_file;
+let make_maintenance_config abm_cfg_url tls_client =
+  { albamgr_cfg_url = abm_cfg_url;
     log_level = "debug";
     tls_client ;
   }
 
-class maintenance id cfg abm_cfg_file =
+class maintenance id cfg (abm_cfg_url:Url.t) etcd =
   let maintenance_base =
     Printf.sprintf "%s/maintenance/%02i" cfg.alba_base_path id
   in
   let maintenance_abm_cfg_file = maintenance_base ^ "/abm.ini" in
+  let maintenance_abm_cfg_url =
+    match etcd with
+    | None      -> Url.File maintenance_abm_cfg_file
+    | Some etcd -> abm_cfg_url
+  in
   let tls_client = make_tls_client cfg in
-  let m_cfg = make_maintenance_config maintenance_abm_cfg_file tls_client in
-  let m_cfg_file = maintenance_base ^ "/maintenance.cfg" in
+  let m_cfg = make_maintenance_config maintenance_abm_cfg_url tls_client in
 
+  let config_persister, cfg_url = match etcd with
+    | None ->
+       let m_cfg_file = maintenance_base ^ "/maintenance.cfg" in
+       let url = Url.File m_cfg_file in
+       let persister cfg =
+         let oc = open_out m_cfg_file in
+         let json = maintenance_cfg_to_yojson cfg in
+         Yojson.Safe.pretty_to_channel oc json;
+         close_out oc
+       in
+       persister, url
+    | Some etcd ->
+       let key = Printf.sprintf "/maintenance/%02i_cfg" id in
+       let url = Etcdctl.url etcd key in
+       let persister cfg =
+         let json = maintenance_cfg_to_yojson cfg in
+         let value = Yojson.Safe.pretty_to_string json in
+         Etcdctl.set etcd key value
+       in
 
+       persister, url
+  in
   object
-    method abm_config_file = maintenance_abm_cfg_file
+    method abm_config_url : Url.t = maintenance_abm_cfg_url
 
     method write_config_file : unit =
       "mkdir -p " ^ maintenance_base |> Shell.cmd;
-      let () = Shell.cp abm_cfg_file maintenance_abm_cfg_file in
-      let oc = open_out m_cfg_file in
-      let json = maintenance_cfg_to_yojson m_cfg in
-      Yojson.Safe.pretty_to_channel oc json;
-      close_out oc
+      let () =
+        match etcd with
+        | None ->
+           begin
+             match abm_cfg_url with
+             | Url.File abm_cfg_file -> Shell.cp abm_cfg_file maintenance_abm_cfg_file
+             | _ -> failwith "not supported"
+           end
+        | _ -> ()
+      in
+      config_persister m_cfg
 
     method start =
       let out = Printf.sprintf "%s/maintenance.out" maintenance_base in
-      [cfg.alba_bin; "maintenance"; "--config"; m_cfg_file]
+      [cfg.alba_bin; "maintenance"; "--config"; Url.canonical cfg_url]
       |> Shell.detach ~out
 
     method signal s=
@@ -586,10 +625,9 @@ let make_asd_config node_id asd_id home port tls=
 
 
 
-class asd node_id asd_id alba_bin arakoon_path home port tls =
+class asd node_id asd_id alba_bin arakoon_path home port ~etcd tls =
   let use_tls = tls <> None in
-  let a_cfg = make_asd_config node_id asd_id home port tls in
-  let a_cfg_file = home ^ "/cfg.json" in
+  let asd_cfg = make_asd_config node_id asd_id home port tls in
   let kill_port = match port with
     | None ->
        begin
@@ -599,12 +637,46 @@ class asd node_id asd_id alba_bin arakoon_path home port tls =
        end
     | Some p -> p
   in
-  object(self)
-    method config_file = a_cfg_file
+  let config_persister, cfg_url =
+    match etcd with
+    | None ->
+       let persister cfg =
+         let file = home ^ "/cfg.json" in
+         let oc = open_out file in
+         let json = asd_cfg_to_yojson asd_cfg in
+         let json' =
+           if use_tls
+           then json
+           else suppress_tags ["multicast"] json
+         in
+         Yojson.Safe.pretty_to_channel oc json' ;
+         close_out oc
+       and url = Url.File (home ^ "/cfg.json") in
+       persister,url
+    | Some etcd ->
+       let key = Printf.sprintf "/asds/%s/%s" node_id asd_id  in
+       let persister cfg =
+         let json = asd_cfg_to_yojson asd_cfg in
+         let json' =
+           if use_tls
+           then json
+           else suppress_tags ["multicast"] json
+         in
+         let value = Yojson.Safe.to_string json' in
+         Etcdctl.set etcd key value
+       in
+       let url = Etcdctl.url etcd key in
+       persister, url
+
+  in
+  object(self : # component)
+    method long_id = asd_cfg.asd_id
+
+    method config_url = cfg_url
 
     method tls = tls
 
-    method write_config_files =
+    method persist_config =
       "mkdir -p " ^ home |> Shell.cmd;
       if use_tls
       then
@@ -613,19 +685,12 @@ class asd node_id asd_id alba_bin arakoon_path home port tls =
         "mkdir -p " ^ base |> Shell.cmd;
         make_cert base asd_id;
         end;
-      let oc = open_out a_cfg_file in
-      let json = asd_cfg_to_yojson a_cfg in
-      let json' =
-        if use_tls
-        then json
-        else suppress_tags ["multicast"] json
-      in
-      Yojson.Safe.pretty_to_channel oc json' ;
-      close_out oc
+      config_persister asd_cfg
+
 
     method start =
       let out = home ^ "/stdout" in
-      [alba_bin; "asd-start"; "--config"; a_cfg_file]
+      [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
       |> Shell.detach ~out;
 
     method stop =
@@ -660,9 +725,26 @@ class asd node_id asd_id alba_bin arakoon_path home port tls =
       cmd |> Shell.cmd_with_capture
 end
 
+class etcd host port home =
+  object(self : #component)
+    method persist_config =
+      "mkdir -p " ^ home |> Shell.cmd
 
+    method start =
+      (* ETCD_LISTEN_CLIENT_URLS=http://127.0.0.1:5000 \
+           ./etcd -advertise-client-urls=http://127.0.0.1:5000
+       *)
+      let out = home ^ "/stdout" in
+      let url = Printf.sprintf "http://%s:%i" host port in
+      let var = Printf.sprintf "ETCD_LISTEN_CLIENT_URLS=%s" url in
+      let advertise = Printf.sprintf "-advertise-client-urls=%s" url in
+      ["etcd"; advertise;"-data-dir";home] |> Shell.detach ~pre:[var] ~out;
+      Unix.sleep 1; ()
 
-
+    method stop =
+      Printf.sprintf "fuser -k -n tcp %i" port
+      |> Shell.cmd ~ignore_rc:true
+  end
 
 module Deployment = struct
   type t = {
@@ -672,17 +754,18 @@ module Deployment = struct
       proxy : proxy;
       maintenance : maintenance;
       osds : asd array;
+      etcd: etcd option;
     }
 
   let nsm_host_register t : unit =
-    let cfg_file = t.nsm # config_file in
-    let cmd = ["add-nsm-host"; cfg_file ;
-               "--config" ; t.abm # config_file ]
+    let cfg_url = t.nsm # config_url in
+    let cmd = ["add-nsm-host"; Url.canonical cfg_url ;
+               "--config" ; t.abm # config_url |> Url.canonical ]
     in
     _alba_cmd_line cmd
 
 
-  let make_osds n local_nodeid_prefix base_path arakoon_path alba_bin (tls:bool) =
+  let make_osds n local_nodeid_prefix base_path arakoon_path alba_bin ~etcd (tls:bool) =
     let base_port = 8000 in
     let rec loop asds j =
       if j = n
@@ -710,7 +793,8 @@ module Deployment = struct
           let asd = new asd node_id_s asd_id
                         alba_bin
                         arakoon_path
-                        home (Some port) tls_cfg
+                        home (Some port) ~etcd
+                        tls_cfg
           in
           loop (asd :: asds) (j+1)
         end
@@ -723,24 +807,34 @@ module Deployment = struct
       let id = "abm"
       and nodes = ["abm_0"; "abm_1"; "abm_2"]
       and base_port = 4000 in
-      new arakoon id nodes base_port
+      new arakoon id nodes base_port cfg.etcd
     in
     let nsm =
       let id = "nsm"
       and nodes = ["nsm_0";"nsm_1"; "nsm_2"]
       and base_port = 4100 in
-      new arakoon id nodes base_port
+      new arakoon id nodes base_port cfg.etcd
     in
-    let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_file) in
-    let maintenance = new maintenance 0 cfg (abm # config_file) in
+    let etcd = match cfg.etcd with
+      | None -> None
+      | Some (peers,prefix) ->
+         begin
+           let (host,port) = List.hd peers in
+           let etcd = new etcd host port cfg.etcd_home in
+           Some etcd
+         end
+    in
+    let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_url) cfg.etcd in
+    let maintenance = new maintenance 0 cfg              (abm # config_url) cfg.etcd in
     let osds = make_osds cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
                          cfg.alba_bin
+                         cfg.etcd
                          cfg.tls
     in
-    { cfg; abm;nsm; proxy ; maintenance; osds }
+    { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
 
   let to_arakoon_189 t =
     let new_binary = t.cfg.arakoon_189_bin in
@@ -758,7 +852,7 @@ module Deployment = struct
 
   let setup_osds t =
     Array.iter (fun asd ->
-                asd # write_config_files;
+                asd # persist_config;
                 asd # start
                ) t.osds
 
@@ -766,7 +860,7 @@ module Deployment = struct
     let cmd = [
         "claim-osd";
         "--long-id"; long_id;
-        "--config" ; t.abm # config_file;
+        "--config" ; t.abm # config_url |> Url.canonical;
       ]
     in
     _alba_cmd_line cmd
@@ -813,7 +907,9 @@ module Deployment = struct
     let available_json_s =
       let cmd =
         [t.cfg.alba_bin;
-         "list-available-osds"; "--config"; t.abm # config_file ; "--to-json"
+         "list-available-osds";
+         "--config"; t.abm # config_url |> Url.canonical ;
+         "--to-json"
         ]
       in
       let cmd' = if t.cfg.tls then _alba_extend_tls cmd else cmd in
@@ -859,7 +955,7 @@ module Deployment = struct
 
   let list_namespaces t  =
     let r = [t.cfg.alba_bin; "list-namespaces";
-             "--config"; t.abm # config_file;
+             "--config"; t.abm # config_url|> Url.canonical ;
              "--to-json";
             ] |> Shell.cmd_with_capture in
     let json = Yojson.Safe.from_string r in
@@ -897,7 +993,7 @@ module Deployment = struct
     let alba_pids = get_pids albas in
     let pids = arakoon_pids @ alba_pids in
     let args = List.fold_left (fun acc pid -> "-p"::(string_of_int pid):: acc) ["1"] pids in
-    "pidstat" :: args |> Shell.detach ~out:t.cfg.monitoring_file
+    "pidstat" :: "-hud" :: args |> Shell.detach ~out:t.cfg.monitoring_file
 
 
 
@@ -916,17 +1012,24 @@ module Deployment = struct
         "mkdir " ^ client_path |> Shell.cmd;
         make_cert client_path my_client
       end;
+    let () =
+      match t.etcd with
+      | None -> ()
+      | Some etcd ->
+         etcd # persist_config;
+         etcd # start;
+    in
 
-    t.abm # write_config_files;
+    t.abm # persist_config;
     t.abm # start ;
 
-    t.nsm # write_config_files;
+    t.nsm # persist_config;
     t.nsm # start ;
 
     let _ = t.abm # wait_for_master () in
     let _ = t.nsm # wait_for_master () in
 
-    t.proxy # write_config_file;
+    t.proxy # persist_config;
     t.proxy # start;
 
 
@@ -945,6 +1048,10 @@ module Deployment = struct
 
   let kill t =
     let cfg = t.cfg in
+    let () = match t.etcd with
+      | None -> ()
+      | Some etcd -> etcd # stop
+    in
     let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
     pkill (Filename.basename cfg.arakoon_bin);
     pkill (Filename.basename cfg.alba_bin);
@@ -1105,7 +1212,9 @@ module Test = struct
         end;
       let cmd = [
           (*"valgrind"; "--track-origins=yes"; *)
-          cfg.alba_bin; "unit-tests"; "--config" ; t.abm # config_file ]
+          cfg.alba_bin; "unit-tests";
+          "--config" ; t.abm # config_url |> Url.canonical
+        ]
       in
       let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
       let cmd3 = if cfg.tls then _alba_extend_tls cmd2 else cmd2 in
@@ -1168,7 +1277,7 @@ module Test = struct
     let cfg = t.Deployment.cfg in
     let cmd = [
         cfg.failure_tester;
-        "--config" ; t.abm # config_file;
+        "--config" ; t.abm # config_url |> Url.canonical;
       ]
     in
     let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
@@ -1226,7 +1335,7 @@ module Test = struct
     in
     JUnit.rc suites
 
-  let asd_get_version t =
+  let asd_version t =
     try
       let version_s = t.Deployment.osds.(1) # get_remote_version in
       Printf.printf "version_s=%S\n%!" version_s;
@@ -1238,12 +1347,52 @@ module Test = struct
       | false ->JUnit.Fail "failed test"
     with exn -> JUnit.Err (Printexc.to_string exn)
 
-  let asd_get_statistics t =
-    let stats_s = t.Deployment.osds.(1) # get_statistics in
+  let _assert_parseable json =
     try
-      let _ = Yojson.Safe.from_string stats_s in
+      let _ = Yojson.Safe.from_string json in
       JUnit.Ok
     with x -> JUnit.Err (Printexc.to_string x)
+
+  let asd_statistics t =
+    let stats_s = t.Deployment.osds.(1) # get_statistics in
+    _assert_parseable stats_s
+
+  let abm_statistics t =
+    let cmd =
+      [t.cfg.alba_bin;
+       "mgr-statistics";
+         "--config"; t.abm # config_url |> Url.canonical;
+         (*"--to-json"*)
+        ]
+    in
+    let stats_s = Shell.cmd_with_capture cmd in
+    _assert_parseable stats_s
+
+  let nsm_host_statistics t =
+    let cmd =
+      [t.cfg.alba_bin;
+       "nsm-host-statistics";
+       "--config";t.abm # config_url |> Url.canonical;
+       t.nsm # cluster_id ;
+       (*"--to-json";*)
+      ]
+    in
+    let stats_s = Shell.cmd_with_capture cmd in
+    _assert_parseable stats_s
+
+  let asd_statistics_via_abm t =
+    let long_id = t.Deployment.osds.(1) # long_id in
+
+    let stats_cmd= [
+        t.cfg.alba_bin;
+        "asd-statistics";
+        "--config"; t.abm # config_url |> Url.canonical;
+        "--long-id"; long_id;
+        "--to-json";
+      ]
+    in
+    let stats_s = Shell.cmd_with_capture stats_cmd in
+    _assert_parseable stats_s
 
   let asd_crud t  =
     let k = "the_key"
@@ -1259,19 +1408,16 @@ module Test = struct
   let asd_cli_env t =
     if t.Deployment.cfg.tls
     then
-      try
-        let cert,pem,key = _get_client_tls () in
-        let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
-                   t.cfg.alba_bin;
-                   "asd-get-version";
-                   "-h 127.0.0.1";
-                   "-p" ; "8501"
-                  ]
-        in
-        let _r = Shell.cmd_with_capture cmd in
-        JUnit.Ok
-      with exn ->
-        JUnit.Err (Printexc.to_string exn)
+      let cert,pem,key = _get_client_tls () in
+      let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
+                 t.cfg.alba_bin;
+                 "asd-get-version";
+                 "-h 127.0.0.1";
+                 "-p" ; "8501"
+                ]
+      in
+      let _r = Shell.cmd_with_capture cmd in
+      JUnit.Ok
     else
       JUnit.Ok
 
@@ -1279,20 +1425,21 @@ module Test = struct
   let create_example_preset t =
     let cmd = [
         "create-preset"; "example";
-        "--config"; t.Deployment.abm # config_file;
+        "--config"; t.Deployment.abm # config_url |> Url.canonical;
         "< "; "./cfg/preset.json";
       ]
     in
-    try
-      _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
-      JUnit.Ok
-    with | x -> JUnit.Err (Printexc.to_string x)
+    _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
+    JUnit.Ok
 
   let cli t =
     let suite_name = "run_tests_cli" in
     let tests = ["asd_crud", asd_crud;
-                 "asd_get_version", asd_get_version;
-                 "asd_get_statistics", asd_get_statistics;
+                 "asd_version", asd_version;
+                 "asd_statistics", asd_statistics;
+                 "asd_statistics_via_abm", asd_statistics_via_abm;
+                 "abm_statistics", abm_statistics;
+                 "nsm_host_statistics", nsm_host_statistics;
                  "asd_cli_env", asd_cli_env;
                  "create_example_preset", create_example_preset;
                 ]
@@ -1303,7 +1450,11 @@ module Test = struct
           fun acc (name,test) ->
 
           let t0 = Unix.gettimeofday () in
-          let result = test t in
+          let result =
+            try
+              test t
+            with x -> JUnit.Err (Printexc.to_string x)
+          in
           let t1 = Unix.gettimeofday () in
           let d = t1 -. t0 in
           let testcase = JUnit.make_testcase name name d result in
@@ -1322,12 +1473,12 @@ module Test = struct
       let name = "big_object" in
       _alba_cmd_line ~cwd:t.Deployment.cfg.alba_home [
                        "create-preset"; preset;
-                       "--config"; t.abm # config_file;
+                       "--config"; t.abm # config_url |> Url.canonical;
                        " < "; "./cfg/preset_no_compression.json";
                      ];
       _alba_cmd_line [
           "create-namespace";namespace ;preset;
-          "--config"; t.abm # config_file;
+          "--config"; t.abm # config_url |> Url.canonical;
         ];
       let cfg = t.cfg in
       let object_file = cfg.alba_base_path ^ "/obj" in
@@ -1361,7 +1512,7 @@ module Test = struct
         loop x
       in
       Deployment.kill t;
-      let two_nodes = new arakoon "abm" ["abm_0";"abm_1"] 4000 in
+      let two_nodes = new arakoon "abm" ["abm_0";"abm_1"] 4000 t.cfg.etcd in
       let t' = {t with abm = two_nodes } in
 
       let upload_albamgr_cfg cfg =
@@ -1378,19 +1529,27 @@ module Test = struct
       two_nodes # stop;
 
       print_endline "grow the cluster";
-      let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000 in
-      three_nodes # write_cluster_config_file ;
-      three_nodes # write_node_config_files "abm_2";
+      let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000 t.cfg.etcd in
+      three_nodes # persist_cluster_config ;
+      three_nodes # link_plugins "abm_2";
       three_nodes # start_node "abm_1";
       three_nodes # start_node "abm_2";
       wait_for 20;
       three_nodes # start_node "abm_0";
 
-      let maintenance_cfg = t'.maintenance # abm_config_file in
+
+      let maintenance_cfg = t'.maintenance # abm_config_url in
 
       (* update maintenance *)
-      Shell.cp (three_nodes # config_file) maintenance_cfg;
-
+      let maybe_copy cfg_url =
+        match t.cfg.etcd with
+        | None ->
+           let f = cfg_url |> Url.as_file in
+           let maintenance_cfg_f = maintenance_cfg |> Url.as_file in
+           Shell.cp f maintenance_cfg_f
+        | _ -> ()
+      in
+      maybe_copy (three_nodes # config_url);
       t'.maintenance # signal "USR1";
       wait_for(120);
       let c = n_nodes_in_config () in
@@ -1398,11 +1557,10 @@ module Test = struct
 
       print_endline "shrink the cluster";
       three_nodes # stop;
-      two_nodes # write_cluster_config_file;
+      two_nodes # persist_cluster_config;
       two_nodes # start;
-      Shell.cp (t'.abm # config_file) maintenance_cfg;
-
-      upload_albamgr_cfg (two_nodes # config_file);
+      maybe_copy (t'.abm # config_url) ;
+      upload_albamgr_cfg (two_nodes # config_url |> Url.canonical);
       wait_for(120);
       let c = n_nodes_in_config () in
       assert (c = 2);
@@ -1438,7 +1596,9 @@ module Test = struct
           [
             ["proxy-upload-object"; "-h"; host; ns; cfg.alba_bin; obj_name];
             ["proxy-download-object"; "-h"; host; ns; obj_name; "/tmp/downloaded.bin"];
-            ["delete-object"; ns; obj_name; "--config"; t.abm # config_file];
+            ["delete-object"; ns; obj_name;
+             "--config"; t.abm # config_url |> Url.canonical
+            ];
           ]
         in
         List.iter
@@ -1446,7 +1606,9 @@ module Test = struct
           basic_tests;
 
         (* explicit backward compatible operations *)
-        let r = make_cli ["list-all-osds"; "--config"; t.abm # config_file; "--to-json"]
+        let r = make_cli ["list-all-osds";
+                          "--config"; t.abm # config_url |> Url.canonical;
+                          "--to-json"]
               |> Shell.cmd_with_capture
         in
         let osds = Deployment.parse_harvest r in
@@ -1454,13 +1616,15 @@ module Test = struct
 
         (* decommission 1 asd *)
         make_cli ["decommission-osd";"--long-id"; long_id;
-                  "--config"; t.abm # config_file ]
+                  "--config"; t.abm # config_url |> Url.canonical]
         |> String.concat " "
         |> Shell.cmd;
         (* list them *)
         let decommissioning_s=
           make_cli ["list-decommissioning-osds";
-                    "--config"; t.abm # config_file; "--to-json"]
+                    "--config"; t.abm # config_url |> Url.canonical;
+                    "--to-json"
+                   ]
           |> Shell.cmd_with_capture
         in
         let decommissioning = decommissioning_s |> Deployment.parse_harvest in
@@ -1480,6 +1644,7 @@ module Test = struct
                                       tx.cfg.alba_base_path
                                       tx.cfg.arakoon_path
                                       tx.cfg.alba_06_bin
+                                      ~etcd:tx.cfg.etcd
                                       false
             }
           else tx
@@ -1496,7 +1661,8 @@ module Test = struct
             let old_proxy =
               new proxy 0 tx.cfg
                   tx.cfg.alba_06_bin
-                  (tx.abm # config_file)
+                  (tx.abm # config_url)
+                  tx.cfg.etcd
             in
             {tx with proxy = old_proxy }
           else tx
@@ -1510,10 +1676,10 @@ module Test = struct
       Shell.cmd "pkill alba" ~ignore_rc:true;
       Shell.cmd "pkill arakoon" ~ignore_rc:true;
 
-      t.abm # write_config_files;
+      t.abm # persist_config;
       t.abm # start;
 
-      t.nsm # write_config_files;
+      t.nsm # persist_config;
       t.nsm # start;
 
       let _ = t.abm # wait_for_master () in
@@ -1527,10 +1693,12 @@ module Test = struct
            "apply-license";
            t.cfg.license_file;
            signature;
-           "--config"; t.abm # config_file
-          ] |> String.concat " " |> Shell.cmd
+           "--config"; t.abm # config_url |> Url.canonical
+          ]
+          |> String.concat " "
+          |> Shell.cmd
         end;
-      t.proxy # write_config_file;
+      t.proxy # persist_config;
       t.proxy # start;
 
       t.maintenance # write_config_file;
@@ -1596,6 +1764,8 @@ module Test = struct
     let (rc:int) = JUnit.rc results in
     rc
 
+  let nil ?(xml=false) ?filter ?dump t =
+    0
 end
 
 
@@ -1614,6 +1784,7 @@ let () =
       | "asd_start"       -> Test.asd_start,true
       | "everything_else" -> Test.everything_else, true
       | "compat"          -> Test.compat, false
+      | "nil"             -> Test.nil,true
       | _  -> failwith "no test"
     in
     let t = Deployment.make_default () in
@@ -1625,4 +1796,8 @@ let () =
     let rc = w (test ~xml:true) t in
     exit rc
   else
-    exit 1
+    ()
+
+let top_level_run test =
+  let t = Deployment.make_default () in
+  Test.wrapper test t

@@ -45,7 +45,7 @@ let alba_list_namespaces cfg_file tls_config to_json verbose =
 
 let alba_list_namespaces_cmd =
   Term.(pure alba_list_namespaces
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json $ verbose ),
   Term.info "list-namespaces" ~doc:"list all namespaces"
@@ -91,7 +91,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
 
 let alba_list_namespaces_by_id_cmd =
   Term.(pure alba_list_namespaces_by_id
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json $ verbose
         $ attempts 1
@@ -110,7 +110,7 @@ let recover_namespace cfg_file tls_config namespace nsm_host_id verbose =
 
 let recover_namespace_cmd =
   Term.(pure recover_namespace
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ nsm_host 1
@@ -177,7 +177,7 @@ let node_id default =
 let alba_list_osds_cmd =
   let alba_list_osds_t =
     Term.(pure alba_list_osds
-          $ alba_cfg_file
+          $ alba_cfg_url
           $ tls_config
           $ node_id None
           $ to_json
@@ -192,10 +192,10 @@ let alba_list_osds_cmd =
   in
   alba_list_osds_t, info
 
-let alba_list_all_osds cfg_file tls_config node_id to_json verbose attempts =
+let alba_list_all_osds alba_cfg_url tls_config node_id to_json verbose attempts =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts tls_config
+      alba_cfg_url ~attempts tls_config
       (fun client ->
          client # list_all_osds
          >>= fun (i,devices) ->
@@ -241,7 +241,7 @@ let alba_list_all_osds cfg_file tls_config node_id to_json verbose attempts =
 let alba_list_all_osds_cmd =
   let alba_list_all_osds_t =
     Term.(pure alba_list_all_osds
-          $ alba_cfg_file
+          $ alba_cfg_url
           $ tls_config
           $ node_id None
           $ to_json
@@ -279,7 +279,7 @@ let alba_list_available_osds alba_cfg_file tls_config to_json verbose attempts =
 
 let alba_list_available_osds_cmd =
   Term.(pure alba_list_available_osds
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json
         $ verbose
@@ -315,20 +315,20 @@ let alba_list_nsm_hosts cfg_file tls_config to_json verbose attempts =
 
 let alba_list_nsm_hosts_cmd =
   Term.(pure alba_list_nsm_hosts
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json
         $ verbose
         $ attempts 1),
   Term.info "list-nsm-hosts" ~doc:"list all nsm hosts"
 
-let alba_add_nsm_host alba_cfg_file tls_config nsm_host_cfg_file to_json verbose attempts =
+let alba_add_nsm_host alba_cfg_url tls_config nsm_host_cfg_url to_json verbose attempts =
   let t () =
     let open Albamgr_protocol.Protocol in
     with_albamgr_client
-      alba_cfg_file ~attempts tls_config
+      alba_cfg_url ~attempts tls_config
       (fun client ->
-       let cfg = Arakoon_config.from_config_file nsm_host_cfg_file in
+       Alba_arakoon.config_from_url nsm_host_cfg_url >>= fun cfg ->
        let nsm_host_id = fst cfg in
          client # add_nsm_host
                 ~nsm_host_id
@@ -338,23 +338,26 @@ let alba_add_nsm_host alba_cfg_file tls_config nsm_host_cfg_file to_json verbose
 
 let alba_add_nsm_host_cmd =
   Term.(pure alba_add_nsm_host
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ Arg.(required
-               & pos 0 (some file) None
-               & info [] ~docv:"CONFIG_FILE" ~doc:"config file for the nsm host")
+               & pos 0 (some url_converter) None
+               & info [] ~docv:"CONFIG_FILE" ~doc:"config url for the nsm host")
         $ to_json $ verbose
         $ attempts 1
   ),
   Term.info "add-nsm-host" ~doc:"add a nsm host"
 
-let alba_update_nsm_host alba_cfg_file tls_config nsm_host_cfg_file lost to_json verbose attempts =
+let alba_update_nsm_host
+      (alba_cfg_url:Url.t)
+      tls_config nsm_host_cfg_url lost to_json verbose attempts
+  =
   let t () =
     let open Albamgr_protocol.Protocol in
     with_albamgr_client
-      alba_cfg_file ~attempts tls_config
+      alba_cfg_url ~attempts tls_config
       (fun client ->
-       let cfg = Arakoon_config.from_config_file nsm_host_cfg_file in
+       Alba_arakoon.config_from_url nsm_host_cfg_url >>= fun cfg ->
        let nsm_host_id = fst cfg in
          client # update_nsm_host
                 ~nsm_host_id
@@ -364,10 +367,10 @@ let alba_update_nsm_host alba_cfg_file tls_config nsm_host_cfg_file lost to_json
 
 let alba_update_nsm_host_cmd =
   Term.(pure alba_update_nsm_host
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ Arg.(required &
-               pos 0 (some file) None &
+               pos 0 (some url_converter) None &
                info [] ~docv:"CONFIG_FILE" ~doc:"config file for the nsm host")
         $ Arg.(value &
                flag &
@@ -390,7 +393,7 @@ let alba_mgr_get_version cfg_file tls_config verbose attempts =
 
 let alba_mgr_get_version_cmd =
   Term.(pure alba_mgr_get_version
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ verbose
         $ attempts 1
@@ -412,7 +415,7 @@ let alba_mgr_statistics cfg_file tls_config attempts clear verbose =
 
 let alba_mgr_statistics_cmd =
   Term.(pure alba_mgr_statistics
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ attempts 1
         $ clear
@@ -453,7 +456,7 @@ let alba_list_decommissioning_osds
 
 let alba_list_decommissioning_osds_cmd =
   Term.(pure alba_list_decommissioning_osds
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json $ verbose
         $ attempts 1
@@ -482,7 +485,7 @@ let alba_list_participants_cmd =
                & info [] ~docv:"PREFIX" ~doc:"prefix")
   in
   Term.(pure alba_list_participants
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ prefix
         $ verbose),
@@ -521,7 +524,7 @@ let alba_list_work cfg_file tls_config verbose attempts =
 
 let alba_list_work_cmd =
   Term.(pure alba_list_work
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ verbose
         $ attempts 1
@@ -573,7 +576,7 @@ let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts 
 
 let alba_add_osd_cmd =
   Term.(pure alba_add_osd
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ host $ port 8000
         $ (node_id None)
@@ -619,7 +622,7 @@ let job_name p =
 
 let alba_rewrite_namespace_cmd =
   Term.(pure alba_rewrite_namespace
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ job_name 1
@@ -647,7 +650,7 @@ let alba_verify_namespace
 
 let alba_verify_namespace_cmd =
   Term.(pure alba_verify_namespace
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ namespace 0
         $ job_name 1
@@ -684,7 +687,7 @@ let alba_show_job_progress cfg_file tls_config name verbose =
 
 let alba_show_job_progress_cmd =
   Term.(pure alba_show_job_progress
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ job_name 0
         $ verbose),
@@ -712,7 +715,7 @@ let alba_clear_job_progress cfg_file tls_config name verbose =
 
 let alba_clear_job_progress_cmd =
   Term.(pure alba_clear_job_progress
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ job_name 0
         $ verbose
@@ -739,7 +742,7 @@ let alba_get_maintenance_config cfg_file tls_config to_json verbose =
 
 let alba_get_maintenance_config_cmd =
   Term.(pure alba_get_maintenance_config
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json $ verbose),
   Term.info "get-maintenance-config" ~doc:"get the maintenance config from the albamgr"
@@ -772,7 +775,7 @@ let alba_update_maintenance_config
 
 let alba_update_maintenance_config_cmd =
   Term.(pure alba_update_maintenance_config
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ Arg.(value
                & vflag None
@@ -805,7 +808,7 @@ let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
       if allow_dirty
       then
         begin
-          let cfg = Albamgr_protocol.Protocol.Arakoon_config.from_config_file cfg_file in
+          Alba_arakoon.config_from_url cfg_file >>= fun cfg ->
           let tls = Tls.to_client_context tls_config in
           let open Albamgr_client in
           retrieve_cfg_from_any_node
@@ -821,13 +824,13 @@ let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
           (fun client ->
            client # get_client_config)
     end >>= fun ccfg ->
-    Lwt_log.info_f "Get client config: %s" (Albamgr_protocol.Protocol.Arakoon_config.show ccfg)
+    Lwt_log.info_f "Get client config: %s" (Alba_arakoon.Config.show ccfg)
   in
   lwt_cmd_line false verbose t
 
 let alba_get_abm_client_config_cmd =
   Term.(pure alba_get_abm_client_config
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ Arg.(value
                & flag
@@ -835,20 +838,19 @@ let alba_get_abm_client_config_cmd =
         $ verbose),
   Term.info "get-abm-client-config"
 
-let alba_update_abm_client_config cfg_file tls_config verbose attempts =
+let alba_update_abm_client_config cfg_url tls_config verbose attempts =
   let t () =
+    Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     with_albamgr_client
-      cfg_file ~attempts tls_config
+      cfg_url ~attempts tls_config
       (fun client ->
-       client # store_client_config
-              (Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-                 cfg_file))
+       client # store_client_config cfg)
   in
   lwt_cmd_line false verbose t
 
 let alba_update_abm_client_config_cmd =
   Term.(pure alba_update_abm_client_config
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ verbose
         $ attempts 1),

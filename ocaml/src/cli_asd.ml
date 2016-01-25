@@ -23,11 +23,11 @@ open Asd_protocol
 open Asd_config
 
 
-let asd_start cfg_file slow =
+let asd_start cfg_url slow =
 
   let t () =
-    read_cfg cfg_file >>= function
-    | `Error err -> failwith err
+    Asd_config.retrieve_cfg cfg_url >>= function
+    | `Error err -> Lwt.fail_with err
     | `Ok cfg ->
 
        let ips,         port,      home,
@@ -59,8 +59,10 @@ let asd_start cfg_file slow =
       let _ : Lwt_unix.signal_handler_id =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
             let handle () =
-              Lwt_log.info_f "Received USR1, reloading log level from config file" >>= fun () ->
-              read_cfg cfg_file >>= function
+              Lwt_log.info_f "Received USR1, refetching log level from config %s"
+                             (Prelude.Url.show cfg_url)
+              >>= fun () ->
+              Asd_config.retrieve_cfg cfg_url >>= function
               | `Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
               | `Ok cfg ->
@@ -81,14 +83,14 @@ let asd_start cfg_file slow =
   lwt_server t
 
 let asd_start_cmd =
-  let cfg_file =
+  let cfg_url =
     Arg.(required
-         & opt (some file) None
-         & info ["config"] ~docv:"CONFIG_FILE" ~doc:"asd config file")
+         & opt (some url_converter) None
+         & info ["config"] ~docv:"CONFIG_FILE" ~doc:"asd config uri")
   in
   let asd_start_t =
     Term.(pure asd_start
-          $ cfg_file
+          $ cfg_url
           $ Arg.(value
                  & flag
                  & info ["slow"] ~docv:"artifically slow down an asd (only for testing purposes!)"))
@@ -420,8 +422,8 @@ let asd_statistics_cmd =
   in
   let config_o =
     Arg.(value
-         & opt (some non_dir_file) None
-         & info ["config"] ~docv:"CONFIG" ~doc:"the alba mgr config file (arakoon cfg)"
+         & opt (some url_converter) None
+         & info ["config"] ~docv:"CONFIG" ~doc:"the alba mgr config url (arakoon cfg)"
     )
   in
 

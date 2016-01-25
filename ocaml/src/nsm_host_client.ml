@@ -190,7 +190,7 @@ let make_client buffer_pool ccfg ~tcp_keepalive =
 
 
 let with_client cfg tls_config ~tcp_keepalive f =
-  let ccfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config cfg in
+  let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config cfg in
   let tls = Tls.to_client_context tls_config in
   let open Nsm_model in
   Lwt.catch

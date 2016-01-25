@@ -59,7 +59,9 @@ class coordinator
                   end)
             (fun exn ->
              state <- Follower;
-             Lwt_log.info_f ~exn "exception in maintenance coordination loop for %s" name)
+             Lwt_log.info_f ~exn
+                            "exception in maintenance coordination loop for %s"
+                            name)
           >>= fun () ->
           Lwt_unix.sleep
             (lease_timeout /.

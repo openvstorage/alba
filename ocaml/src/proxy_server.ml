@@ -36,9 +36,7 @@ let ini_hash_to_string tbl =
   Buffer.contents buf
 
 let albamgr_cfg_to_ini_string (cluster_id, nodes) =
-  let transform_node_cfg
-      { Albamgr_protocol.Protocol.Arakoon_config.ips;
-        port; } =
+  let transform_node_cfg { Alba_arakoon.Config.ips; port; } =
     Hashtbl.from_assoc_list
       [ ("ip", String.concat ", " ips);
         ("client_port", string_of_int port); ]
@@ -60,20 +58,31 @@ let albamgr_cfg_to_ini_string (cluster_id, nodes) =
 
   ini_hash_to_string h
 
-let write_albamgr_cfg albamgr_cfg destination =
-  let s = albamgr_cfg_to_ini_string albamgr_cfg in
-  let tmp = destination ^ ".tmp" in
-  Lwt_extra2.unlink ~fsync_parent_dir:false ~may_not_exist:true tmp >>= fun () ->
-  Lwt_extra2.with_fd
-    tmp
-    ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
-    ~perm:0o664
-    (fun fd ->
-       Lwt_extra2.write_all
-         fd
-         s 0 (String.length s) >>= fun () ->
-       Lwt_unix.fsync fd) >>= fun () ->
-  Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
+
+let maybe_write_albamgr_cfg albamgr_cfg = function
+  | Url.File destination ->
+     let s = albamgr_cfg_to_ini_string albamgr_cfg in
+     let tmp = destination ^ ".tmp" in
+     Lwt.catch
+       (fun () ->
+        Lwt_extra2.unlink ~fsync_parent_dir:false  ~may_not_exist:true tmp >>= fun () ->
+        Lwt_extra2.with_fd
+          tmp
+          ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
+          ~perm:0o664
+          (fun fd ->
+           Lwt_extra2.write_all
+             fd
+             s 0 (String.length s) >>= fun () ->
+           Lwt_unix.fsync fd) >>= fun () ->
+        Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
+       )
+       (fun exn ->
+        Lwt_log.info_f ~exn
+                       "couldn't write config to destination:%s" destination
+       )
+  | (Url.Etcd etcd) as destination ->
+     Lwt_log.info_f "refresh NOT pushing to %s" (Url.show destination)
 
 let read_objects_slices
       (alba_client : Alba_client.alba_client)
@@ -187,7 +196,7 @@ let log_request code maybe_renderer time =
 
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
-                   (albamgr_client_cfg:Albamgr_protocol.Protocol.Arakoon_config.t ref)
+                   (albamgr_client_cfg:Alba_arakoon.Config.t ref)
                    (stats: ProxyStatistics.t')
                    (nfd:Net_fd.t) ic =
 
@@ -532,7 +541,7 @@ let refresh_albamgr_cfg
       inner ()
     | Res ccfg ->
       albamgr_client_cfg := ccfg;
-      write_albamgr_cfg ccfg destination >>= fun () ->
+      maybe_write_albamgr_cfg ccfg destination >>= fun () ->
       Lwt_extra2.sleep_approx 60. >>= fun () ->
       if loop
       then inner ()
@@ -548,7 +557,7 @@ let run_server hosts port
                ~nsm_host_connection_pool_size
                ~osd_connection_pool_size
                ~osd_timeout
-               ~albamgr_cfg_file
+               ~(albamgr_cfg_url: Url.t)
                ~max_client_connections
                ~tls_config
                ~tcp_keepalive
@@ -609,7 +618,7 @@ let run_server hosts port
                  ~loop:true
                  albamgr_client_cfg
                  alba_client
-                 albamgr_cfg_file
+                 albamgr_cfg_url
                  ~tcp_keepalive
               );
               (let buffer_size = 8192 in

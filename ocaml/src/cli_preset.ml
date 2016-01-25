@@ -27,7 +27,7 @@ let preset_name p =
          ~doc:"name of the preset")
 
 let alba_create_preset
-    cfg_file tls_config preset_name
+    cfg_url tls_config preset_name
     to_json verbose
   =
   let t () =
@@ -42,9 +42,10 @@ let alba_create_preset
       preset' >>= fun preset ->
     let open Albamgr_protocol.Protocol in
     Lwt_log.debug_f "Storing preset %s" (Preset.show preset) >>= fun () ->
+    Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
       ~tcp_keepalive:Tcp_keepalive2.default
-      (Arakoon_config.from_config_file cfg_file)
+      cfg
       ~tls_config
       (fun client ->
          client # create_preset
@@ -55,7 +56,7 @@ let alba_create_preset
 
 let alba_create_preset_cmd =
   Term.(pure alba_create_preset
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ preset_name 0
         $ to_json
@@ -66,7 +67,7 @@ let alba_create_preset_cmd =
     ~doc:"create a new preset. the preset is read from stdin as json, pls have a look at cfg/preset.json for more details."
 
 let alba_update_preset
-      cfg_file tls_config
+      cfg_url tls_config
       preset_name
       to_json verbose
   =
@@ -79,8 +80,9 @@ let alba_update_preset
       | `Error s -> failwith s
       | `Ok p -> p
     in
+    Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
-      (Arakoon_config.from_config_file cfg_file) ~tls_config
+      cfg ~tls_config
       ~tcp_keepalive:Tcp_keepalive2.default
       (fun client ->
          client # update_preset
@@ -91,7 +93,7 @@ let alba_update_preset
 
 let alba_update_preset_cmd =
   Term.(pure alba_update_preset
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ preset_name 0
         $ to_json $ verbose),
@@ -99,12 +101,12 @@ let alba_update_preset_cmd =
     "update-preset"
     ~doc:"update an existing preset. the preset is read from stdin as json, pls have a look at cfg/update_preset.json for more details."
 
-let alba_preset_set_default cfg_file tls_config preset_name to_json verbose =
+let alba_preset_set_default cfg_url tls_config preset_name to_json verbose =
   let t () =
-    let open Albamgr_protocol.Protocol in
+    Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
       ~tcp_keepalive:Tcp_keepalive2.default
-      (Arakoon_config.from_config_file cfg_file)
+      cfg
       ~tls_config
       (fun client ->
          client # set_default_preset preset_name)
@@ -113,18 +115,18 @@ let alba_preset_set_default cfg_file tls_config preset_name to_json verbose =
 
 let alba_preset_set_default_cmd =
   Term.(pure alba_preset_set_default
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ preset_name 0
         $ to_json $ verbose ),
   Term.info "preset-set-default" ~doc:"make the specified preset the default preset"
 
-let alba_add_osds_to_preset cfg_file tls_config preset_name osd_ids to_json verbose =
+let alba_add_osds_to_preset cfg_url tls_config preset_name osd_ids to_json verbose =
   let t () =
-    let open Albamgr_protocol.Protocol in
+    Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
       ~tcp_keepalive:Tcp_keepalive2.default
-      (Arakoon_config.from_config_file cfg_file)
+      cfg
       ~tls_config
       (fun client ->
          client # add_osds_to_preset ~preset_name ~osd_ids)
@@ -133,7 +135,7 @@ let alba_add_osds_to_preset cfg_file tls_config preset_name osd_ids to_json verb
 
 let alba_add_osds_to_preset_cmd =
   Term.(pure alba_add_osds_to_preset
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ preset_name 0
         $ Arg.(value
@@ -146,12 +148,12 @@ let alba_add_osds_to_preset_cmd =
         $ verbose),
   Term.info "add-osds-to-preset" ~doc:"add some osds to the specified preset"
 
-let alba_delete_preset cfg_file tls_config preset_name to_json verbose =
+let alba_delete_preset cfg_url tls_config preset_name to_json verbose =
   let t () =
-    let open Albamgr_protocol.Protocol in
+    Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
       ~tcp_keepalive:Tcp_keepalive2.default
-      (Arakoon_config.from_config_file cfg_file)
+      cfg
       ~tls_config
       (fun client ->
          client # delete_preset preset_name)
@@ -160,18 +162,19 @@ let alba_delete_preset cfg_file tls_config preset_name to_json verbose =
 
 let alba_delete_preset_cmd =
   Term.(pure alba_delete_preset
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ preset_name 0
         $ to_json $ verbose),
   Term.info "delete-preset" ~doc:"delete the specified preset"
 
-let alba_list_presets cfg_file tls_config to_json verbose =
+let alba_list_presets cfg_url tls_config to_json verbose =
   let t () =
     let open Albamgr_protocol.Protocol in
+    Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
       ~tcp_keepalive:Tcp_keepalive2.default
-      (Arakoon_config.from_config_file cfg_file)
+      cfg
       ~tls_config
       (fun client ->
          client # list_all_presets ()) >>= fun (cnt, presets) ->
@@ -189,7 +192,7 @@ let alba_list_presets cfg_file tls_config to_json verbose =
 
 let alba_list_presets_cmd =
   Term.(pure alba_list_presets
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ to_json
         $ verbose),

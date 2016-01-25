@@ -120,13 +120,28 @@ let lwt_server t : unit =
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run (t ())
 
-let alba_cfg_file =
-  let doc = "alba mgr (arakoon) config file" in
+let url_converter :Prelude.Url.t Arg.converter =
+  let open Prelude in
+  let url_parser s =
+    try
+      `Ok (Url.make s)
+    with exn ->
+      `Error (Printexc.to_string exn)
+  in
+  let url_printer fmt s= Format.pp_print_string fmt (Url.show s)
+  in
+  url_parser, url_printer
+
+let alba_cfg_url =
+  let doc = "config url for the alba mgr (fe file:///.... or etcd://127.0.0.1:5000/...)" in
   let env = Arg.env_var "ALBA_CONFIG" ~doc in
+  let docv = "<abm config url>" in
   Arg.(required
-       & opt (some file) None
+       & opt (some url_converter) None
        & info ["config"]
-              ~env ~docv:"CONFIG_FILE" ~doc )
+              ~env ~docv ~doc )
+
+
 
 let to_json =
   Arg.(value
@@ -312,16 +327,12 @@ let to_level =
   | "fatal" -> Fatal
   | log_level -> failwith (Printf.sprintf "unknown log level %s" log_level)
 
-let with_alba_client cfg_file tls_config f =
-  Alba_client.with_client
-    (ref (Albamgr_protocol.Protocol.Arakoon_config.from_config_file cfg_file))
-    ~tls_config
-    f
+let with_alba_client cfg_url tls_config f =
+  Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
+  let cfg_ref = ref cfg in
+  Alba_client.with_client cfg_ref ~tls_config f
 
-let with_albamgr_client ~attempts cfg_file tls_config f =
-  let cfg =
-    Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-      cfg_file
-  in
+let with_albamgr_client ~attempts cfg_url tls_config f =
+  Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
   Albamgr_client.with_client' ~attempts
     cfg ~tls_config ~tcp_keepalive:Tcp_keepalive2.default f

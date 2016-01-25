@@ -24,7 +24,8 @@ module Config = struct
     ips : (string list [@default []]);
     port : int;
     log_level : string;
-    albamgr_cfg_file : string;
+    albamgr_cfg_file : string option [@default None];
+    albamgr_cfg_url : string option [@default None];
     fragment_cache_dir : string;
     manifest_cache_size : (int [@default 100_000]);
     fragment_cache_size : (int [@default 100_000_000]);
@@ -42,55 +43,74 @@ module Config = struct
 end
 
 
-let proxy_start cfg_file =
-  let read_cfg () =
-    Lwt_extra2.read_file cfg_file >>= fun txt ->
-    Lwt_log.info_f "Found the following config: %s" txt >>= fun () ->
-    let config = Config.of_yojson (Yojson.Safe.from_string txt) in
-    (match config with
-     | `Error err ->
-       Lwt_log.warning_f "Error while parsing cfg file: %s" err
-     | `Ok cfg ->
-       Lwt_log.info_f
-         "Interpreted the config as: %s"
-         ([%show : Config.t] cfg)) >>= fun () ->
-    Lwt.return config
+
+let retrieve_cfg_from_string txt =
+  Lwt_log.ign_info_f "Found the following config: %s" txt ;
+  let config = Config.of_yojson (Yojson.Safe.from_string txt) in
+  let () = match config with
+   | `Error err ->
+      Lwt_log.ign_warning_f "Error while parsing cfg file: %s" err
+   | `Ok cfg ->
+      Lwt_log.ign_info_f
+        "Interpreted the config as: %s"
+        ([%show : Config.t] cfg)
   in
+  config |> Lwt.return
+
+let retrieve_cfg cfg_url =
+  Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+
+
+let proxy_start (cfg_url:Url.t) =
   let t () =
-    read_cfg () >>= function
+    retrieve_cfg cfg_url >>= function
     | `Error err -> failwith err
     | `Ok cfg ->
-      let open Config in
-      let ips  = cfg.ips
-      and port = cfg.port
-      and log_level = cfg.log_level
-      and albamgr_cfg_file = cfg.albamgr_cfg_file
-      and
-        cache_dir,
-        manifest_cache_size,
-        fragment_cache_size,
-        albamgr_connection_pool_size,
-        nsm_host_connection_pool_size,
-        osd_connection_pool_size, osd_timeout,
-        lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size,
-        max_client_connections, tcp_keepalive
-        =
-        cfg.fragment_cache_dir,
-        cfg.manifest_cache_size,
-        (* the fragment cache size is currently a rather soft limit which we'll
+       let url_from_cfg cfg =
+         let open Config in
+         let abm_cfg_url = Prelude.Option.map Url.make cfg.albamgr_cfg_url in
+         match cfg.albamgr_cfg_file, abm_cfg_url with
+         | None,Some u -> u
+         | Some f,None   ->
+            Lwt_log.ign_warning_f "albamgr_cfg_file is deprecated, please use albamgr_cfg_url";
+            (Url.File f)
+         | Some _,Some u ->
+            failwith "both albamgr_file and albamgr_cfg_url were configured; just use albamgr_cfg_url"
+         | None,None     ->
+            failwith "neither albamgr_cfg_file nor albamgr_cfg_url configured"
+
+       in
+       let open Config in
+       let albamgr_cfg_url = url_from_cfg cfg in
+       let ips  = cfg.ips
+       and port = cfg.port
+       and log_level = cfg.log_level
+       and
+         cache_dir,
+         manifest_cache_size,
+         fragment_cache_size,
+         albamgr_connection_pool_size,
+         nsm_host_connection_pool_size,
+         osd_connection_pool_size, osd_timeout,
+         lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size,
+         max_client_connections, tcp_keepalive
+         =
+         cfg.fragment_cache_dir,
+         cfg.manifest_cache_size,
+         (* the fragment cache size is currently a rather soft limit which we'll
            surely exceed. this can lead to disk full conditions. by taking a
            safety margin of 15% we turn the soft limit into a hard one... *)
-        (cfg.fragment_cache_size / 100) * 85,
-        cfg.albamgr_connection_pool_size,
-        cfg.nsm_host_connection_pool_size,
-        cfg.osd_connection_pool_size, cfg.osd_timeout,
-        cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
-        cfg.max_client_connections, cfg.tcp_keepalive
-      in
-      let () = match cfg.chattiness with
-        | None -> ()
-        | Some _ -> Lwt_log.ign_warning "chattiness was deprecated, and won't be used"
-      in
+         (cfg.fragment_cache_size / 100) * 85,
+         cfg.albamgr_connection_pool_size,
+         cfg.nsm_host_connection_pool_size,
+         cfg.osd_connection_pool_size, cfg.osd_timeout,
+         cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
+         cfg.max_client_connections, cfg.tcp_keepalive
+       in
+       let () = match cfg.chattiness with
+         | None -> ()
+         | Some _ -> Lwt_log.ign_warning "chattiness was deprecated, and won't be used"
+       in
 
       Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
                                  lwt_preemptive_thread_pool_max_size);
@@ -99,26 +119,23 @@ let proxy_start cfg_file =
       verify_log_level log_level;
 
       Lwt_log.add_rule "*" (to_level log_level);
-
-      let albamgr_cfg =
-        ref (Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-               albamgr_cfg_file) in
+      Alba_arakoon.config_from_url albamgr_cfg_url >>= fun abm_cfg ->
+      let abm_cfg_ref = ref abm_cfg in
 
       let _ : Lwt_unix.signal_handler_id =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
             let handle () =
               Lwt_log.info_f "Received USR1, reloading log level from config file" >>= fun () ->
-              read_cfg () >>= function
+              retrieve_cfg cfg_url >>= function
               | `Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
               | `Ok cfg ->
-                albamgr_cfg :=
-                  Albamgr_protocol.Protocol.Arakoon_config.from_config_file
-                    albamgr_cfg_file;
-                let log_level = cfg.Config.log_level in
-                Lwt_log.reset_rules ();
-                Lwt_log.add_rule "*" (to_level log_level);
-                Lwt_log.info_f "Reloaded albamgr config file + changed log level to %s" log_level
+                 Alba_arakoon.config_from_url albamgr_cfg_url >>= fun abm_cfg' ->
+                 let () = abm_cfg_ref := abm_cfg' in
+                 let log_level = cfg.Config.log_level in
+                 Lwt_log.reset_rules ();
+                 Lwt_log.add_rule "*" (to_level log_level);
+                 Lwt_log.info_f "Reloaded albamgr config file + changed log level to %s" log_level
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors handle)) in
 
@@ -126,14 +143,14 @@ let proxy_start cfg_file =
         ips
         port
         cache_dir
-        albamgr_cfg
+        abm_cfg_ref
         ~manifest_cache_size
         ~fragment_cache_size
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
         ~osd_timeout
-        ~albamgr_cfg_file
+        ~albamgr_cfg_url
         ~max_client_connections
         ~tls_config:cfg.tls_client
         ~tcp_keepalive
@@ -143,7 +160,7 @@ let proxy_start cfg_file =
 let proxy_start_cmd =
   Term.(pure proxy_start
         $ Arg.(required
-               & opt (some file) None
+               & opt (some url_converter) None
                & info ["config"] ~docv:"CONFIG_FILE" ~doc:"proxy config file")),
   Term.info "proxy-start" ~doc:"start a proxy server"
 
@@ -360,7 +377,7 @@ let proxy_client_cfg host port verbose =
     host port verbose
     (fun client ->
      client # get_client_config >>= fun cfg ->
-     Lwt_io.printlf "client_cfg:\n%s" (Albamgr_protocol.Protocol.Arakoon_config.show cfg)
+     Lwt_io.printlf "client_cfg:\n%s" (Alba_arakoon.Config.show cfg)
     )
 
 let proxy_client_cfg_cmd =
