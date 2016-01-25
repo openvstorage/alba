@@ -141,7 +141,7 @@ module DirectoryInfo = struct
     Lwt_log.debug_f "got blob %Li" fnr >>= fun () ->
     Lwt.return bs
 
-  let rec ensure_dir_exists t dir =
+  let rec ensure_dir_exists t dir ~sync =
     Lwt_log.debug_f "ensure_dir_exists: %s" dir >>= fun () ->
     match Hashtbl.find t.directory_cache dir with
     | Exists -> Lwt.return ()
@@ -160,10 +160,10 @@ module DirectoryInfo = struct
            Hashtbl.add t.directory_cache dir (Creating sleep);
 
            let parent_dir = Filename.dirname dir in
-           ensure_dir_exists t parent_dir >>= fun () ->
+           ensure_dir_exists t parent_dir ~sync >>= fun () ->
 
            Lwt_extra2.create_dir
-             ~sync:false
+             ~sync
              (Filename.concat t.files_path dir))
         (function
           | Unix.Unix_error (Unix.EEXIST, _, _) ->
@@ -194,12 +194,14 @@ module DirectoryInfo = struct
                     Lwt_unix.rmdir full_dir
       end
 
-  let write_blob t fnr blob =
+  let write_blob
+        ?(post_write=fun _fd _parent_dir -> Lwt.return_unit)
+        t fnr blob ~sync_parent_dirs =
     Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->
     with_timing_lwt
       (fun () ->
          let dir, _, file_path = get_file_dir_name_path t fnr in
-         ensure_dir_exists t dir >>= fun () ->
+         ensure_dir_exists t dir ~sync:sync_parent_dirs >>= fun () ->
          Lwt_extra2.with_fd
            file_path
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
@@ -207,26 +209,29 @@ module DirectoryInfo = struct
            (fun fd ->
             let open Blob in
             (* TODO push to blob module? *)
-            match blob with
-            | Lwt_bytes s ->
-               Lwt_extra2.write_all_lwt_bytes
-                 fd
-                 s 0 (Lwt_bytes.length s)
-            | Bigslice s ->
-               let open Bigstring_slice in
-               Lwt_extra2.write_all_lwt_bytes
-                 fd
-                 s.bs s.offset s.length
-            | Bytes s ->
-               Lwt_extra2.write_all
-                 fd
-                 s 0 (Bytes.length s)
-            | Slice s ->
-               let open Slice in
-               Lwt_extra2.write_all
-                 fd
-                 s.buf s.offset s.length
-           )) >>= fun (t_write, ()) ->
+            (match blob with
+             | Lwt_bytes s ->
+                Lwt_extra2.write_all_lwt_bytes
+                  fd
+                  s 0 (Lwt_bytes.length s)
+             | Bigslice s ->
+                let open Bigstring_slice in
+                Lwt_extra2.write_all_lwt_bytes
+                  fd
+                  s.bs s.offset s.length
+             | Bytes s ->
+                Lwt_extra2.write_all
+                  fd
+                  s 0 (Bytes.length s)
+             | Slice s ->
+                let open Slice in
+                Lwt_extra2.write_all
+                  fd
+                  s.buf s.offset s.length
+            ) >>= fun () ->
+            let parent_dir = t.files_path ^ "/" ^ dir in
+            post_write fd parent_dir))
+    >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
      then Lwt_log.info_f
@@ -284,7 +289,7 @@ module Value = struct
 end
 
 let ro = Rocks.ReadOptions.create_no_gc ()
-let wo =
+let wo_sync =
   let open Rocks in
   let r = WriteOptions.create_no_gc () in
   WriteOptions.set_sync r true;
@@ -360,7 +365,8 @@ end
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
-                         Asd_io_scheduler.t ->
+                         (Llio2.WriteBuffer.t * (Net_fd.t ->
+                                                 unit Lwt.t)) Asd_io_scheduler.t ->
                          DirectoryInfo.t ->
                          AsdMgmt.t ->
                          AsdStatistics.t ->
@@ -539,10 +545,12 @@ let cleanup_files_to_delete ignore_unlink_error io_sched kv dir_info fnrs =
       (fun fnr ->
          let path = DirectoryInfo.get_file_path dir_info fnr in
 
-         Lwt_extra2.unlink ~may_not_exist:ignore_unlink_error path)
+         (* TODO bulk sync of (unique) parent filedescriptors *)
+         Lwt_extra2.unlink
+           ~may_not_exist:ignore_unlink_error
+           ~fsync_parent_dir:true
+           path)
       fnrs >>= fun () ->
-
-    perform_write io_sched Low (fun () -> Lwt.return ((), 0)) >>= fun () ->
 
     List.iter
       (fun fnr ->
@@ -567,8 +575,7 @@ let maybe_delete_file kv dir_info fnr =
     Lwt.return ()
   | None ->
     let file_path = DirectoryInfo.get_file_path dir_info fnr in
-    Lwt_unix.unlink file_path >>= fun () ->
-    Lwt_extra2.fsync_dir_of_file file_path >>= fun () ->
+    Lwt_extra2.unlink ~fsync_parent_dir:true file_path >>= fun () ->
     Rocks.RocksDb.delete
       kv
       wo_no_wal
@@ -579,7 +586,8 @@ let maybe_delete_file kv dir_info fnr =
 let execute_update : type req res.
   Rocks_key_value_store.t ->
   release_fnr : (int64 -> unit) ->
-  Asd_io_scheduler.t ->
+  (Llio2.WriteBuffer.t * (Net_fd.t ->
+                          unit Lwt.t)) Asd_io_scheduler.t ->
   DirectoryInfo.t ->
   mgmt: AsdMgmt.t ->
   get_next_fnr : (unit -> int64) ->
@@ -690,9 +698,7 @@ let execute_update : type req res.
                            perform_write
                              io_sched
                              prio
-                             (fun () ->
-                              DirectoryInfo.write_blob dir_info fnr v >>= fun () ->
-                              Lwt.return ((), 4000 + Blob.length v)))
+                             [ fnr, v ])
                           (fun () ->
                            Lwt.wakeup fnr_release ();
                            Lwt.return ()) >>= fun () ->
@@ -864,11 +870,9 @@ let execute_update : type req res.
                      try_apply_immediate
                        none_asserts some_asserts
                        immediate_updates in
-                   perform_write
-                     io_sched
-                     High
-                     (fun () -> Lwt.return ((), 1000))
-                   >>= fun () ->
+
+                   sync_rocksdb io_sched >>= fun () ->
+
                    Lwt.ignore_result
                      (cleanup_files_to_delete false io_sched kv dir_info files_to_be_deleted);
                    Lwt.return `Succeeded)
@@ -1166,7 +1170,24 @@ let run_server
 
   (* need to start the thread now, otherwise collecting garbage
      during startup may hang *)
-  let io_sched = make () in
+  let io_sched =
+    make
+      (let wb = Rocks.WriteBatch.create_no_gc () in
+       fun () ->
+       (* syncing an empty batch should sync all previous batches
+        * written to the WAL, see
+        * https://www.facebook.com/groups/rocksdb.dev/permalink/846034015495114/
+        *)
+       if fsync
+       then Rocks.RocksDb.write kv wo_sync wb)
+      (fun fnr blob post_write ->
+       DirectoryInfo.write_blob
+         ~post_write
+         dir_info
+         fnr
+         blob
+         ~sync_parent_dirs:fsync)
+  in
   Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
   let io_sched_t = run io_sched ~fsync ~fs_fd in
 
@@ -1277,7 +1298,7 @@ let run_server
   (* store next_fnr in rocksdb *)
   Rocks.RocksDb.put
     kv
-    wo
+    wo_sync
     Keys.check_garbage_from
     (serialize Llio.int64_to next_fnr);
 
@@ -1301,7 +1322,7 @@ let run_server
             DirectoryInfo.get_file_dir_name_path
               dir_info
               (Int64.add !counter 256L) in
-          DirectoryInfo.ensure_dir_exists dir_info dir
+          DirectoryInfo.ensure_dir_exists dir_info dir ~sync:fsync
         end;
 
       !counter

@@ -20,7 +20,7 @@ open Stat
 let batch_entry_syncfs dir_info fnr data size =
   let t () =
     let blob = Osd.Blob.Bytes data in
-    DirectoryInfo.write_blob dir_info fnr blob >>= fun () ->
+    DirectoryInfo.write_blob dir_info fnr blob ~sync_parent_dirs:true >>= fun () ->
     Lwt.return ()
   in
   t
@@ -29,7 +29,7 @@ let batch_entry_fsync dir_info fnr data size =
   let flags = [Unix.O_WRONLY; Unix.O_CREAT] in
   let t () =
     let (dir,_,fn) = DirectoryInfo.get_file_dir_name_path dir_info fnr in
-    DirectoryInfo.ensure_dir_exists dir_info dir >>= fun () ->
+    DirectoryInfo.ensure_dir_exists dir_info dir ~sync:true >>= fun () ->
     Lwt_unix.openfile fn flags 0o644 >>= fun fd ->
     Lwt_unix.write fd data 0 size >>= fun written ->
     assert (written = size);

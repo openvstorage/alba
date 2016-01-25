@@ -130,9 +130,13 @@ let create_dir ?(sync = true) dir =
   then fsync_dir_of_file dir
   else Lwt.return ()
 
-let unlink ?(may_not_exist=false) file =
+let unlink ?(may_not_exist=false) ~fsync_parent_dir file =
   Lwt.catch
-    (fun () -> Lwt_unix.unlink file)
+    (fun () ->
+     Lwt_unix.unlink file >>= fun () ->
+     if fsync_parent_dir
+     then fsync_dir_of_file file
+     else Lwt.return ())
     (function
       | Unix.Unix_error(Unix.ENOENT, _, _) as exn ->
         if may_not_exist
@@ -140,6 +144,12 @@ let unlink ?(may_not_exist=false) file =
         else Lwt.fail exn
       | exn ->
         Lwt.fail exn)
+
+let rename ~fsync_parent_dir from dest =
+  Lwt_unix.rename from dest >>= fun () ->
+  if fsync_parent_dir
+  then fsync_dir_of_file dest
+  else Lwt.return ()
 
 let _read_all read_to_target offset length =
   let rec inner offset count = function

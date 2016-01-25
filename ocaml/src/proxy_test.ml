@@ -121,7 +121,7 @@ let test_read () =
 
        let safe_unlink file_name =
          Lwt.catch
-           (fun () -> Lwt_unix.unlink file_name)
+           (fun () -> Lwt_extra2.unlink ~fsync_parent_dir:false file_name)
            (function
              | Unix.Unix_error (Unix.ENOENT, _, _) -> Lwt.return ()
              | exn -> Lwt.fail exn)
