@@ -270,7 +270,7 @@ let alba_list_available_osds alba_cfg_file tls_config to_json verbose attempts =
       in
       print_result res Alba_json.Osd.t_list_to_yojson
     end else
-      Lwt_log.debug_f
+      Lwt_log.info_f
         "Found %i available osds: %s"
         cnt
         ([%show : Nsm_model.OsdInfo.t list] osds)
@@ -448,7 +448,7 @@ let alba_list_decommissioning_osds
            in
            print_result res Alba_json.Osd.t_list_to_yojson
          else
-           Lwt_log.debug_f "%i osds still decommissioning: %s"
+           Lwt_log.info_f "%i osds still decommissioning: %s"
              cnt
              ([%show : (Osd.id * Nsm_model.OsdInfo.t) list] osds))
   in
@@ -472,7 +472,7 @@ let alba_list_participants cfg_file tls_config prefix verbose =
       ~attempts:1
       (fun client ->
        client # get_participants ~prefix >>= fun (cnt, participants) ->
-       Lwt_log.debug_f
+       Lwt_log.info_f
          "Found %i participants:\n%s"
          cnt
          ([%show : (string*int) list] participants))
@@ -549,7 +549,7 @@ let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts 
 
        Remotes.Pool.Osd.factory tls_config Buffer_pool.osd_buffer_pool kind
        >>= fun (osd_client, closer) ->
-       Lwt_log.debug_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
+       Lwt_log.info_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
        let other = "other?" in
        (* TODO: we guess it's a 4TB drive for now *)
        let total = Int64.of_int (1 lsl 42) in
@@ -677,7 +677,7 @@ let alba_show_job_progress cfg_file tls_config name verbose =
        client # get_progress_for_prefix name >>= fun (_, progresses) ->
        Lwt_list.iter_s
          (fun (id, p) ->
-          Lwt_log.debug_f
+          Lwt_log.info_f
             "%i: %s"
             id
             ([%show : Albamgr_protocol.Protocol.Progress.t] p))

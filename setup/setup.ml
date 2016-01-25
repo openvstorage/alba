@@ -920,7 +920,13 @@ module Deployment = struct
   let claim_local_osds t n =
     let do_round() =
       let long_ids = harvest_available_osds t in
-      let locals = List.filter (fun x -> true) long_ids in
+      let locals =
+        let suffix = t.cfg.local_nodeid_prefix in
+        List.filter
+          (fun long_id ->
+           suffix = Str.last_chars long_id (String.length suffix))
+          long_ids
+      in
       let claimed = claim_osds t locals in
       List.length claimed
     in

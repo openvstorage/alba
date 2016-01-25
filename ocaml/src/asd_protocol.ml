@@ -379,9 +379,9 @@ module Protocol = struct
 
   type has_more = bool
 
-  type priority = Asd_io_scheduler.priority =
-                | High
-                | Low
+  type priority =
+    | High
+    | Low
   let priority_from_buffer buf =
     match Llio.int8_from buf with
     | 1 -> High

@@ -1,3 +1,5 @@
+let () = Random.self_init ()
+
 let get_some = function
   | Some x -> x
   | None -> failwith "get_some"
