@@ -108,6 +108,25 @@ install () {
     opam depext arakoon.1.8.12 orocksdb.0.2.1
     opam install ${OPAM_DEPENDS}
 
+    echo "Installing etcd based arakoon"
+    git clone https://github.com/openvstorage/arakoon.git
+    cd arakoon
+    git checkout tags/1.8.13
+    make
+    export PREFIX=/home/travis/.opam/system
+    export OCAML_LIBDIR=`ocamlfind printconf destdir`
+    make
+    make uninstall_client install
+    cd ..
+
+    date
+
+    echo "Installing etcd"
+    curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
+    tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
+    sudo cp ./etcd-v2.2.4-linux-amd64/etcd    /usr/bin
+    sudo cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
+
     date
 
     ./jenkins/system2/020-build_ocaml.sh

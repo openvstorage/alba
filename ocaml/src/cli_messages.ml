@@ -61,11 +61,11 @@ let transform_nsm (client:Albamgr_client.client)  = function
   | (x : string list) -> Lwt.return x
 
 
-let list_nsm_host_messages cfg_file tls_config attempts (destinations: string list) =
+let list_nsm_host_messages cfg_url tls_config attempts (destinations: string list) =
 
   let t () =
     with_albamgr_client
-      cfg_file tls_config ~attempts
+      cfg_url tls_config ~attempts
       (fun client ->
        transform_nsm client destinations >>= fun destinations' ->
        accumulate Protocol.Msg_log.Nsm_host client destinations' >>= fun xs ->
@@ -85,14 +85,14 @@ let list_nsm_host_messages cfg_file tls_config attempts (destinations: string li
 
 let list_nsm_host_messages_cmd =
   let nsm_hosts =
-    let doc = "a comma seperated list of the names of the nsm hosts, empty means \"`em all\"" in
+    let doc = "a comma separated list of the names of the nsm hosts, empty means \"`em all\"" in
     Arg.(value
          & opt (list string) []
          & info ["nsm-hosts"] ~docv:"NSM_HOSTS" ~doc
     )
   in
   Term.(pure list_nsm_host_messages
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ attempts 1
         $ nsm_hosts),
@@ -131,7 +131,7 @@ let list_osd_messages_cmd =
     )
   in
   Term.(pure list_osd_messages
-        $ alba_cfg_file
+        $ alba_cfg_url
         $ tls_config
         $ attempts 1 $ destinations $ verbose),
   Term.(info "list-osd-messages" ~doc:"list messages from mgr to osds")

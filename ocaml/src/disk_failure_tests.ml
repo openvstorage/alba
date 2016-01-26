@@ -17,12 +17,10 @@ limitations under the License.
 open Prelude
 open Nsm_model
 open Lwt
-open Albamgr_protocol.Protocol
 open OUnit
-
 open Cmdliner
 
-let cfg_file = ref "./cfg/test.ini"
+let cfg_url = ref (Url.File "./cfg/test.ini")
 let tls_config = ref None
 
 let _easiest_upload () =
@@ -32,8 +30,6 @@ let _easiest_upload () =
   and input_file = "./ocaml/alba.native"
   and object_name = Printf.sprintf "easy_test_%i" 1
   and allow_overwrite = false in
-  let cfg = Arakoon_config.from_config_file !cfg_file in
-
   let shoot (sid,sinfo) =
     let open Nsm_model in
     match sinfo.OsdInfo.kind with
@@ -58,7 +54,7 @@ let _easiest_upload () =
            Lwt_io.printlf "rc=%i" rc
          end
   in
-
+  Alba_arakoon.config_from_url !cfg_url >>= fun cfg ->
   Alba_client.with_client
     (ref cfg)
     ~tls_config
@@ -98,8 +94,8 @@ let () =
        ["easiest_upload" >:: easiest_upload;]
 
   in
-  let run_unit_tests alba_cfg_file _tls_config produce_xml =
-    let () = cfg_file := alba_cfg_file in
+  let run_unit_tests alba_cfg_url _tls_config produce_xml =
+    let () = cfg_url := alba_cfg_url in
     let () = tls_config := _tls_config in
     let _results =
       if produce_xml
@@ -110,7 +106,7 @@ let () =
   in
   let run_unit_tests_cmd =
     Term.(pure run_unit_tests
-          $ Cli_common.alba_cfg_file
+          $ Cli_common.alba_cfg_url
           $ Cli_common.tls_config
           $ Cli_common.produce_xml false
     ),

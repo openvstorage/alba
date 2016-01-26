@@ -19,18 +19,25 @@ open Slice
 open Encryption
 open Lwt
 
+let _fetch_abm_client_cfg () =
+  let cfg_url  = Albamgr_test.get_ccfg_url () in
+  Alba_arakoon.config_from_url cfg_url
+
 let test_with_alba_client ?bad_fragment_callback f =
-  let albamgr_client_cfg  = Albamgr_test.get_ccfg () in
-  let tls_config = Albamgr_test.get_tls_config () in
-  Lwt_main.run begin
-    Alba_client.with_client
-      ?bad_fragment_callback
-      (ref albamgr_client_cfg)
-      ~tls_config
-      ~release_resources:true
-      ~tcp_keepalive:Tcp_keepalive2.default
-      f
-  end
+  let t =
+    begin
+      _fetch_abm_client_cfg () >>= fun abm_ccfg ->
+      let tls_config = Albamgr_test.get_tls_config () in
+      Alba_client.with_client
+        ?bad_fragment_callback
+        (ref abm_ccfg)
+        ~tls_config
+        ~release_resources:true
+        ~tcp_keepalive:Tcp_keepalive2.default
+        f
+    end
+  in
+  Lwt_main.run t
 
 let _wait_for_osds ?(cnt=11) (alba_client:Alba_client.alba_client) namespace_id =
   alba_client # nsm_host_access # get_namespace_info ~namespace_id
@@ -273,7 +280,7 @@ let test_delete_namespace () =
                 Client_helper.with_master_client'
                   ~tls
                   ~tcp_keepalive:Tcp_keepalive2.default
-                  (Arakoon_config.to_arakoon_client_cfg tls_config cfg)
+                  (Alba_arakoon.Config.to_arakoon_client_cfg tls_config cfg)
                   (fun client ->
                    client # prefix_keys prefix (-1)
                    >>= fun keys ->
@@ -1614,10 +1621,10 @@ let test_add_disk () =
 let test_invalidate_deleted_namespace () =
   let test_name = "test_invalidate_deleted_namespace" in
   let namespace = test_name in
-  let cfg = Albamgr_test.get_ccfg () in
   let tls_config = Albamgr_test.get_tls_config() in
   test_with_alba_client
     (fun alba_client1 ->
+       _fetch_abm_client_cfg () >>= fun cfg ->
        Alba_client.with_client
          (ref cfg)
          ~tls_config
@@ -1664,25 +1671,24 @@ let test_invalidate_deleted_namespace () =
 
 let test_master_switch () =
   let test_name = "test_master_switch" in
-  let ccfg  = Albamgr_test.get_ccfg() in
-  let tls_config = Albamgr_test.get_tls_config() in
-  let cfg = Albamgr_protocol.Protocol.Arakoon_config.to_arakoon_client_cfg tls_config ccfg in
 
-  let rec wait_until_master () =
+
+  let rec wait_until_master ccfg tls_config () =
     let open Client_helper in
+
     let tls = Tls.to_client_context tls_config in
-    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default cfg
+    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default ccfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
       Lwt.return ()
     | _ ->
       Lwt_unix.sleep 0.2 >>=
-      wait_until_master
+      wait_until_master ccfg tls_config
   in
-  let drop_master () =
+  let drop_master ccfg tls_config =
     let open Client_helper in
     let tls = Tls.to_client_context tls_config in
-    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default cfg
+    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default ccfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
        begin
@@ -1695,18 +1701,22 @@ let test_master_switch () =
            ~buffer_pool:Buffer_pool.default_buffer_pool
            (fun conn ->
             Lwt_log.debug "dropping master (can take a while)" >>= fun () ->
-            let cluster = cfg.cluster_id in
+            let cluster = ccfg.cluster_id in
             Protocol_common.prologue cluster conn >>= fun () ->
             Protocol_common.drop_master conn >>= fun () ->
             Lwt_log.debug "dropped master call returned"
            )
          >>=
-         wait_until_master
+         wait_until_master ccfg tls_config
        end
     | _ -> Lwt.fail_with "cluster had problems to begin with"
   in
   test_with_alba_client
     (fun alba_client ->
+     let tls_config = Albamgr_test.get_tls_config() in
+     _fetch_abm_client_cfg () >>= fun ccfg ->
+     let cfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config ccfg in
+
      Lwt_log.debug_f "starting %s" test_name >>= fun () ->
      let units =
        let rec loop acc = function
@@ -1724,7 +1734,7 @@ let test_master_switch () =
      in
 
      use_pool () >>= fun () ->
-     drop_master() >>= fun () ->
+     drop_master cfg tls_config >>= fun () ->
 
      Lwt_extra2.ignore_errors
        ~logging:true
@@ -1844,8 +1854,8 @@ let test_stale_manifest_download () =
        Lwt.return ()
      in
      let rewrite_obj () =
-       let cfg = Albamgr_test.get_ccfg () in
        let tls_config = Albamgr_test.get_tls_config() in
+       _fetch_abm_client_cfg () >>= fun cfg ->
        Alba_client.with_client
          (ref cfg)
          ~tls_config

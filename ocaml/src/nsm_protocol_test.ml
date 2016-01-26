@@ -33,13 +33,14 @@ let doubles test_ctxt =
       Nsm_host_protocol.Protocol.command_map
 
 let test_unknown_operation () =
-  Lwt_main.run
+  let t =
     begin
       let open Nsm_host_client in
       let tls_config = Albamgr_test.get_tls_config() in
+      Alba_test._fetch_abm_client_cfg () >>= fun ccfg ->
       with_client
         ~tcp_keepalive:Tcp_keepalive2.default
-        (Albamgr_test.get_ccfg ())
+        ccfg
         tls_config
         (fun client ->
          client # do_unknown_operation >>= fun () ->
@@ -48,6 +49,8 @@ let test_unknown_operation () =
          client # do_unknown_operation >>= fun () ->
          Lwt.return ())
     end
+  in
+  Lwt_main.run t
 
 let suite = "Nsm_protocol" >::: [
     "doubles" >:: doubles;
