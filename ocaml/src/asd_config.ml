@@ -40,6 +40,7 @@ end
 
 
 let retrieve_cfg_from_string cfg_string =
+  let () = Lwt_log.ign_info_f "Found the following config: %s" cfg_string  in
   let config = Config.of_yojson (Yojson.Safe.from_string cfg_string) in
 
   (match config with
