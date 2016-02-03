@@ -1134,6 +1134,18 @@ let run_server
       ~tls
       ~tcp_keepalive
   =
+
+  let fsync =
+    (* no_blobs option only works when fsync is false.
+     * considering you WILL already have dataloss when using
+     * the no_blobs option it should not be a problem
+     * that we override whatever value was already set for fsync.
+     *)
+    if no_blobs
+    then false
+    else fsync
+  in
+
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
   Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls) >>= fun () ->
 

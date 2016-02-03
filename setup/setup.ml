@@ -55,7 +55,7 @@ module Config = struct
 
   let make () =
     let home = Sys.getenv "HOME" in
-    let workspace = env_or_default "WORKSPACE" "" in
+    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
     let arakoon_home = env_or_default "ARAKOON_HOME" (home ^ "/workspace/ARAKOON/arakoon") in
     let arakoon_bin = env_or_default "ARAKOON_BIN" (arakoon_home ^ "/arakoon.native") in
     let arakoon_189_bin = env_or_default "ARAKOON_189_BIN" "/usr/bin/arakoon" in
