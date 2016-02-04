@@ -284,7 +284,10 @@ let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json
              and acc_has_more' = has_more
              and needed' = needed - count
              in
-             let first' = List.hd_exn acc_namespaces' |> fst
+             let first' =
+               match List.hd acc_namespaces' with
+               | None -> first
+               | Some (first', _) -> first'
              and finc' = false
              in
              inner (acc_count', acc_namespaces', acc_has_more')
