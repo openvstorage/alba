@@ -1,0 +1,13 @@
+{
+    "policies" : [[ 5, 4, 8, 3 ]],
+    "fragment_size" : 1048576,
+    "osds" : ["all"],
+    "compression" : "none",
+    "fragment_checksum" : ["none"],
+    "object_checksum" : {
+        "allowed" : [ ["none"] ],
+        "default" : ["none"],
+        "verify_upload" : false
+    },
+    "fragment_encryption" : [ "none" ]
+}

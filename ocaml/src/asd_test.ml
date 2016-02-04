@@ -40,7 +40,7 @@ let rec wait_asd_connection port asd_id () =
      Lwt_unix.sleep 0.1 >>= fun () ->
      wait_asd_connection port asd_id ()
 
-let with_asd_client ?(is_restart=false) test_name port f =
+let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
   let path = "/tmp/alba/" ^ test_name in
   let tls_config = Albamgr_test.get_tls_config () in (* client config *)
   let o_port, tls =
@@ -67,6 +67,7 @@ let with_asd_client ?(is_restart=false) test_name port f =
   let t =
     Lwt.pick
       [ (Asd_server.run_server
+           ?write_blobs
            ~cancel
            ~tcp_keepalive:Tcp_keepalive2.default
            [] o_port path
@@ -95,22 +96,26 @@ let with_asd_client ?(is_restart=false) test_name port f =
   in
   t
 
-let test_with_asd_client test_name port f =
-  Lwt_main.run (with_asd_client test_name port f)
+let test_with_asd_client ?write_blobs test_name port f =
+  Lwt_main.run (with_asd_client ?write_blobs test_name port f)
 
+
+let test_set_get_delete ~verify_value (client : Asd_client.client) =
+  let key = "key" in
+  let size = Asd_server.blob_threshold + 2 in
+  let value = Bytes.make size 'a' in
+  client # set_string ~prio:High key value true >>= fun () ->
+  client # get_string ~prio:High key >>= fun v_o ->
+  (match v_o with
+   | None -> failwith "oops got None"
+   | Some (v, _) -> if verify_value
+                    then assert (v = value));
+  client # delete_string ~prio:High key
 
 let test_set_get port () =
   test_with_asd_client
     "test_set_get" port
-    (fun client ->
-       let key = "key" in
-       let value = "value" in
-       client # set_string ~prio:High key value true >>= fun () ->
-       client # get_string ~prio:High key >>= function
-       | None -> failwith "oops got None"
-       | Some (v, _) ->
-         assert (v = value);
-         Lwt_io.printlf "Got %s" v)
+    (test_set_get_delete ~verify_value:true)
 
 let test_multiget port () =
   test_with_asd_client
@@ -297,6 +302,12 @@ let test_unknown_operation port () =
      Lwt.return ()
     )
 
+let test_no_blobs port () =
+  test_with_asd_client
+    ~write_blobs:false
+    "test_no_blobs" port
+    (test_set_get_delete ~verify_value:false)
+
 open OUnit
 
 let suite = "asd_test" >:::[
@@ -309,4 +320,5 @@ let suite = "asd_test" >:::[
     "test_protocol_version" >:: test_protocol_version 7907;
     "test_multi_exists" >:: test_multi_exists 7908;
     "test_unknown_operation" >:: test_unknown_operation 7909;
+    "test_no_blobs" >:: test_no_blobs 7910;
   ]

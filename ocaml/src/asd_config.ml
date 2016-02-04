@@ -34,11 +34,15 @@ module Config = struct
     multicast: (float option   [@default (Some 10.0)]);
     tls : (tls option          [@default None]);
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
+    __warranty_void__write_blobs : (bool [@default true]);
   } [@@deriving yojson, show]
 end
 
+
 let retrieve_cfg_from_string cfg_string =
+  let () = Lwt_log.ign_info_f "Found the following config: %s" cfg_string  in
   let config = Config.of_yojson (Yojson.Safe.from_string cfg_string) in
+
   (match config with
    | `Error err ->
       Lwt_log.ign_warning_f "Error while parsing cfg file: %s" err

@@ -55,7 +55,7 @@ module Config = struct
 
   let make () =
     let home = Sys.getenv "HOME" in
-    let workspace = env_or_default "WORKSPACE" "" in
+    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
     let arakoon_home = env_or_default "ARAKOON_HOME" (home ^ "/workspace/ARAKOON/arakoon") in
     let arakoon_bin = env_or_default "ARAKOON_BIN" (arakoon_home ^ "/arakoon.native") in
     let arakoon_189_bin = env_or_default "ARAKOON_189_BIN" "/usr/bin/arakoon" in
@@ -78,7 +78,7 @@ module Config = struct
     let monitoring_file = workspace ^ "/tmp/alba/monitor.txt" in
 
     let local_nodeid_prefix = Printf.sprintf "%08x" (Random.bits ()) in
-    let asd_path_t = env_or_default "ALBA_ASD_PATH_T" (alba_base_path ^ "/asd/%02i") in
+    (* let asd_path_t = env_or_default "ALBA_ASD_PATH_T" (alba_base_path ^ "/asd/%02i") in *)
 
     let voldrv_test = env_or_default
                       "VOLDRV_TEST"
@@ -274,7 +274,6 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
     | None ->
        let cfg_file = arakoon_path ^ "/" ^ cluster_id ^ ".ini" in
        let persister () =
-         let cluster_path = arakoon_path ^ "/" ^ cluster_id in
          let cfg_txt = _make_cfg_value () in
          let oc = open_out cfg_file in
          let () = output_string oc cfg_txt in
@@ -510,8 +509,20 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd =
      namespace; name ;file ]
     |> _alba_cmd_line ~ignore_tls:true
 
+  method delete_object namespace name =
+    ["proxy-delete-object";
+     "-h";"127.0.0.1";
+     namespace; name ]
+    |> _alba_cmd_line ~ignore_tls:true
+
   method create_namespace name =
-    _alba_cmd_line ~ignore_tls:true ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
+    ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
+    |> _alba_cmd_line ~ignore_tls:true
+
+  method delete_namespace name =
+    ["proxy-delete-namespace"; "-h"; "127.0.0.1"; name]
+    |> _alba_cmd_line ~ignore_tls:true
+
 end
 
 type maintenance_cfg = {
@@ -608,9 +619,10 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
+    __warranty_void__write_blobs : bool option;
   }[@@deriving yojson]
 
-let make_asd_config node_id asd_id home port tls=
+let make_asd_config ?write_blobs node_id asd_id home port tls=
   {node_id;
    asd_id;
    home;
@@ -621,13 +633,15 @@ let make_asd_config node_id asd_id home port tls=
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
+   __warranty_void__write_blobs = write_blobs;
   }
 
 
 
-class asd node_id asd_id alba_bin arakoon_path home port ~etcd tls =
+
+class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port ~etcd tls =
   let use_tls = tls <> None in
-  let asd_cfg = make_asd_config node_id asd_id home port tls in
+  let asd_cfg = make_asd_config ?write_blobs node_id asd_id home port tls in
   let kill_port = match port with
     | None ->
        begin
@@ -765,7 +779,8 @@ module Deployment = struct
     _alba_cmd_line cmd
 
 
-  let make_osds n local_nodeid_prefix base_path arakoon_path alba_bin ~etcd (tls:bool) =
+
+  let make_osds ?write_blobs n local_nodeid_prefix base_path arakoon_path alba_bin ~etcd (tls:bool) =
     let base_port = 8000 in
     let rec loop asds j =
       if j = n
@@ -790,7 +805,9 @@ module Deployment = struct
               end
             else None
           in
-          let asd = new asd node_id_s asd_id
+          let asd = new asd
+                        ?write_blobs
+                        node_id_s asd_id
                         alba_bin
                         arakoon_path
                         home (Some port) ~etcd
@@ -801,7 +818,7 @@ module Deployment = struct
     in
     loop [] 0
 
-  let make_default () =
+  let make_default ?write_blobs () =
     let cfg = Config.default in
     let abm =
       let id = "abm"
@@ -824,14 +841,15 @@ module Deployment = struct
            Some etcd
          end
     in
+
     let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_url) cfg.etcd in
     let maintenance = new maintenance 0 cfg              (abm # config_url) cfg.etcd in
-    let osds = make_osds cfg.n_osds
+    let osds = make_osds ?write_blobs cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
                          cfg.alba_bin
-                         cfg.etcd
+                         ~etcd:cfg.etcd
                          cfg.tls
     in
     { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
@@ -1764,28 +1782,76 @@ module Test = struct
     let (rc:int) = JUnit.rc results in
     rc
 
+
+  let test_asd_no_blobs ?(xml=false) ?filter ?dump _t =
+    let t = Deployment.make_default ~write_blobs:false () in
+    Deployment.kill t;
+    Deployment.setup t;
+
+    let preset = "preset_no_checksums" in
+    _alba_cmd_line ~cwd:t.Deployment.cfg.alba_home [
+                     "create-preset"; preset;
+                     "--config"; t.abm # config_url |> Url.canonical;
+                     " < "; "./cfg/preset_no_checksums.json"; ];
+
+    let ns = "test_asd_no_blobs" in
+    _alba_cmd_line [
+        "create-namespace"; ns ;preset;
+        "--config"; t.abm # config_url |> Url.canonical;
+      ];
+
+    let objname = "x" in
+    let object_location = t.cfg.alba_base_path ^ "/obj" in
+    let cmd_s = Printf.sprintf "dd if=/dev/urandom of=%s bs=1M count=1" object_location in
+    cmd_s |> Shell.cmd;
+    t.proxy # upload_object ns object_location objname;
+    t.proxy # download_object ns objname (t.cfg.alba_base_path ^ "/obj_download_dest");
+    t.proxy # delete_object ns objname;
+
+    t.proxy # delete_namespace ns;
+    0
+
+
   let nil ?(xml=false) ?filter ?dump t =
     0
+
 end
 
 
 let () =
   let cmd_len = Array.length Sys.argv in
   Printf.printf "cmd_len:%i\n%!" cmd_len;
+  let suites =
+    [ "ocaml",           Test.ocaml, true;
+      "cpp",             Test.cpp, true;
+      "voldrv_backend",  Test.voldrv_backend, true;
+      "voldrv_tests",    Test.voldrv_tests, true;
+      "disk_failures",   Test.disk_failures, true;
+      "stress",          Test.stress,true;
+      "asd_start",       Test.asd_start,true;
+      "everything_else", Test.everything_else, true;
+      "compat",          Test.compat, false;
+      "asd_no_blobs",    Test.test_asd_no_blobs, false;
+      "nil",             Test.nil, true;
+    ]
+  in
+  let print_suites () =
+    Printf.printf "Available suites:\n   %s\n"
+                  (String.concat
+                     "\n   "
+                     (List.map (fun (cmd, _, _) -> cmd) suites))
+  in
   if cmd_len = 2
   then
-    let test, setup = match Sys.argv.(1) with
-      | "ocaml"           -> Test.ocaml, true
-      | "cpp"             -> Test.cpp, true
-      | "voldrv_backend"  -> Test.voldrv_backend, true
-      | "voldrv_tests"    -> Test.voldrv_tests, true
-      | "disk_failures"   -> Test.disk_failures, true
-      | "stress"          -> Test.stress,true
-      | "asd_start"       -> Test.asd_start,true
-      | "everything_else" -> Test.everything_else, true
-      | "compat"          -> Test.compat, false
-      | "nil"             -> Test.nil,true
-      | _  -> failwith "no test"
+    let _, test, setup =
+      try
+        List.find
+          (fun (cmd, _, _) -> Sys.argv.(1) = cmd)
+          suites
+      with Not_found ->
+        Printf.printf "Could not find suite %s\n" Sys.argv.(1);
+        print_suites ();
+        exit 1
     in
     let t = Deployment.make_default () in
     let w =
@@ -1796,7 +1862,10 @@ let () =
     let rc = w (test ~xml:true) t in
     exit rc
   else
-    ()
+    begin
+      print_suites ();
+      exit 1
+    end
 
 let top_level_run test =
   let t = Deployment.make_default () in

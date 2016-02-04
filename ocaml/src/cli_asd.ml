@@ -33,13 +33,15 @@ let asd_start cfg_url slow =
        let ips,         port,      home,
            node_id,     log_level, asd_id,
            fsync,       limit,     multicast,
-           buffer_size, tls,       tcp_keepalive
+           buffer_size, tls,       tcp_keepalive,
+           write_blobs
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.home,
         cfg.node_id, cfg.log_level, cfg.asd_id,
         cfg.__sync_dont_use, cfg.limit, cfg.multicast,
-        cfg.buffer_size, cfg.tls,   cfg.tcp_keepalive
+        cfg.buffer_size, cfg.tls,   cfg.tcp_keepalive,
+        cfg.__warranty_void__write_blobs
       in
 
       (if not fsync
@@ -78,6 +80,7 @@ let asd_start cfg_url slow =
                             ~tls
                             ~rocksdb_max_open_files:256
                             ~tcp_keepalive
+                            ~write_blobs
   in
 
   lwt_server t
