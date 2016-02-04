@@ -937,14 +937,16 @@ module Deployment = struct
     in
     parse_harvest available_json_s
 
+  let is_local_osd t long_id =
+    let suffix = t.cfg.local_nodeid_prefix in
+    suffix = Str.last_chars long_id (String.length suffix)
+
   let claim_local_osds t n =
     let do_round() =
       let long_ids = harvest_available_osds t in
       let locals =
-        let suffix = t.cfg.local_nodeid_prefix in
         List.filter
-          (fun long_id ->
-           suffix = Str.last_chars long_id (String.length suffix))
+          (is_local_osd t)
           long_ids
       in
       let claimed = claim_osds t locals in
@@ -1632,7 +1634,7 @@ module Test = struct
               |> Shell.cmd_with_capture
         in
         let osds = Deployment.parse_harvest r in
-        let long_id = List.hd osds in
+        let long_id = List.find (is_local_osd t) osds in
 
         (* decommission 1 asd *)
         make_cli ["decommission-osd";"--long-id"; long_id;
