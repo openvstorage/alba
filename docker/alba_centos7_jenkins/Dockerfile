@@ -94,7 +94,14 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
-RUN eval `${opam_env}` && opam update && opam install -y arakoon.1.8.12
+# install specific arakoon.
+RUN git clone https://github.com/openvstorage/arakoon.git
+RUN cd arakoon && git pull && git checkout tags/1.8.13
+RUN cd arakoon && eval `${opam_env}` && make
+RUN cd arakoon && eval `${opam_env}` \
+    && export PREFIX=${opam_root}/4.02.3 \
+    && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
+    && make install
 
 # workarounds for limited rocksdb builder in orocksdb
 RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
