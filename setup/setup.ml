@@ -394,7 +394,9 @@ let make_tls_client (cfg:Config.t) =
 
 type proxy_cfg =
   { port: int;
-    albamgr_cfg_url : Url.t;
+    albamgr_cfg_url : Url.t
+                        (* needed for the compat tests which start 0.6 proxies *)
+                        [@key "albamgr_cfg_file"];
     log_level : string;
     fragment_cache_dir : string;
     manifest_cache_size : int;
