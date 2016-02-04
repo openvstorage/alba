@@ -274,7 +274,6 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
     | None ->
        let cfg_file = arakoon_path ^ "/" ^ cluster_id ^ ".ini" in
        let persister () =
-         let cluster_path = arakoon_path ^ "/" ^ cluster_id in
          let cfg_txt = _make_cfg_value () in
          let oc = open_out cfg_file in
          let () = output_string oc cfg_txt in
@@ -620,10 +619,10 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
-    __warranty_void__no_blobs : bool option;
+    __warranty_void__write_blobs : bool option;
   }[@@deriving yojson]
 
-let make_asd_config ?no_blobs node_id asd_id home port tls=
+let make_asd_config ?write_blobs node_id asd_id home port tls=
   {node_id;
    asd_id;
    home;
@@ -634,15 +633,15 @@ let make_asd_config ?no_blobs node_id asd_id home port tls=
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
-   __warranty_void__no_blobs = no_blobs;
+   __warranty_void__write_blobs = write_blobs;
   }
 
 
 
 
-class asd ?no_blobs node_id asd_id alba_bin arakoon_path home port ~etcd tls =
+class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port ~etcd tls =
   let use_tls = tls <> None in
-  let asd_cfg = make_asd_config ?no_blobs node_id asd_id home port tls in
+  let asd_cfg = make_asd_config ?write_blobs node_id asd_id home port tls in
   let kill_port = match port with
     | None ->
        begin
@@ -781,7 +780,7 @@ module Deployment = struct
 
 
 
-  let make_osds ?no_blobs n local_nodeid_prefix base_path arakoon_path alba_bin ~etcd (tls:bool) =
+  let make_osds ?write_blobs n local_nodeid_prefix base_path arakoon_path alba_bin ~etcd (tls:bool) =
     let base_port = 8000 in
     let rec loop asds j =
       if j = n
@@ -807,7 +806,7 @@ module Deployment = struct
             else None
           in
           let asd = new asd
-                        ?no_blobs
+                        ?write_blobs
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
@@ -819,7 +818,7 @@ module Deployment = struct
     in
     loop [] 0
 
-  let make_default ?no_blobs () =
+  let make_default ?write_blobs () =
     let cfg = Config.default in
     let abm =
       let id = "abm"
@@ -845,7 +844,7 @@ module Deployment = struct
 
     let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_url) cfg.etcd in
     let maintenance = new maintenance 0 cfg              (abm # config_url) cfg.etcd in
-    let osds = make_osds ?no_blobs cfg.n_osds
+    let osds = make_osds ?write_blobs cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
@@ -1785,7 +1784,7 @@ module Test = struct
 
 
   let test_asd_no_blobs ?(xml=false) ?filter ?dump _t =
-    let t = Deployment.make_default ~no_blobs:true () in
+    let t = Deployment.make_default ~write_blobs:false () in
     Deployment.kill t;
     Deployment.setup t;
 

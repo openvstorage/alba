@@ -40,7 +40,7 @@ let rec wait_asd_connection port asd_id () =
      Lwt_unix.sleep 0.1 >>= fun () ->
      wait_asd_connection port asd_id ()
 
-let with_asd_client ?(is_restart=false) ?no_blobs test_name port f =
+let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
   let path = "/tmp/alba/" ^ test_name in
   let tls_config = Albamgr_test.get_tls_config () in (* client config *)
   let o_port, tls =
@@ -67,7 +67,7 @@ let with_asd_client ?(is_restart=false) ?no_blobs test_name port f =
   let t =
     Lwt.pick
       [ (Asd_server.run_server
-           ?no_blobs
+           ?write_blobs
            ~cancel
            ~tcp_keepalive:Tcp_keepalive2.default
            [] o_port path
@@ -96,8 +96,8 @@ let with_asd_client ?(is_restart=false) ?no_blobs test_name port f =
   in
   t
 
-let test_with_asd_client ?no_blobs test_name port f =
-  Lwt_main.run (with_asd_client ?no_blobs test_name port f)
+let test_with_asd_client ?write_blobs test_name port f =
+  Lwt_main.run (with_asd_client ?write_blobs test_name port f)
 
 
 let test_set_get_delete ~verify_value (client : Asd_client.client) =
@@ -304,7 +304,7 @@ let test_unknown_operation port () =
 
 let test_no_blobs port () =
   test_with_asd_client
-    ~no_blobs:true
+    ~write_blobs:false
     "test_no_blobs" port
     (test_set_get_delete ~verify_value:false)
 

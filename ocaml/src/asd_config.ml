@@ -34,7 +34,7 @@ module Config = struct
     multicast: (float option   [@default (Some 10.0)]);
     tls : (tls option          [@default None]);
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
-    __warranty_void__no_blobs : (bool [@default false]);
+    __warranty_void__write_blobs : (bool [@default true]);
   } [@@deriving yojson, show]
 end
 

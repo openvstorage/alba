@@ -83,10 +83,10 @@ module DirectoryInfo = struct
   type t = {
     files_path : string;
     directory_cache : (string, directory_status) Hashtbl.t;
-    no_blobs : bool;
+    write_blobs : bool;
   }
 
-  let make ?(no_blobs = false) files_path =
+  let make ?(write_blobs = true) files_path =
     if files_path.[0] <> '/'
     then
       failwith (Printf.sprintf "'%s' should be an absolute path" files_path);
@@ -94,7 +94,7 @@ module DirectoryInfo = struct
     Hashtbl.add directory_cache "." Exists;
     { files_path;
       directory_cache;
-      no_blobs;
+      write_blobs;
     }
 
   let get_file_name fnr =
@@ -128,9 +128,9 @@ module DirectoryInfo = struct
 
   let with_blob_fd t fnr f =
     Lwt_extra2.with_fd
-      (if t.no_blobs
-       then "/dev/zero"
-       else get_file_path t fnr)
+      (if t.write_blobs
+       then get_file_path t fnr
+       else "/dev/zero")
       ~flags:Lwt_unix.([O_RDONLY;])
       ~perm:0600
       f
@@ -478,7 +478,7 @@ let execute_query : type req res.
                     res)
            res)
     | MultiGet2 -> fun (keys, prio) ->
-      if dir_info.DirectoryInfo.no_blobs
+      if not dir_info.DirectoryInfo.write_blobs
       then
         (* the trick with /dev/zero doesn't work with
          * sendfile, so let's avoid sendfile by pretending this
@@ -562,7 +562,7 @@ let cleanup_files_to_delete ignore_unlink_error io_sched kv dir_info fnrs =
 
          (* TODO bulk sync of (unique) parent filedescriptors *)
          Lwt_extra2.unlink
-           ~may_not_exist:(ignore_unlink_error || dir_info.DirectoryInfo.no_blobs)
+           ~may_not_exist:(ignore_unlink_error || not dir_info.DirectoryInfo.write_blobs)
            ~fsync_parent_dir:true
            path)
       fnrs >>= fun () ->
@@ -1121,7 +1121,7 @@ class check_garbage_from_advancer check_garbage_from kv =
 
 let run_server
       ?cancel
-      ?(no_blobs = false)
+      ?(write_blobs = true)
       (hosts:string list)
       (port:int option)
       (path:string)
@@ -1136,14 +1136,14 @@ let run_server
   =
 
   let fsync =
-    (* no_blobs option only works when fsync is false.
+    (* write_blobs=false only works when fsync is false.
      * considering you WILL already have dataloss when using
-     * the no_blobs option it should not be a problem
+     * this configuration it should not be a problem
      * that we override whatever value was already set for fsync.
      *)
-    if no_blobs
-    then false
-    else fsync
+    if write_blobs
+    then fsync
+    else false
   in
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
@@ -1184,7 +1184,7 @@ let run_server
       | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
       | exn -> Lwt.fail exn) >>= fun () ->
 
-  let dir_info = DirectoryInfo.make ~no_blobs files_path in
+  let dir_info = DirectoryInfo.make ~write_blobs files_path in
 
   let parse_filename_to_fnr name =
     try
@@ -1208,11 +1208,8 @@ let run_server
         *)
        if fsync
        then Rocks.RocksDb.write kv wo_sync wb)
-      (if no_blobs
+      (if write_blobs
        then
-         (fun fnr blob post_write ->
-          Lwt.return_unit)
-       else
          (fun fnr blob post_write ->
           DirectoryInfo.write_blob
             ~post_write
@@ -1220,6 +1217,9 @@ let run_server
             fnr
             blob
             ~sync_parent_dirs:fsync)
+       else
+         (fun fnr blob post_write ->
+          Lwt.return_unit)
       )
   in
   Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
