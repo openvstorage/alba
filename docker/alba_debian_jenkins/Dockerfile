@@ -91,7 +91,7 @@ RUN cd /usr/src/gtest \
 
 RUN eval `${opam_env}` && opam update
 
-# install specific etcd based arakoon.
+# install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
 RUN cd arakoon && git pull && git checkout tags/1.8.13
 RUN cd arakoon && eval `${opam_env}` && make
