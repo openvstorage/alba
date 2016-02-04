@@ -224,7 +224,7 @@ let alba_show_namespace cfg_file tls_config namespace to_json verbose =
       (fun client ->
          client # mgr_access # get_namespace ~namespace >>= fun ro ->
           match ro with
-          | None -> Lwt_io.printlf "not found"
+          | None -> Lwt.fail Not_found
           | Some (namespace, r) ->
              client # get_base_client # with_nsm_client ~namespace
                (fun nsm_client ->
