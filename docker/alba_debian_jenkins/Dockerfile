@@ -73,7 +73,9 @@ RUN eval `${opam_env}` && \
         kinetic-client \
         tiny_json \
         ppx_deriving_yojson \
-        core_kernel
+        core_kernel \
+        redis \
+        uri
 
 RUN wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
 RUN tar xfzv isa-l-2.14.0.tar.gz
@@ -93,7 +95,7 @@ RUN eval `${opam_env}` && opam update
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.8.13
+RUN cd arakoon && git pull && git checkout dcb55b27749025eee3063706777c4b8c2a478949
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \

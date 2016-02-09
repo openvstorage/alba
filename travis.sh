@@ -22,14 +22,15 @@ OPAM_DEPENDS="ocamlfind \
          quickcheck.1.0.2 \
          uuidm.0.9.5 \
          zarith.1.3 \
-         arakoon.1.8.12 \
          orocksdb.0.2.1 \
          kinetic-client \
          tiny_json \
          cmdliner \
          ppx_deriving ppx_deriving_yojson \
          sexplib.113.00.00 \
-         core_kernel.113.00.00
+         core_kernel.113.00.00 \
+         redis \
+         uri
 "
 
 export OPAMYES=1
@@ -108,10 +109,10 @@ install () {
     opam depext arakoon.1.8.12 orocksdb.0.2.1
     opam install ${OPAM_DEPENDS}
 
-    echo "Installing etcd based arakoon"
+    echo "Installing some specific arakoon"
     git clone https://github.com/openvstorage/arakoon.git
     cd arakoon
-    git checkout tags/1.8.13
+    git checkout dcb55b27749025eee3063706777c4b8c2a478949
     make
     export PREFIX=/home/travis/.opam/system
     export OCAML_LIBDIR=`ocamlfind printconf destdir`

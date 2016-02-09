@@ -764,7 +764,7 @@ let namespace_recovery_agent_cmd =
 let unit_tests produce_xml alba_cfg_url tls_config only_test =
   Albamgr_test.ccfg_url_ref := Some alba_cfg_url;
   let () = Albamgr_test._tls_config_ref := tls_config in
-  let () = install_logger ~channel:Lwt_io.stdout ~verbose:true () in
+  let () = install_logger ~destination:(`Channel Lwt_io.stdout) ~verbose:true () in
 
   let rec rc_of =
     let open OUnit in

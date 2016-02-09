@@ -17,7 +17,7 @@ limitations under the License.
 open Cmdliner
 open Lwt.Infix
 
-let install_logger ?(channel=Lwt_io.stdout) ~verbose () =
+let install_logger ?(destination=`Channel Lwt_io.stdout) ~verbose () =
   let level =
     if verbose
     then Lwt_log.Debug
@@ -25,10 +25,27 @@ let install_logger ?(channel=Lwt_io.stdout) ~verbose () =
   in
   Lwt_log.append_rule "*" level;
   let logger =
-    Lwt_log.channel
-      ~template:"$(date).$(milliseconds) $(section) $(level): $(message)"
-      ~close_mode:`Keep
-      ~channel ()
+    match destination with
+    | `Channel channel ->
+       Lwt_log.channel
+         ~template:"$(date).$(milliseconds) $(section) $(level): $(message)"
+         ~close_mode:`Keep
+         ~channel ()
+    | `Redis (host, port, key) ->
+       let lg_output, close =
+         Arakoon_redis.make_redis_logger
+           ~host ~port ~key
+       in
+       Lwt_log.make ~output:(fun section level lines ->
+                             let msg =
+                               Arakoon_logger.format_message
+                                 ~hostname:"" ~pid:0 ~component:""
+                                 ~ts:(Unix.gettimeofday ()) ~seqnum:0
+                                 ~section ~level ~lines
+                             in
+                             lg_output msg
+                            )
+                    ~close
   in
   Lwt_log.default := logger
 
@@ -72,7 +89,7 @@ let exn_to_string_code = function
     Printexc.to_string exn
 
 let lwt_cmd_line to_json verbose t =
-  let () = install_logger ~channel:Lwt_io.stderr ~verbose () in
+  let () = install_logger ~destination:(`Channel Lwt_io.stderr) ~verbose () in
   let t' () =
     Lwt.catch
       t
