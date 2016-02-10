@@ -25,6 +25,9 @@ let dependencies =
       "tiny_json";
       "yojson";
       "kinetic-client";
+      "core";
+      "redis";
+      "uri";
   ]
 
 let run_cmd cmd () =
