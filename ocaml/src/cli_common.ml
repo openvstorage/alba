@@ -17,37 +17,71 @@ limitations under the License.
 open Cmdliner
 open Lwt.Infix
 
-let install_logger ?(destination=`Channel Lwt_io.stdout) ~verbose () =
+let stderr_logger =
+  let mutex = Lwt_mutex.create () in
+  let lg_output line =
+    Lwt_mutex.with_lock
+      mutex
+      (fun () ->
+       Lwt_io.write Lwt_io.stderr line >>= fun () ->
+       Lwt_io.write_char Lwt_io.stdout '\n')
+  in
+  let close () = Lwt.return_unit in
+  lg_output, close
+
+let install_logger ?(log_sinks=`Arakoon_sinks [Arakoon_log_sink.Console]) ~verbose () =
   let level =
     if verbose
     then Lwt_log.Debug
     else Lwt_log.Info
   in
   Lwt_log.append_rule "*" level;
-  let logger =
-    match destination with
-    | `Channel channel ->
-       Lwt_log.channel
-         ~template:"$(date).$(milliseconds) $(section) $(level): $(message)"
-         ~close_mode:`Keep
-         ~channel ()
-    | `Redis (host, port, key) ->
-       let lg_output, close =
-         Arakoon_redis.make_redis_logger
-           ~host ~port ~key
-       in
-       Lwt_log.make ~output:(fun section level lines ->
-                             let msg =
-                               Arakoon_logger.format_message
-                                 ~hostname:"" ~pid:0 ~component:""
-                                 ~ts:(Unix.gettimeofday ()) ~seqnum:0
-                                 ~section ~level ~lines
-                             in
-                             lg_output msg
-                            )
-                    ~close
+
+  begin
+    match log_sinks with
+    | `Arakoon_sinks log_sinks ->
+       Lwt_list.map_p
+         (let open Arakoon_log_sink in
+          function
+          | File file_name ->
+             Arakoon_logger.file_logger file_name
+          | Redis (host, port, key) ->
+             Arakoon_redis.make_redis_logger
+               ~host ~port ~key
+             |> Lwt.return
+          | Console ->
+             Lwt.return Arakoon_logger.console_logger)
+         log_sinks
+    | `Stderr ->
+       Lwt.return [ stderr_logger ]
+  end >>= fun loggers ->
+
+  let hostname = Unix.gethostname () in
+  let component = "alba/TODO" in
+  let pid = Unix.getpid () in
+  let seqnum = ref 0 in
+  let logger = Lwt_log.make
+                 ~output:(fun section level lines ->
+                          let seqnum' = !seqnum in
+                          let () = incr seqnum in
+                          let ts = Core.Time.now () in
+                          let logline =
+                            Arakoon_logger.format_message
+                              ~hostname ~pid ~component
+                              ~ts ~seqnum:seqnum'
+                              ~section ~level ~lines
+                          in
+
+                          Lwt_list.iter_p
+                            (fun (lg_output, _) -> lg_output logline)
+                            loggers)
+                 ~close:(fun () ->
+                         Lwt_list.iter_p
+                           (fun (_, close) -> close ())
+                           loggers)
   in
-  Lwt_log.default := logger
+  Lwt_log.default := logger;
+  Lwt.return ()
 
 let print_result result tojson =
   let open Alba_json in
@@ -89,10 +123,11 @@ let exn_to_string_code = function
     Printexc.to_string exn
 
 let lwt_cmd_line to_json verbose t =
-  let () = install_logger ~destination:(`Channel Lwt_io.stderr) ~verbose () in
   let t' () =
     Lwt.catch
-      t
+      (fun () ->
+       install_logger ~log_sinks:`Stderr ~verbose () >>= fun () ->
+       t ())
       (fun exn ->
          begin
            let exc_type, exc_code, message = exn_to_string_code exn in
@@ -133,9 +168,12 @@ let lwt_cmd_line_unit to_json verbose t =
     (fun () -> `Assoc [])
 
 let lwt_server t : unit =
-  let () = install_logger ~verbose:false () in
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
-  Lwt_main.run (t ())
+  Lwt_main.run
+    begin
+      install_logger ~verbose:false () >>= fun () ->
+      t ()
+    end
 
 let url_converter :Prelude.Url.t Arg.converter =
   let open Prelude in

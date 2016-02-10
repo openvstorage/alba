@@ -69,7 +69,7 @@ RUN eval `${opam_env}` && \
         kinetic-client \
         tiny_json \
         ppx_deriving_yojson \
-        core_kernel \
+        core \
         redis \
         uri
 
@@ -98,7 +98,7 @@ RUN cd isa-l-2.14.0 && make install
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout dcb55b27749025eee3063706777c4b8c2a478949
+RUN cd arakoon && git pull && git checkout 4d3a8913abfb5b70a2b8e8427c8e9019ddbe2776
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \
