@@ -3,10 +3,14 @@ open Lwt.Infix
 open Generic_bench
 
 
-let do_writes ~robust client progress n input_file period prefix _ namespace =
+let do_writes ~robust client progress n input_files period prefix _ namespace =
   let gen = make_key period prefix in
+  let no_files = List.length input_files in
+  if no_files = 0
+  then failwith "please specify files for 'writes' scenario";
   let do_one i =
     let object_name = gen () in
+    let input_file = List.nth_exn input_files (i mod no_files) in
     let checksum : Checksum.Checksum.t option option = None in
     Lwt.catch
       (fun () ->
@@ -97,7 +101,7 @@ let do_deletes
 let do_scenarios
       host port
       n_clients n
-      file_name power prefix slice_size namespace
+      file_names power prefix slice_size namespace
       scenarios =
   let period = period_of_power power in
   Lwt_list.iter_s
@@ -112,7 +116,7 @@ let do_scenarios
              client
              progress
              (n/n_clients)
-             file_name
+             file_names
              period
              (Printf.sprintf "%s_%i" prefix i)
              slice_size
