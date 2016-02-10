@@ -766,7 +766,7 @@ let unit_tests produce_xml alba_cfg_url tls_config only_test =
   let () = Albamgr_test._tls_config_ref := tls_config in
   let () =
     Lwt_main.run
-      (install_logger ~log_sinks:(`Arakoon_sinks [Arakoon_log_sink.Console]) ~verbose:true ())
+      (install_logger ~log_sinks:`Stdout ~subcomponent:"unit-tests" ~verbose:true ())
   in
 
   let rec rc_of =

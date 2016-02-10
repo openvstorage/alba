@@ -23,7 +23,7 @@ open Asd_protocol
 open Asd_config
 
 
-let asd_start cfg_url slow =
+let asd_start cfg_url slow log_sinks =
 
   let t () =
     Asd_config.retrieve_cfg cfg_url >>= function
@@ -83,7 +83,7 @@ let asd_start cfg_url slow =
                             ~write_blobs
   in
 
-  lwt_server t
+  lwt_server ~log_sinks ~subcomponent:"asd" t
 
 let asd_start_cmd =
   let cfg_url =
@@ -96,7 +96,8 @@ let asd_start_cmd =
           $ cfg_url
           $ Arg.(value
                  & flag
-                 & info ["slow"] ~docv:"artifically slow down an asd (only for testing purposes!)"))
+                 & info ["slow"] ~docv:"artifically slow down an asd (only for testing purposes!)")
+          $ log_sinks)
   in
   let info =
     Term.info

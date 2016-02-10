@@ -29,7 +29,13 @@ let stderr_logger =
   let close () = Lwt.return_unit in
   lg_output, close
 
-let install_logger ?(log_sinks=`Arakoon_sinks [Arakoon_log_sink.Console]) ~verbose () =
+let log_sinks =
+  Arg.(value
+       & opt_all string [ "console:" ]
+       & info ["log-sink"]
+              ~doc:"specify log output sinks (e.g. console:, /path/to/file or redis://localhost[:port]/key")
+
+let install_logger ?(log_sinks=`Stdout) ~subcomponent ~verbose () =
   let level =
     if verbose
     then Lwt_log.Debug
@@ -41,8 +47,9 @@ let install_logger ?(log_sinks=`Arakoon_sinks [Arakoon_log_sink.Console]) ~verbo
     match log_sinks with
     | `Arakoon_sinks log_sinks ->
        Lwt_list.map_p
-         (let open Arakoon_log_sink in
-          function
+         (fun log_sink ->
+          let open Arakoon_log_sink in
+          match make log_sink with
           | File file_name ->
              Arakoon_logger.file_logger file_name
           | Redis (host, port, key) ->
@@ -52,12 +59,14 @@ let install_logger ?(log_sinks=`Arakoon_sinks [Arakoon_log_sink.Console]) ~verbo
           | Console ->
              Lwt.return Arakoon_logger.console_logger)
          log_sinks
+    | `Stdout ->
+       Lwt.return [ Arakoon_logger.console_logger ]
     | `Stderr ->
        Lwt.return [ stderr_logger ]
   end >>= fun loggers ->
 
   let hostname = Unix.gethostname () in
-  let component = "alba/TODO" in
+  let component = Printf.sprintf "alba/%s" subcomponent in
   let pid = Unix.getpid () in
   let seqnum = ref 0 in
   let logger = Lwt_log.make
@@ -126,7 +135,7 @@ let lwt_cmd_line to_json verbose t =
   let t' () =
     Lwt.catch
       (fun () ->
-       install_logger ~log_sinks:`Stderr ~verbose () >>= fun () ->
+       install_logger ~log_sinks:`Stderr ~subcomponent:"cli" ~verbose () >>= fun () ->
        t ())
       (fun exn ->
          begin
@@ -167,11 +176,14 @@ let lwt_cmd_line_unit to_json verbose t =
     t
     (fun () -> `Assoc [])
 
-let lwt_server t : unit =
+let lwt_server ~log_sinks ~subcomponent t : unit =
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run
     begin
-      install_logger ~verbose:false () >>= fun () ->
+      install_logger
+        ~log_sinks:(`Arakoon_sinks log_sinks)
+        ~subcomponent
+        ~verbose:false () >>= fun () ->
       t ()
     end
 
