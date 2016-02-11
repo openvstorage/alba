@@ -112,6 +112,7 @@ let () =
 
 module Padding = struct
 
+  (* returns a new big_array *)
   let pad data block_len =
     (* pad from Bigstring_slice.t to bigarray *)
     let used_len = Bigstring_slice.length data in

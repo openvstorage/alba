@@ -17,6 +17,7 @@ limitations under the License.
 open Prelude
 open Slice
 open Nsm_model
+open Lwt_bytes2
 
 module RecoveryInfo = struct
   type object_info = {
@@ -102,13 +103,13 @@ module RecoveryInfo = struct
     let open Lwt.Infix in
     serialize to_buffer' t'
     |> Compressors.Bzip2.compress_string_to_ba
-    |> Bigstring_slice.wrap_bigstring
     |> Fragment_helper.maybe_encrypt
          encryption
          ~object_id
          ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
     >>= fun encrypted ->
-    let payload = Bigstring_slice.to_string encrypted in
+    let payload = Lwt_bytes.to_string encrypted in
+    let () = Lwt_bytes.unsafe_destroy encrypted in
     let encrypt_info = Encrypt_info_helper.from_encryption encryption in
 
     Lwt.return { payload; encrypt_info; }
