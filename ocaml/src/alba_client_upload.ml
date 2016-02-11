@@ -45,7 +45,7 @@ let upload_packed_fragment_data
          ~object_id ~version_id
          ~chunk_id ~fragment_id
        |> Slice.wrap_string)
-      (Asd_protocol.Blob.Bigslice packed_fragment)
+      (Asd_protocol.Blob.Lwt_bytes packed_fragment)
       checksum false
   in
   let set_recovery_info =
@@ -121,66 +121,82 @@ let upload_chunk
     ~compression ~encryption ~fragment_checksum_algo
   >>= fun fragments_with_id ->
 
-  let packed_fragment_sizes =
-    List.map
-      (fun (_, _, (packed_fragment, _, _, _)) ->
-       Bigstring_slice.length packed_fragment)
-      fragments_with_id
-  in
-  let fragment_checksums =
-    List.map
-      (fun (_, _, (_, _, _, checksum)) -> checksum)
-      fragments_with_id
-  in
-  RecoveryInfo.make
-    object_name
-    object_id
-    object_info_o
-    encryption
-    chunk_size
-    packed_fragment_sizes
-    fragment_checksums
-  >>= fun recovery_info_slice ->
+  Lwt.finalize
+    (fun () ->
+     let packed_fragment_sizes =
+       List.map
+         (fun (_, _, (packed_fragment, _, _, _)) ->
+          Lwt_bytes.length packed_fragment)
+         fragments_with_id
+     in
+     let fragment_checksums =
+       List.map
+         (fun (_, _, (_, _, _, checksum)) -> checksum)
+         fragments_with_id
+     in
+     RecoveryInfo.make
+       object_name
+       object_id
+       object_info_o
+       encryption
+       chunk_size
+       packed_fragment_sizes
+       fragment_checksums
+     >>= fun recovery_info_slice ->
 
 
-  Lwt_list.map_p
-    (fun ((fragment_id,
-           fragment,
-           (packed_fragment,
-            t_compress_encrypt,
-            t_hash,
-            checksum)),
-          osd_id_o) ->
-     with_timing_lwt
-       (fun () ->
-        match osd_id_o with
-        | None -> Lwt.return ()
-        | Some osd_id ->
-           upload_packed_fragment_data
-             osd_access
-             ~namespace_id
-             ~osd_id
-             ~object_id ~version_id
-             ~chunk_id ~fragment_id
-             ~packed_fragment ~checksum
-             ~gc_epoch
-             ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
-     >>= fun (t_store, x) ->
+     Lwt_list.map_p
+       (fun ((fragment_id,
+              fragment,
+              (packed_fragment,
+               t_compress_encrypt,
+               t_hash,
+               checksum)),
+             osd_id_o) ->
+        with_timing_lwt
+          (fun () ->
+           match osd_id_o with
+           | None -> Lwt.return ()
+           | Some osd_id ->
+              upload_packed_fragment_data
+                osd_access
+                ~namespace_id
+                ~osd_id
+                ~object_id ~version_id
+                ~chunk_id ~fragment_id
+                ~packed_fragment ~checksum
+                ~gc_epoch
+                ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
+        >>= fun (t_store, x) ->
 
-     let t_fragment = Statistics.({
-                                     size_orig = Bigstring_slice.length fragment;
-                                     size_final = Bigstring_slice.length packed_fragment;
-                                     compress_encrypt = t_compress_encrypt;
-                                     hash = t_hash;
-                                     osd_id_o;
-                                     store_osd = t_store;
-                                     total = (Unix.gettimeofday () -. t0)
-                                   }) in
+        let t_fragment = Statistics.({
+                                        size_orig = Bigstring_slice.length fragment;
+                                        size_final = Lwt_bytes.length packed_fragment;
+                                        compress_encrypt = t_compress_encrypt;
+                                        hash = t_hash;
+                                        osd_id_o;
+                                        store_osd = t_store;
+                                        total = (Unix.gettimeofday () -. t0)
+                                      }) in
 
-     let res = osd_id_o, checksum in
+        let res = osd_id_o, checksum in
 
-     Lwt.return (t_fragment, res))
-    (List.combine fragments_with_id osds)
+        Lwt.return (t_fragment, res))
+       (List.combine fragments_with_id osds))
+    (fun () ->
+     let () =
+       if k = 1
+       then
+         Lwt_bytes.unsafe_destroy
+           (List.hd_exn fragments_with_id
+            |> fun (_, _, (f, _, _, _)) -> f)
+       else
+         List.iter
+           (fun (_, _, (f, _, _, _)) ->
+            Lwt_bytes.unsafe_destroy f)
+           fragments_with_id
+     in
+     Lwt.return_unit)
 
 let upload_object''
       (nsm_host_access : Nsm_host_access.nsm_host_access)

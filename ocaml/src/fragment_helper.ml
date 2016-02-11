@@ -49,7 +49,12 @@ let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
     in
 
     let block_len = block_length algo in
-    let bs = Padding.pad (Bigstring_slice.of_string s) block_len in
+    let bs =
+      let x = Lwt_bytes.of_string s in
+      finalize
+        (fun () -> Padding.pad (Bigstring_slice.wrap_bigstring x) block_len)
+        (fun () -> Lwt_bytes.unsafe_destroy x)
+    in
 
     Cipher.with_t_lwt
       key Cipher.AES256 Cipher.CBC []
@@ -58,6 +63,7 @@ let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
     let res = Str.last_chars (Lwt_bytes.to_string bs) block_len in
     Lwt.return res
 
+(* consumes the input and returns a big_array *)
 let maybe_encrypt
     encryption
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
@@ -69,12 +75,16 @@ let maybe_encrypt
   | AlgoWithKey (AES (CBC, L256) as algo, key) ->
     verify_key_length algo key;
     let block_len = block_length algo in
-    let bs = Padding.pad plain block_len in
+    let bs =
+      finalize
+        (fun () -> Padding.pad (Bigstring_slice.wrap_bigstring plain) block_len)
+        (fun () -> Lwt_bytes.unsafe_destroy plain)
+    in
     get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
     Cipher.with_t_lwt
       key Cipher.AES256 Cipher.CBC []
       (fun cipher -> Cipher.encrypt ~iv cipher bs) >>= fun () ->
-    Lwt.return (Bigstring_slice.wrap_bigstring bs)
+    Lwt.return bs
 
 let maybe_decrypt
     encryption
@@ -99,6 +109,7 @@ let maybe_decrypt
         Lwt.return (Padding.unpad data)
     end
 
+(* returns a new bigarray *)
 let maybe_compress compression fragment_data =
   let open Lwt.Infix in
   Compressors.compress compression fragment_data >>= fun r ->
@@ -141,6 +152,7 @@ let verify' fragment_data checksum =
   let checksum2 = hash # final () in
   Lwt.return (checksum2 = checksum)
 
+(* returns a new big_array *)
 let pack_fragment
     (fragment : Bigstring_slice.t)
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
@@ -155,17 +167,16 @@ let pack_fragment
        maybe_encrypt
          ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
          encryption
-         (Bigstring_slice.wrap_bigstring compressed))
+         compressed)
   >>= fun (t_compress_encrypt, final_data) ->
 
   with_timing_lwt
     (fun () ->
      let hash = Hashes.make_hash checksum_algo in
-     let open Bigstring_slice in
      hash # update_lwt_bytes_detached
-          final_data.bs
-          final_data.offset
-          final_data.length >>= fun () ->
+          final_data
+          0
+          (Lwt_bytes.length final_data) >>= fun () ->
        Lwt.return (hash # final ()))
   >>= fun (t_hash, checksum) ->
 
@@ -230,6 +241,9 @@ let chunk_to_fragments_ec
 
   Lwt.return (data_fragments, coding_fragments)
 
+(* returns new bigarrays
+ * replication (k=1) is a bit special though
+ *)
 let chunk_to_packed_fragments
     ~object_id ~chunk_id
     ~chunk ~chunk_size

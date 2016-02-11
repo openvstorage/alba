@@ -408,6 +408,7 @@ let decompress c f =
      Lwt_bytes.unsafe_destroy f.Bigstring_slice.bs;
      Lwt.return res
 
+(* returns a new bigarray *)
 let compress c f = match c with
   | NoCompression ->
      Lwt.return (Bigstring_slice.extract_to_bigstring f)
