@@ -61,7 +61,7 @@ let retrieve_cfg cfg_url =
   Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
 
 
-let proxy_start (cfg_url:Url.t) =
+let proxy_start (cfg_url:Url.t) log_sinks =
   let t () =
     retrieve_cfg cfg_url >>= function
     | `Error err -> failwith err
@@ -155,13 +155,14 @@ let proxy_start (cfg_url:Url.t) =
         ~tls_config:cfg.tls_client
         ~tcp_keepalive
   in
-  lwt_server t
+  lwt_server ~log_sinks ~subcomponent:"proxy" t
 
 let proxy_start_cmd =
   Term.(pure proxy_start
         $ Arg.(required
                & opt (some url_converter) None
-               & info ["config"] ~docv:"CONFIG_FILE" ~doc:"proxy config file")),
+               & info ["config"] ~docv:"CONFIG_FILE" ~doc:"proxy config file")
+        $ log_sinks),
   Term.info "proxy-start" ~doc:"start a proxy server"
 
 let proxy_client_cmd_line host port verbose f =

@@ -80,7 +80,7 @@ type deprecated =
   | Default
   | Custom of string
 
-let alba_maintenance cfg_url modulo remainder flavour =
+let alba_maintenance cfg_url modulo remainder flavour log_sinks =
   if modulo <> None
   then Lwt_log.ign_warning "modulo was deprecated and won't be used";
   if remainder <> None
@@ -217,7 +217,7 @@ let alba_maintenance cfg_url modulo remainder flavour =
                 >>= fun () ->
                 Lwt.fail exn))
   in
-  lwt_server t
+  lwt_server ~log_sinks ~subcomponent:"maintenance" t
 
 let alba_maintenance_cmd =
   let remainder =
@@ -257,6 +257,7 @@ let alba_maintenance_cmd =
         $ modulo
         $ remainder
         $ flavour
+        $ log_sinks
   ),
   Term.info "maintenance" ~doc:"run the maintenance process (garbage collection, obsolete fragment deletion, repair, ...)"
 

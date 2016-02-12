@@ -69,7 +69,9 @@ RUN eval `${opam_env}` && \
         kinetic-client \
         tiny_json \
         ppx_deriving_yojson \
-        core_kernel
+        core \
+        redis \
+        uri
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue
@@ -96,7 +98,7 @@ RUN cd isa-l-2.14.0 && make install
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.8.13
+RUN cd arakoon && git pull && git checkout tags/1.9.0
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \
@@ -119,8 +121,6 @@ RUN eval `${opam_env}` && opam update && \
 
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/
-
-RUN cd /home/alba && git clone https://github.com/openvstorage/alba.git
 
 RUN yum -y install rpm-build
 RUN yum -y install libgcrypt-devel
