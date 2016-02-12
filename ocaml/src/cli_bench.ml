@@ -86,7 +86,7 @@ let map_scenarios scenarios robust =
      else scenarios)
 
 let proxy_bench host port
-                n_clients (n:int) file_name (power:int)
+                n_clients (n:int) file_names (power:int)
                 prefix (slice_size:int) namespace_name
                 scenarios robust
   =
@@ -96,15 +96,20 @@ let proxy_bench host port
      Proxy_bench.do_scenarios
        host port
        n_clients n
-       file_name power prefix slice_size namespace_name
+       file_names power prefix slice_size namespace_name
        (map_scenarios scenarios robust))
+
+let files =
+  Arg.(value
+       & opt_all non_dir_file []
+       & info ["file"] ~doc:"file to upload, may be specified multiple times")
 
 let proxy_bench_cmd =
   Term.(pure proxy_bench
         $ host $ port 10000
         $ n_clients 1
         $ n 10000
-        $ file_upload 1
+        $ files
         $ power 4
         $ prefix ""
         $ slice_size 4096
@@ -137,7 +142,7 @@ let alba_bench_cmd =
         $ tls_config
         $ n_clients 1
         $ n 10000
-        $ file_upload 1
+        $ files
         $ power 4
         $ prefix ""
         $ slice_size 4096
