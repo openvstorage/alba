@@ -126,13 +126,25 @@ let safe_delete_namespace client namespace =
          ~exn
          "Ignoring exception in delete namespace test cleanup")
 
-let wait_for_work alba_client =
+let with_maintenance_client alba_client f =
   let maintenance_client =
     new Maintenance.client
         ~retry_timeout:1.
         (alba_client # get_base_client)
   in
-  maintenance_client # do_work ~once:true ()
+  Lwt.finalize
+    (fun () -> f maintenance_client)
+    (fun () ->
+     let () = maintenance_client # get_coordinator # stop in
+     (* TODO finalize the maintenance client
+      * - should stop some more loops...
+      *)
+     Lwt.return_unit)
+
+let wait_for_work alba_client =
+  with_maintenance_client
+    alba_client
+    (fun mc -> mc # do_work ~once:true ())
 
 let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
   Lwt_list.iter_p
@@ -357,10 +369,10 @@ let test_delete_namespace () =
 
 let test_clean_obsolete_keys () =
   test_with_alba_client
-      (fun client ->
-
-         let maintenance_client = new Maintenance.client (client # get_base_client) in
-
+    (fun client ->
+     with_maintenance_client
+       client
+       (fun maintenance_client ->
          let namespace = "test_clean_obsolete_keys" in
          client # create_namespace ~preset_name:None ~namespace ~nsm_host_id ()
          >>= fun namespace_id ->
@@ -416,11 +428,14 @@ let test_clean_obsolete_keys () =
 
          assert_fragment ((=) None) >>= fun () ->
 
-         Lwt.return ())
+         Lwt.return ()))
 
 let test_garbage_collect () =
   test_with_alba_client
-      (fun client ->
+    (fun client ->
+     with_maintenance_client
+       client
+       (fun maintenance_client ->
          let namespace = "test_garbage_collect" in
          client # create_namespace ~preset_name:None ~namespace ~nsm_host_id ()
          >>= fun namespace_id ->
@@ -467,8 +482,6 @@ let test_garbage_collect () =
 
          assert_fragment ((<>) None) >>= fun () ->
 
-         let maintenance_client = new Maintenance.client (client # get_base_client) in
-
          Printf.printf "garbage collecting fragments..\n";
 
          maintenance_client # garbage_collect_namespace
@@ -478,7 +491,7 @@ let test_garbage_collect () =
 
          assert_fragment ((=) None) >>= fun () ->
 
-         Lwt.return ())
+         Lwt.return ()))
 
 let test_create_namespaces () =
   test_with_alba_client
@@ -507,8 +520,7 @@ let test_create_namespaces () =
              client # delete_namespace ~namespace >>= fun () ->
              Lwt_log.debug_f "deleted namespace %s" namespace >>= fun () ->
 
-             let maintenance_client = new Maintenance.client (client # get_base_client) in
-             maintenance_client # do_work ~once:true () >>= fun () ->
+             wait_for_work client >>= fun () ->
 
              Lwt_log.debug_f "finished work" >>= fun () ->
 
@@ -984,8 +996,11 @@ let test_repair_by_policy () =
 
        assert (cnt = 4);
 
-       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
-       maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
+       with_maintenance_client
+         alba_client
+         (fun maintenance_client ->
+          maintenance_client # repair_by_policy_namespace ~namespace_id)
+       >>= fun () ->
 
        alba_client # get_object_manifest
          ~namespace
@@ -1078,8 +1093,7 @@ let test_missing_corrupted_fragment () =
 
        Lwt_unix.sleep 0.2 >>= fun () ->
 
-       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
-       maintenance_client # do_work ~once:true () >>= fun () ->
+       wait_for_work alba_client >>= fun () ->
 
        alba_client # get_object_manifest
          ~namespace
@@ -1190,6 +1204,9 @@ let test_disk_churn () =
   let object_name = namespace in
   test_with_alba_client
     (fun alba_client ->
+     with_maintenance_client
+       alba_client
+       (fun maintenance_client ->
 
        let rec with_asds f acc = function
          | [] -> f acc
@@ -1277,11 +1294,6 @@ let test_disk_churn () =
          >>= fun () ->
 
          alba_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->
-
-         let maintenance_client =
-           new Maintenance.client
-               ~retry_timeout:1.
-               (alba_client # get_base_client) in
 
          Lwt_list.iter_s
            (fun osd_id ->
@@ -1440,7 +1452,7 @@ let test_disk_churn () =
                    alba_client
                    (List.map fst asds)))
          []
-         asds)
+         asds))
 
 let test_replication () =
   let test_name = "test_replication" in
@@ -1797,8 +1809,11 @@ let test_update_policies () =
 
      assert_k_m mf2 5 4;
 
-     let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
-     maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
+     with_maintenance_client
+       alba_client
+       (fun maintenance_client ->
+        maintenance_client # repair_by_policy_namespace ~namespace_id)
+     >>= fun () ->
 
      alba_client # get_object_manifest
                  ~consistent_read:true

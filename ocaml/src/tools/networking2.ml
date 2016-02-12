@@ -114,7 +114,13 @@ let with_connection ip port ~tls_config ~buffer_pool f =
   let conn = Net_fd.to_connection ~in_buffer ~out_buffer nfd in
   Lwt.finalize
     (fun () -> f conn)
-    closer
+    (fun () ->
+     Lwt.finalize
+       closer
+       (fun () ->
+        Buffer_pool.return_buffer buffer_pool in_buffer;
+        Buffer_pool.return_buffer buffer_pool out_buffer;
+        Lwt.return ()))
 
 type conn_info = {
     ips:string list;
