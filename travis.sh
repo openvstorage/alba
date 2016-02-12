@@ -113,7 +113,7 @@ install () {
     echo "Installing some specific arakoon"
     git clone https://github.com/openvstorage/arakoon.git
     cd arakoon
-    git checkout 4d3a8913abfb5b70a2b8e8427c8e9019ddbe2776
+    git checkout tags/1.9.0
     make
     export PREFIX=/home/travis/.opam/system
     export OCAML_LIBDIR=`ocamlfind printconf destdir`

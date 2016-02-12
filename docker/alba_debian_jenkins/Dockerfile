@@ -95,7 +95,7 @@ RUN eval `${opam_env}` && opam update
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout 4d3a8913abfb5b70a2b8e8427c8e9019ddbe2776
+RUN cd arakoon && git pull && git checkout tags/1.9.0
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \
