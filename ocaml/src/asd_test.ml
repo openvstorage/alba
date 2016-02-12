@@ -40,16 +40,19 @@ let rec wait_asd_connection port asd_id () =
      Lwt_unix.sleep 0.1 >>= fun () ->
      wait_asd_connection port asd_id ()
 
+let workspace =
+  try Sys.getenv "WORKSPACE"
+  with Not_found -> ""
+
 let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
-  let path = "/tmp/alba/" ^ test_name in
+  let path = workspace ^ "/tmp/alba/" ^ test_name in
   let tls_config = Albamgr_test.get_tls_config () in (* client config *)
   let o_port, tls =
     match tls_config
     with
     | None -> Some port, None
     | Some _ ->
-       let path = (try Sys.getenv "WORKSPACE"
-                   with Not_found -> "") ^ "/tmp/arakoon/test_discover_claimed/" in
+       let path = workspace ^ "/tmp/arakoon/test_discover_claimed/" in
        let open Asd_config.Config in
        None,
        Some {cert = path ^ "test_discover_claimed.pem";
