@@ -18,6 +18,7 @@ open Lwt.Infix
 open Prelude
 
 let test_with_alba_client = Alba_test.test_with_alba_client
+let with_maintenance_client = Alba_test.with_maintenance_client
 let _wait_for_osds = Alba_test._wait_for_osds
 
 let with_nice_error_log f =
@@ -76,15 +77,17 @@ let test_rebalance_one () =
 
      let target_osd = DeviceSet.choose targets in
      let source_osd = DeviceSet.choose object_osds in
-     let mc = new Maintenance.client (alba_client # get_base_client) in
      with_nice_error_log
        (fun () ->
-        mc # rebalance_object
-           ~namespace_id
-           ~manifest
-           ~source_osd
-           ~target_osd
-       )
+        with_maintenance_client
+          alba_client
+          (fun mc ->
+           mc # rebalance_object
+              ~namespace_id
+              ~manifest
+              ~source_osd
+              ~target_osd
+       ))
      >>= fun object_locations_movements ->
      let source_osds =
        List.map
@@ -161,17 +164,19 @@ let _test_rebalance_namespace test_name fat ano categorize =
      let n = 20 in
      with_nice_error_log (fun () -> upload 20) >>= fun () ->
      Lwt_log.debug_f "uploaded ... %i" n >>= fun () ->
-     let mc = new Maintenance.client (alba_client # get_base_client) in
      let make_first_last_reverse () = "", None, false in
      Lwt.catch
        (fun () ->
-        mc # rebalance_namespace
-           ~categorize
-           ~make_first_last_reverse
-           ~namespace_id
-           ~only_once:true
-           ()
-       )
+        with_maintenance_client
+          alba_client
+          (fun mc ->
+           mc # rebalance_namespace
+              ~categorize
+              ~make_first_last_reverse
+              ~namespace_id
+              ~only_once:true
+              ()
+       ))
        (fun exn ->
         Lwt_log.debug_f ~exn "bad..." >>= fun () ->
         Lwt.fail exn
@@ -280,8 +285,6 @@ let test_repair_orange () =
 
        wait_for_namespace_osds alba_client namespace_id 11 >>= fun () ->
 
-       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
-
        let object_name = test_name in
        let object_data = test_name in
        alba_client # get_base_client # upload_object_from_string
@@ -302,7 +305,11 @@ let test_repair_orange () =
          ~max:10 >>= fun ((cnt, _), _) ->
        assert (cnt = 1);
 
-       maintenance_client # repair_by_policy_namespace' ~namespace_id >>= fun () ->
+       with_maintenance_client
+         alba_client
+         (fun mc ->
+          mc # repair_by_policy_namespace' ~namespace_id)
+       >>= fun () ->
 
        alba_client # get_object_manifest
          ~namespace ~object_name
@@ -356,8 +363,11 @@ let test_repair_orange2 () =
          ~update_manifest:true
          alba_client namespace_id mf 0 0 >>= fun () ->
 
-       let maintenance_client = new Maintenance.client (alba_client # get_base_client) in
-       maintenance_client # repair_by_policy_namespace ~namespace_id >>= fun () ->
+       with_maintenance_client
+         alba_client
+         (fun mc ->
+          mc # repair_by_policy_namespace ~namespace_id)
+       >>= fun () ->
 
        alba_client # get_object_manifest
          ~namespace ~object_name
@@ -606,6 +616,9 @@ let test_automatic_repair () =
   let namespace = test_name in
   test_with_alba_client
     (fun alba_client ->
+    with_maintenance_client
+      alba_client
+      (fun maintenance_client ->
 
      let get_osd_has_objects ~osd_id =
        alba_client # get_base_client # with_nsm_client
@@ -670,12 +683,6 @@ let test_automatic_repair () =
          enable_rebalance' = None;
        }) >>= fun _ ->
 
-     let maintenance_client =
-       new Maintenance.client
-           ~retry_timeout:2.
-           (alba_client # get_base_client)
-     in
-
      Lwt.async
        (fun () ->
         Lwt.join
@@ -709,7 +716,7 @@ let test_automatic_repair () =
        | false -> Lwt.return ()
      in
      Lwt_unix.with_timeout 90. wait_until_repaired
-    )
+    ))
 
 
 open OUnit
