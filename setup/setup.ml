@@ -621,10 +621,10 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
-    __warranty_void__write_blobs : bool;
+    __warranty_void__write_blobs : (bool option [@default None]);
   }[@@deriving yojson]
 
-let make_asd_config ?(write_blobs = true) node_id asd_id home port tls=
+let make_asd_config ?write_blobs node_id asd_id home port tls=
   {node_id;
    asd_id;
    home;
