@@ -1308,7 +1308,12 @@ module Test = struct
       ]
     in
     let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
-    let cmd_s = cmd2 |> String.concat " " in
+    let cmd3 =
+      if t.cfg.tls
+      then _alba_extend_tls cmd2
+      else cmd2
+    in
+    let cmd_s = cmd3 |> String.concat " " in
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd_with_rc
 
