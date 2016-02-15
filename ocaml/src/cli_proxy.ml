@@ -58,7 +58,7 @@ let retrieve_cfg_from_string txt =
   config |> Lwt.return
 
 let retrieve_cfg cfg_url =
-  Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+  Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
 
 
 let proxy_start (cfg_url:Url.t) log_sinks =

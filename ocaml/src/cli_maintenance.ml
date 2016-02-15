@@ -106,7 +106,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
     config |> Lwt.return
   in
   let retrieve_cfg cfg_url =
-    Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+    Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
   in
 
   let t () =

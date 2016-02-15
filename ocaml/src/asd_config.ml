@@ -54,4 +54,4 @@ let retrieve_cfg_from_string cfg_string =
   config |> Lwt.return
 
 let retrieve_cfg cfg_url =
-  Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+  Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
