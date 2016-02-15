@@ -28,13 +28,13 @@ let test_get_set () =
   | Some url ->
      Lwt_main.run
        begin
-         let uri = Uri.of_string url in
-         let peers = [ Uri.host uri |> Option.get_some,
-                       Uri.port uri |> Option.get_some ] in
+         let peers = [ "127.0.0.1", 5000 ] in
          let key = "/test/etcd/get_set" in
          let test value =
            Etcd.store_value peers key value >>= fun () ->
            Etcd.retrieve_value peers key >>= fun value' ->
+           Printf.printf "expected = %S, actual = %S\n"
+                         value value';
            assert (value = value');
            Lwt.return ()
          in
@@ -43,6 +43,7 @@ let test_get_set () =
            [ "lala";
              "la la";
              "la\r\n la";
+             "la ' \\ \' \" \n \" la";
            ]
        end
 

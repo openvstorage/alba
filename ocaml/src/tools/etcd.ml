@@ -22,7 +22,7 @@ let store_value peers path value =
   let peers_s = String.concat "," (List.map (fun (h,p) -> Printf.sprintf "%s:%i" h p) peers) in
   let cmd = [| "etcdctl";
                "--peers=" ^ peers_s;
-               "get";
+               "set";
                path;
               |]
   in
