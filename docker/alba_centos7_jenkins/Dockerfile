@@ -116,8 +116,8 @@ RUN yum -y install sudo
 RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
 
 RUN eval `${opam_env}` && opam update && \
-    opam depext orocksdb.0.2.1 && \
-    opam install -y orocksdb.0.2.1
+    opam depext orocksdb.0.2.2 && \
+    opam install -y orocksdb.0.2.2
 
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/
