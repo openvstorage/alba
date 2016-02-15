@@ -138,6 +138,8 @@ RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-2.0-1.el7.centos.x86_64.rpm
 RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-devel-2.0-1.el7.centos.x86_64.rpm
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
+RUN yum -y install iproute
+
 ENV opam_env='opam config env --root=/home/alba/OPAM'
 ENV ARAKOON_BIN=arakoon
 CMD eval `${opam_env}` \
