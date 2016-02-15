@@ -73,7 +73,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          | None,Some u -> u
          | Some f,None   ->
             Lwt_log.ign_warning_f "albamgr_cfg_file is deprecated, please use albamgr_cfg_url";
-            (Url.File f)
+            (Url.make f)
          | Some _,Some u ->
             failwith "both albamgr_file and albamgr_cfg_url were configured; just use albamgr_cfg_url"
          | None,None     ->
