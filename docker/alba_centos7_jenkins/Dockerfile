@@ -69,9 +69,9 @@ RUN eval `${opam_env}` && \
         kinetic-client \
         tiny_json \
         ppx_deriving_yojson \
-        core \
+        core.113.00.00 \
         redis \
-        uri
+        uri.1.9.1
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue
