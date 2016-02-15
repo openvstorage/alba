@@ -94,9 +94,9 @@ let () =
        ["easiest_upload" >:: easiest_upload;]
 
   in
-  let run_unit_tests alba_cfg_url _tls_config produce_xml =
+  let run_unit_tests alba_cfg_url tls_config' produce_xml =
     let () = cfg_url := alba_cfg_url in
-    let () = tls_config := _tls_config in
+    let () = tls_config := tls_config' in
     let _results =
       if produce_xml
       then OUnit_XML.run_suite_producing_xml suite "testresults.xml"

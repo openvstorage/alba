@@ -979,7 +979,12 @@ module Deployment = struct
     let r = [t.cfg.alba_bin; "list-namespaces";
              "--config"; t.abm # config_url|> Url.canonical ;
              "--to-json";
-            ] |> Shell.cmd_with_capture in
+            ] |>
+              (fun cmd ->
+               if t.cfg.tls
+               then _alba_extend_tls cmd
+               else cmd)
+            |> Shell.cmd_with_capture in
     let json = Yojson.Safe.from_string r in
     let basic = Yojson.Safe.to_basic json  in
     match basic with
@@ -1133,7 +1138,7 @@ module JUnit = struct
       let () = match test.result with
       | Ok -> ()
       | Err s  -> output_string oc (Printf.sprintf "        <error>%s</error>\n" s)
-      | Fail s -> output_string oc (Printf.sprintf "        <failure>%s</failure" s)
+      | Fail s -> output_string oc (Printf.sprintf "        <failure>%s</failure>\n" s)
       in
       output_string oc "      </testcase>\n"
     in
@@ -1303,7 +1308,12 @@ module Test = struct
       ]
     in
     let cmd2 = if xml then cmd @ ["--xml=true"] else cmd in
-    let cmd_s = cmd2 |> String.concat " " in
+    let cmd3 =
+      if t.cfg.tls
+      then _alba_extend_tls cmd2
+      else cmd2
+    in
+    let cmd_s = cmd3 |> String.concat " " in
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd_with_rc
 
@@ -1359,7 +1369,7 @@ module Test = struct
 
   let asd_version t =
     try
-      let version_s = t.Deployment.osds.(1) # get_remote_version in
+      let version_s = t.Deployment.osds.(1) # get_remote_version |> String.trim in
       Printf.printf "version_s=%S\n%!" version_s;
       match
         version_s.[0] = '(' &&
@@ -1387,7 +1397,11 @@ module Test = struct
          (* TODO "--to-json"*)
         ]
     in
-    let _stats_s = Shell.cmd_with_capture cmd in
+    let _stats_s =
+      (if t.cfg.tls
+       then _alba_extend_tls cmd
+       else cmd)
+      |> Shell.cmd_with_capture in
     (* TODO _assert_parseable stats_s *)
     JUnit.Ok
 
@@ -1400,14 +1414,18 @@ module Test = struct
        (* TODO "--to-json";*)
       ]
     in
-    let _stats_s = Shell.cmd_with_capture cmd in
+    let _stats_s =
+      (if t.cfg.tls
+       then _alba_extend_tls cmd
+       else cmd)
+      |> Shell.cmd_with_capture in
     (* TODO _assert_parseable stats_s *)
     JUnit.Ok
 
   let asd_statistics_via_abm t =
     let long_id = t.Deployment.osds.(1) # long_id in
 
-    let stats_cmd= [
+    let cmd= [
         t.cfg.alba_bin;
         "asd-statistics";
         "--config"; t.abm # config_url |> Url.canonical;
@@ -1415,7 +1433,11 @@ module Test = struct
         "--to-json";
       ]
     in
-    let stats_s = Shell.cmd_with_capture stats_cmd in
+    let stats_s =
+      (if t.cfg.tls
+       then _alba_extend_tls cmd
+       else cmd)
+      |> Shell.cmd_with_capture in
     _assert_parseable stats_s
 
   let asd_crud t  =
