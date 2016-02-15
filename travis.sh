@@ -22,7 +22,7 @@ OPAM_DEPENDS="ocamlfind \
          quickcheck.1.0.2 \
          uuidm.0.9.5 \
          zarith.1.3 \
-         orocksdb.0.2.1 \
+         orocksdb.0.2.2 \
          kinetic-client \
          tiny_json \
          cmdliner \
@@ -107,7 +107,7 @@ install () {
     sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so
 
     opam install ${OPAM_DEPENDS} || true
-    opam depext arakoon.1.8.12 orocksdb.0.2.1
+    opam depext arakoon.1.9.0 orocksdb.0.2.2
     opam install ${OPAM_DEPENDS}
 
     echo "Installing some specific arakoon"

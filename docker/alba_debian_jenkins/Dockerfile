@@ -102,7 +102,10 @@ RUN cd arakoon && eval `${opam_env}` \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
-RUN eval `${opam_env}` && opam depext orocksdb.0.2.1 && opam install -y orocksdb.0.2.1
+RUN eval `${opam_env}` && \
+    opam update && \
+    opam depext orocksdb.0.2.2 && \
+    opam install -y orocksdb.0.2.2
 
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
