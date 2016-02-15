@@ -27,6 +27,8 @@ let string_of_address = function
        (Unix.string_of_inet_addr addr) port
   | Unix.ADDR_UNIX s -> Printf.sprintf "ADDR_UNIX %s" s
 
+exception ConnectTimeout
+
 let connect_with ip port ~tls_config =
 
   let address = make_address ip port in
@@ -47,15 +49,15 @@ let connect_with ip port ~tls_config =
   | None ->
      Lwt.catch
        (fun () ->
-        Lwt_extra2.with_timeout
-          ~msg:(Printf.sprintf
-                  "timeout while connecting to fd=%i ip=%s port=%i"
-                  fdi ip port)
-          1.
-          (fun () ->
-           Lwt_unix.connect fd address >>= fun () ->
-           let r = Net_fd.wrap_plain fd in
-           Lwt.return (r , closer))
+        Lwt.pick
+          [ (Lwt_unix.sleep 1. >>= fun () ->
+             Lwt_log.debug_f
+               "timeout while connecting to fd=%i ip=%s port=%i"
+               fdi ip port >>= fun () ->
+             Lwt.fail ConnectTimeout);
+            (Lwt_unix.connect fd address >>= fun () ->
+             let r = Net_fd.wrap_plain fd in
+             Lwt.return (r , closer)); ]
        )
        (fun exn ->
         closer () >>= fun () ->
@@ -311,6 +313,7 @@ let make_server
        Lwt.fail exn)
 
 let is_connection_failure_exn = function
+  | ConnectTimeout
   | Unix.Unix_error(Unix.ECONNREFUSED, "connect", "")
   | Failure "no connection" -> true
   | _ -> false
