@@ -979,7 +979,12 @@ module Deployment = struct
     let r = [t.cfg.alba_bin; "list-namespaces";
              "--config"; t.abm # config_url|> Url.canonical ;
              "--to-json";
-            ] |> Shell.cmd_with_capture in
+            ] |>
+              (fun cmd ->
+               if t.cfg.tls
+               then _alba_extend_tls cmd
+               else cmd)
+            |> Shell.cmd_with_capture in
     let json = Yojson.Safe.from_string r in
     let basic = Yojson.Safe.to_basic json  in
     match basic with
@@ -1133,7 +1138,7 @@ module JUnit = struct
       let () = match test.result with
       | Ok -> ()
       | Err s  -> output_string oc (Printf.sprintf "        <error>%s</error>\n" s)
-      | Fail s -> output_string oc (Printf.sprintf "        <failure>%s</failure" s)
+      | Fail s -> output_string oc (Printf.sprintf "        <failure>%s</failure>\n" s)
       in
       output_string oc "      </testcase>\n"
     in
