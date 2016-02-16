@@ -55,10 +55,10 @@ let retrieve_cfg_from_string txt =
         "Interpreted the config as: %s"
         ([%show : Config.t] cfg)
   in
-  config |> Lwt.return
+  config
 
 let retrieve_cfg cfg_url =
-  Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+  Arakoon_config_url.retrieve cfg_url >|= retrieve_cfg_from_string
 
 
 let proxy_start (cfg_url:Url.t) log_sinks =

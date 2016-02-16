@@ -51,7 +51,8 @@ let retrieve_cfg_from_string cfg_string =
         "Interpreted the config as: %s"
         ([%show : Config.t] cfg))
   ;
-  config |> Lwt.return
+  config
 
 let retrieve_cfg cfg_url =
-  Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+  let open Lwt.Infix in
+  Arakoon_config_url.retrieve cfg_url >|= retrieve_cfg_from_string

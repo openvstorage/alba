@@ -26,7 +26,6 @@ build-nsm-plugin: build-cmxs
 	_build/alba_version.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/prelude.cmx \
-        _build/src/tools/etcd.cmx \
 	_build/src/tools/deser.cmx \
 	_build/src/tools/cache.cmx \
 	_build/src/consistency.cmx \
@@ -60,7 +59,6 @@ build-mgr-plugin: build-alba
 	_build/alba_version.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/prelude.cmx \
-        _build/src/tools/etcd.cmx \
         _build/src/tools/deser.cmx \
 	_build/src/tools/cache.cmx \
 	_build/src/consistency.cmx \

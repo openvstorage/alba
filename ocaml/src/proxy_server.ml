@@ -76,7 +76,7 @@ let write_albamgr_cfg albamgr_cfg =
         Lwt_unix.fsync fd) >>= fun () ->
      Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
   | Url.Etcd (peers, path) ->
-     Etcd.store_value peers path value
+     Arakoon_etcd.store_value peers path value
 
 let read_objects_slices
       (alba_client : Alba_client.alba_client)

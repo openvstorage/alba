@@ -97,6 +97,8 @@ let _cfg_from_txt txt =
      let cfg = Config.{ ips; port } in
      Hashtbl.add node_cfgs node_name cfg)
     node_names;
-  (cluster_id, node_cfgs) |> Lwt.return
+  (cluster_id, node_cfgs)
 
-let config_from_url url = Etcd.retrieve_cfg _cfg_from_txt url
+let config_from_url url =
+  let open Lwt.Infix in
+  Arakoon_config_url.retrieve url >|= _cfg_from_txt
