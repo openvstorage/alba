@@ -33,28 +33,31 @@ let maintenance_for_all_x
     List.iter
       (fun x ->
          let x_id = get_x_id x in
-         if Hashtbl.mem x_threads x_id || not (is_master())
-         then ()
-         else begin
-           let t =
-             Lwt.catch
-               (fun () ->
-                  Lwt_log.debug_f
-                    "Starting %s for %s"
-                    task_name (show_x x) >>= fun () ->
-                  maintenance_f x)
-               (fun exn ->
-                  Lwt_log.debug_f
-                    ~exn
-                    "Thread %s for %s stopped due to an exception"
-                    task_name (show_x x))
-             >>= fun () ->
-             Hashtbl.remove x_threads x_id;
-             Lwt.return ()
-           in
-           Lwt.ignore_result t;
-           Hashtbl.add x_threads x_id ()
-         end)
+         let t =
+           if Hashtbl.mem x_threads x_id
+           then Lwt.return ()
+           else
+             begin
+               Hashtbl.add x_threads x_id ();
+               Lwt.finalize
+                 (fun () ->
+                  Lwt.catch
+                    (fun () ->
+                     Lwt_log.debug_f
+                       "Starting %s for %s"
+                       task_name (show_x x) >>= fun () ->
+                     maintenance_f x)
+                    (fun exn ->
+                     Lwt_log.debug_f
+                       ~exn
+                       "Thread %s for %s stopped due to an exception"
+                       task_name (show_x x)))
+                 (fun () ->
+                  Hashtbl.remove x_threads x_id;
+                  Lwt.return ())
+             end
+         in
+         Lwt.ignore_result t)
       xs;
 
     Lwt.return ()
