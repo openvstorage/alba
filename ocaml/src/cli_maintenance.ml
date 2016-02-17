@@ -155,7 +155,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                 Lwt_log.add_rule "*" (to_level log_level);
                 Lwt_log.info_f "Reloaded albamgr config file + changed log level to %s" log_level
             in
-            Lwt.ignore_result (Lwt_extra2.ignore_errors handle)) in
+            Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
       Lwt_log.info_f "maintenance version:%s" Alba_version.git_revision
       >>= fun () ->
@@ -261,7 +261,7 @@ let alba_maintenance_cmd =
   ),
   Term.info "maintenance" ~doc:"run the maintenance process (garbage collection, obsolete fragment deletion, repair, ...)"
 
-let alba_deliver_messages cfg_file tls_config verbose =
+let alba_deliver_messages cfg_file tls_config =
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -283,12 +283,12 @@ let alba_deliver_messages cfg_file tls_config verbose =
            nsms
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line false true t
 
 let alba_deliver_messages_cmd =
   Term.(pure alba_deliver_messages
         $ alba_cfg_url
-        $ tls_config $ verbose)
+        $ tls_config)
   , Term.info "deliver-messages" ~doc:"deliver all outstanding messages (note that this happens automatically by the maintenance process too, so you usually shouldn't need this.)"
 
 let alba_rewrite_object

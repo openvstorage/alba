@@ -41,7 +41,8 @@ let create_namespace
      from e.g. the maintenance process, that's why we're
      ignoring errors here *)
     Lwt_extra2.ignore_errors
-      (fun () -> deliver_nsm_host_messages ~nsm_host_id)
+      ~logging:true
+      (fun () ->deliver_nsm_host_messages ~nsm_host_id)
   in
 
   deliver_nsm_host_messages () >>= fun () ->

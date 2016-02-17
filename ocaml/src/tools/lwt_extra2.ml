@@ -22,9 +22,10 @@ let ignore_errors ?(logging=false) f =
     (function
       | Lwt.Canceled -> Lwt.fail Lwt.Canceled
       | exn ->
-         if logging
-         then Lwt_log.debug ~exn "ignoring"
-         else Lwt.return ())
+         (if logging
+          then Lwt_log.info
+          else Lwt_log.debug)
+           ~exn "ignoring")
 
 let with_timeout ~msg (timeout:float) f =
   Lwt.catch
