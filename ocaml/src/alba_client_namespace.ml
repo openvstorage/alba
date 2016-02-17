@@ -74,7 +74,7 @@ let create_namespace
                  (fun exn ->
                   Lwt_log.info_f
                     ~exn
-                    "An exception occured while delivering osd messages during create namespace")
+                    "An exception occured while delivering nsm_host messages during create namespace")
                >>= fun () ->
                if !need_more_delivery
                then

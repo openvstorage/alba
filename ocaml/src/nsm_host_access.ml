@@ -257,7 +257,28 @@ class nsm_host_access
          in
          if id_may_have_changed
          then
-           get_namespace_id_info () >>= fun (namespace_id', _) ->
+           (get_namespace_id_info () >>= fun (namespace_id', namespace_info') ->
+            let open Albamgr_protocol.Protocol in
+            if namespace_info'.Namespace.state = Namespace.Creating
+            then
+              begin
+                let nsm_host_id = namespace_info'.Namespace.nsm_host_id in
+                Lwt_log.info_f
+                  "Detected namespace %s:%li in 'Creating' state, let's do some nsm_host message delivery towards %s"
+                  namespace namespace_id'
+                  nsm_host_id >>= fun () ->
+                Alba_client_message_delivery_base.deliver_messages
+                  mgr
+                  Albamgr_protocol.Protocol.Msg_log.Nsm_host
+                  nsm_host_id
+                  ((get ~nsm_host_id) # deliver_messages) >>= fun () ->
+
+                get_namespace_id_info () >>= fun (namespace_id', namespace_info') ->
+                Lwt.return namespace_id'
+              end
+            else
+              Lwt.return namespace_id') >>= fun namespace_id' ->
+
            if namespace_id = namespace_id'
            then
              begin
