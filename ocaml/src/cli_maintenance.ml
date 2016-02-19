@@ -103,10 +103,10 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
          "Interpreted the config as: %s"
          ([%show : Config.t] cfg)
     in
-    config |> Lwt.return
+    config
   in
   let retrieve_cfg cfg_url =
-    Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+    Arakoon_config_url.retrieve cfg_url >|= retrieve_cfg_from_string
   in
 
   let t () =

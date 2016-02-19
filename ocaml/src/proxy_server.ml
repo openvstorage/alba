@@ -59,30 +59,24 @@ let albamgr_cfg_to_ini_string (cluster_id, nodes) =
   ini_hash_to_string h
 
 
-let maybe_write_albamgr_cfg albamgr_cfg = function
+let write_albamgr_cfg albamgr_cfg =
+  let value = albamgr_cfg_to_ini_string albamgr_cfg in
+  function
   | Url.File destination ->
-     let s = albamgr_cfg_to_ini_string albamgr_cfg in
      let tmp = destination ^ ".tmp" in
-     Lwt.catch
-       (fun () ->
-        Lwt_extra2.unlink ~fsync_parent_dir:false  ~may_not_exist:true tmp >>= fun () ->
-        Lwt_extra2.with_fd
-          tmp
-          ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
-          ~perm:0o664
-          (fun fd ->
-           Lwt_extra2.write_all
-             fd
-             s 0 (String.length s) >>= fun () ->
-           Lwt_unix.fsync fd) >>= fun () ->
-        Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
-       )
-       (fun exn ->
-        Lwt_log.info_f ~exn
-                       "couldn't write config to destination:%s" destination
-       )
-  | (Url.Etcd etcd) as destination ->
-     Lwt_log.info_f "refresh NOT pushing to %s" (Url.show destination)
+     Lwt_extra2.unlink ~fsync_parent_dir:false  ~may_not_exist:true tmp >>= fun () ->
+     Lwt_extra2.with_fd
+       tmp
+       ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
+       ~perm:0o664
+       (fun fd ->
+        Lwt_extra2.write_all
+          fd
+          value 0 (String.length value) >>= fun () ->
+        Lwt_unix.fsync fd) >>= fun () ->
+     Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
+  | Url.Etcd (peers, path) ->
+     Arakoon_etcd.store_value peers path value
 
 let read_objects_slices
       (alba_client : Alba_client.alba_client)
@@ -541,7 +535,13 @@ let refresh_albamgr_cfg
       inner ()
     | Res ccfg ->
       albamgr_client_cfg := ccfg;
-      maybe_write_albamgr_cfg ccfg destination >>= fun () ->
+      Lwt.catch
+        (fun () -> write_albamgr_cfg ccfg destination)
+        (fun exn ->
+         Lwt_log.info_f
+           ~exn
+           "couldn't write config to destination:%s" (Prelude.Url.show destination))
+      >>= fun () ->
       Lwt_extra2.sleep_approx 60. >>= fun () ->
       if loop
       then inner ()

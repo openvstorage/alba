@@ -712,5 +712,3 @@ module Url = struct
        Printf.sprintf "etcd://%s%s" peers_s path
   let make = Arakoon_config_url.make
   end
-
-module Etcd = Arakoon_etcd

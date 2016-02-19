@@ -55,10 +55,10 @@ let retrieve_cfg_from_string txt =
         "Interpreted the config as: %s"
         ([%show : Config.t] cfg)
   in
-  config |> Lwt.return
+  config
 
 let retrieve_cfg cfg_url =
-  Prelude.Etcd.retrieve_cfg retrieve_cfg_from_string cfg_url
+  Arakoon_config_url.retrieve cfg_url >|= retrieve_cfg_from_string
 
 
 let proxy_start (cfg_url:Url.t) log_sinks =
@@ -73,7 +73,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          | None,Some u -> u
          | Some f,None   ->
             Lwt_log.ign_warning_f "albamgr_cfg_file is deprecated, please use albamgr_cfg_url";
-            (Url.File f)
+            (Url.make f)
          | Some _,Some u ->
             failwith "both albamgr_file and albamgr_cfg_url were configured; just use albamgr_cfg_url"
          | None,None     ->
