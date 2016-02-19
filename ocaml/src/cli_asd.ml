@@ -73,7 +73,7 @@ let asd_start cfg_url slow log_sinks =
                 Lwt_log.add_rule "*" (to_level log_level);
                 Lwt_log.info_f "Changed log level to %s" log_level
             in
-            Lwt.ignore_result (Lwt_extra2.ignore_errors handle)) in
+            Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
       Asd_server.run_server ips port home ~asd_id ~node_id ~slow
                             ~fsync ~limit ~multicast ~buffer_size

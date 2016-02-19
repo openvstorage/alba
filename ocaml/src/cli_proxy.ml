@@ -137,7 +137,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
                  Lwt_log.add_rule "*" (to_level log_level);
                  Lwt_log.info_f "Reloaded albamgr config file + changed log level to %s" log_level
             in
-            Lwt.ignore_result (Lwt_extra2.ignore_errors handle)) in
+            Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
       Proxy_server.run_server
         ips
