@@ -72,6 +72,7 @@ RUN eval `${opam_env}` && \
         depext \
         kinetic-client \
         tiny_json \
+        ppx_deriving.3.1 \
         ppx_deriving_yojson \
         core.113.00.00 \
         redis \
@@ -91,11 +92,9 @@ RUN cd /usr/src/gtest \
         && mv libg* /usr/lib/
 
 
-RUN eval `${opam_env}` && opam update
-
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout e392f1c61adc0a65da5508848968143c5ac672d3
+RUN cd arakoon && git pull && git checkout tags/1.9.1
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \
