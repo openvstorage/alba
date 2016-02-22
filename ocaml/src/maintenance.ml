@@ -850,11 +850,22 @@ class client ?(retry_timeout = 60.)
       then
         begin
           alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
-          _timed_repair_object_generic_and_update_manifest
-            ~namespace_id
-            ~manifest
-            ~problem_fragments
-            ~problem_osds
+          Lwt.catch
+            (fun () ->
+             _timed_repair_object_generic_and_update_manifest
+               ~namespace_id
+               ~manifest
+               ~problem_fragments
+               ~problem_osds)
+            (fun exn ->
+             let open Nsm_model.Manifest in
+             Lwt_log.info_f
+               ~exn
+               "Exn while repairing object (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+               namespace_id manifest.name manifest.object_id >>= fun () ->
+             Lwt_extra2.ignore_errors
+               ~logging:true
+               (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest))
         end
       else
         _timed_rewrite_object alba_client ~namespace_id ~manifest
