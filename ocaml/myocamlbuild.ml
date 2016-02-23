@@ -144,7 +144,10 @@ let _ = dispatch &
                      A"-ccopt"; A"-Werror";
                      A"-ccopt"; A"-ggdb3";
                      A"-ccopt"; A"-O2";
-                     A"-ccopt"; A ("-I "^ "/home/romain/workspace/ROOT/OPAM_ROOT/4.02.3+o_direct/lib/lwt/");
+                     A"-ccopt";
+                     let path =
+                       run_cmd "ocamlfind query lwt" () in
+                     A ("-I " ^ path);
                   ]);
              flag ["ocaml"; "compile"; "ppx_lwt"] &
                (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
