@@ -815,6 +815,7 @@ module Protocol = struct
     | UpdateProgress : (string * Progress.Update.t, unit) update
     | UpdateMaintenanceConfig : (Maintenance_config.Update.t, Maintenance_config.t) update
     | AddOsd2 : (OsdInfo.t, unit) update
+    | PurgeOsd : (OsdInfo.long_id, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -1125,6 +1126,7 @@ module Protocol = struct
     | UpdateProgress -> Llio.pair_from Llio.string_from Progress.Update.from_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.from_buffer
     | AddOsd2 -> OsdInfo.from_buffer
+    | PurgeOsd -> Llio.string_from
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -1183,6 +1185,7 @@ module Protocol = struct
     | UpdateProgress -> Llio.pair_to Llio.string_to Progress.Update.to_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.to_buffer
     | AddOsd2 -> OsdInfo.to_buffer ~version:2
+    | PurgeOsd -> Llio.string_to
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -1213,6 +1216,7 @@ module Protocol = struct
     | UpdateProgress     -> Llio.unit_from
     | UpdateMaintenanceConfig -> Maintenance_config.from_buffer
     | AddOsd2                 -> Llio.unit_from
+    | PurgeOsd                -> Llio.unit_from
 
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
@@ -1242,6 +1246,7 @@ module Protocol = struct
     | UpdateProgress     -> Llio.unit_to
     | UpdateMaintenanceConfig -> Maintenance_config.to_buffer
     | AddOsd2                 -> Llio.unit_to
+    | PurgeOsd                -> Llio.unit_to
 
 
   type request =
@@ -1318,6 +1323,8 @@ module Protocol = struct
 
                       Wrap_u (MarkMsgsDelivered Msg_log.Nsm_host), 71l, "MarkMsgsDelivered Msg_log.Nsm_host";
                       Wrap_u (MarkMsgsDelivered Msg_log.Osd), 72l, "MarkMsgsDelivered Msg_log.Osd";
+
+                      Wrap_u PurgeOsd, 73l, "PurgeOsd";
                     ]
 
 
