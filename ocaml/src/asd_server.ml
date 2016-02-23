@@ -200,6 +200,7 @@ module DirectoryInfo = struct
                     Lwt_unix.rmdir full_dir
       end
 
+
   let write_blob
         ?(post_write=fun _fd _parent_dir -> Lwt.return_unit)
         t fnr blob ~sync_parent_dirs =
@@ -217,24 +218,39 @@ module DirectoryInfo = struct
             (* TODO push to blob module? *)
             (match blob with
              | Lwt_bytes s ->
+                let len = Lwt_bytes.length s in
                 Lwt_extra2.write_all_lwt_bytes
                   fd
-                  s 0 (Lwt_bytes.length s)
+                  s 0 len
+                >>= fun () ->
+                Lwt.return len
+                  
              | Bigslice s ->
                 let open Bigstring_slice in
+                let len = s.length in
                 Lwt_extra2.write_all_lwt_bytes
                   fd
-                  s.bs s.offset s.length
+                  s.bs s.offset s.length >>= fun () ->
+                Lwt.return len
              | Bytes s ->
+                let len = Bytes.length s in
                 Lwt_extra2.write_all
                   fd
-                  s 0 (Bytes.length s)
+                  s 0 len
+                >>= fun () ->
+                Lwt.return len
              | Slice s ->
                 let open Slice in
+                let len = s.length in
                 Lwt_extra2.write_all
                   fd
-                  s.buf s.offset s.length
-            ) >>= fun () ->
+                  s.buf s.offset len
+                >>= fun () ->
+                Lwt.return len
+            )
+            >>= fun length ->
+            Posix.lwt_posix_fadvise fd 0 length Posix.POSIX_FADV_DONTNEED
+            >>= fun () ->
             let parent_dir = t.files_path ^ "/" ^ dir in
             post_write fd parent_dir))
     >>= fun (t_write, ()) ->
@@ -526,10 +542,16 @@ let execute_query : type req res.
                DirectoryInfo.with_blob_fd
                  dir_info fnr
                  (fun blob_fd ->
-                  Net_fd.sendfile_all
-                    ~fd_in:blob_fd
-                    ~fd_out:nfd
-                    size)
+                   Posix.lwt_posix_fadvise blob_fd 0 size Posix.POSIX_FADV_SEQUENTIAL >>= fun () ->
+                   
+                   Net_fd.sendfile_all
+                     ~fd_in:blob_fd
+                     ~fd_out:nfd
+                     size
+                   >>= fun () ->
+                   
+                  Posix.lwt_posix_fadvise blob_fd 0 size Posix.POSIX_FADV_DONTNEED
+                 )
               )
               (List.rev !write_laters)))
         end

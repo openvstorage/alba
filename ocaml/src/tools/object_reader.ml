@@ -43,9 +43,16 @@ let with_file_reader input_file f =
     ~flags:Lwt_unix.([O_RDONLY;])
     ~perm:0o600
     (fun fd ->
-     Lwt_unix.fstat fd >>= fun stat ->
-     let object_reader = new file_reader fd stat.Lwt_unix.st_size in
-     f ~object_reader)
+      Lwt_unix.fstat fd >>= fun stat ->
+      let size = stat.Lwt_unix.st_size in
+      Posix.lwt_posix_fadvise fd 0 size Posix.POSIX_FADV_SEQUENTIAL
+      >>= fun () ->
+     let object_reader = new file_reader fd size in
+     f ~object_reader
+     >>= fun r ->
+     Posix.lwt_posix_fadvise fd 0 size Posix.POSIX_FADV_DONTNEED >>= fun () ->
+     Lwt.return r
+    )
 
 class string_reader object_data = (object
   val obj_len = String.length object_data

@@ -134,6 +134,7 @@ let _ = dispatch &
                  ["src/tools/alba_crc32c_stubs.o";
                   "src/tools/alba_gcrypt_stubs.o";
                   "src/tools/alba_wrappers_stubs.o";
+                  "src/other/posix_stubs.o"
                  ];
 
              flag ["c";"compile"]
@@ -143,6 +144,7 @@ let _ = dispatch &
                      A"-ccopt"; A"-Werror";
                      A"-ccopt"; A"-ggdb3";
                      A"-ccopt"; A"-O2";
+                     A"-ccopt"; A ("-I "^ "/home/romain/workspace/ROOT/OPAM_ROOT/4.02.3+o_direct/lib/lwt/");
                   ]);
              flag ["ocaml"; "compile"; "ppx_lwt"] &
                (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
