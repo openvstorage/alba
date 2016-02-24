@@ -81,10 +81,10 @@ module DirectoryInfo = struct
     | Creating of unit Lwt.t
 
   type t = {
-    files_path : string;
-    directory_cache : (string, directory_status) Hashtbl.t;
-    write_blobs : bool;
-  }
+      files_path : string;
+      directory_cache : (string, directory_status) Hashtbl.t;
+      write_blobs : bool;
+    }
 
   let make ?(write_blobs = true) files_path =
     if files_path.[0] <> '/'
@@ -202,7 +202,7 @@ module DirectoryInfo = struct
 
 
   let write_blob
-        ?(post_write=fun _fd _parent_dir -> Lwt.return_unit)
+        ~(post_write:post_write)
         t fnr blob ~sync_parent_dirs =
     Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->
     with_timing_lwt
@@ -240,10 +240,14 @@ module DirectoryInfo = struct
                    s.buf s.offset len
              )
              >>= fun () ->
-             Posix.lwt_posix_fadvise fd 0 len Posix.POSIX_FADV_DONTNEED
-             >>= fun () ->
              let parent_dir = t.files_path ^ "/" ^ dir in
-             post_write fd parent_dir))
+             post_write fd len parent_dir
+             >>= fun () ->
+             let ufd = Lwt_unix.unix_file_descr fd in
+             let () = Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED in
+             Lwt.return_unit
+           )
+      )
     >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
@@ -533,15 +537,15 @@ let execute_query : type req res.
                DirectoryInfo.with_blob_fd
                  dir_info fnr
                  (fun blob_fd ->
-                   Posix.lwt_posix_fadvise blob_fd 0 size Posix.POSIX_FADV_SEQUENTIAL >>= fun () ->
-                   
+                   let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
+                   let () = Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL in
                    Net_fd.sendfile_all
                      ~fd_in:blob_fd
                      ~fd_out:nfd
                      size
                    >>= fun () ->
-                   
-                  Posix.lwt_posix_fadvise blob_fd 0 size Posix.POSIX_FADV_DONTNEED
+                   let () = Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_DONTNEED in
+                   Lwt.return_unit
                  )
               )
               (List.rev !write_laters)))
@@ -1220,7 +1224,9 @@ let run_server
         * https://www.facebook.com/groups/rocksdb.dev/permalink/846034015495114/
         *)
        if fsync
-       then Rocks.RocksDb.write kv wo_sync wb)
+       then
+         Rocks.RocksDb.write kv wo_sync wb
+      )
       (if write_blobs
        then
          (fun fnr blob post_write ->

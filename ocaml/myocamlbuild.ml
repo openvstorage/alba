@@ -144,10 +144,6 @@ let _ = dispatch &
                      A"-ccopt"; A"-Werror";
                      A"-ccopt"; A"-ggdb3";
                      A"-ccopt"; A"-O2";
-                     A"-ccopt";
-                     let path =
-                       run_cmd "ocamlfind query lwt" () in
-                     A ("-I " ^ path);
                   ]);
              flag ["ocaml"; "compile"; "ppx_lwt"] &
                (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)

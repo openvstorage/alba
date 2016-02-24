@@ -17,10 +17,14 @@ limitations under the License.
 open Lwt.Infix
 open Asd_server
 open Stat
+let post_write_nothing _ _ _ = Lwt.return_unit
+                                        
 let batch_entry_syncfs dir_info fnr data size =
   let t () =
     let blob = Osd.Blob.Bytes data in
-    DirectoryInfo.write_blob dir_info fnr blob ~sync_parent_dirs:true >>= fun () ->
+    DirectoryInfo.write_blob dir_info fnr blob ~sync_parent_dirs:true
+                             ~post_write:post_write_nothing
+    >>= fun () ->
     Lwt.return ()
   in
   t
