@@ -22,7 +22,8 @@ let post_write_nothing _ _ _ = Lwt.return_unit
 let batch_entry_syncfs dir_info fnr data size =
   let t () =
     let blob = Osd.Blob.Bytes data in
-    DirectoryInfo.write_blob dir_info fnr blob ~sync_parent_dirs:true
+    DirectoryInfo.write_blob dir_info fnr blob
+                             ~sync_parent_dirs:true
                              ~post_write:post_write_nothing
     >>= fun () ->
     Lwt.return ()
@@ -49,7 +50,11 @@ let bench_x root entry post_batch iterations n_threads size =
     iterations n_threads size
   >>= fun () ->
   let data = Bytes.init size (fun i -> Char.chr (i mod 0xff)) in
-  let dir_info = DirectoryInfo.make root in
+  let dir_info = DirectoryInfo.make
+                   root
+                   ~use_fadvise:false
+                   ~use_fallocate:false
+  in
   Lwt_unix.openfile root [Unix.O_RDONLY] 0o644 >>= fun dir_fd ->
   let one_batch batch_nr =
     let rec loop ts i =

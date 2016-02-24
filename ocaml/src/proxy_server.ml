@@ -561,6 +561,7 @@ let run_server hosts port
                ~max_client_connections
                ~tls_config
                ~tcp_keepalive
+               ~use_fadvise
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -610,6 +611,7 @@ let run_server hosts port
          ~default_osd_priority:Osd.High
          ~tls_config
          ~tcp_keepalive
+         ~use_fadvise
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());

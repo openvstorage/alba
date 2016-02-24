@@ -84,9 +84,15 @@ module DirectoryInfo = struct
       files_path : string;
       directory_cache : (string, directory_status) Hashtbl.t;
       write_blobs : bool;
+      use_fadvise: bool;
+      use_fallocate: bool
     }
 
-  let make ?(write_blobs = true) files_path =
+  let make ?(write_blobs = true)
+           ~use_fadvise
+           ~use_fallocate
+           files_path
+    =
     if files_path.[0] <> '/'
     then
       failwith (Printf.sprintf "'%s' should be an absolute path" files_path);
@@ -95,6 +101,8 @@ module DirectoryInfo = struct
     { files_path;
       directory_cache;
       write_blobs;
+      use_fadvise;
+      use_fallocate;
     }
 
   let get_file_name fnr =
@@ -202,9 +210,12 @@ module DirectoryInfo = struct
 
 
   let write_blob
-        ~(post_write:post_write)
-        t fnr blob ~sync_parent_dirs =
-    Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->
+        t fnr blob
+        ~(post_write:post_write) 
+        ~sync_parent_dirs =
+    Lwt_log.debug_f "writing blob %Li (use_fadvise:%b use_fallocate:%b)"
+                    fnr t.use_fadvise t.use_fallocate
+    >>= fun () ->
     with_timing_lwt
       (fun () ->
          let dir, _, file_path = get_file_dir_name_path t fnr in
@@ -216,7 +227,12 @@ module DirectoryInfo = struct
            (fun fd ->
              let open Blob in
              let len = Blob.length blob in
-             Posix.lwt_fallocate fd 0 0 len >>= fun () ->
+             (if t.use_fallocate
+              then
+                Posix.lwt_fallocate fd 0 0 len
+              else
+                Lwt.return_unit
+             ) >>= fun () ->
 
              (* TODO push to blob module? *)
              (match blob with
@@ -244,7 +260,7 @@ module DirectoryInfo = struct
              post_write fd len parent_dir
              >>= fun () ->
              let ufd = Lwt_unix.unix_file_descr fd in
-             let () = Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED in
+             let () = if t.use_fadvise then Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED in
              Lwt.return_unit
            )
       )
@@ -1150,6 +1166,8 @@ let run_server
       ~multicast
       ~tls
       ~tcp_keepalive
+      ~use_fadvise
+      ~use_fallocate
   =
 
   let fsync =
@@ -1201,7 +1219,7 @@ let run_server
       | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
       | exn -> Lwt.fail exn) >>= fun () ->
 
-  let dir_info = DirectoryInfo.make ~write_blobs files_path in
+  let dir_info = DirectoryInfo.make ~write_blobs ~use_fallocate ~use_fadvise files_path in
 
   let parse_filename_to_fnr name =
     try
@@ -1235,7 +1253,8 @@ let run_server
             dir_info
             fnr
             blob
-            ~sync_parent_dirs:fsync)
+            ~sync_parent_dirs:fsync
+         )
        else
          (fun fnr blob post_write ->
           Lwt.return_unit)

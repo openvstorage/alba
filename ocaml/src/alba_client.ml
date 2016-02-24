@@ -405,6 +405,7 @@ let with_client albamgr_client_cfg
                 ~tls_config
                 ?(release_resources = false)
                 ?(tcp_keepalive = Tcp_keepalive2.default)
+                ?(use_fadvise = true)
                 f
   =
   begin
@@ -441,6 +442,7 @@ let with_client albamgr_client_cfg
                         ~default_osd_priority
                         ~tls_config
                         ~tcp_keepalive
+                        ~use_fadvise
   in
   let client = new alba_client base_client in
   Lwt.finalize
