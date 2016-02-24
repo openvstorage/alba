@@ -73,3 +73,27 @@ void _bs_posix_fadvise(value fd, value offset, value len, value advice) {
         CAMLreturn0;
 }
 
+void _bs_posix_fallocate(value fd, value mode, value offset,
+                         value len) {
+  int ret = 0;
+
+  int c_fd = -1;
+  int c_mode = 0;
+  off_t c_offset = 0;
+  off_t c_len = 0;
+
+  CAMLparam4(fd, mode, offset, len);
+
+  c_fd = Int_val(fd);
+  c_mode = Int_val(mode);
+  c_offset = Long_val(offset);
+  c_len = Long_val(len);
+
+  ret = fallocate(c_fd, c_mode, c_offset, c_len);
+
+  if(ret < 0) {
+    uerror("fallocate", Nothing);
+  }
+
+  CAMLreturn0;
+}

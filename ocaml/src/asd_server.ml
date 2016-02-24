@@ -214,45 +214,36 @@ module DirectoryInfo = struct
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
            ~perm:0o664
            (fun fd ->
-            let open Blob in
-            (* TODO push to blob module? *)
-            (match blob with
-             | Lwt_bytes s ->
-                let len = Lwt_bytes.length s in
-                Lwt_extra2.write_all_lwt_bytes
-                  fd
-                  s 0 len
-                >>= fun () ->
-                Lwt.return len
-                  
-             | Bigslice s ->
-                let open Bigstring_slice in
-                let len = s.length in
-                Lwt_extra2.write_all_lwt_bytes
-                  fd
-                  s.bs s.offset s.length >>= fun () ->
-                Lwt.return len
-             | Bytes s ->
-                let len = Bytes.length s in
-                Lwt_extra2.write_all
-                  fd
-                  s 0 len
-                >>= fun () ->
-                Lwt.return len
-             | Slice s ->
-                let open Slice in
-                let len = s.length in
-                Lwt_extra2.write_all
-                  fd
-                  s.buf s.offset len
-                >>= fun () ->
-                Lwt.return len
-            )
-            >>= fun length ->
-            Posix.lwt_posix_fadvise fd 0 length Posix.POSIX_FADV_DONTNEED
-            >>= fun () ->
-            let parent_dir = t.files_path ^ "/" ^ dir in
-            post_write fd parent_dir))
+             let open Blob in
+             let len = Blob.length blob in
+             Posix.lwt_fallocate fd 0 0 len >>= fun () ->
+
+             (* TODO push to blob module? *)
+             (match blob with
+              | Lwt_bytes s ->
+                 Lwt_extra2.write_all_lwt_bytes
+                   fd
+                   s 0 len
+              | Bigslice s ->
+                 let open Bigstring_slice in
+                 Lwt_extra2.write_all_lwt_bytes
+                   fd
+                   s.bs s.offset s.length
+              | Bytes s ->
+                 Lwt_extra2.write_all
+                   fd
+                   s 0 len
+              | Slice s ->
+                 let open Slice in
+                 Lwt_extra2.write_all
+                   fd
+                   s.buf s.offset len
+             )
+             >>= fun () ->
+             Posix.lwt_posix_fadvise fd 0 len Posix.POSIX_FADV_DONTNEED
+             >>= fun () ->
+             let parent_dir = t.files_path ^ "/" ^ dir in
+             post_write fd parent_dir))
     >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
