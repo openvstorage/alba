@@ -48,15 +48,19 @@ module Statistics = struct
   type fragment_download = {
     osd_id : int32;
     retrieve : duration;
-    source: Cache.value_source;
     verify : duration;
     decrypt : duration;
     decompress : duration;
     total : duration;
   } [@@deriving show]
 
+  type fragment_fetch =
+    | FromCache of duration
+    | FromOsd of fragment_download
+  [@@deriving show]
+
   type chunk_download = {
-    fragments : fragment_download list;
+    fragments : fragment_fetch list;
     gather_decode : duration;
     total : duration;
   } [@@deriving show]
@@ -75,10 +79,10 @@ module Statistics = struct
     List.fold_left
       (fun (h,m) (chunk_download:chunk_download) ->
        List.fold_left
-         (fun (h,m) (fragment_download:fragment_download)->
-          match fragment_download.source with
-          | Cache.Fast -> (h+1,m)
-          | _          -> (h,m+1)
+         (fun (h,m) (fragment_download:fragment_fetch)->
+          match fragment_download with
+          | FromCache _ -> (h+1,m)
+          | FromOsd _   -> (h,m+1)
          ) (h,m) chunk_download.fragments
       ) (0,0) object_download.chunks
 end

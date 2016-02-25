@@ -120,12 +120,10 @@ let read_objects_slices
   let fc_hits   = ref 0 in
   let fc_misses = ref 0 in
   let fragment_statistics_cb stat =
-    let open Cache  in
     let open Alba_statistics in
-    match stat.Statistics.source with
-    | Fast  -> incr fc_hits
-    | Slow
-    | Stale -> incr fc_misses
+    match stat with
+    | Statistics.FromCache _ -> incr fc_hits
+    | Statistics.FromOsd _   -> incr fc_misses
   in
   logger n_slices total_length n_objects >>= fun () ->
   strategy

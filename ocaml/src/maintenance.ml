@@ -326,16 +326,16 @@ class client ?(retry_timeout = 60.)
 
          let open Alba_client_errors.Error in
 
+         (* TODO get unpacked fragment from cache if available? *)
          Alba_client_download.download_packed_fragment
            (alba_client # osd_access)
            ~location:(List.nth_exn chunk_location fragment_id |> fst)
            ~namespace_id
            ~object_id ~object_name
-           ~chunk_id ~fragment_id
-           (alba_client # get_fragment_cache) >>= function
+           ~chunk_id ~fragment_id >>= function
          | Prelude.Error.Error x ->
             Lwt.fail (Exn NotEnoughFragments)
-         | Prelude.Error.Ok (_, _, packed_fragment) ->
+         | Prelude.Error.Ok (_, packed_fragment) ->
             Lwt.finalize
               (fun () ->
                Fragment_helper.verify packed_fragment fragment_checksum
