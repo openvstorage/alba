@@ -1457,9 +1457,9 @@ let test_disk_churn () =
           purge_osds
             alba_client
             (List.map fst asds) >>= fun () ->
-          wait_for_work alba_client >>= fun () ->
-          (* TODO wait for decommission, then check buckets *)
-          Lwt.return ())
+          (* deleting the namespace so that the osds can be fully decommissioned *)
+          safe_delete_namespace alba_client namespace >>= fun () ->
+          wait_for_work alba_client)
        ))
 
 let test_replication () =
