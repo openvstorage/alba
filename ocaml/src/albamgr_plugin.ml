@@ -1965,6 +1965,23 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       fun () ->
       let _, cfg = get_maintenance_config () in
       cfg
+    | ListPurgingOsds ->
+      fun { RangeQueryArgs.first; finc; last; reverse; max; } ->
+      let module KV =
+        WrapReadUserDb(struct
+                          let db = db
+                          let prefix = ""
+                        end)
+      in
+      let module EKV = Key_value_store.Read_store_extensions(KV) in
+      EKV.map_range
+        db
+        ~first:(Keys.Osd.purging ~osd_id:first) ~finc
+        ~last:(match last with
+               | None -> Keys.Osd.purging_next_prefix
+               | Some (osd_id, linc) -> Some (Keys.Osd.purging ~osd_id, linc))
+        ~max ~reverse
+        (fun cur key -> Keys.Osd.purging_extract_osd_id key)
   in
 
 

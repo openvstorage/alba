@@ -429,6 +429,22 @@ object(self)
            ~last:None
            ~max:(-1) ~reverse:false)
 
+    method list_purging_osds ~first ~finc ~last ~reverse ~max =
+      client # query
+             ListPurgingOsds
+             RangeQueryArgs.({
+                                first; finc; last;
+                                max; reverse;
+                              })
+
+    method list_all_purging_osds =
+      list_all_x
+        ~first:0l
+        Std.id
+        (self # list_purging_osds
+              ~last:None
+              ~max:(-1) ~reverse:false)
+
     method try_get_lease name counter =
       client # update
         TryGetLease

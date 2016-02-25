@@ -786,6 +786,7 @@ module Protocol = struct
     | GetProgress : (string, Progress.t option) query
     | GetProgressForPrefix : (string, (int * Progress.t) counted_list) query
     | GetMaintenanceConfig : (unit, Maintenance_config.t) query
+    | ListPurgingOsds : (Osd.id RangeQueryArgs.t, Osd.id counted_list_more) query
 
   type ('i, 'o) update =
     | AddNsmHost : (Nsm_host.id * Nsm_host.t, unit) update
@@ -850,6 +851,7 @@ module Protocol = struct
     | GetProgress -> Llio.string_from
     | GetProgressForPrefix -> Llio.string_from
     | GetMaintenanceConfig -> Llio.unit_from
+    | ListPurgingOsds -> RangeQueryArgs.from_buffer Llio.int32_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -883,6 +885,7 @@ module Protocol = struct
     | GetProgress -> Llio.string_to
     | GetProgressForPrefix -> Llio.string_to
     | GetMaintenanceConfig -> Llio.unit_to
+    | ListPurgingOsds -> RangeQueryArgs.to_buffer Llio.int32_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -972,6 +975,7 @@ module Protocol = struct
             Llio.int_from
             Progress.from_buffer)
     | GetMaintenanceConfig -> Maintenance_config.from_buffer
+    | ListPurgingOsds -> counted_list_more_from Llio.int32_from
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -1062,6 +1066,7 @@ module Protocol = struct
            Llio.int_to
            Progress.to_buffer)
     | GetMaintenanceConfig -> Maintenance_config.to_buffer
+    | ListPurgingOsds -> counted_list_more_to Llio.int32_to
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -1325,6 +1330,7 @@ module Protocol = struct
                       Wrap_u (MarkMsgsDelivered Msg_log.Osd), 72l, "MarkMsgsDelivered Msg_log.Osd";
 
                       Wrap_u PurgeOsd, 73l, "PurgeOsd";
+                      Wrap_q ListPurgingOsds, 74l, "ListPurgingOsds";
                     ]
 
 
