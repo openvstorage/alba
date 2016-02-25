@@ -972,58 +972,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        in
        Lwt.return ((), upds)
     in
-    let purge_osd ~long_id ~osd_id =
-      [ Update.Delete (Keys.Osd.info ~long_id);
-        Update.Delete (Keys.Osd.osd_id_to_long_id ~osd_id);
-        Update.DeletePrefix (Keys.Msg_log.prefix Msg_log.Osd osd_id); ]
-    in
-    function
-    | AddNsmHost -> fun (id, nsm_host) ->
-      let nsm_host_info_key = Keys.Nsm_host.info id in
-      begin match db # get nsm_host_info_key with
-        | Some _ ->
-          Error.failwith Error.Nsm_host_already_exists
-        | None ->
-          return_upds
-            [ Update.TestAndSet
-                (nsm_host_info_key,
-                 None,
-                 Some (serialize Nsm_host.to_buffer nsm_host)) ]
-      end
-    | UpdateNsmHost -> fun (id, nsm_host) ->
-      let nsm_host_info_key = Keys.Nsm_host.info id in
-      begin match db # get nsm_host_info_key with
-        | None ->
-          Error.failwith Error.Nsm_host_unknown
-        | Some nsm_host_s ->
-          let open Nsm_host in
-          let nsm_host_old = deserialize from_buffer nsm_host_s in
-          if nsm_host_old.lost
-          then assert nsm_host.lost;
-          return_upds
-            [ Update.Set (nsm_host_info_key,
-                                 serialize Nsm_host.to_buffer nsm_host) ]
-      end
-    | AddOsd  -> fun osd -> add_osd osd
-    | AddOsd2 -> fun osd -> add_osd osd
-
-    | UpdateOsd ->
-       fun (long_id, osd_changes) ->
-       let upds = make_update_osd_updates long_id osd_changes [] in
-       return_upds upds
-    | UpdateOsds ->
-       fun updates ->
-       begin
-         let upds =
-           List.fold_left
-             (fun acc (long_id,osd_changes) ->
-             make_update_osd_updates long_id osd_changes acc
-             ) [] updates
-         in
-         return_upds upds
-       end
-    | DecommissionOsd -> fun long_id ->
-
+    let decommission_osd ~long_id =
       let info_key = Keys.Osd.info ~long_id in
       let info_serialized, (claim_info, osd_info_current) =
         match db # get info_key with
@@ -1114,8 +1063,60 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           upd_info;
         ]
       in
+      upds
+    in
+    let purge_osd ~long_id ~osd_id =
+      [ Update.Delete (Keys.Osd.info ~long_id);
+        Update.Delete (Keys.Osd.osd_id_to_long_id ~osd_id);
+        Update.DeletePrefix (Keys.Msg_log.prefix Msg_log.Osd osd_id); ]
+    in
+    function
+    | AddNsmHost -> fun (id, nsm_host) ->
+      let nsm_host_info_key = Keys.Nsm_host.info id in
+      begin match db # get nsm_host_info_key with
+        | Some _ ->
+          Error.failwith Error.Nsm_host_already_exists
+        | None ->
+          return_upds
+            [ Update.TestAndSet
+                (nsm_host_info_key,
+                 None,
+                 Some (serialize Nsm_host.to_buffer nsm_host)) ]
+      end
+    | UpdateNsmHost -> fun (id, nsm_host) ->
+      let nsm_host_info_key = Keys.Nsm_host.info id in
+      begin match db # get nsm_host_info_key with
+        | None ->
+          Error.failwith Error.Nsm_host_unknown
+        | Some nsm_host_s ->
+          let open Nsm_host in
+          let nsm_host_old = deserialize from_buffer nsm_host_s in
+          if nsm_host_old.lost
+          then assert nsm_host.lost;
+          return_upds
+            [ Update.Set (nsm_host_info_key,
+                                 serialize Nsm_host.to_buffer nsm_host) ]
+      end
+    | AddOsd  -> fun osd -> add_osd osd
+    | AddOsd2 -> fun osd -> add_osd osd
 
-      Lwt.return ((), upds)
+    | UpdateOsd ->
+       fun (long_id, osd_changes) ->
+       let upds = make_update_osd_updates long_id osd_changes [] in
+       return_upds upds
+    | UpdateOsds ->
+       fun updates ->
+       begin
+         let upds =
+           List.fold_left
+             (fun acc (long_id,osd_changes) ->
+             make_update_osd_updates long_id osd_changes acc
+             ) [] updates
+         in
+         return_upds upds
+       end
+    | DecommissionOsd -> fun long_id ->
+      Lwt.return ((), decommission_osd ~long_id)
     | MarkOsdClaimed -> fun long_id ->
       let info_key, info_serialized,
           claim_info, osd_info =
@@ -1720,9 +1721,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    let set_purging = Update.Set (purging_key, "") in
                    if not osd_info.Nsm_model.OsdInfo.decommissioned
                    then
-                     (* TODO decommission here or later? *)
-                     [ assert_osd_info;
-                       set_purging; ]
+                     set_purging :: decommission_osd ~long_id
                    else
                      begin
                        let decommissioning_key = Keys.Osd.decommissioning ~osd_id in

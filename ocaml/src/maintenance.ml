@@ -188,16 +188,22 @@ class client ?(retry_timeout = 60.)
         retry_timeout
 
     val purging_osds = Hashtbl.create 3
-    method refresh_purging_osds () : unit Lwt.t =
-      Lwt_extra2.run_forever
-        "refresh_purging_osds"
-        (fun () ->
-         alba_client # mgr_access # list_all_purging_osds >>= fun (_, purging_osds') ->
-         List.iter
-           (fun osd_id -> Hashtbl.add purging_osds osd_id ())
-           purging_osds';
-         Lwt.return ())
-        retry_timeout
+    method refresh_purging_osds ?(once = false) () : unit Lwt.t =
+      let inner () =
+        alba_client # mgr_access # list_all_purging_osds >>= fun (_, purging_osds') ->
+        List.iter
+          (fun osd_id -> Hashtbl.add purging_osds osd_id ())
+          purging_osds';
+        Lwt.return ()
+      in
+
+      if once
+      then inner ()
+      else
+        Lwt_extra2.run_forever
+          "refresh_purging_osds"
+          inner
+          retry_timeout
 
     val maybe_dead_osds = Hashtbl.create 3
     method should_repair ~osd_id =
@@ -1208,39 +1214,42 @@ class client ?(retry_timeout = 60.)
         in
         inner ()
       | CleanupOsdNamespace (osd_id, namespace_id) ->
-        alba_client # with_osd
-          ~osd_id
-          (fun client ->
-             let namespace_prefix =
-               serialize
-                 Osd_keys.AlbaInstance.namespace_prefix_serializer
-                 namespace_id
-             in
-             let namespace_prefix' = Slice.wrap_string namespace_prefix in
-             let namespace_next_prefix =
-               match (Key_value_store.next_prefix namespace_prefix) with
-               | None -> None
-               | Some (p,b) -> Some (Slice.wrap_string p, b)
-             in
-             let rec inner (first, finc) =
-               client # range
-                 Osd.Low
-                 ~first ~finc
-                 ~last:namespace_next_prefix
-                 ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
-               client # apply_sequence
-                 Osd.Low
-                 []
-                 (List.map
-                    (fun k -> Osd.Update.delete k)
-                    keys) >>= fun _ ->
-               if not (filter work_id)
-               then Lwt.fail NotMyTask
-               else if has_more
-               then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
-               else Lwt.return ()
-             in
-             inner (namespace_prefix', true))
+         if Hashtbl.mem purging_osds osd_id
+         then Lwt.return ()
+         else
+           alba_client # with_osd
+             ~osd_id
+             (fun client ->
+              let namespace_prefix =
+                serialize
+                  Osd_keys.AlbaInstance.namespace_prefix_serializer
+                  namespace_id
+              in
+              let namespace_prefix' = Slice.wrap_string namespace_prefix in
+              let namespace_next_prefix =
+                match (Key_value_store.next_prefix namespace_prefix) with
+                | None -> None
+                | Some (p,b) -> Some (Slice.wrap_string p, b)
+              in
+              let rec inner (first, finc) =
+                client # range
+                       Osd.Low
+                       ~first ~finc
+                       ~last:namespace_next_prefix
+                       ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
+                client # apply_sequence
+                       Osd.Low
+                       []
+                       (List.map
+                          (fun k -> Osd.Update.delete k)
+                          keys) >>= fun _ ->
+                if not (filter work_id)
+                then Lwt.fail NotMyTask
+                else if has_more
+                then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
+                else Lwt.return ()
+              in
+              inner (namespace_prefix', true))
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->

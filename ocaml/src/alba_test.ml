@@ -144,7 +144,9 @@ let with_maintenance_client alba_client f =
 let wait_for_work alba_client =
   with_maintenance_client
     alba_client
-    (fun mc -> mc # do_work ~once:true ())
+    (fun mc ->
+     mc # refresh_purging_osds ~once:true () >>= fun () ->
+     mc # do_work ~once:true ())
 
 let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
   Lwt_list.iter_p
@@ -185,6 +187,10 @@ let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
     [ wait_no_more_decommissionings ();
       deliver_nsm_host_messages (); ]
 
+let purge_osds (alba_client : Alba_client.alba_client) long_ids =
+  Lwt_list.iter_p
+    (fun long_id -> alba_client # mgr_access # purge_osd ~long_id)
+    long_ids
 
 let test_upload_download () =
   test_with_alba_client
@@ -1441,18 +1447,20 @@ let test_disk_churn () =
          end
        in
 
-       with_asds
-         (fun x ->
-            Lwt.finalize
-              (fun () -> inner x)
-              (fun () ->
-                 (* deleting the namespace so that the osds can be fully decommissioned *)
-                 safe_delete_namespace alba_client namespace >>= fun () ->
-                 safe_decommission
-                   alba_client
-                   (List.map fst asds)))
-         []
-         asds))
+       Lwt.finalize
+         (fun () ->
+          with_asds
+            inner
+            []
+            asds)
+         (fun () ->
+          purge_osds
+            alba_client
+            (List.map fst asds) >>= fun () ->
+          wait_for_work alba_client >>= fun () ->
+          (* TODO wait for decommission, then check buckets *)
+          Lwt.return ())
+       ))
 
 let test_replication () =
   let test_name = "test_replication" in

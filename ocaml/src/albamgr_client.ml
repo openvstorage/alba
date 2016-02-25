@@ -429,6 +429,9 @@ object(self)
            ~last:None
            ~max:(-1) ~reverse:false)
 
+    method purge_osd ~long_id =
+      client # update PurgeOsd long_id
+
     method list_purging_osds ~first ~finc ~last ~reverse ~max =
       client # query
              ListPurgingOsds
