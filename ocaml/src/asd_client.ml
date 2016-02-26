@@ -20,6 +20,8 @@ open Slice
 open Lwt_bytes2
 open Asd_protocol
 open Protocol
+open Range_query_args
+
 
 class client (fd:Net_fd.t) id =
   let with_response deserializer f =
