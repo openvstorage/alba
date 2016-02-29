@@ -164,7 +164,29 @@ let alba_decommission_osd_cmd =
   ),
   Term.info
     "decommission-osd"
-    ~doc:"tell this alba instance we are no longer going to use the osd"
+    ~doc:"tell this alba instance to no longer use the osd"
+
+let alba_purge_osd alba_cfg_file tls_config long_id to_json verbose =
+  let t () =
+    with_alba_client
+      alba_cfg_file tls_config
+      (fun alba_client -> alba_client # mgr_access # purge_osd ~long_id)
+  in
+  lwt_cmd_line_unit to_json verbose t
+
+let alba_purge_osd_cmd =
+  Term.(pure alba_purge_osd
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(required
+               & opt (some string) None
+               & info ["long-id"] ~docv:"LONG_ID"
+          )
+        $ to_json $ verbose
+  ),
+  Term.info
+    "purge-osd"
+    ~doc:"tell this alba instance this osd is no longer available"
 
 let alba_list_ns_osds cfg_file tls_config namespace verbose =
   let t () =
@@ -872,6 +894,7 @@ let () =
       alba_get_nsm_version_cmd;
       alba_claim_osd_cmd;
       alba_decommission_osd_cmd;
+      alba_purge_osd_cmd;
 
       alba_create_namespace_cmd;
       alba_delete_namespace_cmd;

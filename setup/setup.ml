@@ -962,8 +962,10 @@ module Deployment = struct
       List.length claimed
     in
     let rec loop j c =
-      if j = n || c > 20
+      if j = n
       then ()
+      else if c > 20
+      then failwith "could not claim enough local osds after 20 attempts"
       else
         let n_claimed = do_round() in
         Unix.sleep 1;
