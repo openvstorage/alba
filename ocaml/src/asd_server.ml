@@ -81,12 +81,18 @@ module DirectoryInfo = struct
     | Creating of unit Lwt.t
 
   type t = {
-    files_path : string;
-    directory_cache : (string, directory_status) Hashtbl.t;
-    write_blobs : bool;
-  }
+      files_path : string;
+      directory_cache : (string, directory_status) Hashtbl.t;
+      write_blobs : bool;
+      use_fadvise: bool;
+      use_fallocate: bool
+    }
 
-  let make ?(write_blobs = true) files_path =
+  let make ?(write_blobs = true)
+           ~use_fadvise
+           ~use_fallocate
+           files_path
+    =
     if files_path.[0] <> '/'
     then
       failwith (Printf.sprintf "'%s' should be an absolute path" files_path);
@@ -95,6 +101,8 @@ module DirectoryInfo = struct
     { files_path;
       directory_cache;
       write_blobs;
+      use_fadvise;
+      use_fallocate;
     }
 
   let get_file_name fnr =
@@ -200,10 +208,14 @@ module DirectoryInfo = struct
                     Lwt_unix.rmdir full_dir
       end
 
+
   let write_blob
-        ?(post_write=fun _fd _parent_dir -> Lwt.return_unit)
-        t fnr blob ~sync_parent_dirs =
-    Lwt_log.debug_f "writing blob %Li" fnr >>= fun () ->
+        t fnr blob
+        ~(post_write:post_write) 
+        ~sync_parent_dirs =
+    Lwt_log.debug_f "writing blob %Li (use_fadvise:%b use_fallocate:%b)"
+                    fnr t.use_fadvise t.use_fallocate
+    >>= fun () ->
     with_timing_lwt
       (fun () ->
          let dir, _, file_path = get_file_dir_name_path t fnr in
@@ -213,30 +225,45 @@ module DirectoryInfo = struct
            ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
            ~perm:0o664
            (fun fd ->
-            let open Blob in
-            (* TODO push to blob module? *)
-            (match blob with
-             | Lwt_bytes s ->
-                Lwt_extra2.write_all_lwt_bytes
-                  fd
-                  s 0 (Lwt_bytes.length s)
-             | Bigslice s ->
-                let open Bigstring_slice in
-                Lwt_extra2.write_all_lwt_bytes
-                  fd
-                  s.bs s.offset s.length
-             | Bytes s ->
-                Lwt_extra2.write_all
-                  fd
-                  s 0 (Bytes.length s)
-             | Slice s ->
-                let open Slice in
-                Lwt_extra2.write_all
-                  fd
-                  s.buf s.offset s.length
-            ) >>= fun () ->
-            let parent_dir = t.files_path ^ "/" ^ dir in
-            post_write fd parent_dir))
+             let open Blob in
+             let len = Blob.length blob in
+             (if t.use_fallocate
+              then
+                Posix.lwt_fallocate fd 0 0 len
+              else
+                Lwt.return_unit
+             ) >>= fun () ->
+
+             (* TODO push to blob module? *)
+             (match blob with
+              | Lwt_bytes s ->
+                 Lwt_extra2.write_all_lwt_bytes
+                   fd
+                   s 0 len
+              | Bigslice s ->
+                 let open Bigstring_slice in
+                 Lwt_extra2.write_all_lwt_bytes
+                   fd
+                   s.bs s.offset s.length
+              | Bytes s ->
+                 Lwt_extra2.write_all
+                   fd
+                   s 0 len
+              | Slice s ->
+                 let open Slice in
+                 Lwt_extra2.write_all
+                   fd
+                   s.buf s.offset len
+             )
+             >>= fun () ->
+             let parent_dir = t.files_path ^ "/" ^ dir in
+             post_write fd len parent_dir
+             >>= fun () ->
+             let ufd = Lwt_unix.unix_file_descr fd in
+             let () = if t.use_fadvise then Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED in
+             Lwt.return_unit
+           )
+      )
     >>= fun (t_write, ()) ->
 
     (if t_write > 0.5
@@ -526,10 +553,16 @@ let execute_query : type req res.
                DirectoryInfo.with_blob_fd
                  dir_info fnr
                  (fun blob_fd ->
-                  Net_fd.sendfile_all
-                    ~fd_in:blob_fd
-                    ~fd_out:nfd
-                    size)
+                   let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
+                   let () = Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL in
+                   Net_fd.sendfile_all
+                     ~fd_in:blob_fd
+                     ~fd_out:nfd
+                     size
+                   >>= fun () ->
+                   let () = Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_DONTNEED in
+                   Lwt.return_unit
+                 )
               )
               (List.rev !write_laters)))
         end
@@ -1133,6 +1166,8 @@ let run_server
       ~multicast
       ~tls
       ~tcp_keepalive
+      ~use_fadvise
+      ~use_fallocate
   =
 
   let fsync =
@@ -1184,7 +1219,7 @@ let run_server
       | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
       | exn -> Lwt.fail exn) >>= fun () ->
 
-  let dir_info = DirectoryInfo.make ~write_blobs files_path in
+  let dir_info = DirectoryInfo.make ~write_blobs ~use_fallocate ~use_fadvise files_path in
 
   let parse_filename_to_fnr name =
     try
@@ -1207,7 +1242,9 @@ let run_server
         * https://www.facebook.com/groups/rocksdb.dev/permalink/846034015495114/
         *)
        if fsync
-       then Rocks.RocksDb.write kv wo_sync wb)
+       then
+         Rocks.RocksDb.write kv wo_sync wb
+      )
       (if write_blobs
        then
          (fun fnr blob post_write ->
@@ -1216,7 +1253,8 @@ let run_server
             dir_info
             fnr
             blob
-            ~sync_parent_dirs:fsync)
+            ~sync_parent_dirs:fsync
+         )
        else
          (fun fnr blob post_write ->
           Lwt.return_unit)

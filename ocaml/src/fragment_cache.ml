@@ -247,7 +247,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
   let db_path = root ^ "/db" in
 
   object(self :# cache)
-    val dirs = Asd_server.DirectoryInfo.make root
+    val dirs = Asd_server.DirectoryInfo.make
+                 root
+                 ~use_fadvise:true
+                 ~use_fallocate:true
     val mutable db =
       KV.create'
         ~db_path

@@ -17,4 +17,7 @@
         "cert"    : "/tmp/arakoon/my_client/my_client.pem",
         "key"     : "/tmp/arakoon/my_client/my_client.key",
     }
+    
+    // wrap object file usage with posix_fadvise calls
+    //, "use_fadvise" : true // optional, default true
 }

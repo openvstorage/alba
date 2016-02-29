@@ -34,14 +34,17 @@ let asd_start cfg_url slow log_sinks =
            node_id,     log_level, asd_id,
            fsync,       limit,     multicast,
            buffer_size, tls,       tcp_keepalive,
-           write_blobs
+           write_blobs,
+           use_fadvise, use_fallocate
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.home,
         cfg.node_id, cfg.log_level, cfg.asd_id,
         cfg.__sync_dont_use, cfg.limit, cfg.multicast,
         cfg.buffer_size, cfg.tls,   cfg.tcp_keepalive,
-        cfg.__warranty_void__write_blobs
+        cfg.__warranty_void__write_blobs,
+        cfg.use_fadvise,
+        cfg.use_fallocate
       in
 
       (if not fsync
@@ -81,6 +84,8 @@ let asd_start cfg_url slow log_sinks =
                             ~rocksdb_max_open_files:256
                             ~tcp_keepalive
                             ~write_blobs
+                            ~use_fadvise
+                            ~use_fallocate
   in
 
   lwt_server ~log_sinks ~subcomponent:"asd" t
