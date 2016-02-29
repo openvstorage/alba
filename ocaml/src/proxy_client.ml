@@ -18,25 +18,39 @@ open Prelude
 open Lwt
 open Proxy_protocol
 open Protocol
+open Range_query_args
 
 
-class proxy_client (ic, oc) =
+class proxy_client fd =
   let read_response deserializer =
-    Llio.input_string ic >>= fun res_s ->
-    let res_buf = Llio.make_buffer res_s 0 in
-    match Llio.int_from res_buf with
-    | 0 ->
-      Lwt.return (deserializer res_buf)
-    | err ->
-      let err_string = Llio.string_from res_buf in
-      Lwt_log.debug_f "Proxy client received error from server: %s" err_string
-      >>= fun () -> Error.failwith (Error.int2err err)
+    let module Llio = Llio2.NetFdReader in
+    Llio.int_from fd >>= fun size ->
+    Llio.with_buffer_from
+      fd size
+      (fun res_buf ->
+       match Llio2.ReadBuffer.int_from res_buf with
+       | 0 ->
+          Lwt.return (deserializer res_buf)
+       | err ->
+          let err_string = Llio2.ReadBuffer.string_from res_buf in
+          Lwt_log.debug_f "Proxy client received error from server: %s" err_string
+          >>= fun () -> Error.failwith (Error.int2err err))
   in
-  let do_request code request_serializer response_deserializer =
-    let buf = Buffer.create 20 in
-    Llio.int_to buf code;
-    request_serializer buf;
-    Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+  let do_request code serialize_request request response_deserializer =
+    let module Llio = Llio2.WriteBuffer in
+    let buf =
+      Llio.serialize_with_length
+        (Llio.pair_to
+           Llio.int_to
+           serialize_request)
+        (code,
+         request)
+    in
+
+    Net_fd.write_all_lwt_bytes
+      buf.Llio.buf 0 buf.Llio.pos
+      fd >>= fun () ->
+
     read_response response_deserializer
   in
   object(self)
@@ -44,7 +58,7 @@ class proxy_client (ic, oc) =
       fun command req ->
       do_request
         (command_to_code (Wrap command))
-        (fun buf -> Deser.to_buffer (deser_request_i command) buf req)
+        (deser_request_i command |> snd) req
         (Deser.from_buffer (deser_request_o command))
 
     method do_unknown_operation =
@@ -61,7 +75,7 @@ class proxy_client (ic, oc) =
         (fun () ->
          do_request
            code
-           (fun buf -> ())
+           (fun buf () -> ()) ()
            (fun buf -> ()) >>= fun () ->
          Lwt.fail_with "did not get an exception for unknown operation")
         (function
@@ -132,13 +146,19 @@ class proxy_client (ic, oc) =
     method get_client_config = self # request GetClientConfig ()
   end
 
-let _prologue oc magic version =
-  Llio.output_int32 oc magic >>= fun () ->
-  Llio.output_int32 oc version
+let _prologue fd magic version =
+  let buf = Buffer.create 8 in
+  Llio.int32_to buf magic;
+  Llio.int32_to buf version;
+  Net_fd.write_all (Buffer.contents buf) fd
 
 let with_client ip port f =
-  Lwt_io.with_connection
-    (Networking2.make_address ip port)
-    (fun conn ->
-     _prologue (snd conn) Protocol.magic Protocol.version >>= fun () ->
-     f (new proxy_client conn))
+  Networking2.connect_with
+    ~tls_config:None
+    ip port
+  >>= fun (nfd, closer) ->
+  Lwt.finalize
+    (fun () ->
+     _prologue nfd Protocol.magic Protocol.version >>= fun () ->
+     f (new proxy_client nfd))
+    closer

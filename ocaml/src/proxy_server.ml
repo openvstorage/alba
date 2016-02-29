@@ -17,6 +17,7 @@ limitations under the License.
 open Lwt
 open Prelude
 open Proxy_protocol
+open Range_query_args
 
 let ini_hash_to_string tbl =
   let buf = Buffer.create 20 in
@@ -190,7 +191,7 @@ let log_request code maybe_renderer time =
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (albamgr_client_cfg:Alba_arakoon.Config.t ref)
                    (stats: ProxyStatistics.t')
-                   (nfd:Net_fd.t) ic =
+                   (nfd:Net_fd.t) =
 
   let execute_request : type i o. (i, o) Protocol.request ->
                              ProxyStatistics.t' ->
@@ -337,9 +338,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats () ->
        Lwt.return !albamgr_client_cfg
   in
+  let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
     let res_s =
-      serialize_with_length
+      Llio.serialize_with_length
         (Llio.pair_to
            Llio.int_to
            Llio.string_to)
@@ -356,10 +358,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          | Protocol.Wrap r ->
            let req = Deser.from_buffer (Protocol.deser_request_i r) buf in
            execute_request r stats req >>= fun res ->
-           Lwt.return (serialize_with_length
+           Lwt.return (Llio.serialize_with_length
                          (Llio.pair_to
                             Llio.int_to
-                            (Deser.to_buffer (Protocol.deser_request_o r)))
+                            (snd (Protocol.deser_request_o r)))
                          (0, res),
                        let renderer () = render_request_args r req in
                        Some renderer))
@@ -469,25 +471,27 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            return_err_response ~msg Protocol.Error.Unknown)
 
     >>= fun (res, maybe_renderer) ->
-    Net_fd.write_all res nfd >>= fun () ->
+    Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd >>= fun () ->
     Lwt.return maybe_renderer
 
   in
   let rec inner () =
-    Llio.input_string ic >>= fun req_s ->
-    let buf = Llio.make_buffer req_s 0 in
-    let code = Llio.int_from buf in
-    with_timing_lwt
-      (fun () -> handle_request buf code)
-    >>= fun (time_inner, maybe_renderer) ->
-    log_request code maybe_renderer time_inner >>= fun () ->
+    Llio2.NetFdReader.int_from nfd >>= fun len ->
+    Llio2.NetFdReader.with_buffer_from
+      nfd len
+      (fun buf ->
+       let code = Llio2.ReadBuffer.int_from buf in
+       with_timing_lwt
+         (fun () -> handle_request buf code)
+       >>= fun (time_inner, maybe_renderer) ->
+       log_request code maybe_renderer time_inner) >>= fun () ->
     inner ()
   in
-  Llio.input_int32 ic >>= fun magic ->
+  Llio2.NetFdReader.int32_from nfd >>= fun magic ->
   if magic = Protocol.magic
   then
     begin
-      Llio.input_int32 ic >>= fun version ->
+      Llio2.NetFdReader.int32_from nfd >>= fun version ->
       if version = Protocol.version
       then inner ()
       else
@@ -497,7 +501,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     Protocol.version version
         in
         return_err_response ~msg err >>= fun (res, _) ->
-        Net_fd.write_all res nfd
+        Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd
     end
   else Lwt.return ()
 
@@ -619,18 +623,12 @@ let run_server hosts port
                  albamgr_cfg_url
                  ~tcp_keepalive
               );
-              (let buffer_size = 8192 in
-               let buffer_pool = Buffer_pool.create ~buffer_size in
-               let ctx = None in
+              (let ctx = None in
                Networking2.make_server
                  ~max:max_client_connections
                  hosts port ~ctx ~tcp_keepalive
                  (fun nfd ->
-                  Buffer_pool.with_buffer
-                    buffer_pool
-                    (fun buffer ->
-                     let ic = Net_fd.make_ic ~buffer nfd in
-                     proxy_protocol alba_client albamgr_client_cfg stats nfd ic)));
+                  proxy_protocol alba_client albamgr_client_cfg stats nfd));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());

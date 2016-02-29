@@ -34,13 +34,13 @@ module OsdInfo = struct
   type asd_id = string [@@deriving show, yojson]
   type kinetic_id = string [@@ deriving show, yojson]
 
-  type use_tls  = bool [@@ deriving show]
-  type conn_info = ip list * port * use_tls [@@ deriving show]
+  type use_tls  = bool [@@ deriving show, yojson]
+  type conn_info = ip list * port * use_tls [@@ deriving show, yojson]
 
   type kind =
     | Asd     of conn_info * asd_id
     | Kinetic of conn_info * kinetic_id
-                   [@@deriving show]
+                   [@@deriving show, yojson]
 
   let get_long_id = function
     | Asd (_, asd_id)        -> asd_id
@@ -63,7 +63,7 @@ module OsdInfo = struct
     write : timestamp list;
     errors : (timestamp * string) list;
   }
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let make
       ~kind ~node_id

@@ -62,4 +62,6 @@ module RangeQueryArgs =
       | `ReverseThenMax ->
          Llio.bool_to buf t.reverse;
          Llio.int_to buf t.max
+
+    let deser' order (a_from, a_to) = from_buffer' order a_from, to_buffer' order a_to
   end
