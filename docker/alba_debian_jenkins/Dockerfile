@@ -34,14 +34,12 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libtool \
         libboost-all-dev \
         fuse \
-        sysstat
+        sysstat \
+        ncurses-dev
 
 RUN useradd jenkins -u 1001 -g root
 
-RUN wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
-RUN sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
-
-RUN pip install fabric junit-xml
+#RUN pip install fabric junit-xml
 
 RUN mkdir /home/alba
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
