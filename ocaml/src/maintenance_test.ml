@@ -57,6 +57,8 @@ let test_rebalance_one () =
        ~allow_overwrite:NoPrevious
      >>= fun (manifest,stats) ->
      Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest) >>= fun () ->
+     let base_client = alba_client # get_base_client in 
+     base_client # get_namespace_osds_info_cache ~namespace_id >>= fun cache ->
 
      let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
      let set2s set= DeviceSet.elements set |> [%show : int32 list] in
@@ -76,7 +78,19 @@ let test_rebalance_one () =
      get_targets () >>= fun targets ->
 
      let target_osd = DeviceSet.choose targets in
-     let source_osd = DeviceSet.choose object_osds in
+     let source_osd =
+       let possible_sources =
+         let node_id_of osd_id =
+           let open Nsm_model.OsdInfo in
+           let info = Hashtbl.find cache osd_id in
+           info.node_id
+         in
+         let node_id = node_id_of target_osd in
+         DeviceSet.filter (fun osd_id -> node_id_of osd_id = node_id) object_osds
+       in
+       DeviceSet.choose possible_sources
+     in
+     
      with_nice_error_log
        (fun () ->
         with_maintenance_client
