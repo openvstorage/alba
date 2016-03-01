@@ -423,14 +423,16 @@ class client
     method download_object_slices
       ~namespace
       ~object_name
-      ~(object_slices : (int64 * int) list)
+      ~(object_slices : (int64 * int * Lwt_bytes.t * int) list)
       ~consistent_read
-      write_data
       ~fragment_statistics_cb
       =
       Lwt_log.debug_f "download_object_slices: %S %S %s consistent_read:%b"
                       namespace object_name
-                      ([%show: (int64 * int) list] object_slices)
+                      ([%show: (int64 * int) list]
+                         (List.map
+                            (fun (offset, length, _, _) -> offset, length)
+                            object_slices))
                       consistent_read
       >>= fun () ->
       nsm_host_access # with_namespace_id
@@ -441,295 +443,261 @@ class client
              ~object_name
              ~object_slices
              ~consistent_read
-             write_data
              ~fragment_statistics_cb
         )
 
     method download_object_slices''
       ~namespace_id
       ~manifest
-      ~(object_slices : (Int64.t * int) list)
-      ~write_data
+      ~(object_slices : (Int64.t * int * Lwt_bytes.t * int) list)
       ~fragment_statistics_cb
       =
-           let open Nsm_model in
+      let open Nsm_model in
 
-           let object_name = manifest.Manifest.name in
+      let object_name = manifest.Manifest.name in
 
-           let slices =
-             List.fold_left
-               (fun (res_offset, acc) (off, len) ->
-                (res_offset + len, (res_offset, off, len) :: acc))
-               (0, [])
-               object_slices |>
-               snd |>
-               List.sort (fun (_, off1, _) (_, off2, _) -> compare off1 off2) |>
-               List.map
-                 (fun (res_offset, offset, length) ->
-                  (res_offset,
-                   Interval.({ offset; length; })))
-           in
+      let slices =
+        List.sort
+          (fun (off1, _, _, _) (off2, _, _, _) -> compare off1 off2)
+          object_slices
+        |> List.map
+             (fun (offset, length, dest, dest_off) ->
+              Interval.({ offset; length; }), dest, dest_off)
+      in
 
-           let (res_offset, last_slice), length =
-             (* ensuring our client doesn't ask stupid things *)
-             List.fold_left
-               (fun ((_, prev), acc_length) (res_offset, object_slice) ->
-                let open Interval in
+      let last_slice, length =
+        (* ensuring our client doesn't ask stupid things *)
+        List.fold_left
+          (fun (prev, acc_length) (object_slice, _, _) ->
+           let open Interval in
 
-                if object_slice.length < 0
-                then Error.(failwith BadSliceLength);
+           if object_slice.length < 0
+           then Error.(failwith BadSliceLength);
 
-                if overlap prev object_slice
-                then Error.(failwith OverlappingSlices);
+           if overlap prev object_slice
+           then Error.(failwith OverlappingSlices);
 
-                (res_offset, object_slice), Int64.(add acc_length (of_int object_slice.length)))
-               ((0, Interval.({ offset = -1L; length = 0; })), 0L)
-               slices
-           in
+           object_slice, Int64.(add acc_length (of_int object_slice.length)))
+          (Interval.({ offset = -1L; length = 0; }), 0L)
+          slices
+      in
 
-           assert (res_offset < 2 lsl 31);
+      assert Int64.(length <: of_int (2 lsl 31));
 
-           (* length sanity check (this also filters out an empty slices list) *)
-           if length = 0L
-           then Lwt.return (Some manifest)
-           else if Int64.(manifest.Manifest.size <:
-                            add last_slice.Interval.offset (of_int last_slice.Interval.length))
-           then Error.(failwith SliceOutsideObject)
-           else begin
+      (* length sanity check (this also filters out an empty slices list) *)
+      if length = 0L
+      then Lwt.return (Some manifest)
+      else if Int64.(manifest.Manifest.size <:
+                       add last_slice.Interval.offset (of_int last_slice.Interval.length))
+      then Error.(failwith SliceOutsideObject)
+      else
+        begin
 
-               let object_id = manifest.Manifest.object_id in
-               let es, compression = match manifest.Manifest.storage_scheme with
-                 | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
-               let enc = manifest.Manifest.encrypt_info in
-               let decompress = Fragment_helper.maybe_decompress compression in
-               let k, m, w = match es with
-                 | Encoding_scheme.RSVM (k, m, w) -> k, m, w in
-               let w' = Encoding_scheme.w_as_int w in
-               let locations = manifest.Manifest.fragment_locations in
-               let fragment_checksums = manifest.Manifest.fragment_checksums in
-               let fragment_info =
-                 Layout.combine
-                   locations
-                   fragment_checksums
-               in
+          let object_id = manifest.Manifest.object_id in
+          let es, compression = match manifest.Manifest.storage_scheme with
+            | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
+          let enc = manifest.Manifest.encrypt_info in
+          let decompress = Fragment_helper.maybe_decompress compression in
+          let k, m, w = match es with
+            | Encoding_scheme.RSVM (k, m, w) -> k, m, w in
+          let w' = Encoding_scheme.w_as_int w in
+          let locations = manifest.Manifest.fragment_locations in
+          let fragment_checksums = manifest.Manifest.fragment_checksums in
+          let fragment_info =
+            Layout.combine
+              locations
+              fragment_checksums
+          in
 
-               let open Albamgr_protocol.Protocol in
-               nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
-               get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
-               let encryption = Encrypt_info_helper.get_encryption preset enc in
+          let open Albamgr_protocol.Protocol in
+          nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+          get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
+          let encryption = Encrypt_info_helper.get_encryption preset enc in
 
-               let _, _, intersections_rev =
-                 List.fold_left
-                   (fun (chunk_offset, chunk_id, acc) chunk_size ->
-                    let fragment_size = chunk_size / k in
+          let _, _, intersections =
+            List.fold_left
+              (fun (chunk_offset, chunk_id, acc) chunk_size ->
+               let fragment_size = chunk_size / k in
 
-                    let rec inner acc fragment_offset = function
-                      | fragment_id when fragment_id = k -> acc
-                      | fragment_id ->
-                         let fragment_slice = Interval.({ offset = fragment_offset;
-                                                          length = fragment_size; }) in
-                         let intersecting_slices =
-                           List.fold_left
-                             (fun acc (res_offset, slice) ->
-                              let open Interval in
-                              match intersection fragment_slice slice with
-                              | None -> acc
-                              | Some fragment_slice_intersection ->
-                                 let res_offset' =
-                                   res_offset +
-                                     Int64.(to_int
-                                              (sub
-                                                 fragment_slice_intersection.offset
-                                                 slice.offset)) in
-                                 (res_offset', fragment_slice_intersection) :: acc)
-                             []
-                             slices
-                         in
-
-                         let acc' =
-                           if intersecting_slices = []
-                           then acc
-                           else (fragment_id, fragment_slice, List.rev intersecting_slices) :: acc
-                         in
-
-                         inner
-                           acc'
-                           Int64.(add fragment_offset (of_int fragment_size))
-                           (fragment_id + 1)
+               let rec inner acc total_offset = function
+                 | fragment_id when fragment_id = k -> acc
+                 | fragment_id ->
+                    let fragment_slice = Interval.({ offset = total_offset;
+                                                     length = fragment_size; }) in
+                    let intersecting_slices =
+                      List.fold_left
+                        (fun acc (slice, dest, dest_off) ->
+                         let open Interval in
+                         (* TODO all slices are compared with all fragment intervals?
+                          * that's not really awesome...
+                          * could do sth similar to merging 2 sorted lists
+                          *)
+                         match intersection fragment_slice slice with
+                         | None -> acc
+                         | Some fragment_slice_intersection ->
+                            let fragment_offset =
+                              let open Int64 in
+                              sub
+                                fragment_slice_intersection.offset
+                                total_offset
+                              |> to_int
+                            in
+                            let dest_off =
+                              dest_off +
+                                (let open Int64 in
+                                 sub
+                                   fragment_slice_intersection.offset
+                                   slice.offset
+                                 |> to_int)
+                            in
+                            (fragment_offset, fragment_slice_intersection.length,
+                             dest, dest_off) :: acc)
+                        []
+                        slices
                     in
-                    let chunk_intersections = inner [] chunk_offset 0 in
 
                     let acc' =
-                      if chunk_intersections = []
+                      if intersecting_slices = []
                       then acc
-                      else (chunk_id, chunk_offset, chunk_size, List.rev chunk_intersections) :: acc
+                      else (fragment_id, fragment_slice, intersecting_slices) :: acc
                     in
 
-                    (Int64.(add chunk_offset (of_int chunk_size)), chunk_id + 1, acc'))
-                   (0L, 0, [])
-                   manifest.Manifest.chunk_sizes
+                    inner
+                      acc'
+                      Int64.(add total_offset (of_int fragment_size))
+                      (fragment_id + 1)
+               in
+               let chunk_intersections = inner [] chunk_offset 0 in
+
+               let acc' =
+                 if chunk_intersections = []
+                 then acc
+                 else (chunk_id, chunk_intersections) :: acc
                in
 
-               let intersections = List.rev intersections_rev in
+               (Int64.(add chunk_offset (of_int chunk_size)), chunk_id + 1, acc'))
+              (0L, 0, [])
+              manifest.Manifest.chunk_sizes
+          in
 
-               Lwt_list.iter_s
-                 (fun (chunk_id, chunk_offset, chunk_size, chunk_intersections) ->
-                  let chunk_locations = List.nth_exn fragment_info chunk_id in
+          Lwt_list.iter_s
+            (fun (chunk_id, chunk_intersections) ->
+             let chunk_locations = List.nth_exn fragment_info chunk_id in
 
-                  let relevant_fragments =
-                    List.fold_left
-                      (fun acc (fragment_id, fragment_slice, fragment_intersections) ->
-                       IntMap.add
-                         fragment_id
-                         (fragment_slice, fragment_intersections)
-                         acc)
-                      IntMap.empty
-                      chunk_intersections
+             let chunk_fragments = ref None in
+             let fetch_chunk () =
+               match !chunk_fragments with
+               | Some x -> x
+               | None ->
+                  let t =
+                    self # download_chunk
+                         ~namespace_id
+                         ~encryption
+                         ~object_id
+                         ~object_name
+                         chunk_locations ~chunk_id
+                         decompress
+                         k m w'
+                    >>= fun (data_fragments, coding_fragments, t_chunk) ->
+                    List.iter
+                      Lwt_bytes.unsafe_destroy
+                      coding_fragments;
+                    Lwt.return data_fragments
                   in
+                  chunk_fragments := Some t;
+                  t
+             in
 
-                  let download_fragments () =
-                    Lwt_list.map_p
-                      (fun (fragment_id, _, _) ->
-                         let location, fragment_checksum =
-                           List.nth_exn chunk_locations fragment_id
-                         in
-                         self # download_fragment
-                           ~namespace_id
-                           ~object_id ~object_name
-                           ~location
-                           ~chunk_id ~fragment_id
-                           ~replication:(k=1)
-                           ~fragment_checksum
-                           decompress
-                           ~encryption
-                         >>= fun (t_fragment, fragment_data) ->
-                         let () = fragment_statistics_cb t_fragment in
-                         Lwt.return (fragment_id,  fragment_data))
-                      chunk_intersections
+             let get_fragment fragment_id =
+               Lwt.catch
+                 (fun () ->
+                  let location, fragment_checksum =
+                    List.nth_exn chunk_locations fragment_id
                   in
+                  (* TODO add timeout *)
+                  self # download_fragment
+                       ~namespace_id
+                       ~object_id ~object_name
+                       ~location
+                       ~chunk_id ~fragment_id
+                       ~replication:(k=1)
+                       ~fragment_checksum
+                       decompress
+                       ~encryption
+                  >>= fun (t_fragment, fragment_data) ->
+                  (* TODO meerdere keren unsafe_destroy op bigarray doen? *)
+                  let () = fragment_statistics_cb t_fragment in
+                  Lwt.return fragment_data)
+                 (fun exn ->
+                  Lwt_log.debug ~exn "Exception while fetching fragment during partial read, let's get it from the chunk instead" >>= fun () ->
+                  fetch_chunk () >>= fun data_fragments ->
+                  Lwt.return (List.nth_exn data_fragments fragment_id))
+             in
 
-                  let condition = Lwt_condition.create () in
+             let inner () =
+               Lwt_list.iter_p
+                 (fun (fragment_id, fragment_slice, fragment_intersections) ->
+                  fragment_cache # lookup2
+                                 namespace_id
+                                 (Fragment_cache_keys.make_key
+                                    ~object_id ~chunk_id ~fragment_id)
+                                 fragment_intersections
+                  >>= function
+                  | true ->
+                     (* read fragment pieces from the fragment cache *)
+                     Lwt.return ()
+                  | false ->
+                     (* TODO if the osd supports partial read we should
+                      * try that here first *)
+                     (* fetch fragment and extract the desired pieces *)
+                     get_fragment fragment_id >>= fun fragment_data ->
+                     Lwt.finalize
+                       (fun () ->
+                        let () =
+                          List.iter
+                            (fun (offset, length,
+                                  dest, dest_off) ->
+                             Lwt_bytes.blit
+                               fragment_data
+                               offset
+                               dest
+                               dest_off
+                               length)
+                            fragment_intersections
+                        in
+                        Lwt.return_unit)
+                       (fun () ->
+                        Lwt_bytes.unsafe_destroy fragment_data;
+                        Lwt.return_unit))
+                 chunk_intersections
+             in
 
-                  let download_chunk =
-                    Lwt_condition.wait condition >>= function
-                    | `FragmentsSucceeded ->
-                       Lwt.fail Lwt.Canceled
-                    | `FragmentsFailed
-                    | `Timeout ->
-                       self # download_chunk
-                            ~namespace_id
-                            ~encryption
-                            ~object_id
-                            ~object_name
-                            chunk_locations ~chunk_id
-                            decompress
-                            k m w'
-                       >>= fun (data_fragments, coding_fragments, t_chunk) ->
-
+             Lwt.finalize
+               inner
+               (fun () ->
+                match !chunk_fragments with
+                | None -> Lwt.return_unit
+                | Some t ->
+                   Lwt.ignore_result
+                     begin
+                       t >>= fun data_fragments ->
                        List.iter
                          Lwt_bytes.unsafe_destroy
-                         coding_fragments;
+                         data_fragments;
+                       Lwt.return_unit
+                     end;
+                   Lwt.return_unit)
+            )
+            intersections >>= fun () ->
 
-                       let data_fragments_i =
-                         List.mapi
-                           (fun fragment_id fragment_data ->
-                            fragment_id, fragment_data)
-                           data_fragments in
-
-                       let relevant_fragments_data =
-                         List.filter
-                           (fun (fragment_id, fragment) ->
-                            let b = IntMap.mem fragment_id relevant_fragments in
-                            if not b
-                            then Lwt_bytes.unsafe_destroy fragment;
-                            b)
-                           data_fragments_i
-                       in
-
-                       Lwt.return relevant_fragments_data
-                  in
-
-                  Lwt.ignore_result begin
-                      Lwt_unix.sleep 1. >>= fun () ->
-                      Lwt_condition.signal condition `Timeout;
-                      Lwt.return ()
-                    end;
-
-                  let result, wakener = Lwt.wait () in
-
-                  Lwt.async
-                    (fun () ->
-                     Lwt.catch
-                       (fun () ->
-                        download_fragments () >>= fun fragments ->
-                        let () =
-                          try Lwt.wakeup wakener fragments
-                          with _ ->
-                            List.iter
-                              (fun (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
-                              fragments
-                        in
-                        Lwt.return ())
-                       (fun exn ->
-                        Lwt_condition.signal condition `FragmentsFailed;
-                        Lwt.fail exn)
-                    );
-                  Lwt.async
-                    (fun () ->
-                     Lwt.catch
-                       (fun () ->
-                        download_chunk >>= fun fragments ->
-                        let () =
-                          try Lwt.wakeup wakener fragments
-                          with _ ->
-                            List.iter
-                              (fun (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
-                              fragments
-                        in
-                        Lwt.return ())
-                       (fun exn ->
-                        let () =
-                          try Lwt.wakeup_exn wakener exn
-                          with _ -> ()
-                        in
-                        Lwt.return ())
-                    );
-
-                  result >>= fun fragments_data ->
-                  Lwt_condition.signal condition `FragmentsSucceeded;
-
-                  (* write all data for this chunk *)
-                  Lwt_list.iter_s
-                    (fun (fragment_id, fragment_data) ->
-                     let fragment_slice, fragment_intersections =
-                       IntMap.find fragment_id relevant_fragments
-                     in
-                     Lwt_list.iter_s
-                       (fun (res_offset, fragment_intersection) ->
-                        let open Interval in
-                        let off =
-                          let open Int64 in
-                          to_int (sub fragment_intersection.offset fragment_slice.offset) in
-
-                        write_data
-                          res_offset
-                          fragment_data
-                          off
-                          fragment_intersection.length)
-                       fragment_intersections)
-                    fragments_data
-                 )
-                 intersections >>= fun () ->
-
-               Lwt.return (Some manifest)
-             end
+          Lwt.return (Some manifest)
+        end
 
     method download_object_slices'
              ~namespace_id
              ~object_name
              ~object_slices
              ~consistent_read
-             write_data
              ~fragment_statistics_cb
       =
       let attempt_download_slices manifest (mf_src:Cache.value_source) =
@@ -737,7 +705,6 @@ class client
              ~namespace_id
              ~manifest
              ~object_slices
-             ~write_data
              ~fragment_statistics_cb
         >>= function
         | None -> Lwt.return_none

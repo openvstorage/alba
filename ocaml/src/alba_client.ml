@@ -90,20 +90,28 @@ class alba_client (base_client : Alba_base_client.client)
           0
           object_slices
       in
-      let dest = Bytes.create length in
-      let not_interested = fun _ -> () in
-      self # download_object_slices
-        ~namespace
-        ~object_name
-        ~object_slices
-        ~consistent_read
-        ~fragment_statistics_cb:not_interested
-        (fun dest_off src off len ->
-           Lwt_log.debug_f "Writing %i bytes at offset %i" len dest_off >>= fun () ->
-           Lwt_bytes.blit_to_bytes src off dest dest_off len;
-           Lwt.return_unit) >>= function
-      | None -> Lwt.return None
-      | Some _ -> Lwt.return (Some dest)
+      let dest = Lwt_bytes.create length in
+      Lwt.finalize
+        (fun () ->
+         self # download_object_slices
+              ~namespace
+              ~object_name
+              ~object_slices:(let acc, _ =
+                                List.fold_left
+                                  (fun (acc, dest_off) (slice_offset, slice_length) ->
+                                   (slice_offset, slice_length, dest, dest_off) :: acc,
+                                   dest_off + slice_length)
+                                  ([], 0)
+                                  object_slices
+                              in
+                              List.rev acc)
+              ~consistent_read
+              ~fragment_statistics_cb:ignore >>= function
+         | None -> Lwt.return None
+         | Some _ -> Lwt.return (Some (Lwt_bytes.to_string dest)))
+        (fun () ->
+         Lwt_bytes2.Lwt_bytes.unsafe_destroy dest;
+         Lwt.return_unit)
 
   method download_object_generic
            ~namespace
