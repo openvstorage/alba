@@ -39,6 +39,7 @@ module Config = struct
     max_client_connections : int [@default 128];
     tls_client : Tls.t option [@default None];
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
+    use_fadvise: bool [@default true];
   } [@@deriving yojson, show]
 end
 
@@ -93,7 +94,8 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          nsm_host_connection_pool_size,
          osd_connection_pool_size, osd_timeout,
          lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size,
-         max_client_connections, tcp_keepalive
+         max_client_connections, tcp_keepalive,
+         use_fadvise
          =
          cfg.fragment_cache_dir,
          cfg.manifest_cache_size,
@@ -105,7 +107,8 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          cfg.nsm_host_connection_pool_size,
          cfg.osd_connection_pool_size, cfg.osd_timeout,
          cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
-         cfg.max_client_connections, cfg.tcp_keepalive
+         cfg.max_client_connections, cfg.tcp_keepalive,
+         cfg.use_fadvise
        in
        let () = match cfg.chattiness with
          | None -> ()
@@ -154,6 +157,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
         ~max_client_connections
         ~tls_config:cfg.tls_client
         ~tcp_keepalive
+        ~use_fadvise
   in
   lwt_server ~log_sinks ~subcomponent:"proxy" t
 

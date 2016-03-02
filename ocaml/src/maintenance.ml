@@ -187,6 +187,24 @@ class client ?(retry_timeout = 60.)
          Lwt.return_unit)
         retry_timeout
 
+    val purging_osds = Hashtbl.create 3
+    method refresh_purging_osds ?(once = false) () : unit Lwt.t =
+      let inner () =
+        alba_client # mgr_access # list_all_purging_osds >>= fun (_, purging_osds') ->
+        List.iter
+          (fun osd_id -> Hashtbl.add purging_osds osd_id ())
+          purging_osds';
+        Lwt.return ()
+      in
+
+      if once
+      then inner ()
+      else
+        Lwt_extra2.run_forever
+          "refresh_purging_osds"
+          inner
+          retry_timeout
+
     val maybe_dead_osds = Hashtbl.create 3
     method should_repair ~osd_id =
       alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
@@ -440,24 +458,56 @@ class client ?(retry_timeout = 60.)
       >>= fun () ->
       Lwt_list.iter_s
         (fun manifest ->
-         Lwt.catch
-           (fun () ->
-            _timed_repair_object_generic_and_update_manifest
-              ~namespace_id
-              ~manifest
-              ~problem_fragments:[]
-              ~problem_osds:(Int32Set.of_list [ osd_id ])
-           )
-           (fun exn ->
-            let open Nsm_model.Manifest in
-            Lwt_log.info_f
-              ~exn
-              "Exn while repairing osd %li (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
-              osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
-            Lwt_extra2.ignore_errors
-              ~logging:true
-              (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest)
-           )
+         if Hashtbl.mem purging_osds osd_id
+         then
+           alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
+           alba_client # with_nsm_client'
+             ~namespace_id
+             (fun client ->
+              let open Nsm_model.Manifest in
+              let _, updated_locations =
+                List.fold_left
+                  (fun (chunk_id, acc) fragment_locations ->
+                   List.fold_left
+                     (fun (fragment_id, acc) (osd_id_o, version) ->
+                      let acc = match osd_id_o with
+                        | None -> acc
+                        | Some osd_id ->
+                           if Hashtbl.mem purging_osds osd_id
+                           then (chunk_id, fragment_id, None) :: acc
+                           else acc
+                      in
+                      (fragment_id + 1, acc))
+                     (0, acc)
+                     fragment_locations)
+                  (0, [])
+                  manifest.fragment_locations
+              in
+              client # update_manifest
+                ~object_name:manifest.name
+                ~object_id:manifest.object_id
+                updated_locations
+                ~gc_epoch
+                ~version_id:(manifest.version_id + 1))
+         else
+           Lwt.catch
+             (fun () ->
+              _timed_repair_object_generic_and_update_manifest
+                ~namespace_id
+                ~manifest
+                ~problem_fragments:[]
+                ~problem_osds:(Int32Set.of_list [ osd_id ])
+             )
+             (fun exn ->
+              let open Nsm_model.Manifest in
+              Lwt_log.info_f
+                ~exn
+                "Exn while repairing osd %li (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+                osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
+              Lwt_extra2.ignore_errors
+                ~logging:true
+                (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest)
+             )
         )
         manifests >>= fun () ->
 
@@ -1164,39 +1214,42 @@ class client ?(retry_timeout = 60.)
         in
         inner ()
       | CleanupOsdNamespace (osd_id, namespace_id) ->
-        alba_client # with_osd
-          ~osd_id
-          (fun client ->
-             let namespace_prefix =
-               serialize
-                 Osd_keys.AlbaInstance.namespace_prefix_serializer
-                 namespace_id
-             in
-             let namespace_prefix' = Slice.wrap_string namespace_prefix in
-             let namespace_next_prefix =
-               match (Key_value_store.next_prefix namespace_prefix) with
-               | None -> None
-               | Some (p,b) -> Some (Slice.wrap_string p, b)
-             in
-             let rec inner (first, finc) =
-               client # range
-                 Osd.Low
-                 ~first ~finc
-                 ~last:namespace_next_prefix
-                 ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
-               client # apply_sequence
-                 Osd.Low
-                 []
-                 (List.map
-                    (fun k -> Osd.Update.delete k)
-                    keys) >>= fun _ ->
-               if not (filter work_id)
-               then Lwt.fail NotMyTask
-               else if has_more
-               then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
-               else Lwt.return ()
-             in
-             inner (namespace_prefix', true))
+         if Hashtbl.mem purging_osds osd_id
+         then Lwt.return ()
+         else
+           alba_client # with_osd
+             ~osd_id
+             (fun client ->
+              let namespace_prefix =
+                serialize
+                  Osd_keys.AlbaInstance.namespace_prefix_serializer
+                  namespace_id
+              in
+              let namespace_prefix' = Slice.wrap_string namespace_prefix in
+              let namespace_next_prefix =
+                match (Key_value_store.next_prefix namespace_prefix) with
+                | None -> None
+                | Some (p,b) -> Some (Slice.wrap_string p, b)
+              in
+              let rec inner (first, finc) =
+                client # range
+                       Osd.Low
+                       ~first ~finc
+                       ~last:namespace_next_prefix
+                       ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
+                client # apply_sequence
+                       Osd.Low
+                       []
+                       (List.map
+                          (fun k -> Osd.Update.delete k)
+                          keys) >>= fun _ ->
+                if not (filter work_id)
+                then Lwt.fail NotMyTask
+                else if has_more
+                then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
+                else Lwt.return ()
+              in
+              inner (namespace_prefix', true))
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->

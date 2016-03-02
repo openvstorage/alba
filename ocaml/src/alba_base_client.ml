@@ -42,6 +42,7 @@ class client
     ~default_osd_priority
     ~tls_config
     ~tcp_keepalive
+    ~use_fadvise
   =
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
@@ -148,15 +149,17 @@ class client
 
       Lwt.catch
         (fun () ->
-         Object_reader.with_file_reader
-           input_file
-           (self # upload_object
-                ~namespace
-                ~object_name
-                ~checksum_o
-                ~allow_overwrite
-                ~object_id_hint:None
-           ))
+          Object_reader.with_file_reader
+            ~use_fadvise
+            input_file
+            (self # upload_object
+                  ~namespace
+                  ~object_name
+                  ~checksum_o
+                  ~allow_overwrite
+                  ~object_id_hint:None
+            )
+        )
         (function
           | Unix.Unix_error(Unix.ENOENT,_,y) ->
              let open Error in failwith FileNotFound

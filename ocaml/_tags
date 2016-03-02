@@ -30,3 +30,4 @@ true: ppx_lwt
 "src":include
 "src/experiments":include
 "src/tools":include
+"src/other":include

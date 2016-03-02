@@ -42,7 +42,7 @@ let create_namespace
      ignoring errors here *)
     Lwt_extra2.ignore_errors
       ~logging:true
-      (fun () ->deliver_nsm_host_messages ~nsm_host_id)
+      (fun () -> deliver_nsm_host_messages ~nsm_host_id)
   in
 
   deliver_nsm_host_messages () >>= fun () ->

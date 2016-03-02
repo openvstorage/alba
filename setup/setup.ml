@@ -402,6 +402,7 @@ type proxy_cfg =
     manifest_cache_size : int;
     fragment_cache_size : int;
     tls_client : tls_client option;
+    use_fadvise: bool [@default true];
   } [@@deriving yojson]
 
 let make_proxy_config id abm_cfg_url base tls_client=
@@ -412,6 +413,7 @@ let make_proxy_config id abm_cfg_url base tls_client=
     manifest_cache_size = 100 * 1000;
     fragment_cache_size = 100 * 1000 * 1000;
     tls_client;
+    use_fadvise = true;
   }
 
 let _alba_extend_tls ?(cfg=Config.default) cmd =
@@ -621,10 +623,15 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
-    __warranty_void__write_blobs : (bool option [@default None]);
+    __warranty_void__write_blobs  : (bool option [@default None]);
+    use_fadvise  : (bool [@default true]);
+    use_fallocate: (bool [@default true]);
   }[@@deriving yojson]
 
-let make_asd_config ?write_blobs node_id asd_id home port tls=
+let make_asd_config
+      ?write_blobs ?(use_fadvise = true) ?(use_fallocate = true)
+      node_id asd_id home port tls
+  =
   {node_id;
    asd_id;
    home;
@@ -635,7 +642,9 @@ let make_asd_config ?write_blobs node_id asd_id home port tls=
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
-   __warranty_void__write_blobs = write_blobs;
+   __warranty_void__write_blobs   = write_blobs;
+   use_fadvise;
+   use_fallocate;
   }
 
 
@@ -953,8 +962,10 @@ module Deployment = struct
       List.length claimed
     in
     let rec loop j c =
-      if j = n || c > 20
+      if j = n
       then ()
+      else if c > 20
+      then failwith "could not claim enough local osds after 20 attempts"
       else
         let n_claimed = do_round() in
         Unix.sleep 1;

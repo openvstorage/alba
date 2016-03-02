@@ -82,7 +82,10 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ~rocksdb_max_open_files:256
            ~limit:90L
            ~tls
-           ~multicast:(Some 10.0) >>= fun () ->
+           ~multicast:(Some 10.0)
+           ~use_fadvise:true
+           ~use_fallocate:true
+         >>= fun () ->
          Lwt.fail_with "Asd server stopped!");
         begin
           Lwt_unix.with_timeout

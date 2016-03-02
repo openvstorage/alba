@@ -21,7 +21,8 @@ open Lwt.Infix
 type 'a input = (unit -> ('a * int) Lwt.t) * 'a Lwt.u
 type output_blobs = (int64 * Asd_protocol.Blob.t) list * unit Lwt.u
 type sync_rocks   = unit Lwt.u
-
+                         
+type post_write = Lwt_unix.file_descr -> int -> string -> unit Lwt.t
 type 'a t = {
     high_prio_reads  : 'a input     Lwt_buffer.t;
     high_prio_writes : output_blobs Lwt_buffer.t;
@@ -30,7 +31,7 @@ type 'a t = {
     rocksdb_sync     : sync_rocks   Lwt_buffer.t;
     sync_rocksdb     : unit -> unit;
     write_blob       : int64 -> Asd_protocol.Blob.t ->
-                       (Lwt_unix.file_descr -> string -> unit Lwt.t) ->
+                       post_write ->
                        unit Lwt.t;
   }
 
@@ -213,7 +214,7 @@ let run t ~fsync ~fs_fd =
                   (fun (fnr, blob) ->
                    t.write_blob
                      fnr blob
-                     (fun fd parent_dir ->
+                     (fun fd len parent_dir ->
 
                       if fsync
                       then

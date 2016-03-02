@@ -37,15 +37,22 @@ class file_reader fd size = (object
     Lwt.return_unit
 end : reader)
 
-let with_file_reader input_file f =
+let with_file_reader ~use_fadvise file_name f =
   Lwt_extra2.with_fd
-    input_file
+    file_name
     ~flags:Lwt_unix.([O_RDONLY;])
     ~perm:0o600
     (fun fd ->
-     Lwt_unix.fstat fd >>= fun stat ->
-     let object_reader = new file_reader fd stat.Lwt_unix.st_size in
-     f ~object_reader)
+      Lwt_unix.fstat fd >>= fun stat ->
+      let size = stat.Lwt_unix.st_size in
+      let ufd = Lwt_unix.unix_file_descr fd in
+      let () = if use_fadvise then Posix.posix_fadvise ufd 0 size Posix.POSIX_FADV_SEQUENTIAL in
+      let object_reader = new file_reader fd size in
+      f ~object_reader
+      >>= fun r ->
+      let () = if use_fadvise then Posix.posix_fadvise ufd 0 size Posix.POSIX_FADV_DONTNEED in
+      Lwt.return r
+    )
 
 class string_reader object_data = (object
   val obj_len = String.length object_data
