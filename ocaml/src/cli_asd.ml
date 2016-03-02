@@ -365,63 +365,123 @@ let osd_bench_cmd =
   in
   osd_bench_t, info
 
-let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear =
+let asd_statistics hosts port_o long_ids to_json verbose config_o tls_config clear =
   let open Asd_statistics in
-  let _inner =
-    (fun (client:Asd_client.client) ->
-     client # statistics clear >>= fun stats ->
-     if to_json
-     then
-       let open Alba_json.AsdStatistics in
-       print_result (make stats) to_yojson
-     else Lwt_io.printl
+  let _inner (client:Asd_client.client) = client # statistics clear in
+  let process_results results =
+    if to_json
+    then
+      begin
+        let result_to_json rs =
+          let x  =
+            List.map
+              (fun (long_id, stats) ->
+                long_id, Alba_json.AsdStatistics.to_yojson stats
+              ) rs
+          in
+          `Assoc x
+        in
+        print_result results result_to_json
+      end
+    else
+      let f =
+        (fun (long_id, stats) ->
+          Lwt_io.printlf
+            "%s : %s "
+            long_id
             (AsdStatistics.show_inner
                stats
-               Asd_protocol.Protocol.code_to_description)
-    )
+               Asd_protocol.Protocol.code_to_description
+            )
+        )
+      in Lwt_list.iter_s f results
   in
-  let from_asd hosts port tls_config asd_id verbose =
+  let from_asd hosts port tls_config verbose =
     begin
+      let lido =
+        match long_ids with
+        | [] -> None
+        | [long_id] -> Some long_id
+        | _ -> failwith "cannot have more than one long-id with -h & -p"
+      in
       let conn_info = Networking2.make_conn_info hosts port tls_config in
-      run_with_asd_client' ~conn_info asd_id verbose _inner
+      let _inner' client =
+        _inner client >>= fun stats ->
+        let open Alba_json.AsdStatistics in
+        if to_json
+        then
+          print_result (make stats) to_yojson
+        else
+          Lwt_io.printl
+            (AsdStatistics.show_inner
+               stats
+               Asd_protocol.Protocol.code_to_description
+            )
+      in
+      run_with_asd_client' ~conn_info lido verbose _inner'
     end
   in
+  
   match port_o, config_o with
   | None, None -> failwith "specify either host & port or config"
   | None, Some cfg_file ->
      begin
        let t () =
+         let open Nsm_model.OsdInfo in
          with_alba_client
            cfg_file tls_config
-           (
-             (*(fun alba_client -> client # with_osd osd_id _inner) *)
-            fun alba_client ->
-              let asd_id_v = Prelude.Option.get_some asd_id in
-              alba_client # mgr_access # get_osd_by_long_id ~long_id:asd_id_v
-              >>= fun r_o ->
-              begin
-                match r_o with
-                | None ->
-                  let msg = Printf.sprintf
-                      "%s: asd not found" asd_id_v
-                  in
-                  Lwt.fail (Failure msg)
-                | Some (claim_info, osd) ->
-                  let conn_info =
-                    let open Nsm_model.OsdInfo in
-                    let conn_info' = get_conn_info osd.kind in
-                    Asd_client.conn_info_from conn_info' ~tls_config
-                  in
-                  Asd_client.with_client
-                    buffer_pool ~conn_info asd_id
-                    _inner
-              end
+           (fun alba_client ->
+            alba_client # mgr_access # list_all_claimed_osds >>= fun (_n, osds) ->
+            let stat_osds =
+              List.filter
+                (fun (_,osd_info) ->
+                  let k = osd_info.kind in
+                  List.mem (get_long_id k) long_ids
+                ) osds
+            in
+            
+            let needed_info =
+              List.map
+                (fun (_,osd_info) ->
+                  let k = osd_info.kind in
+                  get_long_id k,
+                  get_conn_info k
+                )
+                stat_osds
+            in
+            Lwt_list.map_p
+              (fun (long_id, conn_info) ->
+                begin
+                  Lwt.catch
+                    (fun () ->
+                      let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
+                      Asd_client.with_client
+                        buffer_pool ~conn_info (Some long_id)
+                        _inner >>= fun r ->
+                      Some (long_id, r) |> Lwt.return
+                    )
+                    (fun exn ->
+                      Lwt_log.info_f ~exn "couldn't reach %s" long_id >>= fun () ->
+                      Lwt.return_none
+                    )
+                end
+              ) needed_info
            )
+         >>= fun results0 ->
+         let rev_results =
+           List.fold_left
+             (fun acc ro -> match ro with None -> acc | Some r -> r :: acc )
+             [] results0
+         in 
+         process_results (List.rev rev_results)
        in
        lwt_cmd_line to_json verbose t
      end
-  | Some port,_ -> from_asd hosts port tls_config asd_id verbose
-
+  | Some port,_ ->
+     begin
+       from_asd hosts port tls_config verbose
+     end
+       
 let asd_statistics_cmd =
   let port_o =
     Arg.(value
@@ -439,7 +499,7 @@ let asd_statistics_cmd =
   let t = Term.(pure asd_statistics
                 $ hosts
                 $ port_o
-                $ lido
+                $ long_ids
                 $ to_json
                 $ verbose
                 $ config_o
