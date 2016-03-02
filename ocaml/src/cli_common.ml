@@ -104,7 +104,7 @@ let print_result result tojson =
   in
   Lwt_io.printlf
     "%s"
-    (Yojson.Safe.to_string json)
+    (Yojson.Safe.pretty_to_string json)
 
 let exn_to_string_code = function
   | Nsm_model.Err.Nsm_exn (e, _) ->
@@ -278,6 +278,13 @@ let lido =
        & info ["long-id"] ~docv:"LONG_ID" ~doc
   )
 
+let long_ids =
+  let doc = "comma seperated $(docv) list of the osds involved" in
+  Arg.(value
+       & opt (list string) []
+       & info ["long-id"] ~docv:"LONG_ID" ~doc
+  )
+     
 let consistent_read =
   Arg.(value
        & flag
