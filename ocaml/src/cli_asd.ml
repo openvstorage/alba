@@ -452,15 +452,28 @@ let asd_statistics hosts port_o long_ids to_json verbose config_o tls_config cle
             Lwt_list.map_p
               (fun (long_id, conn_info) ->
                 begin
-                  let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
-                  Asd_client.with_client
-                    buffer_pool ~conn_info (Some long_id)
-                    _inner >>= fun r ->
-                  Lwt.return (long_id, r)
+                  Lwt.catch
+                    (fun () ->
+                      let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
+                      Asd_client.with_client
+                        buffer_pool ~conn_info (Some long_id)
+                        _inner >>= fun r ->
+                      Some (long_id, r) |> Lwt.return
+                    )
+                    (fun exn ->
+                      Lwt_log.info_f ~exn "couldn't reach %s" long_id >>= fun () ->
+                      Lwt.return_none
+                    )
                 end
               ) needed_info
            )
-         >>= process_results
+         >>= fun results0 ->
+         let rev_results =
+           List.fold_left
+             (fun acc ro -> match ro with None -> acc | Some r -> r :: acc )
+             [] results0
+         in 
+         process_results (List.rev rev_results)
        in
        lwt_cmd_line to_json verbose t
      end
