@@ -398,6 +398,12 @@ let asd_statistics hosts port_o long_ids to_json verbose config_o tls_config cle
   in
   let from_asd hosts port tls_config verbose =
     begin
+      let lido =
+        match long_ids with
+        | [] -> None
+        | [long_id] -> Some long_id
+        | _ -> failwith "cannot have more than one long-id with -h & -p"
+      in
       let conn_info = Networking2.make_conn_info hosts port tls_config in
       let _inner' client =
         _inner client >>= fun stats ->
@@ -412,7 +418,7 @@ let asd_statistics hosts port_o long_ids to_json verbose config_o tls_config cle
                Asd_protocol.Protocol.code_to_description
             )
       in
-      run_with_asd_client' ~conn_info None verbose _inner'
+      run_with_asd_client' ~conn_info lido verbose _inner'
     end
   in
   
