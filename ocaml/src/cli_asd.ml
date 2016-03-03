@@ -365,6 +365,100 @@ let osd_bench_cmd =
   in
   osd_bench_t, info
 
+let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
+  begin
+    let process_results results =
+      if to_json
+      then
+        begin
+          let result_to_json rs =
+            let x  =
+              List.map
+                (fun (long_id, statso) ->
+                  match statso with
+                  | None       -> long_id, `Null
+                  | Some stats -> long_id, Alba_json.AsdStatistics.to_yojson stats
+                ) rs
+            in
+            `Assoc x
+          in
+          print_result results result_to_json
+        end
+      else
+        let f =
+          (fun (long_id, statso) ->
+            let v = match statso with
+              | None -> "could not retrieve"
+              | Some stats ->
+                 Asd_statistics.AsdStatistics.show_inner
+                   stats
+                   Asd_protocol.Protocol.code_to_description
+            in
+            Lwt_io.printlf "%s : %s " long_id v
+          )
+      in Lwt_list.iter_s f results
+    in
+    let t () = 
+      with_alba_client
+        cfg_file tls_config
+        (fun alba_client ->
+          let open Nsm_model.OsdInfo in
+          alba_client # mgr_access # list_all_claimed_osds >>= fun (_n, osds) ->
+          let stat_osds =
+            List.filter
+              (fun (_,osd_info) ->
+                let k = osd_info.kind in
+                List.mem (get_long_id k) long_ids
+              ) osds
+          in
+          
+          let needed_info =
+            List.map
+              (fun (_,osd_info) ->
+                let k = osd_info.kind in
+                get_long_id k,
+                get_conn_info k
+              )
+              stat_osds
+          in
+          Lwt_list.map_p
+            (fun (long_id, conn_info) ->
+              begin
+                Lwt.catch
+                  (fun () ->
+                    let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
+                    Asd_client.with_client
+                      buffer_pool ~conn_info (Some long_id)
+                      (fun client -> client # statistics clear)
+                    >>= fun r ->
+                    (long_id, Some r) |> Lwt.return
+                  )
+                  (fun exn ->
+                    Lwt_log.info_f ~exn "couldn't reach %s" long_id >>= fun () ->
+                    Lwt.return (long_id, None)
+                  )
+              end
+            ) needed_info
+        )
+      >>= fun results ->
+      process_results results
+    in
+    lwt_cmd_line to_json verbose t
+  end
+
+let asd_multistatistics_cmd =
+  let t = Term.(pure asd_multistatistics
+                $ long_ids
+                $ to_json
+                $ verbose
+                $ alba_cfg_url
+                $ tls_config
+                $ clear
+          )
+  in
+  let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in
+  t, info
+       
 let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear =
   let open Asd_statistics in
   let _inner =
@@ -565,6 +659,7 @@ let cmds = [
   osd_bench_cmd;
   asd_discover_cmd;
   asd_statistics_cmd;
+  asd_multistatistics_cmd;
   asd_set_full_cmd;
   asd_get_version_cmd;
   bench_syncfs_cmd;
