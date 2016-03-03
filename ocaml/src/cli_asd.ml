@@ -374,10 +374,23 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
           let result_to_json rs =
             let x  =
               List.map
-                (fun (long_id, statso) ->
-                  match statso with
-                  | None       -> long_id, `Null
-                  | Some stats -> long_id, Alba_json.AsdStatistics.to_yojson stats
+                (fun (long_id, stats_result) ->
+                  let result =
+                    let open Alba_json in
+                    let open Prelude.Error in
+                    let open Result in
+                    match stats_result with
+                    | Ok stats   ->
+                       to_yojson
+                         AsdStatistics.to_yojson
+                         { success=true ; result=stats}
+                                        
+                    | Error exn  ->
+                       to_yojson
+                         (fun exn -> `String (Printexc.to_string exn))
+                         { success=false; result= exn}
+                  in
+                  long_id, result
                 ) rs
             in
             `Assoc x
@@ -386,13 +399,14 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
         end
       else
         let f =
-          (fun (long_id, statso) ->
-            let v = match statso with
-              | None -> "could not retrieve"
-              | Some stats ->
+          (fun (long_id, stats_result) ->
+            let open Prelude.Error in
+            let v = match stats_result with
+              | Ok stats ->
                  Asd_statistics.AsdStatistics.show_inner
                    stats
                    Asd_protocol.Protocol.code_to_description
+              | Error exn -> Printexc.to_string exn
             in
             Lwt_io.printlf "%s : %s " long_id v
           )
@@ -431,11 +445,11 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                       buffer_pool ~conn_info (Some long_id)
                       (fun client -> client # statistics clear)
                     >>= fun r ->
-                    (long_id, Some r) |> Lwt.return
+                    (long_id, Prelude.Error.Ok r) |> Lwt.return
                   )
                   (fun exn ->
                     Lwt_log.info_f ~exn "couldn't reach %s" long_id >>= fun () ->
-                    Lwt.return (long_id, None)
+                    Lwt.return (long_id, Prelude.Error.Error exn)
                   )
               end
             ) needed_info
