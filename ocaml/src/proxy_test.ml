@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Lwt
+open Lwt.Infix
 open Proxy_protocol.Protocol
 
 let _IP = "127.0.0.1"

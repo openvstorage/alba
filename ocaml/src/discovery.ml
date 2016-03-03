@@ -130,7 +130,7 @@ let parse s addr0 =
      let () = Lwt_log.ign_debug_f ~exn "ex => Bad" in
      Bad s
 
-open Lwt
+open Lwt.Infix
 
 let discovery seen =
   let min_delay = 0.1 in

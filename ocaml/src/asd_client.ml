@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
-open Lwt
+open Lwt.Infix
 open Slice
 open Lwt_bytes2
 open Asd_protocol

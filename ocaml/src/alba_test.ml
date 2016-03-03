@@ -17,7 +17,7 @@ limitations under the License.
 open Prelude
 open Slice
 open Encryption
-open Lwt
+open Lwt.Infix
 
 let _fetch_abm_client_cfg () =
   let cfg_url  = Albamgr_test.get_ccfg_url () in

@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
-open Lwt
+open Lwt.Infix
 open Proxy_protocol
 open Protocol
 open Range_query_args

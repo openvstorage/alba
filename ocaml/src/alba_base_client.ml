@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
-open Lwt
+open Lwt.Infix
 open Checksum
 open Lwt_bytes2
 open Alba_statistics
@@ -330,7 +330,7 @@ class client
                       end;
                     Lwt.return ())
                  (function
-                   | Canceled -> Lwt.return ()
+                   | Lwt.Canceled -> Lwt.return ()
                    | exn ->
                      Lwt_log.debug_f
                        ~exn
@@ -587,57 +587,43 @@ class client
             (fun (chunk_id, chunk_intersections) ->
              let chunk_locations = List.nth_exn fragment_info chunk_id in
 
-             let chunk_fragments = ref None in
-             let fetch_chunk () =
-               match !chunk_fragments with
-               | Some x -> x
-               | None ->
-                  let t =
-                    self # download_chunk
-                         ~namespace_id
-                         ~encryption
-                         ~object_id
-                         ~object_name
-                         chunk_locations ~chunk_id
-                         decompress
-                         k m w'
-                    >>= fun (data_fragments, coding_fragments, t_chunk) ->
-                    List.iter
-                      Lwt_bytes.unsafe_destroy
-                      coding_fragments;
-                    Lwt.return data_fragments
-                  in
-                  chunk_fragments := Some t;
-                  t
-             in
-
-             let get_fragment fragment_id =
+             let fetch_fragment fragment_id =
+               let location, fragment_checksum =
+                 List.nth_exn chunk_locations fragment_id
+               in
+               self # download_fragment
+                    ~namespace_id
+                    ~object_id ~object_name
+                    ~location
+                    ~chunk_id ~fragment_id
+                    ~replication:(k=1)
+                    ~fragment_checksum
+                    decompress
+                    ~encryption
+               >>= fun (t_fragment, fragment_data) ->
                Lwt.catch
                  (fun () ->
-                  let location, fragment_checksum =
-                    List.nth_exn chunk_locations fragment_id
-                  in
-                  (* TODO add timeout *)
-                  self # download_fragment
-                       ~namespace_id
-                       ~object_id ~object_name
-                       ~location
-                       ~chunk_id ~fragment_id
-                       ~replication:(k=1)
-                       ~fragment_checksum
-                       decompress
-                       ~encryption
-                  >>= fun (t_fragment, fragment_data) ->
-                  (* TODO meerdere keren unsafe_destroy op bigarray doen? *)
                   let () = fragment_statistics_cb t_fragment in
                   Lwt.return fragment_data)
                  (fun exn ->
-                  Lwt_log.debug ~exn "Exception while fetching fragment during partial read, let's get it from the chunk instead" >>= fun () ->
-                  fetch_chunk () >>= fun data_fragments ->
-                  Lwt.return (List.nth_exn data_fragments fragment_id))
+                  Lwt_bytes.unsafe_destroy fragment_data;
+                  Lwt.fail exn)
              in
 
-             let inner () =
+             let blit_from_fragment fragment_data fragment_intersections =
+               List.iter
+                 (fun (offset, length,
+                       dest, dest_off) ->
+                  Lwt_bytes.blit
+                    fragment_data
+                    offset
+                    dest
+                    dest_off
+                    length)
+                 fragment_intersections
+             in
+
+             let get_from_fragments () =
                Lwt_list.iter_p
                  (fun (fragment_id, fragment_slice, fragment_intersections) ->
                   fragment_cache # lookup2
@@ -648,48 +634,88 @@ class client
                   >>= function
                   | true ->
                      (* read fragment pieces from the fragment cache *)
-                     Lwt.return ()
+                     Lwt.return_unit
                   | false ->
                      (* TODO if the osd supports partial read we should
                       * try that here first *)
-                     (* fetch fragment and extract the desired pieces *)
-                     get_fragment fragment_id >>= fun fragment_data ->
-                     Lwt.finalize
-                       (fun () ->
-                        let () =
-                          List.iter
-                            (fun (offset, length,
-                                  dest, dest_off) ->
-                             Lwt_bytes.blit
-                               fragment_data
-                               offset
-                               dest
-                               dest_off
-                               length)
-                            fragment_intersections
-                        in
-                        Lwt.return_unit)
-                       (fun () ->
-                        Lwt_bytes.unsafe_destroy fragment_data;
-                        Lwt.return_unit))
+                     fetch_fragment fragment_id >>= fun fragment_data ->
+                     let () =
+                       finalize
+                         (fun () -> blit_from_fragment fragment_data fragment_intersections)
+                         (fun () -> Lwt_bytes.unsafe_destroy fragment_data)
+                     in
+                     Lwt.return_unit)
                  chunk_intersections
              in
 
-             Lwt.finalize
-               inner
-               (fun () ->
-                match !chunk_fragments with
-                | None -> Lwt.return_unit
-                | Some t ->
-                   Lwt.ignore_result
-                     begin
-                       t >>= fun data_fragments ->
-                       List.iter
-                         Lwt_bytes.unsafe_destroy
-                         data_fragments;
-                       Lwt.return_unit
-                     end;
-                   Lwt.return_unit)
+             let fetch_chunk () =
+               self # download_chunk
+                    ~namespace_id
+                    ~encryption
+                    ~object_id
+                    ~object_name
+                    chunk_locations ~chunk_id
+                    decompress
+                    k m w'
+               >>= fun (data_fragments, coding_fragments, t_chunk) ->
+               List.iter
+                 Lwt_bytes.unsafe_destroy
+                 coding_fragments;
+               Lwt.return data_fragments
+             in
+
+             let get_from_chunk () =
+               fetch_chunk () >>= fun data_fragments ->
+               let () =
+                 finalize
+                   (fun () ->
+                    List.iter
+                      (fun (fragment_id, fragment_slice, fragment_intersections) ->
+                       blit_from_fragment
+                         (List.nth_exn data_fragments fragment_id)
+                         fragment_intersections)
+                      chunk_intersections)
+                   (fun () ->
+                    List.iter
+                      Lwt_bytes.unsafe_destroy
+                      data_fragments)
+               in
+               Lwt.return_unit
+             in
+
+             let condition = Lwt_condition.create () in
+
+             let timeout = Lwt_unix.sleep osd_timeout in
+             let () =
+               Lwt.ignore_result
+                 begin
+                   timeout >>= fun () ->
+                   Lwt_condition.signal condition `Timeout;
+                   Lwt.return_unit
+                 end
+             in
+
+             Lwt.join
+               [ Lwt.choose
+                   [ (Lwt.catch
+                        (fun () ->
+                         get_from_fragments () >>= fun () ->
+                         Lwt_condition.signal condition `FromFragmentsSucceeded;
+                         Lwt.return_unit)
+                        (fun exn ->
+                         Lwt_condition.signal condition `FromFragmentsFailed;
+                         Lwt.return_unit));
+                     timeout;
+                   ];
+                 begin
+                   Lwt_condition.wait condition >>= function
+                   | `FromFragmentsSucceeded ->
+                      Lwt.return_unit
+                   | `Timeout
+                   | `FromFragmentsFailed ->
+                      get_from_chunk ()
+                 end;
+               ]
             )
             intersections >>= fun () ->
 
