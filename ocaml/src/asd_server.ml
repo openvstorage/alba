@@ -1043,8 +1043,11 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd >>= fun () ->
-    write_extra nfd
+      let () = Net_fd.cork nfd in
+      Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd >>= fun () ->
+      write_extra nfd >>= fun () ->
+      let () = Net_fd.uncork nfd in
+      Lwt.return_unit
   in
   let rec inner () =
     (match cancel with
