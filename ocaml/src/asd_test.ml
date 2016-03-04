@@ -164,7 +164,7 @@ let test_range_query port () =
        in
        client # apply_sequence ~prio:High
          []
-         [ set "" ; set "k"; set "kg"; set "l"; ] >>= fun _ ->
+         [ set "" ; set "k"; set "kg"; set "l"; ] >>= fun () ->
 
        client # range_string ~prio:High
          ~first:"" ~finc:true ~last:None
@@ -314,6 +314,33 @@ let test_no_blobs port () =
     "test_no_blobs" port
     (test_set_get_delete ~verify_value:false)
 
+let test_assert port () =
+  test_with_asd_client
+    "test_assert" port
+    (fun asd ->
+     Lwt.catch
+       (fun () ->
+        asd # apply_sequence ~prio:High
+            [ Osd.Assert.value_string "key" "value"; ]
+            [ Osd.Update.set_string
+                "key"
+                (Bytes.create (Asd_server.blob_threshold + 2))
+                Checksum.Checksum.NoChecksum false; ])
+       (function
+         | Asd_protocol.Protocol.Error.Exn Asd_protocol.Protocol.Error.Assert_failed _ ->
+            Lwt.return_unit
+         | exn ->
+            Lwt.fail exn)
+     >>= fun () ->
+     asd # apply_sequence ~prio:High
+         []
+         [ Osd.Update.set_string
+             "key"
+             (Bytes.create (Asd_server.blob_threshold + 2))
+             Checksum.Checksum.NoChecksum false; ] >>= fun () ->
+     asd # multi_get_string ~prio:High [ "x" ] >>= fun _ ->
+     Lwt.return ())
+
 open OUnit
 
 let suite = "asd_test" >:::[
@@ -327,4 +354,5 @@ let suite = "asd_test" >:::[
     "test_multi_exists" >:: test_multi_exists 7908;
     "test_unknown_operation" >:: test_unknown_operation 7909;
     "test_no_blobs" >:: test_no_blobs 7910;
+    "test_assert" >:: test_assert 7911;
   ]

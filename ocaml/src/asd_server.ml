@@ -1006,7 +1006,7 @@ let asd_protocol
     in
     let return_error error =
       let res =
-        Llio2.WriteBuffer.serialize_with_length
+        Llio.serialize_with_length
           Protocol.Error.serialize
           error
       in
