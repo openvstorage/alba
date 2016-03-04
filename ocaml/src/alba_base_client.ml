@@ -683,39 +683,16 @@ class client
                Lwt.return_unit
              in
 
-             let condition = Lwt_condition.create () in
-
-             let timeout = Lwt_unix.sleep osd_timeout in
-             let () =
-               Lwt.ignore_result
-                 begin
-                   timeout >>= fun () ->
-                   Lwt_condition.signal condition `Timeout;
-                   Lwt.return_unit
-                 end
-             in
-
-             Lwt.join
-               [ Lwt.choose
-                   [ (Lwt.catch
-                        (fun () ->
-                         get_from_fragments () >>= fun () ->
-                         Lwt_condition.signal condition `FromFragmentsSucceeded;
-                         Lwt.return_unit)
-                        (fun exn ->
-                         Lwt_condition.signal condition `FromFragmentsFailed;
-                         Lwt.return_unit));
-                     timeout;
-                   ];
-                 begin
-                   Lwt_condition.wait condition >>= function
-                   | `FromFragmentsSucceeded ->
-                      Lwt.return_unit
-                   | `Timeout
-                   | `FromFragmentsFailed ->
-                      get_from_chunk ()
-                 end;
-               ]
+             Lwt.catch
+               (fun () ->
+                Lwt_unix.with_timeout
+                  osd_timeout
+                  get_from_fragments)
+               (fun exn ->
+                Lwt_log.debug_f
+                  ~exn
+                  "Exception during get_from_fragments, trying get_from_chunk" >>= fun () ->
+                get_from_chunk ())
             )
             intersections >>= fun () ->
 
