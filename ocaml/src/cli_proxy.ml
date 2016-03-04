@@ -26,9 +26,10 @@ module Config = struct
     log_level : string;
     albamgr_cfg_file : string option [@default None];
     albamgr_cfg_url : string option [@default None];
-    fragment_cache_dir : string;
+    fragment_cache : Fragment_cache_config.fragment_cache option [@default None];
+    fragment_cache_dir : string option [@default None]; (* obsolete *)
+    fragment_cache_size : int option [@default None];   (* obsolete *)
     manifest_cache_size : (int [@default 100_000]);
-    fragment_cache_size : (int [@default 100_000_000]);
     albamgr_connection_pool_size : (int [@default 10]);
     nsm_host_connection_pool_size : (int [@default 10]);
     osd_connection_pool_size : (int [@default 10]);
@@ -87,9 +88,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
        and port = cfg.port
        and log_level = cfg.log_level
        and
-         cache_dir,
          manifest_cache_size,
-         fragment_cache_size,
          albamgr_connection_pool_size,
          nsm_host_connection_pool_size,
          osd_connection_pool_size, osd_timeout,
@@ -97,18 +96,33 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          max_client_connections, tcp_keepalive,
          use_fadvise
          =
-         cfg.fragment_cache_dir,
          cfg.manifest_cache_size,
-         (* the fragment cache size is currently a rather soft limit which we'll
-           surely exceed. this can lead to disk full conditions. by taking a
-           safety margin of 15% we turn the soft limit into a hard one... *)
-         (cfg.fragment_cache_size / 100) * 85,
          cfg.albamgr_connection_pool_size,
          cfg.nsm_host_connection_pool_size,
          cfg.osd_connection_pool_size, cfg.osd_timeout,
          cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
          cfg.max_client_connections, cfg.tcp_keepalive,
          cfg.use_fadvise
+       and fragment_cache_cfg =
+         match cfg.fragment_cache, cfg.fragment_cache_dir, cfg.fragment_cache_size with
+         | Some f, None, None ->
+            f
+         | Some _, Some _, None
+         | Some _, None  , Some _
+         | Some _, Some _, Some _
+         | None  , None  , Some _ ->
+            failwith "Invalid combination of fragment_cache, fragment_cache_dir & fragment_cache_size was specified"
+         | None, None, None ->
+            Fragment_cache_config.None'
+         | None, Some path, o_fragment_cache_size ->
+            Fragment_cache_config.(
+             Local { path;
+                     max_size = Option.get_some_default
+                                  100_000_000
+                                  o_fragment_cache_size;
+                     rocksdb_max_open_files =
+                       Fragment_cache_config.default_rocksdb_max_open_files;
+                   })
        in
        let () = match cfg.chattiness with
          | None -> ()
@@ -118,7 +132,6 @@ let proxy_start (cfg_url:Url.t) log_sinks =
       Lwt_preemptive.set_bounds (lwt_preemptive_thread_pool_min_size,
                                  lwt_preemptive_thread_pool_max_size);
 
-      assert (cache_dir.[0] = '/');
       verify_log_level log_level;
 
       Lwt_log.add_rule "*" (to_level log_level);
@@ -142,13 +155,15 @@ let proxy_start (cfg_url:Url.t) log_sinks =
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
+      Fragment_cache_config.make_fragment_cache fragment_cache_cfg
+      >>= fun fragment_cache ->
+
       Proxy_server.run_server
         ips
         port
-        cache_dir
         abm_cfg_ref
+        ~fragment_cache
         ~manifest_cache_size
-        ~fragment_cache_size
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
@@ -157,7 +172,9 @@ let proxy_start (cfg_url:Url.t) log_sinks =
         ~max_client_connections
         ~tls_config:cfg.tls_client
         ~tcp_keepalive
-        ~use_fadvise
+        ~use_fadvise >>= fun () ->
+
+      fragment_cache # close ()
   in
   lwt_server ~log_sinks ~subcomponent:"proxy" t
 

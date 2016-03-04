@@ -397,10 +397,8 @@ class alba_client (base_client : Alba_base_client.client)
   end
 
 let with_client albamgr_client_cfg
-                ?cache_dir
+                ?(fragment_cache = (new no_cache :> cache))
                 ?(manifest_cache_size=100_000)
-                ?(fragment_cache_size=100_000_000)
-                ?(rocksdb_max_open_files=256)
                 ?(bad_fragment_callback = fun
                     alba_client
                     ~namespace_id ~object_id ~object_name
@@ -416,18 +414,6 @@ let with_client albamgr_client_cfg
                 ?(use_fadvise = true)
                 f
   =
-  begin
-    match cache_dir with
-    | Some cd ->
-       let max_size = Int64.of_int fragment_cache_size in
-       safe_create cd ~max_size ~rocksdb_max_open_files
-       >>= fun cache ->
-       Lwt.return (cache :> cache)
-    | None ->
-       let cache = new no_cache in
-       Lwt.return (cache :> cache)
-  end
-  >>= fun cache ->
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
       ~size:albamgr_connection_pool_size
@@ -440,7 +426,7 @@ let with_client albamgr_client_cfg
     new Albamgr_client.client (new basic_mgr_pooled albamgr_pool)
   in
   let base_client = new Alba_base_client.client
-                        cache
+                        fragment_cache
                         ~mgr_access
                         ~manifest_cache_size
                         ~bad_fragment_callback
@@ -463,6 +449,4 @@ let with_client albamgr_client_cfg
          base_client # nsm_host_access # finalize;
          Lwt_pool2.finalize albamgr_pool
        end
-     else Lwt.return ()) >>= fun r ->
-  cache # close () >>= fun () ->
-  Lwt.return r
+     else Lwt.return ())

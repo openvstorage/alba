@@ -1,0 +1,22 @@
+// a list of example fragment cache configs (which are under test)
+[
+    [ "none" ], // no fragment cache
+    [ "local", // local (file system based) fragment cache
+      { "path" : "/tmp/x",
+        "max_size" : 100000 // in bytes
+      }],
+    [ "local", { path : "/tmp/x",
+                 max_size : 100000,
+                 rocksdb_max_open_files : 256 // optional, default 256
+               }],
+    [ "alba", // use another (probably ssd based) alba as a cache
+      { albamgr_cfg_url : "/tmp/x",
+        namespaces : [ "a", "b" ]
+      }],
+    [ "alba", { albamgr_cfg_url : "/tmp/x",
+                namespaces : [ "a", "b" ],
+                fragment_cache : // optional, defaults to [ "none" ]
+                [ "local", { path : "/tmp/x",
+                             max_size : 100000 } ]
+              }]
+]

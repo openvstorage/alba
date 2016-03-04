@@ -37,4 +37,5 @@ let suite = "all" >:::[
     Buffer_pool_test.suite;
     Maintenance_coordination_test.suite;
     Posix_test.suite;
+    Fragment_cache_config_test.suite;
   ]
