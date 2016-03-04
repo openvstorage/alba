@@ -554,13 +554,19 @@ let execute_query : type req res.
                  dir_info fnr
                  (fun blob_fd ->
                    let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-                   let () = Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL in
+                   let () =
+                     if dir_info.DirectoryInfo.use_fadvise
+                     then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL
+                   in
                    Net_fd.sendfile_all
                      ~fd_in:blob_fd
                      ~fd_out:nfd
                      size
                    >>= fun () ->
-                   let () = Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_DONTNEED in
+                   let () =
+                     if dir_info.DirectoryInfo.use_fadvise
+                     then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_DONTNEED
+                   in
                    Lwt.return_unit
                  )
               )

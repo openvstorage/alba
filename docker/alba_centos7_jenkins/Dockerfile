@@ -24,12 +24,10 @@ RUN opam init --root=/home/alba/OPAM --comp 4.02.3
 
 RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
 RUN yum -y update
-RUN yum -y install python-pip
-RUN yum -y install openssl-devel gmp-devel which
-RUN yum -y install zlib-devel
+RUN yum -y install python-pip openssl-devel gmp-devel which zlib-devel ncurses-devel bzip2
+
 
 # protobuf
-RUN yum -y install bzip2
 RUN wget https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.bz2 -O protobuf-2.6.1.tar.bz2 \
     && tar -jxvf protobuf-2.6.1.tar.bz2 \
     && cd protobuf-2.6.1 \
