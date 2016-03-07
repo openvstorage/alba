@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
-open Lwt
+open Lwt.Infix
 open Albamgr_protocol.Protocol
 
 let host = "127.0.0.1"

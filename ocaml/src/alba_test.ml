@@ -17,7 +17,7 @@ limitations under the License.
 open Prelude
 open Slice
 open Encryption
-open Lwt
+open Lwt.Infix
 
 let _fetch_abm_client_cfg () =
   let cfg_url  = Albamgr_test.get_ccfg_url () in
@@ -537,12 +537,13 @@ let test_create_namespaces () =
 let test_partial_download () =
   test_with_alba_client
     (fun client ->
-       let namespace = "test_partial_download" in
+       let test_name = "test_partial_download" in
+       let namespace = test_name in
        client # create_namespace
          ~preset_name:None
          ~namespace () >>= fun namespace_id ->
 
-       let object_name = "" in
+       let object_name = test_name in
 
        let object_data = "jfsdaovovvovo" in
        let object_data_ba = Lwt_bytes.of_string object_data in
@@ -585,9 +586,9 @@ let test_partial_download () =
          ~object_slices:[0L, Int64.to_int size]
          ~consistent_read:true
        >>= fun res ->
-       let res = Option.get_some res in
+       let object_data = Option.get_some res in
        let hasher = Hashes.make_hash (Checksum.algo_of checksum) in
-       hasher # update_string res;
+       hasher # update_string object_data;
        assert (checksum = hasher # final ());
 
        let hasher = Hashes.make_hash (Checksum.algo_of checksum) in
@@ -601,15 +602,16 @@ let test_partial_download () =
            else slice_length, true
          in
          let length = Int64.to_int length64 in
-         client # download_object_slices
+         client # download_object_slices_to_string
            ~namespace
            ~object_name
            ~object_slices:[offset, length]
            ~consistent_read:true
-           ~fragment_statistics_cb:(fun _ -> ())
-           (fun _dest_off src off len ->
-              hasher # update_lwt_bytes src off len;
-              Lwt.return ()) >>= fun _ ->
+         >>= fun data_o ->
+         let () = match data_o with
+           | None -> assert false
+           | Some data -> hasher # update_string data
+         in
          let acc' = (offset, length)::acc in
          if continue
          then download_partials acc' Int64.(add offset (of_int length))
@@ -621,19 +623,17 @@ let test_partial_download () =
        Lwt_log.debug_f "download slices variant 1 succeeded" >>= fun () ->
 
        begin
-         let prev_offset = ref (-1) in
          let hasher2 = Hashes.make_hash (Checksum.algo_of checksum) in
-         client # download_object_slices
+         client # download_object_slices_to_string
            ~namespace
            ~object_name
            ~object_slices
            ~consistent_read:true
-           ~fragment_statistics_cb:(fun _ -> ())
-           (fun dest_off src off len ->
-              assert (dest_off > !prev_offset);
-              prev_offset := dest_off;
-              hasher2 # update_lwt_bytes src off len;
-              Lwt.return ()) >>= fun _ ->
+         >>= fun data_o ->
+         let () = match data_o with
+           | None -> assert false
+           | Some data -> hasher2 # update_string data
+         in
          assert (checksum = hasher2 # final ());
          Lwt.return ()
        end >>= fun () ->
@@ -667,6 +667,47 @@ let test_partial_download () =
 
          Lwt.return ()
        end)
+
+let test_partial_download_bad_fragment () =
+  test_with_alba_client
+    (fun alba_client ->
+     let test_name = "test_partial_download_bad_fragment" in
+
+     let namespace = test_name in
+     alba_client # create_namespace ~namespace ~preset_name:None () >>= fun namespace_id ->
+
+     let object_name = test_name in
+     let object_data = Lwt_bytes.create 2_000_000 in
+     alba_client # upload_object_from_bytes
+                 ~namespace
+                 ~object_name
+                 ~object_data
+                 ~checksum_o:None
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf, _) ->
+
+     (* remove the first fragment's location from the manifest
+      * so it can't be used in download-object-slices *)
+     alba_client # nsm_host_access # get_gc_epoch ~namespace_id
+     >>= fun gc_epoch ->
+     alba_client # get_base_client # with_nsm_client ~namespace
+                 (fun client ->
+                  client # update_manifest
+                         ~object_name
+                         ~object_id:mf.Nsm_model.Manifest.object_id
+                         [ 0, 0, None; ]
+                         ~gc_epoch
+                         ~version_id:1) >>= fun () ->
+
+     alba_client # download_object_slices_to_string
+            ~namespace
+            ~object_name
+            ~object_slices:[ 0L, Lwt_bytes.length object_data ]
+            ~consistent_read:true
+     >>= fun data_o ->
+
+     assert (Lwt_bytes.to_string object_data = Option.get_some data_o);
+
+     Lwt.return ())
 
 let test_encryption () =
   test_with_alba_client
@@ -1866,13 +1907,11 @@ let test_stale_manifest_download () =
        Lwt.return ()
      in
      let download_slices () =
-       alba_client # download_object_slices
+       alba_client # download_object_slices_to_string
                    ~namespace
                    ~object_name
                    ~object_slices:[0L, object_length]
                    ~consistent_read:false
-                   ~fragment_statistics_cb:(fun _ -> ())
-                   (fun _ _ _ _ -> Lwt.return ())
        >>= fun _ ->
        Lwt.return ()
      in
@@ -2074,6 +2113,7 @@ let suite = "alba_test" >:::[
     "test_garbage_collect" >:: test_garbage_collect;
     "test_create_namespaces" >:: test_create_namespaces;
     "test_partial_download" >:: test_partial_download;
+    "test_partial_download_bad_fragment" >:: test_partial_download_bad_fragment;
     "test_encryption" >:: test_encryption;
     "test_discover_claimed" >:: test_discover_claimed;
     "test_change_osd_ip_port" >:: test_change_osd_ip_port;

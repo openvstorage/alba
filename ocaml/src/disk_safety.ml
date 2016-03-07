@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
-open Lwt
+open Lwt.Infix
 
 let get_namespace_safety
       (alba_client : Alba_client.alba_client)

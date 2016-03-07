@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
-open Lwt
+open Lwt.Infix
 open Generic_bench
 
 class alba_bench_client alba_client =

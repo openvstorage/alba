@@ -16,7 +16,7 @@ limitations under the License.
 
 open Prelude
 open Nsm_model
-open Lwt
+open Lwt.Infix
 open OUnit
 open Cmdliner
 

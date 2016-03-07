@@ -99,6 +99,7 @@ let osd_ok t =
      | write_time::_, (error_time, _)::_ -> write_time > error_time)
 
 let to_buffer buf t =
+  let module Llio = Llio2.WriteBuffer in
   let ser_version = 1 in
   Llio.int8_to buf ser_version;
   let l = Llio.list_to
@@ -116,6 +117,7 @@ let to_buffer buf t =
   Llio.option_to Llio.int64_to buf t.total
 
 let from_buffer buf =
+  let module Llio = Llio2.ReadBuffer in
   let ser_version = Llio.int8_from buf in
   assert (ser_version = 1);
   let l = Llio.list_from

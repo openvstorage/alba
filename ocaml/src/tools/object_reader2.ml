@@ -36,10 +36,7 @@ class object_reader
     alba_client # download_object_slices''
                 ~namespace_id
                 ~manifest
-                ~object_slices:[ (Int64.of_int pos, cnt); ]
-                ~write_data:(fun res_offset src off len ->
-                             Lwt_bytes.blit src off target res_offset len;
-                             Lwt.return ())
+                ~object_slices:[ (Int64.of_int pos, cnt, target, 0); ]
                 ~fragment_statistics_cb:(fun _ -> ())
     >>= fun _ ->
     pos <- pos + cnt;

@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Cmdliner
-open Lwt
+open Lwt.Infix
 open Cli_common
 open Checksum
 open Slice
