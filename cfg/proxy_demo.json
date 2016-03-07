@@ -16,8 +16,8 @@
     // tls client config:
     , "tls_client" : {
         "ca_cert" : "/tmp/arakoon/cacert.pem",
-        "cert"    : "/tmp/arakoon/my_client/my_client.pem",
-        "key"     : "/tmp/arakoon/my_client/my_client.key",
+        "creds"    : [ "/tmp/arakoon/my_client/my_client.pem",
+                       "/tmp/arakoon/my_client/my_client.key" ]
     }
     
     // wrap object file usage with posix_fadvise calls

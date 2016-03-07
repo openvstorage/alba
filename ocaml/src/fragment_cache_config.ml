@@ -15,8 +15,11 @@ limitations under the License.
 *)
 
 open Lwt.Infix
+open Prelude
 
 let default_rocksdb_max_open_files = 256
+let default_connection_pool_size = 10
+let default_osd_timeout = 2.
 
 type fragment_cache =
   | None' [@name "none"]
@@ -34,6 +37,12 @@ and alba_fragment_cache = {
     albamgr_cfg_url : string;
     namespaces : string list;
     fragment_cache : (fragment_cache [@default None']);
+    manifest_cache_size : int;
+    albamgr_connection_pool_size  : (int [@default default_connection_pool_size]);
+    nsm_host_connection_pool_size : (int [@default default_connection_pool_size]);
+    osd_connection_pool_size      : (int [@default default_connection_pool_size]);
+    osd_timeout : float [@default default_osd_timeout];
+    tls_client : Tls.t option [@default None];
   } [@@deriving yojson, show]
 
 let rec make_fragment_cache = function
@@ -68,6 +77,28 @@ let rec make_fragment_cache = function
      Lwt.ignore_result (fragment_cache_disk_usage_t ());
 
      Lwt.return (cache :> Fragment_cache.cache)
-  | Alba { albamgr_cfg_url; namespaces; fragment_cache; } ->
-     let nested_cache = make_fragment_cache fragment_cache in
-     failwith "TODO"
+  | Alba { albamgr_cfg_url;
+           namespaces;
+           fragment_cache;
+           manifest_cache_size;
+           albamgr_connection_pool_size;
+           nsm_host_connection_pool_size;
+           osd_connection_pool_size;
+           osd_timeout;
+           tls_client;
+         } ->
+     make_fragment_cache fragment_cache >>= fun nested_fragment_cache ->
+     Alba_arakoon.config_from_url (Url.make albamgr_cfg_url) >>= fun albamgr_cfg ->
+     let cache = new Fragment_cache_alba.alba_cache
+                     ~albamgr_cfg_ref:(ref albamgr_cfg)
+                     (* TODO pass in list of namespaces *)
+                     (List.hd_exn namespaces)
+                     ~nested_fragment_cache
+                     ~manifest_cache_size
+                     ~albamgr_connection_pool_size
+                     ~nsm_host_connection_pool_size
+                     ~osd_connection_pool_size
+                     ~osd_timeout
+                     ~tls_config:tls_client
+     in
+     Lwt.return (cache :> Fragment_cache.cache)

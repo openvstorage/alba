@@ -23,26 +23,20 @@ module KV = Rocks_key_value_store
 
 
 class type cache = object
-    method clear_all : unit -> unit Lwt.t
     method add : int32 -> string -> Lwt_bytes.t -> unit Lwt.t
     method lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
     method lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
 
     method drop : int32 -> unit Lwt.t
-    method get_count : unit -> int64
-    method get_total_size : unit -> int64
     method close : unit -> unit Lwt.t
 end
 
 class no_cache = object(self :# cache)
-    method clear_all () = Lwt.return_unit
     method add     bid oid blob   = Lwt.return_unit
     method lookup  bid oid        = Lwt.return_none
     method lookup2 bid oid slices = Lwt.return_false
     method drop    bid            = Lwt.return_unit
-    method get_count () = 0L
-    method get_total_size () = 0L
-    method close () = Lwt.return_unit
+    method close   ()             = Lwt.return_unit
 end
 
 let ser64 x=

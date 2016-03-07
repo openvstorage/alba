@@ -213,6 +213,33 @@ class alba_client (base_client : Alba_base_client.client)
     >>= fun _len ->
     Lwt.return !res
 
+  method download_object_to_bytes
+           ~namespace
+           ~object_name
+           ~consistent_read
+           ~should_cache
+         : Lwt_bytes.t option Lwt.t =
+    let res = ref None in
+    let write_object_data total_size =
+      let bs = Lwt_bytes.create (Int64.to_int total_size) in
+      res := Some bs;
+      let offset = ref 0 in
+      let write source pos len =
+        Lwt_bytes.blit source pos bs !offset len;
+        offset := !offset + len;
+        Lwt.return ()
+      in
+      Lwt.return write
+    in
+    self # download_object_generic
+         ~namespace
+         ~object_name
+         ~write_object_data
+         ~consistent_read
+         ~should_cache
+    >>= fun _len ->
+    Lwt.return !res
+
   method download_object_to_string'
            ~namespace_id
            ~object_name

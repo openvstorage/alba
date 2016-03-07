@@ -36,6 +36,14 @@ let test_example_config () =
           albamgr_cfg_url = "/tmp/x";
           namespaces = [ "a"; "b"; ];
           fragment_cache = None';
+          manifest_cache_size = 5_000_000;
+          albamgr_connection_pool_size  = default_connection_pool_size;
+          nsm_host_connection_pool_size = default_connection_pool_size;
+          osd_connection_pool_size      = default_connection_pool_size;
+          osd_timeout = default_osd_timeout;
+          tls_client = Some Tls.({ ca_cert = "/tmp/cacert.pem";
+                                   creds = Some ("/tmp/my_client/my_client.pem",
+                                                 "/tmp/my_client/my_client.key") });
         };
       Alba {
           albamgr_cfg_url = "/tmp/x";
@@ -45,6 +53,12 @@ let test_example_config () =
                                max_size = 100_000;
                                rocksdb_max_open_files = default_rocksdb_max_open_files;
                              };
+          manifest_cache_size = 5_000_000;
+          albamgr_connection_pool_size  = default_connection_pool_size;
+          nsm_host_connection_pool_size = default_connection_pool_size;
+          osd_connection_pool_size      = default_connection_pool_size;
+          osd_timeout = default_osd_timeout;
+          tls_client = None;
         };
     ]
   in
