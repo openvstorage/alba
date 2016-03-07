@@ -721,7 +721,7 @@ let execute_update : type req res.
           Lwt.return (none_asserts', some_asserts')
         in
 
-        let with_immediate_updates_promise f =
+        let with_immediate_updates f =
 
           let files = ref [] in
           let allow_getting_file = ref true in
@@ -769,7 +769,8 @@ let execute_update : type req res.
           in
           Lwt.catch
             (fun () ->
-             f immediate_upds_promise >>= fun () ->
+             immediate_upds_promise >>= fun immediate_upds ->
+             f immediate_upds >>= fun () ->
 
              (* the files are now definitely commited,
                 release file numbers so that collect_garbage_from
@@ -911,15 +912,14 @@ let execute_update : type req res.
              files_to_delete)
         in
 
-        with_immediate_updates_promise
-          (fun immediate_updates_promise ->
+        with_immediate_updates
+          (fun immediate_updates ->
            let rec inner = function
              | 5 -> Lwt.fail ConcurrentModification
              | attempt ->
                 Lwt.catch
                   (fun () ->
                    transform_asserts () >>= fun (none_asserts, some_asserts) ->
-                   immediate_updates_promise >>= fun immediate_updates ->
                    let files_to_be_deleted =
                      try_apply_immediate
                        none_asserts some_asserts
