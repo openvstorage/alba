@@ -303,7 +303,7 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
 
     method link_plugins node =
       let dir_path = cluster_path ^ "/" ^ node in
-      "mkdir -p " ^ dir_path |> Shell.cmd;
+      Shell.mkdir dir_path;
       Printf.sprintf
         "ln -fs %s/nsm_host_plugin.cmxs %s/nsm_host_plugin.cmxs"
         _plugin_path dir_path |> Shell.cmd;
@@ -392,29 +392,84 @@ let make_tls_client (cfg:Config.t) =
     Some { ca_cert; creds = (my_client_pem, my_client_key)}
   else None
 
-type proxy_cfg =
-  { port: int;
-    albamgr_cfg_url : Url.t
-                        (* needed for the compat tests which start 0.6 proxies *)
-                        [@key "albamgr_cfg_file"];
-    log_level : string;
-    fragment_cache_dir : string;
-    manifest_cache_size : int;
-    fragment_cache_size : int;
-    tls_client : tls_client option;
-    use_fadvise: bool [@default true];
-  } [@@deriving yojson]
+module Proxy_cfg =
+  struct
+    type proxy_cfg_06 =
+      { port: int;
+        albamgr_cfg_file : Url.t;
+        log_level : string;
+        fragment_cache_dir : string;
+        manifest_cache_size : int;
+        fragment_cache_size : int;
+        tls_client : tls_client option;
+        use_fadvise: bool [@default true];
+      } [@@deriving yojson]
 
-let make_proxy_config id abm_cfg_url base tls_client=
-  { port = 10000 + id;
-    albamgr_cfg_url = abm_cfg_url;
-    log_level = "debug";
-    fragment_cache_dir  = base ^ "/fragment_cache";
-    manifest_cache_size = 100 * 1000;
-    fragment_cache_size = 100 * 1000 * 1000;
-    tls_client;
-    use_fadvise = true;
-  }
+    type fragment_cache_cfg =
+      | None' [@name "none"]
+      | Local of local_fragment_cache [@name "local"]
+      | Alba of alba_fragment_cache [@name "alba"]
+    [@@deriving yojson]
+
+     and local_fragment_cache = {
+         path : string;
+         max_size : int;
+       } [@@deriving yojson]
+
+     and alba_fragment_cache = {
+         albamgr_cfg_url : string;
+         namespaces : string list;
+         manifest_cache_size : int;
+       } [@@deriving yojson]
+
+    type proxy_cfg' =
+      { port : int;
+        albamgr_cfg_url : Url.t;
+        log_level : string;
+        manifest_cache_size : int;
+        fragment_cache : fragment_cache_cfg;
+        tls_client : tls_client option;
+        use_fadvise : bool [@default true];
+      } [@@deriving yojson]
+
+    type t =
+      | Old of proxy_cfg_06
+      | New of proxy_cfg'
+
+    let to_yojson = function
+      | Old t -> proxy_cfg_06_to_yojson t
+      | New t -> proxy_cfg'_to_yojson t
+
+    let make_06 id abm_cfg_url base tls_client =
+      Old
+        { port = 10000 + id;
+          albamgr_cfg_file = abm_cfg_url;
+          log_level = "debug";
+          fragment_cache_dir  = base ^ "/fragment_cache";
+          manifest_cache_size = 100 * 1000;
+          fragment_cache_size = 100 * 1000 * 1000;
+          tls_client;
+          use_fadvise = true;
+        }
+
+    let make id albamgr_cfg_url base tls_client =
+      New
+        { port = 10000 + id;
+          albamgr_cfg_url;
+          log_level = "debug";
+          fragment_cache = Local {
+                               path = base ^ "/fragment_cache";
+                               max_size = 100 * 1000 * 1000;
+                             };
+          manifest_cache_size = 100 * 1000;
+          tls_client;
+          use_fadvise = true;
+        }
+
+    let port = function
+      | Old x -> x.port
+      | New x -> x.port
+  end
 
 let _alba_extend_tls ?(cfg=Config.default) cmd =
   let arakoon_path = cfg.arakoon_path in
@@ -458,10 +513,15 @@ let suppress_tags tags = function
      `Assoc xs'
   | _ -> failwith "unexpected json"
 
-class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd =
+class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
   let tls_client = make_tls_client cfg in
-  let p_cfg = make_proxy_config id abm_cfg_url proxy_base tls_client in
+  let p_cfg =
+    (if v06_proxy
+     then Proxy_cfg.make_06
+     else Proxy_cfg.make)
+      id abm_cfg_url proxy_base tls_client
+  in
   let config_persister, cfg_url =
     match etcd with
     | None ->
@@ -469,7 +529,7 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd =
        let cfg_url = Url.File p_cfg_file in
        let persister cfg =
          let oc = open_out p_cfg_file in
-         let json = proxy_cfg_to_yojson cfg in
+         let json = Proxy_cfg.to_yojson cfg in
          let json' = suppress_tags [] json in
          Yojson.Safe.pretty_to_channel oc json' ;
          close_out oc
@@ -478,7 +538,7 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd =
     | Some etcd ->
        let key = Printf.sprintf "/proxies/%02i" id in
        let persister cfg =
-         let json = proxy_cfg_to_yojson cfg in
+         let json = Proxy_cfg.to_yojson cfg in
          let value = Yojson.Safe.pretty_to_string json in
          Etcdctl.set etcd key value
        in
@@ -488,17 +548,26 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd =
   object (self : # component)
 
   method persist_config :unit =
-    "mkdir -p " ^ proxy_base |> Shell.cmd;
+    Shell.mkdir proxy_base;
     config_persister p_cfg
 
   method start =
     let out = Printf.sprintf "%s/proxy.out" proxy_base in
-    "mkdir -p " ^ p_cfg.fragment_cache_dir |> Shell.cmd;
+    let () =
+      let open Proxy_cfg in
+      match p_cfg with
+      | Old { fragment_cache_dir; _ } -> Shell.mkdir fragment_cache_dir
+      | New x ->
+         match x.fragment_cache with
+         | Alba _
+         | None' -> ()
+         | Local { path; _ } -> Shell.mkdir path
+    in
     [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
     |> Shell.detach ~out
 
   method stop =
-    let kill_port = p_cfg.port in
+    let kill_port = Proxy_cfg.port p_cfg in
     Printf.sprintf "fuser -k -n tcp %i" kill_port |> Shell.cmd ~ignore_rc:true
 
   method upload_object namespace file name =
@@ -853,8 +922,8 @@ module Deployment = struct
          end
     in
 
-    let proxy       = new proxy       0 cfg cfg.alba_bin (abm # config_url) cfg.etcd in
-    let maintenance = new maintenance 0 cfg              (abm # config_url) cfg.etcd in
+    let proxy = new proxy 0 cfg cfg.alba_bin (abm # config_url) cfg.etcd ~v06_proxy:false in
+    let maintenance = new maintenance 0 cfg  (abm # config_url) cfg.etcd in
     let osds = make_osds ?write_blobs cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
@@ -1719,7 +1788,7 @@ module Test = struct
               new proxy 0 tx.cfg
                   tx.cfg.alba_06_bin
                   (tx.abm # config_url)
-                  tx.cfg.etcd
+                  tx.cfg.etcd ~v06_proxy:true
             in
             {tx with proxy = old_proxy }
           else tx
