@@ -23,6 +23,7 @@ open Checksum
 open Asd_statistics
 open Asd_io_scheduler
 open Lwt_bytes2
+open Range_query_args
 
 let blob_threshold = 16 * 1024
 

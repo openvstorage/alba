@@ -40,7 +40,7 @@ let () =
     | "discover" -> discovery seen
     | "get_kind" ->
        begin
-         let open Lwt in
+         let open Lwt.Infix in
          let ips = [Sys.argv.(2)] in
          let port = Scanf.sscanf Sys.argv.(3) "%i" (fun i -> i) in
          get_kind ips port >>= function

@@ -26,6 +26,7 @@ class type cache = object
     method clear_all : unit -> unit Lwt.t
     method add : int32 -> string -> Lwt_bytes.t -> unit Lwt.t
     method lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
+    method lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
 
     method drop : int32 -> unit Lwt.t
     method get_count : unit -> int64
@@ -34,13 +35,14 @@ class type cache = object
 end
 
 class no_cache = object(self :# cache)
-    method clear_all () = Lwt.return ()
-    method add    bid oid blob = Lwt.return ()
-    method lookup bid oid      = Lwt.return None
-    method drop   bid          = Lwt.return ()
+    method clear_all () = Lwt.return_unit
+    method add     bid oid blob   = Lwt.return_unit
+    method lookup  bid oid        = Lwt.return_none
+    method lookup2 bid oid slices = Lwt.return_false
+    method drop    bid            = Lwt.return_unit
     method get_count () = 0L
     method get_total_size () = 0L
-    method close () = Lwt.return ()
+    method close () = Lwt.return_unit
 end
 
 let ser64 x=
@@ -56,7 +58,7 @@ let ser64_be x =
 let (+:) = Int64.add
 let (-:) = Int64.sub
 
-let marker_name root = Printf.sprintf "%s/alba_proxy_marker" root
+let marker_name root = Printf.sprintf "%s/alba_proxy_marker_v2" root
 
 let get_int64 db key =
   match KV.get db key with
@@ -326,11 +328,15 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
             Lwt.return ())
         )
 
-    method lookup bid oid =
+    method _lookup : type a. int32 ->
+                          string ->
+                          (Lwt_unix.file_descr -> len : int -> a Lwt.t) ->
+                          a option Lwt.t =
+      fun bid oid f ->
 
       Hashtbl.remove _dropping bid;
 
-      let _lookup bid oid f =
+      let inner () =
         let boid = bid,oid in
         let blob_fsid_key = blob_fsid_key_of boid in
         Lwt_log.debug_f "_lookup %lx oid:%S" bid oid >>= fun () ->
@@ -390,13 +396,27 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
         (fun () ->
          Lwt_mutex.with_lock
            _mutex
-           (fun () -> _lookup bid oid read_it)
+           inner
         )
         (fun exn ->
          Lwt_log.warning ~exn "the cache exploded. returning None" >>= fun () ->
          Lwt.return None
         )
 
+    method lookup bid oid =
+      self # _lookup bid oid read_it
+
+    method lookup2 bid oid slices =
+      self # _lookup
+           bid oid
+           (fun fd ~len ->
+            Lwt_list.iter_s
+              (fun (offset, length, target, offset') ->
+               Lwt_unix.lseek fd offset Lwt_unix.SEEK_SET >>= fun _ ->
+               Lwt_extra2.read_all_lwt_bytes_exact fd target offset' length)
+              slices) >>= function
+      | Some () -> Lwt.return_true
+      | None -> Lwt.return_false
 
     method _check () =
       Printf.printf "_check()\n%!";

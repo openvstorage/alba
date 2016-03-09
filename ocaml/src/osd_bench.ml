@@ -16,7 +16,7 @@ limitations under the License.
 
 open Prelude
 open Asd_protocol
-open Lwt
+open Lwt.Infix
 open Generic_bench
 open Checksum
 open Slice

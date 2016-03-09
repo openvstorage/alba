@@ -16,7 +16,7 @@ limitations under the License.
 
 open Prelude
 open Registry
-open Lwt
+open Lwt.Infix
 open Albamgr_protocol
 open Plugin_extra
 open Update

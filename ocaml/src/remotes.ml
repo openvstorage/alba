@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Lwt
+open Lwt.Infix
 open Prelude
 
 module Pool = struct

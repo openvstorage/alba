@@ -14,9 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Lwt
+open Lwt.Infix
 open Prelude
 open Proxy_protocol
+open Range_query_args
+open Lwt_bytes2
 
 let ini_hash_to_string tbl =
   let buf = Buffer.create 20 in
@@ -81,71 +83,84 @@ let write_albamgr_cfg albamgr_cfg =
 let read_objects_slices
       (alba_client : Alba_client.alba_client)
       namespace objects_slices ~consistent_read =
-  let total_length, objects_slices, n_slices, object_names =
+  let total_length =
     List.fold_left
-      (fun (offset, acc, n_slices, object_names) (object_name, object_slices) ->
-       let offset' =
-         List.fold_left
-           (fun offset (_, slice_length) -> offset + slice_length)
-           offset
-           object_slices
-       in
-       let object_names' = StringSet.add object_name object_names
-       and n_slices' = n_slices + 1
-       and acc' = (offset, object_name, object_slices) :: acc
-       in
-
-       offset', acc', n_slices', object_names'
-
-      )
-      (0, [], 0, StringSet.empty)
+      (fun acc (object_name, object_slices) ->
+       List.fold_left
+         (fun acc (_, slice_length) -> acc + slice_length)
+         acc
+         object_slices)
+      0
       objects_slices
   in
+  let res = Lwt_bytes.create total_length in
+  Lwt.finalize
+    (fun () ->
+     let _, objects_slices, n_slices, object_names =
+       List.fold_left
+         (fun (res_offset, acc, n_slices, object_names) (object_name, object_slices) ->
+          let res_offset, object_slices =
+            List.fold_left
+              (fun (res_offset, object_slices) (slice_offset, slice_length) ->
+               res_offset + slice_length,
+               (slice_offset, slice_length, res, res_offset) :: object_slices)
+              (res_offset, [])
+              object_slices
+          in
+          let object_names' = StringSet.add object_name object_names
+          and n_slices' = n_slices + 1
+          and acc' = (object_name, object_slices) :: acc
+          in
 
-  let res = Bytes.create total_length in
-  let n_objects = StringSet.cardinal object_names in
-  let strategy, logger =
-    if n_slices < 8
-    then
-      Lwt_list.map_p,
-      fun n_slices total_length n_objects ->
-      Lwt_log.debug_f "%i slices,%i bytes,%i objects => parallel"
-                      n_slices total_length n_objects
-    else
-      Lwt_list.map_s,
-      fun n_slices total_length n_objects ->
-      Lwt_log.info_f "%i slices,%i bytes,%i objects => sequential"
-                     n_slices total_length n_objects
-  in
-  let fc_hits   = ref 0 in
-  let fc_misses = ref 0 in
-  let fragment_statistics_cb stat =
-    let open Cache  in
-    let open Alba_statistics in
-    match stat.Statistics.source with
-    | Fast  -> incr fc_hits
-    | Slow
-    | Stale -> incr fc_misses
-  in
-  logger n_slices total_length n_objects >>= fun () ->
-  strategy
-    (fun (offset, object_name, object_slices) ->
-     alba_client # download_object_slices
-                 ~namespace
-                 ~object_name
-                 ~object_slices
-                 ~consistent_read
-                 ~fragment_statistics_cb
-                 (fun dest_off src off len ->
-                  Lwt_bytes.blit_to_bytes src off res (offset + dest_off) len;
-                  Lwt.return ())
-     >>= function
-     | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-     | Some (_mf, mf_src) -> Lwt.return mf_src
-    )
-    objects_slices
-  >>= fun mf_sources ->
-  Lwt.return (res,n_slices,n_objects, mf_sources, !fc_hits, !fc_misses)
+          res_offset, acc', n_slices', object_names'
+         )
+         (0, [], 0, StringSet.empty)
+         objects_slices
+     in
+
+     let n_objects = StringSet.cardinal object_names in
+     let strategy, logger =
+       if n_slices < 8
+       then
+         Lwt_list.map_p,
+         fun n_slices total_length n_objects ->
+         Lwt_log.debug_f "%i slices,%i bytes,%i objects => parallel"
+                         n_slices total_length n_objects
+       else
+         Lwt_list.map_s,
+         fun n_slices total_length n_objects ->
+         Lwt_log.info_f "%i slices,%i bytes,%i objects => sequential"
+                        n_slices total_length n_objects
+     in
+     let fc_hits   = ref 0 in
+     let fc_misses = ref 0 in
+     let fragment_statistics_cb stat =
+       let open Alba_statistics in
+       match stat with
+       | Statistics.FromCache _ -> incr fc_hits
+       | Statistics.FromOsd _   -> incr fc_misses
+     in
+     logger n_slices total_length n_objects >>= fun () ->
+     strategy
+       (fun (object_name, object_slices) ->
+        alba_client # download_object_slices
+                    ~namespace
+                    ~object_name
+                    ~object_slices
+                    ~consistent_read
+                    ~fragment_statistics_cb
+        >>= function
+        | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
+        | Some (_mf, mf_src) -> Lwt.return mf_src
+       )
+       objects_slices
+     >>= fun mf_sources ->
+     Lwt.return (Lwt_bytes.to_string res,
+                 n_slices, n_objects, mf_sources,
+                 !fc_hits, !fc_misses))
+    (fun () ->
+     Lwt_bytes.unsafe_destroy res;
+     Lwt.return ())
 
 let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   let open Protocol in
@@ -192,7 +207,7 @@ let log_request code maybe_renderer time =
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (albamgr_client_cfg:Alba_arakoon.Config.t ref)
                    (stats: ProxyStatistics.t')
-                   (nfd:Net_fd.t) ic =
+                   (nfd:Net_fd.t) =
 
   let execute_request : type i o. (i, o) Protocol.request ->
                              ProxyStatistics.t' ->
@@ -339,9 +354,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats () ->
        Lwt.return !albamgr_client_cfg
   in
+  let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
     let res_s =
-      serialize_with_length
+      Llio.serialize_with_length
         (Llio.pair_to
            Llio.int_to
            Llio.string_to)
@@ -358,10 +374,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          | Protocol.Wrap r ->
            let req = Deser.from_buffer (Protocol.deser_request_i r) buf in
            execute_request r stats req >>= fun res ->
-           Lwt.return (serialize_with_length
+           Lwt.return (Llio.serialize_with_length
                          (Llio.pair_to
                             Llio.int_to
-                            (Deser.to_buffer (Protocol.deser_request_o r)))
+                            (snd (Protocol.deser_request_o r)))
                          (0, res),
                        let renderer () = render_request_args r req in
                        Some renderer))
@@ -471,25 +487,27 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            return_err_response ~msg Protocol.Error.Unknown)
 
     >>= fun (res, maybe_renderer) ->
-    Net_fd.write_all res nfd >>= fun () ->
+    Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd >>= fun () ->
     Lwt.return maybe_renderer
 
   in
   let rec inner () =
-    Llio.input_string ic >>= fun req_s ->
-    let buf = Llio.make_buffer req_s 0 in
-    let code = Llio.int_from buf in
-    with_timing_lwt
-      (fun () -> handle_request buf code)
-    >>= fun (time_inner, maybe_renderer) ->
-    log_request code maybe_renderer time_inner >>= fun () ->
+    Llio2.NetFdReader.int_from nfd >>= fun len ->
+    Llio2.NetFdReader.with_buffer_from
+      nfd len
+      (fun buf ->
+       let code = Llio2.ReadBuffer.int_from buf in
+       with_timing_lwt
+         (fun () -> handle_request buf code)
+       >>= fun (time_inner, maybe_renderer) ->
+       log_request code maybe_renderer time_inner) >>= fun () ->
     inner ()
   in
-  Llio.input_int32 ic >>= fun magic ->
+  Llio2.NetFdReader.int32_from nfd >>= fun magic ->
   if magic = Protocol.magic
   then
     begin
-      Llio.input_int32 ic >>= fun version ->
+      Llio2.NetFdReader.int32_from nfd >>= fun version ->
       if version = Protocol.version
       then inner ()
       else
@@ -499,7 +517,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     Protocol.version version
         in
         return_err_response ~msg err >>= fun (res, _) ->
-        Net_fd.write_all res nfd
+        Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd
     end
   else Lwt.return ()
 
@@ -623,18 +641,12 @@ let run_server hosts port
                  albamgr_cfg_url
                  ~tcp_keepalive
               );
-              (let buffer_size = 8192 in
-               let buffer_pool = Buffer_pool.create ~buffer_size in
-               let ctx = None in
+              (let ctx = None in
                Networking2.make_server
                  ~max:max_client_connections
                  hosts port ~ctx ~tcp_keepalive
                  (fun nfd ->
-                  Buffer_pool.with_buffer
-                    buffer_pool
-                    (fun buffer ->
-                     let ic = Net_fd.make_ic ~buffer nfd in
-                     proxy_protocol alba_client albamgr_client_cfg stats nfd ic)));
+                  proxy_protocol alba_client albamgr_client_cfg stats nfd));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (fragment_cache_disk_usage_t ());

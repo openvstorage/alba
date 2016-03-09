@@ -61,6 +61,13 @@ module ReadBuffer = struct
       let c = c_from buf in
       let d = d_from buf in
       (a, b, c, d)
+    let tuple5_from a_from b_from c_from d_from e_from buf =
+      let a = a_from buf in
+      let b = b_from buf in
+      let c = c_from buf in
+      let d = d_from buf in
+      let e = e_from buf in
+      (a, b, c, d, e)
 
     let int32_from buf =
       let r = get32_prim' buf.buf buf.pos in
@@ -183,6 +190,12 @@ module WriteBuffer = struct
       b_to buf b;
       c_to buf c;
       d_to buf d
+    let tuple5_to a_to b_to c_to d_to e_to buf (a, b, c, d, e) =
+      a_to buf a;
+      b_to buf b;
+      c_to buf c;
+      d_to buf d;
+      e_to buf e
 
     let int32_to buf i =
       with_ buf 4
@@ -270,6 +283,38 @@ module WriteBuffer = struct
 
 type 'a deserializer = 'a ReadBuffer.deserializer
 type 'a serializer = 'a WriteBuffer.serializer
+
+module Deser =
+  struct
+    type 'a t = 'a deserializer * 'a serializer
+
+    let unit = ReadBuffer.unit_from, WriteBuffer.unit_to
+    let bool = ReadBuffer.bool_from, WriteBuffer.bool_to
+    let int = ReadBuffer.int_from, WriteBuffer.int_to
+    let int32 = ReadBuffer.int32_from, WriteBuffer.int32_to
+    let int64 = ReadBuffer.int64_from, WriteBuffer.int64_to
+    let string = ReadBuffer.string_from, WriteBuffer.string_to
+
+    let list (d, s) = ReadBuffer.list_from d, WriteBuffer.list_to s
+    let counted_list (d, s) = ReadBuffer.counted_list_from d, WriteBuffer.counted_list_to s
+
+    let tuple2 (d1, s1) (d2, s2) =
+      ReadBuffer.pair_from d1 d2,
+      WriteBuffer.pair_to s1 s2
+    let pair = tuple2
+
+    let tuple3 (d1,s1) (d2,s2) (d3,s3) =
+      ReadBuffer.tuple3_from d1 d2 d3,
+      WriteBuffer.tuple3_to s1 s2 s3
+    let tuple4 (d1,s1) (d2,s2) (d3,s3) (d4,s4) =
+      ReadBuffer.tuple4_from d1 d2 d3 d4,
+      WriteBuffer.tuple4_to s1 s2 s3 s4
+    let tuple5 (d1,s1) (d2,s2) (d3,s3) (d4,s4) (d5,s5) =
+      ReadBuffer.tuple5_from d1 d2 d3 d4 d5,
+      WriteBuffer.tuple5_to s1 s2 s3 s4 s5
+
+    let option (d, s) = ReadBuffer.option_from d, WriteBuffer.option_to s
+  end
 
 module NetFdReader = struct
     open Lwt.Infix
