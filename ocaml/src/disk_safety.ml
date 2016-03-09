@@ -60,6 +60,9 @@ let get_namespace_safety
 
 let get_disk_safety alba_client namespaces dead_osds =
 
+  (* remove any duplicates *)
+  let dead_osds = List.sort_uniq compare dead_osds in
+
   Lwt_list.map_p
     (fun osd_id ->
        alba_client # mgr_access # list_all_osd_namespaces ~osd_id
