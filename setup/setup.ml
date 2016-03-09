@@ -29,8 +29,6 @@ module Config = struct
       arakoon_bin : string;
       arakoon_189_bin: string;
       arakoon_path : string;
-      abm_nodes : string list;
-      abm_path : string;
 
       alba_home : string;
       alba_base_path : string;
@@ -53,17 +51,17 @@ module Config = struct
       etcd : ((string * int) list * string) option;
     }
 
-  let make () =
+  let make ?workspace () =
     let home = Sys.getenv "HOME" in
-    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
+    let workspace =
+      match workspace with
+      | None -> env_or_default "WORKSPACE" (Unix.getcwd ())
+      | Some w -> w
+    in
     let arakoon_home = env_or_default "ARAKOON_HOME" (home ^ "/workspace/ARAKOON/arakoon") in
     let arakoon_bin = env_or_default "ARAKOON_BIN" (arakoon_home ^ "/arakoon.native") in
     let arakoon_189_bin = env_or_default "ARAKOON_189_BIN" "/usr/bin/arakoon" in
     let arakoon_path = workspace ^ "/tmp/arakoon" in
-
-    let abm_nodes = ["abm_0";"abm_1";"abm_2"] in
-
-    let abm_path = arakoon_path ^ "/" ^ "abm" in
 
     let alba_home = env_or_default "ALBA_HOME" workspace in
     let alba_base_path = workspace ^ "/tmp/alba" in
@@ -109,8 +107,6 @@ module Config = struct
       arakoon_bin;
       arakoon_189_bin;
       arakoon_path;
-      abm_nodes;
-      abm_path;
 
       alba_home;
       alba_base_path;
@@ -440,9 +436,9 @@ module Proxy_cfg =
       | Old t -> proxy_cfg_06_to_yojson t
       | New t -> proxy_cfg'_to_yojson t
 
-    let make_06 id abm_cfg_url base tls_client =
+    let make_06 ?fragment_cache id abm_cfg_url base tls_client port =
       Old
-        { port = 10000 + id;
+        { port = port + id;
           albamgr_cfg_file = abm_cfg_url;
           log_level = "debug";
           fragment_cache_dir  = base ^ "/fragment_cache";
@@ -452,15 +448,20 @@ module Proxy_cfg =
           use_fadvise = true;
         }
 
-    let make id albamgr_cfg_url base tls_client =
+    let make ?fragment_cache
+             id albamgr_cfg_url base tls_client port =
+      let fragment_cache =
+        match fragment_cache with
+        | Some x -> x
+        | None -> Local {
+                      path = base ^ "/fragment_cache";
+                      max_size = 100 * 1000 * 1000;
+                    } in
       New
-        { port = 10000 + id;
+        { port = port + id;
           albamgr_cfg_url;
           log_level = "debug";
-          fragment_cache = Local {
-                               path = base ^ "/fragment_cache";
-                               max_size = 100 * 1000 * 1000;
-                             };
+          fragment_cache;
           manifest_cache_size = 100 * 1000;
           tls_client;
           use_fadvise = true;
@@ -513,7 +514,7 @@ let suppress_tags tags = function
      `Assoc xs'
   | _ -> failwith "unexpected json"
 
-class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy =
+class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
   let tls_client = make_tls_client cfg in
   let p_cfg =
@@ -521,6 +522,7 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy =
      then Proxy_cfg.make_06
      else Proxy_cfg.make)
       id abm_cfg_url proxy_base tls_client
+      port ?fragment_cache
   in
   let config_persister, cfg_url =
     match etcd with
@@ -545,6 +547,15 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy =
        let url = Etcdctl.url etcd key in
        persister, url
   in
+  let proxy_cmd_line_with_capture cmd =
+    cfg.alba_bin ::
+    List.append
+      cmd
+      [ "-h"; "127.0.0.1";
+        "-p"; Proxy_cfg.port p_cfg |> string_of_int; ]
+    |> Shell.cmd_with_capture
+  in
+  let proxy_cmd_line cmd = proxy_cmd_line_with_capture cmd |> ignore in
   object (self : # component)
 
   method persist_config :unit =
@@ -572,29 +583,25 @@ class proxy id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy =
 
   method upload_object namespace file name =
     ["proxy-upload-object";
-     "-h";"127.0.0.1";
      namespace; file ; name ]
-    |> _alba_cmd_line ~ignore_tls:true
+    |> proxy_cmd_line
 
   method download_object namespace name file =
     ["proxy-download-object";
-     "-h";"127.0.0.1";
      namespace; name ;file ]
-    |> _alba_cmd_line ~ignore_tls:true
+    |> proxy_cmd_line
 
   method delete_object namespace name =
-    ["proxy-delete-object";
-     "-h";"127.0.0.1";
-     namespace; name ]
-    |> _alba_cmd_line ~ignore_tls:true
+    ["proxy-delete-object"; namespace; name ] |> proxy_cmd_line
+
+  method list_objects namespace =
+    [ "proxy-list-objects"; namespace ] |> proxy_cmd_line_with_capture
 
   method create_namespace name =
-    ["proxy-create-namespace"; "-h"; "127.0.0.1"; name]
-    |> _alba_cmd_line ~ignore_tls:true
+    [ "proxy-create-namespace"; name ] |> proxy_cmd_line
 
   method delete_namespace name =
-    ["proxy-delete-namespace"; "-h"; "127.0.0.1"; name]
-    |> _alba_cmd_line ~ignore_tls:true
+    ["proxy-delete-namespace"; name] |> proxy_cmd_line
 
 end
 
@@ -860,8 +867,10 @@ module Deployment = struct
 
 
 
-  let make_osds ?write_blobs n local_nodeid_prefix base_path arakoon_path alba_bin ~etcd (tls:bool) =
-    let base_port = 8000 in
+  let make_osds
+        ?(base_port=8000) ?write_blobs
+        n local_nodeid_prefix base_path arakoon_path alba_bin
+        ~etcd (tls:bool) =
     let rec loop asds j =
       if j = n
       then List.rev asds |> Array.of_list
@@ -898,19 +907,18 @@ module Deployment = struct
     in
     loop [] 0
 
-  let make_default ?write_blobs () =
-    let cfg = Config.default in
+  let make_default
+        ?(cfg = Config.default) ?(base_port=4000)
+        ?write_blobs ?fragment_cache () =
     let abm =
       let id = "abm"
-      and nodes = ["abm_0"; "abm_1"; "abm_2"]
-      and base_port = 4000 in
-      new arakoon id nodes base_port cfg.etcd
+      and nodes = ["abm_0"; "abm_1"; "abm_2"] in
+      new arakoon ~cfg id nodes base_port cfg.etcd
     in
     let nsm =
       let id = "nsm"
-      and nodes = ["nsm_0";"nsm_1"; "nsm_2"]
-      and base_port = 4100 in
-      new arakoon id nodes base_port cfg.etcd
+      and nodes = ["nsm_0";"nsm_1"; "nsm_2"] in
+      new arakoon ~cfg id nodes (base_port + 100) cfg.etcd
     in
     let etcd = match cfg.etcd with
       | None -> None
@@ -922,9 +930,14 @@ module Deployment = struct
          end
     in
 
-    let proxy = new proxy 0 cfg cfg.alba_bin (abm # config_url) cfg.etcd ~v06_proxy:false in
+    let proxy = new proxy
+                    0 cfg cfg.alba_bin
+                    (abm # config_url) cfg.etcd ~v06_proxy:false
+                    (base_port * 2 + 2000)
+                    ?fragment_cache
+    in
     let maintenance = new maintenance 0 cfg  (abm # config_url) cfg.etcd in
-    let osds = make_osds ?write_blobs cfg.n_osds
+    let osds = make_osds ~base_port:(base_port*2) ?write_blobs cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
@@ -1789,6 +1802,7 @@ module Test = struct
                   tx.cfg.alba_06_bin
                   (tx.abm # config_url)
                   tx.cfg.etcd ~v06_proxy:true
+                  10_000
             in
             {tx with proxy = old_proxy }
           else tx
@@ -1923,6 +1937,32 @@ module Test = struct
   let nil ?(xml=false) ?filter ?dump t =
     0
 
+  let aaa ?xml ?filter ?dump _t =
+    (* alba accelerated alba *)
+    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
+    let cfg_ssd = Config.make ~workspace:(workspace ^ "/tmp/alba_ssd") () in
+    let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:4000 () in
+    Deployment.kill t_ssd;
+    Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
+    Deployment.setup t_ssd;
+    let cfg_hdd = Config.make ~workspace:(workspace ^ "/tmp/alba_hdd") () in
+    let t_hdd =
+      Deployment.make_default
+        ~fragment_cache:Proxy_cfg.(Alba { albamgr_cfg_url = Url.canonical (t_ssd.abm # config_url);
+                                          namespaces = [ "demo" ];
+                                          manifest_cache_size = 1_000_000;
+                                        })
+        ~cfg:cfg_hdd ~base_port:6000 ()
+    in
+    Deployment.setup t_hdd;
+
+    let objname = "fdsij" in
+    t_hdd.proxy # upload_object "demo" cfg_hdd.arakoon_bin objname;
+    t_hdd.proxy # download_object "demo" objname "/tmp/fjsdiovd";
+
+    let output = t_ssd.proxy # list_objects "demo" in
+    assert (String.length output > 200);
+    0
 end
 
 
@@ -1941,6 +1981,7 @@ let () =
       "compat",          Test.compat, false;
       "asd_no_blobs",    Test.test_asd_no_blobs, false;
       "nil",             Test.nil, true;
+      "aaa",             Test.aaa, false;
     ]
   in
   let print_suites () =

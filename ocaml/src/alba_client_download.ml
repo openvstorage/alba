@@ -172,6 +172,8 @@ let download_fragment
         >>= E.return)
      >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 
+     fragment_cache # add namespace_id cache_key maybe_decompressed >>= fun () ->
+
      let t_fragment = Statistics.(FromOsd {
                                      osd_id;
                                      retrieve = t_retrieve;
