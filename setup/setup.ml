@@ -414,8 +414,17 @@ module Proxy_cfg =
 
      and alba_fragment_cache = {
          albamgr_cfg_url : string;
-         namespaces : string list;
+         bucket_strategy : bucket_strategy;
          manifest_cache_size : int;
+       } [@@deriving yojson]
+
+     and bucket_strategy =
+       | OneOnOne of bucket_strategy_one_on_one [@name "1-to-1"]
+       [@@deriving yojson]
+
+     and bucket_strategy_one_on_one = {
+         prefix : string;
+         preset : string;
        } [@@deriving yojson]
 
     type proxy_cfg' =
@@ -603,6 +612,9 @@ class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy 
   method delete_namespace name =
     ["proxy-delete-namespace"; name] |> proxy_cmd_line
 
+
+  method list_namespaces =
+    [ "proxy-list-namespaces" ] |> proxy_cmd_line_with_capture
 end
 
 type maintenance_cfg = {
@@ -1949,7 +1961,8 @@ module Test = struct
     let t_hdd =
       Deployment.make_default
         ~fragment_cache:Proxy_cfg.(Alba { albamgr_cfg_url = Url.canonical (t_ssd.abm # config_url);
-                                          namespaces = [ "demo" ];
+                                          bucket_strategy = OneOnOne { prefix = "prefix";
+                                                                       preset = "default"; };
                                           manifest_cache_size = 1_000_000;
                                         })
         ~cfg:cfg_hdd ~base_port:6000 ()
@@ -1960,8 +1973,8 @@ module Test = struct
     t_hdd.proxy # upload_object "demo" cfg_hdd.arakoon_bin objname;
     t_hdd.proxy # download_object "demo" objname "/tmp/fjsdiovd";
 
-    let output = t_ssd.proxy # list_objects "demo" in
-    assert (String.length output > 200);
+    let output = t_ssd.proxy # list_namespaces in
+    assert (output = "Found 2 namespaces: [\"demo\"; \"prefix\\000\\000\\000\\000\"]");
     0
 end
 

@@ -34,7 +34,8 @@ let test_example_config () =
         };
       Alba {
           albamgr_cfg_url = "/tmp/x";
-          namespaces = [ "a"; "b"; ];
+          bucket_strategy = Fragment_cache_alba.(OneOnOne { preset = "mypreset";
+                                                            prefix = "myprefix"; });
           fragment_cache = None';
           manifest_cache_size = 5_000_000;
           albamgr_connection_pool_size  = default_connection_pool_size;
@@ -47,7 +48,8 @@ let test_example_config () =
         };
       Alba {
           albamgr_cfg_url = "/tmp/x";
-          namespaces = [ "a"; "b"; ];
+          bucket_strategy = Fragment_cache_alba.(OneOnOne { preset = "mypreset";
+                                                            prefix = "myprefix"; });
           fragment_cache = Local {
                                path = "/tmp/x";
                                max_size = 100_000;

@@ -11,7 +11,10 @@
                }],
     [ "alba", // use another (probably ssd based) alba as a cache
       { albamgr_cfg_url : "/tmp/x",
-        namespaces : [ "a", "b" ],
+        bucket_strategy : [ "1-to-1", {
+            prefix : "myprefix",
+            preset : "mypreset"
+        } ],
         manifest_cache_size : 5000000, // manifest cache size (in bytes)
         albamgr_connection_pool_size  : 10, // optional, default 10
         nsm_host_connection_pool_size : 10, // optional, default 10
@@ -24,7 +27,10 @@
         }
       }],
     [ "alba", { albamgr_cfg_url : "/tmp/x",
-                namespaces : [ "a", "b" ],
+                bucket_strategy : [ "1-to-1", {
+                    prefix : "myprefix",
+                    preset : "mypreset"
+                } ],
                 fragment_cache : // optional, defaults to [ "none" ]
                 [ "local", { path : "/tmp/x",
                              max_size : 100000 } ],

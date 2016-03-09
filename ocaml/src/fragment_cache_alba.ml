@@ -17,9 +17,18 @@ limitations under the License.
 open Prelude
 open Lwt.Infix
 
+type alba_fragment_cache_bucket_strategy =
+  | OneOnOne of alba_fragment_cache_bucket_strategy_one_on_one [@name "1-to-1"]
+[@@deriving yojson, show]
+
+ and alba_fragment_cache_bucket_strategy_one_on_one = {
+     preset : string;
+     prefix : string;
+   } [@@deriving yojson, show]
+
 class alba_cache
         ~albamgr_cfg_ref
-        namespace
+        ~bucket_strategy
         ~nested_fragment_cache
         ~manifest_cache_size
         ~albamgr_connection_pool_size
@@ -65,44 +74,69 @@ class alba_cache
          Llio.string_to)
       (bid, name)
   in
+  let with_namespace bid f =
+    match bucket_strategy with
+    | OneOnOne { prefix;
+                 preset; } ->
+       let namespace = prefix ^ (serialize ~buf_size:4 Llio.int32_to bid) in
+       Lwt.catch
+         (fun () -> f namespace)
+         (fun exn ->
+          client # create_namespace ~namespace ~preset_name:(Some preset) () >>= fun _ ->
+          f namespace)
+  in
   object(self :# Fragment_cache.cache)
     method add bid name blob =
       Lwt.catch
         (fun () ->
-         client # upload_object_from_bytes
-                ~namespace
-                ~object_name:(make_object_name ~bid ~name)
-                ~object_data:blob
-                ~checksum_o:None
-                ~allow_overwrite:Nsm_model.Unconditionally >>= fun _ ->
-         Lwt.return_unit)
+         with_namespace
+           bid
+           (fun namespace ->
+            client # upload_object_from_bytes
+                   ~namespace
+                   ~object_name:(make_object_name ~bid ~name)
+                   ~object_data:blob
+                   ~checksum_o:None
+                   ~allow_overwrite:Nsm_model.Unconditionally >>= fun _ ->
+            Lwt.return_unit))
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception while adding object to alba fragment cache")
 
     method lookup bid name =
-      client # download_object_to_bytes
-             ~object_name:(make_object_name ~bid ~name)
-             ~namespace
-             ~consistent_read:false
-             ~should_cache:true
+      Lwt.catch
+        (fun () ->
+         with_namespace
+           bid
+           (fun namespace ->
+            client # download_object_to_bytes
+                   ~object_name:(make_object_name ~bid ~name)
+                   ~namespace
+                   ~consistent_read:false
+                   ~should_cache:true))
+        (fun exn ->
+         Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup" >>= fun () ->
+         Lwt.return_none)
 
     method lookup2 bid name object_slices =
       Lwt.catch
         (fun () ->
-         client # nsm_host_access # with_namespace_id
-                ~namespace
-                (fun namespace_id ->
-                 base_client # download_object_slices'
-                             ~namespace_id
-                             ~object_name:(make_object_name ~bid ~name)
-                             ~object_slices:(List.map
-                                               (fun (offset, length, dest, dest_off) ->
-                                                Int64.of_int offset, length,
-                                                dest, dest_off)
-                                               object_slices)
-                             ~consistent_read:false
-                             ~fragment_statistics_cb:ignore
-                ) >>= function
+         with_namespace
+           bid
+           (fun namespace ->
+            client # nsm_host_access # with_namespace_id
+                   ~namespace
+                   (fun namespace_id ->
+                    base_client # download_object_slices'
+                                ~namespace_id
+                                ~object_name:(make_object_name ~bid ~name)
+                                ~object_slices:(List.map
+                                                  (fun (offset, length, dest, dest_off) ->
+                                                   Int64.of_int offset, length,
+                                                   dest, dest_off)
+                                                  object_slices)
+                                ~consistent_read:false
+                                ~fragment_statistics_cb:ignore
+                   )) >>= function
          | None -> Lwt.return_false
          | Some _ -> Lwt.return_true)
         (fun exn ->
