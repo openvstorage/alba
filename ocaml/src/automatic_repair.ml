@@ -34,23 +34,27 @@ let periodic_load_osds
         alba_client # osd_access # get_osd_info ~osd_id
         >>= fun (_, osd_state) ->
 
+        let write_test_blob () =
+          alba_client # with_osd
+                      ~osd_id
+                      (fun osd ->
+                       osd # apply_sequence
+                           Osd.Low
+                           []
+                           [ Osd.Update.set_string
+                               Osd_keys.test_key
+                               (Lazy.force Osd_access.large_value)
+                               Checksum.NoChecksum
+                               false ])
+        in
+
         (if not (recent_enough past_date osd_info.OsdInfo.write)
          then
            begin
              Lwt.catch
                (fun () ->
                 Lwt_log.debug_f "Write load on %li" osd_id >>= fun () ->
-                alba_client # with_osd
-                            ~osd_id
-                            (fun osd ->
-                             osd # apply_sequence
-                                 Osd.Low
-                                 []
-                                 [ Osd.Update.set_string
-                                     Osd_keys.test_key
-                                     (Lazy.force Osd_access.large_value)
-                                     Checksum.NoChecksum
-                                     false ])
+                write_test_blob ()
                 >>= function
                 | Osd.Ok ->
                    Osd_state.add_write osd_state;
@@ -69,17 +73,26 @@ let periodic_load_osds
              Lwt.catch
                (fun () ->
                 Lwt_log.debug_f "Read load on %li" osd_id >>= fun () ->
-                alba_client # with_osd
-                            ~osd_id
-                            (fun osd ->
-                             osd # multi_get
-                                 Osd.Low
-                                 [ Slice.wrap_string Osd_keys.test_key; ])
-                >>= function
-                | [ Some _ ] ->
-                   Osd_state.add_read osd_state;
-                   Lwt.return ()
-                | _ -> Lwt.return ())
+                let rec inner () =
+                  alba_client # with_osd
+                              ~osd_id
+                              (fun osd ->
+                               osd # multi_get
+                                   Osd.Low
+                                   [ Slice.wrap_string Osd_keys.test_key; ])
+                  >>= function
+                  | [ Some _ ] ->
+                     Osd_state.add_read osd_state;
+                     Lwt.return ()
+                  | [ None ] ->
+                     (* seems like the test blob was not yet available on the osd
+                      * so let's put it there and retry... *)
+                     write_test_blob () >>= fun _ ->
+                     inner ()
+                  | _ ->
+                     Lwt.return ()
+                in
+                inner ())
                (fun exn ->
                 Lwt.return ())
            end
