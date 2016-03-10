@@ -323,7 +323,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
-      fun stats namespace -> alba_client # drop_cache namespace
+      fun stats namespace -> alba_client # drop_cache namespace ~global:false
     | ProxyStatistics ->
        fun stats clear ->
        begin

@@ -386,14 +386,16 @@ class alba_client (base_client : Alba_base_client.client)
            let open Manifest_cache in
            ManifestCache.invalidate (base_client # get_manifest_cache) namespace_id)
 
-    method drop_cache_by_id namespace_id =
+    method drop_cache_by_id ~global namespace_id =
       Manifest_cache.ManifestCache.drop (base_client # get_manifest_cache) namespace_id;
-      fragment_cache # drop namespace_id
+      if global
+      then fragment_cache # drop_global namespace_id
+      else fragment_cache # drop_local namespace_id
 
-    method drop_cache namespace =
+    method drop_cache ~global namespace =
       self # nsm_host_access # with_namespace_id
         ~namespace
-        (self # drop_cache_by_id)
+        (self # drop_cache_by_id ~global)
 
     method deliver_nsm_host_messages ~nsm_host_id =
       Alba_client_message_delivery.deliver_nsm_host_messages
@@ -409,7 +411,7 @@ class alba_client (base_client : Alba_base_client.client)
       Alba_client_namespace.delete_namespace
         mgr_access nsm_host_access
         deliver_nsm_host_messages
-        (self # drop_cache_by_id)
+        (self # drop_cache_by_id ~global:true)
         ~namespace
 
     method decommission_osd ~long_id =

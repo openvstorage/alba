@@ -143,9 +143,16 @@ class alba_cache
          Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup2" >>= fun () ->
          Lwt.return_false)
 
-    method drop bid =
-      (* TODO maybe implement something here? *)
+    method drop_local bid =
       Lwt.return_unit
+
+    method drop_global bid =
+      Lwt_extra2.ignore_errors
+        ~logging:true
+        (fun () ->
+         with_namespace
+           bid
+           (fun namespace -> client # delete_namespace ~namespace))
 
     method close () =
       nested_fragment_cache # close () >>= fun () ->

@@ -27,7 +27,8 @@ class type cache = object
     method lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
     method lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
 
-    method drop : int32 -> unit Lwt.t
+    method drop_local  : int32 -> unit Lwt.t
+    method drop_global : int32 -> unit Lwt.t
     method close : unit -> unit Lwt.t
 end
 
@@ -35,7 +36,8 @@ class no_cache = object(self :# cache)
     method add     bid oid blob   = Lwt.return_unit
     method lookup  bid oid        = Lwt.return_none
     method lookup2 bid oid slices = Lwt.return_false
-    method drop    bid            = Lwt.return_unit
+    method drop_local  bid        = Lwt.return_unit
+    method drop_global bid        = Lwt.return_unit
     method close   ()             = Lwt.return_unit
 end
 
@@ -1030,10 +1032,12 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       Lwt_log.debug_f "add %lx %S took:%f" bid oid t
 
 
-    method drop bid =
+    method drop_local bid =
       Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->
       Hashtbl.replace _dropping bid ();
       Lwt.return ()
+
+    method drop_global bid = self # drop_local bid
 
     method close () =
       Lwt_log.warning_f ~section "closing database" >>= fun () ->
