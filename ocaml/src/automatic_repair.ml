@@ -70,7 +70,7 @@ let periodic_load_osds
         (if not (recent_enough past_date osd_info.OsdInfo.read)
          then
            begin
-             Lwt.catch
+             Lwt_extra2.ignore_errors
                (fun () ->
                 Lwt_log.debug_f "Read load on %li" osd_id >>= fun () ->
                 let rec inner () =
@@ -93,8 +93,6 @@ let periodic_load_osds
                      Lwt.return ()
                 in
                 inner ())
-               (fun exn ->
-                Lwt.return ())
            end
          else
            Lwt.return ())
