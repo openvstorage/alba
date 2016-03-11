@@ -59,10 +59,12 @@ class client (fd:Net_fd.t) id =
            (code,
             request)
        in
-       Net_fd.write_all_lwt_bytes
-         buf.Llio.buf 0 buf.Llio.pos
-         fd >>= fun () ->
-       with_response deserialize_response f) >>= fun (t, r) ->
+       let () = Net_fd.cork fd in
+       Net_fd.write_all_lwt_bytes buf.Llio.buf 0 buf.Llio.pos fd
+       >>= fun () ->
+       let () = Net_fd.uncork fd in
+       with_response deserialize_response f)
+    >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
   in

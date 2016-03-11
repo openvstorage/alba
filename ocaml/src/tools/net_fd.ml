@@ -79,3 +79,19 @@ let read_all_lwt_bytes_exact target offset length = function
        (Lwt_ssl.read_bytes socket target)
        offset length
      >>= Lwt_extra2.expect_exact_length length
+
+
+let cork net_fd =
+  let fd = match net_fd with
+    | Plain fd -> fd 
+    | SSL (_, socket) -> Lwt_ssl.get_fd socket 
+  in
+  Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false
+
+let uncork net_fd =
+  let fd = match net_fd with
+  | Plain fd       -> fd 
+  | SSL (_,socket) -> Lwt_ssl.get_fd socket
+  in
+  Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY true
+      
