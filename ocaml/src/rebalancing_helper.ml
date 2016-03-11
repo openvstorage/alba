@@ -117,8 +117,11 @@ let plan_move cache (too_low,ok, too_high) manifest
     fun node_id -> Hashtbl.find h node_id
   in
   let check_move src tgt =
-    let node_id = node_id_of tgt in
-    osds_used_on_node node_id < manifest.Manifest.max_disks_per_node
+    let tgt_nid = node_id_of tgt
+    and src_nid = node_id_of src
+    in
+    src_nid = tgt_nid
+    || osds_used_on_node tgt_nid < manifest.Manifest.max_disks_per_node
   in
 
   let valid_moves sources targets =

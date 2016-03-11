@@ -19,29 +19,26 @@ open Nsm_model
 
 module Protocol = struct
 
-  module RangeQueryArgs = struct
-    type 'a t =
-      { first : 'a;
-        finc : bool;
-        last : ('a * bool) option;
-        max : int;
-        reverse : bool; }
+  module RangeQueryArgs =
+    struct
+      type 'a t = 'a Range_query_args.RangeQueryArgs.t = {
+            first : 'a;
+            finc : bool;
+            last : ('a * bool) option;
+            reverse : bool;
+            max : int;
+          }
 
-    let to_buffer a_to buf { first; finc; last; max; reverse; } =
-      a_to buf first;
-      Llio.bool_to buf finc;
-      Llio.option_to (Llio.pair_to a_to Llio.bool_to) buf last;
-      Llio.int_to buf max;
-      Llio.bool_to buf reverse
-    let from_buffer a_from buf =
-      let first = a_from buf in
-      let finc = Llio.bool_from buf in
-      let last = Llio.option_from (Llio.pair_from a_from Llio.bool_from) buf in
-      let max = Llio.int_from buf in
-      let reverse = Llio.bool_from buf in
-      { first; finc; last; max; reverse; }
-    let deser a_deser = from_buffer (fst a_deser), to_buffer (snd a_deser)
-  end
+      let to_buffer a_to buf =
+        Range_query_args.RangeQueryArgs.to_buffer
+          `MaxThenReverse
+          a_to buf
+      let from_buffer a_from buf =
+        Range_query_args.RangeQueryArgs.from_buffer
+          `MaxThenReverse
+          a_from buf
+      let deser a_deser = from_buffer (fst a_deser), to_buffer (snd a_deser)
+    end
 
   type has_more = bool
 

@@ -18,6 +18,7 @@ open Prelude
 open Slice
 open Checksum
 open Asd_statistics
+open Range_query_args2
 
 (* TODO use a Lwt_bytes.t instead *)
 type key = Slice.t
@@ -250,47 +251,6 @@ module AsdMgmt = struct
 end
 
 module Protocol = struct
-    module RangeQueryArgs = struct
-        (* TODO unify with Nsm_protocol.Protocol.RangeQueryArgs.t
-         * - be carefull as the serialization order is different
-         *   for the 'max' and 'reverse' property.
-         * - this one deserializes from Llio2.buffer
-         *)
-        type t = {
-            first : Slice.t;
-            finc : bool;
-            last : (Slice.t * bool) option;
-            reverse : bool;
-            max : int;
-          } [@@deriving show]
-
-        let from_buffer' buf =
-          let module Llio = Llio2.ReadBuffer in
-          let first = Slice.from_buffer' buf in
-          let finc = Llio.bool_from buf in
-          let last =
-            Llio.option_from
-              (Llio.pair_from
-                 Slice.from_buffer'
-                 Llio.bool_from)
-              buf
-          in
-          let reverse = Llio.bool_from buf in
-          let max = Llio.int_from buf in
-          { first; finc; last; reverse; max }
-
-        let to_buffer' buf t =
-          let module Llio = Llio2.WriteBuffer in
-          Slice.to_buffer' buf t.first;
-          Llio.bool_to buf t.finc;
-          Llio.option_to (Llio.pair_to
-                            Slice.to_buffer'
-                            Llio.bool_to)
-                         buf
-                         t.last;
-          Llio.bool_to buf t.reverse;
-          Llio.int_to buf t.max
-      end
 
   module Error = struct
     type t =
@@ -411,9 +371,9 @@ module Protocol = struct
       High
 
   type ('request, 'response) query =
-    | Range : (RangeQueryArgs.t * priority, key counted_list_more) query
+    | Range : (Slice.t RangeQueryArgs.t * priority, key counted_list_more) query
     | MultiGet : (key list * priority, (Bigstring_slice.t * Checksum.t) option list) query
-    | RangeEntries : (RangeQueryArgs.t * priority,
+    | RangeEntries : (Slice.t RangeQueryArgs.t * priority,
                       (key * Bigstring_slice.t * checksum) counted_list_more)
                        query
     | Statistics: (bool, AsdStatistics.t) query
@@ -468,8 +428,14 @@ module Protocol = struct
     =
     let module Llio = Llio2.WriteBuffer in
     function
-      | Range -> Llio.pair_to RangeQueryArgs.to_buffer' priority_to_buffer'
-      | RangeEntries -> Llio.pair_to RangeQueryArgs.to_buffer' priority_to_buffer'
+      | Range ->
+         Llio.pair_to
+           (RangeQueryArgs.to_buffer' `ReverseThenMax Slice.to_buffer')
+           priority_to_buffer'
+      | RangeEntries ->
+         Llio.pair_to
+           (RangeQueryArgs.to_buffer' `ReverseThenMax Slice.to_buffer')
+           priority_to_buffer'
       | MultiGet ->
          Llio.pair_to
            (Llio.list_to Slice.to_buffer')
@@ -492,11 +458,11 @@ module Protocol = struct
     function
     | Range ->
        Llio.pair_from
-         RangeQueryArgs.from_buffer'
+         (RangeQueryArgs.from_buffer' `ReverseThenMax Slice.from_buffer')
          maybe_priority_from_buffer'
     | RangeEntries ->
        Llio.pair_from
-         RangeQueryArgs.from_buffer'
+         (RangeQueryArgs.from_buffer' `ReverseThenMax Slice.from_buffer')
          maybe_priority_from_buffer'
     | MultiGet ->
        Llio.pair_from

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
-open Lwt
+open Lwt.Infix
 open Proxy_protocol.Protocol
 
 let _IP = "127.0.0.1"
@@ -169,26 +169,28 @@ let test_protocol_version () =
   let t =
     let open Proxy_protocol in
     Lwt.catch
-    (fun () ->
-     Lwt_io.with_connection
-       (Networking2.make_address _IP _PORT)
-       (fun conn ->
-        let oc = snd conn in
-        Proxy_client._prologue oc Protocol.magic 666l
-        >>= fun () ->
-        let client = new Proxy_client.proxy_client conn in
-        client # get_version >>= fun _ ->
-        OUnit.assert_bool "should have failed" false;
-        Lwt.return ()
-       )
-    )
-    (function
-      | Protocol.Error.Exn Protocol.Error.ProtocolVersionMismatch ->
-         Lwt_log.debug "ok, this is what we needed"
-      | exn ->
-         Lwt_log.info_f ~exn "wrong protocol error" >>= fun () ->
-         Lwt.fail_with "wrong protocol error or no failure"
-    )
+      (fun () ->
+       Networking2.connect_with
+         ~tls_config:None
+         _IP _PORT
+       >>= fun (nfd, closer) ->
+       Lwt.finalize
+         (fun () ->
+          Proxy_client._prologue nfd Protocol.magic 666l >>= fun () ->
+          let client = new Proxy_client.proxy_client nfd in
+          client # get_version >>= fun _ ->
+          OUnit.assert_bool "should have failed" false;
+          Lwt.return ()
+         )
+         closer
+      )
+      (function
+        | Protocol.Error.Exn Protocol.Error.ProtocolVersionMismatch ->
+           Lwt_log.debug "ok, this is what we needed"
+        | exn ->
+           Lwt_log.info_f ~exn "wrong protocol error" >>= fun () ->
+           Lwt.fail_with "wrong protocol error or no failure"
+      )
   in
   Lwt_main.run t
 

@@ -23,6 +23,7 @@ open Checksum
 open Asd_statistics
 open Asd_io_scheduler
 open Lwt_bytes2
+open Range_query_args
 
 let blob_threshold = 16 * 1024
 
@@ -721,7 +722,7 @@ let execute_update : type req res.
           Lwt.return (none_asserts', some_asserts')
         in
 
-        let with_immediate_updates_promise f =
+        let with_immediate_updates f =
 
           let files = ref [] in
           let allow_getting_file = ref true in
@@ -769,7 +770,8 @@ let execute_update : type req res.
           in
           Lwt.catch
             (fun () ->
-             f immediate_upds_promise >>= fun () ->
+             immediate_upds_promise >>= fun immediate_upds ->
+             f immediate_upds >>= fun () ->
 
              (* the files are now definitely commited,
                 release file numbers so that collect_garbage_from
@@ -911,15 +913,14 @@ let execute_update : type req res.
              files_to_delete)
         in
 
-        with_immediate_updates_promise
-          (fun immediate_updates_promise ->
+        with_immediate_updates
+          (fun immediate_updates ->
            let rec inner = function
              | 5 -> Lwt.fail ConcurrentModification
              | attempt ->
                 Lwt.catch
                   (fun () ->
                    transform_asserts () >>= fun (none_asserts, some_asserts) ->
-                   immediate_updates_promise >>= fun immediate_updates ->
                    let files_to_be_deleted =
                      try_apply_immediate
                        none_asserts some_asserts
@@ -1006,7 +1007,7 @@ let asd_protocol
     in
     let return_error error =
       let res =
-        Llio2.WriteBuffer.serialize_with_length
+        Llio.serialize_with_length
           Protocol.Error.serialize
           error
       in

@@ -41,3 +41,5 @@ let from_buffer' buf =
      let d = Llio.int32_from buf in
      Crc32c d
   | k -> Prelude.raise_bad_tag "checksum" k
+
+let deser' = from_buffer', to_buffer'

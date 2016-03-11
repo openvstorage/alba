@@ -15,7 +15,7 @@ limitations under the License.
 *)
 
 open Cmdliner
-open Lwt
+open Lwt.Infix
 open Prelude
 open Slice
 open Cli_common
@@ -666,17 +666,22 @@ let alba_get_disk_safety
                          "osd %s is not claimed by this alba instance"
                          long_id)
                 end)
-           long_ids >>= fun osds1 ->
+           long_ids >>= fun osds ->
 
          (if include_decommissioning_as_dead
           then
-            client # mgr_access # list_all_decommissioning_osds >>= fun (_, osds2) ->
+            client # mgr_access # list_all_decommissioning_osds >>= fun (_, osds') ->
             Lwt.return
               (List.rev_append
-                 osds1
-                 (List.map fst osds2))
+                 osds
+                 (List.map fst osds'))
           else
-            Lwt.return osds1) >>= fun osds ->
+            Lwt.return osds) >>= fun osds ->
+
+         (client # mgr_access # list_all_purging_osds >>= fun (_, osds') ->
+          Lwt.return (List.rev_append
+                        osds
+                        osds')) >>= fun osds ->
 
          Disk_safety.get_disk_safety client namespaces osds >>= fun res ->
 

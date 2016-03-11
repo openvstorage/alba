@@ -20,6 +20,8 @@ limitations under the License.
 
 open Prelude
 open Stat
+open Range_query_args2
+
 module ProxyStatistics = struct
     include Stat
 
@@ -27,20 +29,16 @@ module ProxyStatistics = struct
     module H = struct
         type ('a,'b) t = ('a *'b) list [@@deriving show, yojson]
 
-        let h_to buf a_to b_to t =
-          let ab_to buf (a,b) =
-            a_to buf a;
-            b_to buf b
-          in
-          Llio.list_to ab_to buf t
+        let h_to a_to b_to =
+          Llio2.WriteBuffer.list_to
+            (Llio2.WriteBuffer.pair_to
+               a_to b_to)
 
-        let h_from a_from b_from buf =
-          let ab_from buf =
-            let a = a_from buf in
-            let b = b_from buf in
-            (a,b)
-          in
-          Llio.list_from ab_from buf
+        let h_from a_from b_from =
+          Llio2.ReadBuffer.list_from
+            (Llio2.ReadBuffer.pair_from
+               a_from b_from)
+
         let find t a = List.assoc a t
 
         let add t a b = (a,b) :: t
@@ -77,22 +75,24 @@ module ProxyStatistics = struct
       }
 
     let ns_to buf t =
-      Stat.stat_to buf t.upload;
-      Stat.stat_to buf t.download;
+      let module Llio = Llio2.WriteBuffer in
+      Stat_deser.to_buffer' buf t.upload;
+      Stat_deser.to_buffer' buf t.download;
       Llio.int_to buf t.manifest_cached;
       Llio.int_to buf t.manifest_from_nsm;
       Llio.int_to buf t.manifest_stale;
       Llio.int_to buf t.fragment_cache_hits;
       Llio.int_to buf t.fragment_cache_misses;
 
-      Stat.stat_to buf t.partial_read_size;
-      Stat.stat_to buf t.partial_read_count;
-      Stat.stat_to buf t.partial_read_time;
-      Stat.stat_to buf t.partial_read_objects
+      Stat_deser.to_buffer' buf t.partial_read_size;
+      Stat_deser.to_buffer' buf t.partial_read_count;
+      Stat_deser.to_buffer' buf t.partial_read_time;
+      Stat_deser.to_buffer' buf t.partial_read_objects
 
     let ns_from buf =
-      let upload   = Stat.stat_from buf in
-      let download = Stat.stat_from buf in
+      let module Llio = Llio2.ReadBuffer in
+      let upload   = Stat_deser.from_buffer' buf in
+      let download = Stat_deser.from_buffer' buf in
       let manifest_cached    = Llio.int_from buf in
       let manifest_from_nsm  = Llio.int_from buf in
       let manifest_stale     = Llio.int_from buf in
@@ -110,13 +110,13 @@ module ProxyStatistics = struct
             let r = Stat.make () in
             r,r,r,r
           else
-            let s = Stat.stat_from buf in
-            let c = Stat.stat_from buf in
-            let t = Stat.stat_from buf in
+            let s = Stat_deser.from_buffer' buf in
+            let c = Stat_deser.from_buffer' buf in
+            let t = Stat_deser.from_buffer' buf in
             if Llio.buffer_done buf
             then s,c,t,Stat.make()
             else
-              let n = Stat.stat_from buf in
+              let n = Stat_deser.from_buffer' buf in
               s,c,t,n
         end
       in
@@ -153,12 +153,14 @@ module ProxyStatistics = struct
       }
 
     let to_buffer buf t =
+      let module Llio = Llio2.WriteBuffer in
       let ser_version = 1 in Llio.int8_to buf ser_version;
       Llio.float_to buf t.creation;
       Llio.float_to buf t.period;
-      H.h_to buf Llio.string_to ns_to t.ns_stats
+      H.h_to Llio.string_to ns_to buf t.ns_stats
 
     let from_buffer buf =
+      let module Llio = Llio2.ReadBuffer in
       let ser_version = Llio.int8_from buf in
       assert (ser_version = 1);
       let creation = Llio.float_from buf in
@@ -260,7 +262,6 @@ module Protocol = struct
   module Nsmp = Nsm_protocol.Protocol
 
   module Namespace = Amgrp.Namespace
-  module RangeQueryArgs = Nsmp.RangeQueryArgs
 
   type object_name = string[@@deriving show]
 
@@ -398,8 +399,9 @@ module Protocol = struct
      try Hashtbl.find hasht code with
      | Not_found -> Printf.sprintf "unknown operation %i" code)
 
+  open Llio2
   let deser_request_i : type i o. (i, o) request -> i Deser.t = function
-    | ListNamespaces -> RangeQueryArgs.deser Deser.string
+    | ListNamespaces -> RangeQueryArgs.deser' `MaxThenReverse Deser.string
     | NamespaceExists -> Deser.string
     | CreateNamespace -> Deser.tuple2 Deser.string (Deser.option Deser.string)
     | DeleteNamespace -> Deser.string
@@ -407,7 +409,7 @@ module Protocol = struct
     | ListObjects ->
       Deser.tuple2
         Deser.string
-        (RangeQueryArgs.deser Deser.string)
+        (RangeQueryArgs.deser' `MaxThenReverse Deser.string)
     | ReadObjectFs ->
       Deser.tuple5
         Deser.string
@@ -421,7 +423,7 @@ module Protocol = struct
         Deser.string
         Deser.string
         Deser.bool
-        (Deser.option Checksum.Checksum.deser)
+        (Deser.option Checksum_deser.deser')
     | DeleteObject ->
       Deser.tuple3
         Deser.string
@@ -461,7 +463,7 @@ module Protocol = struct
     | ReadObjectFs -> Deser.unit
     | WriteObjectFs -> Deser.unit
     | DeleteObject -> Deser.unit
-    | GetObjectInfo -> Deser.tuple2 Deser.int64 Nsm_model.Checksum.deser
+    | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string
     | InvalidateCache -> Deser.unit
     | DropCache -> Deser.unit
@@ -472,17 +474,16 @@ module Protocol = struct
                       Deser.int
                       Deser.string
     | OsdView ->
-       let deser_info = Albamgr_protocol.Protocol.Osd.ClaimInfo.deser in
-       let deser_claim = Deser.counted_list (Deser.tuple2 Deser.string deser_info) in
-       let deser_int32 = Llio.int32_from, Llio.int32_to in
-       let deser_osd   = Nsm_model.OsdInfo.from_buffer,
-                         Nsm_model.OsdInfo.to_buffer ~version:2
+       let deser_claim =
+         Deser.counted_list
+           (Deser.tuple2 Deser.string Osd_deser.ClaimInfo.deser) in
+       let deser_osd   = Osd_deser.OsdInfo.from_buffer,
+                         Osd_deser.OsdInfo.to_buffer
        in
        Deser.tuple2
          deser_claim
          (Deser.counted_list
-            (Deser.tuple3 deser_int32 deser_osd Osd_state.deser_state))
-
+            (Deser.tuple3 Deser.int32 deser_osd Osd_state.deser_state))
     | GetClientConfig ->
-       Alba_arakoon.Config.from_buffer, Alba_arakoon.Config.to_buffer
+       Alba_arakoon_deser.Config.from_buffer, Alba_arakoon_deser.Config.to_buffer
 end
