@@ -388,9 +388,7 @@ class alba_client (base_client : Alba_base_client.client)
 
     method drop_cache_by_id ~global namespace_id =
       Manifest_cache.ManifestCache.drop (base_client # get_manifest_cache) namespace_id;
-      if global
-      then fragment_cache # drop_global namespace_id
-      else fragment_cache # drop_local namespace_id
+      fragment_cache # drop namespace_id ~global
 
     method drop_cache ~global namespace =
       self # nsm_host_access # with_namespace_id
