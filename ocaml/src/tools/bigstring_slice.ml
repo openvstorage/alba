@@ -44,6 +44,7 @@ let extract t offset length =
 let length t = t.length
 
 let get t pos = Lwt_bytes.get t.bs (t.offset + pos)
+let set t pos c = Lwt_bytes.set t.bs (t.offset + pos) c
 
 let to_string t =
   let s = Bytes.create t.length in

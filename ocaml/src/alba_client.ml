@@ -68,6 +68,7 @@ class alba_client (base_client : Alba_base_client.client)
       base_client # with_nsm_client'
 
     method upload_object_from_bytes = base_client # upload_object_from_bytes
+    method upload_object_from_bigstring_slice = base_client # upload_object_from_bigstring_slice
 
     method get_object_manifest ~namespace ~object_name ~consistent_read ~should_cache =
       self # nsm_host_access # with_namespace_id

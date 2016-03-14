@@ -269,7 +269,7 @@ let chunk_to_packed_fragments
             acc'
             (n-1)
       in
-      Lwt.return (build_result [] (k+m))
+      Lwt.return ([ fragment; ], build_result [] (k+m))
     end
   else
     begin
@@ -287,7 +287,8 @@ let chunk_to_packed_fragments
               compression encryption fragment_checksum_algo
             >>= fun (packed, f1, f2, cs) ->
             Lwt.return (fragment_id, fragment, (packed, f1, f2, cs)))
-           all_fragments)
+           all_fragments >>= fun packed_fragments ->
+         Lwt.return (data_fragments, packed_fragments))
         (fun () ->
          List.iter
            (fun bss -> Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs)

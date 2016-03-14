@@ -122,6 +122,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
                                   o_fragment_cache_size;
                      rocksdb_max_open_files =
                        Fragment_cache_config.default_rocksdb_max_open_files;
+                     cache_on_read = true; cache_on_write = false;
                    })
        in
        let () = match cfg.chattiness with

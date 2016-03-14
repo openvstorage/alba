@@ -36,6 +36,7 @@ class alba_cache
         ~osd_connection_pool_size
         ~osd_timeout
         ~tls_config
+        ~cache_on_read ~cache_on_write
   =
   let tcp_keepalive = Tcp_keepalive2.default in
   let albamgr_pool =
@@ -85,14 +86,15 @@ class alba_cache
           client # create_namespace ~namespace ~preset_name:(Some preset) () >>= fun _ ->
           f namespace)
   in
-  object(self :# Fragment_cache.cache)
-    method add bid name blob =
+  object(self)
+    inherit Fragment_cache.cache ~cache_on_read ~cache_on_write
+    method _add bid name blob =
       Lwt.catch
         (fun () ->
          with_namespace
            bid
            (fun namespace ->
-            client # upload_object_from_bytes
+            client # upload_object_from_bigstring_slice
                    ~namespace
                    ~object_name:(make_object_name ~bid ~name)
                    ~object_data:blob

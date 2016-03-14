@@ -30,6 +30,7 @@ let run_with_fragment_cache size test test_name =
     Lwt.catch
       (fun () ->
        safe_create dir ~max_size:size ~rocksdb_max_open_files:256
+                   ~cache_on_read:true ~cache_on_write:true
        >>= fun cache ->
        test cache >>= fun () ->
        Lwt.catch
@@ -50,19 +51,19 @@ let run_with_fragment_cache size test test_name =
 let test_1 () =
   let _inner (cache :Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Lwt_bytes.create 4096 in
+    let blob = Bigstring_slice.create 4096 in
     let bid = 0l and oid = "0000" in
-    cache # add bid oid blob  (* _add_new_grow *)
+    cache # add bid oid blob `Read  (* _add_new_grow *)
     >>= fun () ->
 
-    Lwt_bytes.set blob 0 'x';
-    cache # add bid oid blob  (* _replace_grow *)
+    Bigstring_slice.set blob 0 'x';
+    cache # add bid oid blob `Read  (* _replace_grow *)
     >>= fun () ->
-    Lwt_bytes.set blob 0 'y';     (* _replace_grow *)
-    cache # add bid oid blob
+    Bigstring_slice.set blob 0 'y';     (* _replace_grow *)
+    cache # add bid oid blob `Read
     >>= fun () ->
-    Lwt_bytes.set blob 0 'z';     (* _replace_grow *)
-    cache # add bid oid blob >>= fun () ->
+    Bigstring_slice.set blob 0 'z';     (* _replace_grow *)
+    cache # add bid oid blob `Read >>= fun () ->
     (* lookup *)
     cache # lookup bid oid >>=
       begin
@@ -83,11 +84,11 @@ let test_1 () =
 let test_2 () =
   let _inner (cache: Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Lwt_bytes.create 4096 in
-    cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "Y" blob >>= fun () -> (* _add_new_full *)
-    cache # add 0l "Z" blob >>= fun () -> (* _add_new_full *)
-    cache # add 0l "T" blob >>= fun () -> (* _add_new_full *)
+    let blob = Bigstring_slice.create 4096 in
+    cache # add 0l "X" blob `Read >>= fun () -> (* _add_new_grow *)
+    cache # add 0l "Y" blob `Read >>= fun () -> (* _add_new_full *)
+    cache # add 0l "Z" blob `Read >>= fun () -> (* _add_new_full *)
+    cache # add 0l "T" blob `Read >>= fun () -> (* _add_new_full *)
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 1L (cache # get_count ()) ;
@@ -102,12 +103,12 @@ let test_3 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Lwt_bytes.create blob_size in
-    cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "Y" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "Z" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "T" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "A" blob >>= fun () -> (* _add_new_full *)
+    let blob = Bigstring_slice.create blob_size in
+    cache # add 0l "X" blob `Read >>= fun () -> (* _add_new_grow *)
+    cache # add 0l "Y" blob `Read >>= fun () -> (* _add_new_grow *)
+    cache # add 0l "Z" blob `Read >>= fun () -> (* _add_new_grow *)
+    cache # add 0l "T" blob `Read >>= fun () -> (* _add_new_grow *)
+    cache # add 0l "A" blob `Read >>= fun () -> (* _add_new_full *)
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 4L (cache # get_count ());
@@ -141,19 +142,19 @@ let test_4 () =
   let blob_size = 4096 in
   let _inner (cache : Fragment_cache.blob_cache) =
     cache # clear_all() >>= fun () ->
-    let blob = Lwt_bytes.create blob_size in
+    let blob = Bigstring_slice.create blob_size in
     let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
       if n = 1000
       then Lwt.return ()
       else
         let oid = make_oid n in
-        cache # add 0l oid blob >>= fun () ->
+        cache # add 0l oid blob `Read >>= fun () ->
         begin
           if n > 100
           then
             let oid' = make_oid (n - 100) in
-            cache # add 0l oid' blob
+            cache # add 0l oid' blob `Read
           else
             Lwt.return ()
         end
@@ -171,15 +172,15 @@ let test_5 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
     cache # clear_all () >>= fun () ->
-    let blob = Lwt_bytes.create blob_size in
+    let blob = Bigstring_slice.create blob_size in
     let bid0 = 0l
     and bid1 = 1l
     in
     let rec fill = function
       | [] -> Lwt.return ()
       | oid :: oids ->
-         cache # add bid0 oid blob >>= fun () ->
-         cache # add bid1 oid blob >>= fun () ->
+         cache # add bid0 oid blob `Read >>= fun () ->
+         cache # add bid1 oid blob `Read >>= fun () ->
          fill oids
     in
     fill ["0000"; "0001";"0002";"0003"] >>= fun () ->
@@ -214,16 +215,16 @@ let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
     cache #clear_all () >>= fun () ->
     let bid_to_drop1 = Int32.of_int 21 in
-    let blob = Lwt_bytes.of_string "blob" in
-    cache # add bid_to_drop1 "oid" blob >>= fun () ->
+    let blob = Bigstring_slice.of_string "blob" in
+    cache # add bid_to_drop1 "oid" blob `Read >>= fun () ->
     cache # drop ~global:true bid_to_drop1 >>= fun () ->
     let bid_to_drop2 = Int32.of_int 20 in
-    cache # add bid_to_drop2 "oid1" blob >>= fun () ->
-    cache # add bid_to_drop2 "oid2" blob >>= fun () ->
+    cache # add bid_to_drop2 "oid1" blob `Read >>= fun () ->
+    cache # add bid_to_drop2 "oid2" blob `Read >>= fun () ->
     cache # drop ~global:true bid_to_drop2 >>= fun () ->
     cache # drop ~global:true 22l >>= fun () ->
     cache # drop ~global:true 23l >>= fun () ->
-    let make_blob () = Lwt_bytes.create (2048 + Random.int 2048) in
+    let make_blob () = Bigstring_slice.create (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
         if i = 0
@@ -234,7 +235,7 @@ let test_long () =
             let oid = Random.int 100  |> Printf.sprintf "%04x" in
             Lwt_io.printlf "i:%i" i >>= fun () ->
             let blob = make_blob() in
-            cache # add bid oid blob >>= fun () ->
+            cache # add bid oid blob `Read >>= fun () ->
             let count = cache # get_count () in
             Lwt_log.debug_f "after add in fill, count=%Li" count >>= fun () ->
             loop (i-1)

@@ -172,7 +172,11 @@ let download_fragment
         >>= E.return)
      >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 
-     fragment_cache # add namespace_id cache_key maybe_decompressed >>= fun () ->
+     fragment_cache # add
+                    namespace_id
+                    cache_key
+                    (Bigstring_slice.wrap_bigstring maybe_decompressed)
+                    `Read >>= fun () ->
 
      let t_fragment = Statistics.(FromOsd {
                                      osd_id;

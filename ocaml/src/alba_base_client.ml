@@ -188,6 +188,23 @@ class client
         ~allow_overwrite
         ~object_id_hint:None
 
+    method upload_object_from_bigstring_slice
+        ~namespace
+        ~(object_name : string)
+        ~(object_data : Bigstring_slice.t)
+        ~(checksum_o: Checksum.t option)
+        ~(allow_overwrite : Nsm_model.overwrite)
+      =
+      let object_reader = new Object_reader.bigstring_slice_reader object_data in
+
+      self # upload_object
+           ~namespace
+           ~object_name
+           ~object_reader
+           ~checksum_o
+           ~allow_overwrite
+           ~object_id_hint:None
+
     method upload_object_from_string
       ~namespace
       ~object_name
@@ -241,6 +258,7 @@ class client
          ~checksum_o
          ~allow_overwrite
          ~object_id_hint
+         ~fragment_cache
 
     (* consumers of this method are responsible for freeing
      * the returned fragment bigstring
