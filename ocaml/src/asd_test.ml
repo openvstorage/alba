@@ -353,13 +353,16 @@ let test_partial_get port () =
 
        let inner' slices =
          let destination = Lwt_bytes.create size in
+         let slices =
+           List.map
+             (fun (offset, length, destoff) ->
+              offset, length, destination, destoff)
+             slices
+         in
          asd # partial_get
              ~prio:High
              key
-             (List.map
-                (fun (offset, length, destoff) ->
-                 offset, length, destination, destoff)
-                slices) >>= fun success ->
+             slices >>= fun success ->
          assert (success = Osd.Success);
          assert (value' = Lwt_bytes.to_string destination);
          Lwt.return ()

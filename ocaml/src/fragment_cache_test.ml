@@ -273,6 +273,41 @@ let test_long () =
   in
   run_with_fragment_cache 20_000L _inner "test_long"
 
+let test_lookup2 () =
+  let t (cache : cache) =
+    let bid = 0l in
+    let key = "key" in
+    let size = 1_000_000 in
+    let value = Lwt_bytes.create size in
+    let value' = Lwt_bytes.to_string value in
+    cache # add bid key value >>= fun () ->
+
+    let inner slices =
+      let destination = Lwt_bytes.create size in
+      let slices =
+        List.map
+          (fun (offset, length, destoff) ->
+           offset, length, destination, destoff)
+          slices
+      in
+      cache # lookup2 bid key slices >>= fun success ->
+      assert success;
+      assert (value' = Lwt_bytes.to_string destination);
+      Lwt.return ()
+    in
+
+    inner [ 0, size, 0 ] >>= fun () ->
+    inner [ 0, size - 15, 0;
+            size - 15, 15, size - 15; ] >>= fun () ->
+    inner [ size - 15, 15, size - 15;
+            0, size - 15, 0; ] >>= fun () ->
+    Lwt.return ()
+  in
+  run_with_fragment_cache 1_000_000L (fun c -> t (c :> cache)) "test_lookup2"
+
+(* TODO alle testen in deze module moeten met alle soorten (uitgezonderd None')
+ * van fragment cache getest worden! *)
+
 let suite =
 let open OUnit in
 "fragment_cache" >:::[
@@ -282,4 +317,5 @@ let open OUnit in
     "test_4" >:: test_4;
     "test_5" >:: test_5;
     "test_long" >:: test_long;
+    "test_lookup2" >:: test_lookup2;
   ]
