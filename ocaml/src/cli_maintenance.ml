@@ -23,6 +23,7 @@ module Config = struct
     log_level : string;
     albamgr_cfg_file : string option [@default None];
     albamgr_cfg_url  : string option [@default None];
+    fragment_cache : Fragment_cache_config.fragment_cache [@default Fragment_cache_config.None'];
     albamgr_connection_pool_size : (int [@default 10]);
     nsm_host_connection_pool_size : (int [@default 10]);
     osd_connection_pool_size : (int [@default 10]);
@@ -115,6 +116,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
     | `Ok cfg ->
       let open Config in
       let log_level                           = cfg.log_level
+      and fragment_cache_cfg                  = cfg.fragment_cache
       and albamgr_connection_pool_size        = cfg.albamgr_connection_pool_size
       and nsm_host_connection_pool_size       = cfg.nsm_host_connection_pool_size
       and osd_connection_pool_size            = cfg.osd_connection_pool_size
@@ -160,8 +162,12 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       Lwt_log.info_f "maintenance version:%s" Alba_version.git_revision
       >>= fun () ->
 
+      Fragment_cache_config.make_fragment_cache fragment_cache_cfg
+      >>= fun fragment_cache ->
+
       Alba_client.with_client
         abm_cfg_ref
+        ~fragment_cache
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
@@ -216,7 +222,9 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                   ~exn
                   "Going down after unexpected exception in maintenance process"
                 >>= fun () ->
-                Lwt.fail exn))
+                Lwt.fail exn)) >>= fun () ->
+
+      fragment_cache # close ()
   in
   lwt_server ~log_sinks ~subcomponent:"maintenance" t
 

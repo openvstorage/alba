@@ -1,6 +1,8 @@
 {
     "log_level": "debug"
     , "albamgr_cfg_file": "./cfg/test.ini"
+    , "fragment_cache" : ["none"], // optional, defaults to no fragment cache.
+                                   // for other options see fragment_cache_config.json
     , "albamgr_connection_pool_size" : 10  // optional, default 10
     , "nsm_host_connection_pool_size" : 10 // optional, default 10
     , "osd_connection_pool_size" : 10      // optional, default 10

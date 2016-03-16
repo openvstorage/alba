@@ -186,7 +186,7 @@ let test_5 () =
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 8L (cache # get_count ());
-    cache # drop 0l >>= fun () ->
+    cache # drop ~global:true 0l >>= fun () ->
 
     (* evict the first 4 victims (should all come from bid 0) *)
     let rec inner = function
@@ -216,13 +216,13 @@ let test_long () =
     let bid_to_drop1 = Int32.of_int 21 in
     let blob = Lwt_bytes.of_string "blob" in
     cache # add bid_to_drop1 "oid" blob >>= fun () ->
-    cache # drop bid_to_drop1 >>= fun () ->
+    cache # drop ~global:true bid_to_drop1 >>= fun () ->
     let bid_to_drop2 = Int32.of_int 20 in
     cache # add bid_to_drop2 "oid1" blob >>= fun () ->
     cache # add bid_to_drop2 "oid2" blob >>= fun () ->
-    cache # drop bid_to_drop2 >>= fun () ->
-    cache # drop 22l >>= fun () ->
-    cache # drop 23l >>= fun () ->
+    cache # drop ~global:true bid_to_drop2 >>= fun () ->
+    cache # drop ~global:true 22l >>= fun () ->
+    cache # drop ~global:true 23l >>= fun () ->
     let make_blob () = Lwt_bytes.create (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
@@ -267,7 +267,7 @@ let test_long () =
     Lwt_log.debug_f "fill loop took: %3f" d >>= fun () ->
     fetch 1000 >>= fun (found, missed) ->
     Lwt_io.printlf "done: found:%i missed:%i" found missed >>= fun () ->
-    cache # drop 0l >>= fun () ->
+    cache # drop ~global:true 0l >>= fun () ->
     assert (cache # _check ());
     Lwt.return ()
   in

@@ -1,4 +1,5 @@
 -/ocaml/_build
+-/setup/_build
 -/_virt
 -/cpp/automake_client
 -/cpp/bin

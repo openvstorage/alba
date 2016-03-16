@@ -323,7 +323,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
-      fun stats namespace -> alba_client # drop_cache namespace
+      fun stats namespace -> alba_client # drop_cache namespace ~global:false
     | ProxyStatistics ->
        fun stats clear ->
        begin
@@ -568,9 +568,9 @@ let refresh_albamgr_cfg
   inner ()
 
 let run_server hosts port
-               cache_dir albamgr_client_cfg
+               albamgr_client_cfg
+               ~fragment_cache
                ~manifest_cache_size
-               ~fragment_cache_size
                ~albamgr_connection_pool_size
                ~nsm_host_connection_pool_size
                ~osd_connection_pool_size
@@ -584,21 +584,6 @@ let run_server hosts port
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
   let stats = ProxyStatistics.make () in
-
-  let rec fragment_cache_disk_usage_t () =
-    Lwt.catch
-      (fun () ->
-       Fsutil.lwt_disk_usage cache_dir >>= fun (used_b, total_b) ->
-       let percentage =
-         100.0 *. ((Int64.to_float used_b) /. (Int64.to_float total_b))
-       in
-       Lwt_log.info_f "fragment_cache disk_usage: %.2f%%" percentage)
-      (fun exn -> Lwt_log.warning ~exn "fragment_cache_disk_usage_t")
-    >>= fun () ->
-    Lwt_unix.sleep 60.0 >>= fun () ->
-    fragment_cache_disk_usage_t ()
-  in
-
 
   Lwt.catch
     (fun () ->
@@ -618,8 +603,7 @@ let run_server hosts port
                    ~version_id:(snd location))) in
        Alba_client.with_client
          albamgr_client_cfg
-         ~cache_dir
-         ~fragment_cache_size
+         ~fragment_cache
          ~manifest_cache_size
          ~bad_fragment_callback
          ~albamgr_connection_pool_size
@@ -649,7 +633,6 @@ let run_server hosts port
                   proxy_protocol alba_client albamgr_client_cfg stats nfd));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
-              (fragment_cache_disk_usage_t ());
               (let rec log_stats () =
                  Lwt_log.info_f
                    "stats:\n%s%!"

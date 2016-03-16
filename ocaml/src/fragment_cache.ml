@@ -23,26 +23,20 @@ module KV = Rocks_key_value_store
 
 
 class type cache = object
-    method clear_all : unit -> unit Lwt.t
     method add : int32 -> string -> Lwt_bytes.t -> unit Lwt.t
     method lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
     method lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
 
-    method drop : int32 -> unit Lwt.t
-    method get_count : unit -> int64
-    method get_total_size : unit -> int64
+    method drop  : int32 -> global : bool -> unit Lwt.t
     method close : unit -> unit Lwt.t
 end
 
 class no_cache = object(self :# cache)
-    method clear_all () = Lwt.return_unit
     method add     bid oid blob   = Lwt.return_unit
     method lookup  bid oid        = Lwt.return_none
     method lookup2 bid oid slices = Lwt.return_false
-    method drop    bid            = Lwt.return_unit
-    method get_count () = 0L
-    method get_total_size () = 0L
-    method close () = Lwt.return_unit
+    method drop bid ~global       = Lwt.return_unit
+    method close   ()             = Lwt.return_unit
 end
 
 let ser64 x=
@@ -1036,7 +1030,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       Lwt_log.debug_f "add %lx %S took:%f" bid oid t
 
 
-    method drop bid =
+    method drop bid ~global =
       Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->
       Hashtbl.replace _dropping bid ();
       Lwt.return ()

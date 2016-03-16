@@ -80,6 +80,8 @@ module Shell = struct
     String.concat " " x |> cmd
 
   let cp src tgt = Printf.sprintf "cp %s %s" src tgt |> cmd
+
+  let mkdir p = "mkdir -p " ^ p |> cmd
 end
 
 module Etcdctl = struct

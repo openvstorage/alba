@@ -21,6 +21,7 @@ open Alba_base_client
 open Alba_statistics
 open Alba_client_errors
 open Lwt.Infix
+open Lwt_bytes2
 
 class alba_client (base_client : Alba_base_client.client)
   =
@@ -213,6 +214,41 @@ class alba_client (base_client : Alba_base_client.client)
     >>= fun _len ->
     Lwt.return !res
 
+  method download_object_to_bytes
+           ~namespace
+           ~object_name
+           ~consistent_read
+           ~should_cache
+         : Lwt_bytes.t option Lwt.t =
+    let res = ref None in
+    let write_object_data total_size =
+      let bs = Lwt_bytes.create (Int64.to_int total_size) in
+      res := Some bs;
+      let offset = ref 0 in
+      let write source pos len =
+        Lwt_bytes.blit source pos bs !offset len;
+        offset := !offset + len;
+        Lwt.return ()
+      in
+      Lwt.return write
+    in
+    Lwt.catch
+      (fun () ->
+       self # download_object_generic
+            ~namespace
+            ~object_name
+            ~write_object_data
+            ~consistent_read
+            ~should_cache
+       >>= fun _len ->
+       Lwt.return !res)
+      (fun exn ->
+       let () = match !res with
+         | None -> ()
+         | Some x -> Lwt_bytes.unsafe_destroy x
+       in
+       Lwt.fail exn)
+
   method download_object_to_string'
            ~namespace_id
            ~object_name
@@ -359,14 +395,14 @@ class alba_client (base_client : Alba_base_client.client)
            let open Manifest_cache in
            ManifestCache.invalidate (base_client # get_manifest_cache) namespace_id)
 
-    method drop_cache_by_id namespace_id =
+    method drop_cache_by_id ~global namespace_id =
       Manifest_cache.ManifestCache.drop (base_client # get_manifest_cache) namespace_id;
-      fragment_cache # drop namespace_id
+      fragment_cache # drop namespace_id ~global
 
-    method drop_cache namespace =
+    method drop_cache ~global namespace =
       self # nsm_host_access # with_namespace_id
         ~namespace
-        (self # drop_cache_by_id)
+        (self # drop_cache_by_id ~global)
 
     method deliver_nsm_host_messages ~nsm_host_id =
       Alba_client_message_delivery.deliver_nsm_host_messages
@@ -382,7 +418,7 @@ class alba_client (base_client : Alba_base_client.client)
       Alba_client_namespace.delete_namespace
         mgr_access nsm_host_access
         deliver_nsm_host_messages
-        (self # drop_cache_by_id)
+        (self # drop_cache_by_id ~global:true)
         ~namespace
 
     method decommission_osd ~long_id =
@@ -397,10 +433,8 @@ class alba_client (base_client : Alba_base_client.client)
   end
 
 let with_client albamgr_client_cfg
-                ?cache_dir
+                ?(fragment_cache = (new no_cache :> cache))
                 ?(manifest_cache_size=100_000)
-                ?(fragment_cache_size=100_000_000)
-                ?(rocksdb_max_open_files=256)
                 ?(bad_fragment_callback = fun
                     alba_client
                     ~namespace_id ~object_id ~object_name
@@ -416,18 +450,6 @@ let with_client albamgr_client_cfg
                 ?(use_fadvise = true)
                 f
   =
-  begin
-    match cache_dir with
-    | Some cd ->
-       let max_size = Int64.of_int fragment_cache_size in
-       safe_create cd ~max_size ~rocksdb_max_open_files
-       >>= fun cache ->
-       Lwt.return (cache :> cache)
-    | None ->
-       let cache = new no_cache in
-       Lwt.return (cache :> cache)
-  end
-  >>= fun cache ->
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
       ~size:albamgr_connection_pool_size
@@ -440,7 +462,7 @@ let with_client albamgr_client_cfg
     new Albamgr_client.client (new basic_mgr_pooled albamgr_pool)
   in
   let base_client = new Alba_base_client.client
-                        cache
+                        fragment_cache
                         ~mgr_access
                         ~manifest_cache_size
                         ~bad_fragment_callback
@@ -463,6 +485,4 @@ let with_client albamgr_client_cfg
          base_client # nsm_host_access # finalize;
          Lwt_pool2.finalize albamgr_pool
        end
-     else Lwt.return ()) >>= fun r ->
-  cache # close () >>= fun () ->
-  Lwt.return r
+     else Lwt.return ())
