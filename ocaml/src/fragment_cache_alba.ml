@@ -36,6 +36,7 @@ class alba_cache
         ~osd_connection_pool_size
         ~osd_timeout
         ~tls_config
+        ~partial_osd_read
   =
   let tcp_keepalive = Tcp_keepalive2.default in
   let albamgr_pool =
@@ -65,6 +66,7 @@ class alba_cache
                         ~tls_config
                         ~tcp_keepalive
                         ~use_fadvise:true
+                        ~partial_osd_read
   in
   let client = new Alba_client.alba_client base_client in
   let make_object_name ~bid ~name =

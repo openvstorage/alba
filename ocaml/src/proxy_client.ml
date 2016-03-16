@@ -48,8 +48,8 @@ class proxy_client fd =
     in
 
     Net_fd.write_all_lwt_bytes
-      buf.Llio.buf 0 buf.Llio.pos
-      fd >>= fun () ->
+      fd buf.Llio.buf 0 buf.Llio.pos
+    >>= fun () ->
 
     read_response response_deserializer
   in
@@ -150,7 +150,7 @@ let _prologue fd magic version =
   let buf = Buffer.create 8 in
   Llio.int32_to buf magic;
   Llio.int32_to buf version;
-  Net_fd.write_all (Buffer.contents buf) fd
+  Net_fd.write_all' fd (Buffer.contents buf)
 
 let with_client ip port f =
   Networking2.connect_with

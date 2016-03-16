@@ -48,31 +48,30 @@ let write_all_ssl socket bytes offset length =
   let write_from_source = Lwt_ssl.write socket bytes in
   Lwt_extra2._write_all write_from_source offset length
 
-let write_all bytes = function
-  | Plain fd       -> Lwt_extra2.write_all' fd bytes
-  | SSL (_,socket) ->
-     let offset = 0
-     and length = Bytes.length bytes
-     in write_all_ssl socket bytes offset length
+let write_all nfd bytes offset length = match nfd with
+  | Plain fd       -> Lwt_extra2.write_all fd bytes offset length
+  | SSL (_,socket) -> write_all_ssl socket bytes offset length
 
-let write_all_lwt_bytes bs offset length = function
+let write_all' nfd bytes = write_all nfd bytes 0 (Bytes.length bytes)
+
+let write_all_lwt_bytes nfd bs offset length = match nfd with
   | Plain fd -> Lwt_extra2.write_all_lwt_bytes fd bs offset length
   | SSL (_,socket) ->
      Lwt_extra2._write_all
        (Lwt_ssl.write_bytes socket bs)
        offset length
 
-let read_all target read remaining = function
+let read_all nfd target read remaining = match nfd with
   | Plain fd -> Lwt_extra2.read_all fd target read remaining
   | SSL (_,socket) ->
      let read_to_target = Lwt_ssl.read socket target in
      Lwt_extra2._read_all read_to_target read remaining
 
-let read_all_exact target offset length fd =
-  read_all target offset length fd
+let read_all_exact nfd target offset length =
+  read_all nfd target offset length
   >>= Lwt_extra2.expect_exact_length length
 
-let read_all_lwt_bytes_exact target offset length = function
+let read_all_lwt_bytes_exact nfd target offset length = match nfd with
   | Plain fd -> Lwt_extra2.read_all_lwt_bytes_exact fd target offset length
   | SSL (_, socket) ->
      Lwt_extra2._read_all

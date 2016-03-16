@@ -322,7 +322,7 @@ module NetFdReader = struct
     let with_lwt_bytes fd len f =
       let buf = Lwt_bytes.create len in
       Lwt.finalize
-        (fun () -> Net_fd.read_all_lwt_bytes_exact buf 0 len fd >>= fun () ->
+        (fun () -> Net_fd.read_all_lwt_bytes_exact fd buf 0 len >>= fun () ->
                    f buf)
         (fun () -> Lwt_bytes.unsafe_destroy buf;
                    Lwt.return_unit)
@@ -347,7 +347,7 @@ module NetFdReader = struct
 
     let raw_string_from fd length =
       let s = Bytes.create length in
-      Net_fd.read_all_exact s 0 length fd >>= fun () ->
+      Net_fd.read_all_exact fd s 0 length >>= fun () ->
       Lwt.return s
 
     let string_from fd =
