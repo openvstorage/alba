@@ -661,13 +661,7 @@ class client
                         function
                         | Unsupported -> Lwt.return_false
                         | Success -> Lwt.return_true
-                        | NotFound ->
-                           (* TODO fail with specific exception? *)
-                           (* test partial read when object has been
-                            * completely moved (rewritten?)
-                            * (there's probably only such a test for
-                            *  regular download_object) *)
-                           Lwt.fail_with "fragment not found"
+                        | NotFound -> Lwt.fail_with "missing fragment"
                  end
                else
                  Lwt.return_false

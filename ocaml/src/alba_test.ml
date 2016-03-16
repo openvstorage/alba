@@ -539,8 +539,17 @@ let test_partial_download () =
     (fun client ->
        let test_name = "test_partial_download" in
        let namespace = test_name in
+
+       let open Albamgr_protocol.Protocol in
+       let preset_name = test_name in
+       let preset' = Preset.({ _DEFAULT with
+                               compression = Alba_compression.Compression.NoCompression;
+                             }) in
+       client # mgr_access # create_preset
+              preset_name preset' >>= fun () ->
+
        client # create_namespace
-         ~preset_name:None
+         ~preset_name:(Some preset_name)
          ~namespace () >>= fun namespace_id ->
 
        let object_name = test_name in
@@ -1698,13 +1707,14 @@ let test_invalidate_deleted_namespace () =
                related to caching info about namespaces
             *)
 
+            let object_name = test_name in
             let object_data = "bla" in
             let checksum_o = get_checksum_o object_data in
 
             let do_upload (client : Alba_client.alba_client) =
               client # get_base_client # upload_object_from_string
                 ~namespace
-                ~object_name:""
+                ~object_name
                 ~object_data
                 ~checksum_o
                 ~allow_overwrite:Nsm_model.Unconditionally >>= fun _ ->
@@ -1883,8 +1893,17 @@ let test_stale_manifest_download () =
      let test_name = "test_stale_manifest_download" in
      let namespace = test_name in
 
-     alba_client # create_namespace ~namespace ~preset_name:None ()
-     >>= fun namespace_id ->
+     let open Albamgr_protocol.Protocol in
+     let preset_name = test_name in
+     let preset' = Preset.({ _DEFAULT with
+                             compression = Alba_compression.Compression.NoCompression;
+                           }) in
+     alba_client # mgr_access # create_preset
+            preset_name preset' >>= fun () ->
+
+     alba_client # create_namespace
+            ~preset_name:(Some preset_name)
+            ~namespace () >>= fun namespace_id ->
 
      let object_name = test_name in
      let object_length = 932 in
