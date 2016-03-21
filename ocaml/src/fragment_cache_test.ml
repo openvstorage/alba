@@ -16,6 +16,7 @@ limitations under the License.
 
 open Fragment_cache
 open Lwt.Infix
+open Lwt_bytes2
 
 let run_with_local_fragment_cache size test test_name =
   Random.init 666;
@@ -289,8 +290,7 @@ let _test_lookup2 (cache : cache) =
   let bid = 0l in
   let key = "key" in
   let size = 1_000_000 in
-  let value = Lwt_bytes.create size in
-  let value' = Lwt_bytes.to_string value in
+  let value = Lwt_bytes.create_random size in
   cache # add bid key value >>= fun () ->
 
   let inner slices =
@@ -303,7 +303,7 @@ let _test_lookup2 (cache : cache) =
     in
     cache # lookup2 bid key slices >>= fun success ->
     assert success;
-    assert (value' = Lwt_bytes.to_string destination);
+    assert (value = destination);
     Lwt.return ()
   in
 
@@ -317,7 +317,7 @@ let _test_lookup2 (cache : cache) =
   cache # lookup bid key >>= function
   | None -> assert false
   | Some r ->
-     assert (value' = Lwt_bytes.to_string r);
+     assert (value = r);
      Lwt.return ()
 
 let test_lookup2_local () =

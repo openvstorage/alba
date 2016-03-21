@@ -18,6 +18,7 @@ open Prelude
 open Osd
 open Lwt.Infix
 open Slice
+open Lwt_bytes2
 
 let buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -347,8 +348,7 @@ let test_partial_get port () =
     (fun asd ->
      let key = Slice.wrap_string "key" in
      let inner size =
-       let value = Lwt_bytes.create size in
-       let value' = Lwt_bytes.to_string value in
+       let value = Lwt_bytes.create_random size in
        asd # set ~prio:High key (Blob.Lwt_bytes value) true () >>= fun () ->
 
        let inner' slices =
@@ -364,7 +364,7 @@ let test_partial_get port () =
              key
              slices >>= fun success ->
          assert (success = Osd.Success);
-         assert (value' = Lwt_bytes.to_string destination);
+         assert (value = destination);
          Lwt.return ()
        in
 
