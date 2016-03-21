@@ -332,19 +332,23 @@ let osd_bench_cmd =
   in
   let scenarios =
     Arg.(let open Osd_bench in
+         let scns = [ "sets", sets;
+                      "gets", gets;
+                      "deletes", deletes;
+                      "upload_fragments", upload_fragments;
+                      "ranges",range_queries;
+                    ]
+         in
          value
          & opt_all
-             (enum
-                [ "sets", sets;
-                  "gets", gets;
-                  "deletes", deletes;
-                  "upload_fragments", upload_fragments;
-                  "ranges",range_queries;
-                ])
+             (enum scns)
              [ sets;
                gets;
                deletes; ]
-         & info [ "scenario" ])
+         & info [ "scenario" ]
+                ~doc:(Printf.sprintf
+                        "choose which scenario to run, valid values are %s"
+                        ([%show : string list] (List.map fst scns))))
   in
   let osd_bench_t = Term.(pure osd_bench
                           $ hosts $ port 10000 $ tls_config
