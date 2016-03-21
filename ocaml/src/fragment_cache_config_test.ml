@@ -26,11 +26,13 @@ let test_example_config () =
           path = "/tmp/x";
           max_size = 100000;
           rocksdb_max_open_files = default_rocksdb_max_open_files;
+          cache_on_read = true; cache_on_write = false;
         };
       Local {
           path = "/tmp/x";
           max_size = 100000;
           rocksdb_max_open_files = 256;
+          cache_on_read = true; cache_on_write = false;
         };
       Alba {
           albamgr_cfg_url = "/tmp/x";
@@ -45,6 +47,7 @@ let test_example_config () =
           tls_client = Some Tls.({ ca_cert = "/tmp/cacert.pem";
                                    creds = Some ("/tmp/my_client/my_client.pem",
                                                  "/tmp/my_client/my_client.key") });
+          cache_on_read_ = true; cache_on_write_ = false;
         };
       Alba {
           albamgr_cfg_url = "/tmp/x";
@@ -54,6 +57,7 @@ let test_example_config () =
                                path = "/tmp/x";
                                max_size = 100_000;
                                rocksdb_max_open_files = default_rocksdb_max_open_files;
+                               cache_on_read = true; cache_on_write = false;
                              };
           manifest_cache_size = 5_000_000;
           albamgr_connection_pool_size  = default_connection_pool_size;
@@ -61,6 +65,7 @@ let test_example_config () =
           osd_connection_pool_size      = default_connection_pool_size;
           osd_timeout = default_osd_timeout;
           tls_client = None;
+          cache_on_read_ = true; cache_on_write_ = false;
         };
     ]
   in

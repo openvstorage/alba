@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Lwt_bytes2
+
 type t = {
   bs : Lwt_bytes.t;
   offset : int;
@@ -30,6 +32,9 @@ let wrap_bigstring bs =
 let create length =
   wrap_bigstring (Lwt_bytes.create length)
 
+let create_random len =
+  wrap_bigstring (Lwt_bytes.create_random len)
+
 let ptr_start t =
   let open Ctypes in
   bigarray_start array1 t.bs +@ t.offset
@@ -44,6 +49,7 @@ let extract t offset length =
 let length t = t.length
 
 let get t pos = Lwt_bytes.get t.bs (t.offset + pos)
+let set t pos c = Lwt_bytes.set t.bs (t.offset + pos) c
 
 let to_string t =
   let s = Bytes.create t.length in

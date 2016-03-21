@@ -31,6 +31,8 @@ and local_fragment_cache = {
     path : string;
     max_size : int;
     rocksdb_max_open_files : (int [@default default_rocksdb_max_open_files]);
+    cache_on_read : bool;
+    cache_on_write : bool;
   } [@@deriving yojson, show]
 
 and alba_fragment_cache = {
@@ -43,12 +45,20 @@ and alba_fragment_cache = {
     osd_connection_pool_size      : (int [@default default_connection_pool_size]);
     osd_timeout : float [@default default_osd_timeout];
     tls_client : Tls.t option [@default None];
+    cache_on_read_ : bool [@key "cache_on_read"];
+    cache_on_write_ : bool [@key "cache_on_write"];
   } [@@deriving yojson, show]
 
 let rec make_fragment_cache = function
   | None' ->
-     Lwt.return (new Fragment_cache.no_cache :> Fragment_cache.cache)
-  | Local { path; max_size; rocksdb_max_open_files; } ->
+     Lwt.return ((new Fragment_cache.no_cache :> Fragment_cache.cache),
+                 false, false)
+  | Local { path;
+            max_size;
+            rocksdb_max_open_files;
+            cache_on_read;
+            cache_on_write;
+          } ->
      assert (path.[0] = '/');
      let max_size = Int64.of_int max_size in
      let max_size =
@@ -58,7 +68,8 @@ let rec make_fragment_cache = function
        let open Int64 in
        mul (div max_size 100L) 85L
      in
-     Fragment_cache.safe_create path ~max_size ~rocksdb_max_open_files
+     Fragment_cache.safe_create
+       path ~max_size ~rocksdb_max_open_files
      >>= fun cache ->
 
      let rec fragment_cache_disk_usage_t () =
@@ -76,7 +87,8 @@ let rec make_fragment_cache = function
      in
      Lwt.ignore_result (fragment_cache_disk_usage_t ());
 
-     Lwt.return (cache :> Fragment_cache.cache)
+     Lwt.return ((cache :> Fragment_cache.cache),
+                 cache_on_read, cache_on_write)
   | Alba { albamgr_cfg_url;
            bucket_strategy;
            fragment_cache;
@@ -86,8 +98,12 @@ let rec make_fragment_cache = function
            osd_connection_pool_size;
            osd_timeout;
            tls_client;
+           cache_on_read_;
+           cache_on_write_;
          } ->
-     make_fragment_cache fragment_cache >>= fun nested_fragment_cache ->
+     make_fragment_cache fragment_cache
+     >>= fun (nested_fragment_cache,
+              nested_cache_on_read, nested_cache_on_write) ->
      Alba_arakoon.config_from_url (Url.make albamgr_cfg_url) >>= fun albamgr_cfg ->
      let cache = new Fragment_cache_alba.alba_cache
                      ~albamgr_cfg_ref:(ref albamgr_cfg)
@@ -99,8 +115,10 @@ let rec make_fragment_cache = function
                      ~osd_connection_pool_size
                      ~osd_timeout
                      ~tls_config:tls_client
+                     ~cache_on_read:nested_cache_on_read ~cache_on_write:nested_cache_on_write
                      ~partial_osd_read:(match fragment_cache with
                                         | None' -> true
                                         | _ -> false)
      in
-     Lwt.return (cache :> Fragment_cache.cache)
+     Lwt.return ((cache :> Fragment_cache.cache),
+                 cache_on_read_, cache_on_write_)

@@ -65,6 +65,7 @@ let run_with_alba_fragment_cache test test_name =
           ~osd_timeout:10.
           ~tls_config
           ~partial_osd_read:false
+          ~cache_on_read:true ~cache_on_write:true
     in
     test cache
   in
@@ -72,18 +73,18 @@ let run_with_alba_fragment_cache test test_name =
 
 let test_1 () =
   let _inner (cache :Fragment_cache.blob_cache) =
-    let blob = Lwt_bytes.create 4096 in
+    let blob = Bigstring_slice.create_random 4096 in
     let bid = 0l and oid = "0000" in
     cache # add bid oid blob  (* _add_new_grow *)
     >>= fun () ->
 
-    Lwt_bytes.set blob 0 'x';
+    Bigstring_slice.set blob 0 'x';
     cache # add bid oid blob  (* _replace_grow *)
     >>= fun () ->
-    Lwt_bytes.set blob 0 'y';     (* _replace_grow *)
+    Bigstring_slice.set blob 0 'y';     (* _replace_grow *)
     cache # add bid oid blob
     >>= fun () ->
-    Lwt_bytes.set blob 0 'z';     (* _replace_grow *)
+    Bigstring_slice.set blob 0 'z';     (* _replace_grow *)
     cache # add bid oid blob >>= fun () ->
     (* lookup *)
     cache # lookup bid oid >>=
@@ -103,7 +104,7 @@ let test_1 () =
 
 let test_2 () =
   let _inner (cache: Fragment_cache.blob_cache) =
-    let blob = Lwt_bytes.create 4096 in
+    let blob = Bigstring_slice.create_random 4096 in
     cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Y" blob >>= fun () -> (* _add_new_full *)
     cache # add 0l "Z" blob >>= fun () -> (* _add_new_full *)
@@ -121,7 +122,7 @@ let test_2 () =
 let test_3 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
-    let blob = Lwt_bytes.create blob_size in
+    let blob = Bigstring_slice.create_random blob_size in
     cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Y" blob >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Z" blob >>= fun () -> (* _add_new_grow *)
@@ -159,7 +160,7 @@ let test_3 () =
 let test_4 () =
   let blob_size = 4096 in
   let _inner (cache : Fragment_cache.blob_cache) =
-    let blob = Lwt_bytes.create blob_size in
+    let blob = Bigstring_slice.create_random blob_size in
     let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
       if n = 1000
@@ -186,7 +187,7 @@ let test_4 () =
 let test_5 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
-    let blob = Lwt_bytes.create blob_size in
+    let blob = Bigstring_slice.create_random blob_size in
     let bid0 = 0l
     and bid1 = 1l
     in
@@ -228,7 +229,7 @@ let test_5 () =
 let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
     let bid_to_drop1 = Int32.of_int 21 in
-    let blob = Lwt_bytes.of_string "blob" in
+    let blob = Bigstring_slice.of_string "blob" in
     cache # add bid_to_drop1 "oid" blob >>= fun () ->
     cache # drop ~global:true bid_to_drop1 >>= fun () ->
     let bid_to_drop2 = Int32.of_int 20 in
@@ -237,7 +238,7 @@ let test_long () =
     cache # drop ~global:true bid_to_drop2 >>= fun () ->
     cache # drop ~global:true 22l >>= fun () ->
     cache # drop ~global:true 23l >>= fun () ->
-    let make_blob () = Lwt_bytes.create (2048 + Random.int 2048) in
+    let make_blob () = Bigstring_slice.create_random (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
         if i = 0
@@ -291,7 +292,7 @@ let _test_lookup2 (cache : cache) =
   let key = "key" in
   let size = 1_000_000 in
   let value = Lwt_bytes.create_random size in
-  cache # add bid key value >>= fun () ->
+  cache # add bid key (Bigstring_slice.wrap_bigstring value) >>= fun () ->
 
   let inner slices =
     let destination = Lwt_bytes.create size in

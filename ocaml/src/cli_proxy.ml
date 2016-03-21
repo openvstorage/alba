@@ -122,6 +122,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
                                   o_fragment_cache_size;
                      rocksdb_max_open_files =
                        Fragment_cache_config.default_rocksdb_max_open_files;
+                     cache_on_read = true; cache_on_write = false;
                    })
        in
        let () = match cfg.chattiness with
@@ -156,7 +157,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
       Fragment_cache_config.make_fragment_cache fragment_cache_cfg
-      >>= fun fragment_cache ->
+      >>= fun (fragment_cache, cache_on_read, cache_on_write) ->
 
       Proxy_server.run_server
         ips
@@ -176,6 +177,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
         ~partial_osd_read:(match fragment_cache_cfg with
                            | Fragment_cache_config.None' -> true
                            | _ -> false)
+        ~cache_on_read ~cache_on_write
       >>= fun () ->
 
       fragment_cache # close ()

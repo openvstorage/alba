@@ -163,7 +163,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       >>= fun () ->
 
       Fragment_cache_config.make_fragment_cache fragment_cache_cfg
-      >>= fun fragment_cache ->
+      >>= fun (fragment_cache, cache_on_read, cache_on_write) ->
 
       Alba_client.with_client
         abm_cfg_ref
@@ -177,6 +177,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
         ~partial_osd_read:(match fragment_cache_cfg with
                            | Fragment_cache_config.None' -> true
                            | _ -> false)
+        ~cache_on_read ~cache_on_write
         (fun client ->
            let maintenance_client =
              new Maintenance.client (client # get_base_client) ~load:cfg.load

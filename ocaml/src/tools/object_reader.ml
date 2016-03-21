@@ -87,3 +87,23 @@ class bytes_reader object_data = (object
     pos <- pos + cnt;
     Lwt.return_unit
 end : reader)
+
+class bigstring_slice_reader object_data =
+  (object
+      val mutable pos = 0
+
+      method reset =
+        pos <- 0;
+        Lwt.return_unit
+
+      method length =
+        Lwt.return (Bigstring_slice.length object_data)
+
+      method read cnt target =
+        Lwt_bytes.blit
+          object_data.Bigstring_slice.bs (object_data.Bigstring_slice.offset + pos)
+          target 0
+          cnt;
+        pos <- pos + cnt;
+        Lwt.return_unit
+    end : reader)

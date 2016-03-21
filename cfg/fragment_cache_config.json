@@ -3,11 +3,15 @@
     [ "none" ], // no fragment cache
     [ "local", // local (file system based) fragment cache
       { "path" : "/tmp/x",
-        "max_size" : 100000 // in bytes
+        "max_size" : 100000, // in bytes
+        cache_on_read : true,
+        cache_on_write : false
       }],
     [ "local", { path : "/tmp/x",
                  max_size : 100000,
-                 rocksdb_max_open_files : 256 // optional, default 256
+                 rocksdb_max_open_files : 256, // optional, default 256
+                 cache_on_read : true,
+                 cache_on_write : false
                }],
     [ "alba", // use another (probably ssd based) alba as a cache
       { albamgr_cfg_url : "/tmp/x",
@@ -24,7 +28,9 @@
             "ca_cert" : "/tmp/cacert.pem",
             "creds"    : [ "/tmp/my_client/my_client.pem",
                            "/tmp/my_client/my_client.key" ]
-        }
+        },
+        cache_on_read : true,
+        cache_on_write : false
       }],
     [ "alba", { albamgr_cfg_url : "/tmp/x",
                 bucket_strategy : [ "1-to-1", {
@@ -33,7 +39,11 @@
                 } ],
                 fragment_cache : // optional, defaults to [ "none" ]
                 [ "local", { path : "/tmp/x",
-                             max_size : 100000 } ],
-                manifest_cache_size : 5000000
+                             max_size : 100000,
+                             cache_on_read : true,
+                             cache_on_write : false } ],
+                manifest_cache_size : 5000000,
+                cache_on_read : true,
+                cache_on_write : false
               }]
 ]

@@ -45,6 +45,7 @@ class client
     ~tcp_keepalive
     ~use_fadvise
     ~partial_osd_read
+    ~cache_on_read ~cache_on_write
   =
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
@@ -190,6 +191,23 @@ class client
         ~allow_overwrite
         ~object_id_hint:None
 
+    method upload_object_from_bigstring_slice
+        ~namespace
+        ~(object_name : string)
+        ~(object_data : Bigstring_slice.t)
+        ~(checksum_o: Checksum.t option)
+        ~(allow_overwrite : Nsm_model.overwrite)
+      =
+      let object_reader = new Object_reader.bigstring_slice_reader object_data in
+
+      self # upload_object
+           ~namespace
+           ~object_name
+           ~object_reader
+           ~checksum_o
+           ~allow_overwrite
+           ~object_id_hint:None
+
     method upload_object_from_string
       ~namespace
       ~object_name
@@ -243,6 +261,8 @@ class client
          ~checksum_o
          ~allow_overwrite
          ~object_id_hint
+         ~fragment_cache
+         ~cache_on_write
 
     (* consumers of this method are responsible for freeing
      * the returned fragment bigstring
@@ -267,6 +287,7 @@ class client
         decompress
         ~encryption
         fragment_cache
+        ~cache_on_read
       >>= function
       | Prelude.Error.Ok a -> Lwt.return a
       | Prelude.Error.Error x ->

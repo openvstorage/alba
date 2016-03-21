@@ -22,20 +22,23 @@ open Lwt_bytes2
 module KV = Rocks_key_value_store
 
 
-class type cache = object
-    method add : int32 -> string -> Lwt_bytes.t -> unit Lwt.t
-    method lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
-    method lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
+class virtual cache = object(self)
 
-    method drop  : int32 -> global : bool -> unit Lwt.t
-    method close : unit -> unit Lwt.t
+    method virtual add : int32 -> string -> Bigstring_slice.t -> unit Lwt.t
+
+    method virtual lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
+    method virtual lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
+
+    method virtual drop  : int32 -> global : bool -> unit Lwt.t
+    method virtual close : unit -> unit Lwt.t
 end
 
-class no_cache = object(self :# cache)
+class no_cache = object(self)
+    inherit cache
     method add     bid oid blob   = Lwt.return_unit
     method lookup  bid oid        = Lwt.return_none
     method lookup2 bid oid slices = Lwt.return_false
-    method drop bid ~global       = Lwt.return_unit
+    method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
 end
 
@@ -99,7 +102,8 @@ let rm_tree ~silent dir =
 type boid = int32 * string [@@deriving show]
 
 
-class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
+class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
+  =
   let _TOTAL_COUNT = "*total_count"
   and _TOTAL_SIZE = "*total_size"
   and _BLOBS  = "/blobs/"
@@ -224,8 +228,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       Lwt_extra2.with_fd
         full_path ~flags ~perm
         (fun fd_out ->
-         let fragment_l = Lwt_bytes.length fragment in
-         Lwt_extra2.write_all_lwt_bytes fd_out fragment 0 fragment_l
+         let open Bigstring_slice in
+         Lwt_extra2.write_all_lwt_bytes
+           fd_out
+           fragment.bs fragment.offset fragment.length
         )
     in
     with_timing_lwt _inner  >>= fun (took,()) ->
@@ -242,7 +248,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
 
   let db_path = root ^ "/db" in
 
-  object(self :# cache)
+  object(self)
+    inherit cache
     val dirs = Asd_server.DirectoryInfo.make
                  root
                  ~use_fadvise:true
@@ -577,7 +584,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       >>= fun () ->
       _write_blob path blob >>= fun () ->
 
-      let blob_length = Lwt_bytes.length blob in
+      let blob_length = Bigstring_slice.length blob in
       let blob_length64 = Int64.of_int blob_length in
       let total_count' = ser64 (Int64.succ total_count) in
       let total_size' = ser64 (total_size +: blob_length64) in
@@ -630,7 +637,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       let access0 = access_of vaccess0 in
 
       let kaccess_rev0 =  access_key_of access0 in
-      let blob_length = Lwt_bytes.length blob in
+      let blob_length = Bigstring_slice.length blob in
       let blob_length64 = Int64.of_int blob_length in
       let vsize = size_value_of blob_length in
       let vboid = boid_value_of boid in
@@ -876,14 +883,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       >>= fun () ->
 
       _write_blob path blob >>= fun () ->
-      let blob_size = Lwt_bytes.length blob |> Int64.of_int in
+      let blob_size = Bigstring_slice.length blob |> Int64.of_int in
       let victims_size = blob_size -: (max_size -: total_size) |> Int64.to_int in
       self # _evict
         ~total_count ~total_size
         ~victims_size
       >>= fun (total_count, total_size) ->
 
-      let blob_length   = Lwt_bytes.length blob in
+      let blob_length   = Bigstring_slice.length blob in
       let blob_length64 = Int64.of_int blob_length in
 
       let open Rocks in
@@ -937,7 +944,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       _write_blob path blob >>= fun () ->
 
       let kfsid = blob_fsid_key_of boid in
-      let blob_length = Lwt_bytes.length blob in
+      let blob_length = Bigstring_slice.length blob in
       let blob_length64 = Int64.of_int blob_length in
       let ksize   = blob_size_key_of   boid  in
       let blob0_length64 = get_int32_exn db ksize |> Int64.of_int in
@@ -988,7 +995,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
            >>= fun () ->
            let total_count = get_int64 db _TOTAL_COUNT in
            let total_size  = get_int64 db _TOTAL_SIZE in
-           let blob_length = Lwt_bytes.length blob |> Int64.of_int in
+           let blob_length = Bigstring_slice.length blob |> Int64.of_int in
            begin
              match total_size +: blob_length < max_size ,
                    KV.get db fsid_key
@@ -1058,7 +1065,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files =
       )
 end
 
-let safe_create root ~max_size ~rocksdb_max_open_files =
+let safe_create root
+                ~max_size ~rocksdb_max_open_files
+  =
   let fn = marker_name root in
   Lwt.catch
     (fun () ->
@@ -1070,5 +1079,7 @@ let safe_create root ~max_size ~rocksdb_max_open_files =
      rm_tree ~silent:false (root ^ "/*" )
     )
   >>= fun () ->
-  let cache = new blob_cache root ~max_size ~rocksdb_max_open_files in
+  let cache = new blob_cache
+                  root ~max_size ~rocksdb_max_open_files
+  in
   Lwt.return cache

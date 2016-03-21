@@ -410,12 +410,16 @@ module Proxy_cfg =
      and local_fragment_cache = {
          path : string;
          max_size : int;
+         cache_on_read : bool;
+         cache_on_write : bool;
        } [@@deriving yojson]
 
      and alba_fragment_cache = {
          albamgr_cfg_url : string;
          bucket_strategy : bucket_strategy;
          manifest_cache_size : int;
+         cache_on_read_ : bool [@key "cache_on_read"];
+         cache_on_write_ : bool [@key "cache_on_write"];
        } [@@deriving yojson]
 
      and bucket_strategy =
@@ -465,6 +469,7 @@ module Proxy_cfg =
         | None -> Local {
                       path = base ^ "/fragment_cache";
                       max_size = 100 * 1000 * 1000;
+                      cache_on_read = true; cache_on_write = true;
                     } in
       New
         { port = port + id;
@@ -1964,14 +1969,15 @@ module Test = struct
                                           bucket_strategy = OneOnOne { prefix = "prefix";
                                                                        preset = "default"; };
                                           manifest_cache_size = 1_000_000;
+                                          cache_on_read_ = true; cache_on_write_ = true;
                                         })
         ~cfg:cfg_hdd ~base_port:6000 ()
     in
     Deployment.setup t_hdd;
 
     let objname = "fdsij" in
+    (* uploading is enough to trigger caching *)
     t_hdd.proxy # upload_object "demo" cfg_hdd.arakoon_bin objname;
-    t_hdd.proxy # download_object "demo" objname "/tmp/fjsdiovd";
 
     let output = t_ssd.proxy # list_namespaces in
     assert (output = "Found 2 namespaces: [\"demo\"; \"prefix\\000\\000\\000\\000\"]");

@@ -69,6 +69,7 @@ class alba_client (base_client : Alba_base_client.client)
       base_client # with_nsm_client'
 
     method upload_object_from_bytes = base_client # upload_object_from_bytes
+    method upload_object_from_bigstring_slice = base_client # upload_object_from_bigstring_slice
 
     method get_object_manifest ~namespace ~object_name ~consistent_read ~should_cache =
       self # nsm_host_access # with_namespace_id
@@ -449,6 +450,8 @@ let with_client albamgr_client_cfg
                 ?(tcp_keepalive = Tcp_keepalive2.default)
                 ?(use_fadvise = true)
                 ?(partial_osd_read = true)
+                ?(cache_on_read = true)
+                ?(cache_on_write = true)
                 f
   =
   let albamgr_pool =
@@ -475,6 +478,7 @@ let with_client albamgr_client_cfg
                         ~tcp_keepalive
                         ~use_fadvise
                         ~partial_osd_read
+                        ~cache_on_read ~cache_on_write
   in
   let client = new alba_client base_client in
   Lwt.finalize
