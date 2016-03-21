@@ -36,6 +36,7 @@ class alba_cache
         ~osd_connection_pool_size
         ~osd_timeout
         ~tls_config
+        ~partial_osd_read
         ~cache_on_read ~cache_on_write
   =
   let tcp_keepalive = Tcp_keepalive2.default in
@@ -66,14 +67,13 @@ class alba_cache
                         ~tls_config
                         ~tcp_keepalive
                         ~use_fadvise:true
+                        ~partial_osd_read
   in
   let client = new Alba_client.alba_client base_client in
   let make_object_name ~bid ~name =
-    serialize
-      (Llio.pair_to
-         Llio.int32_to
-         Llio.string_to)
-      (bid, name)
+    match bucket_strategy with
+    | OneOnOne _ ->
+       name
   in
   let with_namespace bid f =
     match bucket_strategy with
@@ -120,6 +120,12 @@ class alba_cache
          Lwt.return_none)
 
     method lookup2 bid name object_slices =
+      let object_slices =
+        List.map
+          (fun (offset, length, dest, dest_off) ->
+           Int64.of_int offset, length, dest, dest_off)
+          object_slices
+      in
       Lwt.catch
         (fun () ->
          with_namespace
@@ -131,11 +137,7 @@ class alba_cache
                     base_client # download_object_slices'
                                 ~namespace_id
                                 ~object_name:(make_object_name ~bid ~name)
-                                ~object_slices:(List.map
-                                                  (fun (offset, length, dest, dest_off) ->
-                                                   Int64.of_int offset, length,
-                                                   dest, dest_off)
-                                                  object_slices)
+                                ~object_slices
                                 ~consistent_read:false
                                 ~fragment_statistics_cb:ignore
                    )) >>= function

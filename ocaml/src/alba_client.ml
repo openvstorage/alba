@@ -21,6 +21,7 @@ open Alba_base_client
 open Alba_statistics
 open Alba_client_errors
 open Lwt.Infix
+open Lwt_bytes2
 
 class alba_client (base_client : Alba_base_client.client)
   =
@@ -232,14 +233,22 @@ class alba_client (base_client : Alba_base_client.client)
       in
       Lwt.return write
     in
-    self # download_object_generic
-         ~namespace
-         ~object_name
-         ~write_object_data
-         ~consistent_read
-         ~should_cache
-    >>= fun _len ->
-    Lwt.return !res
+    Lwt.catch
+      (fun () ->
+       self # download_object_generic
+            ~namespace
+            ~object_name
+            ~write_object_data
+            ~consistent_read
+            ~should_cache
+       >>= fun _len ->
+       Lwt.return !res)
+      (fun exn ->
+       let () = match !res with
+         | None -> ()
+         | Some x -> Lwt_bytes.unsafe_destroy x
+       in
+       Lwt.fail exn)
 
   method download_object_to_string'
            ~namespace_id
@@ -440,6 +449,7 @@ let with_client albamgr_client_cfg
                 ?(release_resources = false)
                 ?(tcp_keepalive = Tcp_keepalive2.default)
                 ?(use_fadvise = true)
+                ?(partial_osd_read = true)
                 f
   =
   let albamgr_pool =
@@ -465,6 +475,7 @@ let with_client albamgr_client_cfg
                         ~tls_config
                         ~tcp_keepalive
                         ~use_fadvise
+                        ~partial_osd_read
   in
   let client = new alba_client base_client in
   Lwt.finalize

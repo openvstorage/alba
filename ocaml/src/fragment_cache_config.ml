@@ -113,5 +113,8 @@ let rec make_fragment_cache = function
                      ~osd_timeout
                      ~tls_config:tls_client
                      ~cache_on_read:cache_on_read_ ~cache_on_write:cache_on_write_
+                     ~partial_osd_read:(match fragment_cache with
+                                        | None' -> true
+                                        | _ -> false)
      in
      Lwt.return (cache :> Fragment_cache.cache)

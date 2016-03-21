@@ -152,13 +152,13 @@ class osd_access
         then
           begin
             Osd_state.add_error state exn;
-            disqualify ~osd_id
+            disqualify ~osd_id ~exn
           end
         else Lwt.return ())
        >>= fun () ->
        Lwt_log.debug_f ~exn "Exception in with_osd_from_pool osd_id=%li" osd_id >>= fun () ->
        Lwt.fail exn)
-  and disqualify ~osd_id =
+  and disqualify ~osd_id ~exn =
     let rec inner delay =
       Lwt.catch
         (fun () ->
@@ -201,7 +201,7 @@ class osd_access
     then Lwt.return ()
     else begin
         Osd_state.disqualify state true;
-        Lwt_log.info_f "Disqualifying osd %li" osd_id >>= fun () ->
+        Lwt_log.info_f ~exn "Disqualifying osd %li" osd_id >>= fun () ->
         (* start loop to get it requalified... *)
         Lwt.async
           (fun () ->

@@ -32,6 +32,7 @@ let suite = "all" >:::[
     "cache" >::: Cache_test.suite;
     Fragment_cache_test.suite;
     Gcrypt_test.suite;
+    Rebalancing_helper_test.suite;
     Maintenance_test.suite;
     Erasure_test.suite;
     Buffer_pool_test.suite;

@@ -16,8 +16,8 @@
     "port": 10000,
     // optional asd_id is optional
     "asd_id" : "a globally unique id for the asd"
-    // optional, we use 90% of the file system capacity
-    , "limit" : 90
+    // optional, by default we use 99% of the file system capacity
+    , "limit" : 99
 
     // optional:
     , "tls" : {"cert": "path/to/cert",

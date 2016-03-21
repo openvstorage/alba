@@ -16,8 +16,9 @@ limitations under the License.
 
 open Fragment_cache
 open Lwt.Infix
+open Lwt_bytes2
 
-let run_with_fragment_cache size test test_name =
+let run_with_local_fragment_cache size test test_name =
   Random.init 666;
   let dir = Printf.sprintf "/tmp/alba/blob_cache_tests/%s" test_name
   in
@@ -33,6 +34,7 @@ let run_with_fragment_cache size test test_name =
                    ~cache_on_read:true ~cache_on_write:true
        >>= fun cache ->
        test cache >>= fun () ->
+       OUnit.assert_bool "internal integrity check failed" (cache # _check ());
        Lwt.catch
          (fun () -> cache # close ())
          (fun exn -> Lwt_log.warning_f ~exn "closing failed:%s" test_name)
@@ -46,12 +48,33 @@ let run_with_fragment_cache size test test_name =
   let () = Lwt_main.run t in
   ()
 
-
+let run_with_alba_fragment_cache test test_name =
+  let t () =
+    Alba_test._fetch_abm_client_cfg () >>= fun abm_ccfg ->
+    let tls_config = Albamgr_test.get_tls_config () in
+    let cache =
+      let open Fragment_cache_alba in
+      new alba_cache
+          ~albamgr_cfg_ref:(ref abm_ccfg)
+          ~bucket_strategy:(OneOnOne { preset = "default";
+                                       prefix = test_name; })
+          ~nested_fragment_cache:(new no_cache)
+          ~manifest_cache_size:100
+          ~albamgr_connection_pool_size:10
+          ~nsm_host_connection_pool_size:10
+          ~osd_connection_pool_size:10
+          ~osd_timeout:10.
+          ~tls_config
+          ~partial_osd_read:false
+          ~cache_on_read:true ~cache_on_write:true
+    in
+    test cache
+  in
+  Lwt_main.run (t ())
 
 let test_1 () =
   let _inner (cache :Fragment_cache.blob_cache) =
-    cache # clear_all () >>= fun () ->
-    let blob = Bigstring_slice.create 4096 in
+    let blob = Bigstring_slice.create_random 4096 in
     let bid = 0l and oid = "0000" in
     cache # add bid oid blob `Read  (* _add_new_grow *)
     >>= fun () ->
@@ -76,15 +99,13 @@ let test_1 () =
 
            Lwt.return ()
       end >>= fun () ->
-    OUnit.assert_bool "internal integrity check failed" (cache # _check ());
     Lwt.return ()
   in
-  run_with_fragment_cache 10_000L _inner "test_1"
+  run_with_local_fragment_cache 10_000L _inner "test_1"
 
 let test_2 () =
   let _inner (cache: Fragment_cache.blob_cache) =
-    cache # clear_all () >>= fun () ->
-    let blob = Bigstring_slice.create 4096 in
+    let blob = Bigstring_slice.create_random 4096 in
     cache # add 0l "X" blob `Read >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Y" blob `Read >>= fun () -> (* _add_new_full *)
     cache # add 0l "Z" blob `Read >>= fun () -> (* _add_new_full *)
@@ -97,13 +118,12 @@ let test_2 () =
     OUnit.assert_bool "internal integrity check" (cache # _check());
     Lwt.return ()
   in
-  run_with_fragment_cache 5000L _inner "test_2"
+  run_with_local_fragment_cache 5000L _inner "test_2"
 
 let test_3 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
-    cache # clear_all () >>= fun () ->
-    let blob = Bigstring_slice.create blob_size in
+    let blob = Bigstring_slice.create_random blob_size in
     cache # add 0l "X" blob `Read >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Y" blob `Read >>= fun () -> (* _add_new_grow *)
     cache # add 0l "Z" blob `Read >>= fun () -> (* _add_new_grow *)
@@ -136,13 +156,12 @@ let test_3 () =
     Lwt.return ()
   in
   let size = Int64.of_int (4 * blob_size + 1) in
-  run_with_fragment_cache size _inner "test_3"
+  run_with_local_fragment_cache size _inner "test_3"
 
 let test_4 () =
   let blob_size = 4096 in
   let _inner (cache : Fragment_cache.blob_cache) =
-    cache # clear_all() >>= fun () ->
-    let blob = Bigstring_slice.create blob_size in
+    let blob = Bigstring_slice.create_random blob_size in
     let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
       if n = 1000
@@ -161,18 +180,15 @@ let test_4 () =
         >>= fun () ->
         loop (n+1)
     in
-    loop 0 >>= fun () ->
-    let _ = cache # _check () in
-    Lwt.return ()
+    loop 0
   in
   let size = 40_000_000L in
-  run_with_fragment_cache size _inner "test_4"
+  run_with_local_fragment_cache size _inner "test_4"
 
 let test_5 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
-    cache # clear_all () >>= fun () ->
-    let blob = Bigstring_slice.create blob_size in
+    let blob = Bigstring_slice.create_random blob_size in
     let bid0 = 0l
     and bid1 = 1l
     in
@@ -208,12 +224,11 @@ let test_5 () =
     OUnit.assert_bool "_check failed" (cache # _check ());
     Lwt.return ()
   in
-  run_with_fragment_cache 65536L _inner "test_5"
+  run_with_local_fragment_cache 65536L _inner "test_5"
 
 
 let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
-    cache #clear_all () >>= fun () ->
     let bid_to_drop1 = Int32.of_int 21 in
     let blob = Bigstring_slice.of_string "blob" in
     cache # add bid_to_drop1 "oid" blob `Read >>= fun () ->
@@ -224,7 +239,7 @@ let test_long () =
     cache # drop ~global:true bid_to_drop2 >>= fun () ->
     cache # drop ~global:true 22l >>= fun () ->
     cache # drop ~global:true 23l >>= fun () ->
-    let make_blob () = Bigstring_slice.create (2048 + Random.int 2048) in
+    let make_blob () = Bigstring_slice.create_random (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
         if i = 0
@@ -269,10 +284,54 @@ let test_long () =
     fetch 1000 >>= fun (found, missed) ->
     Lwt_io.printlf "done: found:%i missed:%i" found missed >>= fun () ->
     cache # drop ~global:true 0l >>= fun () ->
-    assert (cache # _check ());
     Lwt.return ()
   in
-  run_with_fragment_cache 20_000L _inner "test_long"
+  run_with_local_fragment_cache 20_000L _inner "test_long"
+
+let _test_lookup2 (cache : cache) =
+  let bid = 0l in
+  let key = "key" in
+  let size = 1_000_000 in
+  let value = Lwt_bytes.create_random size in
+  cache # add bid key (Bigstring_slice.wrap_bigstring value) `Read >>= fun () ->
+
+  let inner slices =
+    let destination = Lwt_bytes.create size in
+    let slices =
+      List.map
+        (fun (offset, length, destoff) ->
+         offset, length, destination, destoff)
+        slices
+    in
+    cache # lookup2 bid key slices >>= fun success ->
+    assert success;
+    assert (value = destination);
+    Lwt.return ()
+  in
+
+  inner [ 0, size, 0 ] >>= fun () ->
+  inner [ 0, size - 15, 0;
+          size - 15, 15, size - 15; ] >>= fun () ->
+  inner [ size - 15, 15, size - 15;
+          0, size - 15, 0; ] >>= fun () ->
+
+  (* test regular lookup too *)
+  cache # lookup bid key >>= function
+  | None -> assert false
+  | Some r ->
+     assert (value = r);
+     Lwt.return ()
+
+let test_lookup2_local () =
+  run_with_local_fragment_cache
+    1_000_000L
+    (fun c -> _test_lookup2 (c :> cache))
+    "test_lookup2"
+
+let test_lookup2_alba () =
+  run_with_alba_fragment_cache
+    (fun c -> _test_lookup2 (c :> cache))
+    "test_lookup2"
 
 let suite =
 let open OUnit in
@@ -283,4 +342,6 @@ let open OUnit in
     "test_4" >:: test_4;
     "test_5" >:: test_5;
     "test_long" >:: test_long;
+    "test_lookup2_local" >:: test_lookup2_local;
+    "test_lookup2_alba" >:: test_lookup2_alba;
   ]

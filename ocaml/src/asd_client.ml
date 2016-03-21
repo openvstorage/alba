@@ -59,10 +59,12 @@ class client (fd:Net_fd.t) id =
            (code,
             request)
        in
-       Net_fd.write_all_lwt_bytes
-         buf.Llio.buf 0 buf.Llio.pos
-         fd >>= fun () ->
-       with_response deserialize_response f) >>= fun (t, r) ->
+       let () = Net_fd.cork fd in
+       Net_fd.write_all_lwt_bytes fd buf.Llio.buf 0 buf.Llio.pos
+       >>= fun () ->
+       let () = Net_fd.uncork fd in
+       with_response deserialize_response f)
+    >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
   in
@@ -159,7 +161,7 @@ class client (fd:Net_fd.t) id =
                      let bs = Lwt_bytes.create size in
                      Lwt.catch
                        (fun () ->
-                        Net_fd.read_all_lwt_bytes_exact bs 0 size fd >>= fun () ->
+                        Net_fd.read_all_lwt_bytes_exact fd bs 0 size >>= fun () ->
                         Lwt.return (Some (bs, cs)))
                        (fun exn ->
                         Lwt_bytes.unsafe_destroy bs;
@@ -174,6 +176,53 @@ class client (fd:Net_fd.t) id =
 
     method multi_exists ~prio keys =
       self # query MultiExists (keys, prio) Lwt.return
+
+    method raw_partial_get ~prio key slices =
+      self # query
+           PartialGet
+           (key,
+            List.map
+              (fun (offset, length, _, _) ->
+               offset, length)
+              slices,
+            prio)
+           (function
+             | false ->
+                Lwt.return_false
+             | true ->
+                (* TODO could optimize the number of syscalls using readv *)
+                Lwt_list.iter_s
+                  (fun (_, length, dest, destoff) ->
+                   Net_fd.read_all_lwt_bytes_exact
+                     fd
+                     dest destoff
+                     length)
+                  slices >>= fun () ->
+                Lwt.return_true)
+
+    val mutable supports_partial_get = None
+    method partial_get ~prio key slices =
+      let map_output = function
+        | true -> Lwt.return Osd.Success
+        | false -> Lwt.return Osd.NotFound
+      in
+      match supports_partial_get with
+      | Some false -> Lwt.return Osd.Unsupported
+      | Some true ->
+         self # raw_partial_get ~prio key slices
+         >>= map_output
+      | None ->
+         Lwt.catch
+           (fun () ->
+            self # raw_partial_get ~prio key slices >>= fun r ->
+            supports_partial_get <- Some true;
+            map_output r)
+           (function
+             | Error.Exn Error.Unknown_operation ->
+                supports_partial_get <- Some false;
+                Lwt.return Osd.Unsupported
+             | exn ->
+                Lwt.fail exn)
 
     method get ~prio key =
       self # multi_get ~prio [ key ] >>= fun res ->
@@ -295,7 +344,7 @@ let make_client buffer_pool ~conn_info (lido:string option)  =
     (fun () ->
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
-       Net_fd.write_all prologue_bytes nfd >>= fun () ->
+       Net_fd.write_all' nfd prologue_bytes >>= fun () ->
        _prologue_response nfd lido >>= fun long_id ->
        let client = new client nfd long_id in
        Lwt.return (client, closer)
@@ -344,6 +393,8 @@ class asd_osd (asd_id : string) (asd : client) =
          vcos)
 
   method multi_exists prio keys = asd # multi_exists ~prio keys
+
+  method partial_get prio key slices = asd # partial_get ~prio key slices
 
   method range prio = asd # range ~prio
 

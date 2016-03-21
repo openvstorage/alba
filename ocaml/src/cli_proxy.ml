@@ -173,7 +173,11 @@ let proxy_start (cfg_url:Url.t) log_sinks =
         ~max_client_connections
         ~tls_config:cfg.tls_client
         ~tcp_keepalive
-        ~use_fadvise >>= fun () ->
+        ~use_fadvise
+        ~partial_osd_read:(match fragment_cache_cfg with
+                           | Fragment_cache_config.None' -> true
+                           | _ -> false)
+      >>= fun () ->
 
       fragment_cache # close ()
   in

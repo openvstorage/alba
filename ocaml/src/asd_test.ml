@@ -17,6 +17,8 @@ limitations under the License.
 open Prelude
 open Osd
 open Lwt.Infix
+open Slice
+open Lwt_bytes2
 
 let buffer_pool = Buffer_pool.osd_buffer_pool
 
@@ -140,7 +142,6 @@ let test_multi_exists port () =
   test_with_asd_client
     "test_multi_exists" port
     (fun client ->
-     let open Slice in
      let v = "xxxx" in
      let existing_key = "exists" in
      client # set_string ~prio:High existing_key v true >>= fun () ->
@@ -164,7 +165,7 @@ let test_range_query port () =
        in
        client # apply_sequence ~prio:High
          []
-         [ set "" ; set "k"; set "kg"; set "l"; ] >>= fun _ ->
+         [ set "" ; set "k"; set "kg"; set "l"; ] >>= fun () ->
 
        client # range_string ~prio:High
          ~first:"" ~finc:true ~last:None
@@ -276,7 +277,7 @@ let test_protocol_version port () =
          (fun () ->
           let prologue_bytes = Asd_client.make_prologue
                                  Asd_protocol._MAGIC 666l None in
-          Net_fd.write_all prologue_bytes fd >>= fun () ->
+          Net_fd.write_all' fd prologue_bytes >>= fun () ->
           Asd_client._prologue_response fd None >>= fun _ ->
           OUnit.assert_bool "should have failed" false;
           Lwt.return ())
@@ -304,7 +305,7 @@ let test_unknown_operation port () =
     (fun asd ->
      asd # do_unknown_operation >>= fun () ->
      asd # do_unknown_operation >>= fun () ->
-     asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.Slice.wrap_string "x" ] >>= fun _ ->
+     asd # multi_get ~prio:Asd_protocol.Protocol.High [ Slice.wrap_string "x" ] >>= fun _ ->
      Lwt.return ()
     )
 
@@ -313,6 +314,69 @@ let test_no_blobs port () =
     ~write_blobs:false
     "test_no_blobs" port
     (test_set_get_delete ~verify_value:false)
+
+let test_assert port () =
+  test_with_asd_client
+    "test_assert" port
+    (fun asd ->
+     Lwt.catch
+       (fun () ->
+        asd # apply_sequence ~prio:High
+            [ Osd.Assert.value_string "key" "value"; ]
+            [ Osd.Update.set_string
+                "key"
+                (Bytes.create (Asd_server.blob_threshold + 2))
+                Checksum.Checksum.NoChecksum false; ])
+       (function
+         | Asd_protocol.Protocol.Error.Exn Asd_protocol.Protocol.Error.Assert_failed _ ->
+            Lwt.return_unit
+         | exn ->
+            Lwt.fail exn)
+     >>= fun () ->
+     asd # apply_sequence ~prio:High
+         []
+         [ Osd.Update.set_string
+             "key"
+             (Bytes.create (Asd_server.blob_threshold + 2))
+             Checksum.Checksum.NoChecksum false; ] >>= fun () ->
+     asd # multi_get_string ~prio:High [ "x" ] >>= fun _ ->
+     Lwt.return ())
+
+let test_partial_get port () =
+  test_with_asd_client
+    "test_partial_get" port
+    (fun asd ->
+     let key = Slice.wrap_string "key" in
+     let inner size =
+       let value = Lwt_bytes.create_random size in
+       asd # set ~prio:High key (Blob.Lwt_bytes value) true () >>= fun () ->
+
+       let inner' slices =
+         let destination = Lwt_bytes.create size in
+         let slices =
+           List.map
+             (fun (offset, length, destoff) ->
+              offset, length, destination, destoff)
+             slices
+         in
+         asd # partial_get
+             ~prio:High
+             key
+             slices >>= fun success ->
+         assert (success = Osd.Success);
+         assert (value = destination);
+         Lwt.return ()
+       in
+
+       inner' [ 0, size, 0 ] >>= fun () ->
+       inner' [ 0, size - 15, 0;
+                size - 15, 15, size - 15; ] >>= fun () ->
+       inner' [ size - 15, 15, size - 15;
+                0, size - 15, 0; ] >>= fun () ->
+       Lwt.return ()
+     in
+     inner (Asd_server.blob_threshold - 5) >>= fun () ->
+     inner (Asd_server.blob_threshold + 5))
 
 open OUnit
 
@@ -327,4 +391,6 @@ let suite = "asd_test" >:::[
     "test_multi_exists" >:: test_multi_exists 7908;
     "test_unknown_operation" >:: test_unknown_operation 7909;
     "test_no_blobs" >:: test_no_blobs 7910;
+    "test_assert" >:: test_assert 7911;
+    "test_partial_get" >:: test_partial_get 7911;
   ]

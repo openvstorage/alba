@@ -15,6 +15,7 @@ limitations under the License.
 *)
 
 open Prelude
+open Slice
 open Lwt.Infix
 open Checksum
 open Lwt_bytes2
@@ -43,6 +44,7 @@ class client
     ~tls_config
     ~tcp_keepalive
     ~use_fadvise
+    ~partial_osd_read
   =
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
@@ -641,6 +643,48 @@ class client
                  fragment_intersections
              in
 
+             let try_partial_osd_read fragment_id fragment_intersections =
+               if partial_osd_read
+                  && (let open Nsm_model.Compression in
+                      match compression with
+                      | NoCompression -> true
+                      | Snappy | Bzip2 -> false)
+                  && (let open Encryption.Encryption in
+                      match encryption with
+                      | NoEncryption -> true
+                      | AlgoWithKey (AES (CBC, _), _) -> false)
+               then
+                 begin
+                   let (osd_id_o, version_id), fragment_checksum =
+                     List.nth_exn chunk_locations fragment_id
+                   in
+                   match osd_id_o with
+                   | None -> Lwt.return_false
+                   | Some osd_id ->
+                      osd_access # with_osd
+                                 ~osd_id
+                                 (fun osd ->
+                                  let osd_key =
+                                    Osd_keys.AlbaInstance.fragment
+                                      ~namespace_id
+                                      ~object_id ~version_id
+                                      ~chunk_id ~fragment_id
+                                    |> Slice.wrap_string
+                                  in
+                                  osd # partial_get
+                                      (osd_access # get_default_osd_priority)
+                                      osd_key
+                                      fragment_intersections) >>=
+                        let open Osd_sec in
+                        function
+                        | Unsupported -> Lwt.return_false
+                        | Success -> Lwt.return_true
+                        | NotFound -> Lwt.fail_with "missing fragment"
+                 end
+               else
+                 Lwt.return_false
+             in
+
              let get_from_fragments () =
                Lwt_list.iter_p
                  (fun (fragment_id, fragment_slice, fragment_intersections) ->
@@ -654,15 +698,19 @@ class client
                      (* read fragment pieces from the fragment cache *)
                      Lwt.return_unit
                   | false ->
-                     (* TODO if the osd supports partial read we should
-                      * try that here first *)
-                     fetch_fragment fragment_id >>= fun fragment_data ->
-                     let () =
-                       finalize
-                         (fun () -> blit_from_fragment fragment_data fragment_intersections)
-                         (fun () -> Lwt_bytes.unsafe_destroy fragment_data)
-                     in
-                     Lwt.return_unit)
+                     try_partial_osd_read fragment_id fragment_intersections
+                     >>= function
+                     | true -> Lwt.return_unit
+                     | false ->
+                        (* partial osd read was not possible or desired,
+                         * try reading entire fragment and blit from that *)
+                        fetch_fragment fragment_id >>= fun fragment_data ->
+                        let () =
+                          finalize
+                            (fun () -> blit_from_fragment fragment_data fragment_intersections)
+                            (fun () -> Lwt_bytes.unsafe_destroy fragment_data)
+                        in
+                        Lwt.return_unit)
                  chunk_intersections
              in
 
