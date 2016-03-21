@@ -28,4 +28,11 @@ module Lwt_bytes = struct
     Format.pp_print_string formatter (show t)
 
   let unsafe_destroy (t : t) = Core_kernel.Bigstring.unsafe_destroy t
+
+  let create_random size =
+    let r = Lwt_bytes.create size in
+    for i = 0 to size - 1 do
+      Lwt_bytes.unsafe_set r i (Random.int 256 |> Char.chr)
+    done;
+    r
 end

@@ -174,6 +174,9 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
         ~osd_timeout
         ~tls_config:cfg.tls_client
         ~tcp_keepalive
+        ~partial_osd_read:(match fragment_cache_cfg with
+                           | Fragment_cache_config.None' -> true
+                           | _ -> false)
         (fun client ->
            let maintenance_client =
              new Maintenance.client (client # get_base_client) ~load:cfg.load

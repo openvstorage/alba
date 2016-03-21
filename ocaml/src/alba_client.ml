@@ -448,6 +448,7 @@ let with_client albamgr_client_cfg
                 ?(release_resources = false)
                 ?(tcp_keepalive = Tcp_keepalive2.default)
                 ?(use_fadvise = true)
+                ?(partial_osd_read = true)
                 f
   =
   let albamgr_pool =
@@ -473,6 +474,7 @@ let with_client albamgr_client_cfg
                         ~tls_config
                         ~tcp_keepalive
                         ~use_fadvise
+                        ~partial_osd_read
   in
   let client = new alba_client base_client in
   Lwt.finalize

@@ -225,6 +225,8 @@ class kinetic_client cid session conn =
 
     method multi_exists prio keys = failwith "not implemented"
 
+    method partial_get prio key slices = Lwt.return Osd.Unsupported
+
     method range prio ~first ~finc ~last ~reverse ~max =
       (* TODO use prio *)
       (* TODO this can't handle max > 200 *)

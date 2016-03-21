@@ -483,7 +483,7 @@ let execute_query : type req res.
         io_sched
         prio
         (fun () ->
-         Lwt_log.ign_debug_f "MultiGet for %s" ([%show: Slice.t list] keys);
+         Lwt_log.debug_f "MultiGet for %s" ([%show: Slice.t list] keys) >>= fun () ->
          (* first determine atomically which are the relevant Value.t's *)
          List.map
            (fun k -> get_value_option kv k)
@@ -518,7 +518,7 @@ let execute_query : type req res.
         io_sched
         prio
         (fun () ->
-         Lwt_log.ign_debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys);
+         Lwt_log.debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys) >>= fun () ->
          (* first determine atomically which are the relevant Value.t's *)
          let write_laters = ref [] in
          let res =
@@ -581,6 +581,71 @@ let execute_query : type req res.
                         return
                           ~cost:(200 * List.length keys)
                           res)
+    | PartialGet ->
+       fun (key, slices, prio) ->
+       begin
+         Lwt_log.debug_f "PartialGet for %s" (Slice.show key) >>= fun () ->
+         match get_value_option kv key with
+         | None -> return' false
+         | Some (_cs, blob) ->
+            let cost =
+              List.fold_left
+                (fun acc (_, length) ->
+                 acc + 200 + length)
+                0
+                slices
+            in
+            perform_read
+              io_sched
+              prio
+              (fun () ->
+               let write_later nfd =
+                 match blob with
+                 | Value.Direct s ->
+                    (* TODO could optimize the number of syscalls using writev *)
+                    Lwt_list.iter_s
+                      (fun (offset, len) -> Net_fd.write_all
+                                              nfd
+                                              s.Slice.buf (s.Slice.offset + offset) len)
+                      slices
+                 | Value.OnFs (fnr, size) ->
+                    DirectoryInfo.with_blob_fd
+                      dir_info fnr
+                      (fun blob_fd ->
+                       let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
+                       let () =
+                         if dir_info.DirectoryInfo.use_fadvise
+                         then
+                           List.iter
+                             (fun (offset, length) ->
+                              Posix.posix_fadvise
+                                blob_ufd
+                                offset length
+                                Posix.POSIX_FADV_WILLNEED)
+                             slices
+                       in
+                       Lwt_list.iter_s
+                         (fun (offset, length) ->
+                          Lwt_unix.lseek blob_fd offset Lwt_unix.SEEK_SET >>= fun _ ->
+                          Net_fd.sendfile_all
+                            ~fd_in:blob_fd
+                            ~fd_out:nfd
+                            length
+                          >>= fun () ->
+                          let () =
+                            if dir_info.DirectoryInfo.use_fadvise
+                            then
+                              Posix.posix_fadvise
+                                blob_ufd
+                                0 size
+                                Posix.POSIX_FADV_DONTNEED
+                          in
+                          Lwt.return_unit)
+                         slices
+                      )
+               in
+               return'' ~cost (true, write_later))
+       end
     | Statistics -> fun clear ->
                     Asd_statistics.AsdStatistics.snapshot stats clear |> return'
     | GetVersion -> fun () ->
@@ -1044,11 +1109,11 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-      let () = Net_fd.cork nfd in
-      Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd >>= fun () ->
-      write_extra nfd >>= fun () ->
-      let () = Net_fd.uncork nfd in
-      Lwt.return_unit
+    let () = Net_fd.cork nfd in
+    Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
+    write_extra nfd >>= fun () ->
+    let () = Net_fd.uncork nfd in
+    Lwt.return_unit
   in
   let rec inner () =
     (match cancel with
@@ -1106,22 +1171,20 @@ let asd_protocol
           let rbuf = make ~length:32 in
           let err = Error.ProtocolVersionMismatch msg in
           Error.serialize rbuf err;
-          Net_fd.write_all_lwt_bytes
-            rbuf.buf 0 rbuf.pos
-            nfd
+          Net_fd.write_all_lwt_bytes nfd rbuf.buf 0 rbuf.pos
         else
           begin
             Llio2.NetFdReader.option_from
               Llio2.NetFdReader.string_from
               nfd >>= fun lido ->
-            Net_fd.write_all
+            Net_fd.write_all'
+              nfd
               (serialize
                  (Llio.pair_to
                     Llio.int32_to
                     Llio.string_to)
                  (0l, asd_id)
               )
-              nfd
             >>= fun () ->
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()

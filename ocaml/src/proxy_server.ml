@@ -487,7 +487,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            return_err_response ~msg Protocol.Error.Unknown)
 
     >>= fun (res, maybe_renderer) ->
-    Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd >>= fun () ->
+    Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
     Lwt.return maybe_renderer
 
   in
@@ -517,7 +517,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     Protocol.version version
         in
         return_err_response ~msg err >>= fun (res, _) ->
-        Net_fd.write_all_lwt_bytes res.Llio.buf 0 res.Llio.pos nfd
+        Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos
     end
   else Lwt.return ()
 
@@ -580,6 +580,7 @@ let run_server hosts port
                ~tls_config
                ~tcp_keepalive
                ~use_fadvise
+               ~partial_osd_read
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -614,6 +615,7 @@ let run_server hosts port
          ~tls_config
          ~tcp_keepalive
          ~use_fadvise
+         ~partial_osd_read
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());
