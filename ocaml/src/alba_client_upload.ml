@@ -110,7 +110,8 @@ let upload_chunk
       ~version_id ~gc_epoch
       ~object_info_o
       ~osds
-      ~fragment_cache
+      ~(fragment_cache : Fragment_cache.cache)
+      ~cache_on_write
   =
 
   let t0 = Unix.gettimeofday () in
@@ -123,20 +124,23 @@ let upload_chunk
   >>= fun (unpacked_data_fragments, fragments_with_id) ->
 
   let t_add_to_fragment_cache =
-    Lwt_list.iteri_p
-      (fun fragment_id unpacked_data_fragment ->
-       let cache_key =
-         Fragment_cache_keys.make_key
-           ~object_id
-           ~chunk_id
-           ~fragment_id
-       in
-       fragment_cache # add
-                      namespace_id
-                      cache_key
-                      unpacked_data_fragment
-                      `Write)
-      unpacked_data_fragments
+    if cache_on_write
+    then
+      Lwt_list.iteri_p
+        (fun fragment_id unpacked_data_fragment ->
+         let cache_key =
+           Fragment_cache_keys.make_key
+             ~object_id
+             ~chunk_id
+             ~fragment_id
+         in
+         fragment_cache # add
+                        namespace_id
+                        cache_key
+                        unpacked_data_fragment)
+        unpacked_data_fragments
+    else
+      Lwt.return_unit
   in
 
   Lwt.finalize
@@ -233,6 +237,7 @@ let upload_object''
       ~(allow_overwrite : Nsm_model.overwrite)
       ~(object_id_hint: string option)
       ~fragment_cache
+      ~cache_on_write
   =
 
   (* TODO
@@ -412,7 +417,8 @@ let upload_object''
            ~version_id ~gc_epoch
            ~object_info_o
            ~osds:target_osds
-           ~fragment_cache)
+           ~fragment_cache
+           ~cache_on_write)
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
@@ -588,6 +594,7 @@ let upload_object'
       ~allow_overwrite
       ~object_id_hint
       ~fragment_cache
+      ~cache_on_write
   =
 
   let object_t0 = Unix.gettimeofday () in
@@ -605,6 +612,7 @@ let upload_object'
       ~allow_overwrite
       ~object_id_hint
       ~fragment_cache
+      ~cache_on_write
   in
   Lwt.catch
     (fun () -> do_upload object_t0)

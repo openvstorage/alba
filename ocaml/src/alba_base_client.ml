@@ -45,6 +45,7 @@ class client
     ~tcp_keepalive
     ~use_fadvise
     ~partial_osd_read
+    ~cache_on_read ~cache_on_write
   =
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
@@ -261,6 +262,7 @@ class client
          ~allow_overwrite
          ~object_id_hint
          ~fragment_cache
+         ~cache_on_write
 
     (* consumers of this method are responsible for freeing
      * the returned fragment bigstring
@@ -285,6 +287,7 @@ class client
         decompress
         ~encryption
         fragment_cache
+        ~cache_on_read
       >>= function
       | Prelude.Error.Ok a -> Lwt.return a
       | Prelude.Error.Error x ->

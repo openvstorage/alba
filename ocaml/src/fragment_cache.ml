@@ -22,17 +22,9 @@ open Lwt_bytes2
 module KV = Rocks_key_value_store
 
 
-class virtual cache ~cache_on_read ~cache_on_write = object(self)
+class virtual cache = object(self)
 
-    method virtual _add : int32 -> string -> Bigstring_slice.t -> unit Lwt.t
-    method add bid key blob (moment : [ `Read | `Write ]) =
-      let cache = function
-        | true -> self # _add bid key blob
-        | false -> Lwt.return_unit
-      in
-      match moment with
-      | `Read -> cache cache_on_read
-      | `Write -> cache cache_on_write
+    method virtual add : int32 -> string -> Bigstring_slice.t -> unit Lwt.t
 
     method virtual lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
     method virtual lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
@@ -42,8 +34,8 @@ class virtual cache ~cache_on_read ~cache_on_write = object(self)
 end
 
 class no_cache = object(self)
-    inherit cache ~cache_on_read:false ~cache_on_write:false
-    method _add    bid oid blob   = Lwt.return_unit
+    inherit cache
+    method add     bid oid blob   = Lwt.return_unit
     method lookup  bid oid        = Lwt.return_none
     method lookup2 bid oid slices = Lwt.return_false
     method drop    bid ~global    = Lwt.return_unit
@@ -111,7 +103,6 @@ type boid = int32 * string [@@deriving show]
 
 
 class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
-                 ~cache_on_read ~cache_on_write
   =
   let _TOTAL_COUNT = "*total_count"
   and _TOTAL_SIZE = "*total_size"
@@ -258,7 +249,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
   let db_path = root ^ "/db" in
 
   object(self)
-    inherit cache ~cache_on_read ~cache_on_write
+    inherit cache
     val dirs = Asd_server.DirectoryInfo.make
                  root
                  ~use_fadvise:true
@@ -984,7 +975,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         );
       Lwt.return ()
 
-    method _add bid oid blob : unit Lwt.t =
+    method add bid oid blob : unit Lwt.t =
 
       Lwt_log.debug_f "add %lx %S" bid oid >>= fun () ->
       let _add () =
@@ -1076,7 +1067,7 @@ end
 
 let safe_create root
                 ~max_size ~rocksdb_max_open_files
-                ~cache_on_read ~cache_on_write =
+  =
   let fn = marker_name root in
   Lwt.catch
     (fun () ->
@@ -1090,6 +1081,5 @@ let safe_create root
   >>= fun () ->
   let cache = new blob_cache
                   root ~max_size ~rocksdb_max_open_files
-                  ~cache_on_read ~cache_on_write
   in
   Lwt.return cache

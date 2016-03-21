@@ -581,6 +581,7 @@ let run_server hosts port
                ~tcp_keepalive
                ~use_fadvise
                ~partial_osd_read
+               ~cache_on_read ~cache_on_write
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -616,6 +617,7 @@ let run_server hosts port
          ~tcp_keepalive
          ~use_fadvise
          ~partial_osd_read
+         ~cache_on_read ~cache_on_write
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());

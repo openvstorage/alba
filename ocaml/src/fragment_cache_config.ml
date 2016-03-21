@@ -51,7 +51,8 @@ and alba_fragment_cache = {
 
 let rec make_fragment_cache = function
   | None' ->
-     Lwt.return (new Fragment_cache.no_cache :> Fragment_cache.cache)
+     Lwt.return ((new Fragment_cache.no_cache :> Fragment_cache.cache),
+                 false, false)
   | Local { path;
             max_size;
             rocksdb_max_open_files;
@@ -69,7 +70,6 @@ let rec make_fragment_cache = function
      in
      Fragment_cache.safe_create
        path ~max_size ~rocksdb_max_open_files
-       ~cache_on_read ~cache_on_write
      >>= fun cache ->
 
      let rec fragment_cache_disk_usage_t () =
@@ -87,7 +87,8 @@ let rec make_fragment_cache = function
      in
      Lwt.ignore_result (fragment_cache_disk_usage_t ());
 
-     Lwt.return (cache :> Fragment_cache.cache)
+     Lwt.return ((cache :> Fragment_cache.cache),
+                 cache_on_read, cache_on_write)
   | Alba { albamgr_cfg_url;
            bucket_strategy;
            fragment_cache;
@@ -100,7 +101,9 @@ let rec make_fragment_cache = function
            cache_on_read_;
            cache_on_write_;
          } ->
-     make_fragment_cache fragment_cache >>= fun nested_fragment_cache ->
+     make_fragment_cache fragment_cache
+     >>= fun (nested_fragment_cache,
+              nested_cache_on_read, nested_cache_on_write) ->
      Alba_arakoon.config_from_url (Url.make albamgr_cfg_url) >>= fun albamgr_cfg ->
      let cache = new Fragment_cache_alba.alba_cache
                      ~albamgr_cfg_ref:(ref albamgr_cfg)
@@ -112,9 +115,10 @@ let rec make_fragment_cache = function
                      ~osd_connection_pool_size
                      ~osd_timeout
                      ~tls_config:tls_client
-                     ~cache_on_read:cache_on_read_ ~cache_on_write:cache_on_write_
+                     ~cache_on_read:nested_cache_on_read ~cache_on_write:nested_cache_on_write
                      ~partial_osd_read:(match fragment_cache with
                                         | None' -> true
                                         | _ -> false)
      in
-     Lwt.return (cache :> Fragment_cache.cache)
+     Lwt.return ((cache :> Fragment_cache.cache),
+                 cache_on_read_, cache_on_write_)

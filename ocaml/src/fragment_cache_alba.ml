@@ -68,6 +68,7 @@ class alba_cache
                         ~tcp_keepalive
                         ~use_fadvise:true
                         ~partial_osd_read
+                        ~cache_on_read ~cache_on_write
   in
   let client = new Alba_client.alba_client base_client in
   let make_object_name ~bid ~name =
@@ -87,8 +88,8 @@ class alba_cache
           f namespace)
   in
   object(self)
-    inherit Fragment_cache.cache ~cache_on_read ~cache_on_write
-    method _add bid name blob =
+    inherit Fragment_cache.cache
+    method add bid name blob =
       Lwt.catch
         (fun () ->
          with_namespace
