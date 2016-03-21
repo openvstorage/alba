@@ -483,7 +483,7 @@ let execute_query : type req res.
         io_sched
         prio
         (fun () ->
-         Lwt_log.ign_debug_f "MultiGet for %s" ([%show: Slice.t list] keys);
+         Lwt_log.debug_f "MultiGet for %s" ([%show: Slice.t list] keys) >>= fun () ->
          (* first determine atomically which are the relevant Value.t's *)
          List.map
            (fun k -> get_value_option kv k)
@@ -518,7 +518,7 @@ let execute_query : type req res.
         io_sched
         prio
         (fun () ->
-         Lwt_log.ign_debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys);
+         Lwt_log.debug_f "MultiGet2 for %s" ([%show: Slice.t list] keys) >>= fun () ->
          (* first determine atomically which are the relevant Value.t's *)
          let write_laters = ref [] in
          let res =
@@ -584,6 +584,7 @@ let execute_query : type req res.
     | PartialGet ->
        fun (key, slices, prio) ->
        begin
+         Lwt_log.debug_f "PartialGet for %s" (Slice.show key) >>= fun () ->
          match get_value_option kv key with
          | None -> return' false
          | Some (_cs, blob) ->
@@ -598,7 +599,6 @@ let execute_query : type req res.
               io_sched
               prio
               (fun () ->
-               Lwt_log.ign_debug_f "PartialGet for %s" (Slice.show key);
                let write_later nfd =
                  match blob with
                  | Value.Direct s ->
