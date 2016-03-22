@@ -25,7 +25,7 @@ let maybe_fail = function
   | Osd.Ok -> Lwt.return_unit
   | Osd.Exn e -> Osd.Error.lwt_fail e
 
-let deletes (client: Osd.osd) progress n value_size period prefix =
+let deletes (client: Osd.osd) progress n value_size _ period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let key = gen () in
@@ -38,7 +38,7 @@ let deletes (client: Osd.osd) progress n value_size period prefix =
   report "deletes" r
 
 
-let gets (client: Osd.osd) progress n value_size period prefix =
+let gets (client: Osd.osd) progress n value_size _ period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let key = gen () in
@@ -54,6 +54,24 @@ let gets (client: Osd.osd) progress n value_size period prefix =
   measured_loop progress do_one n >>= fun r ->
   report "gets" r
 
+
+let partial_reads (client : Osd.osd) progress n _value_size partial_fetch_size period prefix =
+  let gen = make_key period prefix in
+  let target = Lwt_bytes.create partial_fetch_size in
+  let do_one i =
+    let key = gen () in
+    client # partial_get
+           Osd.High
+           (Slice.wrap_string key)
+           [ 0, partial_fetch_size, target, 0 ] >>= function
+    | Osd.Unsupported -> failwith "partial read not supported"
+    | Osd.NotFound -> failwith "partial read key not found"
+    | Osd.Success -> Lwt.return_unit
+  in
+  measured_loop progress do_one n >>= fun r ->
+  report "partial_reads" r
+
+
 let _make_value value_size =
   (* TODO: this affects performance as there is compression going
      on inside the database
@@ -67,7 +85,7 @@ let _make_value value_size =
      let t3 = t2 mod 251 in
      Char.chr t3)
 
-let sets (client:Osd.osd) progress n value_size period prefix =
+let sets (client:Osd.osd) progress n value_size _ period prefix =
   let gen = make_key period prefix in
 
   let value = _make_value value_size in
@@ -86,7 +104,7 @@ let sets (client:Osd.osd) progress n value_size period prefix =
   measured_loop progress do_one n >>= fun r ->
   report "sets" r
 
-let range_queries (client:Osd.osd) progress n value_size period prefix =
+let range_queries (client:Osd.osd) progress n value_size _ period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let first_key = gen () in
@@ -99,7 +117,7 @@ let range_queries (client:Osd.osd) progress n value_size period prefix =
   measured_loop progress do_one n >>= fun r ->
   report "ranges" r
 
-let upload_fragments (client:Osd.osd) progress n value_size period prefix =
+let upload_fragments (client:Osd.osd) progress n value_size _ period prefix =
   let gen = make_key period prefix in
   let open Osd_keys in
   let value = _make_value value_size in
@@ -175,7 +193,7 @@ let upload_fragments (client:Osd.osd) progress n value_size period prefix =
 let do_scenarios
       with_client
       n_clients n
-      value_size power prefix
+      value_size partial_fetch_size power prefix
       scenarios
   =
   let period = period_of_power power in
@@ -191,6 +209,7 @@ let do_scenarios
              progress
              (n/n_clients)
              value_size
+             partial_fetch_size
              period
              (Printf.sprintf "%s_%i" prefix i)))
        (Int.range 0 n_clients))
