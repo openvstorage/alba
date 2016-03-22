@@ -279,7 +279,8 @@ let asd_range_cmd =
 
 let osd_bench hosts port tls_config osd_id
               n_clients n
-              value_size power prefix
+              value_size partial_fetch_size
+              power prefix
               scenarios verbose
   =
   let conn_info = Networking2.make_conn_info hosts port tls_config in
@@ -292,7 +293,8 @@ let osd_bench hosts port tls_config osd_id
           conn_info osd_id
           f)
        n_clients n
-       value_size power prefix
+       value_size partial_fetch_size
+       power prefix
        scenarios)
 
 let osd_bench_cmd =
@@ -316,6 +318,14 @@ let osd_bench_cmd =
         & info ["v"; "value-size"] ~docv:"V" ~doc
     )
   in
+  let partial_fetch_size default =
+    let doc = "do partial reads of $(docv) bytes" in
+    Arg.(
+      value
+      & opt int default
+      & info ["v-partial";] ~doc
+    )
+  in
   let power default =
     let doc = "$(docv) for random number generation: period = 10^$(docv)" in
     Arg.(value
@@ -337,6 +347,7 @@ let osd_bench_cmd =
                       "deletes", deletes;
                       "upload_fragments", upload_fragments;
                       "ranges",range_queries;
+                      "partial_reads", partial_reads;
                     ]
          in
          value
@@ -356,6 +367,7 @@ let osd_bench_cmd =
                           $ n_clients 1
                           $ n 10000
                           $ value_size 16384
+                          $ partial_fetch_size 4096
                           $ power 4
                           $ prefix ""
                           $ scenarios
