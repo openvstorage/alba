@@ -37,7 +37,7 @@ let do_eviction
                  ~namespace:name
                  (fun nsm_client ->
                   nsm_client # get_stats >>= fun stats ->
-                  Lwt.return (namespace.Albamgr_protocol.Protocol.Namespace.id, stats)
+                  Lwt.return (name, namespace.Albamgr_protocol.Protocol.Namespace.id, stats)
                  )
     )
     namespaces
@@ -45,7 +45,7 @@ let do_eviction
   let (obj_cnt_total, namespaces_with_objects, namespaces, empty_namespaces) =
     List.fold_left
       (fun (obj_cnt_total, namespaces_with_objects, namespaces, empty_namespaces)
-           (namespace_id, stats) ->
+           (namespace_name, namespace_id, stats) ->
        let obj_cnt =
          List.fold_left
            (fun acc (_, cnt) ->
@@ -57,7 +57,7 @@ let do_eviction
        Int64.add obj_cnt obj_cnt_total,
        namespaces_with_objects + (if has_objects then 1 else 0),
        (if has_objects then namespace_id::namespaces else namespaces),
-       (if has_objects then empty_namespaces else namespace_id :: empty_namespaces))
+       (if has_objects then empty_namespaces else namespace_name :: empty_namespaces))
       (0L, 0, [], [])
       r
   in
@@ -96,8 +96,15 @@ let do_eviction
       )
       namespaces
   in
-  (* TODO remove empty namespaces (after some delay?) *)
-  delete_objects ()
+  let delete_empty_namespaces () =
+    Lwt_list.iter_p
+      (fun namespace -> alba_client # delete_namespace ~namespace)
+      empty_namespaces
+  in
+  Lwt.join
+    [ delete_objects ();
+      delete_empty_namespaces ();
+    ]
 
 let alba_eviction
       (alba_client : Alba_client.alba_client)
