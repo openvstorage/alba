@@ -106,41 +106,58 @@ let alba_eviction
   =
   Lwt.ignore_result (alba_client # osd_access # populate_osds_info_cache);
 
+  let coordinator =
+    Maintenance_coordination.make_maintenance_coordinator
+      (alba_client # mgr_access)
+      ~lease_name:"cache_eviction"
+      ~lease_timeout:20.
+      ~registration_prefix:"cache_eviction"
+  in
+  let () = coordinator # init in
+
   Lwt_extra2.run_forever
     "alba eviction"
     (fun () ->
 
-     (* TODO only run on the cache eviction master *)
-
-     (* Lwt_list.map_p *)
-     (*   (fun preset_name -> *)
-     (*    alba_client # get_base_client # get_preset_info ~preset_name) *)
-     (*   presets *)
-     (* >>= fun presets -> *)
-
-     let cnt_total, cnt_full, _ =
-       Hashtbl.fold
-         (fun osd_id (osd_info, osd_state)
-              (cnt_total, cnt_full, acc) ->
-          let open Nsm_model in
-          let used = Int64.to_float osd_info.OsdInfo.used in
-          let total = Int64.to_float osd_info.OsdInfo.total in
-          let fill_ratio = used /. total in
-          (cnt_total + 1,
-           cnt_full + (if fill_ratio > 0.9 then 1 else 0),
-           (osd_id,
-            used, total,
-            fill_ratio)
-           :: acc))
-         (alba_client # osd_access # osds_info_cache)
-         (0, 0, [])
-     in
-
-     if float cnt_total /. float cnt_full < 2.
+     if coordinator # is_master
      then
-       (* more than half of the disks are >90% filled,
-        * so let's do some cleanup *)
-       do_eviction alba_client ~prefixes
+       begin
+
+         (* TODO maybe use some info from the involved presets to decide when 
+          * to remove items from the cache ...
+          * decided for now to use a simpler way to make that decision (see below) *)
+         (* Lwt_list.map_p *)
+         (*   (fun preset_name -> *)
+         (*    alba_client # get_base_client # get_preset_info ~preset_name) *)
+         (*   presets *)
+         (* >>= fun presets -> *)
+
+         let cnt_total, cnt_full, _ =
+           Hashtbl.fold
+             (fun osd_id (osd_info, osd_state)
+                  (cnt_total, cnt_full, acc) ->
+              let open Nsm_model in
+              let used = Int64.to_float osd_info.OsdInfo.used in
+              let total = Int64.to_float osd_info.OsdInfo.total in
+              let fill_ratio = used /. total in
+              (cnt_total + 1,
+               cnt_full + (if fill_ratio > 0.9 then 1 else 0),
+               (osd_id,
+                used, total,
+                fill_ratio)
+               :: acc))
+             (alba_client # osd_access # osds_info_cache)
+             (0, 0, [])
+         in
+
+         if float cnt_total /. float cnt_full < 2.
+         then
+           (* more than half of the disks are >90% filled,
+            * so let's do some cleanup *)
+           do_eviction alba_client ~prefixes
+         else
+           Lwt.return ()
+       end
      else
        Lwt.return ())
     60.
