@@ -712,3 +712,13 @@ module Url = struct
        Printf.sprintf "etcd://%s%s" peers_s path
   let make = Arakoon_config_url.make
   end
+
+let make_first_last_reverse () =
+  let reverse = Random.bool ()
+  and border = get_random_string 32 in
+  let first, last =
+    if reverse
+    then ""    , Some (border,true)
+    else border, None
+  in
+  first, last, reverse
