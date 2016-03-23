@@ -370,7 +370,7 @@ module Net_fd = struct
          ~fd_in
          ~fd_out:fd
          size
-    | SSL(_,socket) ->
+    | SSL(_,_,socket) ->
        let copy_using buffer =
          let buffer_size = Lwt_bytes.length buffer in
           let write_all socket buffer offset length =
@@ -387,12 +387,42 @@ module Net_fd = struct
                   then todo
                   else buffer_size
                 in
-                Lwt_bytes.read fd_in        buffer 0 step >>= fun bytes_read ->
-                write_all socket buffer 0 bytes_read >>= fun () ->
+                Lwt_bytes.read fd_in buffer 0 step >>= fun bytes_read ->
+                write_all socket     buffer 0 bytes_read >>= fun () ->
                 loop (todo - bytes_read)
               end
           in
           loop size
+       in
+       Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
+    | Rsocket socket ->
+       let copy_using buffer =
+         let buffer_size = Lwt_bytes.length buffer in
+         
+         let write_all socket buffer offset length =
+           let write_from_source offset todo =
+             Lwt_rsocket.Bytes.send socket buffer offset todo []
+           in
+           Lwt_extra2._write_all write_from_source offset length
+         in
+         
+         let rec loop todo =
+           if todo = 0
+           then Lwt.return_unit
+           else
+             begin
+               let step =
+                 if todo <= buffer_size
+                 then todo
+                 else buffer_size
+               in
+               Lwt_bytes.read fd_in buffer 0 step >>= fun bytes_read ->
+               write_all socket     buffer 0 bytes_read >>= fun () ->
+               loop (todo - bytes_read)
+             end
+         in
+         loop size
+              
        in
        Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
 end
@@ -1230,6 +1260,7 @@ let run_server
       ?(write_blobs = true)
       (hosts:string list)
       (port:int option)
+      ~(transport: Net_fd.transport)
       (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1256,7 +1287,7 @@ let run_server
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
   Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls) >>= fun () ->
-
+  Lwt_log.debug_f "transport:%s" ([%show: Net_fd.transport] transport) >>= fun () ->
   let ctx = Tls.to_server_context tls in
   let db_path = path ^ "/db" in
   Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
@@ -1503,7 +1534,7 @@ let run_server
     | Some port ->
        let t = Networking2.make_server
                  ?cancel
-                 hosts port
+                 hosts port ~transport
                  ~tcp_keepalive
                  ~ctx:None protocol
        in
@@ -1515,7 +1546,10 @@ let run_server
       | Some tls ->
          let open Asd_config.Config in
          let tlsPort = tls.port in
-         let t = Networking2.make_server ?cancel hosts tlsPort ~tcp_keepalive ~ctx protocol in
+         assert (transport = Net_fd.TCP);
+         let t = Networking2.make_server ?cancel hosts tlsPort
+                                         ~transport ~tcp_keepalive ~ctx protocol
+         in
          t :: threads
   in
   let maybe_add_multicast threads =

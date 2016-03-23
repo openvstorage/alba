@@ -155,7 +155,7 @@ let _prologue fd magic version =
 let with_client ip port f =
   Networking2.connect_with
     ~tls_config:None
-    ip port
+    ip port Net_fd.TCP
   >>= fun (nfd, closer) ->
   Lwt.finalize
     (fun () ->

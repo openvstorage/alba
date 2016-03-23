@@ -29,21 +29,22 @@ let string_of_address = function
 
 exception ConnectTimeout
 
-let connect_with ip port ~tls_config =
+let connect_with ip port transport ~tls_config =
 
   let address = make_address ip port in
   let fd =
-    Lwt_unix.socket
-      (Unix.domain_of_sockaddr address)
-      Unix.SOCK_STREAM 0
+    Net_fd.socket
+      (Unix.domain_of_sockaddr address) Unix.SOCK_STREAM 0
+      transport
   in
-  let (fdi:int) = Lwt_extra2.lwt_unix_fd_to_fd fd in
+
+  let (fdi:int) = Net_fd.identifier fd in
   Lwt_log.debug_f
     "connect_with : %s %i %s fd:%i" ip port ([%show: Tls.t option] tls_config) fdi
   >>= fun () ->
   let closer () =
     Lwt_log.debug_f "closing fd:%i" fdi >>= fun () ->
-    Lwt_unix.close fd
+    Net_fd.close fd
   in
   match Tls.to_client_context tls_config with
   | None ->
@@ -55,9 +56,8 @@ let connect_with ip port ~tls_config =
                "timeout while connecting to fd=%i ip=%s port=%i"
                fdi ip port >>= fun () ->
              Lwt.fail ConnectTimeout);
-            (Lwt_unix.connect fd address >>= fun () ->
-             let r = Net_fd.wrap_plain fd in
-             Lwt.return (r , closer)); ]
+            (Net_fd.connect fd address >>= fun () ->
+             Lwt.return (fd , closer)); ]
        )
        (fun exn ->
         closer () >>= fun () ->
@@ -72,10 +72,11 @@ let connect_with ip port ~tls_config =
                     "timeout while connecting to fd=%i ip=%s port=%i (ssl)"
                     fdi ip port)
             (fun () ->
-             Lwt_unix.connect fd address >>= fun () ->
-             Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
-             let r = Net_fd.wrap_ssl lwt_s in
-             Lwt.return (r, closer))
+             Net_fd.connect fd address >>= fun () ->
+             (* Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
+             let r = Net_fd.wrap_ssl lwt_s in *)
+             let () = failwith "todo:ssl_connect" in
+             Lwt.return (fd, closer))
          )
          (fun exn ->
           closer () >>= fun () ->
@@ -89,28 +90,8 @@ let connect_with ip port ~tls_config =
           Lwt.fail exn)
      end
 
-let wrap_socket (ctx:[> `Server] Typed_ssl.t option) plain_fd =
-  match ctx with
-  | None -> let nfd = Net_fd.wrap_plain plain_fd in
-            Lwt.return (Some nfd)
-  | Some ctx ->
-     Lwt_log.debug_f "wrap_socket with context" >>= fun () ->
-     Lwt.catch
-       (fun () ->
-        Typed_ssl.Lwt.ssl_accept plain_fd ctx >>= fun lwt_s ->
-        let nfd = Net_fd.wrap_ssl lwt_s in
-        Lwt.return (Some nfd)
-
-       )
-       (fun exn ->
-        Lwt_log.debug_f ~exn "wrap_socket with context..." >>= fun () ->
-        Lwt_unix.close plain_fd >>= fun () ->
-        Lwt.return_none
-       )
-
-
-let with_connection ip port ~tls_config ~buffer_pool f =
-  connect_with ip port ~tls_config >>= fun(nfd, closer) ->
+let with_connection ip port transport ~tls_config ~buffer_pool f =
+  connect_with ip port transport ~tls_config >>= fun(nfd, closer) ->
   let in_buffer = Buffer_pool.get_buffer buffer_pool in
   let out_buffer = Buffer_pool.get_buffer buffer_pool in
   let conn = Net_fd.to_connection ~in_buffer ~out_buffer nfd in
@@ -127,10 +108,11 @@ let with_connection ip port ~tls_config ~buffer_pool f =
 type conn_info = {
     ips:string list;
     port: int;
+    transport : Net_fd.transport;
     tls_config: Tls.t option
   } [@@deriving show]
 
-let make_conn_info ips port tls_config = {ips;port;tls_config}
+let make_conn_info ?(transport=Net_fd.TCP) ips port  tls_config = {ips;port;transport;tls_config}
 
 exception No_connection
 
@@ -144,10 +126,11 @@ let first_connection ~conn_info =
   let cd = Lwt_extra2.CountDownLatch.create ~count in
   let port = conn_info.port in
   let tls_config = conn_info.tls_config in
+  let transport = conn_info.transport in
   let f' ip =
     Lwt.catch
       (fun () ->
-         connect_with ip port ~tls_config >>= fun (fd, closer) ->
+         connect_with ip port transport ~tls_config >>= fun (fd, closer) ->
          if Lwt_mutex.is_locked l
          then closer ()
          else begin
@@ -212,9 +195,10 @@ let make_server
       ?(cancel = Lwt_condition.create ())
       ?(server_name = "server")
       ?max
-      hosts port
+      hosts port ~transport
       ~tcp_keepalive
-      ~ctx protocol =
+      ~ctx protocol
+  =
   let count = ref 0 in
   let allow_connection =
     match max with
@@ -222,19 +206,16 @@ let make_server
     | Some max -> fun () -> max > !count
   in
   let server_loop socket_address =
-    let rec inner listening_socket =
+    let rec inner (listening_socket:Net_fd.t) =
       Lwt.pick
-        [ Lwt_unix.accept listening_socket;
+        [ Net_fd.accept listening_socket;
           (Lwt_condition.wait cancel >>= fun () ->
            Lwt.fail Lwt.Canceled); ]
-      >>= fun (_fd, cl_socket_address) ->
-      Tcp_keepalive.apply _fd tcp_keepalive; (* TODO: is this the correct place? *)
-      Lwt_log.info_f "%s: new client connection" server_name >>= fun () ->
-      wrap_socket ctx _fd >>= fun nfdo ->
+      >>= fun cl_fdo ->
       let () =
-        match nfdo with
+        match cl_fdo with
         | None -> ()
-        | Some nfd ->
+        | Some (cl_fd, cl_sa) ->
              Lwt.ignore_result
                begin
                  Lwt.finalize
@@ -243,7 +224,10 @@ let make_server
                     if allow_connection ()
                     then
                       Lwt.catch
-                        (fun () -> protocol nfd)
+                        (fun () ->
+                          Net_fd.apply_keepalive tcp_keepalive cl_fd; 
+                          Lwt_log.info_f "%s: new client connection" server_name >>= fun () ->
+                          protocol cl_fd)
                         (function
                           | End_of_file ->
                              Lwt_log.debug_f "%s: End_of_file from client" server_name
@@ -258,7 +242,7 @@ let make_server
                    (fun () ->
                     let () = decr count in
                     Lwt.catch
-                      (fun () -> Net_fd.close nfd)
+                      (fun () -> Net_fd.close cl_fd)
                       (fun exn ->
                        Lwt_log.debug_f
                          "%s: exception occurred during close of client connection: %s"
@@ -271,22 +255,16 @@ let make_server
       inner listening_socket
     in
     let domain = Unix.domain_of_sockaddr socket_address in
-    let listening_socket = Lwt_unix.socket domain Unix.SOCK_STREAM 0 in
+    let listening_socket = Net_fd.socket domain Unix.SOCK_STREAM 0 transport in
     Lwt.finalize
       (fun () ->
-       Lwt_unix.setsockopt listening_socket Unix.SO_REUSEADDR true;
-       Lwt_unix.bind listening_socket socket_address;
-       Lwt_unix.listen listening_socket 1024;
-       let () = match ctx with
-         | None -> ()
-         | Some _ctx ->
-            let _ = Ssl.embed_socket (Lwt_unix.unix_file_descr listening_socket) in
-            ()
-       in
-       inner listening_socket)
+        Net_fd.setsockopt listening_socket Unix.SO_REUSEADDR true;
+        Net_fd.bind listening_socket socket_address;
+        Net_fd.listen listening_socket 1024;
+        inner listening_socket)
       (fun () ->
        Lwt_log.info_f "Closing listening socket on port %i" port >>= fun () ->
-       Lwt_unix.close listening_socket)
+       Net_fd.close listening_socket)
   in
   let addresses =
     List.map

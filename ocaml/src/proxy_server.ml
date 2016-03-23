@@ -630,9 +630,10 @@ let run_server hosts port
                  ~tcp_keepalive
               );
               (let ctx = None in
+               let transport = Net_fd.TCP in
                Networking2.make_server
                  ~max:max_client_connections
-                 hosts port ~ctx ~tcp_keepalive
+                 hosts port ~transport ~ctx ~tcp_keepalive
                  (fun nfd ->
                   proxy_protocol alba_client albamgr_client_cfg stats nfd));
               (Lwt_extra2.make_fuse_thread ());

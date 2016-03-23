@@ -75,7 +75,9 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ?write_blobs
            ~cancel
            ~tcp_keepalive:Tcp_keepalive2.default
-           [] o_port path
+           [] o_port
+           ~transport:Net_fd.TCP
+           path
            ~asd_id
            ~node_id:"bla"
            ~slow:false

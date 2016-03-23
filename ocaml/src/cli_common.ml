@@ -175,6 +175,7 @@ let lwt_cmd_line_unit to_json verbose t =
     (fun () -> `Assoc [])
 
 let lwt_server ~log_sinks ~subcomponent t : unit =
+  Lwt_engine.set (new Lwt_engine.select);
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run
     begin
@@ -243,6 +244,29 @@ let hosts =
        & opt_all string []
        & info ["h";"host"] ~docv:"HOST" ~doc)
 
+let transport =
+  let (tr : Net_fd.transport Arg.converter) =
+    let parser = function
+      | "tcp"  -> `Ok Net_fd.TCP
+      | "rdma" -> `Ok Net_fd.RDMA
+      | x      ->
+         let msg =
+           Printf.sprintf "%S is not a transport. Specify either \"tcp\" or \"rdma\"." x
+         in
+         `Error msg
+    in
+    let printer fmt transport =
+      Format.pp_print_string fmt (Net_fd.show_transport transport)
+    in
+    parser, printer
+  in
+  Arg.(value
+       & opt tr Net_fd.TCP
+       & info ["t";"transport"]
+              ~docv:"TRANSPORT"
+              ~doc:"either `tcp` or `rdma`"
+  )
+              
 let namespace p =
   let doc = "namespace" in
   Arg.(required

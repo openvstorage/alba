@@ -1767,8 +1767,9 @@ let test_master_switch () =
          let open Arakoon_client_config in
          let ip = List.hd_exn (node_cfg.ips) in
          let port = node_cfg.port in
+         let transport = Net_fd.TCP in
          Networking2.with_connection
-           ip port ~tls_config
+           ip port transport ~tls_config
            ~buffer_pool:Buffer_pool.default_buffer_pool
            (fun conn ->
             Lwt_log.debug "dropping master (can take a while)" >>= fun () ->

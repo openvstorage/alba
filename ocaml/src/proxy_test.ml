@@ -172,7 +172,7 @@ let test_protocol_version () =
       (fun () ->
        Networking2.connect_with
          ~tls_config:None
-         _IP _PORT
+         _IP _PORT Net_fd.TCP
        >>= fun (nfd, closer) ->
        Lwt.finalize
          (fun () ->
