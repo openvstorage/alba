@@ -37,7 +37,7 @@ module Stat = struct
         alpha;
       }
 
-    let _update old delta =
+    let update old delta =
       let n' = Int64.succ old.n  in
       let old_nf = Int64.to_float old.n in
       let diff = delta -. old.avg in

@@ -553,6 +553,44 @@ module Hashtbl = struct
       (fun k v acc -> (k, v) :: acc)
       h
       []
+
+  let pp format_k format_v formatter t =
+    Format.pp_print_string formatter "[ ";
+    Hashtbl.iter
+      (fun k v ->
+       Format.pp_print_string formatter "(";
+       let () = format_k formatter k in
+       Format.pp_print_string formatter ", ";
+       let () = format_v formatter v in
+       Format.pp_print_string formatter "); ")
+      t;
+    Format.pp_print_string formatter " ]; "
+
+  let to_yojson k_to_yojson v_to_yojson t =
+    `List
+     (List.map
+        (fun (k, v) -> `Tuple [ k_to_yojson k; v_to_yojson v; ])
+        (to_assoc_list t))
+
+  let of_yojson k_from_yojson v_from_yojson json =
+    try
+      let t = Hashtbl.create 3 in
+      match json with
+      | `List l ->
+         let get_ok = function
+           | `Error s -> failwith s
+           | `Ok v -> v
+         in
+         List.iter (function
+                     | `Tuple [ k; v; ] ->
+                        Hashtbl.add t
+                                    (k_from_yojson k |> get_ok)
+                                    (v_from_yojson v |> get_ok)
+                     | _ -> failwith "invalid json for hashtbl")
+                   l;
+         `Ok t
+      | _ -> failwith "invalid json for hashtbl"
+    with exn -> `Error (Printexc.to_string exn)
 end
 
 module IntSet = Set.Make(struct type t = int let compare = compare end)

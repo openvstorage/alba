@@ -39,12 +39,11 @@ module Config =
       let cluster_id = Llio.string_from buf in
       let cfgs =
         Llio.hashtbl_from
-          (Llio.pair_from
-             Llio.string_from
-             (fun buf ->
-              let ips = Llio.list_from Llio.string_from buf in
-              let port = Llio.int_from buf in
-              { ips; port; }))
+          Llio.string_from
+          (fun buf ->
+           let ips = Llio.list_from Llio.string_from buf in
+           let port = Llio.int_from buf in
+           { ips; port; })
           buf in
       (cluster_id, cfgs)
   end

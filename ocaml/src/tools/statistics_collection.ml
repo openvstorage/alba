@@ -68,7 +68,7 @@ module Generic = struct
 
     let new_delta (t:t) tag delta =
       let stat = _find_stat t tag in
-      let stat' = _update stat delta in
+      let stat' = update stat delta in
       Hashtbl.replace t.statistics tag stat'
 
     let to_buffer_with_version ~ser_version buf t=

@@ -133,12 +133,13 @@ module ReadBuffer = struct
 
     let list_from e_from buf = counted_list_from e_from buf |> snd
 
-    let hashtbl_from kv_from buf =
+    let hashtbl_from k_from v_from buf =
       let len = int_from buf in
       let r = Hashtbl.create len in
       let rec loop = function
         | 0 -> r
-        | i -> let (k,v) = kv_from buf in
+        | i -> let k = k_from buf in
+               let v = v_from buf in
                let () = Hashtbl.add r k v in
                loop (i-1)
       in

@@ -28,7 +28,6 @@ let from_buffer_raw' buf =
   let creation = Llio.float_from buf in
   let period   = Llio.float_from buf in
   let statistics =
-    let ef buf = Llio.pair_from Llio.int32_from Stat_deser.from_buffer' buf in
-    Llio.hashtbl_from ef buf
+    Llio.hashtbl_from Llio.int32_from Stat_deser.from_buffer' buf
   in
   { creation; period; statistics}

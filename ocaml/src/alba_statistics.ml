@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
+
 module Statistics = struct
 
   let section = Lwt_log.Section.make "statistics"

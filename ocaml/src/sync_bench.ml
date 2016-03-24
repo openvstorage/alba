@@ -86,7 +86,7 @@ let bench_x root entry post_batch iterations n_threads size =
       one_batch i >>= fun () ->
       let t1 = Unix.gettimeofday () in
       let d = t1 -. t0 in
-      let stat' = Stat._update stat d in
+      let stat' = Stat.update stat d in
       let speed = speed_of d in
       Lwt_io.printlf "took:%f => %f MB/s" d speed >>= fun () ->
       repeat stat' (i+1)
