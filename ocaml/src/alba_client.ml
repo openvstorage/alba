@@ -36,6 +36,8 @@ class alba_client (base_client : Alba_base_client.client)
       ~nsm_host_id
   in
 
+  (* TODO statistics aanmaken, exposen, en overal updaten *)
+
   object(self)
     method get_base_client = base_client
     method get_manifest_cache = base_client # get_manifest_cache

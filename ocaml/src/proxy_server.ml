@@ -206,40 +206,38 @@ let log_request code maybe_renderer time =
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
                    (albamgr_client_cfg:Alba_arakoon.Config.t ref)
-                   (stats: ProxyStatistics.t')
                    (nfd:Net_fd.t) =
 
   let execute_request : type i o. (i, o) Protocol.request ->
-                             ProxyStatistics.t' ->
                              i -> o Lwt.t
                           =
     let open Protocol in
     function
-    | ListNamespaces -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
+    | ListNamespaces -> fun { RangeQueryArgs.first; finc; last; max; reverse } ->
       (* TODO only return namespaces which are active? hmm, maybe creating too... *)
       alba_client # mgr_access # list_namespaces
         ~first ~finc ~last
         ~max ~reverse >>= fun ((cnt, namespaces), has_more) ->
       Lwt.return ((cnt, List.map fst namespaces), has_more)
-    | NamespaceExists -> fun stats namespace ->
+    | NamespaceExists -> fun namespace ->
       (* TODO keep namespace state in mind? *)
       alba_client # mgr_access # get_namespace ~namespace >>= fun r ->
       Lwt.return (r <> None)
-    | CreateNamespace -> fun stats (namespace, preset_name) ->
+    | CreateNamespace -> fun (namespace, preset_name) ->
       alba_client # create_namespace ~preset_name ~namespace () >>= fun namespace_id ->
       Lwt.return ()
-    | DeleteNamespace -> fun stats namespace ->
+    | DeleteNamespace -> fun namespace ->
       alba_client # delete_namespace ~namespace
-    | ListObjects -> fun stats (namespace,
+    | ListObjects -> fun (namespace,
                           { RangeQueryArgs.first; finc;
                             last; max; reverse }) ->
       alba_client # list_objects ~namespace ~first ~finc ~last ~max ~reverse
     | ReadObjectFs ->
-       fun stats (namespace,
-                  object_name,
-                  output_file,
-                  consistent_read,
-                  should_cache) ->
+       fun (namespace,
+            object_name,
+            output_file,
+            consistent_read,
+            should_cache) ->
        begin
          alba_client # download_object_to_file
                      ~namespace
@@ -249,21 +247,21 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          >>= function
          | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
          | Some (mf,download_stats) ->
-            let open Alba_statistics.Statistics in
-            let (_mf_duration, mf_hm) = download_stats.get_manifest_dh in
-            let fg_hm = summed_fragment_hit_misses download_stats in
-            ProxyStatistics.new_download
-              stats namespace
-              download_stats.total
-              mf_hm
-              fg_hm;
+            (* let open Alba_statistics.Statistics in *)
+            (* let (_mf_duration, mf_hm) = download_stats.get_manifest_dh in *)
+            (* let fg_hm = summed_fragment_hit_misses download_stats in *)
+            (* ProxyStatistics.new_download *)
+            (*   stats namespace *)
+            (*   download_stats.total *)
+            (*   mf_hm *)
+            (*   fg_hm; *)
             Lwt.return ()
        end
-    | WriteObjectFs -> fun stats (namespace,
-                                  object_name,
-                                  input_file,
-                                  allow_overwrite,
-                                  checksum_o) ->
+    | WriteObjectFs -> fun (namespace,
+                            object_name,
+                            input_file,
+                            allow_overwrite,
+                            checksum_o) ->
       let open Nsm_model in
       Lwt.catch
         (fun () ->
@@ -275,8 +273,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                                then Unconditionally
                                else NoPrevious)
            >>= fun (_mf , upload_stats) ->
-           let open Alba_statistics.Statistics in
-           ProxyStatistics.new_upload stats namespace upload_stats.total;
+           (* let open Alba_statistics.Statistics in *)
+           (* ProxyStatistics.new_upload stats namespace upload_stats.total; *)
            Lwt.return ()
         )
         (let open Alba_client_errors.Error in
@@ -286,7 +284,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           | Exn FileNotFound ->
              Protocol.Error.failwith Protocol.Error.FileNotFound
           | exn -> Lwt.fail exn)
-    | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
+    | DeleteObject -> fun (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->
            alba_client # delete_object ~namespace ~object_name ~may_not_exist)
@@ -295,7 +293,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
           | exn -> Lwt.fail exn)
     | GetObjectInfo ->
-       fun stats (namespace, object_name, consistent_read, should_cache) ->
+       fun (namespace, object_name, consistent_read, should_cache) ->
        begin
          alba_client # get_object_manifest
            ~namespace ~object_name
@@ -308,33 +306,34 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            Lwt.return (manifest.size, manifest.checksum)
        end
     | ReadObjectsSlices ->
-       fun stats (namespace, objects_slices, consistent_read) ->
+       fun (namespace, objects_slices, consistent_read) ->
        with_timing_lwt
          (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
        >>= fun (delay, (bytes, n_slices, n_objects, mf_sources, fc_hits, fc_misses )) ->
-       let total_length = Bytes.length bytes in
-       ProxyStatistics.new_read_objects_slices
-         stats namespace
-         ~total_length ~n_slices ~n_objects ~mf_sources
-         ~fc_hits ~fc_misses
-         ~took:delay;
+       (* let total_length = Bytes.length bytes in *)
+       (* ProxyStatistics.new_read_objects_slices *)
+       (*   stats namespace *)
+       (*   ~total_length ~n_slices ~n_objects ~mf_sources *)
+       (*   ~fc_hits ~fc_misses *)
+       (*   ~took:delay; *)
        Lwt.return bytes
 
     | InvalidateCache ->
-      fun stats namespace -> alba_client # invalidate_cache namespace
+      fun namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
-      fun stats namespace -> alba_client # drop_cache namespace ~global:false
+      fun namespace -> alba_client # drop_cache namespace ~global:false
     | ProxyStatistics ->
-       fun stats clear ->
+       fun clear ->
        begin
-         let stopped = ProxyStatistics.clone stats in
-         let () = ProxyStatistics.stop stopped in
-         if clear then ProxyStatistics.clear stats;
-         Lwt.return stopped
+         Lwt.fail_with "TODO"
+         (* let stopped = ProxyStatistics.clone stats in *)
+         (* let () = ProxyStatistics.stop stopped in *)
+         (* if clear then ProxyStatistics.clear stats; *)
+         (* Lwt.return stopped *)
        end
-    | GetVersion -> fun stats () -> Lwt.return Alba_version.summary
+    | GetVersion -> fun () -> Lwt.return Alba_version.summary
     | OsdView ->
-       fun stats () ->
+       fun () ->
        let info = alba_client # osd_access # osds_info_cache  in
        let state_info =
          Hashtbl.fold
@@ -351,7 +350,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        let claim_info = (StringMap.cardinal claim_info, StringMap.bindings claim_info) in
        Lwt.return (claim_info, state_info)
     | GetClientConfig ->
-       fun stats () ->
+       fun () ->
        Lwt.return !albamgr_client_cfg
   in
   let module Llio = Llio2.WriteBuffer in
@@ -373,7 +372,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          match Protocol.code_to_command code with
          | Protocol.Wrap r ->
            let req = Deser.from_buffer (Protocol.deser_request_i r) buf in
-           execute_request r stats req >>= fun res ->
+           execute_request r req >>= fun res ->
            Lwt.return (Llio.serialize_with_length
                          (Llio.pair_to
                             Llio.int_to
@@ -585,7 +584,7 @@ let run_server hosts port
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
-  let stats = ProxyStatistics.make () in
+  (* let stats = ProxyStatistics.make () in *)
 
   Lwt.catch
     (fun () ->
@@ -634,18 +633,18 @@ let run_server hosts port
                  ~max:max_client_connections
                  hosts port ~ctx ~tcp_keepalive
                  (fun nfd ->
-                  proxy_protocol alba_client albamgr_client_cfg stats nfd));
+                  proxy_protocol alba_client albamgr_client_cfg nfd));
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
-              (let rec log_stats () =
-                 Lwt_log.info_f
-                   "stats:\n%s%!"
-                   (ProxyStatistics.show' ~only_changed:true stats) >>= fun () ->
-                 let cnt = ProxyStatistics.clear_ns_stats_changed stats in
-                 Lwt_unix.sleep (max 60. (6 * cnt |> float)) >>= fun () ->
-                 log_stats ()
-               in
-               log_stats ());
+              (* (let rec log_stats () = *)
+              (*    Lwt_log.info_f *)
+              (*      "stats:\n%s%!" *)
+              (*      (ProxyStatistics.show' ~only_changed:true stats) >>= fun () -> *)
+              (*    let cnt = ProxyStatistics.clear_ns_stats_changed stats in *)
+              (*    Lwt_unix.sleep (max 60. (6 * cnt |> float)) >>= fun () -> *)
+              (*    log_stats () *)
+              (*  in *)
+              (*  log_stats ()); *)
             ])
     )
     (fun exn ->
