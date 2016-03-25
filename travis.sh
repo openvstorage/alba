@@ -123,6 +123,15 @@ install () {
 
     date
 
+    echo "Installing ordma"
+    sudo apt-get update && apt-get -y install librdmacm-dev
+    git clone https://github.com/toolslive/ordma.git
+    cd ordma 
+    git checkout tags/0.0.1
+    make install
+
+    date
+    
     echo "Installing etcd"
     curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
     tar xzvf etcd-v2.2.4-linux-amd64.tar.gz

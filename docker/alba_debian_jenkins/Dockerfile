@@ -103,6 +103,13 @@ RUN eval `${opam_env}` && \
     opam depext orocksdb.0.2.2 && \
     opam install -y orocksdb.0.2.2
 
+#for now, install ordma manually
+RUN apt-get update && apt-get -y install librdmacm-dev
+RUN git clone https://github.com/toolslive/ordma.git
+RUN cd ordma \
+    && git checkout tags/0.0.1 \
+    && eval `${opam_env}` \
+    && make install
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 RUN apt-get update && apt-get -y install clang-3.5

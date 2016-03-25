@@ -514,7 +514,9 @@ let asd_multistatistics_cmd =
   let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in
   t, info
        
-let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear =
+let asd_statistics hosts port_o transport asd_id
+                   to_json verbose config_o tls_config clear
+  =
   let open Asd_statistics in
   let _inner =
     (fun (client:Asd_client.client) ->
@@ -529,9 +531,9 @@ let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear
                Asd_protocol.Protocol.code_to_description)
     )
   in
-  let from_asd hosts port tls_config asd_id verbose =
+  let from_asd hosts port transport tls_config asd_id verbose =
     begin
-      let conn_info = Networking2.make_conn_info hosts port tls_config in
+      let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
       run_with_asd_client' ~conn_info asd_id verbose _inner
     end
   in
@@ -569,7 +571,7 @@ let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear
        in
        lwt_cmd_line to_json verbose t
      end
-  | Some port,_ -> from_asd hosts port tls_config asd_id verbose
+  | Some port,_ -> from_asd hosts port transport tls_config asd_id verbose
 
 let asd_statistics_cmd =
   let port_o =
@@ -588,6 +590,7 @@ let asd_statistics_cmd =
   let t = Term.(pure asd_statistics
                 $ hosts
                 $ port_o
+                $ transport
                 $ lido
                 $ to_json
                 $ verbose

@@ -112,7 +112,7 @@ type conn_info = {
     tls_config: Tls.t option
   } [@@deriving show]
 
-let make_conn_info ?(transport=Net_fd.TCP) ips port  tls_config = {ips;port;transport;tls_config}
+let make_conn_info ips port ?(transport=Net_fd.TCP) tls_config = {ips;port;transport;tls_config}
 
 exception No_connection
 

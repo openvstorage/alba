@@ -121,6 +121,14 @@ RUN eval `${opam_env}` && opam update && \
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/
 
+#for now, instll ordma manually
+RUN yum -y install librdmacm-devel
+RUN git clone https://github.com/toolslive/ordma.git
+RUN cd ordma \
+    && git checkout tags/0.0.1 \
+    && eval `${opam_env}` \
+    && make install
+    
 RUN yum -y install rpm-build
 RUN yum -y install libgcrypt-devel
 

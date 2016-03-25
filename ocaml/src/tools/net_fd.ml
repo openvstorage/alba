@@ -44,11 +44,17 @@ let socket domain typ x transport =
 let setsockopt nfd option value =
   match nfd with
   | Plain fd   -> Lwt_unix.setsockopt fd option value
+  | SSL(_,_,socket) ->
+     let fd = Lwt_ssl.get_fd socket in
+     Lwt_unix.setsockopt fd option value
   | Rsocket fd -> Lwt_rsocket.setsockopt fd option value
 
 let bind nfd sa =
   match nfd with
   | Plain fd -> Lwt_unix.bind fd sa
+  | SSL(_,_,socket) ->
+     let fd = Lwt_ssl.get_fd socket in
+     Lwt_unix.bind fd sa
   | Rsocket fd -> Lwt_rsocket.bind fd sa
 
 let listen nfd n =
@@ -93,6 +99,13 @@ let apply_keepalive tcp_keepalive = function
 
 let connect fd address = match fd with
   | Plain fd   -> Lwt_unix.connect fd address
+  | SSL(ctx,_,socket) ->
+  (* 
+    Lwt_unix.connect fd address >>= fun () ->
+    Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s -> 
+    let r = Net_fd.wrap_ssl lwt_s in 
+   *)
+    failwith "ssl.connect"
   | Rsocket fd ->
      Lwt_log.debug_f "Rsocket.connect"
      >>= fun () ->
