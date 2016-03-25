@@ -72,6 +72,15 @@ let partial_reads (client : Osd.osd) progress n _value_size partial_fetch_size p
   report "partial_reads" r
 
 
+let get_version (client : Osd.osd) progress n _ _ _ _ =
+  let do_one _ =
+    client # get_version >>= fun _ ->
+    Lwt.return ()
+  in
+  measured_loop progress do_one n >>= fun r ->
+  report "get_version" r
+
+
 let _make_value value_size =
   (* TODO: this affects performance as there is compression going
      on inside the database

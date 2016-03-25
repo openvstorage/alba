@@ -307,6 +307,7 @@ let osd_bench_cmd =
                       "upload_fragments", upload_fragments;
                       "ranges",range_queries;
                       "partial_reads", partial_reads;
+                      "get_version", get_version;
                     ]
          in
          value

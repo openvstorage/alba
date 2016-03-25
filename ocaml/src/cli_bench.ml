@@ -31,7 +31,9 @@ let scenarios =
   let scns = [ "writes", `Writes;
                "reads", `Reads;
                "partial-reads", `Partial_reads;
-               "deletes", `Deletes; ] in
+               "deletes", `Deletes;
+               "get_version", `GetVersion;
+             ] in
   Arg.(value
        & opt_all
            (enum scns)
@@ -53,12 +55,15 @@ let map_scenarios scenarios robust =
       | `Writes -> do_writes ~robust
       | `Reads  -> do_reads
       | `Partial_reads -> do_partial_reads
-      | `Deletes -> do_deletes)
+      | `Deletes -> do_deletes
+      | `GetVersion -> do_get_version)
     (if scenarios = []
      then [ `Writes;
             `Reads;
             `Partial_reads;
-            `Deletes; ]
+            `Deletes;
+            `GetVersion;
+          ]
      else scenarios)
 
 let proxy_bench host port

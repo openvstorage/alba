@@ -60,6 +60,7 @@ object
     method delete_object ~namespace ~object_name ~may_not_exist=
       alba_client # delete_object ~namespace ~object_name ~may_not_exist
 
+    method get_version = Lwt.return Alba_version.summary
 end
 
 let do_scenarios
