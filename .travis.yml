@@ -4,7 +4,7 @@ language: generic
 
 env:
   - SUITE=system2
-  - SUITE=system2 ALBA_TLS=True
+  - SUITE=system2 ALBA_TLS=true
   - SUITE=disk_failures
   - SUITE=recovery
 

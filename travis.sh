@@ -124,12 +124,14 @@ install () {
     date
 
     echo "Installing ordma"
-    sudo apt-get update && apt-get -y install librdmacm-dev
+    sudo apt-get -y install librdmacm-dev
+    apt-cache depends librdmacm-dev
+    sudo apt-get -y install libibverbs-dev
     git clone https://github.com/toolslive/ordma.git
     cd ordma 
     git checkout tags/0.0.1
     make install
-
+    cd ..
     date
     
     echo "Installing etcd"
