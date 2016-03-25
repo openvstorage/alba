@@ -229,6 +229,78 @@ let maybe_activate_reporting =
 let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.query -> i -> o =
   fun db tag req ->
   let open Nsm_host_protocol.Protocol in
+  let nsm_query tag namespace_id req =
+    let prefix = Keys.namespace_content namespace_id in
+    let module KV = WrapReadUserDb(
+                        struct
+                          let db = db
+                          let prefix = prefix
+                        end) in
+    let module NSM = NamespaceManager(struct let namespace_id = namespace_id end)(KV) in
+    let open Nsm_protocol.Protocol in
+    let exec_query : type req res.
+                          (req, res) Nsm_protocol.Protocol.query -> req -> res =
+      function
+      | GetObjectManifestByName ->
+         fun object_name ->
+         NSM.get_object_manifest_by_name db object_name
+      | GetObjectManifestById ->
+         fun object_id -> begin
+             try
+               let manifest, _ = NSM.get_object_manifest_by_id db object_id in
+               Some manifest
+             with
+             | Err.Nsm_exn (Err.Object_not_found, _) -> None
+             | exn -> raise exn
+           end
+      | ListObjects ->
+         fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+         NSM.list_objects
+           db
+           ~first ~finc ~last
+           ~max:(cap_max ~max ())
+           ~reverse
+      | ListObjectsById ->
+         fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+         NSM.list_objects_by_id
+           db
+           ~first ~finc ~last
+           ~max:(cap_max ~max ())
+           ~reverse
+      | ListDeviceKeysToBeDeleted ->
+         fun (device_id, { RangeQueryArgs.first; finc; last; max; reverse; }) ->
+         NSM.list_device_keys_to_be_deleted db device_id
+                                            ~first ~finc ~last
+                                            ~max:(cap_max ~max ())
+                                            ~reverse
+      | ListObjectsByOsd ->
+         fun (device_id, { RangeQueryArgs.first; finc; last; max; reverse; }) ->
+         NSM.list_device_objects
+           db device_id
+           ~first ~finc ~last
+           ~max:(cap_max ~max ())
+           ~reverse
+      | GetGcEpochs -> fun () -> snd (NSM.get_gc_epochs db)
+      | GetStats -> fun () -> NSM.get_stats db
+      | ListObjectsByPolicy ->
+         fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+         NSM.list_objects_by_policy
+           db
+           ~first ~finc ~last
+           ~max:(cap_max ~max ())
+           ~reverse
+      | ListActiveOsds ->
+         fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+         NSM.list_active_osds
+           db
+           ~first ~finc ~last
+           ~max:(cap_max ~max ())
+           ~reverse
+    in
+    if not (db # exists (Keys.namespace_info namespace_id))
+    then Err.failwith Err.Namespace_id_not_found
+    else exec_query tag req
+  in
   match tag with
   | ListNsms ->
     let module KV = WrapReadUserDb(
@@ -253,77 +325,13 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
   | NSMHStatistics ->
      NSMHStatistics.snapshot statistics req
   | NsmQuery tag ->
-    let namespace_id, req = req in
-    let prefix = Keys.namespace_content namespace_id in
-    let module KV = WrapReadUserDb(
-      struct
-        let db = db
-        let prefix = prefix
-      end) in
-    let module NSM = NamespaceManager(struct let namespace_id = namespace_id end)(KV) in
-    let open Nsm_protocol.Protocol in
-    let exec_query : type req res.
-      (req, res) Nsm_protocol.Protocol.query -> req -> res =
-      function
-      | GetObjectManifestByName -> fun object_name ->
-        NSM.get_object_manifest_by_name db object_name
-      | GetObjectManifestById ->
-        fun object_id -> begin
-            try
-              let manifest, _ = NSM.get_object_manifest_by_id db object_id in
-              Some manifest
-            with
-            | Err.Nsm_exn (Err.Object_not_found, _) -> None
-            | exn -> raise exn
-          end
-      | ListObjects ->
-        fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
-          NSM.list_objects
-            db
-            ~first ~finc ~last
-            ~max:(cap_max ~max ())
-            ~reverse
-      | ListObjectsById ->
-        fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
-          NSM.list_objects_by_id
-            db
-            ~first ~finc ~last
-            ~max:(cap_max ~max ())
-            ~reverse
-      | ListDeviceKeysToBeDeleted ->
-        fun (device_id, { RangeQueryArgs.first; finc; last; max; reverse; }) ->
-          NSM.list_device_keys_to_be_deleted db device_id
-            ~first ~finc ~last
-            ~max:(cap_max ~max ())
-            ~reverse
-      | ListObjectsByOsd ->
-        fun (device_id, { RangeQueryArgs.first; finc; last; max; reverse; }) ->
-          NSM.list_device_objects
-            db device_id
-            ~first ~finc ~last
-            ~max:(cap_max ~max ())
-            ~reverse
-      | GetGcEpochs -> fun () -> snd (NSM.get_gc_epochs db)
-      | GetStats -> fun () -> NSM.get_stats db
-      | ListObjectsByPolicy ->
-        fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
-          NSM.list_objects_by_policy
-            db
-            ~first ~finc ~last
-            ~max:(cap_max ~max ())
-            ~reverse
-      | ListActiveOsds ->
-        fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
-          NSM.list_active_osds
-            db
-            ~first ~finc ~last
-            ~max:(cap_max ~max ())
-            ~reverse
-    in
-    if not (db # exists (Keys.namespace_info namespace_id))
-    then Err.failwith Err.Namespace_id_not_found
-    else exec_query tag req
-
+     let namespace_id, req = req in
+     nsm_query tag namespace_id req
+  | NsmsQuery tag ->
+     List.map
+       (fun (namespace_id, req) ->
+        nsm_query tag namespace_id req)
+       req
 
 let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
