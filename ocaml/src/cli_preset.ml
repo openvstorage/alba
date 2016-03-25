@@ -52,7 +52,7 @@ let alba_create_preset
            preset_name
            preset)
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_create_preset_cmd =
   Term.(pure alba_create_preset
@@ -89,7 +89,7 @@ let alba_update_preset
            preset_name
            preset_updates)
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_update_preset_cmd =
   Term.(pure alba_update_preset
@@ -111,7 +111,7 @@ let alba_preset_set_default cfg_url tls_config preset_name to_json verbose =
       (fun client ->
          client # set_default_preset preset_name)
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_preset_set_default_cmd =
   Term.(pure alba_preset_set_default
@@ -131,7 +131,7 @@ let alba_add_osds_to_preset cfg_url tls_config preset_name osd_ids to_json verbo
       (fun client ->
          client # add_osds_to_preset ~preset_name ~osd_ids)
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_add_osds_to_preset_cmd =
   Term.(pure alba_add_osds_to_preset
@@ -158,7 +158,7 @@ let alba_delete_preset cfg_url tls_config preset_name to_json verbose =
       (fun client ->
          client # delete_preset preset_name)
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_delete_preset_cmd =
   Term.(pure alba_delete_preset
@@ -188,7 +188,7 @@ let alba_list_presets cfg_url tls_config to_json verbose =
         cnt
         ([%show : (Preset.name * Preset.t * bool * bool) list] presets)
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_list_presets_cmd =
   Term.(pure alba_list_presets

@@ -129,7 +129,7 @@ let exn_to_string_code = function
     "unknown", 0,
     Printexc.to_string exn
 
-let lwt_cmd_line to_json verbose t =
+let lwt_cmd_line ~to_json ~verbose t =
   let t' () =
     Lwt.catch
       (fun () ->
@@ -159,18 +159,18 @@ let lwt_cmd_line to_json verbose t =
   in
   Lwt_main.run (t' ())
 
-let lwt_cmd_line_result to_json verbose t res_to_json =
+let lwt_cmd_line_result ~to_json ~verbose t res_to_json =
   lwt_cmd_line
-    to_json verbose
+    ~to_json ~verbose
     (fun () ->
        t () >>= fun res ->
        if to_json
        then print_result res res_to_json
        else Lwt.return ())
 
-let lwt_cmd_line_unit to_json verbose t =
+let lwt_cmd_line_unit ~to_json ~verbose t =
   lwt_cmd_line_result
-    to_json verbose
+    ~to_json ~verbose
     t
     (fun () -> `Assoc [])
 

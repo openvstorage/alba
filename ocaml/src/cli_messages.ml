@@ -81,7 +81,7 @@ let list_nsm_host_messages cfg_url tls_config attempts (destinations: string lis
          ) xs
       )
   in
-  lwt_cmd_line false false t
+  lwt_cmd_line ~to_json:false ~verbose:false t
 
 let list_nsm_host_messages_cmd =
   let nsm_hosts =
@@ -119,7 +119,7 @@ let list_osd_messages cfg_file tls_config attempts (destinations:int32 list) ver
          ) xs
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let list_osd_messages_cmd =
   let destinations  =

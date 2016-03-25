@@ -198,7 +198,7 @@ let proxy_client_cmd_line host port verbose f =
       host port
       f
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 
 let proxy_list_namespaces host port verbose =

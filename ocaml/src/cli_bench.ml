@@ -16,33 +16,9 @@ limitations under the License.
 
 open Cmdliner
 open Cli_common
+open Cli_bench_common
 open Prelude
 
-let n_clients default =
-  let doc = "number of concurrent clients for the benchmark" in
-  Arg.(value
-       & opt int default
-       & info ["n-clients"] ~docv:"N_CLIENTS" ~doc)
-
-let n default =
-  let doc = "do runs (writes,reads,partial_reads,...) of $(docv) iterations" in
-  Arg.(value
-       & opt int default
-       & info ["n"; "nn"] ~docv:"N" ~doc)
-
-let power default =
-  let doc = "$(docv) for random number generation: period = 10^$(docv)" in
-  Arg.(value
-       & opt int default
-       & info ["power"] ~docv:"power" ~doc
-  )
-
-let prefix default =
-  let doc = "$(docv) to keep multiple clients out of each other's way" in
-  Arg.(value
-       & opt string default
-       & info ["prefix"] ~docv:"prefix" ~doc
-  )
 
 let slice_size default =
   let doc = "partial reads phaze will use slices of size $(docv)" in
@@ -91,7 +67,7 @@ let proxy_bench host port
                 scenarios robust
   =
   lwt_cmd_line
-    false false
+    ~to_json:false ~verbose:false
     (fun () ->
      Proxy_bench.do_scenarios
        host port
@@ -125,7 +101,7 @@ let alba_bench alba_cfg_url tls_config
                scenarios robust
   =
   lwt_cmd_line
-    false false
+    ~to_json:false ~verbose:false
     (fun () ->
      let open Lwt.Infix in
      Alba_arakoon.config_from_url alba_cfg_url >>= fun cfg ->
