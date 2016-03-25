@@ -81,6 +81,20 @@ let get_version (client : Osd.osd) progress n _ _ _ _ =
   report "get_version" r
 
 
+let exists (client : Osd.osd) progress n _ _ period prefix =
+  let gen = make_key period prefix in
+  let do_one i =
+    let key = gen () in
+    client # multi_exists
+           Osd.High
+           [ (Slice.wrap_string key) ]
+    >>= fun _ ->
+    Lwt.return_unit
+  in
+  measured_loop progress do_one n >>= fun r ->
+  report "exists" r
+
+
 let _make_value value_size =
   (* TODO: this affects performance as there is compression going
      on inside the database

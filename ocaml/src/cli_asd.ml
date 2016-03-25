@@ -308,6 +308,7 @@ let osd_bench_cmd =
                       "ranges",range_queries;
                       "partial_reads", partial_reads;
                       "get_version", get_version;
+                      "exists", exists;
                     ]
          in
          value
