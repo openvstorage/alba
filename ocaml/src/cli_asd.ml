@@ -612,11 +612,12 @@ let asd_discover verbose () =
                        record.extras
        in
        Lwt_io.printlf
-         "{extras: %s ; ips = %s; port = %s ; tlsPort = %s }%!"
+         "{extras: %s ; ips = %s; port = %s ; tlsPort = %s ; useRdma = %s ; }%!"
          extras_s
          ([%show: string list] record.ips)
          ([%show: int option] record.port)
          ([%show: int option] record.tlsPort)
+         ([%show: bool option] record.useRdma)
   in
   lwt_cmd_line false verbose (fun () -> discovery seen)
 

@@ -58,7 +58,7 @@ module Osd = struct
       | OsdInfo.Asd (conn_info, asd_id)    -> "AsdV1", conn_info, asd_id
       | OsdInfo.Kinetic(conn_info, kin_id) -> "Kinetic3", conn_info, kin_id
     in
-    let ips, port, _ = conn_info in
+    let ips, port, _ , _ = conn_info in
     { id; alba_id;
       kind = k;
       ips; port;

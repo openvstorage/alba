@@ -143,7 +143,7 @@ module Protocol = struct
         =
         let my_compare x y = compare y x in
         let kind =
-          let ips, port, tls = get_conn_info osd.kind in
+          let ips, port, tls, use_rdma = get_conn_info osd.kind in
           let conn_info' =
             let ips'  = Option.get_some_default ips ips' in
             let port' = Option.get_some_default port port' in
@@ -162,7 +162,7 @@ module Protocol = struct
                     let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
                     port', false
             in
-            (ips',real_port, use_tls)
+            (ips',real_port, use_tls, use_rdma)
           in
           match osd.kind with
           | Asd (_, asd_id)   -> Asd (conn_info', asd_id)

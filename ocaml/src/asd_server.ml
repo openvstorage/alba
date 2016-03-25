@@ -1562,7 +1562,14 @@ let run_server
          | Some tls -> let open Asd_config.Config in Some tls.port
        in
        let mcast_t () =
-         Discovery.multicast asd_id node_id hosts port tlsPort mcast_period
+         let useRdma =
+           match transport with
+           | Net_fd.TCP  -> None
+           | Net_fd.RDMA -> Some true
+         in
+         Discovery.multicast asd_id node_id hosts
+                             ~port ~tlsPort ~useRdma
+                             mcast_period
                              ~disk_usage
        in
        mcast_t () :: threads

@@ -35,7 +35,7 @@ let test () =
         let device_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
         let kind = Nsm_model.OsdInfo.Asd (
-                       (["127.0.0.1"], 8000 +i, false),
+                       (["127.0.0.1"], 8000 +i, false, false),
                        "asd id choose test " ^ (string_of_int i)
                      )
         in
@@ -95,7 +95,7 @@ let choose_bug () =
     else
       let device_id = Int32.of_int i in
       let node_id = "my node" in
-      let conn_info = ["127.0.0.1"], 8000 + i, false in
+      let conn_info = ["127.0.0.1"], 8000 + i, false, false in
 
       let kind = OsdInfo.Asd(conn_info, "asd id choose bug " ^ string_of_int i) in
       let d_info =
@@ -131,7 +131,7 @@ let choose_forced () =
       else
         let osd_id = Int32.of_int i in
         let node_id = string_of_int (i lsr 2) in
-        let conn_info = (["127.0.0.1"], 8000 +i, false) in
+        let conn_info = (["127.0.0.1"], 8000 +i, false, false) in
         let kind = OsdInfo.Asd (conn_info,
                                           "osd id choose forced test " ^ (string_of_int i) )
         in
@@ -327,7 +327,7 @@ let test_actually_rebalances () =
 let setup_explicit_info info_list =
   let open Nsm_model in
   let make_kind osd_id =
-    let conn_info = ["127.0.0.1"],8000 + (Int32.to_int osd_id), false
+    let conn_info = ["127.0.0.1"],8000 + (Int32.to_int osd_id), false, false
     and asd_id = "asd id choose test " ^ (Int32.to_string osd_id)
     in
     OsdInfo.Asd (conn_info, asd_id)

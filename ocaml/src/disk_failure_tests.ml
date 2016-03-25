@@ -35,7 +35,7 @@ let _easiest_upload () =
     match sinfo.OsdInfo.kind with
       | OsdInfo.Asd (conn_info,long_id) ->
          begin
-           let ips,port,_ = conn_info in
+           let ips,port,_,_ = conn_info in
            let ip = List.hd_exn ips in
            Lwt_io.printlf "going to kill: %li (%s,%i) ASD"  sid ip port
            >>=fun()->
@@ -45,7 +45,7 @@ let _easiest_upload () =
          end
       | OsdInfo.Kinetic(conn_info, long_id) ->
          begin
-           let ips,port,_ = conn_info in
+           let ips,port,_,_ = conn_info in
            let ip = List.hd_exn ips in
            Lwt_io.printlf "going to kill: %li (%s,%i) Kinetic" sid ip port
            >>= fun () ->

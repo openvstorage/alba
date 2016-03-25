@@ -305,7 +305,7 @@ class client (fd:Net_fd.t) id =
 exception BadLongId of string * string
 
 let conn_info_from ~tls_config (conn_info':Nsm_model.OsdInfo.conn_info)  =
-  let ips,port, use_tls = conn_info' in
+  let ips,port, use_tls , use_rdma = conn_info' in
   let tls_config =
     match use_tls,tls_config with
     | false, None   -> None
@@ -313,7 +313,8 @@ let conn_info_from ~tls_config (conn_info':Nsm_model.OsdInfo.conn_info)  =
     | true, None    -> failwith "want tls, but no tls_config is None !?"
     | true, Some _  -> tls_config
   in
-  Networking2.make_conn_info ips port tls_config
+  let transport = if use_rdma then Net_fd.RDMA else Net_fd.TCP in
+  Networking2.make_conn_info ips port ~transport tls_config
 
 let make_prologue magic version lido =
   let buf = Buffer.create 16 in

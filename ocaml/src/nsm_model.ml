@@ -35,7 +35,8 @@ module OsdInfo = struct
   type kinetic_id = string [@@ deriving show, yojson]
 
   type use_tls  = bool [@@ deriving show, yojson]
-  type conn_info = ip list * port * use_tls [@@ deriving show, yojson]
+  type use_rdma = bool [@@ deriving show, yojson]
+  type conn_info = ip list * port * use_tls * use_rdma [@@ deriving show, yojson]
 
   type kind =
     | Asd     of conn_info * asd_id
@@ -76,6 +77,12 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors; }
 
+  let _check_rdma = function
+    | true ->
+       let () = Lwt_log.ign_fatal "use_rdma & old serialization ?!" in
+       failwith "use_rdma"
+    | false -> ()
+
   let _to_buffer_1
       ?(ignore_tls = false)
       buf
@@ -85,8 +92,9 @@ module OsdInfo = struct
         seen; read; write; errors; } =
 
     let ser_version = 1 in
+    
     Llio.int8_to buf ser_version;
-    let conn_info_to buf (ips,port,use_tls) =
+    let conn_info_to buf (ips,port,use_tls,use_rdma) =
       if use_tls && not ignore_tls
       then
         begin
@@ -95,6 +103,7 @@ module OsdInfo = struct
         end;
       Llio.list_to Llio.string_to buf ips;
       Llio.int_to buf port;
+      _check_rdma use_rdma
 
     in
     let () = match kind with
@@ -131,10 +140,55 @@ module OsdInfo = struct
     =
     let ser_version = 2 in
     Llio.int8_to final_buf ser_version;
-    let conn_info_to buf (ips,port,use_tls) =
+    let conn_info_to buf (ips,port,use_tls, use_rdma) =
       Llio.list_to Llio.string_to buf ips;
       Llio.int_to buf port;
-      Llio.bool_to buf use_tls
+      Llio.bool_to buf use_tls;
+      _check_rdma use_rdma
+    in
+    let buf = Buffer.create 128 in
+    let () =
+      let () = match kind with
+        | Asd (conn_info, asd_id) ->
+           Llio.int8_to buf 1;
+           conn_info_to buf conn_info;
+           Llio.string_to buf asd_id;
+        | Kinetic(conn_info, kin_id) ->
+           Llio.int8_to buf 2;
+           conn_info_to buf conn_info;
+           Llio.string_to buf kin_id
+      in
+      Llio.string_to buf node_id;
+      Llio.bool_to buf decommissioned;
+      Llio.string_to buf other;
+      Llio.int64_to buf total;
+      Llio.int64_to buf used;
+      Llio.list_to Llio.float_to buf seen;
+      Llio.list_to Llio.float_to buf read;
+      Llio.list_to Llio.float_to buf write;
+      Llio.list_to
+        (Llio.pair_to
+           Llio.float_to
+           Llio.string_to)
+        buf
+        errors
+    in
+    Llio.string_to final_buf (Buffer.contents buf)
+
+  let _to_buffer_3 final_buf
+      { kind; node_id;
+        decommissioned; other;
+        total; used;
+        seen; read; write; errors;
+      }
+    =
+    let ser_version = 3 in
+    Llio.int8_to final_buf ser_version;
+    let conn_info_to buf (ips,port,use_tls, use_rdma) =
+      Llio.list_to Llio.string_to buf ips;
+      Llio.int_to buf port;
+      Llio.bool_to buf use_tls;
+      Llio.bool_to buf use_rdma
     in
     let buf = Buffer.create 128 in
     let () =
@@ -167,6 +221,7 @@ module OsdInfo = struct
 
   let to_buffer  buf t ~version =
     match version with
+    | 3 -> _to_buffer_2 buf t
     | 2 -> _to_buffer_2 buf t
     | 1 -> _to_buffer_1 buf t
     | k -> raise_bad_tag "OsdInfo" k
@@ -177,12 +232,12 @@ module OsdInfo = struct
         let ips = Llio.list_from Llio.string_from buf in
         let port = Llio.int_from buf in
         let asd_id = Llio.string_from buf in
-        Asd ((ips, port,false), asd_id)
+        Asd ((ips, port,false,false ), asd_id)
       | 2 ->
         let ips = Llio.list_from Llio.string_from buf in
         let port = Llio.int_from buf in
         let kin_id = Llio.string_from buf in
-        Kinetic((ips, port, false), kin_id)
+        Kinetic((ips, port, false, false), kin_id)
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in
@@ -212,7 +267,42 @@ module OsdInfo = struct
     let port = Llio.int_from buf in
     let use_tls = Llio.bool_from buf in
     let long_id = Llio.string_from buf in
-    let conn_info = ips,port,use_tls in
+    let conn_info = ips,port,use_tls, false in
+    let kind = match kind_v with
+      | 1 -> Asd (conn_info, long_id)
+      | 2 -> Kinetic(conn_info, long_id)
+      | k -> raise_bad_tag "OsdInfo" k
+    in
+    let node_id = Llio.string_from buf in
+    let decommissioned = Llio.bool_from buf in
+    let other  = Llio.string_from buf in
+    let total  = Llio.int64_from buf in
+    let used   = Llio.int64_from buf in
+    let seen = Llio.list_from Llio.float_from buf in
+    let read = Llio.list_from Llio.float_from buf in
+    let write = Llio.list_from Llio.float_from buf in
+    let errors =
+      Llio.list_from
+        (Llio.pair_from
+           Llio.float_from
+           Llio.string_from)
+        buf in
+    { kind; node_id; decommissioned; other;
+      total; used;
+      seen; read; write; errors;
+    }
+
+  let _from_buffer3 orig_buf =
+    let bufs = Llio.string_from orig_buf in
+    let buf = Llio.make_buffer bufs 0 in
+
+    let kind_v = Llio.int8_from buf in
+    let ips = Llio.list_from Llio.string_from buf in
+    let port = Llio.int_from buf in
+    let use_tls  = Llio.bool_from buf in
+    let use_rdma = Llio.bool_from buf in
+    let conn_info = ips,port,use_tls, use_rdma in
+    let long_id  = Llio.string_from buf in
     let kind = match kind_v with
       | 1 -> Asd (conn_info, long_id)
       | 2 -> Kinetic(conn_info, long_id)
@@ -241,8 +331,9 @@ module OsdInfo = struct
   let from_buffer buf =
     let ser_version = Llio.int8_from buf in
     match ser_version with
-    | 1 -> _from_buffer1 buf
+    | 3 -> _from_buffer3 buf
     | 2 -> _from_buffer2 buf
+    | 1 -> _from_buffer1 buf
     | k -> raise_bad_tag "OsdInfo.ser_version" k
 
 

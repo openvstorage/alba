@@ -785,6 +785,7 @@ let test_discover_claimed () =
     | None -> Some p, None
     | Some _ -> None, Some p
   in
+  let useRdma = None in
   test_with_alba_client
     (fun alba_client ->
        Asd_test.with_asd_client test_name 8230
@@ -802,6 +803,7 @@ let test_discover_claimed () =
                                     ips = ["127.0.0.1"];
                                     port;
                                     tlsPort;
+                                    useRdma;
                                   })) >>= fun () ->
 
             let is_osd_available () =
@@ -1282,6 +1284,7 @@ let test_disk_churn () =
                                         ips = ["127.0.0.1"];
                                         port = Some asd_port;
                                         tlsPort = None;
+                                        useRdma = None;
                                       })) >>= fun () ->
                 alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
                 with_asds
@@ -1675,6 +1678,7 @@ let test_add_disk () =
                                     ips = ["127.0.0.1"];
                                     port = Some asd_port;
                                     tlsPort = None;
+                                    useRdma = None;
                                   })) >>= fun () ->
             alba_client # claim_osd ~long_id:asd_name >>= fun osd_id ->
 
