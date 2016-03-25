@@ -609,40 +609,52 @@ let execute_query : type req res.
                                               s.Slice.buf (s.Slice.offset + offset) len)
                       slices
                  | Value.OnFs (fnr, size) ->
-                    DirectoryInfo.with_blob_fd
-                      dir_info fnr
-                      (fun blob_fd ->
-                       let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-                       let () =
-                         if dir_info.DirectoryInfo.use_fadvise
-                         then
-                           List.iter
+                    if dir_info.DirectoryInfo.write_blobs
+                    then
+                      begin
+                        DirectoryInfo.with_blob_fd
+                          dir_info fnr
+                          (fun blob_fd ->
+                           let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
+                           let () =
+                             if dir_info.DirectoryInfo.use_fadvise
+                             then
+                               begin
+                                 Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_RANDOM;
+                                 List.iter
+                                   (fun (offset, length) ->
+                                    Posix.posix_fadvise
+                                      blob_ufd
+                                      offset length
+                                      Posix.POSIX_FADV_WILLNEED)
+                                   slices
+                               end
+                           in
+                           Lwt_list.iter_s
                              (fun (offset, length) ->
-                              Posix.posix_fadvise
-                                blob_ufd
-                                offset length
-                                Posix.POSIX_FADV_WILLNEED)
+                              Lwt_unix.lseek blob_fd offset Lwt_unix.SEEK_SET >>= fun _ ->
+                              Net_fd.sendfile_all
+                                ~fd_in:blob_fd
+                                ~fd_out:nfd
+                                length
+                              >>= fun () ->
+                              let () =
+                                if dir_info.DirectoryInfo.use_fadvise
+                                then
+                                  Posix.posix_fadvise
+                                    blob_ufd
+                                    0 size
+                                    Posix.POSIX_FADV_DONTNEED
+                              in
+                              Lwt.return_unit)
                              slices
-                       in
-                       Lwt_list.iter_s
-                         (fun (offset, length) ->
-                          Lwt_unix.lseek blob_fd offset Lwt_unix.SEEK_SET >>= fun _ ->
-                          Net_fd.sendfile_all
-                            ~fd_in:blob_fd
-                            ~fd_out:nfd
-                            length
-                          >>= fun () ->
-                          let () =
-                            if dir_info.DirectoryInfo.use_fadvise
-                            then
-                              Posix.posix_fadvise
-                                blob_ufd
-                                0 size
-                                Posix.POSIX_FADV_DONTNEED
-                          in
-                          Lwt.return_unit)
-                         slices
-                      )
+                          )
+                      end
+                    else
+                      Lwt_list.iter_s
+                        (fun (_, len) ->
+                         Net_fd.write_all nfd (Bytes.create len) 0 len)
+                        slices
                in
                return'' ~cost (true, write_later))
        end
