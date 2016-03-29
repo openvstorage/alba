@@ -367,6 +367,9 @@ module Net_fd = struct
     match fd_out with
     | Plain fd ->
        Fsutil.sendfile_all
+         ~wait_readable:false
+         ~wait_writeable:true
+         ~detached:true
          ~fd_in
          ~fd_out:fd
          size
