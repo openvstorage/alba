@@ -114,9 +114,12 @@ RUN yum -y install sudo
 # Defaults    requiretty          # is line 56
 RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
 
-RUN eval `${opam_env}` && opam update && \
-    opam depext orocksdb.0.2.2 && \
-    opam install -y orocksdb.0.2.2
+# install specific orocksdb
+RUN git clone https://github.com/domsj/orocksdb.git \
+    && cd orocksdb \
+    && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
+    && ./install_rocksdb \
+    && make build install
 
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/
