@@ -61,7 +61,6 @@ let bench_blobs path scenarios count value_size partial_read_size =
            (fun fd ->
             let ufd = Lwt_unix.unix_file_descr fd in
             Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
-            Lwt_unix.lseek fd 0 Lwt_unix.SEEK_SET >>= fun _ ->
             Lwt_extra2.read_all_lwt_bytes_exact fd target 0 partial_read_size))
         count
     in

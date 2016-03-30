@@ -363,17 +363,18 @@ module Net_fd = struct
     where it's needed nor used
     and pulls along cstruct and friends
    *)
-  let sendfile_all ~fd_in ~(fd_out:t) size =
+  let sendfile_all ~fd_in ~offset ~(fd_out:t) size =
     match fd_out with
     | Plain fd ->
        Fsutil.sendfile_all
          ~wait_readable:false
          ~wait_writeable:true
          ~detached:true
-         ~fd_in
+         ~fd_in ~offset
          ~fd_out:fd
          size
     | SSL(_,socket) ->
+       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
        let copy_using buffer =
          let buffer_size = Lwt_bytes.length buffer in
           let write_all socket buffer offset length =
@@ -563,7 +564,7 @@ let execute_query : type req res.
                      then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL
                    in
                    Net_fd.sendfile_all
-                     ~fd_in:blob_fd
+                     ~fd_in:blob_fd ~offset:0
                      ~fd_out:nfd
                      size
                    >>= fun () ->
@@ -635,9 +636,8 @@ let execute_query : type req res.
                            in
                            Lwt_list.iter_s
                              (fun (offset, length) ->
-                              Lwt_unix.lseek blob_fd offset Lwt_unix.SEEK_SET >>= fun _ ->
                               Net_fd.sendfile_all
-                                ~fd_in:blob_fd
+                                ~fd_in:blob_fd ~offset
                                 ~fd_out:nfd
                                 length
                               >>= fun () ->
