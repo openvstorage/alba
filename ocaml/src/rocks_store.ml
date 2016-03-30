@@ -21,11 +21,12 @@ open Rocks
 module Rocks_key_value_store_ = struct
   type t = RocksDb.t
 
-  let create' ?max_open_files ~db_path () =
+  let create' ?max_open_files ?recycle_log_file_num ~db_path () =
     let options = Options.create_gc () in
     Options.set_create_if_missing options true;
     Options.set_use_fsync options true;
     Option.iter (Options.set_max_open_files options) max_open_files;
+    Option.iter (Options.set_recycle_log_file_num options) recycle_log_file_num;
     RocksDb.open_db options db_path
 
   let create () =

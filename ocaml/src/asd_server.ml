@@ -1250,6 +1250,7 @@ let run_server
       ~fsync ~slow
       ~buffer_size
       ~rocksdb_max_open_files
+      ~rocksdb_recycle_log_file_num
       ~limit
       ~multicast
       ~tls
@@ -1278,6 +1279,7 @@ let run_server
   let kv =
     Rocks_key_value_store.create'
       ~max_open_files:rocksdb_max_open_files
+      ?recycle_log_file_num:rocksdb_recycle_log_file_num
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->

@@ -83,6 +83,7 @@ let asd_start cfg_url slow log_sinks =
                             ~fsync ~limit ~multicast ~buffer_size
                             ~tls
                             ~rocksdb_max_open_files:256
+                            ~rocksdb_recycle_log_file_num:(Some 4)
                             ~tcp_keepalive
                             ~write_blobs
                             ~use_fadvise
