@@ -161,14 +161,16 @@ object(self)
       | [x] -> Lwt.return x
       | _   -> Lwt.fail_with "nou moe"
 
-
-    method list_all_namespaces =
+    method list_all_namespaces_with_prefix prefix =
       list_all_x
-        ~first:""
+        ~first:prefix
         fst
         (self # list_namespaces
-           ~last:None
-           ~max:(-1) ~reverse:false)
+              ~last:(Key_value_store.next_prefix prefix)
+              ~max:(-1) ~reverse:false)
+
+    method list_all_namespaces =
+      self # list_all_namespaces_with_prefix ""
 
     method list_namespace_osds ~namespace_id ~first ~finc ~last ~max ~reverse =
       client # query

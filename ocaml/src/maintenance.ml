@@ -92,13 +92,6 @@ class client ?(retry_timeout = 60.)
     let remainder = (Int32.to_int item_id) mod coordinator # get_modulo
     in remainder = coordinator # get_remainder
   in
-  let make_first_last_reverse () =
-    let reverse = Random.bool ()
-    and border = get_random_string 32 in
-    if reverse
-    then ""    , Some (border,true), true
-    else border, None              , false
-  in
 
   let throttle_pool =
       let max_size = load in
