@@ -36,7 +36,8 @@ let asd_start cfg_url slow log_sinks =
            fsync,       limit,     multicast,
            buffer_size, tls,       tcp_keepalive,
            write_blobs,
-           use_fadvise, use_fallocate
+           use_fadvise, use_fallocate,
+           rocksdb_block_cache_size
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.home,
@@ -44,8 +45,8 @@ let asd_start cfg_url slow log_sinks =
         cfg.__sync_dont_use, cfg.limit, cfg.multicast,
         cfg.buffer_size, cfg.tls,   cfg.tcp_keepalive,
         cfg.__warranty_void__write_blobs,
-        cfg.use_fadvise,
-        cfg.use_fallocate
+        cfg.use_fadvise, cfg.use_fallocate,
+        cfg.rocksdb_block_cache_size
       in
 
       (if not fsync
@@ -84,6 +85,7 @@ let asd_start cfg_url slow log_sinks =
                             ~tls
                             ~rocksdb_max_open_files:256
                             ~rocksdb_recycle_log_file_num:(Some 4)
+                            ~rocksdb_block_cache_size
                             ~tcp_keepalive
                             ~write_blobs
                             ~use_fadvise

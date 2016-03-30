@@ -1251,6 +1251,7 @@ let run_server
       ~buffer_size
       ~rocksdb_max_open_files
       ~rocksdb_recycle_log_file_num
+      ~rocksdb_block_cache_size
       ~limit
       ~multicast
       ~tls
@@ -1280,6 +1281,11 @@ let run_server
     Rocks_key_value_store.create'
       ~max_open_files:rocksdb_max_open_files
       ?recycle_log_file_num:rocksdb_recycle_log_file_num
+      ~block_cache_size:(match rocksdb_block_cache_size with
+                         | None -> 0.0025 *. (Fsutil.disk_usage path
+                                              |> snd |> Int64.to_float)
+                                   |> int_of_float
+                         | Some v -> v)
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->

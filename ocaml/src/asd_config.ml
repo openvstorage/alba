@@ -38,6 +38,8 @@ module Config = struct
     
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
+
+    rocksdb_block_cache_size : (int option [@default None]);
   } [@@deriving yojson, show]
 end
 
