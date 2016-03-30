@@ -116,9 +116,10 @@ RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudo
 
 # install specific orocksdb
 RUN git clone https://github.com/domsj/orocksdb.git \
+    && eval `${opam_env}` \
     && cd orocksdb \
     && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
-    && ./install_rocksdb \
+    && ./install_rocksdb.sh \
     && make build install
 
 # be uniform on shared lib locations
