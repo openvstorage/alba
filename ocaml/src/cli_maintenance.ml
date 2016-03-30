@@ -296,7 +296,7 @@ let alba_deliver_messages cfg_file tls_config =
            nsms
       )
   in
-  lwt_cmd_line false true t
+  lwt_cmd_line ~to_json:false ~verbose:true t
 
 let alba_deliver_messages_cmd =
   Term.(pure alba_deliver_messages
@@ -327,7 +327,7 @@ let alba_rewrite_object
                   ~namespace_id
                   ~manifest))
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_rewrite_object_cmd =
   Term.(pure alba_rewrite_object

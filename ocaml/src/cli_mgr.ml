@@ -40,7 +40,7 @@ let alba_list_namespaces cfg_file tls_config to_json verbose =
                 namespaces)
       )
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 
 let alba_list_namespaces_cmd =
@@ -87,7 +87,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
          end
       )
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_list_namespaces_by_id_cmd =
   Term.(pure alba_list_namespaces_by_id
@@ -106,7 +106,7 @@ let recover_namespace cfg_file tls_config namespace nsm_host_id verbose =
       (fun client ->
          client # recover_namespace ~namespace ~nsm_host_id)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let recover_namespace_cmd =
   Term.(pure recover_namespace
@@ -165,7 +165,7 @@ let alba_list_osds cfg_file tls_config node_id to_json verbose attempts =
              devices'
          end)
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let node_id default =
   let doc = "the $(docv) just for this node" in
@@ -236,7 +236,7 @@ let alba_list_all_osds alba_cfg_url tls_config node_id to_json verbose attempts 
              devices'
          end)
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_list_all_osds_cmd =
   let alba_list_all_osds_t =
@@ -275,7 +275,7 @@ let alba_list_available_osds alba_cfg_file tls_config to_json verbose attempts =
         cnt
         ([%show : Nsm_model.OsdInfo.t list] osds)
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_list_available_osds_cmd =
   Term.(pure alba_list_available_osds
@@ -311,7 +311,7 @@ let alba_list_nsm_hosts cfg_file tls_config to_json verbose attempts =
         ([%show: (string * Albamgr_protocol.Protocol.Nsm_host.t * int64) list]
            nsm_hosts)
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_list_nsm_hosts_cmd =
   Term.(pure alba_list_nsm_hosts
@@ -334,7 +334,7 @@ let alba_add_nsm_host alba_cfg_url tls_config nsm_host_cfg_url to_json verbose a
                 ~nsm_host_id
                 ~nsm_host_info:Nsm_host.({ kind = (Arakoon cfg); lost = false; }))
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_add_nsm_host_cmd =
   Term.(pure alba_add_nsm_host
@@ -363,7 +363,7 @@ let alba_update_nsm_host
                 ~nsm_host_id
                 ~nsm_host_info:Nsm_host.({ kind = (Arakoon cfg); lost; }))
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_update_nsm_host_cmd =
   Term.(pure alba_update_nsm_host
@@ -389,7 +389,7 @@ let alba_mgr_get_version cfg_file tls_config verbose attempts =
        Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_mgr_get_version_cmd =
   Term.(pure alba_mgr_get_version
@@ -411,7 +411,7 @@ let alba_mgr_statistics cfg_file tls_config attempts clear verbose =
        Lwt_io.printlf "%s" (Albamgr_plugin.Statistics.show statistics)
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_mgr_statistics_cmd =
   Term.(pure alba_mgr_statistics
@@ -452,7 +452,7 @@ let alba_list_decommissioning_osds
              cnt
              ([%show : (Osd.id * Nsm_model.OsdInfo.t) list] osds))
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_list_decommissioning_osds_cmd =
   Term.(pure alba_list_decommissioning_osds
@@ -477,7 +477,7 @@ let alba_list_participants cfg_file tls_config prefix verbose =
          cnt
          ([%show : (string*int) list] participants))
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_list_participants_cmd =
   let prefix = Arg.(required
@@ -520,7 +520,7 @@ let alba_list_work cfg_file tls_config verbose attempts =
        end
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_list_work_cmd =
   Term.(pure alba_list_work
@@ -572,7 +572,7 @@ let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts 
          (fun client -> client # add_osd osd_info
          )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_add_osd_cmd =
   Term.(pure alba_add_osd
@@ -607,7 +607,7 @@ let alba_add_iter_namespace_item cfg_file tls_config namespace name factor actio
                             name,
                             factor)) ])
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_rewrite_namespace cfg_file tls_arg namespace name factor verbose =
   alba_add_iter_namespace_item
@@ -683,7 +683,7 @@ let alba_show_job_progress cfg_file tls_config name verbose =
             ([%show : Albamgr_protocol.Protocol.Progress.t] p))
          progresses)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_show_job_progress_cmd =
   Term.(pure alba_show_job_progress
@@ -711,7 +711,7 @@ let alba_clear_job_progress cfg_file tls_config name verbose =
           client # update_progress name p None)
          progresses)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_clear_job_progress_cmd =
   Term.(pure alba_clear_job_progress
@@ -738,7 +738,7 @@ let alba_get_maintenance_config cfg_file tls_config to_json verbose =
            "Maintenance config = %s"
            (Maintenance_config.show cfg))
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_get_maintenance_config_cmd =
   Term.(pure alba_get_maintenance_config
@@ -771,7 +771,7 @@ let alba_update_maintenance_config
          "Maintenance config now is %s"
          (Maintenance_config.show maintenance_config))
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_update_maintenance_config_cmd =
   Term.(pure alba_update_maintenance_config
@@ -826,7 +826,7 @@ let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
     end >>= fun ccfg ->
     Lwt_log.info_f "Get client config: %s" (Alba_arakoon.Config.show ccfg)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_get_abm_client_config_cmd =
   Term.(pure alba_get_abm_client_config
@@ -846,7 +846,7 @@ let alba_update_abm_client_config cfg_url tls_config verbose attempts =
       (fun client ->
        client # store_client_config cfg)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_update_abm_client_config_cmd =
   Term.(pure alba_update_abm_client_config

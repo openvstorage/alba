@@ -17,6 +17,7 @@ limitations under the License.
 open Cmdliner
 open Lwt.Infix
 open Cli_common
+open Cli_bench_common
 open Checksum
 open Slice
 open Asd_protocol
@@ -115,7 +116,7 @@ let buffer_pool = Buffer_pool.osd_buffer_pool
 
 let run_with_asd_client' ~conn_info asd_id verbose f =
   lwt_cmd_line
-    false verbose
+    ~to_json:false ~verbose
     (fun () ->
      Asd_client.with_client
        buffer_pool
@@ -134,7 +135,7 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
 
 let run_with_osd_client' conn_info osd_id verbose f =
   lwt_cmd_line
-    false verbose
+    ~to_json:false ~verbose
     (fun () -> with_osd_client conn_info osd_id f)
 
 let asd_set hosts port tls_config asd_id (verbose:bool) key value =
@@ -285,7 +286,7 @@ let osd_bench hosts port tls_config osd_id
   =
   let conn_info = Networking2.make_conn_info hosts port tls_config in
   lwt_cmd_line
-    false verbose
+    ~to_json:false ~verbose
     (fun () ->
      Osd_bench.do_scenarios
        (fun f ->
@@ -298,48 +299,6 @@ let osd_bench hosts port tls_config osd_id
        scenarios)
 
 let osd_bench_cmd =
-  let n_clients default =
-    let doc = "number of concurrent clients for the benchmark" in
-    Arg.(value
-         & opt int default
-         & info ["n-clients"] ~docv:"N_CLIENTS" ~doc)
-  in
-  let n default =
-    let doc = "do runs (gets,sets,...) of $(docv) iterations" in
-    Arg.(value
-         & opt int default
-         & info ["n"; "nn"] ~docv:"N" ~doc)
-  in
-  let value_size default =
-    let doc = "do sets of $(docv) bytes" in
-    Arg.(
-      value
-        & opt int default
-        & info ["v"; "value-size"] ~docv:"V" ~doc
-    )
-  in
-  let partial_fetch_size default =
-    let doc = "do partial reads of $(docv) bytes" in
-    Arg.(
-      value
-      & opt int default
-      & info ["v-partial";] ~doc
-    )
-  in
-  let power default =
-    let doc = "$(docv) for random number generation: period = 10^$(docv)" in
-    Arg.(value
-           & opt int default
-           & info ["power"] ~docv:"power" ~doc
-    )
-  in
-  let prefix default =
-    let doc = "$(docv) to keep multiple clients out of each other's way" in
-    Arg.(value
-           & opt string default
-           & info ["prefix"] ~docv:"prefix" ~doc
-    )
-  in
   let scenarios =
     Arg.(let open Osd_bench in
          let scns = [ "sets", sets;
@@ -348,6 +307,8 @@ let osd_bench_cmd =
                       "upload_fragments", upload_fragments;
                       "ranges",range_queries;
                       "partial_reads", partial_reads;
+                      "get_version", get_version;
+                      "exists", exists;
                     ]
          in
          value
@@ -473,7 +434,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
       >>= fun results ->
       process_results results
     in
-    lwt_cmd_line to_json verbose t
+    lwt_cmd_line ~to_json ~verbose t
   end
 
 let asd_multistatistics_cmd =
@@ -542,7 +503,7 @@ let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear
               end
            )
        in
-       lwt_cmd_line to_json verbose t
+       lwt_cmd_line ~to_json ~verbose t
      end
   | Some port,_ -> from_asd hosts port tls_config asd_id verbose
 
@@ -590,7 +551,7 @@ let asd_discover verbose () =
          ([%show: int option] record.port)
          ([%show: int option] record.tlsPort)
   in
-  lwt_cmd_line false verbose (fun () -> discovery seen)
+  lwt_cmd_line ~to_json:false ~verbose (fun () -> discovery seen)
 
 let asd_discover_cmd =
   let term = Term.(pure asd_discover $ verbose $ pure ()) in
