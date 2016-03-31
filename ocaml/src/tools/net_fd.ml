@@ -24,7 +24,7 @@ type transport =
 type t =
   | Plain of Lwt_unix.file_descr
   | SSL of (([ `Server] Typed_ssl.t )* Ssl.socket * Lwt_ssl.socket)
-  | Rsocket of Lwt_rsocket.rsocket
+  | Rsocket of Lwt_rsocket.lwt_rsocket
 
 let identifier = function
   | Plain fd     -> Lwt_extra2.lwt_unix_fd_to_fd fd
