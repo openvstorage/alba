@@ -50,7 +50,7 @@ let alba_get_id cfg_file tls_config to_json verbose attempts =
          end else
            Lwt_io.printlf "The id for this alba instance is %s" alba_id)
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_get_id_cmd =
   Term.(pure alba_get_id
@@ -79,7 +79,7 @@ let osd_multi_get osd_id cfg_file tls_config keys unescape verbose =
                              values_s in
               Lwt_io.printlf "%s" ([%show : string option list] values)))
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let osd_multi_get_cmd =
   let keys = Arg.(non_empty &
@@ -110,7 +110,7 @@ let osd_range osd_id cfg_file tls_config verbose =
               Lwt_io.printlf "%s"
                 ([%show : string list] keys)))
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let osd_range_cmd =
   Term.(pure osd_range
@@ -130,7 +130,7 @@ let alba_claim_osd alba_cfg_file tls_config long_id to_json verbose =
          alba_client # claim_osd ~long_id) >>= fun osd_id ->
     Lwt_log.debug_f "Claimed %S with id=%li" long_id osd_id
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_claim_osd_cmd =
   Term.(pure alba_claim_osd
@@ -150,7 +150,7 @@ let alba_decommission_osd alba_cfg_file tls_config long_id to_json verbose =
       alba_cfg_file tls_config
       (fun alba_client -> alba_client # decommission_osd ~long_id)
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_decommission_osd_cmd =
   Term.(pure alba_decommission_osd
@@ -172,7 +172,7 @@ let alba_purge_osd alba_cfg_file tls_config long_id to_json verbose =
       alba_cfg_file tls_config
       (fun alba_client -> alba_client # mgr_access # purge_osd ~long_id)
   in
-  lwt_cmd_line_unit to_json verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_purge_osd_cmd =
   Term.(pure alba_purge_osd
@@ -203,7 +203,7 @@ let alba_list_ns_osds cfg_file tls_config namespace verbose =
          >>= fun () ->
          Lwt.return ())
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 
 let alba_list_ns_osds_cmd =
@@ -271,7 +271,7 @@ let alba_show_namespace cfg_file tls_config namespace to_json verbose =
                     end
                ))
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_show_namespace_cmd =
   Term.(pure alba_show_namespace
@@ -368,7 +368,7 @@ let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json
          end
       )
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_show_namespaces_cmd =
   Term.(pure alba_show_namespaces
@@ -404,7 +404,7 @@ let alba_upload_object
                         input_file
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_upload_object_cmd =
   Term.(pure alba_upload_object
@@ -443,7 +443,7 @@ let alba_download_object
       Lwt_io.printlf "object %s with size %Li downloaded to file %s"
                      object_name manifest.Nsm_model.Manifest.size output_file
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_download_object_cmd =
   Term.(pure alba_download_object
@@ -466,7 +466,7 @@ let alba_delete_object cfg_file tls_config namespace object_name verbose =
                      ~object_name
                      ~may_not_exist:false)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_show_object
       cfg_file tls_config
@@ -502,7 +502,7 @@ let alba_show_object
             end
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_show_object_cmd =
   Term.(pure alba_show_object
@@ -545,7 +545,7 @@ let alba_list_objects cfg_file tls_config namespace verbose =
       cnt
       ([%show: string list] objs)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_list_objects_cmd =
   Term.(pure alba_list_objects
@@ -567,7 +567,7 @@ let alba_get_nsm_version cfg_file tls_config nsm_host_id verbose =
          major minor patch hash
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_get_nsm_version_cmd =
   Term.(pure alba_get_nsm_version
@@ -589,7 +589,7 @@ let alba_create_namespace cfg_file tls_config namespace preset_name verbose =
          Lwt_io.printlf "Create namespace successful, got id %li" namespace_id
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_create_namespace_cmd =
   Term.(pure alba_create_namespace
@@ -610,7 +610,7 @@ let alba_delete_namespace cfg_file tls_config namespace verbose =
          Lwt_io.printlf "Delete namespace successful"
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let alba_delete_namespace_cmd =
   Term.(pure alba_delete_namespace
@@ -713,7 +713,7 @@ let alba_get_disk_safety
            end
       )
   in
-  lwt_cmd_line to_json verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_get_disk_safety_cmd =
   let long_ids =
@@ -763,7 +763,7 @@ let namespace_recovery_agent
            workers worker_id
            osds)
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let namespace_recovery_agent_cmd =
   Term.(pure namespace_recovery_agent
@@ -959,6 +959,7 @@ let () =
         Cli_messages.cmds;
         Cli_nsm_host.cmds;
         Cli_bench.cmds;
+        Asd_bench.cmds;
         cmds1; ]
   in
   match Term.eval_choice default_cmd cmds with

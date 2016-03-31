@@ -29,7 +29,7 @@ let nsm_host_statistics (cfg_url:Url.t) tls_config clear nsm_host verbose =
        Lwt_io.printlf "%s" (Nsm_host_protocol.Protocol.NSMHStatistics.show statistics)
       )
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let nsm_host_statistics_cmd =
   Term.(pure nsm_host_statistics
@@ -73,7 +73,7 @@ let list_device_objects
           Lwt.return ()
       ))
   in
-  lwt_cmd_line false verbose t
+  lwt_cmd_line ~to_json:false ~verbose t
 
 let list_device_objects_cmd =
   let osd_id default =

@@ -72,6 +72,29 @@ let partial_reads (client : Osd.osd) progress n _value_size partial_fetch_size p
   report "partial_reads" r
 
 
+let get_version (client : Osd.osd) progress n _ _ _ _ =
+  let do_one _ =
+    client # get_version >>= fun _ ->
+    Lwt.return ()
+  in
+  measured_loop progress do_one n >>= fun r ->
+  report "get_version" r
+
+
+let exists (client : Osd.osd) progress n _ _ period prefix =
+  let gen = make_key period prefix in
+  let do_one i =
+    let key = gen () in
+    client # multi_exists
+           Osd.High
+           [ (Slice.wrap_string key) ]
+    >>= fun _ ->
+    Lwt.return_unit
+  in
+  measured_loop progress do_one n >>= fun r ->
+  report "exists" r
+
+
 let _make_value value_size =
   (* TODO: this affects performance as there is compression going
      on inside the database

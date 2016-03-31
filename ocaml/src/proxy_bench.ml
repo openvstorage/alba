@@ -98,6 +98,19 @@ let do_deletes
   measured_loop progress do_one n >>= fun r ->
   report "deletes" r
 
+let do_get_version
+      client
+      progress n
+      _ _ _ _ _ =
+  let do_one _ =
+    client # get_version >>= fun _ ->
+    Lwt.return_unit
+  in
+  Lwt_io.printlf "get_version:" >>= fun () ->
+  measured_loop progress do_one n >>= fun r ->
+  report "get_version" r
+
+
 let do_scenarios
       host port
       n_clients n

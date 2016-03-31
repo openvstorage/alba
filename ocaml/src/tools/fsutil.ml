@@ -194,22 +194,34 @@ let sendfile ~release_runtime_lock =
   let res = inner fd_out fd_in null (Unsigned.Size_t.of_int len) in
   Unsigned.Size_t.to_int res
 
-let sendfile_all ~fd_in ~fd_out size =
+let sendfile_all ~fd_in ~fd_out ~wait_readable ~wait_writeable ~detached size =
   let open Lwt.Infix in
   let fd_in' = Lwt_extra2.lwt_unix_fd_to_fd fd_in in
   let fd_out' = Lwt_extra2.lwt_unix_fd_to_fd fd_out in
   let rec inner = function
     | 0 -> Lwt.return_unit
     | n ->
-       (Lwt_unix.wait_read fd_in <?> Lwt_unix.wait_write fd_out )
-       >>= fun () ->
-       let sent =
-         sendfile
-           ~release_runtime_lock:false
-           ~fd_in:fd_in'
-           ~fd_out:fd_out'
-           n
-       in
+
+       (if wait_readable
+        then Lwt_unix.wait_read fd_in
+        else Lwt.return_unit) >>= fun () ->
+
+       (if wait_writeable
+        then Lwt_unix.wait_write fd_out
+        else Lwt.return_unit) >>= fun () ->
+
+       (let do_it release_runtime_lock =
+          sendfile
+            ~release_runtime_lock
+            ~fd_in:fd_in'
+            ~fd_out:fd_out'
+            n
+        in
+        if detached
+        then Lwt_preemptive.detach do_it true
+        else Lwt.return (do_it false))
+       >>= fun sent ->
+
        if sent = 0
        then Lwt.fail End_of_file
        else inner (n - sent)
