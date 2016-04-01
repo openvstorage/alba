@@ -105,8 +105,8 @@ RUN eval `${opam_env}` && \
 
 #for now, install ordma manually
 RUN apt-get update && apt-get -y install librdmacm-dev
-RUN git clone https://github.com/toolslive/ordma.git
-RUN cd ordma \
+RUN git clone https://github.com/toolslive/ordma.git \
+    && cd ordma \
     && git checkout 263106bbcf7f8a9b1421da53a7e2a22db953bce9 \
     && eval `${opam_env}` \
     && make install
