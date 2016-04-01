@@ -22,7 +22,6 @@ OPAM_DEPENDS="ocamlfind \
          quickcheck.1.0.2 \
          uuidm.0.9.5 \
          zarith.1.3 \
-         orocksdb.0.2.2 \
          kinetic-client \
          tiny_json \
          cmdliner \
@@ -100,15 +99,19 @@ install () {
 
     eval `opam config env`
 
-    wget https://gist.github.com/domsj/f2d7726e5d9895d498fb/raw/1e6191c16cc45bbc493328188079cad40a7aa6c8/librocksdb.so.3.12.0
-    sudo cp librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12.0
-    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3.12
-    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so.3
-    sudo ln -s /usr/local/lib/librocksdb.so.3.12.0 /usr/local/lib/librocksdb.so
+    wget https://gist.github.com/domsj/f2d7726e5d9895d498fb/raw/ab6f9b8dd9cc736dfcef6f36992a60a5241e0175/librocksdb.so.4.3.1
+    sudo cp librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so.4.3.1
+    sudo ln -s /usr/local/lib/librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so.4.3
+    sudo ln -s /usr/local/lib/librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so.4
+    sudo ln -s /usr/local/lib/librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so
+
+    date
 
     opam install ${OPAM_DEPENDS} || true
-    opam depext arakoon.1.9.0 orocksdb.0.2.2
+    opam depext arakoon.1.9.0
     opam install ${OPAM_DEPENDS}
+
+    date
 
     echo "Installing some specific arakoon"
     git clone https://github.com/openvstorage/arakoon.git
@@ -134,6 +137,16 @@ install () {
     cd ..
     date
     
+    echo "Installing specific orocksdb"
+    git clone https://github.com/domsj/orocksdb.git
+    cd orocksdb
+    git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9
+    ./install_rocksdb.sh
+    make build install
+    cd ..
+
+    date
+
     echo "Installing etcd"
     curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
     tar xzvf etcd-v2.2.4-linux-amd64.tar.gz

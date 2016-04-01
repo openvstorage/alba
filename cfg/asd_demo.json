@@ -38,6 +38,10 @@
 
     // preallocate the blob before writing it
     //, "use_fallocate" : true
+
+    // optional. specifies the size of the rocksdb block cache (in bytes)
+    // defaults to 0,25% of the size of the disk
+    , "rocksdb_block_cache_size" : 1_000_000
     
     // nomen est omen: stay away from these.
     //, "__warranty_void__write_blobs" : true

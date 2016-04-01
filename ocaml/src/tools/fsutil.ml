@@ -183,24 +183,28 @@ let lwt_disk_usage home =
 
 let sendfile ~release_runtime_lock =
   let inner =
-    (* ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count); *)
+    (* ssize_t sendfile64(int out_fd, int in_fd, int64 *offset, size_t count); *)
     foreign
       "sendfile"
       ~check_errno:true
       ~release_runtime_lock
-      (int @-> int @-> ptr void @-> size_t @-> returning size_t)
+      (int @-> int @-> ptr int64_t @-> size_t @-> returning size_t)
   in
-  fun ~fd_in ~fd_out len ->
-  let res = inner fd_out fd_in null (Unsigned.Size_t.of_int len) in
+  fun ~fd_in ~fd_out ?offset len ->
+  let offset = match offset with
+    | None -> from_voidp int64_t null
+    | Some v -> allocate int64_t (Int64.of_int v)
+  in
+  let res = inner fd_out fd_in offset (Unsigned.Size_t.of_int len) in
   Unsigned.Size_t.to_int res
 
-let sendfile_all ~fd_in ~fd_out ~wait_readable ~wait_writeable ~detached size =
+let sendfile_all ~fd_in ?offset ~fd_out ~wait_readable ~wait_writeable ~detached size =
   let open Lwt.Infix in
   let fd_in' = Lwt_extra2.lwt_unix_fd_to_fd fd_in in
   let fd_out' = Lwt_extra2.lwt_unix_fd_to_fd fd_out in
   let rec inner = function
     | 0 -> Lwt.return_unit
-    | n ->
+    | todo ->
 
        (if wait_readable
         then Lwt_unix.wait_read fd_in
@@ -215,7 +219,10 @@ let sendfile_all ~fd_in ~fd_out ~wait_readable ~wait_writeable ~detached size =
             ~release_runtime_lock
             ~fd_in:fd_in'
             ~fd_out:fd_out'
-            n
+            ?offset:(match offset with
+                     | None -> None
+                     | Some v -> Some (v + (size - todo)))
+            todo
         in
         if detached
         then Lwt_preemptive.detach do_it true
@@ -224,7 +231,7 @@ let sendfile_all ~fd_in ~fd_out ~wait_readable ~wait_writeable ~detached size =
 
        if sent = 0
        then Lwt.fail End_of_file
-       else inner (n - sent)
+       else inner (todo - sent)
   in
   inner size >>= fun () ->
   Lwt.return_unit

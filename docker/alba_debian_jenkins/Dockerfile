@@ -98,10 +98,13 @@ RUN cd arakoon && eval `${opam_env}` \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
-RUN eval `${opam_env}` && \
-    opam update && \
-    opam depext orocksdb.0.2.2 && \
-    opam install -y orocksdb.0.2.2
+# install specific orocksdb
+RUN git clone https://github.com/domsj/orocksdb.git \
+    && eval `${opam_env}` \
+    && cd orocksdb \
+    && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
+    && ./install_rocksdb.sh \
+    && make build install
 
 #for now, install ordma manually
 RUN apt-get update && apt-get -y install librdmacm-dev

@@ -363,17 +363,18 @@ module Net_fd = struct
     where it's needed nor used
     and pulls along cstruct and friends
    *)
-  let sendfile_all ~fd_in ~(fd_out:t) size =
+  let sendfile_all ~fd_in ~offset ~(fd_out:t) size =
     match fd_out with
     | Plain fd ->
        Fsutil.sendfile_all
          ~wait_readable:false
          ~wait_writeable:true
          ~detached:true
-         ~fd_in
+         ~fd_in ~offset
          ~fd_out:fd
          size
     | SSL(_,_,socket) ->
+       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
        let copy_using buffer =
          let buffer_size = Lwt_bytes.length buffer in
           let write_all socket buffer offset length =
@@ -593,7 +594,7 @@ let execute_query : type req res.
                      then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL
                    in
                    Net_fd.sendfile_all
-                     ~fd_in:blob_fd
+                     ~fd_in:blob_fd ~offset:0
                      ~fd_out:nfd
                      size
                    >>= fun () ->
@@ -665,9 +666,8 @@ let execute_query : type req res.
                            in
                            Lwt_list.iter_s
                              (fun (offset, length) ->
-                              Lwt_unix.lseek blob_fd offset Lwt_unix.SEEK_SET >>= fun _ ->
                               Net_fd.sendfile_all
-                                ~fd_in:blob_fd
+                                ~fd_in:blob_fd ~offset
                                 ~fd_out:nfd
                                 length
                               >>= fun () ->
@@ -1281,6 +1281,8 @@ let run_server
       ~fsync ~slow
       ~buffer_size
       ~rocksdb_max_open_files
+      ~rocksdb_recycle_log_file_num
+      ~rocksdb_block_cache_size
       ~limit
       ~multicast
       ~tls
@@ -1309,6 +1311,12 @@ let run_server
   let kv =
     Rocks_key_value_store.create'
       ~max_open_files:rocksdb_max_open_files
+      ?recycle_log_file_num:rocksdb_recycle_log_file_num
+      ~block_cache_size:(match rocksdb_block_cache_size with
+                         | None -> 0.0025 *. (Fsutil.disk_usage path
+                                              |> snd |> Int64.to_float)
+                                   |> int_of_float
+                         | Some v -> v)
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->
