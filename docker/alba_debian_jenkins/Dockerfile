@@ -35,7 +35,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libboost-all-dev \
         fuse \
         sysstat \
-        ncurses-dev
+        ncurses-dev \
+        libaio-dev
 
 RUN useradd jenkins -u 1001 -g root
 
@@ -43,9 +44,9 @@ RUN mkdir /home/alba
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 env ocaml_version=4.02.3
 RUN sh ./opam_installer.sh /usr/local/bin ${ocaml_version}
-env opam_root=/home/alba/OPAM
+env opam_root=/home/alba/.opam
 ENV opam_env="opam config env --root=${opam_root}"
-RUN opam init --root=/home/alba/OPAM --comp ${ocaml_version}
+RUN opam init --root=${opam_root} --comp ${ocaml_version}
 RUN eval `${opam_env}` && \
     opam update && \
     opam install -y \
@@ -105,6 +106,13 @@ RUN git clone https://github.com/domsj/orocksdb.git \
     && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
     && ./install_rocksdb.sh \
     && make build install
+
+# install libaio-ocaml
+RUN git clone https://github.com/domsj/libaio-ocaml.git \
+    && eval `${opam_env}` \
+    && cd libaio-ocaml \
+    && git checkout db8cea454e54a09c37a0615be3a0c6aab10d69cc \
+    && make native-code-library libinstall
 
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 

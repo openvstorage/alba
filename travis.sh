@@ -6,7 +6,7 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
              protobuf-compiler libjerasure-dev \
              build-essential automake autoconf yasm \
              procps python-pip \
-             aspcud"
+             aspcud libaio-dev"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
@@ -132,6 +132,15 @@ install () {
     git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9
     ./install_rocksdb.sh
     make build install
+    cd ..
+
+    date
+
+    echo "Installing libaio-ocaml"
+    git clone https://github.com/domsj/libaio-ocaml.git
+    cd libaio-ocaml
+    git checkout db8cea454e54a09c37a0615be3a0c6aab10d69cc
+    make native-code-library libinstall
     cd ..
 
     date

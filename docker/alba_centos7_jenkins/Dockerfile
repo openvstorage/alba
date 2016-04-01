@@ -6,7 +6,9 @@ RUN yum -y install curl
 RUN yum -y install make m4 gcc patch unzip
 RUN yum -y install git rsync mercurial
 RUN yum -y install gcc-c++
-RUN yum -y install bzip2-devel libffi-devel snappy-devel libev-devel
+RUN yum -y install
+    bzip2-devel libffi-devel snappy-devel libev-devel \
+    libaio-dev
 RUN yum -y install python-devel
 
 # TODO: What about darcs ?
@@ -17,8 +19,8 @@ RUN mkdir /home/alba
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 RUN sh ./opam_installer.sh /usr/local/bin 4.02.3
 
-ENV opam_env='opam config env --root=/home/alba/OPAM'
-RUN opam init --root=/home/alba/OPAM --comp 4.02.3
+ENV opam_env='opam config env --root=/home/alba/.opam'
+RUN opam init --root=/home/alba/.opam --comp 4.02.3
 
 
 
@@ -122,6 +124,13 @@ RUN git clone https://github.com/domsj/orocksdb.git \
     && ./install_rocksdb.sh \
     && make build install
 
+# install libaio-ocaml
+RUN git clone https://github.com/domsj/libaio-ocaml.git \
+    && eval `${opam_env}` \
+    && cd libaio-ocaml \
+    && git checkout db8cea454e54a09c37a0615be3a0c6aab10d69cc \
+    && make native-code-library libinstall
+
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/
 
@@ -143,7 +152,6 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 RUN yum -y install iproute
 
-ENV opam_env='opam config env --root=/home/alba/OPAM'
 ENV ARAKOON_BIN=arakoon
 CMD eval `${opam_env}` \
     && echo ${SUITE} \

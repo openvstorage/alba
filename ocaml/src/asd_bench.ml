@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
 open Lwt_bytes2
 open Lwt.Infix
 open Cmdliner
@@ -51,7 +52,7 @@ let bench_blobs path scenarios count value_size partial_read_size =
         count
     in
     let partial_read_scenario progress =
-      let target = Lwt_bytes.create partial_read_size in
+      let t = ref 0. in
       B.measured_loop
         progress
         (fun fnr ->
@@ -59,10 +60,22 @@ let bench_blobs path scenarios count value_size partial_read_size =
            dir_info
            (Int64.of_int fnr)
            (fun fd ->
-            let ufd = Lwt_unix.unix_file_descr fd in
-            Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
-            Lwt_extra2.read_all_lwt_bytes_exact fd target 0 partial_read_size))
-        count
+            with_timing_lwt
+              (fun () ->
+               let ufd = Lwt_unix.unix_file_descr fd in
+               Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
+               Aio_lwt.(pread default_context
+                              fd 0 partial_read_size) >>= fun bss ->
+               Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs;
+               Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_DONTNEED;
+               Lwt.return_unit
+              ) >>= fun (t', ()) ->
+            t := !t +. t';
+            Lwt.return_unit
+           ))
+        count >>= fun r ->
+      Lwt_log.info_f "t = %f" !t >>= fun () ->
+      Lwt.return r
     in
     Lwt_list.iter_s
       (fun scenario ->
