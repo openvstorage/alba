@@ -29,8 +29,8 @@ type t =
 let identifier = function
   | Plain fd     -> Lwt_extra2.lwt_unix_fd_to_fd fd
   | SSL (_,_,socket) -> Lwt_extra2.lwt_unix_fd_to_fd (Lwt_ssl.get_fd socket)
-  | Rsocket fd -> let (r :int ) = Obj.magic fd in
-                  r
+  | Rsocket fd -> Lwt_rsocket.identifier fd 
+
                  
 let socket domain typ x transport =
   match transport with

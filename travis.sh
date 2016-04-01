@@ -129,7 +129,7 @@ install () {
     sudo apt-get -y install libibverbs-dev
     git clone https://github.com/toolslive/ordma.git
     cd ordma 
-    git checkout tags/0.0.1
+    git checkout 263106bbcf7f8a9b1421da53a7e2a22db953bce9
     make install
     cd ..
     date
