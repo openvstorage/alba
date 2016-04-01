@@ -175,7 +175,6 @@ let lwt_cmd_line_unit ~to_json ~verbose t =
     (fun () -> `Assoc [])
 
 let lwt_server ~log_sinks ~subcomponent t : unit =
-  Lwt_engine.set (new Lwt_rsocket.rselect);
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   Lwt_main.run
     begin

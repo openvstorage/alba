@@ -17,11 +17,12 @@ limitations under the License.
 open Prul
 
 module Config = struct
-  let env_or_default x y =
+  let env_or_default_generic (f:string -> 'a) (x:string) (y:'a) =
     try
-      Sys.getenv x
+      f (Sys.getenv x)
     with Not_found -> y
 
+  let env_or_default = env_or_default_generic (fun x -> x)
   type t = {
       home : string;
       workspace : string;
@@ -39,6 +40,7 @@ module Config = struct
       license_file : string;
       tls : bool;
 
+      alba_rdma : string option; (* ip of the rdma capable nic *)
       local_nodeid_prefix : string;
       n_osds : int;
 
@@ -100,6 +102,8 @@ module Config = struct
       let v = env_or_default "ALBA_TLS" "false" in
       Scanf.sscanf v "%b" (fun x -> x)
     in
+    let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
+    in
     {
       home;
       workspace;
@@ -116,6 +120,7 @@ module Config = struct
       alba_06_plugin_path;
       license_file;
       tls;
+      alba_rdma;
       local_nodeid_prefix;
       n_osds;
 
@@ -431,8 +436,10 @@ module Proxy_cfg =
          preset : string;
        } [@@deriving yojson]
 
-    type proxy_cfg' =
-      { port : int;
+    type proxy_cfg =
+      { ips : string list option [@default None];
+        transport : string option [@default None];
+        port : int;
         albamgr_cfg_url : Url.t;
         log_level : string;
         manifest_cache_size : int;
@@ -443,13 +450,16 @@ module Proxy_cfg =
 
     type t =
       | Old of proxy_cfg_06
-      | New of proxy_cfg'
+      | New of proxy_cfg
 
     let to_yojson = function
       | Old t -> proxy_cfg_06_to_yojson t
-      | New t -> proxy_cfg'_to_yojson t
+      | New t -> proxy_cfg_to_yojson t
 
-    let make_06 ?fragment_cache id abm_cfg_url base tls_client port =
+    let make_06 ?fragment_cache
+                ?ip
+                ?transport
+                id abm_cfg_url base tls_client port =
       Old
         { port = port + id;
           albamgr_cfg_file = abm_cfg_url;
@@ -462,6 +472,8 @@ module Proxy_cfg =
         }
 
     let make ?fragment_cache
+             ?ip
+             ?transport
              id albamgr_cfg_url base tls_client port =
       let fragment_cache =
         match fragment_cache with
@@ -470,9 +482,16 @@ module Proxy_cfg =
                       path = base ^ "/fragment_cache";
                       max_size = 100 * 1000 * 1000;
                       cache_on_read = true; cache_on_write = true;
-                    } in
+                    }
+      in
+      let ips = match ip with
+        | None -> None
+        | Some ip -> Some [ip]
+      in
       New
-        { port = port + id;
+        { ips ;
+          transport;
+          port = port + id;
           albamgr_cfg_url;
           log_level = "debug";
           fragment_cache;
@@ -528,7 +547,8 @@ let suppress_tags tags = function
      `Assoc xs'
   | _ -> failwith "unexpected json"
 
-class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port =
+class proxy ?fragment_cache ?ip ?transport
+            id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
   let tls_client = make_tls_client cfg in
   let p_cfg =
@@ -536,7 +556,7 @@ class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy 
      then Proxy_cfg.make_06
      else Proxy_cfg.make)
       id abm_cfg_url proxy_base tls_client
-      port ?fragment_cache
+      port ?fragment_cache ?ip ?transport
   in
   let config_persister, cfg_url =
     match etcd with
@@ -716,25 +736,35 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
+    transport : string option;
     __warranty_void__write_blobs  : (bool option [@default None]);
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
   }[@@deriving yojson]
 
 let make_asd_config
-      ?write_blobs ?(use_fadvise = true) ?(use_fallocate = true)
+      ?write_blobs
+      ?(use_fadvise = true)
+      ?(use_fallocate = true)
+      ?transport
+      ?ip
       node_id asd_id home port tls
   =
+  let ips = match ip with
+    | None -> []
+    | Some ip -> [ip]
+  in
   {node_id;
    asd_id;
    home;
    port;
-   ips = [];
+   ips;
    log_level = "debug";
    limit= 99;
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
+   transport;
    __warranty_void__write_blobs   = write_blobs;
    use_fadvise;
    use_fallocate;
@@ -743,9 +773,14 @@ let make_asd_config
 
 
 
-class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port ~etcd tls =
+class asd ?write_blobs ?transport ?ip
+          node_id asd_id alba_bin arakoon_path home port ~etcd tls
+  =
   let use_tls = tls <> None in
-  let asd_cfg = make_asd_config ?write_blobs node_id asd_id home port tls in
+  let asd_cfg = make_asd_config
+                  ?write_blobs ?transport ?ip
+                  node_id asd_id home port tls
+  in
   let kill_port = match port with
     | None ->
        begin
@@ -885,7 +920,9 @@ module Deployment = struct
 
 
   let make_osds
-        ?(base_port=8000) ?write_blobs
+        ?(base_port=8000)
+        ?write_blobs
+        ?transport ?ip
         n local_nodeid_prefix base_path arakoon_path alba_bin
         ~etcd (tls:bool) =
     let rec loop asds j =
@@ -913,6 +950,8 @@ module Deployment = struct
           in
           let asd = new asd
                         ?write_blobs
+                        ?transport
+                        ?ip
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
@@ -946,15 +985,23 @@ module Deployment = struct
            Some etcd
          end
     in
-
+    let transport,ip =
+      match cfg.alba_rdma with
+      | None -> None,None
+      | Some ip ->Some "rdma", Some ip
+    in
     let proxy = new proxy
                     0 cfg cfg.alba_bin
                     (abm # config_url) cfg.etcd ~v06_proxy:false
                     (base_port * 2 + 2000)
-                    ?fragment_cache
+                    ?fragment_cache ?transport ?ip
     in
     let maintenance = new maintenance 0 cfg  (abm # config_url) cfg.etcd in
-    let osds = make_osds ~base_port:(base_port*2) ?write_blobs cfg.n_osds
+    let osds = make_osds ~base_port:(base_port*2)
+                         ?write_blobs
+                         ?transport
+                         ?ip
+                         cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
@@ -1176,7 +1223,6 @@ module Deployment = struct
     nsm_host_register t;
 
     setup_osds t;
-
     claim_local_osds t t.cfg.n_osds;
 
     t.proxy # create_namespace "demo";

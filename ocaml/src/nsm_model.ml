@@ -220,8 +220,9 @@ module OsdInfo = struct
     Llio.string_to final_buf (Buffer.contents buf)
 
   let to_buffer  buf t ~version =
+    Lwt_log.ign_debug_f "OsdInfo.to_buffer ... ~version:%i" version;
     match version with
-    | 3 -> _to_buffer_2 buf t
+    | 3 -> _to_buffer_3 buf t
     | 2 -> _to_buffer_2 buf t
     | 1 -> _to_buffer_1 buf t
     | k -> raise_bad_tag "OsdInfo" k
@@ -910,7 +911,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
   module EKV = Read_store_extensions(KV)
 
   let link_osd kv osd_id osd_info =
-    let blob = serialize (OsdInfo.to_buffer ~version:2) osd_info in
+    let blob = serialize (OsdInfo.to_buffer ~version:3) osd_info in
     [
       Update.set (Keys.Device.active_osds ~osd_id) "";
       Update.set (Keys.Device.info ~osd_id)        blob;

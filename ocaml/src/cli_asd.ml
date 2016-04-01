@@ -23,10 +23,6 @@ open Slice
 open Asd_protocol
 open Asd_config
 
-let set_engine = function 
-  | Net_fd.RDMA -> Lwt_engine.set (new Lwt_rsocket.rselect)
-  | Net_fd.TCP -> () 
-
 let asd_start cfg_url slow log_sinks =
 
   let t () =
@@ -132,7 +128,6 @@ let asd_start_cmd =
 let buffer_pool = Buffer_pool.osd_buffer_pool
 
 let run_with_asd_client' ~conn_info asd_id verbose f =
-  let () = set_engine conn_info.Networking2.transport in
   lwt_cmd_line
     ~to_json:false ~verbose
     (fun () ->
@@ -312,7 +307,6 @@ let osd_bench hosts port transport tls_config osd_id
               power prefix
               scenarios verbose
   =
-  let () = set_engine transport in
   let conn_info =
     Networking2.make_conn_info hosts port ~transport tls_config
   in
