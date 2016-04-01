@@ -35,7 +35,7 @@ let connect_with ip port transport ~tls_config =
   let fd =
     Net_fd.socket
       (Unix.domain_of_sockaddr address) Unix.SOCK_STREAM 0
-      transport
+      transport tls_config
   in
 
   let (fdi:int) = Net_fd.identifier fd in
@@ -197,7 +197,7 @@ let make_server
       ?max
       hosts port ~transport
       ~tcp_keepalive
-      ~ctx protocol
+      ~tls protocol
   =
   let count = ref 0 in
   let allow_connection =
@@ -255,7 +255,7 @@ let make_server
       inner listening_socket
     in
     let domain = Unix.domain_of_sockaddr socket_address in
-    let listening_socket = Net_fd.socket domain Unix.SOCK_STREAM 0 transport in
+    let listening_socket = Net_fd.socket domain Unix.SOCK_STREAM 0 transport tls in
     Lwt.finalize
       (fun () ->
         Net_fd.setsockopt listening_socket Unix.SO_REUSEADDR true;

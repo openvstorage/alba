@@ -373,7 +373,8 @@ module Net_fd = struct
          ~fd_in ~offset
          ~fd_out:fd
          size
-    | SSL(_,_,socket) ->
+    | SSL _ssl ->
+       let socket = _ssl_get_socket _ssl in
        Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
        let copy_using buffer =
          let buffer_size = Lwt_bytes.length buffer in
@@ -1285,7 +1286,7 @@ let run_server
       ~rocksdb_block_cache_size
       ~limit
       ~multicast
-      ~tls
+      ~tls_config
       ~tcp_keepalive
       ~use_fadvise
       ~use_fallocate
@@ -1303,9 +1304,13 @@ let run_server
   in
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
-  Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls) >>= fun () ->
+  Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls_config) >>= fun () ->
   Lwt_log.debug_f "transport:%s" ([%show: Net_fd.transport] transport) >>= fun () ->
-  let ctx = Tls.to_server_context tls in
+  let tls =
+    match tls_config with
+    | None -> (None: Tls.t option)
+    | Some tls_config -> failwith "todo"
+  in
   let db_path = path ^ "/db" in
   Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
   let kv =
@@ -1559,19 +1564,19 @@ let run_server
                  ?cancel
                  hosts port ~transport
                  ~tcp_keepalive
-                 ~ctx:None protocol
+                 ~tls:None protocol
        in
        t :: threads
   in
   let maybe_add_tls_server threads =
       match tls with
       | None -> threads
-      | Some tls ->
+      | Some _tls ->
          let open Asd_config.Config in
-         let tlsPort = tls.port in
+         let tlsPort = let cfg = Option.get_some tls_config in cfg.port in
          assert (transport = Net_fd.TCP);
          let t = Networking2.make_server ?cancel hosts tlsPort
-                                         ~transport ~tcp_keepalive ~ctx protocol
+                                         ~transport ~tcp_keepalive ~tls protocol
          in
          t :: threads
   in
@@ -1580,9 +1585,12 @@ let run_server
     | None -> threads
     | Some mcast_period ->
        let tlsPort =
-         match tls with
-         | None   -> None
-         | Some tls -> let open Asd_config.Config in Some tls.port
+         if tls = None
+         then None
+         else
+           let open Asd_config.Config in
+           let tlsPort = let cfg = Option.get_some tls_config in cfg.port in
+           Some tlsPort
        in
        let mcast_t () =
          let useRdma =

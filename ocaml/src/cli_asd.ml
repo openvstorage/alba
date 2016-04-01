@@ -38,7 +38,7 @@ let asd_start cfg_url slow log_sinks =
            home,
            node_id,     log_level, asd_id,
            fsync,       limit,     multicast,
-           buffer_size, tls,       tcp_keepalive,
+           buffer_size, tls_config,tcp_keepalive,
            write_blobs,
            use_fadvise, use_fallocate,
            rocksdb_block_cache_size
@@ -58,7 +58,7 @@ let asd_start cfg_url slow log_sinks =
        then Lwt_log.warning "Fsync has been disabled, data will not be stored durably!!"
        else Lwt.return ()) >>= fun () ->
       (
-        if port = None && tls = None
+        if port = None && tls_config = None
         then
           let msg = "neither port nor tls was configured" in
           Lwt_log.fatal msg>>= fun () ->
@@ -96,7 +96,7 @@ let asd_start cfg_url slow log_sinks =
                             ~transport
                             home ~asd_id ~node_id ~slow
                             ~fsync ~limit ~multicast ~buffer_size
-                            ~tls
+                            ~tls_config
                             ~rocksdb_max_open_files:256
                             ~rocksdb_recycle_log_file_num:(Some 4)
                             ~rocksdb_block_cache_size
