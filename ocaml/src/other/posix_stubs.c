@@ -97,3 +97,14 @@ void _bs_posix_fallocate(value fd, value mode, value offset,
 
   CAMLreturn0;
 }
+
+void _posix_add_odirect(value fd) {
+  CAMLparam1(fd);
+  int c_fd = Int_val(fd);
+  int ret = fcntl(c_fd, F_GETFL);
+  ret = fcntl(c_fd, F_SETFL, ret | O_DIRECT);
+  if (ret == -1) {
+    uerror("fcntl_add_odirect", Nothing);
+  }
+  CAMLreturn0;
+}

@@ -62,12 +62,10 @@ let bench_blobs path scenarios count value_size partial_read_size =
            (fun fd ->
             with_timing_lwt
               (fun () ->
-               let ufd = Lwt_unix.unix_file_descr fd in
-               Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
+               Posix.add_odirect (Lwt_unix.unix_file_descr fd);
                Aio_lwt.(pread default_context
                               fd 0 partial_read_size) >>= fun bss ->
                Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs;
-               Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_DONTNEED;
                Lwt.return_unit
               ) >>= fun (t', ()) ->
             t := !t +. t';

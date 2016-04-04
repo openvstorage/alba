@@ -620,8 +620,7 @@ let execute_query : type req res.
                         DirectoryInfo.with_blob_fd
                           dir_info fnr
                           (fun blob_fd ->
-                           let ufd = Lwt_unix.unix_file_descr blob_fd in
-                           Posix.posix_fadvise ufd 0 size Posix.POSIX_FADV_RANDOM;
+                           Posix.add_odirect (Lwt_unix.unix_file_descr blob_fd);
                            Lwt_list.iter_s
                              (fun (offset, length) ->
                               Aio_lwt.(pread
@@ -641,7 +640,6 @@ let execute_query : type req res.
                                  Lwt.return_unit)
                              )
                              slices >>= fun () ->
-                           Posix.posix_fadvise ufd 0 size Posix.POSIX_FADV_DONTNEED;
                            Lwt.return_unit
                           )
                       end
