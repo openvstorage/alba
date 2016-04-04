@@ -66,7 +66,7 @@ let map_scenarios scenarios robust =
           ]
      else scenarios)
 
-let proxy_bench host port
+let proxy_bench host port transport
                 n_clients (n:int) file_names (power:int)
                 prefix (slice_size:int) namespace_name
                 scenarios robust
@@ -75,7 +75,7 @@ let proxy_bench host port
     ~to_json:false ~verbose:false
     (fun () ->
      Proxy_bench.do_scenarios
-       host port
+       host port transport
        n_clients n
        file_names power prefix slice_size namespace_name
        (map_scenarios scenarios robust))
@@ -87,7 +87,7 @@ let files =
 
 let proxy_bench_cmd =
   Term.(pure proxy_bench
-        $ host $ port 10000
+        $ host $ port 10000 $ transport
         $ n_clients 1
         $ n 10000
         $ files

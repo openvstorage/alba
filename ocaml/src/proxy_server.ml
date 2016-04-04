@@ -567,7 +567,7 @@ let refresh_albamgr_cfg
   in
   inner ()
 
-let run_server hosts port
+let run_server hosts port ~transport
                albamgr_client_cfg
                ~fragment_cache
                ~manifest_cache_size
@@ -629,7 +629,7 @@ let run_server hosts port
                  albamgr_cfg_url
                  ~tcp_keepalive
               );
-              (let transport = Net_fd.TCP in
+              (
                Networking2.make_server
                  ~max:max_client_connections
                  hosts port ~transport ~tls:None ~tcp_keepalive

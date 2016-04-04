@@ -40,7 +40,8 @@ let connect_with ip port transport ~tls_config =
 
   let (fdi:int) = Net_fd.identifier fd in
   Lwt_log.debug_f
-    "connect_with : %s %i %s fd:%i" ip port ([%show: Tls.t option] tls_config) fdi
+    "connect_with : %s %i %s %s fd:%i" ip port ([%show: Tls.t option] tls_config)
+    (Net_fd.show_transport transport) fdi
   >>= fun () ->
   let closer () =
     Lwt_log.debug_f "closing fd:%i" fdi >>= fun () ->

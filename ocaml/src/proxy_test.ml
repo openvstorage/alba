@@ -19,11 +19,12 @@ open Proxy_protocol.Protocol
 
 let _IP = "127.0.0.1"
 let _PORT = 10_000
-
+let _TRANSPORT = Net_fd.TCP
+                   
 let test_with_proxy_client f =
   let t =
     Proxy_client.with_client
-      _IP _PORT
+      _IP _PORT _TRANSPORT
       f
   in
   Lwt_main.run t

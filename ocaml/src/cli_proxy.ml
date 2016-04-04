@@ -87,6 +87,11 @@ let proxy_start (cfg_url:Url.t) log_sinks =
        let albamgr_cfg_url = url_from_cfg cfg in
        let ips  = cfg.ips
        and port = cfg.port
+       and transport =
+         match cfg.transport with
+         | "tcp" -> Net_fd.TCP
+         | "rdma" -> Net_fd.RDMA
+         | _ -> failwith "transport should be 'tcp' or 'rdma'"
        and log_level = cfg.log_level
        and
          manifest_cache_size,
@@ -163,6 +168,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
       Proxy_server.run_server
         ips
         port
+        ~transport
         abm_cfg_ref
         ~fragment_cache
         ~manifest_cache_size
@@ -193,10 +199,10 @@ let proxy_start_cmd =
         $ log_sinks),
   Term.info "proxy-start" ~doc:"start a proxy server"
 
-let proxy_client_cmd_line host port (transport:Net_fd.transport) verbose f =
+let proxy_client_cmd_line host port transport verbose f =
   let t () =
     Proxy_client.with_client
-      host port ~transport
+      host port transport
       f
   in
   lwt_cmd_line ~to_json:false ~verbose t
