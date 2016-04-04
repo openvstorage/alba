@@ -27,7 +27,7 @@ const string PORT("10000");
 const string HOSTNAME("127.0.0.1");
 const string NAMESPACE("demo");
 auto TIMEOUT = boost::posix_time::seconds(5);
-using alba::proxy_client::Proxy_client;
+using alba::proxy_client::TCPProxy_client;
 using namespace alba;
 
 void logBoostMethod(alba::logger::AlbaLogLevel /*level */, string &msg) {
@@ -55,7 +55,7 @@ void init_log() {
 TEST(proxy_client, list_objects) {
   init_log();
   ALBA_LOG(WARNING, "starting test:list_objects");
-  Proxy_client client(HOSTNAME, PORT, TIMEOUT);
+  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
   string ns("demo");
   string first("");
 
@@ -82,7 +82,7 @@ TEST(proxy_client, list_objects) {
 TEST(proxy_client, list_namespaces) {
   init_log();
   ALBA_LOG(WARNING, "starting test:list_namespaces");
-  Proxy_client client(HOSTNAME, PORT, TIMEOUT);
+  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
   std::string first("");
 
   auto res = client.list_namespaces(first, alba::proxy_client::include_first::T,
@@ -104,7 +104,7 @@ TEST(proxy_client, list_namespaces) {
 
 TEST(proxy_client, get_object_info) {
   init_log();
-  Proxy_client client(HOSTNAME, PORT, TIMEOUT);
+  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
 
   string name("object name");
   string file("./ocaml/alba.native");
@@ -125,7 +125,7 @@ TEST(proxy_client, get_object_info) {
 
 TEST(proxy_client, get_proxy_version) {
   init_log();
-  Proxy_client client(HOSTNAME, PORT, TIMEOUT);
+  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
   int32_t major;
   int32_t minor;
   int32_t patch;

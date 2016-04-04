@@ -582,11 +582,21 @@ class proxy ?fragment_cache ?ip ?transport
        persister, url
   in
   let proxy_cmd_line_with_capture cmd =
+    let _ip = match ip with
+      | None    -> "127.0.0.1"
+      | Some ip -> ip
+    in
+    let _transport = match transport with
+      | None -> "tcp"
+      | Some t -> t
+    in
     cfg.alba_bin ::
     List.append
       cmd
-      [ "-h"; "127.0.0.1";
-        "-p"; Proxy_cfg.port p_cfg |> string_of_int; ]
+      [ "-h"; _ip;
+        "-p"; Proxy_cfg.port p_cfg |> string_of_int;
+        "-t"; _transport
+      ]
     |> Shell.cmd_with_capture
   in
   let proxy_cmd_line cmd = proxy_cmd_line_with_capture cmd |> ignore in

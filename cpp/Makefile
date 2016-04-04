@@ -1,15 +1,17 @@
 CXX ?= g++
 
+OPTIMIZATION = 0
 WARNINGS = \
 	-Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo \
 	-Woverloaded-virtual -Wnon-virtual-dtor
-FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O3 -fPIC -DBOOST_LOG_DYN_LINK
+FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC -DBOOST_LOG_DYN_LINK
 
 CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
 
 LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib -L/usr/lib
 
-LIBS = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options
+LIBS = -lboost_system -lboost_thread -lboost_log \
+       -lpthread -lboost_program_options 
 
 
 
@@ -34,13 +36,14 @@ all: compile_lib compile_tests
 	    $(LIBDIRS) \
             $(LIBS) \
 	    -L./lib -lalba \
-	    -lgtest \
+	    -lgtest -lrdmacm \
 	    -o bin/unit_tests.out
 
 	$(CXX) \
 	    src/examples/test_client.o \
 	    $(LIBDIRS) $(LIBS) \
             -L./lib -lalba \
+	    -lrdmacm \
 	    -o bin/test_client.out
 
 
