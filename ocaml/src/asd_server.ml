@@ -135,8 +135,9 @@ module DirectoryInfo = struct
     let _, _, path = get_file_dir_name_path t fnr in
     path
 
-  let with_blob_fd t fnr f =
+  let with_blob_fd ?async_method t fnr f =
     Lwt_extra2.with_fd
+      ?async_method
       (if t.write_blobs
        then get_file_path t fnr
        else "/dev/zero")
@@ -618,6 +619,7 @@ let execute_query : type req res.
                     then
                       begin
                         DirectoryInfo.with_blob_fd
+                          ~async_method:`Synchronous
                           dir_info fnr
                           (fun blob_fd ->
                            Posix.add_odirect (Lwt_unix.unix_file_descr blob_fd);

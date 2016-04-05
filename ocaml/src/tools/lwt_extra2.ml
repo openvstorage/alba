@@ -110,11 +110,25 @@ let lwt_unix_fd_to_unix_fd
 let unix_fd_to_fd (fd : Unix.file_descr) : int =
   Obj.magic fd
 
-let with_fd filename ~flags ~perm f =
-  Lwt_unix.openfile filename flags perm >>= fun fd ->
+let with_fd ?async_method filename ~flags ~perm f =
+  let with_async_method f =
+    match async_method with
+    | None -> f ()
+    | Some m ->
+       begin
+         match m with
+         | `Synchronous -> Lwt_unix.with_async_none f
+         | `Detached -> Lwt_unix.with_async_detach f
+       end
+  in
+  with_async_method
+    (fun () ->
+     Lwt_unix.openfile filename flags perm) >>= fun fd ->
   Lwt.finalize
     (fun () -> f fd)
-    (fun () -> Lwt_unix.close fd)
+    (fun () ->
+     with_async_method
+       (fun () -> Lwt_unix.close fd))
 
 let fsync_dir dir =
   Lwt_unix.openfile dir [Unix.O_RDONLY] 0640 >>= fun dir_descr ->
