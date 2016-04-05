@@ -23,12 +23,44 @@ using std::string;
 using std::cout;
 using std::endl;
 
-const string PORT("10000");
-const string HOSTNAME("127.0.0.1");
-const string NAMESPACE("demo");
+string env_or_default(const std::string& name, const std::string& def){
+  char * env = getenv(name.c_str());
+  if (NULL == env){
+    return def;
+  }
+  return string(env);
+}
+
+
+
+
 auto TIMEOUT = boost::posix_time::seconds(5);
-using alba::proxy_client::TCPProxy_client;
+using alba::proxy_client::Proxy_client;
 using namespace alba;
+
+struct config_exception : std::exception {
+  config_exception(string what): _what(what){}
+  string _what;
+
+  virtual const char* what() const noexcept { return _what.c_str();}
+};
+  
+struct config {
+  config() {
+    PORT = env_or_default("ALBA_PROXY_PORT", "10000");
+    HOST = env_or_default("ALBA_PROXY_IP", "127.0.0.1");
+    TRANSPORT = alba:: proxy_client :: Transport :: tcp;
+    if (env_or_default("ALBA_PROXY_TRANSPORT", "tcp") == "rdma") {
+      TRANSPORT = alba:: proxy_client :: Transport :: rdma;
+    }
+    NAMESPACE= "demo";
+  }
+  
+    string PORT;
+    string HOST;
+    string NAMESPACE;
+    alba::proxy_client::Transport TRANSPORT;
+  };
 
 void logBoostMethod(alba::logger::AlbaLogLevel /*level */, string &msg) {
   // there should actually be a translation from AlbaLogLevel to some boost
@@ -54,14 +86,16 @@ void init_log() {
 
 TEST(proxy_client, list_objects) {
   init_log();
+  
   ALBA_LOG(WARNING, "starting test:list_objects");
-  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
+  config cfg;
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   string ns("demo");
   string first("");
 
   auto res =
-      client.list_objects(ns, first, alba::proxy_client::include_first::T,
-                          boost::none, alba::proxy_client::include_last::T, -1);
+      client -> list_objects(ns, first, alba::proxy_client::include_first::T,
+                             boost::none, alba::proxy_client::include_last::T, -1);
 
   auto objects = std::get<0>(res);
   auto has_more = std::get<1>(res);
@@ -82,12 +116,13 @@ TEST(proxy_client, list_objects) {
 TEST(proxy_client, list_namespaces) {
   init_log();
   ALBA_LOG(WARNING, "starting test:list_namespaces");
-  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
+  config cfg;
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   std::string first("");
 
-  auto res = client.list_namespaces(first, alba::proxy_client::include_first::T,
-                                    boost::none,
-                                    alba::proxy_client::include_last::T, -1);
+  auto res = client -> list_namespaces(first, alba::proxy_client::include_first::T,
+                                       boost::none,
+                                       alba::proxy_client::include_last::T, -1);
 
   auto objects = std::get<0>(res);
   alba::proxy_client::has_more has_more = std::get<1>(res);
@@ -104,34 +139,36 @@ TEST(proxy_client, list_namespaces) {
 
 TEST(proxy_client, get_object_info) {
   init_log();
-  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
+  config cfg;
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
   string name("object name");
   string file("./ocaml/alba.native");
 
-  client.write_object_fs(NAMESPACE, name, file,
-                         proxy_client::allow_overwrite::T, nullptr);
+  client -> write_object_fs(cfg.NAMESPACE, name, file,
+                            proxy_client::allow_overwrite::T, nullptr);
 
   uint64_t size;
   alba::Checksum *checksum;
   std::tie(size, checksum) =
-      client.get_object_info(NAMESPACE, name, proxy_client::consistent_read::T,
-                             proxy_client::should_cache::T);
+      client -> get_object_info(cfg.NAMESPACE, name, proxy_client::consistent_read::T,
+                                proxy_client::should_cache::T);
 
-  client.write_object_fs(NAMESPACE, name, file,
-                         proxy_client::allow_overwrite::T, checksum);
+  client -> write_object_fs(cfg.NAMESPACE, name, file,
+                            proxy_client::allow_overwrite::T, checksum);
   delete checksum;
 }
 
 TEST(proxy_client, get_proxy_version) {
   init_log();
-  TCPProxy_client client(HOSTNAME, PORT, TIMEOUT);
+  config cfg;
+  auto client= make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   int32_t major;
   int32_t minor;
   int32_t patch;
   std::string hash;
 
-  std::tie(major, minor, patch, hash) = client.get_proxy_version();
+  std::tie(major, minor, patch, hash) = client -> get_proxy_version();
 
   std::cout << "major:" << major << std::endl;
   std::cout << "minor:" << minor << std::endl;

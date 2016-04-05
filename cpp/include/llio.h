@@ -55,6 +55,15 @@ void check_stream(const std::istream &is);
 
 class message {
 public:
+  message(std::function<void (char* , const int)> reader){
+    uint32_t size;
+    reader((char *)&size, sizeof(uint32_t));
+    _buffer.resize(size);
+    reader(_buffer.data(), size);
+    _pos = 0;
+  }
+
+  
   message(std::istream &is) {
     uint32_t size;
     is.read((char *)&size, 4);
@@ -64,11 +73,14 @@ public:
     check_stream(is);
     _pos = 0;
   }
+
+  
+  
   const char *current() { return &_buffer.data()[_pos]; }
 
   void skip(int x) { _pos += x; }
 
-  // private:
+private:
   std::vector<char> _buffer;
   uint32_t _pos;
 };
@@ -81,6 +93,32 @@ public:
      _buffer.write(size_resp,4);
   }
 
+  void output_using(
+       /*void (*writer) (const char* buffer,  const int len)*/
+      std::function<void (const char* , const int)> writer)
+  {
+    const std::string bs = _buffer.str();
+    uint32_t bs_size = bs.size();
+    uint32_t size = bs_size - 4;
+    const char* data = bs.data();
+    //DIRTY: "trust me, I know what I'm doing (TM)"
+    uint32_t* data_mut = (uint32_t*) data;
+    data_mut[0] = size;
+    writer(data, bs_size);
+  }
+
+  void output(std::ostream &os){
+    output_using(
+                 [&](const char* buffer,
+                     const int len) -> void {
+                   os.write(buffer,len);
+                 });
+    os.flush();
+    if (!os) {
+      throw output_stream_exception("invalid outputstream");
+    }
+  }
+  /*
   void output(std::ostream &os) {
     const std::string bs = _buffer.str();
     uint32_t size = bs.size() - 4;
@@ -95,6 +133,11 @@ public:
       throw output_stream_exception("invalid outputstream");
     }
   }
+  */
+  
+  
+  
+  
   void add_raw(const char *b, uint32_t size) noexcept {
     _buffer.write(b, size);
   }

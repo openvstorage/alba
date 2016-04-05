@@ -105,7 +105,8 @@ public:
  };
 
  enum class Transport { tcp, rdma };
-
+ 
+ 
  std::unique_ptr<Proxy_client>
    make_proxy_client(const std::string &ip,
                      const std::string &port,
@@ -213,6 +214,16 @@ public:
 
   void drop_cache(const std::string &namespace_);
   std::tuple<int32_t, int32_t, int32_t, std::string> get_proxy_version();
+  ~RDMAProxy_client();
+private:
+  int _socket;
+  void _really_write(const char * buf, int len);
+  void _really_read (char * buf, int len);
+  void check_status(const char *function_name);
+  proxy_protocol::Status _status;
+  std::function<void (const char* , const int)> _writer;
+  std::function<void (char* , const int)> _reader;
+  
 };
 
 
