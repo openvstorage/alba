@@ -19,6 +19,13 @@ open Lwt_bytes2
 
 let make_context n = Aio.context n
 
+let default_async_method =
+  match Sys.getenv "ALBA_AIO_ASYNC_METHOD" with
+  | "synchronous" -> `Synchronous
+  | "asynchronous" -> `Asynchronous
+  | _ -> failwith "invalid ALBA_AIO_ASYNC_METHOD (should be synchronous, asynchronous or not set)"
+  | exception Not_found -> `Asynchronous
+
 let init context =
   let fd = Aio.fd context in
   let lwt_fd = Lwt_unix.of_unix_file_descr
@@ -26,12 +33,15 @@ let init context =
                  ~set_flags:true
                  fd
   in
-  let rec inner () =
-    Lwt_unix.wait_read lwt_fd >>= fun () ->
-    let () = Aio.process context in
-    inner ()
-  in
-  Lwt.ignore_result (inner ())
+  match default_async_method with
+  | `Synchronous -> ()
+  | `Asynchronous ->
+     let rec inner () =
+       Lwt_unix.wait_read lwt_fd >>= fun () ->
+       let () = Aio.process context in
+       inner ()
+     in
+     Lwt.ignore_result (inner ())
 
 let page_size = Aio.Buffer.page_size ()
 
@@ -68,7 +78,18 @@ let pread context fd offset length =
                                 "aio pread partial error (got %i, offset=%i, length=%i)"
                                 got offset length)))
      in
-     t >>= fun () ->
+     begin
+       match default_async_method with
+       | `Synchronous ->
+          Lwt_unix.yield () >>= fun () ->
+          let () =
+            if Aio.get_pending context >= 1
+            then Aio.run context
+          in
+          t
+       | `Asynchronous ->
+          t
+     end >>= fun () ->
      let res =
        Bigstring_slice.from_bigstring
          buf'

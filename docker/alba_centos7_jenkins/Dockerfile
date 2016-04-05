@@ -128,7 +128,7 @@ RUN git clone https://github.com/domsj/orocksdb.git \
 RUN git clone https://github.com/domsj/libaio-ocaml.git \
     && eval `${opam_env}` \
     && cd libaio-ocaml \
-    && git checkout db8cea454e54a09c37a0615be3a0c6aab10d69cc \
+    && git checkout 82040e34e60ddcbf1b54441586d72305c040719b \
     && make native-code-library libinstall
 
 # be uniform on shared lib locations
