@@ -15,8 +15,8 @@ external posix_fadvise: Unix.file_descr -> int -> int -> posix_fadv -> unit
 external fallocate: Unix.file_descr -> int -> int -> int -> unit
   = "_bs_posix_fallocate"
 
-external add_odirect: Unix.file_descr -> unit
-  = "_posix_add_odirect"
+external openfile_odirect: string -> Unix.file_descr
+  = "_posix_openfile_odirect"
       
 let lwt_posix_fadvise fd pos len fadv =
   let ufd = Lwt_unix.unix_file_descr fd in

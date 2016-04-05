@@ -39,7 +39,6 @@ let cast_buffer_to_lwt_bytes (bs : Aio.Buffer.t) : Lwt_bytes.t =
   Obj.magic bs
 
 let pread context fd offset length =
-  let ufd = Lwt_unix.unix_file_descr fd in
   let t, u = Lwt.wait () in
   let start_page = offset / page_size in
   let start_page_offset = start_page * page_size in
@@ -53,7 +52,7 @@ let pread context fd offset length =
      let () =
        Aio.read
          context
-         ufd
+         fd
          (Int64.of_int start_page_offset)
          buf
          (let open Aio in

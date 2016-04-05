@@ -98,13 +98,17 @@ void _bs_posix_fallocate(value fd, value mode, value offset,
   CAMLreturn0;
 }
 
-void _posix_add_odirect(value fd) {
-  CAMLparam1(fd);
-  int c_fd = Int_val(fd);
-  int ret = fcntl(c_fd, F_GETFL);
-  ret = fcntl(c_fd, F_SETFL, ret | O_DIRECT);
-  if (ret == -1) {
-    uerror("fcntl_add_odirect", Nothing);
+CAMLprim value _posix_openfile_odirect(value path) {
+  CAMLparam1(path);
+  int fd;
+
+  char* p = caml_strdup(String_val(path));
+  fd = open(p, O_RDONLY | O_DIRECT, 0600);
+  stat_free(p);
+
+  if (fd == -1) {
+    uerror("open", path);
   }
-  CAMLreturn0;
+
+  CAMLreturn (Val_int(fd));
 }

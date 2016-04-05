@@ -17,7 +17,7 @@ val posix_fadvise: Unix.file_descr -> int -> int -> posix_fadv -> unit
 *)                                                                   
 val fallocate: Unix.file_descr -> int -> int -> int -> unit
 
-val add_odirect : Unix.file_descr -> unit
+val openfile_odirect : string -> Unix.file_descr
                                                          
 val lwt_posix_fadvise: Lwt_unix.file_descr -> int -> int -> posix_fadv -> unit Lwt.t
 

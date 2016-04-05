@@ -146,6 +146,15 @@ module DirectoryInfo = struct
       ~perm:0600
       f
 
+  let with_blob_fd_odirect t fnr f =
+    let fd = Posix.openfile_odirect (if t.write_blobs
+                                     then get_file_path t fnr
+                                     else "/dev/zero") in
+    Lwt.finalize
+      (fun () -> f fd)
+      (fun () -> Unix.close fd;
+                 Lwt.return_unit)
+
   let get_blob t fnr size =
     Lwt_log.debug_f "getting blob %Li with size %i" fnr size >>= fun () ->
     let bs = Bytes.create size in
@@ -618,11 +627,9 @@ let execute_query : type req res.
                     if dir_info.DirectoryInfo.write_blobs
                     then
                       begin
-                        DirectoryInfo.with_blob_fd
-                          ~async_method:`Synchronous
+                        DirectoryInfo.with_blob_fd_odirect
                           dir_info fnr
                           (fun blob_fd ->
-                           Posix.add_odirect (Lwt_unix.unix_file_descr blob_fd);
                            Lwt_list.iter_s
                              (fun (offset, length) ->
                               Aio_lwt.(pread

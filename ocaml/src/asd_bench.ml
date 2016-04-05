@@ -57,30 +57,37 @@ let bench_blobs path scenarios count value_size partial_read_size read_method =
       B.measured_loop
         progress
         (fun fnr ->
-         D.with_blob_fd
-           ~async_method:`Synchronous
-           dir_info
-           (Int64.of_int fnr)
-           (fun fd ->
-            with_timing_lwt
-              (fun () ->
-               let ufd = Lwt_unix.unix_file_descr fd in
-               match read_method with
-               | `Aio ->
-                  Posix.add_odirect ufd;
-                  Aio_lwt.(pread default_context
-                                 fd 0 partial_read_size) >>= fun bss ->
-                  Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs;
-                  Lwt.return_unit
-               | `Read ->
-                  Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
-                  Lwt_extra2.read_all_lwt_bytes_exact fd target 0 partial_read_size >>= fun () ->
-                  Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_DONTNEED;
-                  Lwt.return_unit
-              ) >>= fun (t', ()) ->
-            t := !t +. t';
-            Lwt.return_unit
-           ))
+         (match read_method with
+          | `Aio ->
+             D.with_blob_fd_odirect
+               dir_info
+               (Int64.of_int fnr)
+               (fun fd ->
+                with_timing_lwt
+                  (fun () ->
+                   Aio_lwt.(pread default_context
+                                  fd 0 partial_read_size) >>= fun bss ->
+                   Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs;
+                   Lwt.return_unit))
+          | `Read ->
+             D.with_blob_fd
+               ~async_method:`Synchronous
+               dir_info
+               (Int64.of_int fnr)
+               (fun fd ->
+                with_timing_lwt
+                  (fun () ->
+                   let ufd = Lwt_unix.unix_file_descr fd in
+                   Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
+                   Lwt_extra2.read_all_lwt_bytes_exact fd target 0 partial_read_size >>= fun () ->
+                   Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_DONTNEED;
+                   Lwt.return_unit
+                  )
+               ))
+         >>= fun (t', ()) ->
+         t := !t +. t';
+         Lwt.return_unit
+        )
         count >>= fun r ->
       Lwt_log.info_f "t = %f" !t >>= fun () ->
       Lwt.return r
@@ -89,11 +96,10 @@ let bench_blobs path scenarios count value_size partial_read_size read_method =
       let rec with_fds f acc = function
         | [] -> f acc
         | fnr :: fnrs ->
-           D.with_blob_fd
+           D.with_blob_fd_odirect
              dir_info
              (Int64.of_int fnr)
              (fun fd ->
-              Posix.add_odirect (Lwt_unix.unix_file_descr fd);
               with_fds f (fd :: acc) fnrs)
       in
       let fnrs = ref [] in
