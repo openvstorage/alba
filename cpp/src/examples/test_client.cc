@@ -77,7 +77,7 @@ int main(int argc, const char *argv[]) {
      "\tdownload-object, download-object-partial, "
      " upload-object, delete-object, list-objects, "
      " show-object, delete-namespace, create-namespace, "
-     " list-namespaces, invalidata-cache, get-proxy-version")
+     " list-namespaces, invalidata-cache, proxy-get-version")
     ("port", po::value<string>()->default_value("10000"),
      "the alba proxy port number")
     ( "host", po::value<string>()->default_value("127.0.0.1"),
@@ -89,6 +89,9 @@ int main(int argc, const char *argv[]) {
       "the name of the object to download/upload/delete")
     ( "allow-cached", po::value<bool>() -> default_value(false),
       "can we use cached information?")
+    ( "consistent-read", po::value<bool>() -> default_value(true),
+      "consistent read?")
+    ( "transport", po::value<string>(), "rdma | tcp (default = tcp)")
     ( "file", po::value<string>(), "file to work with for download/upload")
     ( "length", po::value<uint32_t>(), "length for partial object read")
     ( "offset", po::value<uint64_t>()->default_value(0),
@@ -98,34 +101,28 @@ int main(int argc, const char *argv[]) {
   positionalOptions.add("command", 1);
 
   po::variables_map vm;
-  // TODO: reenable, work around boost bug on machine
-  /*
+
   po::store(po::command_line_parser(argc, argv)
             .options(desc)
             .positional(positionalOptions)
             .run(),
             vm);
   po::notify(vm);
-  */
   
   if (vm.count("help")) {
     cout << desc << endl;
     return 1;
   }
 
-  //string command = getRequiredStringArg(vm, "command");
-  //string port = vm["port"].as<string>();
-  //string host = vm["host"].as<string>();
-  //string command = "get-proxy-version";
-  string command = "namespace-exists";
-  string port = "10000";
-  string host = "192.168.1.1";
-  //cout << "host=" << host << endl;
+  string command = getRequiredStringArg(vm, "command");
+  string port = vm["port"].as<string>();
+  string host = vm["host"].as<string>();
+
   using namespace alba::proxy_client;
   auto timeout = boost::posix_time::seconds(5);
   
-  auto transport = Transport :: rdma;
-  /*
+  auto transport = Transport :: tcp;
+
   if (vm.count("transport")){
     string transport_s = vm["transport"].as<string>();
     if (transport_s == "rdma"){
@@ -134,15 +131,16 @@ int main(int argc, const char *argv[]) {
       assert (transport_s == "tcp");
     }
   };
-  */
-  //bool consistent_read_b = vm["consistent-read"].as<bool>();
-  bool consistent_read_b = true;
+  
+  bool consistent_read_b = vm["consistent-read"].as<bool>();
+  
   consistent_read _consistent_read =
       consistent_read_b
       ? consistent_read::T
       : consistent_read::F;
   should_cache _should_cache = should_cache::T;
-  ALBA_LOG(WARNING,"hiere");
+  ALBA_LOG(WARNING,"parsed command line options: command = " << command);
+  
   if ("download-object" == command) {
     string ns = getRequiredStringArg(vm, "namespace");
     string name = getRequiredStringArg(vm, "name");
@@ -237,8 +235,7 @@ int main(int argc, const char *argv[]) {
       }catch(alba::proxy_client::proxy_exception &e){
           cout << e.what() << endl;
       }
-  } else if ("get-proxy-version" == command){
-    cout << "get-proxy-version" << endl;
+  } else if ("proxy-get-version" == command){
     auto client = make_proxy_client(host, port, timeout, transport);
     auto version = client -> get_proxy_version();
     
@@ -257,6 +254,8 @@ int main(int argc, const char *argv[]) {
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object and list-objects"
+         << "show-object, delete-namespace, create-namespace, list-namespaces"
+         << "invalidate-cache, proxy-get-version, namespace-exists"
          << endl;
     return 1;
   }
