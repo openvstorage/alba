@@ -292,16 +292,39 @@ let osd_bench hosts port tls_config osd_id
     ~to_json:false ~verbose
     (fun () ->
      Osd_bench.do_scenarios
-       (fun f ->
-        with_osd_client
-          conn_info osd_id
-          f)
+       [ (fun f ->
+          with_osd_client
+            conn_info osd_id
+            f) ]
        n_clients n
        value_size partial_fetch_size
        power prefix
        scenarios)
 
-let osd_bench_cmd =
+let osds_bench hosts ports
+               n_clients n
+               value_size partial_fetch_size
+               power prefix
+               scenarios verbose =
+  lwt_cmd_line
+    ~to_json:false ~verbose
+    (fun () ->
+     Osd_bench.do_scenarios
+       (List.map
+          (fun port ->
+           with_osd_client
+             (Networking2.make_conn_info hosts port None)
+             None)
+          ports)
+       n_clients n
+       value_size partial_fetch_size
+       power prefix
+       scenarios)
+
+
+let osd_bench_cmd,
+    osds_bench_cmd
+  =
   let scenarios =
     Arg.(let open Osd_bench in
          let scns = [ "sets", sets;
@@ -329,7 +352,7 @@ let osd_bench_cmd =
                           $ hosts $ port 10000 $ tls_config
                           $ lido
                           $ n_clients 1
-                          $ n 10000
+                          $ n 10_000
                           $ value_size 16384
                           $ partial_fetch_size 4096
                           $ power 4
@@ -338,12 +361,33 @@ let osd_bench_cmd =
                           $ verbose
                     )
   in
-  let info =
+  let osd_bench_info =
     Term.info
       "osd-benchmark"
       ~doc:"perform a benchmark on an osd"
   in
-  osd_bench_t, info
+  let osds_bench_t = Term.(pure osds_bench
+                           $ hosts
+                           $ Arg.(value
+                                  & opt_all int []
+                                  & info ["p";"port"] ~docv:"PORT" ~doc:"tcp $(docv)")
+                           $ n_clients 1
+                           $ n 10_000
+                           $ value_size 16384
+                           $ partial_fetch_size 4096
+                           $ power 4
+                           $ prefix ""
+                           $ scenarios
+                           $ verbose
+                     )
+  in
+  let osds_bench_info =
+    Term.info
+      "osds-benchmar"
+      ~doc:"benchmark multiple osds at the same time (should all be on the same host)"
+  in
+  (osd_bench_t, osd_bench_info),
+  (osds_bench_t, osds_bench_info)
 
 let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
   begin
@@ -650,12 +694,16 @@ let cmds = [
   asd_multi_get_cmd;
   asd_delete_cmd;
   asd_range_cmd;
+
   osd_bench_cmd;
+  osds_bench_cmd;
+
   asd_discover_cmd;
   asd_statistics_cmd;
   asd_multistatistics_cmd;
   asd_set_full_cmd;
   asd_get_version_cmd;
+
   bench_syncfs_cmd;
   bench_fsync_cmd;
 ]

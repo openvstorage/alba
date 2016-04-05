@@ -214,26 +214,30 @@ let upload_fragments (client:Osd.osd) progress n value_size _ period prefix =
 
 
 let do_scenarios
-      with_client
+      with_clients
       n_clients n
-      value_size partial_fetch_size power prefix
+      value_size partial_fetch_size
+      power prefix
       scenarios
   =
   let period = period_of_power power in
+  let progress = make_progress (n/100) in
   Lwt_list.iter_s
     (fun scenario ->
-     let progress = make_progress (n/100) in
      Lwt_list.iter_p
-       (fun i ->
-        with_client
-          (fun client ->
-           scenario
-             client
-             progress
-             (n/n_clients)
-             value_size
-             partial_fetch_size
-             period
-             (Printf.sprintf "%s_%i" prefix i)))
-       (Int.range 0 n_clients))
+       (fun with_client ->
+        Lwt_list.iter_p
+          (fun i ->
+           with_client
+             (fun client ->
+              scenario
+                client
+                progress
+                (n / n_clients)
+                value_size
+                partial_fetch_size
+                period
+                (Printf.sprintf "%s_%i" prefix i)))
+          (Int.range 0 n_clients))
+       with_clients)
     scenarios
