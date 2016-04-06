@@ -57,18 +57,44 @@ std::function<void(alba::logger::AlbaLogLevel, std::string &)> logBoost =
 std::function<void(alba::logger::AlbaLogLevel, std::string &)> *nulllog =
     nullptr;
 
+using namespace alba::proxy_client;
+
+
+void
+proxy_get_version(/*const string& host,
+                  const string& port,
+                  const boost::asio::time_traits<
+                  boost::posix_time::ptime>::duration_type& timeout,
+                  const Transport& transport*/){
+  
+  string host("127.0.0.1");
+  string port("10000");
+  auto timeout = boost::posix_time::seconds(5);
+  auto transport = Transport :: tcp;
+  auto client = make_proxy_client(host, port, timeout, transport);
+  auto version = client -> get_proxy_version();
+    
+  int major = std::get<0>(version);
+  int minor = std::get<1>(version);
+  int patch = std::get<2>(version);
+  string commit = std::get<3>(version);
+  cout << "( " << major << ", " << minor << ", " << patch << ", "
+       << commit << ")" << endl;
+}
+
+
 int main(int argc, const char *argv[]) {
   alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
-    switch (level) {
-    case alba::logger::AlbaLogLevel::WARNING:
+      //switch (level) {
+      //case alba::logger::AlbaLogLevel::WARNING:
       return &logBoost;
-    default:
-      return nulllog;
-    };
+      //default:
+      //return nulllog;
+      //};
   });
 
   ALBA_LOG(WARNING, "cucu")
-
+    /*
   po::options_description desc("Allowed options");
   desc.add_options()
     ("help", "produce help message")
@@ -108,21 +134,24 @@ int main(int argc, const char *argv[]) {
             .run(),
             vm);
   po::notify(vm);
-  
+    
   if (vm.count("help")) {
     cout << desc << endl;
     return 1;
   }
+    */
+  //string command = getRequiredStringArg(vm, "command");
+  //string port = vm["port"].as<string>();
+  //string host = vm["host"].as<string>();
 
-  string command = getRequiredStringArg(vm, "command");
-  string port = vm["port"].as<string>();
-  string host = vm["host"].as<string>();
-
-  using namespace alba::proxy_client;
-  auto timeout = boost::posix_time::seconds(5);
   
-  auto transport = Transport :: tcp;
-
+  /*auto timeout = boost::posix_time::seconds(5);  
+  Transport transport(Transport :: tcp);
+  string host("127.0.0.1");
+  string port("10000");
+  */
+  proxy_get_version(/*host, port, timeout, transport */);
+  /*
   if (vm.count("transport")){
     string transport_s = vm["transport"].as<string>();
     if (transport_s == "rdma"){
@@ -236,15 +265,7 @@ int main(int argc, const char *argv[]) {
           cout << e.what() << endl;
       }
   } else if ("proxy-get-version" == command){
-    auto client = make_proxy_client(host, port, timeout, transport);
-    auto version = client -> get_proxy_version();
-    
-    int major = std::get<0>(version);
-    int minor = std::get<1>(version);
-    int patch = std::get<2>(version);
-    string commit = std::get<3>(version);
-    cout << "( " << major << ", " << minor << ", " << patch << ", "
-         << commit << ")" << endl;
+    proxy_get_version(host,port,timeout,transport);
 
   } else if ("namespace-exists" == command) {
     auto client = make_proxy_client(host, port, timeout, transport);
@@ -259,6 +280,6 @@ int main(int argc, const char *argv[]) {
          << endl;
     return 1;
   }
-
+  */
   return 0;
 }

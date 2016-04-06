@@ -41,11 +41,11 @@ all: compile_lib compile_tests
 
 	$(CXX) \
 	    src/examples/test_client.o \
-	    $(LIBDIRS) $(LIBS) \
-            -L./lib -lalba \
-	    -lrdmacm \
-	    -o bin/test_client.out
+	    $(LIBDIRS) $(LIBS) -L./lib -lalba -lrdmacm -o bin/test_client.out
 
+paranoia:
+	$(CMD) -c src/examples/paranoia.cc -o src/examples/paranoia.o
+	$(CXX) src/examples/paranoia.o $(LIBDIRS) $(LIBS) -L./lib -lalba -lrdmacm -o bin/paranoia.out
 
 compile_lib:
 	$(CMD) -c src/lib/stuff.cc -o src/lib/stuff.o
