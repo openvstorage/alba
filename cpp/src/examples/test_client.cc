@@ -61,16 +61,11 @@ using namespace alba::proxy_client;
 
 
 void
-proxy_get_version(/*const string& host,
+proxy_get_version(const string& host,
                   const string& port,
                   const boost::asio::time_traits<
                   boost::posix_time::ptime>::duration_type& timeout,
-                  const Transport& transport*/){
-  
-  string host("127.0.0.1");
-  string port("10000");
-  auto timeout = boost::posix_time::seconds(5);
-  auto transport = Transport :: tcp;
+                  const Transport& transport){
   auto client = make_proxy_client(host, port, timeout, transport);
   auto version = client -> get_proxy_version();
     
@@ -85,16 +80,16 @@ proxy_get_version(/*const string& host,
 
 int main(int argc, const char *argv[]) {
   alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
-      //switch (level) {
-      //case alba::logger::AlbaLogLevel::WARNING:
-      return &logBoost;
-      //default:
-      //return nulllog;
-      //};
+      switch (level) {
+      case alba::logger::AlbaLogLevel::WARNING:
+        return &logBoost;
+      default:
+        return nulllog;
+      };
   });
 
   ALBA_LOG(WARNING, "cucu")
-    /*
+
   po::options_description desc("Allowed options");
   desc.add_options()
     ("help", "produce help message")
@@ -139,19 +134,14 @@ int main(int argc, const char *argv[]) {
     cout << desc << endl;
     return 1;
   }
-    */
-  //string command = getRequiredStringArg(vm, "command");
-  //string port = vm["port"].as<string>();
-  //string host = vm["host"].as<string>();
 
-  
-  /*auto timeout = boost::posix_time::seconds(5);  
+  string command = getRequiredStringArg(vm, "command");
+  string port = vm["port"].as<string>();
+  string host = vm["host"].as<string>();
+
+  auto timeout = boost::posix_time::seconds(5);  
   Transport transport(Transport :: tcp);
-  string host("127.0.0.1");
-  string port("10000");
-  */
-  proxy_get_version(/*host, port, timeout, transport */);
-  /*
+
   if (vm.count("transport")){
     string transport_s = vm["transport"].as<string>();
     if (transport_s == "rdma"){
@@ -269,17 +259,16 @@ int main(int argc, const char *argv[]) {
 
   } else if ("namespace-exists" == command) {
     auto client = make_proxy_client(host, port, timeout, transport);
-    string ns = "demo";
+    string ns = getRequiredStringArg(vm,"namespace");
     bool result = client -> namespace_exists(ns);
     cout << "namespace_exists(" << ns << ") => " << result << endl;
   } else {
     cout << "got invalid command name. valid options are: "
-         << "download-object, upload-object, delete-object and list-objects"
-         << "show-object, delete-namespace, create-namespace, list-namespaces"
+         << "download-object, upload-object, delete-object, list-objects "
+         << "show-object, delete-namespace, create-namespace, list-namespaces, "
          << "invalidate-cache, proxy-get-version, namespace-exists"
          << endl;
     return 1;
   }
-  */
   return 0;
 }
