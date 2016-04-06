@@ -852,7 +852,7 @@ class asd ?write_blobs ?transport ?ip
 
 
     method start =
-      let out = home ^ "/stdout" in
+      let out = Printf.sprintf "%s/%s.out" home asd_id in
       [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
       |> Shell.detach ~out;
 
@@ -897,7 +897,7 @@ class etcd host port home =
       (* ETCD_LISTEN_CLIENT_URLS=http://127.0.0.1:5000 \
            ./etcd -advertise-client-urls=http://127.0.0.1:5000
        *)
-      let out = home ^ "/stdout" in
+      let out = home ^ "/etcd.out" in
       let url = Printf.sprintf "http://%s:%i" host port in
       let var = Printf.sprintf "ETCD_LISTEN_CLIENT_URLS=%s" url in
       let advertise = Printf.sprintf "-advertise-client-urls=%s" url in

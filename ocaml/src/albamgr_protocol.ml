@@ -1136,7 +1136,7 @@ module Protocol = struct
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
     | UpdateNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
-    | AddOsd -> OsdInfo.to_buffer ~version:1
+    | AddOsd -> OsdInfo.to_buffer ~version:3
     | UpdateOsd -> Llio.pair_to Llio.string_to Osd.Update.to_buffer
     | UpdateOsds ->
        Llio.list_to (Llio.pair_to Llio.string_to Osd.Update.to_buffer)
