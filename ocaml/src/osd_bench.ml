@@ -221,9 +221,9 @@ let do_scenarios
       scenarios
   =
   let period = period_of_power power in
-  let progress = make_progress (n/100) in
   Lwt_list.iter_s
     (fun scenario ->
+     let progress = make_progress (n/100) in
      Lwt_list.iter_p
        (fun with_client ->
         Lwt_list.iter_p
