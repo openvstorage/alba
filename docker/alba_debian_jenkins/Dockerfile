@@ -110,7 +110,7 @@ RUN git clone https://github.com/domsj/orocksdb.git \
 RUN apt-get update && apt-get -y install librdmacm-dev
 RUN git clone https://github.com/toolslive/ordma.git \
     && cd ordma \
-    && git checkout 263106bbcf7f8a9b1421da53a7e2a22db953bce9 \
+    && git checkout 2a88b21d6461e0b063ba9dedcc5a12887dd0ca30 \
     && eval `${opam_env}` \
     && make install
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
