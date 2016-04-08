@@ -606,6 +606,7 @@ class proxy ?fragment_cache ?ip ?transport
     Shell.mkdir proxy_base;
     config_persister p_cfg
 
+  method start_cmd = [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
   method start =
     let out = Printf.sprintf "%s/proxy.out" proxy_base in
     let () =
@@ -618,12 +619,14 @@ class proxy ?fragment_cache ?ip ?transport
          | None' -> ()
          | Local { path; _ } -> Shell.mkdir path
     in
-    [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
+    self # start_cmd 
     |> Shell.detach ~out
 
   method stop =
-    let kill_port = Proxy_cfg.port p_cfg in
-    Printf.sprintf "fuser -k -n tcp %i" kill_port |> Shell.cmd ~ignore_rc:true
+    (* can't use fuser for rdma based servers *)
+    Printf.sprintf "pkill -f '%s'"
+                   (String.concat " " (self # start_cmd))
+    |> Shell.cmd ~ignore_rc:true
 
   method upload_object namespace file name =
     ["proxy-upload-object";
@@ -791,15 +794,7 @@ class asd ?write_blobs ?transport ?ip
                   ?write_blobs ?transport ?ip
                   node_id asd_id home port tls
   in
-  let kill_port = match port with
-    | None ->
-       begin
-         match tls with
-         | Some tls -> tls.port
-         | None -> failwith "no port?"
-       end
-    | Some p -> p
-  in
+
   let config_persister, cfg_url =
     match etcd with
     | None ->
@@ -850,14 +845,15 @@ class asd ?write_blobs ?transport ?ip
         end;
       config_persister asd_cfg
 
-
+    method start_cmd = [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
+                         
     method start =
       let out = Printf.sprintf "%s/%s.out" home asd_id in
-      [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
+      self # start_cmd 
       |> Shell.detach ~out;
 
     method stop =
-      Printf.sprintf "fuser -k -n tcp %i" kill_port
+      Printf.sprintf "pkill -f '%s'" (String.concat " " self # start_cmd)
       |> Shell.cmd
 
     method private build_remote_cli ?(json=true) what  =
@@ -1256,11 +1252,15 @@ module Deployment = struct
     ()
 
   let proxy_pid t =
-    let n = ["fuser";"-n";"tcp";"10000"] |> Shell.cmd_with_capture in
+    let n =
+      let cmd = String.concat " " (t.proxy # start_cmd) in
+      let s = Printf.sprintf "pgrep -f '%s'" cmd in
+      Shell.cmd_with_capture [s]
+    in
     Scanf.sscanf n " %i" (fun i -> i)
 
   let smoke_test t =
-    let _  = proxy_pid () in
+    let _  = proxy_pid t in
     ()
 
 end
