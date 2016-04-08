@@ -17,6 +17,8 @@ limitations under the License.
 #include "proxy_client.h"
 #include "alba_logger.h"
 
+#include <iostream>
+
 #include <rdma/rsocket.h>
 #include <errno.h>
 #include <boost/lexical_cast.hpp>
@@ -326,30 +328,30 @@ RDMAProxy_client :: RDMAProxy_client(
     const string &ip, const string &port,
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &expiry_time){
   ALBA_LOG(INFO, "RDMAProxy_client(" << ip << ", " << port << ")");
-  
+
   int32_t magic{1148837403};
   int32_t version{1};
   _socket = rsocket(AF_INET, SOCK_STREAM, 0);
-  
+
   _writer = [&](const char* buffer,
                 const int len) -> void {
     _really_write(buffer,len);
   };
-  
+
   _reader = [&](char* buffer,
                 const int len) -> void {
     _really_read(buffer,len);
   };
-  
+
   if (_socket < 0){
     throw proxy_exception(-1,"socket?");
   }
-  struct sockaddr_in serv_addr; 
+  struct sockaddr_in serv_addr;
 
   serv_addr.sin_family = AF_INET;
 
   int port_i = boost :: lexical_cast<int>(port);
-  serv_addr.sin_port = htons(port_i); 
+  serv_addr.sin_port = htons(port_i);
 
   int ok = inet_pton(AF_INET, ip.c_str(), &serv_addr.sin_addr);
   if(ok <0){
@@ -362,17 +364,17 @@ RDMAProxy_client :: RDMAProxy_client(
   if (ok < 0){
     throw proxy_exception(errno, "connect");
   }
-  
+
   _really_write((const char *)(&magic)  , sizeof(int32_t));
   _really_write((const char *)(&version), sizeof(int32_t));
-    
+
 }
 
 tuple<vector<string>, has_more>
 RDMAProxy_client :: list_namespaces(
      const string &first, const include_first finc, const optional<string> &last,
      const include_last linc, const int max, const reverse reverse) {
-  
+
     //_stream.expires_from_now(_expiry_time);
 
     message_builder mb;
@@ -396,7 +398,7 @@ RDMAProxy_client :: list_namespaces(
     check_status(__PRETTY_FUNCTION__);
 
     return tuple<vector<string>, has_more>(namespaces, has_more(has_more_));
-  
+
   }
 
 bool RDMAProxy_client::namespace_exists(const string &name) {
@@ -434,7 +436,7 @@ RDMAProxy_client::create_namespace(const string &name,
   proxy_protocol::read_create_namespace_response(response, _status);
 
   check_status(__PRETTY_FUNCTION__);
-  
+
 }
 
 void
@@ -444,7 +446,7 @@ RDMAProxy_client::delete_namespace(const string &name) {
   message_builder mb;
   proxy_protocol::write_delete_namespace_request(mb, name);
   mb.output_using(_writer);
-  
+
   message response(_reader);
   proxy_protocol::read_delete_namespace_response(response, _status);
   check_status(__PRETTY_FUNCTION__);
@@ -455,17 +457,17 @@ RDMAProxy_client::list_objects(
     const string &namespace_, const string &first, const include_first finc,
     const optional<string> &last, const include_last linc, const int max,
     const reverse reverse) {
-  
+
     //_stream.expires_from_now(_expiry_time);
 
     message_builder mb;
     proxy_protocol::write_list_objects_request(
           mb, namespace_, first, BooleanEnumTrue(finc), last, BooleanEnumTrue(linc),
           max, BooleanEnumTrue(reverse));
-    
+
     mb.output_using(_writer);
     message response(_reader);
-    
+
     std::vector<string> objects;
     bool has_more_;
     proxy_protocol::read_list_objects_response(response, _status, objects,
@@ -473,9 +475,9 @@ RDMAProxy_client::list_objects(
 
     check_status(__PRETTY_FUNCTION__);
     return tuple<vector<string>, has_more>(objects, has_more(has_more_));
-  
+
   }
-  
+
 void
 RDMAProxy_client::write_object_fs(const string &namespace_,
                                   const string &object_name,
@@ -570,7 +572,7 @@ void RDMAProxy_client::read_objects_slices(
 
   check_status(__PRETTY_FUNCTION__);
 }
-  
+
 void
 RDMAProxy_client::invalidate_cache(const string &namespace_) {
     // _stream.expires_from_now(_expiry_time);
@@ -602,8 +604,8 @@ RDMAProxy_client::get_proxy_version() {
   message_builder mb;
   proxy_protocol::write_get_proxy_version_request(mb);
   mb.output_using(_writer);
-  
-  message response(_reader);    
+
+  message response(_reader);
   std::tuple<int32_t, int32_t, int32_t, std::string> result;
   int32_t &major = std::get<0>(result);
   int32_t &minor = std::get<1>(result);
@@ -624,7 +626,7 @@ RDMAProxy_client::get_proxy_version() {
       ALBA_LOG(INFO,"exception in close: fd:" << _socket << " r=" << r );
     }
   }
-  
+
  std::unique_ptr<Proxy_client>
  make_proxy_client(const std::string &ip,
                    const std::string &port,
@@ -643,6 +645,38 @@ RDMAProxy_client::get_proxy_version() {
   return result;
 }
 
+std::ostream&
+operator<<(std::ostream& os,
+           Transport t)
+{
+  switch(t){
+  case Transport::tcp:
+      os << "TCP";
+      break;
+  case Transport::rdma:
+      os << "RDMA";
+      break;
+  }
+
+  return os;
+}
+
+std::istream&
+operator>>(std::istream& is,
+           Transport& t)
+{
+  std::string s;
+  is >> s;
+  if (s == "TCP") {
+    t = Transport::tcp;
+  } else if (s == "RDMA") {
+    t = Transport::rdma;
+  } else {
+    is.setstate(std::ios_base::failbit);
+  }
+
+  return is;
+}
 
 }
 }

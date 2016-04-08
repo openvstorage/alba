@@ -17,6 +17,8 @@ limitations under the License.
 #ifndef ALBA_PROXY_CLIENT_H
 #define ALBA_PROXY_CLIENT_H
 
+#include <iosfwd>
+
 #include <vector>
 #include <boost/asio.hpp>
 #include "proxy_protocol.h"
@@ -46,17 +48,17 @@ BOOLEAN_ENUM(should_cache)
 
 class Proxy_client {
 public:
-  
+
   virtual std::tuple<std::vector<std::string>, has_more>
     list_namespaces(const std::string &first, const include_first,
                     const boost::optional<std::string> &last, const include_last,
                     const int max, const reverse reverse = reverse::F) = 0;
 
   virtual bool namespace_exists(const std::string &name) = 0;
-  
+
   virtual void create_namespace(const std::string &name,
                                 const boost::optional<std::string> &preset_name) = 0;
-  
+
   virtual void delete_namespace(const std::string &name) = 0;
 
   virtual std::tuple<std::vector<std::string>, has_more>
@@ -64,7 +66,7 @@ public:
                  const include_first, const boost::optional<std::string> &last,
                  const include_last, const int max,
                  const reverse reverse = reverse::F) = 0;
-  
+
   virtual void read_object_fs(const std::string &namespace_,
                               const std::string &object_name,
                               const std::string &dest_file, const consistent_read,
@@ -100,21 +102,28 @@ public:
   /* retrieve (major,minor,patch, hash) from the remote proxy
    */
   virtual std::tuple<int32_t, int32_t, int32_t, std::string> get_proxy_version() = 0;
-  
+
   virtual ~Proxy_client() {};
  };
 
  enum class Transport { tcp, rdma };
- 
- 
+
+ std::ostream&
+ operator<<(std::ostream&,
+            Transport);
+
+ std::istream&
+ operator>>(std::istream&,
+            Transport&);
+
  std::unique_ptr<Proxy_client>
    make_proxy_client(const std::string &ip,
                      const std::string &port,
                      const boost::asio::time_traits<
                      boost::posix_time::ptime>::duration_type &expiry_time,
                      const Transport &transport);
- 
- 
+
+
 class TCPProxy_client : public Proxy_client {
 public:
   TCPProxy_client(const std::string &ip, const std::string &port,
@@ -223,7 +232,7 @@ private:
   proxy_protocol::Status _status;
   std::function<void (const char* , const int)> _writer;
   std::function<void (char* , const int)> _reader;
-  
+
 };
 
 
