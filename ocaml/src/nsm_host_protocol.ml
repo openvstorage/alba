@@ -182,6 +182,8 @@ module Protocol = struct
       nsm_query ListActiveOsds, 22l, "ListActiveOsds";
 
       Wrap_q NSMHStatistics, 30l , "NSMHStatistics";
+
+      Wrap_q (NsmsQuery GetStats), 33l, "Multi GetStats";
     ]
 
   let wrap_unknown_operation f =

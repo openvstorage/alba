@@ -349,6 +349,15 @@ class nsm_host_access
              get_nsm_by_id ~namespace_id >>= fun nsm_client ->
              f nsm_client)
 
+      method with_nsm_host_client :
+      type a. nsm_host_id : string -> (Nsm_host_client.single_connection_client -> a Lwt.t) -> a Lwt.t =
+        fun ~nsm_host_id f ->
+        Remotes.Pool.Nsm_host.use_nsm_host
+          nsm_hosts_pool
+          ~nsm_host_id
+          f
+          ~tcp_keepalive
+
     method refresh_namespace_osds = refresh_namespace_osds
     method maybe_update_namespace_info = maybe_update_namespace_info
     method statistics nsm_host_id clear =
