@@ -342,9 +342,11 @@ let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json
              List.combine
                namespaces
                res
-             |> List.map
+             |> List.map_filter_rev
                   (fun ((name, ns), stat) ->
-                   (name, ns, stat))
+                   match stat with
+                   | Result.Ok stat -> Some (name, ns, stat)
+                   | Result.Error _ -> None)
              |> Lwt.return
           | None ->
              Lwt_list.map_p

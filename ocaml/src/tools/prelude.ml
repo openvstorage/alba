@@ -525,6 +525,24 @@ let get_start_key i n =
       Some (serialize Llio.int32_be_to (Int32.of_int s))
     end
 
+module Result =
+  struct
+    include Result
+    type ('a, 'b) t = ('a, 'b) result
+
+    let from_buffer ok_from err_from buf =
+      match Llio.int8_from buf with
+      | 1 -> Ok (ok_from buf)
+      | 2 -> Error (err_from buf)
+      | k -> raise_bad_tag "Result.t" k
+
+    let to_buffer ok_to err_to buf = function
+      | Ok ok -> Llio.int8_to buf 1;
+                 ok_to buf ok
+      | Error err -> Llio.int8_to buf 2;
+                     err_to buf err
+  end
+
 module Hashtbl = struct
   include Hashtbl
 

@@ -330,7 +330,8 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
   | NsmsQuery tag ->
      List.map
        (fun (namespace_id, req) ->
-        nsm_query tag namespace_id req)
+        try Result.Ok (nsm_query tag namespace_id req)
+        with Nsm_model.Err.Nsm_exn (err, _) -> Result.Error err)
        req
 
 let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
