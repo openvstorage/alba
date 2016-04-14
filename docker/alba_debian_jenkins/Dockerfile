@@ -73,7 +73,8 @@ RUN eval `${opam_env}` && \
         ppx_deriving_yojson \
         core.113.00.00 \
         redis \
-        uri.1.9.1
+        uri.1.9.1 \
+        result
 
 RUN wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
 RUN tar xfzv isa-l-2.14.0.tar.gz
