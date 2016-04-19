@@ -46,6 +46,8 @@ let workspace =
   try Sys.getenv "WORKSPACE"
   with Not_found -> ""
 
+let capacity = ref 0L
+
 let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
   let path = workspace ^ "/tmp/alba/" ^ test_name in
   let tls_config = Albamgr_test.get_tls_config () in (* client config *)
@@ -63,10 +65,12 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
             }
   in
   if not is_restart
-  then begin
-    Unix.system (Printf.sprintf "rm -rf %s" path) |> ignore;
-    Unix.mkdir path 0o777
-  end;
+  then
+    begin
+      capacity := 10_000_000L;
+      Unix.system (Printf.sprintf "rm -rf %s" path) |> ignore;
+      Unix.mkdir path 0o777
+    end;
   let asd_id = Some test_name in
   let cancel = Lwt_condition.create () in
   let t =
@@ -84,7 +88,7 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ~rocksdb_recycle_log_file_num:(Some 4)
            ~rocksdb_block_cache_size:None
            ~limit:90L
-           ~capacity:(ref 10_000_000L)
+           ~capacity
            ~tls
            ~multicast:(Some 10.0)
            ~use_fadvise:true
@@ -328,7 +332,8 @@ let test_assert port () =
             [ Osd.Update.set_string
                 "key"
                 (Bytes.create (Asd_server.blob_threshold + 2))
-                Checksum.Checksum.NoChecksum false; ])
+                Checksum.Checksum.NoChecksum false; ] >>= fun () ->
+        assert false)
        (function
          | Asd_protocol.Protocol.Error.Exn Asd_protocol.Protocol.Error.Assert_failed _ ->
             Lwt.return_unit
@@ -380,6 +385,54 @@ let test_partial_get port () =
      inner (Asd_server.blob_threshold - 5) >>= fun () ->
      inner (Asd_server.blob_threshold + 5))
 
+let test_capacity port () =
+  let test_name = "test_capacity" in
+  let t () =
+    with_asd_client
+      test_name port
+      (fun asd ->
+
+       asd # get_disk_usage () >>= fun (used, cap) ->
+       assert (used = 0L);
+       assert (cap = 10_000_000L);
+
+       capacity := 1_000_000L;
+       asd # get_disk_usage () >>= fun (used, cap) ->
+       assert (used = 0L);
+       assert (cap = 1_000_000L);
+
+       let v = Bytes.make 999_999 'a' in
+       asd # set_string ~prio:High "k" v true >>= fun () ->
+
+       Lwt.catch
+         (fun () ->
+          asd # set_string ~prio:High "k2" v true >>= fun () ->
+          assert false)
+         (function
+           | Asd_protocol.Protocol.Error.Exn Asd_protocol.Protocol.Error.Full ->
+              Lwt.return_unit
+           | exn ->
+              Lwt.fail exn) >>= fun () ->
+
+       asd # get_disk_usage ())
+    >>= fun (used, cap) ->
+    assert (used > 0L);
+    with_asd_client
+      ~is_restart:true
+      test_name port
+      (fun asd ->
+       asd # get_disk_usage () >>= fun (used', cap') ->
+       Lwt_log.debug_f "%Li, %Li" used' cap' >>= fun () ->
+       assert (used = used');
+       assert (cap = cap');
+
+       asd # delete_string ~prio:High "k" >>= fun () ->
+       asd # get_disk_usage () >>= fun (used, cap) ->
+       assert (used = 0L);
+       Lwt.return ())
+  in
+  Lwt_main.run (t ())
+
 open OUnit
 
 let suite = "asd_test" >:::[
@@ -395,4 +448,5 @@ let suite = "asd_test" >:::[
     "test_no_blobs" >:: test_no_blobs 7910;
     "test_assert" >:: test_assert 7911;
     "test_partial_get" >:: test_partial_get 7911;
+    "test_capacity" >:: test_capacity 7912;
   ]
