@@ -211,19 +211,26 @@ module Update = struct
 end
 
 module AsdMgmt = struct
-    type t = { latest_disk_usage : (int64 * int64) ref;
-               limit: int64;
+    type t = { mutable latest_disk_usage : int64;
+               capacity : int64 ref;
+               limit : int64;
                mutable full : bool; (* override *)
              }
     let _next_msg_id =
       Slice.wrap_string Osd_keys.AlbaInstance.next_msg_id
 
-    let make latest_disk_usage limit = { latest_disk_usage; limit; full=false }
+    let make
+          ~latest_disk_usage
+          ~capacity
+          ~limit
+      = { latest_disk_usage; capacity;
+          limit;
+          full=false }
 
     let updates_allowed t (updates:Update.t list) =
-      let (used, cap) = !(t.latest_disk_usage) in
+      let (used, cap) = t.latest_disk_usage, t.capacity in
       Lwt_log.ign_debug_f "updates_allowed?(used:%Li,cap:%Li) full:%b"
-                          used cap t.full;
+                          used !cap t.full;
       let check_this_update () =
         Lwt_log.ign_debug "check_this_update";
         let rec check = function
@@ -242,7 +249,7 @@ module AsdMgmt = struct
         in
         check updates
       in
-      if t.full || (Int64.mul 100L used >= Int64.mul t.limit cap)
+      if t.full || (Int64.mul 100L used >= Int64.mul t.limit !cap)
       then check_this_update ()
       else true
 

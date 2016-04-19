@@ -80,11 +80,11 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ~node_id:"bla"
            ~slow:false
            ~fsync:false
-           ~buffer_size:(768*1024)
            ~rocksdb_max_open_files:256
            ~rocksdb_recycle_log_file_num:(Some 4)
            ~rocksdb_block_cache_size:None
            ~limit:90L
+           ~capacity:(ref 10_000_000L)
            ~tls
            ~multicast:(Some 10.0)
            ~use_fadvise:true
