@@ -321,6 +321,10 @@ module Value = struct
       compose Lwt.return Slice.wrap_string
 
   let get_cs = fst
+
+  let get_size = function
+    | Direct s -> Slice.length s
+    | OnFs (_, size) -> size
 end
 
 let ro = Rocks.ReadOptions.create_no_gc ()
@@ -1523,14 +1527,36 @@ let run_server
 
   let stats = AsdStatistics.make () in
   let latest_disk_usage =
-    Rocks.RocksDb.get
-      db
-      ro
-      Keys.disk_usage
-    |> Option.map (deserialize Llio.int64_from)
-    (* TODO if no value is in here yet, then should iter
-     * the DB and sum the sizes... *)
-    |> Option.get_some_default 0L
+    match Rocks.RocksDb.get
+            db
+            ro
+            Keys.disk_usage with
+    | Some v -> deserialize Llio.int64_from v
+    | None ->
+       (* calculate initial disk usage in upgrade scenario... *)
+       let (_, disk_usage), _ =
+         Rocks_key_value_store.fold_range
+           db
+           ~first:(Keys.key_with_public_prefix (Slice.wrap_string "")) ~finc:true
+           ~last:Keys.public_key_next_prefix
+           ~reverse:false ~max:(-1)
+           (fun cur _ _ acc ->
+            let _cs, value = deserialize
+                               Value.from_buffer
+                               (Rocks_key_value_store.cur_get_value cur) in
+            let size = Value.get_size value in
+            Int64.(add acc (of_int size))
+           )
+           0L
+       in
+       let () =
+         Rocks.RocksDb.put
+           db
+           wo_sync
+           Keys.disk_usage
+           (serialize Llio.int64_to disk_usage)
+       in
+       disk_usage
   in
   let mgmt = AsdMgmt.make ~latest_disk_usage
                           ~capacity
