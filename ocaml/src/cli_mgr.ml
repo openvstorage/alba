@@ -558,7 +558,7 @@ let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts 
          Nsm_model.OsdInfo.({
                  kind;
                  decommissioned = false;
-                 node_id;
+                 node_id; failure_domains = []; (* TODO *)
                  other;
                  total; used;
                  seen = [ Unix.gettimeofday (); ];

@@ -169,7 +169,7 @@ module Protocol = struct
           | Kinetic (_, k_id) -> Kinetic (conn_info', k_id)
         in
         let max_n = 10 in
-        { node_id = osd.node_id;
+        { node_id = osd.node_id; failure_domains = osd.failure_domains;
           kind; decommissioned = osd.decommissioned;
           other = Option.get_some_default osd.other other';
           total = Option.get_some_default osd.total total';

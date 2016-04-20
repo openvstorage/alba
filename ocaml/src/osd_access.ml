@@ -443,6 +443,7 @@ class osd_access
                            kind;
                            decommissioned = false;
                            node_id;
+                           failure_domains = [];
                            other = json;
                            used; total;
                            seen = [ Unix.gettimeofday (); ];

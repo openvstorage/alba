@@ -55,6 +55,7 @@ module OsdInfo = struct
     kind : kind;
     decommissioned : bool;
     node_id : node_id;
+    failure_domains : string list;
     other : string;
     total : int64;
     used: int64;
@@ -66,12 +67,14 @@ module OsdInfo = struct
   [@@deriving show, yojson]
 
   let make
-      ~kind ~node_id
+      ~kind
+      ~node_id ~failure_domains
       ~decommissioned ~other
       ~total ~used
       ~seen ~read ~write ~errors
     =
-    { kind; node_id;
+    { kind;
+      node_id; failure_domains;
       decommissioned; other;
       total; used;
       seen; read; write; errors; }
@@ -198,7 +201,9 @@ module OsdInfo = struct
            Llio.float_from
            Llio.string_from)
         buf in
-    { kind; node_id; decommissioned; other;
+    { kind;
+      node_id; failure_domains = [ node_id; ];
+      decommissioned; other;
       total; used;
       seen; read; write; errors;
     }
@@ -232,7 +237,9 @@ module OsdInfo = struct
            Llio.float_from
            Llio.string_from)
         buf in
-    { kind; node_id; decommissioned; other;
+    { kind;
+      node_id; failure_domains = [ node_id; ];
+      decommissioned; other;
       total; used;
       seen; read; write; errors;
     }

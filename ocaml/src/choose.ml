@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 *)
 
+open Prelude
+
 exception EmptyChoose
 
 module Inner = struct
@@ -198,20 +200,15 @@ let group_weight d_nodes =
 
 let build_initial_state info =
 
-  let per_node = Hashtbl.create 47 in
-  let node_ids = ref StringSet.empty in
-  Hashtbl.iter
-    (fun d_id d_info ->
-     let node_id = d_info.OsdInfo.node_id in
-     Hashtbl.add per_node node_id (d_id,d_info);
-     node_ids := StringSet.add node_id !node_ids
-    ) info;
+  let per_node = List.group_by
+                   (fun (_, osd_info) -> osd_info.OsdInfo.node_id)
+                   (Hashtbl.to_assoc_list info)
+  in
 
   let state0 =
     let open Inner in
-    StringSet.fold
-      (fun node_id acc ->
-       let ds = Hashtbl.find_all per_node node_id in
+    Hashtbl.fold
+      (fun node_id ds acc ->
        let d_nodes =
          List.map
            (fun (osd_id, info) ->
@@ -224,7 +221,9 @@ let build_initial_state info =
        let w = group_weight d_nodes in
        let g = G (w, 0, [d_nodes]) in
        [g] :: acc
-      ) !node_ids []
+      )
+      per_node
+      []
   in
   state0
 
