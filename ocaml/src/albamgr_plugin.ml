@@ -38,6 +38,8 @@ module Keys = struct
 
   let maintenance_config = "/alba/maintenance_config"
 
+  let failure_domains = "/alba/failure_domains"
+
   module Nsm_host = struct
     (* this maps to some info about the nsmhost *)
     let info_prefix = "/alba/nsm_host/info/"
@@ -1746,6 +1748,16 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             end
        in
        Lwt.return ((), updates)
+    | SetFailureDomains ->
+       fun failure_domains ->
+       begin
+         match db # get Keys.failure_domains with
+         | None -> Lwt.return ((), [ Update.Set (Keys.failure_domains,
+                                                 serialize
+                                                   (Llio.list_to Llio.string_to)
+                                                   failure_domains); ])
+         | Some _ -> Error.(failwith Unknown)
+       end
   in
 
   let handle_query : type i o. (i, o) query -> i -> o =
@@ -1981,6 +1993,15 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                | Some (osd_id, linc) -> Some (Keys.Osd.purging ~osd_id, linc))
         ~max ~reverse
         (fun cur key -> Keys.Osd.purging_extract_osd_id key)
+    | GetFailureDomains ->
+       fun () ->
+       begin
+         match db # get Keys.failure_domains with
+         | None -> Error.(failwith Unknown)
+         | Some v -> deserialize
+                       (Llio.list_from Llio.string_from)
+                       v
+       end
   in
 
 

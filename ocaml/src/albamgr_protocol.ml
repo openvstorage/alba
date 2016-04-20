@@ -787,6 +787,7 @@ module Protocol = struct
     | GetProgressForPrefix : (string, (int * Progress.t) counted_list) query
     | GetMaintenanceConfig : (unit, Maintenance_config.t) query
     | ListPurgingOsds : (Osd.id RangeQueryArgs.t, Osd.id counted_list_more) query
+    | GetFailureDomains : (unit, string list) query
 
   type ('i, 'o) update =
     | AddNsmHost : (Nsm_host.id * Nsm_host.t, unit) update
@@ -817,6 +818,7 @@ module Protocol = struct
     | UpdateMaintenanceConfig : (Maintenance_config.Update.t, Maintenance_config.t) update
     | AddOsd2 : (OsdInfo.t, unit) update
     | PurgeOsd : (OsdInfo.long_id, unit) update
+    | SetFailureDomains : (string list, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -852,6 +854,7 @@ module Protocol = struct
     | GetProgressForPrefix -> Llio.string_from
     | GetMaintenanceConfig -> Llio.unit_from
     | ListPurgingOsds -> RangeQueryArgs.from_buffer Llio.int32_from
+    | GetFailureDomains -> Llio.unit_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -886,6 +889,7 @@ module Protocol = struct
     | GetProgressForPrefix -> Llio.string_to
     | GetMaintenanceConfig -> Llio.unit_to
     | ListPurgingOsds -> RangeQueryArgs.to_buffer Llio.int32_to
+    | GetFailureDomains -> Llio.unit_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -976,6 +980,7 @@ module Protocol = struct
             Progress.from_buffer)
     | GetMaintenanceConfig -> Maintenance_config.from_buffer
     | ListPurgingOsds -> counted_list_more_from Llio.int32_from
+    | GetFailureDomains -> Llio.list_from Llio.string_from
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -1067,6 +1072,7 @@ module Protocol = struct
            Progress.to_buffer)
     | GetMaintenanceConfig -> Maintenance_config.to_buffer
     | ListPurgingOsds -> counted_list_more_to Llio.int32_to
+    | GetFailureDomains -> Llio.list_to Llio.string_to
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -1132,6 +1138,7 @@ module Protocol = struct
     | UpdateMaintenanceConfig -> Maintenance_config.Update.from_buffer
     | AddOsd2 -> OsdInfo.from_buffer
     | PurgeOsd -> Llio.string_from
+    | SetFailureDomains -> Llio.list_from Llio.string_from
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -1191,6 +1198,7 @@ module Protocol = struct
     | UpdateMaintenanceConfig -> Maintenance_config.Update.to_buffer
     | AddOsd2 -> OsdInfo.to_buffer ~version:2
     | PurgeOsd -> Llio.string_to
+    | SetFailureDomains -> Llio.list_to Llio.string_to
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -1222,6 +1230,7 @@ module Protocol = struct
     | UpdateMaintenanceConfig -> Maintenance_config.from_buffer
     | AddOsd2                 -> Llio.unit_from
     | PurgeOsd                -> Llio.unit_from
+    | SetFailureDomains       -> Llio.unit_from
 
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
@@ -1252,6 +1261,7 @@ module Protocol = struct
     | UpdateMaintenanceConfig -> Maintenance_config.to_buffer
     | AddOsd2                 -> Llio.unit_to
     | PurgeOsd                -> Llio.unit_to
+    | SetFailureDomains       -> Llio.unit_to
 
 
   type request =
@@ -1331,6 +1341,9 @@ module Protocol = struct
 
                       Wrap_u PurgeOsd, 73l, "PurgeOsd";
                       Wrap_q ListPurgingOsds, 74l, "ListPurgingOsds";
+
+                      Wrap_u SetFailureDomains, 75l, "SetFailureDomains";
+                      Wrap_q GetFailureDomains, 76l, "GetFailureDomains";
                     ]
 
 
