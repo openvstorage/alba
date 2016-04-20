@@ -1310,8 +1310,13 @@ let run_server
       ~max_open_files:rocksdb_max_open_files
       ?recycle_log_file_num:rocksdb_recycle_log_file_num
       ~block_cache_size:(match rocksdb_block_cache_size with
-                         | None -> 0.0025 *. Int64.to_float !capacity
-                                   |> int_of_float
+                         | None ->
+                            (* factor based on a simple measurement of rocksdb
+                             * (on disk) size compared to total space
+                             * occupied by the asd. the idea is that
+                             * most or all of rocksdb would be cached in memory. *)
+                            0.0025 *. Int64.to_float !capacity
+                            |> int_of_float
                          | Some v -> v)
       ~db_path ()
   in
