@@ -33,8 +33,10 @@ let asd_start cfg_url slow log_sinks =
 
        let ips,         port,      home,
            node_id,     log_level, asd_id,
-           fsync,       limit,     multicast,
-           buffer_size, tls,       tcp_keepalive,
+           fsync,
+           limit, capacity,
+           multicast, buffer_size,
+           tls, tcp_keepalive,
            write_blobs,
            use_fadvise, use_fallocate,
            rocksdb_block_cache_size
@@ -42,8 +44,10 @@ let asd_start cfg_url slow log_sinks =
         let open Config in
         cfg.ips,     cfg.port,      cfg.home,
         cfg.node_id, cfg.log_level, cfg.asd_id,
-        cfg.__sync_dont_use, cfg.limit, cfg.multicast,
-        cfg.buffer_size, cfg.tls,   cfg.tcp_keepalive,
+        cfg.__sync_dont_use,
+        cfg.limit, cfg.capacity,
+        cfg.multicast, cfg.buffer_size,
+        cfg.tls,   cfg.tcp_keepalive,
         cfg.__warranty_void__write_blobs,
         cfg.use_fadvise, cfg.use_fallocate,
         cfg.rocksdb_block_cache_size
@@ -63,6 +67,19 @@ let asd_start cfg_url slow log_sinks =
       verify_log_level log_level;
       Lwt_log.add_rule "*" (to_level log_level);
 
+      (if buffer_size <> None
+       then Lwt_log.warning "Configured deprecated buffer_size argument -- ignoring!"
+       else Lwt.return ()) >>= fun () ->
+
+      let get_capacity = function
+       | Some c -> c
+       | None ->
+          let _, c = Fsutil.disk_usage home in
+          c
+      in
+
+      let capacity = ref (get_capacity capacity) in
+
       let _ : Lwt_unix.signal_handler_id =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
             let handle () =
@@ -73,15 +90,22 @@ let asd_start cfg_url slow log_sinks =
               | `Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
               | `Ok cfg ->
+
+                capacity := get_capacity cfg.Config.capacity;
+
                 let log_level = cfg.Config.log_level in
                 Lwt_log.reset_rules ();
                 Lwt_log.add_rule "*" (to_level log_level);
-                Lwt_log.info_f "Changed log level to %s" log_level
+
+                Lwt_log.info_f "Reloaded capacity & log level"
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
       Asd_server.run_server ips port home ~asd_id ~node_id ~slow
-                            ~fsync ~limit ~multicast ~buffer_size
+                            ~fsync
+                            ~limit
+                            ~capacity
+                            ~multicast
                             ~tls
                             ~rocksdb_max_open_files:256
                             ~rocksdb_recycle_log_file_num:(Some 4)

@@ -32,6 +32,7 @@ module KVS = Key_value_store
 module Keys = struct
   let node_id = "*node_id"
   let asd_id = "*asd_id"
+  let disk_usage = "*disk_usage"
 
   let public_prefix_byte = '\000'
   let public_key_next_prefix = Some ("\001", false)
@@ -320,6 +321,10 @@ module Value = struct
       compose Lwt.return Slice.wrap_string
 
   let get_cs = fst
+
+  let get_size = function
+    | Direct s -> Slice.length s
+    | OnFs (_, size) -> size
 end
 
 let ro = Rocks.ReadOptions.create_no_gc ()
@@ -667,7 +672,8 @@ let execute_query : type req res.
                     return' Alba_version.summary
     | GetDiskUsage ->
        fun () ->
-       return' !(mgmt.AsdMgmt.latest_disk_usage)
+       let open AsdMgmt in
+       return' (mgmt.latest_disk_usage, !(mgmt.capacity))
 
 exception ConcurrentModification
 
@@ -931,13 +937,15 @@ let execute_update : type req res.
           let open Rocks in
           WriteBatch.with_t
             (fun wb ->
-             let files_to_delete =
+             let files_to_delete, size_delta =
                List.fold_left
-                 (fun acc (key, action) ->
-                  let acc' = match get_value_option kv key with
-                    | None
-                    | Some (_, Value.Direct _) -> acc
-                    | Some (_, Value.OnFs (fnr, _)) ->
+                 (fun (files_to_delete, size_delta) (key, action) ->
+                  let files_to_delete, size_delta =
+                    match get_value_option kv key with
+                    | None -> files_to_delete, size_delta
+                    | Some (_, Value.Direct v) ->
+                       files_to_delete, size_delta - (Slice.length v)
+                    | Some (_, Value.OnFs (fnr, file_size)) ->
                        (* there's currently a file associated with this key
                            that file should eventually be deleted... *)
                        WriteBatch.put
@@ -950,22 +958,28 @@ let execute_update : type req res.
                          wb
                          (Keys.file_to_key_mapping fnr);
 
-                       fnr :: acc
+                       fnr :: files_to_delete,
+                       size_delta - file_size
                   in
-                  let () = match action with
+                  let size_delta =
+                    size_delta +
+                    match action with
                     | `Set (value, value') ->
-                       begin
+                       let size =
                          let open Value in
                          match value with
-                         | Direct _ -> ()
-                         | OnFs (fnr, _) ->
-                            let file_map_key = Keys.file_to_key_mapping fnr in
-                            let open Slice in
-                            WriteBatch.put_slice
-                              wb
-                              file_map_key 0 (String.length file_map_key)
-                              key.buf key.offset key.length
-                       end;
+                         | Direct v -> Slice.length v
+                         | OnFs (fnr, size) ->
+                            let () =
+                              let file_map_key = Keys.file_to_key_mapping fnr in
+                              let open Slice in
+                              WriteBatch.put_slice
+                                wb
+                                file_map_key 0 (String.length file_map_key)
+                                key.buf key.offset key.length
+                            in
+                            size
+                       in
                        let open Slice in
                        with_prefix_byte_unsafe
                          key
@@ -974,7 +988,8 @@ let execute_update : type req res.
                           WriteBatch.put_slice
                             wb
                             key'.buf key'.offset key'.length
-                            value' 0 (String.length value'))
+                            value' 0 (String.length value'));
+                       size
                     | `Delete ->
                        let open Slice in
                        with_prefix_byte_unsafe
@@ -983,11 +998,24 @@ let execute_update : type req res.
                          (fun key' ->
                           WriteBatch.delete_slice
                             wb
-                            key'.buf key'.offset key'.length)
+                            key'.buf key'.offset key'.length);
+                       0
                   in
-                  acc')
-                 []
+                  files_to_delete, size_delta)
+                 ([], 0)
                  immediate_updates in
+
+             let () =
+               let open Asd_protocol.AsdMgmt in
+               mgmt.latest_disk_usage <- Int64.add
+                                           mgmt.latest_disk_usage
+                                           (Int64.of_int size_delta);
+               WriteBatch.put
+                 wb
+                 Keys.disk_usage
+                 (serialize Llio.int64_to mgmt.latest_disk_usage);
+             in
+
              RocksDb.write kv wo_no_sync wb;
 
              files_to_delete)
@@ -1248,11 +1276,11 @@ let run_server
       (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
-      ~buffer_size
       ~rocksdb_max_open_files
       ~rocksdb_recycle_log_file_num
       ~rocksdb_block_cache_size
       ~limit
+      ~capacity
       ~multicast
       ~tls
       ~tcp_keepalive
@@ -1277,14 +1305,18 @@ let run_server
   let ctx = Tls.to_server_context tls in
   let db_path = path ^ "/db" in
   Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
-  let kv =
+  let db =
     Rocks_key_value_store.create'
       ~max_open_files:rocksdb_max_open_files
       ?recycle_log_file_num:rocksdb_recycle_log_file_num
       ~block_cache_size:(match rocksdb_block_cache_size with
-                         | None -> 0.0025 *. (Fsutil.disk_usage path
-                                              |> snd |> Int64.to_float)
-                                   |> int_of_float
+                         | None ->
+                            (* factor based on a simple measurement of rocksdb
+                             * (on disk) size compared to total space
+                             * occupied by the asd. the idea is that
+                             * most or all of rocksdb would be cached in memory. *)
+                            0.0025 *. Int64.to_float !capacity
+                            |> int_of_float
                          | Some v -> v)
       ~db_path ()
   in
@@ -1292,17 +1324,17 @@ let run_server
   let endgame () =
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->
-    let () = let open Rocks in RocksDb.close kv in
+    let () = let open Rocks in RocksDb.close db in
     Lwt_log.fatal_f "endgame: closed  %s" db_path
   in
 
-  let asd_id = check_asd_id kv asd_id in
-  let () = check_node_id kv node_id in
+  let asd_id = check_asd_id db asd_id in
+  let () = check_node_id db node_id in
 
   Lwt_log.debug_f "starting asd: %S" asd_id >>= fun () ->
 
   let check_garbage_from =
-    match Rocks.RocksDb.get kv ro Keys.check_garbage_from with
+    match Rocks.RocksDb.get db ro Keys.check_garbage_from with
     | None -> 0L
     | Some v -> deserialize Llio.int64_from v
   in
@@ -1339,7 +1371,7 @@ let run_server
         *)
        if fsync
        then
-         Rocks.RocksDb.write kv wo_sync wb
+         Rocks.RocksDb.write db wo_sync wb
       )
       (if write_blobs
        then
@@ -1370,7 +1402,7 @@ let run_server
              "Found unexpected file %s inside %s which probably shouldn't be there."
              filename leaf_dir
          | Some fnr ->
-           maybe_delete_file kv dir_info fnr)
+           maybe_delete_file db dir_info fnr)
       files
   in
 
@@ -1424,7 +1456,7 @@ let run_server
   (* delete files that are still marked as to delete *)
   let (_, fnrs_to_delete), _ =
     Rocks_key_value_store.map_range
-      kv
+      db
       ~first:Keys.to_be_deleted_first ~finc:true
       ~last:Keys.to_be_deleted_last
       ~max:(-1)
@@ -1439,14 +1471,14 @@ let run_server
          in
          fnr)
   in
-  cleanup_files_to_delete true io_sched kv dir_info fnrs_to_delete >>= fun () ->
+  cleanup_files_to_delete true io_sched db dir_info fnrs_to_delete >>= fun () ->
 
   (* do range query on rocksdb to get biggest fnr currently in use *)
   let next_fnr =
     let inner =
       Rocks_key_value_store.
         (with_cursor
-           kv
+           db
            (fun cur ->
               if cur_jump cur Left Keys.file_to_key_mapping_next_prefix
               then Some (cur_get_key cur)
@@ -1465,7 +1497,7 @@ let run_server
 
   (* store next_fnr in rocksdb *)
   Rocks.RocksDb.put
-    kv
+    db
     wo_sync
     Keys.check_garbage_from
     (serialize Llio.int64_to next_fnr);
@@ -1475,7 +1507,7 @@ let run_server
   Rocks.FlushOptions.with_t
     (fun fo ->
        Rocks.FlushOptions.set_wait fo false;
-       Rocks.RocksDb.flush kv fo);
+       Rocks.RocksDb.flush db fo);
 
   let get_next_fnr =
     let counter = ref (Int64.pred next_fnr) in
@@ -1496,21 +1528,50 @@ let run_server
       !counter
   in
 
-  let advancer = new check_garbage_from_advancer next_fnr kv in
+  let advancer = new check_garbage_from_advancer next_fnr db in
 
   let stats = AsdStatistics.make () in
-  let latest_disk_usage = ref (Fsutil.disk_usage path) in
-  let disk_usage () =
-    Fsutil.lwt_disk_usage path >>= fun r ->
-    let () = latest_disk_usage := r in
-    Lwt.return r
+  let latest_disk_usage =
+    match Rocks.RocksDb.get
+            db
+            ro
+            Keys.disk_usage with
+    | Some v -> deserialize Llio.int64_from v
+    | None ->
+       (* calculate initial disk usage in upgrade scenario... *)
+       let (_, disk_usage), _ =
+         Rocks_key_value_store.fold_range
+           db
+           ~first:(Keys.key_with_public_prefix (Slice.wrap_string "")) ~finc:true
+           ~last:Keys.public_key_next_prefix
+           ~reverse:false ~max:(-1)
+           (fun cur _ _ acc ->
+            let _cs, value = deserialize
+                               Value.from_buffer
+                               (Rocks_key_value_store.cur_get_value cur) in
+            let size = Value.get_size value in
+            Int64.(add acc (of_int size))
+           )
+           0L
+       in
+       let () =
+         Rocks.RocksDb.put
+           db
+           wo_sync
+           Keys.disk_usage
+           (serialize Llio.int64_to disk_usage)
+       in
+       disk_usage
   in
-  let mgmt = AsdMgmt.make latest_disk_usage limit in
+  let mgmt = AsdMgmt.make ~latest_disk_usage
+                          ~capacity
+                          ~limit
+  in
 
   let protocol nfd =
     asd_protocol
       ?cancel
-      kv
+      db
       ~release_fnr:(fun fnr -> advancer # release fnr)
       ~slow
       io_sched
@@ -1551,8 +1612,15 @@ let run_server
          | Some tls -> let open Asd_config.Config in Some tls.port
        in
        let mcast_t () =
-         Discovery.multicast asd_id node_id hosts port tlsPort mcast_period
-                             ~disk_usage
+         Discovery.multicast
+           asd_id node_id
+           hosts port tlsPort
+           mcast_period
+           ~disk_usage:(fun () ->
+                        let open Asd_protocol.AsdMgmt in
+                        Lwt.return
+                          (mgmt.latest_disk_usage,
+                           !(mgmt.capacity)))
        in
        mcast_t () :: threads
   in
