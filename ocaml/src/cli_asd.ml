@@ -261,6 +261,28 @@ let asd_delete_cmd =
     Term.info "asd-delete" ~doc
   in asd_delete_t, info
 
+let asd_disk_usage hosts port transport tls_config asd_id verbose =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id verbose
+    (fun client ->
+      client # get_disk_usage () >>= fun (used,cap) ->
+     Lwt_io.printlf "disk_usage:(%Li,%Li)" used cap
+    )
+
+let asd_disk_usage_cmd =
+  let asd_disk_usage_t =
+    Term.(pure asd_disk_usage
+          $ hosts $ port 8000 $ transport $tls_config
+          $ lido
+          $ verbose
+    )
+  in
+  let info =
+    let doc = "return ASD disk usage (used,cap)" in
+    Term.info "asd-disk-usage" ~doc 
+  in
+  asd_disk_usage_t, info
 
 let asd_range hosts port transport tls_config asd_id first verbose =
   let finc = true
@@ -684,6 +706,8 @@ let cmds = [
   asd_multistatistics_cmd;
   asd_set_full_cmd;
   asd_get_version_cmd;
+  asd_disk_usage_cmd;
   bench_syncfs_cmd;
   bench_fsync_cmd;
+  (* Asd_kaboom.kaboom_cmd; *)
 ]
