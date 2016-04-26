@@ -317,16 +317,49 @@ let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json
          inner (0,[],true) ~first ~finc needed
        in
        list_all () >>= fun (count, namespaces) ->
+       let namespaces_by_nsm_host =
+         List.group_by
+           (fun (_, namespace) ->
+            namespace.Albamgr_protocol.Protocol.Namespace.nsm_host_id)
+           namespaces
+         |> Hashtbl.to_assoc_list
+       in
        Lwt_list.map_p
-         (fun (name, namespace) ->
-          client # get_base_client # with_nsm_client ~namespace:name
-               (fun nsm_client ->
-                  nsm_client # get_stats >>= fun stats ->
-                  Lwt.return (name,namespace,stats)
+         (fun (nsm_host_id, namespaces) ->
+          client # get_base_client
+                 # nsm_host_access
+                 # with_nsm_host_client ~nsm_host_id
+                 (fun client ->
+                  (new Nsm_host_client.client
+                       (client :> Nsm_host_client.basic_client))
+                    # get_nsm_stats
+                    (List.map
+                       (fun (_, ns) ->
+                        ns.Albamgr_protocol.Protocol.Namespace.id)
+                       namespaces)) >>= function
+          | Some res ->
+             List.combine
+               namespaces
+               res
+             |> List.map_filter_rev
+                  (fun ((name, ns), stat) ->
+                   match stat with
+                   | Result.Ok stat -> Some (name, ns, stat)
+                   | Result.Error _ -> None)
+             |> Lwt.return
+          | None ->
+             Lwt_list.map_p
+               (fun (name, namespace) ->
+                client # get_base_client # with_nsm_client ~namespace:name
+                       (fun nsm_client ->
+                        nsm_client # get_stats >>= fun stats ->
+                        Lwt.return (name,namespace,stats)
+                       )
                )
-         )
-         namespaces
+               namespaces)
+         namespaces_by_nsm_host
        >>= fun r ->
+       let r = List.flatten_unordered r in
        if to_json
        then
          begin

@@ -30,7 +30,8 @@ OPAM_DEPENDS="ocamlfind \
          core.113.00.00 \
          conf-libev \
          redis \
-         uri
+         uri \
+         result
 "
 
 export OPAMYES=1

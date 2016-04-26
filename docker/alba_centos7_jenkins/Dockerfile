@@ -70,7 +70,8 @@ RUN eval `${opam_env}` && \
         ppx_deriving_yojson \
         core.113.00.00 \
         redis \
-        uri.1.9.1
+        uri.1.9.1 \
+        result
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue

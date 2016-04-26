@@ -255,3 +255,24 @@ let read_file file =
        assert (read = len');
        Lwt.return ()) >>= fun () ->
   Lwt.return buf
+
+
+let copy_using fd_in fd_out size buffer =
+  let buffer_size = Lwt_bytes.length buffer in
+  let rec loop todo =
+    if todo = 0
+    then Lwt.return_unit
+    else
+      begin
+        let step =
+          if todo <= buffer_size
+          then todo
+          else buffer_size
+        in
+        Lwt_bytes.read fd_in buffer 0 step >>= fun bytes_read ->
+        write_all_lwt_bytes fd_out buffer 0 bytes_read >>= fun () ->
+        loop (todo - bytes_read)
+      end
+  in
+  loop size
+

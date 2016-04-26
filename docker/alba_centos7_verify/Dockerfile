@@ -5,6 +5,7 @@ RUN yum -y update
 RUN yum -y install python-devel wget make m4 gcc install python-pip
 RUN pip install fabric junit-xml
 RUN yum -y install sudo
+RUN yum -y install iproute
 #
 # Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
 #         You have to run "ssh -t hostname sudo <cmd>".

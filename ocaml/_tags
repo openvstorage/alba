@@ -23,6 +23,7 @@ true: use_rocks
 true: package(kinetic-client)
 true: package(ordma)
 true: ppx_lwt
+true: package(result)
 
 "src/alba.native" : use_Jerasure, use_gcrypt, use_isal
 "src/alba.byte" : use_Jerasure, use_gcrypt, use_isal

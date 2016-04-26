@@ -143,6 +143,23 @@ class client (client : basic_client) =
     method get_version = client # query GetVersion ()
 
     method statistics (clear:bool) = client # query NSMHStatistics clear
+
+    method nsms_query tag req =
+      Lwt.catch
+        (fun () -> client # query (NsmsQuery tag) req >>= fun r ->
+                   Lwt.return (Some r))
+        (function
+          | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Unknown_operation, _) ->
+             Lwt.return None
+          | exn ->
+             Lwt.fail exn)
+
+    method get_nsm_stats namespace_ids =
+      self # nsms_query
+           Nsm_protocol.Protocol.GetStats
+           (List.map
+              (fun id -> id, ())
+              namespace_ids)
   end
 
 let wrap_around (client:Arakoon_client.client) =

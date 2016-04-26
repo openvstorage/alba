@@ -51,6 +51,7 @@ build-nsm-plugin: build-cmxs
 	_build/src/nsm_host_plugin.cmx \
 	-linkpkg -package ppx_deriving_yojson \
         -linkpkg -package uuidm \
+        -linkpkg -package result \
 	-shared -o nsm_host_plugin.cmxs
 
 build-mgr-plugin: build-alba
@@ -88,6 +89,7 @@ build-mgr-plugin: build-alba
 	-linkpkg -package ppx_deriving_yojson \
 	-linkpkg -package tiny_json \
 	-linkpkg -package uuidm \
+        -linkpkg -package result \
 	-shared -o albamgr_plugin.cmxs
 
 build-disk-failure-tests: build-alba

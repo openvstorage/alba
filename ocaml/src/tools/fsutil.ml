@@ -224,9 +224,23 @@ let sendfile_all ~fd_in ?offset ~fd_out ~wait_readable ~wait_writeable ~detached
                      | Some v -> Some (v + (size - todo)))
             todo
         in
-        if detached
-        then Lwt_preemptive.detach do_it true
-        else Lwt.return (do_it false))
+        Lwt.catch
+          (fun () ->
+            if detached
+            then Lwt_preemptive.detach do_it true
+            else Lwt.return (do_it false)
+          )
+          (function
+           | Unix.Unix_error(Unix.EAGAIN,_,_) as exn ->
+              Lwt_log.info ~exn "sendfile EAGAIN !? revert to copy" >>= fun () ->
+              Buffer_pool.with_buffer
+                Buffer_pool.default_buffer_pool
+                (Lwt_extra2.copy_using fd_in fd_out todo)
+              >>= fun () ->
+              Lwt.return todo
+           | exn -> Lwt.fail exn
+          )
+       )
        >>= fun sent ->
 
        if sent = 0
