@@ -1339,6 +1339,48 @@ end
 
 module Test = struct
   open Deployment
+  type backend_connection_manager = {
+      backend_type : string;
+      alba_connection_host : string ;
+      alba_connection_port : string ;
+      alba_connection_transport : string;
+    } [@@ deriving yojson, show]
+                                      
+  type backend_cfg = {
+      backend_connection_manager : backend_connection_manager;
+    } [@@ deriving yojson, show]
+
+  let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv" 
+  let backend_cfg_file cfg = backend_cfg_dir cfg  ^ "/backend.json"
+                                                      
+  let make_backend_cfg cfg ~host ~port ~transport =
+      {
+        backend_connection_manager = {
+          backend_type = "ALBA";
+          alba_connection_host = host;
+          alba_connection_port = port;
+          alba_connection_transport = transport; (* "RDMA" | "TCP" *)
+        }
+      }
+
+
+
+  let backend_cfg_persister cfg =
+    let backend_cfg =
+      let host, port, transport = match cfg.alba_rdma with
+        | None -> "127.0.0.1","10000","TCP"
+        | Some rdma -> rdma, "10000","RDMA"
+      in
+      make_backend_cfg cfg
+                       ~host
+                       ~port
+                       ~transport
+    in
+    let oc = open_out (backend_cfg_file cfg) in
+    let json = backend_cfg_to_yojson backend_cfg in
+    Yojson.Safe.pretty_to_channel oc json;
+    close_out oc
+      
   let wrapper f t =
     let t = Deployment.make_default () in
     Deployment.kill t;
@@ -1422,12 +1464,20 @@ module Test = struct
       |> Shell.cmd_with_rc
     end
 
+  let _make_backend_cfg_dir cfg =
+    let cmd_s = ["mkdir" ; "-p" ; backend_cfg_dir cfg]
+                |> String.concat " "
+    in
+    cmd_s |> Shell.cmd_with_rc |> ignore
+
   let voldrv_backend ?(xml=false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
+    _make_backend_cfg_dir cfg;
+    backend_cfg_persister cfg;
     let cmd = [
         cfg.voldrv_backend_test;
         "--skip-backend-setup"; "1";
-        "--backend-config-file"; cfg.alba_home ^ "/cfg/backend.json";
+        "--backend-config-file"; backend_cfg_file cfg;
         (*"--loglevel=error"; *)
       ]
     in
@@ -1447,9 +1497,12 @@ module Test = struct
 
   let voldrv_tests ?(xml = false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
+    _make_backend_cfg_dir cfg;
+    backend_cfg_persister cfg;
     let cmd = [cfg.voldrv_test;
                "--skip-backend-setup";"1";
-               "--backend-config-file"; cfg.alba_home ^ "/cfg/backend.json";
+               "--backend-config-file"; backend_cfg_file cfg;
+               "--arakoon-binary-path"; cfg.arakoon_bin;
                "--loglevel=error"]
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml"] else cmd in
