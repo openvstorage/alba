@@ -1367,14 +1367,14 @@ module Test = struct
         }
       }
 
-
+  let _get_proxy_coords cfg =
+    match cfg.alba_rdma with
+        | None -> "127.0.0.1","10000","TCP"
+        | Some rdma -> rdma, "10000","RDMA"
 
   let backend_cfg_persister cfg =
     let backend_cfg =
-      let host, port, transport = match cfg.alba_rdma with
-        | None -> "127.0.0.1","10000","TCP"
-        | Some rdma -> rdma, "10000","RDMA"
-      in
+      let host, port, transport = _get_proxy_coords cfg in
       make_backend_cfg cfg
                        ~host
                        ~port
@@ -1397,8 +1397,14 @@ module Test = struct
 
   let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let cfg = t.Deployment.cfg in
+    let host, port, transport = _get_proxy_coords cfg in
     let cmd =
-      ["cd";cfg.alba_home; "&&"; "LD_LIBRARY_PATH=./cpp/lib"; "./cpp/bin/unit_tests.out";
+      ["cd";cfg.alba_home; "&&";
+       "LD_LIBRARY_PATH=./cpp/lib";
+       Printf.sprintf "ALBA_PROXY_IP=%s" host;
+       Printf.sprintf "ALBA_PROXY_PORT=%s" port;
+       Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
+       "./cpp/bin/unit_tests.out";
       ]
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml" ] else cmd in

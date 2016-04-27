@@ -50,7 +50,7 @@ struct config {
     PORT = env_or_default("ALBA_PROXY_PORT", "10000");
     HOST = env_or_default("ALBA_PROXY_IP", "127.0.0.1");
     TRANSPORT = alba:: proxy_client :: Transport :: tcp;
-    if (env_or_default("ALBA_PROXY_TRANSPORT", "tcp") == "rdma") {
+    if (env_or_default("ALBA_PROXY_TRANSPORT", "TCP") == "RDMA") {
       TRANSPORT = alba:: proxy_client :: Transport :: rdma;
     }
     NAMESPACE= "demo";
@@ -89,6 +89,7 @@ TEST(proxy_client, list_objects) {
   
   ALBA_LOG(WARNING, "starting test:list_objects");
   config cfg;
+  cout << "cfg("<< cfg.HOST << ", " << cfg.PORT << ", " << cfg.TRANSPORT << ")" << endl;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   string ns("demo");
   string first("");
