@@ -34,9 +34,10 @@ module Shell = struct
   let cmd ?(ignore_rc=false) x =
     _print x;
     let rc = x |> Sys.command in
-    if not ignore_rc && rc <> 0
-    then failwith (Printf.sprintf "%S=x => rc=%i" x rc)
-    else ()
+    match ignore_rc,rc with
+    | true,_ | false,0 -> ()
+    | false, rc -> failwith (Printf.sprintf "%S=x => rc=%i" x rc)
+
 
   let cmd_with_rc x =
     _print x;

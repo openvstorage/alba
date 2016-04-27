@@ -624,8 +624,8 @@ class proxy ?fragment_cache ?ip ?transport
 
   method stop =
     (* can't use fuser for rdma based servers *)
-    Printf.sprintf "pkill -f '%s'"
-                   (String.concat " " (self # start_cmd))
+    let start_line = String.concat " " (self # start_cmd) in 
+    Printf.sprintf "pkill -f '%s'" start_line
     |> Shell.cmd ~ignore_rc:true
 
   method upload_object namespace file name =
@@ -653,6 +653,9 @@ class proxy ?fragment_cache ?ip ?transport
 
   method list_namespaces =
     [ "proxy-list-namespaces" ] |> proxy_cmd_line_with_capture
+
+  method cmd_line cmd = proxy_cmd_line cmd
+  
 end
 
 type maintenance_cfg = {
@@ -853,8 +856,9 @@ class asd ?write_blobs ?transport ?ip
       |> Shell.detach ~out;
 
     method stop =
-      Printf.sprintf "pkill -f '%s'" (String.concat " " self # start_cmd)
-      |> Shell.cmd
+      let start_line = String.concat " " self # start_cmd in
+      Printf.sprintf "pkill -f '%s'" start_line
+      |> Shell.cmd ~ignore_rc:true
 
     method private build_remote_cli ?(json=true) what  =
       let p = match tls with
@@ -1551,14 +1555,17 @@ module Test = struct
     in
     loop 0;
     Deployment.restart_osds t;
+    
     let attempt ()  =
-      try [
-        "proxy-upload-object";
-        "-h";"127.0.0.1";
-        "demo";object_location;
-        "some_other_name";"--allow-overwrite";
-        ] |> _alba_cmd_line ~ignore_tls:true;
-          true
+      try
+        t.proxy # cmd_line
+                ["proxy-upload-object";
+                 "demo";
+                 object_location;
+                 "some_other_name";
+                 "--allow-overwrite";
+                ];
+        true
       with
       | _ -> false
     in
