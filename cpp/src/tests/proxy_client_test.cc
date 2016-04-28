@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "gtest/gtest.h"
 #include <boost/log/trivial.hpp>
+#include <boost/algorithm/string.hpp>
 #include "proxy_client.h"
 #include "alba_logger.h"
 
@@ -50,7 +51,10 @@ struct config {
     PORT = env_or_default("ALBA_PROXY_PORT", "10000");
     HOST = env_or_default("ALBA_PROXY_IP", "127.0.0.1");
     TRANSPORT = alba:: proxy_client :: Transport :: tcp;
-    if (env_or_default("ALBA_PROXY_TRANSPORT", "TCP") == "RDMA") {
+    string transport = env_or_default("ALBA_PROXY_TRANSPORT", "tcp");
+    boost::algorithm::to_lower(transport);
+
+    if (transport == "rdma") {
       TRANSPORT = alba:: proxy_client :: Transport :: rdma;
     }
     NAMESPACE= "demo";

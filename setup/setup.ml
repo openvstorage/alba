@@ -1825,7 +1825,7 @@ module Test = struct
                  "proxy-client-cfg";
                  "-h"; host;
                  "-p"; port;
-                 "-t"; (String.lowercase transport);
+                 "-t"; transport;
                  " | grep port | wc"
                 ] |> Shell.cmd_with_capture in
         let c = Scanf.sscanf r " %i " (fun i -> i) in
