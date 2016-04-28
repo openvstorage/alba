@@ -861,17 +861,29 @@ class asd ?write_blobs ?transport ?ip
       |> Shell.cmd ~ignore_rc:true
 
     method private build_remote_cli ?(json=true) what  =
+      let ip = match ip with
+        | None -> "127.0.0.1"
+        | Some ip -> ip
+      in
+      let transport = match transport with
+        | None -> "tcp"
+        | Some t -> t
+      in
       let p = match tls with
         | Some tls -> tls.port
         | None -> begin match port with | Some p -> p | None -> failwith "bad config" end
       in
       let cmd0 = [ alba_bin;]
                  @ what
-                 @ ["-h"; "127.0.0.1";"-p"; string_of_int p;]
+                 @ ["-h"; ip ;
+                    "-p"; string_of_int p;
+                    "-t"; transport;
+                   ]
       in
       let cmd1 = if use_tls then _alba_extend_tls cmd0 else cmd0 in
       let cmd2 = if json then cmd1 @ ["--to-json"] else cmd1 in
       cmd2
+        
     method get_remote_version =
       let cmd = self # build_remote_cli ["asd-get-version"] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -883,6 +895,7 @@ class asd ?write_blobs ?transport ?ip
     method set k v =
       let cmd = self # build_remote_cli ["asd-set";k;v] ~json:false in
       cmd |> String.concat " " |> Shell.cmd
+                                    
     method get k =
       let cmd = self # build_remote_cli ["asd-multi-get"; k] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -1367,14 +1380,15 @@ module Test = struct
         }
       }
 
-  let _get_proxy_coords cfg =
+  let _get_ip_transport cfg =
     match cfg.alba_rdma with
-        | None -> "127.0.0.1","10000","TCP"
-        | Some rdma -> rdma, "10000","RDMA"
+        | None -> "127.0.0.1","TCP"
+        | Some rdma -> rdma,"RDMA"
 
   let backend_cfg_persister cfg =
     let backend_cfg =
-      let host, port, transport = _get_proxy_coords cfg in
+      let host, transport = _get_ip_transport cfg
+      and port = "10000" in
       make_backend_cfg cfg
                        ~host
                        ~port
@@ -1397,7 +1411,9 @@ module Test = struct
 
   let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let cfg = t.Deployment.cfg in
-    let host, port, transport = _get_proxy_coords cfg in
+    let host, transport = _get_ip_transport cfg
+    and port = "10000"
+    in
     let cmd =
       ["cd";cfg.alba_home; "&&";
        "LD_LIBRARY_PATH=./cpp/lib";
@@ -1684,14 +1700,18 @@ module Test = struct
     | exception x -> JUnit.Err (Printexc.to_string x)
 
   let asd_cli_env t =
-    if t.Deployment.cfg.tls
+    let cfg = t.Deployment.cfg in
+    if cfg.tls
     then
       let cert,pem,key = _get_client_tls () in
+      let host,transport = _get_ip_transport cfg
+      and port = "8501" in
       let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
                  t.cfg.alba_bin;
                  "asd-get-version";
-                 "-h 127.0.0.1";
-                 "-p" ; "8501"
+                 "-h"; host;
+                 "-p" ; port;
+                 "-t" ; transport
                 ]
       in
       let _r = Shell.cmd_with_capture cmd in
@@ -1798,7 +1818,16 @@ module Test = struct
                         "--config"; cfg]
       in
       let n_nodes_in_config () =
-        let r = [t'.cfg.alba_bin; "proxy-client-cfg | grep port | wc" ] |> Shell.cmd_with_capture in
+        let host,transport = _get_ip_transport t.cfg
+        and port = "10000"
+        in
+        let r = [t'.cfg.alba_bin;
+                 "proxy-client-cfg";
+                 "-h"; host;
+                 "-p"; port;
+                 "-t"; (String.lowercase transport);
+                 " | grep port | wc"
+                ] |> Shell.cmd_with_capture in
         let c = Scanf.sscanf r " %i " (fun i -> i) in
         c
       in
@@ -1829,7 +1858,7 @@ module Test = struct
       in
       maybe_copy (three_nodes # config_url);
       t'.maintenance # signal "USR1";
-      wait_for(120);
+      wait_for 120;
       let c = n_nodes_in_config () in
       assert (c = 3);
 
@@ -1839,7 +1868,7 @@ module Test = struct
       two_nodes # start;
       maybe_copy (t'.abm # config_url) ;
       upload_albamgr_cfg (two_nodes # config_url |> Url.canonical);
-      wait_for(120);
+      wait_for 120;
       let c = n_nodes_in_config () in
       assert (c = 2);
       ()
