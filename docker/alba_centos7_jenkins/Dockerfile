@@ -130,7 +130,7 @@ RUN cp /usr/local/lib/librocksdb.so* /lib64/
 RUN yum -y install librdmacm-devel
 RUN git clone https://github.com/toolslive/ordma.git \
     && cd ordma \
-    && git checkout 2a88b21d6461e0b063ba9dedcc5a12887dd0ca30 \
+    && git checkout tags/0.0.2 \
     && eval `${opam_env}` \
     && make install
     
