@@ -381,61 +381,31 @@ module Net_fd = struct
     | SSL _ssl ->
        let socket = _ssl_get_socket _ssl in
        Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
-       let copy_using buffer =
-         let buffer_size = Lwt_bytes.length buffer in
-          let write_all socket buffer offset length =
-            let write_from_source = Lwt_ssl.write_bytes socket buffer in
-            Lwt_extra2._write_all write_from_source offset length
-          in
-          let rec loop todo =
-            if todo = 0
-            then Lwt.return_unit
-            else
-              begin
-                let step =
-                  if todo <= buffer_size
-                  then todo
-                  else buffer_size
-                in
-                Lwt_bytes.read fd_in buffer 0 step >>= fun bytes_read ->
-                write_all socket     buffer 0 bytes_read >>= fun () ->
-                loop (todo - bytes_read)
-              end
-          in
-          loop size
+       let reader buffer offset length =
+         Lwt_bytes.read fd_in buffer offset length
        in
-       Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
+       let writer buffer offset length =
+         let write_from_source = Lwt_ssl.write_bytes socket buffer in
+         Lwt_extra2._write_all write_from_source offset length
+       in
+       Buffer_pool.with_buffer
+         Buffer_pool.default_buffer_pool
+         (Lwt_extra2.copy_using reader writer size)
+     
     | Rsocket socket ->
        Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
-       let copy_using buffer =
-         let buffer_size = Lwt_bytes.length buffer in
-         
-         let write_all socket buffer offset length =
-           let write_from_source offset todo =
-             Lwt_rsocket.Bytes.send socket buffer offset todo []
-           in
-           Lwt_extra2._write_all write_from_source offset length
-         in
-         
-         let rec loop todo =
-           if todo = 0
-           then Lwt.return_unit
-           else
-             begin
-               let step =
-                 if todo <= buffer_size
-                 then todo
-                 else buffer_size
-               in
-               Lwt_bytes.read fd_in buffer 0 step >>= fun bytes_read ->
-               write_all socket     buffer 0 bytes_read >>= fun () ->
-               loop (todo - bytes_read)
-             end
-         in
-         loop size
-              
+       let reader buffer offset length =
+         Lwt_bytes.read fd_in buffer offset length
        in
-       Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
+       let writer buffer offset length =
+         let write_from_source offset todo =
+             Lwt_rsocket.Bytes.send socket buffer offset todo []
+         in
+         Lwt_extra2._write_all write_from_source offset length
+       in
+       Buffer_pool.with_buffer
+         Buffer_pool.default_buffer_pool
+         (Lwt_extra2.copy_using reader writer size)
 end
 
 let execute_query : type req res.

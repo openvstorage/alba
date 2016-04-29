@@ -235,7 +235,7 @@ let sendfile_all ~fd_in ?offset ~fd_out ~wait_readable ~wait_writeable ~detached
               Lwt_log.info ~exn "sendfile EAGAIN !? revert to copy" >>= fun () ->
               Buffer_pool.with_buffer
                 Buffer_pool.default_buffer_pool
-                (Lwt_extra2.copy_using fd_in fd_out todo)
+                (Lwt_extra2.copy_between_fds fd_in fd_out todo)
               >>= fun () ->
               Lwt.return todo
            | exn -> Lwt.fail exn
