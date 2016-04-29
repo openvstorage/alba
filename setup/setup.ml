@@ -1255,7 +1255,7 @@ module Deployment = struct
       | None -> ()
       | Some etcd -> etcd # stop
     in
-    let pkill x = (Printf.sprintf "pkill -e %s" x) |> Shell.cmd ~ignore_rc:true in
+    let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
     pkill "arakoon";
     pkill "alba";
     pkill "'java.*SimulatorRunner.*'";
