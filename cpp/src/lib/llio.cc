@@ -66,7 +66,7 @@ template <> void from<uint32_t>(message &m, uint32_t &i) {
   m.skip(4);
 }
 
-template <> void from<int32_t>(message&m, int32_t &i){
+template <> void from<int32_t>(message &m, int32_t &i) {
   const char *ib = m.current();
   i = *((int32_t *)ib);
   m.skip(4);

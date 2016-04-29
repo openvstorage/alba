@@ -253,26 +253,21 @@ void read_drop_cache_response(message &m, Status &status) {
   read_status(m, status);
 }
 
-void write_get_proxy_version_request(message_builder&mb){
+void write_get_proxy_version_request(message_builder &mb) {
   write_tag(mb, _GET_PROXY_VERSION);
 }
 
-void read_get_proxy_version_response(message&m,
-                                     Status& status,
-                                     int32_t& major,
-                                     int32_t& minor,
-                                     int32_t& patch,
-                                     std::string& hash
-                                   ){
-  read_status(m,status);
-  if(status.is_ok()){
-      from(m, major);
-      from(m, minor);
-      from(m, patch);
-      from(m, hash);
+void read_get_proxy_version_response(message &m, Status &status, int32_t &major,
+                                     int32_t &minor, int32_t &patch,
+                                     std::string &hash) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    from(m, major);
+    from(m, minor);
+    from(m, patch);
+    from(m, hash);
   }
 }
-
 }
 
 namespace llio {
