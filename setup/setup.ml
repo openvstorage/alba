@@ -1077,7 +1077,6 @@ module Deployment = struct
 
   let parse_harvest osds_json_s =
     let json = Yojson.Safe.from_string osds_json_s in
-    (*let () = Printf.printf "available_json:%S" available_json_s in*)
     let basic = Yojson.Safe.to_basic json  in
     match basic with
     | `Assoc [
@@ -1086,18 +1085,16 @@ module Deployment = struct
        begin
          (List.fold_left
             (fun acc x ->
-             match x with
-             | `Assoc (_::_
-                       :: _ (* ips *)
-                       :: _ (*("port",`Int port)*)
-                       ::_ :: _
-                       :: _ (*("node_id", `String node_id) *)
-                       :: ("long_id", `String long_id)
-                       :: _
-                       :: _) ->
+              begin
+                let fields = Yojson.Basic.Util.to_assoc x in
+                let get_field x = List.assoc x fields in
+                let long_id_field = get_field "long_id" in
+                let long_id = Yojson.Basic.Util.to_string long_id_field in
                 long_id :: acc
-             | _ -> acc
-            ) [] result)
+              end
+            )
+            [] result
+         )
        end
     | _ -> failwith "unexpected json format"
 
@@ -1258,9 +1255,9 @@ module Deployment = struct
       | None -> ()
       | Some etcd -> etcd # stop
     in
-    let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
-    pkill (Filename.basename cfg.arakoon_bin);
-    pkill (Filename.basename cfg.alba_bin);
+    let pkill x = (Printf.sprintf "pkill -e %s" x) |> Shell.cmd ~ignore_rc:true in
+    pkill "arakoon";
+    pkill "alba";
     pkill "'java.*SimulatorRunner.*'";
     "fuser -k -f " ^ cfg.monitoring_file |> Shell.cmd ~ignore_rc:true ;
     t.abm # remove_dirs;

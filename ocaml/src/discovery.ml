@@ -75,7 +75,7 @@ type record = {
     ips: string list;
     port :int option;
     tlsPort: int option;
-    useRdma: bool option;
+    useRdma: bool;
     id : string;
   }[@@deriving show]
 
@@ -107,7 +107,10 @@ let parse s addr0 =
     in
     let port    = get_option_as Json.as_int "port" in
     let tlsPort = get_option_as Json.as_int "tlsPort" in
-    let useRdma = get_option_as Json.as_bool "useRdma" in
+    let useRdma =
+      try get_f "useRdma" |> Json.as_bool
+      with | Json.JSON_InvalidField _ -> false
+    in
     let set0 = StringSet.of_list addr0 in
     let ip_set =
       if nics = []

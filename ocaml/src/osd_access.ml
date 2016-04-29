@@ -347,13 +347,13 @@ class osd_access
     method seen ?(check_claimed=fun id -> false) ?(check_claimed_delay=60.) =
       let open Discovery in
       let determine_conn_info ips port tlsPort use_rdma =
-        match port, tlsPort, use_rdma with
-        | None     , None        , _          -> failwith "multicast anounced no port ?!"
-        | Some port, None        , None       -> (ips,port,false, false)
-        | Some port, None        , Some v     -> (ips,port,false,     v)
-        | _        , Some tlsPort, None
-        | _        , Some tlsPort, Some false -> (ips,tlsPort, true, false)
-        | _        , Some _      , Some true  -> failwith "multicast anounced tls and rdma ?!"
+        match port, tlsPort with
+        | None     , None  -> failwith "multicast anounced no port ?!"
+        | Some port, None  -> (ips,port,false, use_rdma)
+        | _        , Some tlsPort ->
+           if use_rdma
+           then failwith "multicast anounced tls and rdma ?!"
+           else (ips,tlsPort, true, false)
       in
       function
       | Bad s ->

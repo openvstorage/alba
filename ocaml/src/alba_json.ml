@@ -25,6 +25,8 @@ module Osd = struct
     alba_id : string option;
     ips : OsdInfo.ip list;
     port : OsdInfo.port;
+    use_tls: bool;
+    use_rdma: bool;    
     kind : string;
     decommissioned : bool;
     node_id : OsdInfo.node_id;
@@ -58,10 +60,11 @@ module Osd = struct
       | OsdInfo.Asd (conn_info, asd_id)    -> "AsdV1", conn_info, asd_id
       | OsdInfo.Kinetic(conn_info, kin_id) -> "Kinetic3", conn_info, kin_id
     in
-    let ips, port, _ , _ = conn_info in
+    let ips, port, use_tls , use_rdma = conn_info in
     { id; alba_id;
       kind = k;
       ips; port;
+      use_tls; use_rdma;
       node_id; long_id;
       decommissioned;
       total; used;
