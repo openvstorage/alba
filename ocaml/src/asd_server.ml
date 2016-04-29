@@ -406,6 +406,7 @@ module Net_fd = struct
        in
        Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
     | Rsocket socket ->
+       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
        let copy_using buffer =
          let buffer_size = Lwt_bytes.length buffer in
          
