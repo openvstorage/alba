@@ -118,24 +118,6 @@ public:
       throw output_stream_exception("invalid outputstream");
     }
   }
-  /*
-  void output(std::ostream &os) {
-    const std::string bs = _buffer.str();
-    uint32_t size = bs.size() - 4;
-    const char* data = bs.data();
-    //DIRTY: "trust me, I know what I'm doing (TM)"
-    uint32_t* data_mut = (uint32_t*) data;
-    data_mut[0] = size;
-
-    os.write(data, size + 4);
-    os.flush();
-    if (!os) {
-      throw output_stream_exception("invalid outputstream");
-    }
-  }
-  */
-  
-  
   
   
   void add_raw(const char *b, uint32_t size) noexcept {
