@@ -271,17 +271,16 @@ void read_get_proxy_version_response(message &m, Status &status, int32_t &major,
   }
 }
 
-void write_ping_request(message_builder&mb, const double delay){
-  write_tag(mb,_PING);
+void write_ping_request(message_builder &mb, const double delay) {
+  write_tag(mb, _PING);
   to(mb, delay);
 }
 
-void read_ping_response(message&m, Status &status, double & timestamp){
-  read_status(m,status);
-  if(status.is_ok()){
+void read_ping_response(message &m, Status &status, double &timestamp) {
+  read_status(m, status);
+  if (status.is_ok()) {
     from(m, timestamp);
   }
-  
 }
 }
 

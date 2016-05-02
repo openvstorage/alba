@@ -276,10 +276,10 @@ TCPProxy_client::get_proxy_version() {
   return result;
 }
 
-double TCPProxy_client::ping(double delay){
+double TCPProxy_client::ping(double delay) {
   _stream.expires_from_now(_expiry_time);
   message_builder mb;
-  proxy_protocol::write_ping_request(mb,delay);
+  proxy_protocol::write_ping_request(mb, delay);
   mb.output(_stream);
   message response(_stream);
   double result;
@@ -288,13 +288,13 @@ double TCPProxy_client::ping(double delay){
   return result;
 }
 
-double _stamp_ms(){
+double _stamp_ms() {
   struct timeval tp;
   gettimeofday(&tp, NULL);
-  double t0 = 1000 * tp.tv_sec + (double) tp.tv_usec / 1e3;
+  double t0 = 1000 * tp.tv_sec + (double)tp.tv_usec / 1e3;
   return t0;
 }
-  
+
 void RDMAProxy_client::_really_write(const char *buf, const int len) {
   int flags = 0;
   int sent;
@@ -302,21 +302,21 @@ void RDMAProxy_client::_really_write(const char *buf, const int len) {
   int off = 0;
   int nfds = 1;
   double t0 = _stamp_ms();
-  while (todo > 0 && _request_time_left > 0 ) {
+  while (todo > 0 && _request_time_left > 0) {
     ALBA_LOG(DEBUG, "todo=" << todo
-             << ", request_time_left=" << _request_time_left);
+                            << ", request_time_left=" << _request_time_left);
     struct pollfd pollfd;
     pollfd.fd = _socket;
     pollfd.events = POLLOUT;
     pollfd.revents = 0;
     int rc = rpoll(&pollfd, nfds, _request_time_left);
     ALBA_LOG(DEBUG, "rc=" << rc);
-    if (rc < 0 ) {
+    if (rc < 0) {
       throw proxy_exception(rc, "really_write.rpoll");
     }
-    if (rc == 0 ){
+    if (rc == 0) {
       throw proxy_exception(rc, "timeout");
-    } 
+    }
     sent = rsend(_socket, &buf[off], todo, flags);
     if (sent < 0) {
       throw proxy_exception(sent, "really_write.send");
@@ -325,13 +325,10 @@ void RDMAProxy_client::_really_write(const char *buf, const int len) {
     todo -= sent;
     double t1 = _stamp_ms();
     double delta = t1 - t0;
-    _request_time_left = _request_time_left - (int) delta;
+    _request_time_left = _request_time_left - (int)delta;
   }
 }
 
-
-
-  
 void RDMAProxy_client::_really_read(char *buf, const int len) {
   int flags = 0;
   int read = 0;
@@ -339,9 +336,10 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
   int off = 0;
   int nfds = 1;
   double t0 = _stamp_ms();
-  
+
   while (todo > 0 && _request_time_left > 0) {
-    ALBA_LOG(DEBUG, "todo=" << todo << ", _request_time_left=" << _request_time_left);
+    ALBA_LOG(DEBUG, "todo=" << todo
+                            << ", _request_time_left=" << _request_time_left);
 
     // wait until readable, with timeout.
     struct pollfd pollfd;
@@ -349,14 +347,14 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
     pollfd.events = POLLIN;
     pollfd.revents = 0;
     int rc = rpoll(&pollfd, nfds, _request_time_left);
-    ALBA_LOG(DEBUG, "rc=" << rc );
-    if (rc < 0){
+    ALBA_LOG(DEBUG, "rc=" << rc);
+    if (rc < 0) {
       throw proxy_exception(rc, "really_read.rpoll");
-    } 
-    if (rc == 0){
+    }
+    if (rc == 0) {
       throw proxy_exception(read, "timeout");
     }
-    
+
     read = rrecv(_socket, &buf[off], todo, flags);
     if (read < 0) {
       throw proxy_exception(read, "really_read.rrecv");
@@ -381,11 +379,10 @@ void RDMAProxy_client::check_status(const char *function_name) {
 RDMAProxy_client::RDMAProxy_client(
     const string &ip, const string &port,
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-    expiry_time) : _status(),
-                   _expiry_time(expiry_time),
-                   _request_time_left(expiry_time.total_milliseconds())
-{
-  
+        expiry_time)
+    : _status(), _expiry_time(expiry_time),
+      _request_time_left(expiry_time.total_milliseconds()) {
+
   ALBA_LOG(INFO, "RDMAProxy_client(" << ip << ", " << port << ")");
 
   int32_t magic{1148837403};
@@ -417,10 +414,9 @@ RDMAProxy_client::RDMAProxy_client(
   // make it a non-blocking rsocket
   int retcode;
   retcode = rfcntl(_socket, F_GETFL, 0);
-  if (retcode == -1 ||
-      rfcntl(_socket, F_SETFL, retcode | O_NONBLOCK) == -1) {
-    throw proxy_exception (errno, "set_nonblock");
-  } 
+  if (retcode == -1 || rfcntl(_socket, F_SETFL, retcode | O_NONBLOCK) == -1) {
+    throw proxy_exception(errno, "set_nonblock");
+  }
   ok = rconnect(_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
   if (ok < 0) {
     if (errno == EINPROGRESS) {
@@ -434,14 +430,14 @@ RDMAProxy_client::RDMAProxy_client(
       if (rc < 0) {
         throw proxy_exception(rc, "connect.rpoll");
       }
-      if (rc == 0){
+      if (rc == 0) {
         throw proxy_exception(rc, "timeout");
       }
-    } else{
+    } else {
       throw proxy_exception(errno, "connect");
     }
   }
-  
+
   _really_write((const char *)(&magic), sizeof(int32_t));
   _really_write((const char *)(&version), sizeof(int32_t));
   _request_time_left = _expiry_time.total_milliseconds();
@@ -674,14 +670,13 @@ RDMAProxy_client::get_proxy_version() {
 }
 
 void RDMAProxy_client::_expires_from_now(const boost::asio::time_traits<
-                       boost::posix_time::ptime>::duration_type &expiry_time){
+    boost::posix_time::ptime>::duration_type &expiry_time) {
   _request_time_left = expiry_time.total_milliseconds();
-  ALBA_LOG(DEBUG, "RDMAProxy_client::_expires_from_now("
-           << _request_time_left
-           << " ms)");
+  ALBA_LOG(DEBUG, "RDMAProxy_client::_expires_from_now(" << _request_time_left
+                                                         << " ms)");
 }
-  
-double RDMAProxy_client::ping(const double delay){
+
+double RDMAProxy_client::ping(const double delay) {
   _expires_from_now(_expiry_time);
   message_builder mb;
   proxy_protocol::write_ping_request(mb, delay);
