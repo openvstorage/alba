@@ -79,24 +79,36 @@ let read_it fd ~len =
      Lwt_bytes.unsafe_destroy buffer;
      Lwt.fail exn)
 
-let rm_tree ~silent dir =
-      let cmd = Printf.sprintf "rm -rf %s" dir in
+let rm_tree dir =
+  Lwt_extra2.exists dir >>= function
+  | false -> Lwt.return ()
+  | true ->
+      let cmd = Printf.sprintf "mv %s %s-old-%f" dir dir (Unix.gettimeofday ()) in
       Lwt_log.debug_f "cmd:%S" cmd >>= fun () ->
       let command = Lwt_process.shell cmd in
       Lwt_process.exec command >>= fun status ->
       match status with
-      | Unix.WEXITED 0 -> Lwt_log.debug_f "cmd:%S ok" cmd
+      | Unix.WEXITED 0 ->
+         Lwt_log.debug_f "cmd:%S ok, now removing in the background" cmd >>= fun () ->
+         Lwt_process.exec (Printf.sprintf "mkdir %s" dir |> Lwt_process.shell) >>= fun _ ->
+         Lwt.ignore_result
+           begin
+             Lwt_process.exec
+               (Printf.sprintf "rm -rf %s-old-*" dir |> Lwt_process.shell) >>= function
+             | Unix.WEXITED 0 ->
+                Lwt_log.debug "Asynchronous rm_tree succesfully executed"
+             | _ ->
+                Lwt_log.warning_f "rm_tree %s-old-* failed" dir >>= fun () ->
+                exit 1
+           end;
+         Lwt.return ()
       | Unix.WEXITED x ->
-         let msg = Printf.sprintf "rm_tree %S status:%i" dir x in
+         let msg = Printf.sprintf "rm_tree mv %S status:%i" dir x in
          Lwt_log.warning msg >>= fun () ->
-         if silent
-         then Lwt.return ()
-         else Lwt.fail_with msg
+         Lwt.fail_with msg
       | _ -> (* killed by signal or really weird shit *)
-         Lwt_log.warning_f "rm_tree failed " >>= fun () ->
-         if silent
-         then Lwt.return()
-         else Lwt.fail_with (Printf.sprintf "rm_tree : %s" dir)
+         Lwt_log.warning_f "rm_tree mv failed" >>= fun () ->
+         Lwt.fail_with (Printf.sprintf "rm_tree : %s" dir)
 
 
 type boid = int32 * string [@@deriving show]
@@ -312,7 +324,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
             let open Rocks in
             let () = RocksDb.close db in
             let dir = root ^ "/"  in
-            rm_tree ~silent:false dir >>= fun () ->
+            rm_tree dir >>= fun () ->
             Lwt.catch
               (fun () ->Lwt_extra2.create_dir ~sync:false dir)
               (function
@@ -1043,6 +1055,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       Lwt.return ()
 
     method close () =
+      self # close' ()
+
+    method close' ?(write_marker=true) () =
       Lwt_log.warning_f ~section "closing database" >>= fun () ->
       Lwt_mutex.with_lock _mutex
       (fun () ->
@@ -1054,15 +1069,22 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
           Lwt.return ()
          )
        >>= fun () ->
-       let fn = marker_name root in
-       Lwt_extra2.with_fd fn
-                          ~flags:[O_WRONLY;O_CREAT;O_EXCL]
-                          ~perm:0o644
-                          (fun fd -> Lwt.return ())
-       >>= fun () ->
-       Lwt_log.debug_f ~section "marker written:%s" fn >>= fun () ->
-       Lwt.return ()
+       if write_marker
+       then
+         begin
+           let fn = marker_name root in
+           Lwt_extra2.with_fd fn
+                              ~flags:[O_WRONLY;O_CREAT;O_EXCL]
+                              ~perm:0o644
+                              (fun fd -> Lwt.return ())
+           >>= fun () ->
+           Lwt_log.debug_f ~section "marker written:%s" fn
+         end
+       else
+         Lwt.return ()
       )
+
+    method get_root = root
 end
 
 let safe_create root
@@ -1076,7 +1098,7 @@ let safe_create root
     )
     (fun exn ->
      Lwt_log.info_f "couldn't remove marker, so removing everything" >>= fun () ->
-     rm_tree ~silent:false (root ^ "/*" )
+     rm_tree root
     )
   >>= fun () ->
   let cache = new blob_cache
