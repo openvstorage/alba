@@ -383,7 +383,7 @@ RDMAProxy_client::RDMAProxy_client(
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
     expiry_time) : _status(),
                    _expiry_time(expiry_time),
-                   _request_time_left(10000)
+                   _request_time_left(expiry_time.total_milliseconds())
 {
   
   ALBA_LOG(INFO, "RDMAProxy_client(" << ip << ", " << port << ")");
@@ -414,14 +414,37 @@ RDMAProxy_client::RDMAProxy_client(
   }
   ALBA_LOG(INFO, "connecting");
 
-  // TODO: timeouts on connect.
+  // make it a non-blocking rsocket
+  int retcode;
+  retcode = rfcntl(_socket, F_GETFL, 0);
+  if (retcode == -1 ||
+      rfcntl(_socket, F_SETFL, retcode | O_NONBLOCK) == -1) {
+    throw proxy_exception (errno, "set_nonblock");
+  } 
   ok = rconnect(_socket, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
   if (ok < 0) {
-    throw proxy_exception(errno, "connect");
+    if (errno == EINPROGRESS) {
+      ALBA_LOG(DEBUG, "EINPROGRESS. rpoll");
+      struct pollfd pollfd;
+      pollfd.fd = _socket;
+      pollfd.events = POLLOUT;
+      pollfd.revents = 0;
+      int nfds = 1;
+      int rc = rpoll(&pollfd, nfds, _request_time_left);
+      if (rc < 0) {
+        throw proxy_exception(rc, "connect.rpoll");
+      }
+      if (rc == 0){
+        throw proxy_exception(rc, "timeout");
+      }
+    } else{
+      throw proxy_exception(errno, "connect");
+    }
   }
-
+  
   _really_write((const char *)(&magic), sizeof(int32_t));
   _really_write((const char *)(&version), sizeof(int32_t));
+  _request_time_left = _expiry_time.total_milliseconds();
 }
 
 tuple<vector<string>, has_more> RDMAProxy_client::list_namespaces(
