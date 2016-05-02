@@ -103,6 +103,10 @@ public:
    */
   virtual std::tuple<int32_t, int32_t, int32_t, std::string> get_proxy_version() = 0;
 
+  /* tell the proxy server to send its timestamp after a server side delay.
+   * (this allows timeout tests)
+   */
+  virtual double ping(const double delay) = 0;
   virtual ~Proxy_client() {};
  };
 
@@ -168,6 +172,7 @@ public:
 
   std::tuple<int32_t, int32_t, int32_t, std::string> get_proxy_version();
 
+  double ping(const double delay);
 private:
   void check_status(const char *function_name);
 
@@ -223,6 +228,7 @@ public:
 
   void drop_cache(const std::string &namespace_);
   std::tuple<int32_t, int32_t, int32_t, std::string> get_proxy_version();
+  double ping(const double delay);
   ~RDMAProxy_client();
 private:
   int _socket;

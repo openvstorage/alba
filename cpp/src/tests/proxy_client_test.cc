@@ -178,3 +178,44 @@ TEST(proxy_client, get_proxy_version) {
   std::cout << "patch:" << patch << std::endl;
   std::cout << "hash:" << hash << std::endl;
 }
+
+double stamp(){
+  struct timeval tp;
+  gettimeofday(&tp, NULL);
+  double t0 = tp.tv_sec + (double) tp.tv_usec / 1e6;
+  return t0;
+}
+
+TEST(proxy_client, test_ping){
+  init_log();
+  config cfg;
+  auto client = make_proxy_client(cfg.HOST,cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+  double eps = 0.05;
+  struct timeval timeval0;
+  gettimeofday(&timeval0, NULL);
+  double t0 = stamp();
+
+  double timestamp = client -> ping(1.0);
+  double delta = timestamp - t0;
+  double t1 = stamp();
+  std::cout << "t0:" << t0 << " timestamp:" << timestamp << std::endl;
+  std::cout << "delta(t0,timestamp)" << delta << std::endl;
+  std::cout << "delta(t1,timestamp)" << t1 - timestamp << std::endl;
+  EXPECT_NEAR(delta, 1.0, eps);
+  
+  std::cout << "part2" << std::endl;
+  t0 = stamp();
+  try{
+    timestamp = client -> ping(10.0);
+    // expect failure....
+    EXPECT_EQ(true,false);
+  } catch(std::exception& e){
+    std::cout << e.what() << std::endl;
+    double t1 = stamp();
+    delta = t1 - t0;
+    std::cout << "t0:" << t0 << " t1:" << t1 << std::endl;
+    std::cout << "delta:" << delta << std::endl;
+    EXPECT_NEAR(delta, 5.0, eps);
+  }
+}
+  

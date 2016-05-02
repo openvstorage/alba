@@ -276,6 +276,18 @@ TCPProxy_client::get_proxy_version() {
   return result;
 }
 
+double TCPProxy_client::ping(double delay){
+  _stream.expires_from_now(_expiry_time);
+  message_builder mb;
+  proxy_protocol::write_ping_request(mb,delay);
+  mb.output(_stream);
+  message response(_stream);
+  double result;
+  proxy_protocol::read_ping_response(response, _status, result);
+  check_status(__PRETTY_FUNCTION__);
+  return result;
+}
+  
 void RDMAProxy_client::_really_write(const char *buf, const int len) {
   int flags = 0;
   int sent;
@@ -580,6 +592,17 @@ RDMAProxy_client::get_proxy_version() {
 
   check_status(__PRETTY_FUNCTION__);
 
+  return result;
+}
+
+double RDMAProxy_client::ping(const double delay){
+  message_builder mb;
+  proxy_protocol::write_ping_request(mb, delay);
+  mb.output_using(_writer);
+  message response(_reader);
+  double result;
+  proxy_protocol::read_ping_response(response, _status, result);
+  check_status(__PRETTY_FUNCTION__);
   return result;
 }
 

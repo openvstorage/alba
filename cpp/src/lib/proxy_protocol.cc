@@ -31,6 +31,8 @@ limitations under the License.
 #define _INVALIDATE_CACHE 14
 #define _DROP_CACHE 16
 #define _GET_PROXY_VERSION 17
+#define _PING 20
+
 namespace alba {
 namespace proxy_protocol {
 
@@ -267,6 +269,19 @@ void read_get_proxy_version_response(message &m, Status &status, int32_t &major,
     from(m, patch);
     from(m, hash);
   }
+}
+
+void write_ping_request(message_builder&mb, const double delay){
+  write_tag(mb,_PING);
+  to(mb, delay);
+}
+
+void read_ping_response(message&m, Status &status, double & timestamp){
+  read_status(m,status);
+  if(status.is_ok()){
+    from(m, timestamp);
+  }
+  
 }
 }
 

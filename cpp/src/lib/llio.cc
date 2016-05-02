@@ -97,5 +97,17 @@ template <> void from(message &m, std::string &s) {
   s.resize(size);
   m.skip(size);
 }
+  
+template <> void to(message_builder &mb, const double &d) noexcept{
+  const char *dp = (const char*)(&d);
+  mb.add_raw(dp,8);
+}
+
+template<> void from(message &m, double& d){
+  const char *db = m.current();
+  d = *((double *)db);
+  m.skip(8);
+}
+  
 }
 }
