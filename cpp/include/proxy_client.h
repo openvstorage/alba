@@ -238,7 +238,11 @@ private:
   proxy_protocol::Status _status;
   std::function<void (const char* , const int)> _writer;
   std::function<void (char* , const int)> _reader;
-
+  const boost::asio::time_traits<boost::posix_time::ptime>::duration_type
+    _expiry_time;
+  void _expires_from_now(const boost::asio::time_traits<
+                         boost::posix_time::ptime>::duration_type &expiry_time);
+  int _request_time_left; /* ms */
 };
 
 

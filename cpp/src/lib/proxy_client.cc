@@ -287,39 +287,90 @@ double TCPProxy_client::ping(double delay){
   check_status(__PRETTY_FUNCTION__);
   return result;
 }
+
+double _stamp_ms(){
+  struct timeval tp;
+  gettimeofday(&tp, NULL);
+  double t0 = 1000 * tp.tv_sec + (double) tp.tv_usec / 1e3;
+  return t0;
+}
   
 void RDMAProxy_client::_really_write(const char *buf, const int len) {
   int flags = 0;
   int sent;
   int todo = len;
   int off = 0;
-  while (todo > 0) {
+  int nfds = 1;
+  double t0 = _stamp_ms();
+  while (todo > 0 && _request_time_left > 0 ) {
+    ALBA_LOG(DEBUG, "todo=" << todo
+             << ", request_time_left=" << _request_time_left);
+    struct pollfd pollfd;
+    pollfd.fd = _socket;
+    pollfd.events = POLLOUT;
+    pollfd.revents = 0;
+    int rc = rpoll(&pollfd, nfds, _request_time_left);
+    ALBA_LOG(DEBUG, "rc=" << rc);
+    if (rc < 0 ) {
+      throw proxy_exception(rc, "really_write.rpoll");
+    }
+    if (rc == 0 ){
+      throw proxy_exception(rc, "timeout");
+    } 
     sent = rsend(_socket, &buf[off], todo, flags);
     if (sent < 0) {
-      throw proxy_exception(sent, "really_write");
+      throw proxy_exception(sent, "really_write.send");
     }
     off += sent;
     todo -= sent;
+    double t1 = _stamp_ms();
+    double delta = t1 - t0;
+    _request_time_left = _request_time_left - (int) delta;
   }
 }
 
+
+
+  
 void RDMAProxy_client::_really_read(char *buf, const int len) {
   int flags = 0;
   int read = 0;
   int todo = len;
   int off = 0;
-  while (todo > 0) {
+  int nfds = 1;
+  double t0 = _stamp_ms();
+  
+  while (todo > 0 && _request_time_left > 0) {
+    ALBA_LOG(DEBUG, "todo=" << todo << ", _request_time_left=" << _request_time_left);
+
+    // wait until readable, with timeout.
+    struct pollfd pollfd;
+    pollfd.fd = _socket;
+    pollfd.events = POLLIN;
+    pollfd.revents = 0;
+    int rc = rpoll(&pollfd, nfds, _request_time_left);
+    ALBA_LOG(DEBUG, "rc=" << rc );
+    if (rc < 0){
+      throw proxy_exception(rc, "really_read.rpoll");
+    } 
+    if (rc == 0){
+      throw proxy_exception(read, "timeout");
+    }
+    
     read = rrecv(_socket, &buf[off], todo, flags);
     if (read < 0) {
-      throw proxy_exception(read, "really_read");
+      throw proxy_exception(read, "really_read.rrecv");
     }
     off += read;
     todo -= read;
+    double t1 = _stamp_ms();
+    double delta = t1 - t0;
+    _request_time_left = _request_time_left - (int)delta;
   }
 }
 
 void RDMAProxy_client::check_status(const char *function_name) {
-  // _stream.expires_at(boost::posix_time::max_date_time);
+  _expires_from_now(boost::posix_time::hours(1));
   if (not _status.is_ok()) {
     ALBA_LOG(DEBUG, function_name
                         << " received rc:" << (uint32_t)_status._return_code)
@@ -330,7 +381,11 @@ void RDMAProxy_client::check_status(const char *function_name) {
 RDMAProxy_client::RDMAProxy_client(
     const string &ip, const string &port,
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        expiry_time) {
+    expiry_time) : _status(),
+                   _expiry_time(expiry_time),
+                   _request_time_left(10000)
+{
+  
   ALBA_LOG(INFO, "RDMAProxy_client(" << ip << ", " << port << ")");
 
   int32_t magic{1148837403};
@@ -373,7 +428,7 @@ tuple<vector<string>, has_more> RDMAProxy_client::list_namespaces(
     const string &first, const include_first finc, const optional<string> &last,
     const include_last linc, const int max, const reverse reverse) {
 
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_list_namespaces_request(
@@ -395,7 +450,7 @@ tuple<vector<string>, has_more> RDMAProxy_client::list_namespaces(
 }
 
 bool RDMAProxy_client::namespace_exists(const string &name) {
-  // _stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_namespace_exists_request(mb, name);
@@ -414,7 +469,7 @@ bool RDMAProxy_client::namespace_exists(const string &name) {
 
 void RDMAProxy_client::create_namespace(
     const string &name, const boost::optional<string> &preset_name) {
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_create_namespace_request(mb, name, preset_name);
@@ -427,7 +482,7 @@ void RDMAProxy_client::create_namespace(
 }
 
 void RDMAProxy_client::delete_namespace(const string &name) {
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_delete_namespace_request(mb, name);
@@ -443,7 +498,7 @@ tuple<vector<string>, has_more> RDMAProxy_client::list_objects(
     const optional<string> &last, const include_last linc, const int max,
     const reverse reverse) {
 
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_list_objects_request(
@@ -467,7 +522,7 @@ void RDMAProxy_client::write_object_fs(const string &namespace_,
                                        const string &input_file,
                                        const allow_overwrite allow_overwrite,
                                        const Checksum *checksum) {
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_write_object_fs_request(
@@ -484,7 +539,7 @@ void RDMAProxy_client::write_object_fs(const string &namespace_,
 void RDMAProxy_client::delete_object(const string &namespace_,
                                      const string &object_name,
                                      const may_not_exist may_not_exist) {
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_delete_object_request(mb, namespace_, object_name,
@@ -500,7 +555,7 @@ void RDMAProxy_client::delete_object(const string &namespace_,
 tuple<uint64_t, Checksum *> RDMAProxy_client::get_object_info(
     const string &namespace_, const string &object_name,
     const consistent_read consistent_read, const should_cache should_cache) {
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_get_object_info_request(
@@ -522,7 +577,7 @@ void RDMAProxy_client::read_object_fs(const string &namespace_,
                                       const string &dest_file,
                                       const consistent_read consistent_read,
                                       const should_cache should_cache) {
-  //_stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_read_object_fs_request(
@@ -538,7 +593,7 @@ void RDMAProxy_client::read_objects_slices(
     const string &namespace_,
     const vector<proxy_protocol::ObjectSlices> &slices,
     const consistent_read consistent_read) {
-  // _stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_read_objects_slices_request(
@@ -552,7 +607,7 @@ void RDMAProxy_client::read_objects_slices(
 }
 
 void RDMAProxy_client::invalidate_cache(const string &namespace_) {
-  // _stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
   message_builder mb;
   proxy_protocol::write_invalidate_cache_request(mb, namespace_);
   mb.output_using(_writer);
@@ -563,7 +618,7 @@ void RDMAProxy_client::invalidate_cache(const string &namespace_) {
 }
 
 void RDMAProxy_client::drop_cache(const string &namespace_) {
-  // _stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
   message_builder mb;
   proxy_protocol::write_drop_cache_request(mb, namespace_);
   mb.output_using(_writer);
@@ -575,7 +630,7 @@ void RDMAProxy_client::drop_cache(const string &namespace_) {
 
 std::tuple<int32_t, int32_t, int32_t, std::string>
 RDMAProxy_client::get_proxy_version() {
-  // _stream.expires_from_now(_expiry_time);
+  _expires_from_now(_expiry_time);
 
   message_builder mb;
   proxy_protocol::write_get_proxy_version_request(mb);
@@ -595,7 +650,16 @@ RDMAProxy_client::get_proxy_version() {
   return result;
 }
 
+void RDMAProxy_client::_expires_from_now(const boost::asio::time_traits<
+                       boost::posix_time::ptime>::duration_type &expiry_time){
+  _request_time_left = expiry_time.total_milliseconds();
+  ALBA_LOG(DEBUG, "RDMAProxy_client::_expires_from_now("
+           << _request_time_left
+           << " ms)");
+}
+  
 double RDMAProxy_client::ping(const double delay){
+  _expires_from_now(_expiry_time);
   message_builder mb;
   proxy_protocol::write_ping_request(mb, delay);
   mb.output_using(_writer);

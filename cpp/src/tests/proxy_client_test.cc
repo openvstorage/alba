@@ -77,10 +77,8 @@ std::function<void(alba::logger::AlbaLogLevel, string &)> *nulllog = nullptr;
 void init_log() {
   alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
     switch (level) {
-    case alba::logger::AlbaLogLevel::WARNING:
-      return &logBoost;
     default:
-      return nulllog;
+      return &logBoost;
     };
   });
 }
@@ -208,6 +206,8 @@ TEST(proxy_client, test_ping){
   try{
     timestamp = client -> ping(10.0);
     // expect failure....
+    double t1 = stamp();
+    std::cout << "we got here after " << t1 - t0 << " s" << std::endl;
     EXPECT_EQ(true,false);
   } catch(std::exception& e){
     std::cout << e.what() << std::endl;
