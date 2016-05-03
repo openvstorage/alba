@@ -127,8 +127,8 @@ RUN apt-get update && apt-get -y --force-yes install \
 
 ## This only works from inside the OVS lan...
 #http://10.100.129.100:8080/job/volumedriver-no-dedup-fuse3-alba-on-rsockets-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian/volumedriver-no-dedup-base_5.7.2-dev.201604220553.5d9e62c_amd64.deb
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-fuse3-alba-on-rsockets-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian
-ENV voldrv_version=5.7.2-dev.201604220553.5d9e62c_amd64
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian
+ENV voldrv_version=5.7.2-dev.201605030944.5d9e62c_amd64
 RUN wget ${voldrv_jenkins}/volumedriver-no-dedup-base_${voldrv_version}.deb \
     && dpkg -i volumedriver-no-dedup-base_${voldrv_version}.deb
 
