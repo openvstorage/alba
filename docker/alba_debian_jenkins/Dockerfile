@@ -126,20 +126,20 @@ RUN apt-get update && apt-get -y --force-yes install \
       omniorb-nameserver
 
 ## This only works from inside the OVS lan...
-#http://10.100.129.100:8080/job/volumedriver-no-dedup-fuse3-alba-on-rsockets-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian/volumedriver-no-dedup-base_5.7.2-dev.201604220553.5d9e62c_amd64.deb
+# http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/4/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201605030944.5d9e62c_amd64.ddeb
 ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian
 ENV voldrv_version=5.7.2-dev.201605030944.5d9e62c_amd64
-RUN wget ${voldrv_jenkins}/volumedriver-no-dedup-base_${voldrv_version}.deb \
-    && dpkg -i volumedriver-no-dedup-base_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
+    && dpkg -i volumedriver-base_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-no-dedup-pitreplication_${voldrv_version}.deb \
-    && dpkg -i volumedriver-no-dedup-pitreplication_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/volumedriver-pitreplication_${voldrv_version}.deb \
+    && dpkg -i volumedriver-pitreplication_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-no-dedup-server_${voldrv_version}.deb \ 
-    && dpkg -i volumedriver-no-dedup-server_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \ 
+    && dpkg -i volumedriver-server_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-no-dedup-test_${voldrv_version}.deb \
-    && dpkg -i volumedriver-no-dedup-test_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
+    && dpkg -i volumedriver-test_${voldrv_version}.deb
 
 # Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
 RUN apt-get update && apt-get install -y --force-yes alba arakoon
