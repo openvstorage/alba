@@ -1197,7 +1197,7 @@ module Deployment = struct
     let alba_pids = get_pids albas in
     let pids = arakoon_pids @ alba_pids in
     let args = List.fold_left (fun acc pid -> "-p"::(string_of_int pid):: acc) ["1"] pids in
-    "pidstat" :: "-hud" :: args |> Shell.detach ~out:t.cfg.monitoring_file
+    "pidstat" :: "-hudr" :: args |> Shell.detach ~out:t.cfg.monitoring_file
 
 
 
@@ -2133,7 +2133,8 @@ module Test = struct
 end
 
 
-let () =
+
+let process_cmd_line () =
   let cmd_len = Array.length Sys.argv in
   Printf.printf "cmd_len:%i\n%!" cmd_len;
   let suites =
@@ -2183,6 +2184,11 @@ let () =
       exit 1
     end
 
+let () =
+  if !Sys.interactive
+  then ()
+  else process_cmd_line ()
+                        
 let top_level_run test =
   let t = Deployment.make_default () in
   Test.wrapper test t
