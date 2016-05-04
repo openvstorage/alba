@@ -87,7 +87,19 @@ let _easiest_upload () =
 
 
 let easiest_upload ctx =
+  let () =
+    Lwt_log.default :=
+      Lwt_log.channel 
+        ~channel:Lwt_io.stdout
+        ~close_mode:`Keep
+        ~template:"$(date).$(milliseconds) $(message)"
+        ()
+  in
+  let () = Lwt_log_core.append_rule "*" Lwt_log_core.Debug
+  in
   Lwt_engine.set (new Lwt_rsocket.rselect);
+
+  
   let dump_stats =
     let t0 = Unix.gettimeofday() in
     fun () ->
@@ -114,13 +126,7 @@ let easiest_upload ctx =
     Lwt.finalize
       (fun () ->
         dump_stats () >>= fun () ->
-        Lwt_log.file 
-          ~file_name:"/tmp/disk_failure_tests.log"
-          ~template:"$(date).$(milliseconds) $(message)"
-          () >>= fun logger ->
-        Lwt_log.default := logger;
-        Lwt_log_core.append_rule "*" Lwt_log_core.Debug;
-        _easiest_upload())
+          _easiest_upload())
       (fun () ->
         dump_stats ()
         

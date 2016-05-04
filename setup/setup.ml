@@ -1556,6 +1556,7 @@ module Test = struct
       else cmd2
     in
     let cmd_s = cmd3 |> String.concat " " in
+    let () = "free -h" |> Shell.cmd in
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd_with_rc
 
