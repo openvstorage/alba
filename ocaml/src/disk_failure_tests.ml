@@ -88,18 +88,8 @@ let _easiest_upload () =
 
 let easiest_upload ctx =
   Lwt_engine.set (new Lwt_rsocket.rselect);
-  let t =
-    Lwt.finalize
-      (fun () ->
-        Lwt_log.file 
-          ~file_name:"/tmp/disk_failure_tests.log"
-          ~template:"$(date).$(milliseconds) $(message)"
-          () >>= fun logger ->
-        Lwt_log.default := logger;
-        Lwt_log_core.append_rule "*" Lwt_log_core.Debug;
-        _easiest_upload())
-      (fun () ->
-        Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
+  let dump_stats () =
+    Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
         let stat = Gc.quick_stat () in
         let factor = (float (Sys.word_size / 8)) /. 1024.0 in
         let mem_allocated = (stat.Gc.minor_words +. stat.Gc.major_words -. stat.Gc.promoted_words)
@@ -111,7 +101,21 @@ let easiest_upload ctx =
                     stat.Gc.heap_words
         in
         Lwt_log.info msg >>= fun () ->
-        Lwt_io.printlf "%s%!" msg 
+        Lwt_io.printlf "%s%!" msg
+  in
+  let t =
+    Lwt.finalize
+      (fun () ->
+        dump_stats () >>= fun () ->
+        Lwt_log.file 
+          ~file_name:"/tmp/disk_failure_tests.log"
+          ~template:"$(date).$(milliseconds) $(message)"
+          () >>= fun logger ->
+        Lwt_log.default := logger;
+        Lwt_log_core.append_rule "*" Lwt_log_core.Debug;
+        _easiest_upload())
+      (fun () ->
+        dump_stats ()
         
       )
   in
