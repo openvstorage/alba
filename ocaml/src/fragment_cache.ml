@@ -90,7 +90,12 @@ let rm_tree dir =
       match status with
       | Unix.WEXITED 0 ->
          Lwt_log.debug_f "cmd:%S ok, now removing in the background" cmd >>= fun () ->
-         Lwt_process.exec (Printf.sprintf "mkdir %s" dir |> Lwt_process.shell) >>= fun _ ->
+         begin
+           let cmd = Printf.sprintf "mkdir %s" dir in
+           Lwt_process.exec (cmd |> Lwt_process.shell) >>= function
+           | Unix.WEXITED 0 -> Lwt.return ()
+           | _ -> Lwt.fail_with (Printf.sprintf "rm_tree: cmd '%s' failed" cmd)
+         end >>= fun () ->
          Lwt.ignore_result
            begin
              Lwt_process.exec
