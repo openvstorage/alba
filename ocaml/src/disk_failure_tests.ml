@@ -88,7 +88,9 @@ let _easiest_upload () =
 
 let easiest_upload ctx =
   Lwt_engine.set (new Lwt_rsocket.rselect);
-  let dump_stats () =
+  let dump_stats =
+    let t0 = Unix.gettimeofday() in
+    fun () ->
     Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
         let stat = Gc.quick_stat () in
         let factor = (float (Sys.word_size / 8)) /. 1024.0 in
@@ -101,9 +103,14 @@ let easiest_upload ctx =
                     stat.Gc.heap_words
         in
         Lwt_log.info msg >>= fun () ->
-        Lwt_io.printlf "%s%!" msg
+        Lwt_io.printlf "%f: %s%!" (Unix.gettimeofday() -. t0) msg
   in
-  let t =
+  let rec report () =
+    dump_stats () >>= fun () ->
+    Lwt_unix.sleep 1.0 >>= fun () ->
+    report ()
+  in
+  let t () =
     Lwt.finalize
       (fun () ->
         dump_stats () >>= fun () ->
@@ -119,7 +126,8 @@ let easiest_upload ctx =
         
       )
   in
-  Lwt_main.run t
+  let combined = Lwt.pick [t (); report ()] in
+  Lwt_main.run combined
 
 let () =
   let suite =
