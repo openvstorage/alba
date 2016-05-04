@@ -287,6 +287,39 @@ let test_long () =
   in
   run_with_local_fragment_cache 20_000L _inner "test_long"
 
+let test_remove_local_cache () =
+  let test_name = "test_remove_local_cache" in
+  let max_size = 65536L in
+  let root = Printf.sprintf "/tmp/alba/blob_cache_tests/%s" test_name in
+  let t () =
+    let _ = Sys.command (Printf.sprintf "mkdir -p %s" root) in
+    safe_create root ~max_size ~rocksdb_max_open_files:256
+    >>= fun cache ->
+    let bid = 0l in
+    let value = Bigstring_slice.of_string "value" in
+    cache # add bid "key" value >>= fun () ->
+    cache # add bid "key2" value >>= fun () ->
+    let some_file = Printf.sprintf "%s/jfsdlafsdjk" root in
+    let _ = Sys.command (Printf.sprintf "touch %s" some_file) in
+    let _ = Sys.command (Printf.sprintf "find %s" root) in
+    Lwt_extra2.exists some_file >>= fun r ->
+    assert r;
+
+    cache # close' ~write_marker:false () >>= fun () ->
+
+    safe_create root ~max_size ~rocksdb_max_open_files:256
+    >>= fun cache ->
+
+    cache # close () >>= fun () ->
+
+    let _ = Sys.command (Printf.sprintf "find %s" root) in
+    Lwt_extra2.exists some_file >>= fun r ->
+    assert (not r);
+
+    Lwt.return ()
+  in
+  Lwt_main.run (t ())
+
 let _test_lookup2 (cache : cache) =
   let bid = 0l in
   let key = "key" in
@@ -340,6 +373,7 @@ let open OUnit in
     "test_3" >:: test_3;
     "test_4" >:: test_4;
     "test_5" >:: test_5;
+    "test_remove_local_cache" >:: test_remove_local_cache;
     "test_long" >:: test_long;
     "test_lookup2_local" >:: test_lookup2_local;
     "test_lookup2_alba" >:: test_lookup2_alba;

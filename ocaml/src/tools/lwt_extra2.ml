@@ -152,6 +152,18 @@ let rename ~fsync_parent_dir from dest =
   then fsync_dir_of_file dest
   else Lwt.return ()
 
+let stat filename =
+  Lwt_log.debug_f "stat %S" filename >>= fun () ->
+  Lwt_unix.stat filename
+
+let exists filename =
+  Lwt.catch
+    (fun () -> stat filename >>= fun _ -> Lwt.return true)
+    (function
+      | Unix.Unix_error (Unix.ENOENT,_,_) -> Lwt.return false
+      | e -> Lwt.fail e
+    )
+
 let _read_all read_to_target offset length =
   let rec inner offset count = function
     | 0 ->
