@@ -95,7 +95,7 @@ let easiest_upload ctx =
         ~template:"$(date).$(milliseconds) $(message)"
         ()
   in
-  let () = Lwt_log_core.append_rule "*" Lwt_log_core.Debug
+  let () = Lwt_log_core.append_rule "*" Lwt_log_core.Info
   in
   Lwt_engine.set (new Lwt_rsocket.rselect);
 
