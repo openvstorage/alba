@@ -115,18 +115,20 @@ module Namespace = struct
 end
 
 module AsdStatistics = struct
-    type t = Asd_statistics.AsdStatistics.t
-    let to_yojson t =
+    type t = (Asd_statistics.AsdStatistics.t * (int64 * int64))
+    let to_yojson (stats, disk_usage) =
       let open Asd_statistics.AsdStatistics in
       `Assoc (Hashtbl.fold
                 (fun code (stat:Stat.Stat.stat) acc ->
                  (Asd_protocol.Protocol.code_to_description code, (* Slighty different from before *)
                   Stat.Stat.stat_to_yojson stat) :: acc
                 )
-                t.G.statistics
+                stats.G.statistics
                 [
-                  ("creation", `Float t.G.creation);
-                  ("period", `Float t.G.period);
+                  ("creation", `Float stats.G.creation);
+                  ("period", `Float stats.G.period);
+                  ("disk_usage", `Float (fst disk_usage |> Int64.to_float));
+                  ("capacity", `Float (snd disk_usage |> Int64.to_float));
                 ])
 
     let of_yojson _ = failwith "of_yojson: not implemented"
