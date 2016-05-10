@@ -41,6 +41,10 @@ let get_namespace_safety
     List.map
       (fun (policy, cnt) ->
          let k, m, fragment_count, max_disks_per_node = policy in
+         (* TODO max_lost_fragments should be calculated based on
+          * the failure domain constraints of the policy and the osds
+          * that should be considered dead
+          *)
          let applicable_dead_osds =
            Policy.get_applicable_osd_count
              max_disks_per_node

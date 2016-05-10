@@ -41,7 +41,7 @@ let test () =
         in
         let d_info =
           Nsm_model.OsdInfo.make
-            ~node_id ~failure_domains:[ node_id; ]
+            ~node_id ~failure_domains:[ "node", node_id; ]
             ~kind
             ~decommissioned:false
             ~other:""
@@ -101,7 +101,8 @@ let choose_bug () =
       let kind = OsdInfo.Asd(conn_info, "asd id choose bug " ^ string_of_int i) in
       let d_info =
         OsdInfo.make
-          ~node_id ~failure_domains:[ node_id; ]
+          ~node_id
+          ~failure_domains:[ "node", node_id; ]
           ~kind ~decommissioned:false ~other:""
           ~total:_TOTAL
           ~used:_USED
@@ -139,7 +140,8 @@ let choose_forced () =
         in
         let d_info =
           OsdInfo.make
-            ~node_id ~failure_domains:[ node_id; ]
+            ~node_id
+            ~failure_domains:[ "node", node_id; ]
             ~kind
             ~decommissioned:false ~other:""
             ~total:_TOTAL ~used:_USED
@@ -341,7 +343,8 @@ let setup_explicit_info info_list =
       (fun (osd_id,node_id) ->
        let d_info =
          OsdInfo.make
-           ~node_id ~failure_domains:[ node_id; ]
+           ~node_id
+           ~failure_domains:[ "node", node_id; ]
            ~kind:(make_kind osd_id)
            ~decommissioned:false
            ~other:""

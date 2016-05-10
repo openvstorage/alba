@@ -132,8 +132,8 @@ let alba_list_osds cfg_file tls_config node_id to_json verbose attempts =
          let open Albamgr_protocol.Protocol.Osd in
 
          let (i',devices') =
-           match node_id
-           with
+           (* TODO allow filtering by other failure domains? *)
+           match node_id with
            | None -> (i,devices)
            | Some node_id ->
               begin
@@ -201,16 +201,16 @@ let alba_list_all_osds alba_cfg_url tls_config node_id to_json verbose attempts 
          >>= fun (i,devices) ->
          client # get_alba_id >>= fun alba_id ->
          let (i',devices') =
-           match node_id
-           with
+           (* TODO allow filtering by other failure domains? *)
+           match node_id with
            | None -> (i,devices)
            | Some node_id ->
               begin
                 let r =
                   List.filter
-                  (fun (_,osd) ->
-                   let open Nsm_model.OsdInfo in
-                   node_id = osd.node_id) devices
+                    (fun (_,osd) ->
+                     let open Nsm_model.OsdInfo in
+                     node_id = osd.node_id) devices
                 in
                 (List.length r, r)
               end
@@ -558,7 +558,8 @@ let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts 
          Nsm_model.OsdInfo.({
                  kind;
                  decommissioned = false;
-                 node_id; failure_domains = []; (* TODO *)
+                 node_id;
+                 failure_domains = [];
                  other;
                  total; used;
                  seen = [ Unix.gettimeofday (); ];

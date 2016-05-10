@@ -55,7 +55,7 @@ module OsdInfo = struct
     kind : kind;
     decommissioned : bool;
     node_id : node_id;
-    failure_domains : string list;
+    failure_domains : (string * string) list;
     other : string;
     total : int64;
     used: int64;
@@ -202,7 +202,7 @@ module OsdInfo = struct
            Llio.string_from)
         buf in
     { kind;
-      node_id; failure_domains = [ node_id; ];
+      node_id; failure_domains = [];
       decommissioned; other;
       total; used;
       seen; read; write; errors;
@@ -238,7 +238,7 @@ module OsdInfo = struct
            Llio.string_from)
         buf in
     { kind;
-      node_id; failure_domains = [ node_id; ];
+      node_id; failure_domains = []; (* TODO special failure domain node that's always specified? *)
       decommissioned; other;
       total; used;
       seen; read; write; errors;
@@ -890,7 +890,11 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          manifest.Manifest.fragment_packed_sizes
          manifest.Manifest.fragment_locations)
 
-
+  (* TODO
+   * get
+   * - actual fragment count per chunk, take minimum
+   * - number of fragments per failure domain for each chunk, take maximum
+   *)
   let get_min_fragment_count_and_max_disks_per_node kv ~k ~max_disks_per_node locations =
     let get_bla_per_chunk chunk_location =
       let osds_per_node = Hashtbl.create 3 in

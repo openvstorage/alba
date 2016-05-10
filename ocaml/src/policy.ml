@@ -44,6 +44,7 @@ let from_buffer buf =
   in
   Deser.versioned_from _version deser buf
 
+(* TODO this should take all failure domains into account *)
 let get_applicable_osd_count max_osds_per_node osds =
   let node_osds =
     List.group_by
@@ -59,9 +60,13 @@ let get_applicable_osd_count max_osds_per_node osds =
 let get_first_applicable_policy (policies : policy list) osds =
   List.find'
     (fun ((k, m, min_fragment_count, max_osds_per_node) as policy) ->
-       (* TODO could memoize get_applicable_osd_count *)
-       let cnt = get_applicable_osd_count max_osds_per_node osds in
-       if min_fragment_count <= cnt
-       then Some (policy, min cnt (k+m))
-       else None)
+     (* TODO could memoize get_applicable_osd_count *)
+     (* TODO this method is a bit too simple ..
+      * - it should take all failure domains into account
+      * - probably a solution has to be calculated to know if
+      *   one actually exists! *)
+     let cnt = get_applicable_osd_count max_osds_per_node osds in
+     if min_fragment_count <= cnt
+     then Some (policy, min cnt (k+m))
+     else None)
     policies

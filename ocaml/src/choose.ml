@@ -200,6 +200,7 @@ let group_weight d_nodes =
 
 let build_initial_state info =
 
+  (* TODO initial state has to take all failure domains into account *)
   let per_node = List.group_by
                    (fun (_, osd_info) -> osd_info.OsdInfo.node_id)
                    (Hashtbl.to_assoc_list info)

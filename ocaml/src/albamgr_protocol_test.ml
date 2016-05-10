@@ -26,7 +26,7 @@ let test_apply () =
   let info =
     make
       ~kind
-      ~node_id:"node_id" ~failure_domains:[]
+      ~node_id:"node_id" ~failure_domains:[ "x", "y"; ]
       ~other:"" ~total:100L ~used:0L
       ~decommissioned:false
       ~seen:ts
@@ -41,7 +41,7 @@ let test_apply () =
   let expected =
     make
       ~kind
-      ~node_id:"node_id" ~failure_domains:[]
+      ~node_id:"node_id" ~failure_domains:[ "x", "y"; ]
       ~other:"" ~total:99L ~used:10L
       ~decommissioned:false
       ~seen:[6.1;5.1;4.1;4.0;3.1;3.0;2.1;2.0;1.1;1.0]

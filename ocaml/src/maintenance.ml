@@ -235,9 +235,12 @@ class client ?(retry_timeout = 60.)
              List.iter
                (fun (osd_id, osd_info) ->
                 let open Nsm_model.OsdInfo in
+                (* TODO allow disabling auto repair for other failure domains? *)
                 if not (Automatic_repair.recent_enough past_date osd_info.write
                         && Automatic_repair.recent_enough past_date osd_info.write)
-                   && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
+                   && not (List.mem
+                             osd_info.node_id
+                             maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
                 then Hashtbl.replace maybe_dead_osds osd_id ()
                 else Hashtbl.remove maybe_dead_osds osd_id)
                osds;
@@ -1028,6 +1031,10 @@ class client ?(retry_timeout = 60.)
       else Lwt.return ()
 
     method repair_by_policy_namespace' ~namespace_id =
+      (* TODO this should instead repair by the number of
+       * spare fragments instead (weakest objects first),
+       * and only after that do a repair by policy
+       *)
 
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
       let policies =

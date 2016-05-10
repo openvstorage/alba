@@ -46,7 +46,8 @@ let test_check_move () =
   let cache = Hashtbl.create 16 in
   let make_osd osd_id used node_id =
     let kind = make_kind osd_id in
-    OsdInfo.make ~node_id ~failure_domains:[ node_id; ]
+    OsdInfo.make ~node_id
+                 ~failure_domains:[ "node", node_id; ]
                  ~kind
                  ~decommissioned:false
                  ~other:""
