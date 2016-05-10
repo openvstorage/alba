@@ -295,14 +295,22 @@ double _stamp_ms() {
   return t0;
 }
 
+std::string _build_msg(const std::string& prefix){
+  int _errno = errno;
+  std::ostringstream ss;
+  ss << prefix << " " << _errno;
+  return ss.str();
+}
+
 void RDMAProxy_client::_really_write(const char *buf, const int len) {
   int flags = 0;
   int sent;
   int todo = len;
   int off = 0;
   int nfds = 1;
-  double t0 = _stamp_ms();
+
   while (todo > 0 && _request_time_left > 0) {
+    double t0 = _stamp_ms();
     ALBA_LOG(DEBUG, "todo=" << todo
                             << ", request_time_left=" << _request_time_left);
     struct pollfd pollfd;
@@ -312,14 +320,14 @@ void RDMAProxy_client::_really_write(const char *buf, const int len) {
     int rc = rpoll(&pollfd, nfds, _request_time_left);
     ALBA_LOG(DEBUG, "rc=" << rc);
     if (rc < 0) {
-      throw proxy_exception(rc, "really_write.rpoll");
+      throw proxy_exception(rc, _build_msg("really_write.rpoll:"));
     }
     if (rc == 0) {
       throw proxy_exception(rc, "timeout");
     }
     sent = rsend(_socket, &buf[off], todo, flags);
     if (sent < 0) {
-      throw proxy_exception(sent, "really_write.send");
+      throw proxy_exception(sent, _build_msg("really_write.send"));
     }
     off += sent;
     todo -= sent;
@@ -335,9 +343,9 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
   int todo = len;
   int off = 0;
   int nfds = 1;
-  double t0 = _stamp_ms();
 
   while (todo > 0 && _request_time_left > 0) {
+    double t0 = _stamp_ms();
     ALBA_LOG(DEBUG, "todo=" << todo
                             << ", _request_time_left=" << _request_time_left);
 
@@ -349,7 +357,7 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
     int rc = rpoll(&pollfd, nfds, _request_time_left);
     ALBA_LOG(DEBUG, "rc=" << rc);
     if (rc < 0) {
-      throw proxy_exception(rc, "really_read.rpoll");
+      throw proxy_exception(rc, _build_msg("really_read.rpoll"));
     }
     if (rc == 0) {
       throw proxy_exception(read, "timeout");
@@ -357,7 +365,7 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
 
     read = rrecv(_socket, &buf[off], todo, flags);
     if (read < 0) {
-      throw proxy_exception(read, "really_read.rrecv");
+      throw proxy_exception(read, _build_msg("really_read.rrecv"));
     }
     off += read;
     todo -= read;
@@ -428,7 +436,7 @@ RDMAProxy_client::RDMAProxy_client(
       int nfds = 1;
       int rc = rpoll(&pollfd, nfds, _request_time_left);
       if (rc < 0) {
-        throw proxy_exception(rc, "connect.rpoll");
+        throw proxy_exception(rc, _build_msg("connect.rpoll"));
       }
       if (rc == 0) {
         throw proxy_exception(rc, "timeout");
@@ -692,7 +700,8 @@ RDMAProxy_client::~RDMAProxy_client() {
   ALBA_LOG(INFO, "~RDMAProxy_client");
   int r = rclose(_socket);
   if (r < 0) {
-    ALBA_LOG(INFO, "exception in close: fd:" << _socket << " r=" << r);
+    int _errno = errno;
+    ALBA_LOG(INFO, "exception in close: fd:" << _socket << " r=" << r << " errno=" << _errno);
   }
 }
 

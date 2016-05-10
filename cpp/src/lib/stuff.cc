@@ -32,40 +32,6 @@ uint64_t get_file_size(const std::string &file_name) {
   return size;
 }
 
-uint8_t unhex(char c) {
-  uint8_t r = (uint8_t)c;
-  if ('0' <= c && c <= '9') {
-    r -= 48;
-  } else if ('a' <= c && c <= 'f') {
-    r -= 87; // 'a' = 97
-  } else {
-    throw "unhex?";
-  }
-  return r;
-}
-
-int gcd(int a, int b) {
-  int t;
-
-  if (a > b) {
-    t = b;
-    b = a;
-    a = t;
-  }
-  while (b != 0) {
-    t = a % b;
-    a = b;
-    b = t;
-  }
-
-  return a;
-}
-
-int lcm(int a, int b) {
-  int gcd_ = gcd(a, b);
-  int lcm = (a * b) / gcd_;
-  return lcm;
-}
 
 char hexlify(unsigned char c) {
   char r;
