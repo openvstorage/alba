@@ -429,11 +429,12 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                     let open Prelude.Error in
                     let open Result in
                     match stats_result with
-                    | Ok stats   ->
+                    | Ok (stats, disk_usage)   ->
                        to_yojson
                          AsdStatistics.to_yojson
-                         { success=true ; result=stats}
-                                        
+                         { success=true ;
+                           result= (stats, disk_usage);
+                         }
                     | Error exn  ->
                        to_yojson
                          (fun exn -> `String (Printexc.to_string exn))
@@ -451,10 +452,14 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
           (fun (long_id, stats_result) ->
             let open Prelude.Error in
             let v = match stats_result with
-              | Ok stats ->
-                 Asd_statistics.AsdStatistics.show_inner
-                   stats
-                   Asd_protocol.Protocol.code_to_description
+              | Ok (stats, disk_usage) ->
+                 Printf.sprintf
+                   "stats: %s, disk_usage:(%Li,%Li)"
+                   (Asd_statistics.AsdStatistics.show_inner
+                      stats
+                      Asd_protocol.Protocol.code_to_description)
+                   (fst disk_usage)
+                   (snd disk_usage)
               | Error exn -> Printexc.to_string exn
             in
             Lwt_io.printlf "%s : %s " long_id v
@@ -492,7 +497,10 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                     let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
                     Asd_client.with_client
                       buffer_pool ~conn_info (Some long_id)
-                      (fun client -> client # statistics clear)
+                      (fun client ->
+                       client # statistics clear >>= fun stats ->
+                       client # get_disk_usage () >>= fun disk_usage ->
+                       Lwt.return (stats, disk_usage))
                     >>= fun r ->
                     (long_id, Prelude.Error.Ok r) |> Lwt.return
                   )
@@ -529,10 +537,11 @@ let asd_statistics hosts port_o transport asd_id
   let _inner =
     (fun (client:Asd_client.client) ->
      client # statistics clear >>= fun stats ->
+     client # get_disk_usage () >>= fun disk_usage ->
      if to_json
      then
        let open Alba_json.AsdStatistics in
-       print_result (make stats) to_yojson
+       print_result (make stats, disk_usage) to_yojson
      else Lwt_io.printl
             (AsdStatistics.show_inner
                stats
