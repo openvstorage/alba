@@ -59,7 +59,7 @@ before_install () {
     sudo apt-key update
 
     echo "Installing general dependencies"
-    sudo apt-get install -qq ${APT_DEPENDS} \
+    sudo apt-get install -q ${APT_DEPENDS} \
          ocaml ocaml-native-compilers camlp4-extra opam
 
     date
@@ -180,6 +180,7 @@ script () {
             ;;
         system2)
             ${TEST_DRIVER} ocaml | tail -n256
+            expr $PIPESTATUS && false
             ;;
         disk_failures)
             ${TEST_DRIVER} disk_failures
