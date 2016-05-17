@@ -143,7 +143,7 @@ module Protocol = struct
         =
         let my_compare x y = compare y x in
         let kind =
-          let ips, port, tls = get_conn_info osd.kind in
+          let ips, port, tls, use_rdma = get_conn_info osd.kind in
           let conn_info' =
             let ips'  = Option.get_some_default ips ips' in
             let port' = Option.get_some_default port port' in
@@ -162,7 +162,7 @@ module Protocol = struct
                     let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
                     port', false
             in
-            (ips',real_port, use_tls)
+            (ips',real_port, use_tls, use_rdma)
           in
           match osd.kind with
           | Asd (_, asd_id)   -> Asd (conn_info', asd_id)
@@ -985,7 +985,7 @@ module Protocol = struct
            Nsm_host.to_buffer
            Llio.int64_to)
     | ListAvailableOsds ->
-      Llio.counted_list_to (OsdInfo.to_buffer ~version:2)
+      Llio.counted_list_to (OsdInfo.to_buffer ~version:3)
     | ListOsdsByOsdId ->
       counted_list_more_to
         (Llio.pair_to
@@ -995,11 +995,11 @@ module Protocol = struct
       counted_list_more_to
         (Llio.pair_to
            Llio.int32_to
-           (OsdInfo.to_buffer ~version:2))
+           (OsdInfo.to_buffer ~version:3))
     | ListOsdsByLongId ->
        counted_list_more_to (Osd.to_buffer_with_claim_info ~version:1)
     | ListOsdsByLongId2 ->
-       counted_list_more_to (Osd.to_buffer_with_claim_info ~version:2)
+       counted_list_more_to (Osd.to_buffer_with_claim_info ~version:3)
     | ListNamespaces ->
       counted_list_more_to
         (Llio.pair_to Llio.string_to Namespace.to_buffer)
@@ -1049,7 +1049,7 @@ module Protocol = struct
       counted_list_more_to
         (Llio.pair_to
            Llio.int32_to
-           (OsdInfo.to_buffer ~version:2))
+           (OsdInfo.to_buffer ~version:3))
     | ListOsdNamespaces ->
        counted_list_more_to Llio.int32_to
     | Statistics -> Generic.to_buffer
@@ -1189,7 +1189,7 @@ module Protocol = struct
            Llio.int_to)
     | UpdateProgress -> Llio.pair_to Llio.string_to Progress.Update.to_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.to_buffer
-    | AddOsd2 -> OsdInfo.to_buffer ~version:2
+    | AddOsd2 -> OsdInfo.to_buffer ~version:3
     | PurgeOsd -> Llio.string_to
 
 

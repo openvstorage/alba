@@ -28,8 +28,8 @@ TEST(llio, composition) {
   message_builder mb;
   std::string my_string("0123456789a");
   std::pair<std::string, bool> psb(my_string, true);
-  auto psbo = boost::optional<std::pair<std::string, bool> >(psb);
-  std::vector<boost::optional<std::pair<std::string, bool> > > xs;
+  auto psbo = boost::optional<std::pair<std::string, bool>>(psb);
+  std::vector<boost::optional<std::pair<std::string, bool>>> xs;
   xs.push_back(psbo);
   to(mb, xs);
 
@@ -42,7 +42,7 @@ TEST(llio, composition) {
   std::cout << std::endl;
 
   std::istringstream sis(contents);
-  std::vector<boost::optional<std::pair<std::string, bool> > > ys;
+  std::vector<boost::optional<std::pair<std::string, bool>>> ys;
   message m(sis);
   from(m, ys);
   EXPECT_EQ(xs.size(), ys.size());

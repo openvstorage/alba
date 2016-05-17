@@ -33,7 +33,17 @@ module Protocol = struct
       | LinkOsd (osd_id, osd_info) ->
         Llio.int8_to buf 1;
         Llio.int32_to buf osd_id;
-        Nsm_model.OsdInfo._to_buffer_1 ~ignore_tls:true buf osd_info
+        (* switch for old abms *)
+        let to_buffer =
+          let open Nsm_model.OsdInfo in
+          let (_,_,use_tls, use_rdma) = get_conn_info osd_info.kind in
+          
+          match use_tls,use_rdma with
+          | false,false -> _to_buffer_1 ~ignore_tls:true
+          | true, false -> _to_buffer_2
+          | _           -> _to_buffer_3
+        in
+        to_buffer buf osd_info
       | UnlinkOsd osd_id ->
         Llio.int8_to buf 2;
         Llio.int32_to buf osd_id

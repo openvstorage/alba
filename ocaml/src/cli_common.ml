@@ -243,6 +243,29 @@ let hosts =
        & opt_all string []
        & info ["h";"host"] ~docv:"HOST" ~doc)
 
+let transport =
+  let (tr : Net_fd.transport Arg.converter) =
+    let parser x = match String.lowercase x with
+      | "tcp"  -> `Ok Net_fd.TCP
+      | "rdma" -> `Ok Net_fd.RDMA
+      | x      ->
+         let msg =
+           Printf.sprintf "%S is not a transport. Specify either \"tcp\" or \"rdma\"." x
+         in
+         `Error msg
+    in
+    let printer fmt transport =
+      Format.pp_print_string fmt (Net_fd.show_transport transport)
+    in
+    parser, printer
+  in
+  Arg.(value
+       & opt tr Net_fd.TCP
+       & info ["t";"transport"]
+              ~docv:"TRANSPORT"
+              ~doc:"either `tcp` or `rdma`"
+  )
+              
 let namespace p =
   let doc = "namespace" in
   Arg.(required

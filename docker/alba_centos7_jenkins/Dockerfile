@@ -126,6 +126,14 @@ RUN git clone https://github.com/domsj/orocksdb.git \
 # be uniform on shared lib locations
 RUN cp /usr/local/lib/librocksdb.so* /lib64/
 
+#for now, instll ordma manually
+RUN yum -y install librdmacm-devel
+RUN git clone https://github.com/toolslive/ordma.git \
+    && cd ordma \
+    && git checkout tags/0.0.2 \
+    && eval `${opam_env}` \
+    && make install
+    
 RUN yum -y install rpm-build
 RUN yum -y install libgcrypt-devel
 

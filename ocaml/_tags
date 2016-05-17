@@ -21,6 +21,7 @@ true: package(uuidm)
 true: package(core)
 true: use_rocks
 true: package(kinetic-client)
+true: package(ordma)
 true: ppx_lwt
 true: package(result)
 

@@ -66,7 +66,7 @@ template <> void from<uint32_t>(message &m, uint32_t &i) {
   m.skip(4);
 }
 
-template <> void from<int32_t>(message&m, int32_t &i){
+template <> void from<int32_t>(message &m, int32_t &i) {
   const char *ib = m.current();
   i = *((int32_t *)ib);
   m.skip(4);
@@ -96,6 +96,17 @@ template <> void from(message &m, std::string &s) {
   s.replace(0, size, ib, size);
   s.resize(size);
   m.skip(size);
+}
+
+template <> void to(message_builder &mb, const double &d) noexcept {
+  const char *dp = (const char *)(&d);
+  mb.add_raw(dp, 8);
+}
+
+template <> void from(message &m, double &d) {
+  const char *db = m.current();
+  d = *((double *)db);
+  m.skip(8);
 }
 }
 }

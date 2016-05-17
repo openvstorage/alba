@@ -22,6 +22,7 @@ open Prelude
 module Config = struct
   type t = {
     ips : (string list [@default []]);
+    transport : (string [@default "tcp"]);  
     port : int;
     log_level : string;
     albamgr_cfg_file : string option [@default None];
@@ -86,6 +87,11 @@ let proxy_start (cfg_url:Url.t) log_sinks =
        let albamgr_cfg_url = url_from_cfg cfg in
        let ips  = cfg.ips
        and port = cfg.port
+       and transport =
+         match cfg.transport with
+         | "tcp" -> Net_fd.TCP
+         | "rdma" -> Net_fd.RDMA
+         | _ -> failwith "transport should be 'tcp' or 'rdma'"
        and log_level = cfg.log_level
        and
          manifest_cache_size,
@@ -162,6 +168,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
       Proxy_server.run_server
         ips
         port
+        ~transport
         abm_cfg_ref
         ~fragment_cache
         ~manifest_cache_size
@@ -192,18 +199,18 @@ let proxy_start_cmd =
         $ log_sinks),
   Term.info "proxy-start" ~doc:"start a proxy server"
 
-let proxy_client_cmd_line host port verbose f =
+let proxy_client_cmd_line host port transport verbose f =
   let t () =
     Proxy_client.with_client
-      host port
+      host port transport
       f
   in
   lwt_cmd_line ~to_json:false ~verbose t
 
 
-let proxy_list_namespaces host port verbose =
+let proxy_list_namespaces host port transport verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
        let rec inner acc cnt =
          let first, finc = match acc with
@@ -227,13 +234,13 @@ let proxy_list_namespaces host port verbose =
 
 let proxy_list_namespaces_cmd =
   Term.(pure proxy_list_namespaces
-        $ host
-        $ port 10000 $ verbose),
+        $ host $ port 10000 $ transport
+        $ verbose),
   Term.info "proxy-list-namespaces" ~doc:"list namespaces"
 
-let proxy_create_namespace host port namespace preset_name verbose =
+let proxy_create_namespace host port transport namespace preset_name verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
        client # create_namespace ~namespace ~preset_name)
 
@@ -241,15 +248,16 @@ let proxy_create_namespace_cmd =
   Term.(pure proxy_create_namespace
         $ host
         $ port 10000
+        $ transport
         $ namespace 0
         $ preset_name_namespace_creation 1
         $ verbose),
   Term.info "proxy-create-namespace" ~doc:"create a namespace"
 
 
-let proxy_upload_object host port namespace input_file object_name allow_overwrite verbose =
+let proxy_upload_object host port transport namespace input_file object_name allow_overwrite verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
        client # write_object_fs
          ~namespace
@@ -261,6 +269,7 @@ let proxy_upload_object_cmd =
   Term.(pure proxy_upload_object
         $ host
         $ port 10000
+        $ transport
         $ namespace 0
         $ file_upload 1
         $ object_name_upload 2
@@ -268,10 +277,10 @@ let proxy_upload_object_cmd =
         $ verbose),
   Term.info "proxy-upload-object" ~doc:"upload an object to alba"
 
-let proxy_download_object host port namespace object_name
+let proxy_download_object host port transport namespace object_name
                           output_file consistent_read verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
        client # read_object_fs
          ~namespace
@@ -285,6 +294,7 @@ let proxy_download_object_cmd =
   Term.(pure proxy_download_object
         $ host
         $ port 10000
+        $ transport
         $ namespace 0
         $ object_name_download 1
         $ file_download 2
@@ -293,9 +303,9 @@ let proxy_download_object_cmd =
   ),
   Term.info "proxy-download-object" ~doc:"download an object from alba"
 
-let proxy_delete_object host port namespace object_name verbose =
+let proxy_delete_object host port transport namespace object_name verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
        client # delete_object
          ~namespace
@@ -307,15 +317,16 @@ let proxy_delete_object_cmd =
   Term.(pure proxy_delete_object
         $ host
         $ port 10000
+        $ transport
         $ namespace 0
         $ object_name_upload 1
         $ verbose
   ),
   Term.info "proxy-delete-object" ~doc:"delete an object from alba"
 
-let proxy_invalidate_cache host port namespace verbose =
+let proxy_invalidate_cache host port transport namespace verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
      client # invalidate_cache ~namespace
     )
@@ -324,15 +335,16 @@ let proxy_invalidate_cache_cmd =
   Term.(pure proxy_invalidate_cache
         $ host
         $ port 10000
+        $ transport
         $ namespace 0
         $ verbose
   ),
   Term.info "proxy-invalidate-cache"
             ~doc:"invalidate the cache on the proxy for $(NAMESPACE)"
 
-let proxy_statistics host port clear to_json verbose =
+let proxy_statistics host port transport clear to_json verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
      client # statistics clear >>= fun stats ->
      if to_json
@@ -345,23 +357,30 @@ let proxy_statistics host port clear to_json verbose =
     )
 
 let proxy_statistics_cmd =
-  Term.(pure proxy_statistics $ host $ port 10000 $ clear $ to_json $ verbose ),
+  Term.(pure proxy_statistics
+        $ host $ port 10000 $ transport
+        $ clear $ to_json $ verbose ),
   Term.info "proxy-statistics" ~doc:"retrieve statistics for this proxy"
 
-let proxy_delete_namespace host port namespace verbose =
-  proxy_client_cmd_line host port verbose
+let proxy_delete_namespace host port transport namespace verbose =
+  proxy_client_cmd_line host port transport verbose
   (fun client ->
    client # delete_namespace ~namespace >>= fun () ->
    Lwt_io.printl (namespace ^ " is deleted"))
 
 let proxy_delete_namespace_cmd =
-  Term.(pure proxy_delete_namespace $ host $ port 10000 $ namespace 0 $ verbose),
+  Term.(pure proxy_delete_namespace
+        $ host $ port 10000 $ transport
+        $ namespace 0 $ verbose),
   Term.info "proxy-delete-namespace" ~doc:"delete a namespace"
 
-let proxy_list_objects host port namespace
-                      first finc last max reverse verbose =
+let proxy_list_objects
+      host port transport
+      namespace
+      first finc last max reverse verbose
+  =
   let last = Option.map (fun l -> l, true ) last in
-  proxy_client_cmd_line host port verbose
+  proxy_client_cmd_line host port transport verbose
    (fun client ->
     client # list_object ~namespace ~first ~finc ~last ~max ~reverse >>=
       fun (obj, hmore) ->
@@ -369,12 +388,14 @@ let proxy_list_objects host port namespace
         ([%show: (int * string list) * bool] (obj, hmore)))
 
 let proxy_list_objects_cmd =
-  Term.(pure proxy_list_objects $ host $ port 10000 $ namespace 0 $ first $
+  Term.(pure proxy_list_objects
+        $ host $ port 10000 $ transport
+        $ namespace 0 $ first $
           finc $ last $ max $ reverse $ verbose),
   Term.info "proxy-list-objects" ~doc:"list the objects"
 
-let proxy_get_version host port verbose =
-  proxy_client_cmd_line host port verbose
+let proxy_get_version host port transport verbose =
+  proxy_client_cmd_line host port transport verbose
     (fun client ->
      client # get_version >>= fun (major,minor,patch, hash) ->
      Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
@@ -384,14 +405,15 @@ let proxy_get_version_cmd =
   Term.(pure proxy_get_version
         $ host
         $ port 10000
+        $ transport
         $ verbose
   ),
   Term.info "proxy-get-version" ~doc:"the proxy's version info"
 
 
-let proxy_osd_view host port verbose =
+let proxy_osd_view host port transport verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
      client # osd_view >>= fun (claim,state_info) ->
      let ci,items = state_info in
@@ -417,12 +439,14 @@ let proxy_osd_view host port verbose =
     )
 
 let proxy_osd_view_cmd =
-  Term.(pure proxy_osd_view $ host $ port 10000 $ verbose),
+  Term.(pure proxy_osd_view
+        $ host $ port 10000 $transport
+        $ verbose),
   Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
 
-let proxy_client_cfg host port verbose =
+let proxy_client_cfg host port transport verbose =
   proxy_client_cmd_line
-    host port verbose
+    host port transport verbose
     (fun client ->
      client # get_client_config >>= fun cfg ->
      Lwt_io.printlf "client_cfg:\n%s" (Alba_arakoon.Config.show cfg)
@@ -432,6 +456,7 @@ let proxy_client_cfg_cmd =
   Term.(pure proxy_client_cfg
         $ host
         $ port 10000
+        $ transport
         $ verbose),
   Term.info "proxy-client-cfg" ~doc:"what the proxy thinks the albamgr client config is"
 

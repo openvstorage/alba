@@ -1,5 +1,6 @@
 {
     "ips" : ["::1"], // optional
+    "transport" : "tcp", // optional, default "tcp". Only specify "rdma" if device has capabilities
     "log_level": "debug",
     "port": 10000,
     "albamgr_cfg_file": "./cfg/test.ini",

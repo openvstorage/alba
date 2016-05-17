@@ -23,7 +23,6 @@ open Slice
 open Asd_protocol
 open Asd_config
 
-
 let asd_start cfg_url slow log_sinks =
 
   let t () =
@@ -31,18 +30,19 @@ let asd_start cfg_url slow log_sinks =
     | `Error err -> Lwt.fail_with err
     | `Ok cfg ->
 
-       let ips,         port,      home,
+       let ips,         port,      transport,
+           home,
            node_id,     log_level, asd_id,
-           fsync,
-           limit, capacity,
+           fsync,       limit,     capacity,
            multicast, buffer_size,
-           tls, tcp_keepalive,
+           tls_config,tcp_keepalive,
            write_blobs,
            use_fadvise, use_fallocate,
            rocksdb_block_cache_size
         =
         let open Config in
-        cfg.ips,     cfg.port,      cfg.home,
+        cfg.ips,     cfg.port,      cfg.transport,
+        cfg.home,
         cfg.node_id, cfg.log_level, cfg.asd_id,
         cfg.__sync_dont_use,
         cfg.limit, cfg.capacity,
@@ -57,13 +57,20 @@ let asd_start cfg_url slow log_sinks =
        then Lwt_log.warning "Fsync has been disabled, data will not be stored durably!!"
        else Lwt.return ()) >>= fun () ->
       (
-        if port = None && tls = None
+        if port = None && tls_config = None
         then
           let msg = "neither port nor tls was configured" in
           Lwt_log.fatal msg>>= fun () ->
           Lwt.fail_with msg
         else Lwt.return ()
       ) >>= fun () ->
+      ( match transport with
+        | "rdma" -> Lwt.return Net_fd.RDMA
+        | "tcp"  -> Lwt.return Net_fd.TCP
+        | x -> let msg = "transport needs to be `rdma` or `tcp`" in
+               Lwt_log.fatal msg >>= fun () ->
+               Lwt.fail_with msg
+      ) >>= fun transport ->
       verify_log_level log_level;
       Lwt_log.add_rule "*" (to_level log_level);
 
@@ -100,13 +107,15 @@ let asd_start cfg_url slow log_sinks =
                 Lwt_log.info_f "Reloaded capacity & log level"
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
-
-      Asd_server.run_server ips port home ~asd_id ~node_id ~slow
-                            ~fsync
+      
+      Asd_server.run_server ips port
+                            ~transport
+                            home ~asd_id ~node_id ~slow
+                            ~fsync 
                             ~limit
                             ~capacity
                             ~multicast
-                            ~tls
+                            ~tls_config
                             ~rocksdb_max_open_files:256
                             ~rocksdb_recycle_log_file_num:(Some 4)
                             ~rocksdb_block_cache_size
@@ -165,8 +174,8 @@ let run_with_osd_client' conn_info osd_id verbose f =
     ~to_json:false ~verbose
     (fun () -> with_osd_client conn_info osd_id f)
 
-let asd_set hosts port tls_config asd_id (verbose:bool) key value =
-  let conn_info = Networking2.make_conn_info hosts port tls_config in
+let asd_set hosts port transport tls_config asd_id (verbose:bool) key value =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
     ~conn_info asd_id verbose
     (fun client ->
@@ -190,7 +199,9 @@ let asd_set_cmd =
                    pos 1 (some string) None &
                    info [] ~docv:"VALUE" ~doc) in
   let asd_set_t = Term.(pure asd_set
-                        $ hosts $ (port 8_000) $ tls_config
+                        $ hosts $ (port 8_000)
+                        $ transport
+                        $ tls_config
                         $ lido $ verbose
                         $ key $ value
 
@@ -199,8 +210,8 @@ let asd_set_cmd =
     let doc = "perform a set on a remote ASD" in
     Term.info "asd-set" ~doc in asd_set_t, info
 
-let asd_get_version hosts port tls_config asd_id verbose =
-  let conn_info = Networking2.make_conn_info hosts port tls_config in
+let asd_get_version hosts port transport tls_config asd_id verbose =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
     ~conn_info asd_id verbose
     (fun client ->
@@ -211,7 +222,9 @@ let asd_get_version hosts port tls_config asd_id verbose =
 let asd_get_version_cmd =
   let asd_get_version_t =
     Term.(pure asd_get_version
-          $ hosts $ (port 8_000) $ tls_config
+          $ hosts $ (port 8_000)
+          $ transport
+          $ tls_config
           $ lido $ verbose
     ) in
   let info = Term.info "asd-get-version"
@@ -219,8 +232,8 @@ let asd_get_version_cmd =
   in
   asd_get_version_t, info
 
-let asd_multi_get hosts port tls_config asd_id (keys:string list) verbose =
-  let conn_info = Networking2.make_conn_info hosts port tls_config in
+let asd_multi_get hosts port transport tls_config asd_id (keys:string list) verbose =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
     ~conn_info asd_id verbose
     (fun client ->
@@ -235,10 +248,12 @@ let asd_multi_get_cmd =
   let keys = Arg.(non_empty &
                  pos_all string [] &
                  info [] ~docv:"KEYS" ~doc) in
-  let asd_multi_get_t = Term.(pure asd_multi_get
-                              $ hosts $ (port 8_000) $ tls_config
-                              $ lido
-                              $ keys $ verbose)
+  let asd_multi_get_t =
+    Term.(pure asd_multi_get
+          $ hosts $ (port 8_000) $ transport
+          $ tls_config
+          $ lido
+          $ keys $ verbose)
   in
   let info =
     let doc = "perform a multi get on a remote ASD" in
@@ -246,8 +261,8 @@ let asd_multi_get_cmd =
   in asd_multi_get_t, info
 
 
-let asd_delete hosts port tls_config asd_id key verbose =
-  let conn_info = Networking2.make_conn_info hosts port tls_config in
+let asd_delete hosts port transport tls_config asd_id key verbose =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
     ~conn_info asd_id verbose
     (fun client -> client # delete ~prio:Osd.High (Slice.wrap_string key))
@@ -257,21 +272,45 @@ let asd_delete_cmd =
   let key = Arg.(required &
                  pos 0 (some string) None &
                  info [] ~docv:"KEY" ~doc) in
-  let asd_delete_t = Term.(pure asd_delete
-                           $ hosts $ (port 8_000) $ tls_config
-                           $ lido
-                           $ key $ verbose)
+  let asd_delete_t =
+    Term.(pure asd_delete
+          $ hosts $ (port 8_000) $ transport
+          $ tls_config
+          $ lido
+          $ key $ verbose)
   in
   let info =
     let doc = "perform a delete on a remote ASD" in
     Term.info "asd-delete" ~doc
   in asd_delete_t, info
 
+let asd_disk_usage hosts port transport tls_config asd_id verbose =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id verbose
+    (fun client ->
+      client # get_disk_usage () >>= fun (used,cap) ->
+     Lwt_io.printlf "disk_usage:(%Li,%Li)" used cap
+    )
 
-let asd_range hosts port tls_config asd_id first verbose =
+let asd_disk_usage_cmd =
+  let asd_disk_usage_t =
+    Term.(pure asd_disk_usage
+          $ hosts $ port 8000 $ transport $tls_config
+          $ lido
+          $ verbose
+    )
+  in
+  let info =
+    let doc = "return ASD disk usage (used,cap)" in
+    Term.info "asd-disk-usage" ~doc 
+  in
+  asd_disk_usage_t, info
+
+let asd_range hosts port transport tls_config asd_id first verbose =
   let finc = true
   and last = None in
-  let conn_info = Networking2.make_conn_info hosts port tls_config in
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
     ~conn_info asd_id verbose
     (fun client ->
@@ -295,23 +334,27 @@ let asd_range_cmd =
          & opt string ""
          & info ["f";"first"] ~docv:"FIRST" ~doc)
   in
-  let asd_range_t = Term.(pure asd_range
-                          $ hosts $ (port 8_000) $tls_config
-                          $ lido
-                          $ first $ verbose) in
+  let asd_range_t =
+    Term.(pure asd_range
+          $ hosts $ (port 8_000) $ transport $ tls_config
+          $ lido
+          $ first $ verbose)
+  in
   let info =
     let doc = "range query on a remote ASD" in
     Term.info "asd-range" ~doc
   in
   asd_range_t, info
 
-let osd_bench hosts port tls_config osd_id
+let osd_bench hosts port transport tls_config osd_id
               n_clients n
               value_size partial_fetch_size
               power prefix
               scenarios verbose
   =
-  let conn_info = Networking2.make_conn_info hosts port tls_config in
+  let conn_info =
+    Networking2.make_conn_info hosts port ~transport tls_config
+  in
   lwt_cmd_line
     ~to_json:false ~verbose
     (fun () ->
@@ -349,18 +392,20 @@ let osd_bench_cmd =
                         "choose which scenario to run, valid values are %s"
                         ([%show : string list] (List.map fst scns))))
   in
-  let osd_bench_t = Term.(pure osd_bench
-                          $ hosts $ port 10000 $ tls_config
-                          $ lido
-                          $ n_clients 1
-                          $ n 10000
-                          $ value_size 16384
-                          $ partial_fetch_size 4096
-                          $ power 4
-                          $ prefix ""
-                          $ scenarios
-                          $ verbose
-                    )
+  let osd_bench_t =
+    Term.(pure osd_bench
+          $ hosts $ port 10000 $ transport
+          $ tls_config
+          $ lido
+          $ n_clients 1
+          $ n 10000
+          $ value_size 16384
+          $ partial_fetch_size 4096
+          $ power 4
+          $ prefix ""
+          $ scenarios
+          $ verbose
+    )
   in
   let info =
     Term.info
@@ -485,7 +530,9 @@ let asd_multistatistics_cmd =
   let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in
   t, info
        
-let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear =
+let asd_statistics hosts port_o transport asd_id
+                   to_json verbose config_o tls_config clear
+  =
   let open Asd_statistics in
   let _inner =
     (fun (client:Asd_client.client) ->
@@ -501,9 +548,9 @@ let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear
                Asd_protocol.Protocol.code_to_description)
     )
   in
-  let from_asd hosts port tls_config asd_id verbose =
+  let from_asd hosts port transport tls_config asd_id verbose =
     begin
-      let conn_info = Networking2.make_conn_info hosts port tls_config in
+      let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
       run_with_asd_client' ~conn_info asd_id verbose _inner
     end
   in
@@ -541,7 +588,7 @@ let asd_statistics hosts port_o asd_id to_json verbose config_o tls_config clear
        in
        lwt_cmd_line ~to_json ~verbose t
      end
-  | Some port,_ -> from_asd hosts port tls_config asd_id verbose
+  | Some port,_ -> from_asd hosts port transport tls_config asd_id verbose
 
 let asd_statistics_cmd =
   let port_o =
@@ -560,6 +607,7 @@ let asd_statistics_cmd =
   let t = Term.(pure asd_statistics
                 $ hosts
                 $ port_o
+                $ transport
                 $ lido
                 $ to_json
                 $ verbose
@@ -581,11 +629,12 @@ let asd_discover verbose () =
                        record.extras
        in
        Lwt_io.printlf
-         "{extras: %s ; ips = %s; port = %s ; tlsPort = %s }%!"
+         "{extras: %s ; ips = %s; port = %s ; tlsPort = %s ; useRdma = %s ; }%!"
          extras_s
          ([%show: string list] record.ips)
          ([%show: int option] record.port)
          ([%show: int option] record.tlsPort)
+         ([%show: bool ] record.useRdma)
   in
   lwt_cmd_line ~to_json:false ~verbose (fun () -> discovery seen)
 
@@ -689,6 +738,8 @@ let cmds = [
   asd_multistatistics_cmd;
   asd_set_full_cmd;
   asd_get_version_cmd;
+  asd_disk_usage_cmd;
   bench_syncfs_cmd;
   bench_fsync_cmd;
+  (* Asd_kaboom.kaboom_cmd; *)
 ]

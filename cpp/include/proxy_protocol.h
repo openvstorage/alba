@@ -144,6 +144,9 @@ void write_get_proxy_version_request(message_builder &mb);
 void read_get_proxy_version_response(message &m, Status &status, int32_t &major,
                                      int32_t &minor, int32_t &version,
                                      std::string &hash);
+void write_ping_request(message_builder & mb, const double delay);
+void read_ping_response(message &m, Status &status, double& timestamp);
+ 
 }
 }
 

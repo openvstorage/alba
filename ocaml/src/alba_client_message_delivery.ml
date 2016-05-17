@@ -20,27 +20,34 @@ open Checksum
 open Lwt.Infix
 open Alba_client_common
 module Osd_sec = Osd
+module DK = Osd_keys.AlbaInstance
+              
+let _get_next_msg_id client prio =
+
+  client # get_option
+         prio
+         (Slice.wrap_string DK.next_msg_id)
+  >>= fun next_id_so ->
+  let next_id = match next_id_so with
+    | None -> 0l
+    | Some next_id_s ->
+       let module L = Llio2.ReadBuffer in
+       L.deserialize' L.int32_from next_id_s
+  in
+  Lwt.return (next_id_so, next_id)
 
 let _deliver_osd_messages (osd_access : Osd_access.osd_access) ~osd_id msgs =
-  let module DK = Osd_keys.AlbaInstance in
+  
+
 
   let get_next_msg_id () =
-    osd_access # with_osd
-               ~osd_id
-               (fun client ->
-                client # get_option
-                       (osd_access # get_default_osd_priority)
-                       (Slice.wrap_string DK.next_msg_id))
-    >>= fun next_id_so ->
-    let next_id = match next_id_so with
-      | None -> 0l
-      | Some next_id_s ->
-         let module L = Llio2.ReadBuffer in
-         L.deserialize' L.int32_from next_id_s
-    in
-    Lwt.return (next_id_so, next_id)
+    osd_access
+      # with_osd
+      ~osd_id
+      (fun client ->
+        _get_next_msg_id client (osd_access # get_default_osd_priority)
+      )
   in
-
   let do_one msg_id msg =
     Lwt_log.debug_f
       "Delivering msg %li to %li: %s"

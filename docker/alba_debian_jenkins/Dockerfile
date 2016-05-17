@@ -107,6 +107,13 @@ RUN git clone https://github.com/domsj/orocksdb.git \
     && ./install_rocksdb.sh \
     && make build install
 
+#for now, install ordma manually
+RUN apt-get update && apt-get -y install librdmacm-dev
+RUN git clone https://github.com/toolslive/ordma.git \
+    && cd ordma \
+    && git checkout tags/0.0.2 \
+    && eval `${opam_env}` \
+    && make install
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 RUN apt-get update && apt-get -y install clang-3.5
@@ -114,14 +121,25 @@ RUN apt-get update && apt-get -y install clang-3.5
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get update && apt-get -y --force-yes install \
       libboost1.57-all liblttng-ust0 librdmacm1 libtokyocabinet9 \
-      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1
+      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
+      libhiredis0.10 \
+      omniorb-nameserver
 
 ## This only works from inside the OVS lan...
-ENV voldrv_jenkins=http://10.100.129.100:8080/view/voldrv/job
-RUN wget ${voldrv_jenkins}/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-base_5.0.7-0_amd64.deb && dpkg -i volumedriver-base_5.0.7-0_amd64.deb
-RUN wget ${voldrv_jenkins}/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-pitreplication_5.0.7-0_amd64.deb && dpkg -i volumedriver-pitreplication_5.0.7-0_amd64.deb
-RUN wget ${voldrv_jenkins}/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-server_5.0.7-0_amd64.deb && dpkg -i volumedriver-server_5.0.7-0_amd64.deb
-RUN wget ${voldrv_jenkins}/volumedriver-5.0.x-release-ubuntu-14.04/5/artifact/volumedriver-core/build/debian/volumedriver-test_5.0.7-0_amd64.deb && dpkg -i volumedriver-test_5.0.7-0_amd64.deb
+# http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/4/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201605030944.5d9e62c_amd64.ddeb
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian
+ENV voldrv_version=5.7.2-dev.201605030944.5d9e62c_amd64
+RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
+    && dpkg -i volumedriver-base_${voldrv_version}.deb
+
+RUN wget ${voldrv_jenkins}/volumedriver-pitreplication_${voldrv_version}.deb \
+    && dpkg -i volumedriver-pitreplication_${voldrv_version}.deb
+
+RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \ 
+    && dpkg -i volumedriver-server_${voldrv_version}.deb
+
+RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
+    && dpkg -i volumedriver-test_${voldrv_version}.deb
 
 # Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
 RUN apt-get update && apt-get install -y --force-yes alba arakoon

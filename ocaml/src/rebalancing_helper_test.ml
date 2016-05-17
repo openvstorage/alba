@@ -38,7 +38,7 @@ let used =
 let test_check_move () =
   let open Nsm_model in
   let make_kind osd_id =
-    let conn_info = ["127.0.0.1"],8000 + (Int32.to_int osd_id), false
+    let conn_info = ["127.0.0.1"],8000 + (Int32.to_int osd_id), false, false
     and asd_id = "asd id choose test " ^ (Int32.to_string osd_id) in
     OsdInfo.Asd (conn_info, asd_id)
   in

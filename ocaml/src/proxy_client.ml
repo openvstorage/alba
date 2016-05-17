@@ -152,10 +152,10 @@ let _prologue fd magic version =
   Llio.int32_to buf version;
   Net_fd.write_all' fd (Buffer.contents buf)
 
-let with_client ip port f =
+let with_client ip port transport f =
   Networking2.connect_with
     ~tls_config:None
-    ip port
+    ip port transport
   >>= fun (nfd, closer) ->
   Lwt.finalize
     (fun () ->

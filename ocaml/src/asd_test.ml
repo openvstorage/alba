@@ -50,9 +50,9 @@ let capacity = ref 0L
 
 let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
   let path = workspace ^ "/tmp/alba/" ^ test_name in
-  let tls_config = Albamgr_test.get_tls_config () in (* client config *)
-  let o_port, tls =
-    match tls_config
+  let abm_tls_config = Albamgr_test.get_tls_config () in (* client config *)
+  let o_port, tls_config =
+    match abm_tls_config
     with
     | None -> Some port, None
     | Some _ ->
@@ -79,7 +79,9 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ?write_blobs
            ~cancel
            ~tcp_keepalive:Tcp_keepalive2.default
-           [] o_port path
+           [] o_port
+           ~transport:Net_fd.TCP
+           path
            ~asd_id
            ~node_id:"bla"
            ~slow:false
@@ -88,8 +90,8 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ~rocksdb_recycle_log_file_num:(Some 4)
            ~rocksdb_block_cache_size:None
            ~limit:90L
+           ~tls_config
            ~capacity
-           ~tls
            ~multicast:(Some 10.0)
            ~use_fadvise:true
            ~use_fallocate:true
@@ -99,7 +101,7 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
           Lwt_unix.with_timeout
             5.
             (wait_asd_connection port asd_id)>>= fun () ->
-          let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port tls_config in
+          let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port abm_tls_config in
           Asd_client.with_client
             buffer_pool
             ~conn_info (Some test_name)

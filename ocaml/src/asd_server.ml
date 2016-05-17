@@ -378,32 +378,34 @@ module Net_fd = struct
          ~fd_in ~offset
          ~fd_out:fd
          size
-    | SSL(_,socket) ->
+    | SSL _ssl ->
+       let socket = _ssl_get_socket _ssl in
        Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
-       let copy_using buffer =
-         let buffer_size = Lwt_bytes.length buffer in
-          let write_all socket buffer offset length =
-            let write_from_source = Lwt_ssl.write_bytes socket buffer in
-            Lwt_extra2._write_all write_from_source offset length
-          in
-          let rec loop todo =
-            if todo = 0
-            then Lwt.return_unit
-            else
-              begin
-                let step =
-                  if todo <= buffer_size
-                  then todo
-                  else buffer_size
-                in
-                Lwt_bytes.read fd_in        buffer 0 step >>= fun bytes_read ->
-                write_all socket buffer 0 bytes_read >>= fun () ->
-                loop (todo - bytes_read)
-              end
-          in
-          loop size
+       let reader buffer offset length =
+         Lwt_bytes.read fd_in buffer offset length
        in
-       Buffer_pool.with_buffer Buffer_pool.default_buffer_pool copy_using
+       let writer buffer offset length =
+         let write_from_source = Lwt_ssl.write_bytes socket buffer in
+         Lwt_extra2._write_all write_from_source offset length
+       in
+       Buffer_pool.with_buffer
+         Buffer_pool.default_buffer_pool
+         (Lwt_extra2.copy_using reader writer size)
+     
+    | Rsocket socket ->
+       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
+       let reader buffer offset length =
+         Lwt_bytes.read fd_in buffer offset length
+       in
+       let writer buffer offset length =
+         let write_from_source offset todo =
+             Lwt_rsocket.Bytes.send socket buffer offset todo []
+         in
+         Lwt_extra2._write_all write_from_source offset length
+       in
+       Buffer_pool.with_buffer
+         Buffer_pool.default_buffer_pool
+         (Lwt_extra2.copy_using reader writer size)
 end
 
 let execute_query : type req res.
@@ -1273,6 +1275,7 @@ let run_server
       ?(write_blobs = true)
       (hosts:string list)
       (port:int option)
+      ~(transport: Net_fd.transport)
       (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1282,7 +1285,7 @@ let run_server
       ~limit
       ~capacity
       ~multicast
-      ~tls
+      ~tls_config
       ~tcp_keepalive
       ~use_fadvise
       ~use_fallocate
@@ -1300,9 +1303,13 @@ let run_server
   in
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
-  Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls) >>= fun () ->
-
-  let ctx = Tls.to_server_context tls in
+  Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls_config) >>= fun () ->
+  Lwt_log.debug_f "transport:%s" ([%show: Net_fd.transport] transport) >>= fun () ->
+  let tls =
+    match tls_config with
+    | None -> (None: Tls.t option)
+    | Some tls_config -> failwith "todo"
+  in
   let db_path = path ^ "/db" in
   Lwt_log.debug_f "opening rocksdb in %S" db_path >>= fun () ->
   let db =
@@ -1587,19 +1594,22 @@ let run_server
     | Some port ->
        let t = Networking2.make_server
                  ?cancel
-                 hosts port
+                 hosts port ~transport
                  ~tcp_keepalive
-                 ~ctx:None protocol
+                 ~tls:None protocol
        in
        t :: threads
   in
   let maybe_add_tls_server threads =
       match tls with
       | None -> threads
-      | Some tls ->
+      | Some _tls ->
          let open Asd_config.Config in
-         let tlsPort = tls.port in
-         let t = Networking2.make_server ?cancel hosts tlsPort ~tcp_keepalive ~ctx protocol in
+         let tlsPort = let cfg = Option.get_some tls_config in cfg.port in
+         assert (transport = Net_fd.TCP);
+         let t = Networking2.make_server ?cancel hosts tlsPort
+                                         ~transport ~tcp_keepalive ~tls protocol
+         in
          t :: threads
   in
   let maybe_add_multicast threads =
@@ -1607,20 +1617,30 @@ let run_server
     | None -> threads
     | Some mcast_period ->
        let tlsPort =
-         match tls with
-         | None   -> None
-         | Some tls -> let open Asd_config.Config in Some tls.port
+         if tls = None
+         then None
+         else
+           let open Asd_config.Config in
+           let tlsPort = let cfg = Option.get_some tls_config in cfg.port in
+           Some tlsPort
        in
        let mcast_t () =
-         Discovery.multicast
+         let disk_usage () =
+           let open Asd_protocol.AsdMgmt in
+           Lwt.return
+             (mgmt.latest_disk_usage,
+              !(mgmt.capacity))
+         in
+         let useRdma =
+           match transport with
+           | Net_fd.TCP  -> None
+           | Net_fd.RDMA -> Some true
+         in
+         Discovery.multicast 
            asd_id node_id
-           hosts port tlsPort
+           hosts ~port ~tlsPort ~useRdma
            mcast_period
-           ~disk_usage:(fun () ->
-                        let open Asd_protocol.AsdMgmt in
-                        Lwt.return
-                          (mgmt.latest_disk_usage,
-                           !(mgmt.capacity)))
+           ~disk_usage
        in
        mcast_t () :: threads
   in

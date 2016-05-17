@@ -1,23 +1,32 @@
 CXX ?= g++
 
+
+# g++ 5 and clang++-3.7 have binary compatibility problems 
+# & dynamic linking with boost libraries causes arbitrary segv's for g++
+# So this is currently the GCD : statically link the boost stuff
+
+OPTIMIZATION = 0
 WARNINGS = \
 	-Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo \
 	-Woverloaded-virtual -Wnon-virtual-dtor
-FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O3 -fPIC -DBOOST_LOG_DYN_LINK
+FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC 
 
 CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
 
 LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib -L/usr/lib
 
-LIBS = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options
+LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options
 
+LIBS_exec = -L/usr/local/lib \
+	-Wl,-Bstatic -lboost_log -lboost_system -lboost_thread -lboost_program_options \
+	-Wl,-Bdynamic -L./lib -lalba -lrdmacm -lpthread 
 
 
 all: compile_lib compile_tests
 
 	mkdir -p ./lib
 	$(CXX) -shared -Wl,-soname,libalba.so.1 \
-	    $(LIBDIRS) $(LIBS) \
+	    $(LIBDIRS) $(LIBS_lib) \
 	    -o lib/libalba.so.1.0.1 src/lib/alba_logger.o \
 	    src/lib/checksum.o src/lib/io.o src/lib/llio.o src/lib/proxy_client.o \
 	    src/lib/proxy_protocol.o src/lib/stuff.o
@@ -32,17 +41,12 @@ all: compile_lib compile_tests
 	    src/tests/proxy_client_test.o \
 	    src/tests/main.o \
 	    $(LIBDIRS) \
-            $(LIBS) \
-	    -L./lib -lalba \
-	    -lgtest \
+            $(LIBS_exec) -lgtest -lrdmacm \
 	    -o bin/unit_tests.out
 
 	$(CXX) \
 	    src/examples/test_client.o \
-	    $(LIBDIRS) $(LIBS) \
-            -L./lib -lalba \
-	    -o bin/test_client.out
-
+	    $(LIBDIRS) $(LIBS_exec) -o bin/test_client.out
 
 compile_lib:
 	$(CMD) -c src/lib/stuff.cc -o src/lib/stuff.o
@@ -66,3 +70,6 @@ compile_tests:
 
 clean:
 	find -name "*.o" | xargs rm
+
+format:
+	find -name "*.cc" | xargs clang-format-3.6 -i

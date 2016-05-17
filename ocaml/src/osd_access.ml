@@ -346,17 +346,19 @@ class osd_access
 
     method seen ?(check_claimed=fun id -> false) ?(check_claimed_delay=60.) =
       let open Discovery in
-      let determine_conn_info ips port tlsPort =
+      let determine_conn_info ips port tlsPort use_rdma =
         match port, tlsPort with
-        | None     , None         -> failwith "multicast anounced no port ?!"
-        | Some port, None         -> (ips,port,false)
-        | None     , Some tlsPort
-        | Some _   , Some tlsPort -> (ips,tlsPort, true)
+        | None     , None  -> failwith "multicast anounced no port ?!"
+        | Some port, None  -> (ips,port,false, use_rdma)
+        | _        , Some tlsPort ->
+           if use_rdma
+           then failwith "multicast anounced tls and rdma ?!"
+           else (ips,tlsPort, true, false)
       in
       function
       | Bad s ->
          Lwt_log.info_f "Got 'bad' broadcast message: %s" s
-      | Good (json, { id; extras; ips; port; tlsPort }) ->
+      | Good (json, { id; extras; ips; port; tlsPort ; useRdma }) ->
 
          let open Albamgr_protocol.Protocol in
 
@@ -375,7 +377,7 @@ class osd_access
                   Osd_state.add_ips_port osd_state ips port;
                   Osd_state.add_json osd_state json;
                   Osd_state.add_seen osd_state;
-                  let conn_info = determine_conn_info ips port tlsPort in
+                  let conn_info = determine_conn_info ips port tlsPort useRdma in
                   let kind',used',total' =
                     let open OsdInfo in
                     match extras with
@@ -418,7 +420,7 @@ class osd_access
          then
            begin
              Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
-             let conn_info = determine_conn_info ips port tlsPort in
+             let conn_info = determine_conn_info ips port tlsPort useRdma in
 
              let open Nsm_model in
              (match extras with

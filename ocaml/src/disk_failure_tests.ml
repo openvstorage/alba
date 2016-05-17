@@ -35,19 +35,20 @@ let _easiest_upload () =
     match sinfo.OsdInfo.kind with
       | OsdInfo.Asd (conn_info,long_id) ->
          begin
-           let ips,port,_ = conn_info in
+           let ips,port,_,_ = conn_info in
            let ip = List.hd_exn ips in
-           Lwt_io.printlf "going to kill: %li (%s,%i) ASD"  sid ip port
+           Lwt_io.printlf "going to kill ASD: %li (%s,%i)"  sid ip port
            >>=fun()->
-           let cmd = Printf.sprintf "pkill -f 'alba.native.*%i.*'" port in
+           let cmd = Printf.sprintf "pkill -f 'alba.native.*%02li.*'" sid in
+           Printf.printf "cmd=%S\n%!" cmd;
            let rc = Sys.command cmd in
            Lwt_io.printlf "rc=%i" rc
          end
       | OsdInfo.Kinetic(conn_info, long_id) ->
          begin
-           let ips,port,_ = conn_info in
+           let ips,port,_,_ = conn_info in
            let ip = List.hd_exn ips in
-           Lwt_io.printlf "going to kill: %li (%s,%i) Kinetic" sid ip port
+           Lwt_io.printlf "going to kill Kinetic: %li (%s,%i)" sid ip port
            >>= fun () ->
            let cmd = Printf.sprintf "pkill -f 'java.*-port %i.*'" port in
            let rc = Sys.command cmd in
@@ -62,7 +63,7 @@ let _easiest_upload () =
 
      Alba_test._wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
      alba_client # mgr_access # list_all_claimed_osds >>= fun (n, osds) ->
-     Lwt_io.printlf "n=%i" n >>= fun()->
+     Lwt_io.printlf "there are n=%i claimed osds" n >>= fun()->
      let soon_dead = List.hd_exn osds
      in
      shoot soon_dead >>=fun()->
@@ -86,7 +87,53 @@ let _easiest_upload () =
 
 
 let easiest_upload ctx =
-  Lwt_main.run (_easiest_upload())
+  let () =
+    Lwt_log.default :=
+      Lwt_log.channel 
+        ~channel:Lwt_io.stdout
+        ~close_mode:`Keep
+        ~template:"$(date).$(milliseconds) $(message)"
+        ()
+  in
+  let () = Lwt_log_core.append_rule "*" Lwt_log_core.Info
+  in
+  Lwt_engine.set (new Lwt_rsocket.rselect);
+
+  
+  let dump_stats =
+    let t0 = Unix.gettimeofday() in
+    fun () ->
+    Alba_wrappers.Sys2.lwt_get_maxrss () >>= fun maxrss ->
+        let stat = Gc.quick_stat () in
+        let factor = (float (Sys.word_size / 8)) /. 1024.0 in
+        let mem_allocated = (stat.Gc.minor_words +. stat.Gc.major_words -. stat.Gc.promoted_words)
+                            *. factor in
+        let msg = Printf.sprintf
+                    "maxrss:%i KB, allocated:%f, minor_collections:%i, major_collections:%i, compactions:%i, heap_words:%i"
+                    maxrss mem_allocated stat.Gc.minor_collections
+                    stat.Gc.major_collections stat.Gc.compactions
+                    stat.Gc.heap_words
+        in
+        Lwt_log.info msg >>= fun () ->
+        Lwt_io.printlf "%f: %s%!" (Unix.gettimeofday() -. t0) msg
+  in
+  let rec report () =
+    dump_stats () >>= fun () ->
+    Lwt_unix.sleep 1.0 >>= fun () ->
+    report ()
+  in
+  let t () =
+    Lwt.finalize
+      (fun () ->
+        dump_stats () >>= fun () ->
+          _easiest_upload())
+      (fun () ->
+        dump_stats ()
+        
+      )
+  in
+  let combined = Lwt.pick [t (); report ()] in
+  Lwt_main.run combined
 
 let () =
   let suite =

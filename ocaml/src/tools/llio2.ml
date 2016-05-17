@@ -294,6 +294,7 @@ module Deser =
     let int32 = ReadBuffer.int32_from, WriteBuffer.int32_to
     let int64 = ReadBuffer.int64_from, WriteBuffer.int64_to
     let string = ReadBuffer.string_from, WriteBuffer.string_to
+    let float = ReadBuffer.float_from, WriteBuffer.float_to
 
     let list (d, s) = ReadBuffer.list_from d, WriteBuffer.list_to s
     let counted_list (d, s) = ReadBuffer.counted_list_from d, WriteBuffer.counted_list_to s

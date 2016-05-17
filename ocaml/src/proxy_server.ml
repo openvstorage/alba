@@ -193,6 +193,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | GetVersion      -> fun _ -> "-"
   | OsdView         -> fun _ -> "-"
   | GetClientConfig -> fun _ -> "()"
+  | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -353,6 +354,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | GetClientConfig ->
        fun stats () ->
        Lwt.return !albamgr_client_cfg
+    | Ping ->
+       fun stats delay ->
+       begin
+         Lwt_unix.sleep delay >>= fun () ->
+         let t0 = Unix.gettimeofday() in
+         Lwt.return t0
+       end
   in
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
@@ -567,7 +575,7 @@ let refresh_albamgr_cfg
   in
   inner ()
 
-let run_server hosts port
+let run_server hosts port ~transport
                albamgr_client_cfg
                ~fragment_cache
                ~manifest_cache_size
@@ -629,10 +637,10 @@ let run_server hosts port
                  albamgr_cfg_url
                  ~tcp_keepalive
               );
-              (let ctx = None in
+              (
                Networking2.make_server
                  ~max:max_client_connections
-                 hosts port ~ctx ~tcp_keepalive
+                 hosts port ~transport ~tls:None ~tcp_keepalive
                  (fun nfd ->
                   proxy_protocol alba_client albamgr_client_cfg stats nfd));
               (Lwt_extra2.make_fuse_thread ());

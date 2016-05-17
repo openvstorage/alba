@@ -34,9 +34,7 @@ build-nsm-plugin: build-cmxs
 	_build/src/encryption.cmx \
 	_build/src/tools/weak_pool.cmx \
 	_build/src/tools/buffer_pool.cmx \
-	_build/src/tools/net_fd.cmx \
 	_build/src/tools/tls.cmx \
-	_build/src/tools/networking2.cmx \
 	_build/src/tools/checksum.cmx \
 	_build/src/tools/alba_compression.cmx \
 	_build/src/arith64.cmx \
@@ -69,9 +67,7 @@ build-mgr-plugin: build-alba
 	_build/src/encryption.cmx \
 	_build/src/tools/weak_pool.cmx \
 	_build/src/tools/buffer_pool.cmx \
-	_build/src/tools/net_fd.cmx \
 	_build/src/tools/tls.cmx \
-	_build/src/tools/networking2.cmx \
 	_build/src/tools/checksum.cmx \
 	_build/src/tools/alba_compression.cmx \
 	_build/src/alba_arakoon.cmx \

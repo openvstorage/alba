@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
   po::options_description desc("Allowed options");
-;
+  ;
   po::variables_map vm;
   po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
 

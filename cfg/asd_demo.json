@@ -13,6 +13,10 @@
     // (Obviously: both is allowed too,
     // and it means you run both servers).
 
+    // transport is either "tcp" or "rdma"
+    // don't specify "rdma" unless the ip(s) are rdma capable
+    // "transport" : "tcp", // "tcp" is default
+    
     "port": 10000,
     // optional asd_id is optional
     "asd_id" : "a globally unique id for the asd"

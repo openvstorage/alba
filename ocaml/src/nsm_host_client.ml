@@ -189,7 +189,8 @@ let make_client buffer_pool ccfg ~tcp_keepalive =
   find_master' ~tls ccfg ~tcp_keepalive >>= function
   | MasterLookupResult.Found (m, ncfg) ->
      let open Arakoon_client_config in
-     let conn_info = Networking2.make_conn_info ncfg.ips ncfg.port tls_config in
+     let transport = Net_fd.TCP in
+     let conn_info = Networking2.make_conn_info ncfg.ips ncfg.port ~transport tls_config in
     Networking2.first_connection'
       buffer_pool
       ~conn_info

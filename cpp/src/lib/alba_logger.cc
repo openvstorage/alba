@@ -35,10 +35,10 @@ std::ostream &operator<<(std::ostream &os, const AlbaLogLevel level) {
 }
 
 std::function<std::function<void(AlbaLogLevel, std::string &)> *(AlbaLogLevel)>
-logFunc_;
+    logFunc_;
 
-void setLogFunction(std::function<std::function<
-    void(AlbaLogLevel, std::string &)> *(AlbaLogLevel)> logFunc) {
+void setLogFunction(std::function<
+    std::function<void(AlbaLogLevel, std::string &)> *(AlbaLogLevel)> logFunc) {
   logFunc_ = logFunc;
 }
 

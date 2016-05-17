@@ -17,11 +17,12 @@ limitations under the License.
 open Prul
 
 module Config = struct
-  let env_or_default x y =
+  let env_or_default_generic (f:string -> 'a) (x:string) (y:'a) =
     try
-      Sys.getenv x
+      f (Sys.getenv x)
     with Not_found -> y
 
+  let env_or_default = env_or_default_generic (fun x -> x)
   type t = {
       home : string;
       workspace : string;
@@ -39,6 +40,7 @@ module Config = struct
       license_file : string;
       tls : bool;
 
+      alba_rdma : string option; (* ip of the rdma capable nic *)
       local_nodeid_prefix : string;
       n_osds : int;
 
@@ -100,6 +102,8 @@ module Config = struct
       let v = env_or_default "ALBA_TLS" "false" in
       Scanf.sscanf v "%b" (fun x -> x)
     in
+    let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
+    in
     {
       home;
       workspace;
@@ -116,6 +120,7 @@ module Config = struct
       alba_06_plugin_path;
       license_file;
       tls;
+      alba_rdma;
       local_nodeid_prefix;
       n_osds;
 
@@ -431,8 +436,10 @@ module Proxy_cfg =
          preset : string;
        } [@@deriving yojson]
 
-    type proxy_cfg' =
-      { port : int;
+    type proxy_cfg =
+      { ips : string list option [@default None];
+        transport : string option [@default None];
+        port : int;
         albamgr_cfg_url : Url.t;
         log_level : string;
         manifest_cache_size : int;
@@ -443,13 +450,16 @@ module Proxy_cfg =
 
     type t =
       | Old of proxy_cfg_06
-      | New of proxy_cfg'
+      | New of proxy_cfg
 
     let to_yojson = function
       | Old t -> proxy_cfg_06_to_yojson t
-      | New t -> proxy_cfg'_to_yojson t
+      | New t -> proxy_cfg_to_yojson t
 
-    let make_06 ?fragment_cache id abm_cfg_url base tls_client port =
+    let make_06 ?fragment_cache
+                ?ip
+                ?transport
+                id abm_cfg_url base tls_client port =
       Old
         { port = port + id;
           albamgr_cfg_file = abm_cfg_url;
@@ -462,6 +472,8 @@ module Proxy_cfg =
         }
 
     let make ?fragment_cache
+             ?ip
+             ?transport
              id albamgr_cfg_url base tls_client port =
       let fragment_cache =
         match fragment_cache with
@@ -470,9 +482,16 @@ module Proxy_cfg =
                       path = base ^ "/fragment_cache";
                       max_size = 100 * 1000 * 1000;
                       cache_on_read = true; cache_on_write = true;
-                    } in
+                    }
+      in
+      let ips = match ip with
+        | None -> None
+        | Some ip -> Some [ip]
+      in
       New
-        { port = port + id;
+        { ips ;
+          transport;
+          port = port + id;
           albamgr_cfg_url;
           log_level = "debug";
           fragment_cache;
@@ -528,7 +547,8 @@ let suppress_tags tags = function
      `Assoc xs'
   | _ -> failwith "unexpected json"
 
-class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port =
+class proxy ?fragment_cache ?ip ?transport
+            id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
   let tls_client = make_tls_client cfg in
   let p_cfg =
@@ -536,7 +556,7 @@ class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy 
      then Proxy_cfg.make_06
      else Proxy_cfg.make)
       id abm_cfg_url proxy_base tls_client
-      port ?fragment_cache
+      port ?fragment_cache ?ip ?transport
   in
   let config_persister, cfg_url =
     match etcd with
@@ -562,11 +582,21 @@ class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy 
        persister, url
   in
   let proxy_cmd_line_with_capture cmd =
+    let _ip = match ip with
+      | None    -> "127.0.0.1"
+      | Some ip -> ip
+    in
+    let _transport = match transport with
+      | None -> "tcp"
+      | Some t -> t
+    in
     cfg.alba_bin ::
     List.append
       cmd
-      [ "-h"; "127.0.0.1";
-        "-p"; Proxy_cfg.port p_cfg |> string_of_int; ]
+      [ "-h"; _ip;
+        "-p"; Proxy_cfg.port p_cfg |> string_of_int;
+        "-t"; _transport
+      ]
     |> Shell.cmd_with_capture
   in
   let proxy_cmd_line cmd = proxy_cmd_line_with_capture cmd |> ignore in
@@ -576,6 +606,7 @@ class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy 
     Shell.mkdir proxy_base;
     config_persister p_cfg
 
+  method start_cmd = [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
   method start =
     let out = Printf.sprintf "%s/proxy.out" proxy_base in
     let () =
@@ -588,12 +619,14 @@ class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy 
          | None' -> ()
          | Local { path; _ } -> Shell.mkdir path
     in
-    [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
+    self # start_cmd 
     |> Shell.detach ~out
 
   method stop =
-    let kill_port = Proxy_cfg.port p_cfg in
-    Printf.sprintf "fuser -k -n tcp %i" kill_port |> Shell.cmd ~ignore_rc:true
+    (* can't use fuser for rdma based servers *)
+    let start_line = String.concat " " (self # start_cmd) in 
+    Printf.sprintf "pkill -f '%s'" start_line
+    |> Shell.cmd ~ignore_rc:true
 
   method upload_object namespace file name =
     ["proxy-upload-object";
@@ -620,6 +653,9 @@ class proxy ?fragment_cache id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy 
 
   method list_namespaces =
     [ "proxy-list-namespaces" ] |> proxy_cmd_line_with_capture
+
+  method cmd_line cmd = proxy_cmd_line cmd
+  
 end
 
 type maintenance_cfg = {
@@ -716,25 +752,35 @@ type asd_cfg = {
     __sync_dont_use: bool;
     multicast: float option;
     tls: tls option;
+    transport : string option;
     __warranty_void__write_blobs  : (bool option [@default None]);
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
   }[@@deriving yojson]
 
 let make_asd_config
-      ?write_blobs ?(use_fadvise = true) ?(use_fallocate = true)
+      ?write_blobs
+      ?(use_fadvise = true)
+      ?(use_fallocate = true)
+      ?transport
+      ?ip
       node_id asd_id home port tls
   =
+  let ips = match ip with
+    | None -> []
+    | Some ip -> [ip]
+  in
   {node_id;
    asd_id;
    home;
    port;
-   ips = [];
+   ips;
    log_level = "debug";
    limit= 99;
    __sync_dont_use = false;
    multicast = Some 10.0;
    tls;
+   transport;
    __warranty_void__write_blobs   = write_blobs;
    use_fadvise;
    use_fallocate;
@@ -743,18 +789,15 @@ let make_asd_config
 
 
 
-class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port ~etcd tls =
+class asd ?write_blobs ?transport ?ip
+          node_id asd_id alba_bin arakoon_path home port ~etcd tls
+  =
   let use_tls = tls <> None in
-  let asd_cfg = make_asd_config ?write_blobs node_id asd_id home port tls in
-  let kill_port = match port with
-    | None ->
-       begin
-         match tls with
-         | Some tls -> tls.port
-         | None -> failwith "no port?"
-       end
-    | Some p -> p
+  let asd_cfg = make_asd_config
+                  ?write_blobs ?transport ?ip
+                  node_id asd_id home port tls
   in
+
   let config_persister, cfg_url =
     match etcd with
     | None ->
@@ -805,28 +848,42 @@ class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port ~etcd tls 
         end;
       config_persister asd_cfg
 
-
+    method start_cmd = [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
+                         
     method start =
-      let out = home ^ "/stdout" in
-      [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
+      let out = Printf.sprintf "%s/%s.out" home asd_id in
+      self # start_cmd 
       |> Shell.detach ~out;
 
     method stop =
-      Printf.sprintf "fuser -k -n tcp %i" kill_port
-      |> Shell.cmd
+      let start_line = String.concat " " self # start_cmd in
+      Printf.sprintf "pkill -f '%s'" start_line
+      |> Shell.cmd ~ignore_rc:true
 
     method private build_remote_cli ?(json=true) what  =
+      let ip = match ip with
+        | None -> "127.0.0.1"
+        | Some ip -> ip
+      in
+      let transport = match transport with
+        | None -> "tcp"
+        | Some t -> t
+      in
       let p = match tls with
         | Some tls -> tls.port
         | None -> begin match port with | Some p -> p | None -> failwith "bad config" end
       in
       let cmd0 = [ alba_bin;]
                  @ what
-                 @ ["-h"; "127.0.0.1";"-p"; string_of_int p;]
+                 @ ["-h"; ip ;
+                    "-p"; string_of_int p;
+                    "-t"; transport;
+                   ]
       in
       let cmd1 = if use_tls then _alba_extend_tls cmd0 else cmd0 in
       let cmd2 = if json then cmd1 @ ["--to-json"] else cmd1 in
       cmd2
+        
     method get_remote_version =
       let cmd = self # build_remote_cli ["asd-get-version"] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -838,6 +895,7 @@ class asd ?write_blobs node_id asd_id alba_bin arakoon_path home port ~etcd tls 
     method set k v =
       let cmd = self # build_remote_cli ["asd-set";k;v] ~json:false in
       cmd |> String.concat " " |> Shell.cmd
+                                    
     method get k =
       let cmd = self # build_remote_cli ["asd-multi-get"; k] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -852,7 +910,7 @@ class etcd host port home =
       (* ETCD_LISTEN_CLIENT_URLS=http://127.0.0.1:5000 \
            ./etcd -advertise-client-urls=http://127.0.0.1:5000
        *)
-      let out = home ^ "/stdout" in
+      let out = home ^ "/etcd.out" in
       let url = Printf.sprintf "http://%s:%i" host port in
       let var = Printf.sprintf "ETCD_LISTEN_CLIENT_URLS=%s" url in
       let advertise = Printf.sprintf "-advertise-client-urls=%s" url in
@@ -885,7 +943,9 @@ module Deployment = struct
 
 
   let make_osds
-        ?(base_port=8000) ?write_blobs
+        ?(base_port=8000)
+        ?write_blobs
+        ?transport ?ip
         n local_nodeid_prefix base_path arakoon_path alba_bin
         ~etcd (tls:bool) =
     let rec loop asds j =
@@ -913,6 +973,8 @@ module Deployment = struct
           in
           let asd = new asd
                         ?write_blobs
+                        ?transport
+                        ?ip
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
@@ -946,15 +1008,23 @@ module Deployment = struct
            Some etcd
          end
     in
-
+    let transport,ip =
+      match cfg.alba_rdma with
+      | None -> None,None
+      | Some ip ->Some "rdma", Some ip
+    in
     let proxy = new proxy
                     0 cfg cfg.alba_bin
                     (abm # config_url) cfg.etcd ~v06_proxy:false
                     (base_port * 2 + 2000)
-                    ?fragment_cache
+                    ?fragment_cache ?transport ?ip
     in
     let maintenance = new maintenance 0 cfg  (abm # config_url) cfg.etcd in
-    let osds = make_osds ~base_port:(base_port*2) ?write_blobs cfg.n_osds
+    let osds = make_osds ~base_port:(base_port*2)
+                         ?write_blobs
+                         ?transport
+                         ?ip
+                         cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
@@ -1007,7 +1077,6 @@ module Deployment = struct
 
   let parse_harvest osds_json_s =
     let json = Yojson.Safe.from_string osds_json_s in
-    (*let () = Printf.printf "available_json:%S" available_json_s in*)
     let basic = Yojson.Safe.to_basic json  in
     match basic with
     | `Assoc [
@@ -1016,18 +1085,16 @@ module Deployment = struct
        begin
          (List.fold_left
             (fun acc x ->
-             match x with
-             | `Assoc (_::_
-                       :: _ (* ips *)
-                       :: _ (*("port",`Int port)*)
-                       ::_ :: _
-                       :: _ (*("node_id", `String node_id) *)
-                       :: ("long_id", `String long_id)
-                       :: _
-                       :: _) ->
+              begin
+                let fields = Yojson.Basic.Util.to_assoc x in
+                let get_field x = List.assoc x fields in
+                let long_id_field = get_field "long_id" in
+                let long_id = Yojson.Basic.Util.to_string long_id_field in
                 long_id :: acc
-             | _ -> acc
-            ) [] result)
+              end
+            )
+            [] result
+         )
        end
     | _ -> failwith "unexpected json format"
 
@@ -1130,7 +1197,7 @@ module Deployment = struct
     let alba_pids = get_pids albas in
     let pids = arakoon_pids @ alba_pids in
     let args = List.fold_left (fun acc pid -> "-p"::(string_of_int pid):: acc) ["1"] pids in
-    "pidstat" :: "-hud" :: args |> Shell.detach ~out:t.cfg.monitoring_file
+    "pidstat" :: "-hudr" :: args |> Shell.detach ~out:t.cfg.monitoring_file
 
 
 
@@ -1176,7 +1243,6 @@ module Deployment = struct
     nsm_host_register t;
 
     setup_osds t;
-
     claim_local_osds t t.cfg.n_osds;
 
     t.proxy # create_namespace "demo";
@@ -1190,8 +1256,8 @@ module Deployment = struct
       | Some etcd -> etcd # stop
     in
     let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
-    pkill (Filename.basename cfg.arakoon_bin);
-    pkill (Filename.basename cfg.alba_bin);
+    pkill "arakoon";
+    pkill "alba";
     pkill "'java.*SimulatorRunner.*'";
     "fuser -k -f " ^ cfg.monitoring_file |> Shell.cmd ~ignore_rc:true ;
     t.abm # remove_dirs;
@@ -1200,11 +1266,15 @@ module Deployment = struct
     ()
 
   let proxy_pid t =
-    let n = ["fuser";"-n";"tcp";"10000"] |> Shell.cmd_with_capture in
+    let n =
+      let cmd = String.concat " " (t.proxy # start_cmd) in
+      let s = Printf.sprintf "pgrep -f '%s'" cmd in
+      Shell.cmd_with_capture [s]
+    in
     Scanf.sscanf n " %i" (fun i -> i)
 
   let smoke_test t =
-    let _  = proxy_pid () in
+    let _  = proxy_pid t in
     ()
 
 end
@@ -1283,6 +1353,49 @@ end
 
 module Test = struct
   open Deployment
+  type backend_connection_manager = {
+      backend_type : string;
+      alba_connection_host : string ;
+      alba_connection_port : string ;
+      alba_connection_transport : string;
+    } [@@ deriving yojson, show]
+                                      
+  type backend_cfg = {
+      backend_connection_manager : backend_connection_manager;
+    } [@@ deriving yojson, show]
+
+  let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv" 
+  let backend_cfg_file cfg = backend_cfg_dir cfg  ^ "/backend.json"
+                                                      
+  let make_backend_cfg cfg ~host ~port ~transport =
+      {
+        backend_connection_manager = {
+          backend_type = "ALBA";
+          alba_connection_host = host;
+          alba_connection_port = port;
+          alba_connection_transport = transport; (* "RDMA" | "TCP" *)
+        }
+      }
+
+  let _get_ip_transport cfg =
+    match cfg.alba_rdma with
+        | None -> "127.0.0.1","TCP"
+        | Some rdma -> rdma,"RDMA"
+
+  let backend_cfg_persister cfg =
+    let backend_cfg =
+      let host, transport = _get_ip_transport cfg
+      and port = "10000" in
+      make_backend_cfg cfg
+                       ~host
+                       ~port
+                       ~transport
+    in
+    let oc = open_out (backend_cfg_file cfg) in
+    let json = backend_cfg_to_yojson backend_cfg in
+    Yojson.Safe.pretty_to_channel oc json;
+    close_out oc
+      
   let wrapper f t =
     let t = Deployment.make_default () in
     Deployment.kill t;
@@ -1295,8 +1408,16 @@ module Test = struct
 
   let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let cfg = t.Deployment.cfg in
+    let host, transport = _get_ip_transport cfg
+    and port = "10000"
+    in
     let cmd =
-      ["cd";cfg.alba_home; "&&"; "LD_LIBRARY_PATH=./cpp/lib"; "./cpp/bin/unit_tests.out";
+      ["cd";cfg.alba_home; "&&";
+       "LD_LIBRARY_PATH=./cpp/lib";
+       Printf.sprintf "ALBA_PROXY_IP=%s" host;
+       Printf.sprintf "ALBA_PROXY_PORT=%s" port;
+       Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
+       "./cpp/bin/unit_tests.out";
       ]
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml" ] else cmd in
@@ -1366,12 +1487,20 @@ module Test = struct
       |> Shell.cmd_with_rc
     end
 
+  let _make_backend_cfg_dir cfg =
+    let cmd_s = ["mkdir" ; "-p" ; backend_cfg_dir cfg]
+                |> String.concat " "
+    in
+    cmd_s |> Shell.cmd_with_rc |> ignore
+
   let voldrv_backend ?(xml=false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
+    _make_backend_cfg_dir cfg;
+    backend_cfg_persister cfg;
     let cmd = [
         cfg.voldrv_backend_test;
         "--skip-backend-setup"; "1";
-        "--backend-config-file"; cfg.alba_home ^ "/cfg/backend.json";
+        "--backend-config-file"; backend_cfg_file cfg;
         (*"--loglevel=error"; *)
       ]
     in
@@ -1391,9 +1520,12 @@ module Test = struct
 
   let voldrv_tests ?(xml = false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
+    _make_backend_cfg_dir cfg;
+    backend_cfg_persister cfg;
     let cmd = [cfg.voldrv_test;
                "--skip-backend-setup";"1";
-               "--backend-config-file"; cfg.alba_home ^ "/cfg/backend.json";
+               "--backend-config-file"; backend_cfg_file cfg;
+               "--arakoon-binary-path"; cfg.arakoon_bin;
                "--loglevel=error"]
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml"] else cmd in
@@ -1424,6 +1556,7 @@ module Test = struct
       else cmd2
     in
     let cmd_s = cmd3 |> String.concat " " in
+    let () = "free -h" |> Shell.cmd in
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd_with_rc
 
@@ -1442,14 +1575,17 @@ module Test = struct
     in
     loop 0;
     Deployment.restart_osds t;
+    
     let attempt ()  =
-      try [
-        "proxy-upload-object";
-        "-h";"127.0.0.1";
-        "demo";object_location;
-        "some_other_name";"--allow-overwrite";
-        ] |> _alba_cmd_line ~ignore_tls:true;
-          true
+      try
+        t.proxy # cmd_line
+                ["proxy-upload-object";
+                 "demo";
+                 object_location;
+                 "some_other_name";
+                 "--allow-overwrite";
+                ];
+        true
       with
       | _ -> false
     in
@@ -1562,14 +1698,18 @@ module Test = struct
     | exception x -> JUnit.Err (Printexc.to_string x)
 
   let asd_cli_env t =
-    if t.Deployment.cfg.tls
+    let cfg = t.Deployment.cfg in
+    if cfg.tls
     then
       let cert,pem,key = _get_client_tls () in
+      let host,transport = _get_ip_transport cfg
+      and port = "8501" in
       let cmd = [Printf.sprintf "ALBA_CLI_TLS='%s,%s,%s'" cert pem key;
                  t.cfg.alba_bin;
                  "asd-get-version";
-                 "-h 127.0.0.1";
-                 "-p" ; "8501"
+                 "-h"; host;
+                 "-p" ; port;
+                 "-t" ; transport
                 ]
       in
       let _r = Shell.cmd_with_capture cmd in
@@ -1676,7 +1816,16 @@ module Test = struct
                         "--config"; cfg]
       in
       let n_nodes_in_config () =
-        let r = [t'.cfg.alba_bin; "proxy-client-cfg | grep port | wc" ] |> Shell.cmd_with_capture in
+        let host,transport = _get_ip_transport t.cfg
+        and port = "10000"
+        in
+        let r = [t'.cfg.alba_bin;
+                 "proxy-client-cfg";
+                 "-h"; host;
+                 "-p"; port;
+                 "-t"; transport;
+                 " | grep port | wc"
+                ] |> Shell.cmd_with_capture in
         let c = Scanf.sscanf r " %i " (fun i -> i) in
         c
       in
@@ -1707,7 +1856,7 @@ module Test = struct
       in
       maybe_copy (three_nodes # config_url);
       t'.maintenance # signal "USR1";
-      wait_for(120);
+      wait_for 120;
       let c = n_nodes_in_config () in
       assert (c = 3);
 
@@ -1717,7 +1866,7 @@ module Test = struct
       two_nodes # start;
       maybe_copy (t'.abm # config_url) ;
       upload_albamgr_cfg (two_nodes # config_url |> Url.canonical);
-      wait_for(120);
+      wait_for 120;
       let c = n_nodes_in_config () in
       assert (c = 2);
       ()
@@ -1985,7 +2134,8 @@ module Test = struct
 end
 
 
-let () =
+
+let process_cmd_line () =
   let cmd_len = Array.length Sys.argv in
   Printf.printf "cmd_len:%i\n%!" cmd_len;
   let suites =
@@ -2035,6 +2185,11 @@ let () =
       exit 1
     end
 
+let () =
+  if !Sys.interactive
+  then ()
+  else process_cmd_line ()
+                        
 let top_level_run test =
   let t = Deployment.make_default () in
   Test.wrapper test t

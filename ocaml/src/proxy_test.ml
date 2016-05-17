@@ -17,13 +17,19 @@ limitations under the License.
 open Lwt.Infix
 open Proxy_protocol.Protocol
 
-let _IP = "127.0.0.1"
-let _PORT = 10_000
+let _IP,_PORT,_TRANSPORT =
+  try
+    let ip = Sys.getenv "ALBA_RDMA" in
+    (ip, 10_000, Net_fd.RDMA)
+  with
+    Not_found ->
+    ("127.0.0.1", 10_000, Net_fd.TCP)
 
+                   
 let test_with_proxy_client f =
   let t =
     Proxy_client.with_client
-      _IP _PORT
+      _IP _PORT _TRANSPORT
       f
   in
   Lwt_main.run t
@@ -172,7 +178,7 @@ let test_protocol_version () =
       (fun () ->
        Networking2.connect_with
          ~tls_config:None
-         _IP _PORT
+         _IP _PORT _TRANSPORT
        >>= fun (nfd, closer) ->
        Lwt.finalize
          (fun () ->

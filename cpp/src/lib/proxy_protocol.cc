@@ -31,6 +31,8 @@ limitations under the License.
 #define _INVALIDATE_CACHE 14
 #define _DROP_CACHE 16
 #define _GET_PROXY_VERSION 17
+#define _PING 20
+
 namespace alba {
 namespace proxy_protocol {
 
@@ -253,26 +255,33 @@ void read_drop_cache_response(message &m, Status &status) {
   read_status(m, status);
 }
 
-void write_get_proxy_version_request(message_builder&mb){
+void write_get_proxy_version_request(message_builder &mb) {
   write_tag(mb, _GET_PROXY_VERSION);
 }
 
-void read_get_proxy_version_response(message&m,
-                                     Status& status,
-                                     int32_t& major,
-                                     int32_t& minor,
-                                     int32_t& patch,
-                                     std::string& hash
-                                   ){
-  read_status(m,status);
-  if(status.is_ok()){
-      from(m, major);
-      from(m, minor);
-      from(m, patch);
-      from(m, hash);
+void read_get_proxy_version_response(message &m, Status &status, int32_t &major,
+                                     int32_t &minor, int32_t &patch,
+                                     std::string &hash) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    from(m, major);
+    from(m, minor);
+    from(m, patch);
+    from(m, hash);
   }
 }
 
+void write_ping_request(message_builder &mb, const double delay) {
+  write_tag(mb, _PING);
+  to(mb, delay);
+}
+
+void read_ping_response(message &m, Status &status, double &timestamp) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    from(m, timestamp);
+  }
+}
 }
 
 namespace llio {

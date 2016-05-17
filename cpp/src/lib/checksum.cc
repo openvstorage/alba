@@ -16,59 +16,65 @@ limitations under the License.
 
 #include "checksum.h"
 
-namespace alba{
+namespace alba {
 
-    void Sha1::print(std::ostream& os) const {
-        os << "Sha1(`";
-        for(char c: _digest){
-          alba::stuff::dump_hex(os, c);
-        }
-        os << "`)";
-    }
-
-  void Crc32c::print(std::ostream& os) const {
-    os << "Crc32c(`" << _digest << "`)";
+void Sha1::print(std::ostream &os) const {
+  os << "Sha1(`";
+  for (char c : _digest) {
+    alba::stuff::dump_hex(os, c);
   }
+  os << "`)";
+}
 
-    bool verify(const Checksum& c0, const Checksum& c1){
-        algo_t a0 = c0.get_algo();
-        algo_t a1 = c1.get_algo();
-        if(a0 != a1){
-            return false;
-        } else{
-          switch (a0) {
-          case algo_t::NO_CHECKSUM:
-            return true;
-          case algo_t::SHA1: {
-            auto &s0 = (const Sha1 &)c0;
-            auto &s1 = (const Sha1 &)c1;
-            return (s0._digest == s1._digest);
-          }
-          case algo_t::CRC32c: {
-            auto &s0 = (const Crc32c &)c0;
-            auto &s1 = (const Crc32c &)c1;
-            return (s0._digest == s1._digest);
-          }
-          }
-        }
-        // g++ issues bogus:
-        // warning: control reaches end of non-void function [-Wreturn-type]
-        return false;
-    }
+void Crc32c::print(std::ostream &os) const {
+  os << "Crc32c(`" << _digest << "`)";
+}
 
-    std::ostream& operator<<(std::ostream& os, const algo_t& algo){
-        switch(algo){
-        case algo_t :: NO_CHECKSUM: os << "NO_CHECKSUM"; break;
-        case algo_t :: SHA1 : os << "SHA1"; break;
-        case algo_t :: CRC32c : os << "CRC32c"; break;
-        }
-        return os;
+bool verify(const Checksum &c0, const Checksum &c1) {
+  algo_t a0 = c0.get_algo();
+  algo_t a1 = c1.get_algo();
+  if (a0 != a1) {
+    return false;
+  } else {
+    switch (a0) {
+    case algo_t::NO_CHECKSUM:
+      return true;
+    case algo_t::SHA1: {
+      auto &s0 = (const Sha1 &)c0;
+      auto &s1 = (const Sha1 &)c1;
+      return (s0._digest == s1._digest);
     }
+    case algo_t::CRC32c: {
+      auto &s0 = (const Crc32c &)c0;
+      auto &s1 = (const Crc32c &)c1;
+      return (s0._digest == s1._digest);
+    }
+    }
+  }
+  // g++ issues bogus:
+  // warning: control reaches end of non-void function [-Wreturn-type]
+  return false;
+}
 
-    std::ostream& operator<<(std::ostream& os, const Checksum& c){
-        c.print(os);
-        return os;
-    }
+std::ostream &operator<<(std::ostream &os, const algo_t &algo) {
+  switch (algo) {
+  case algo_t::NO_CHECKSUM:
+    os << "NO_CHECKSUM";
+    break;
+  case algo_t::SHA1:
+    os << "SHA1";
+    break;
+  case algo_t::CRC32c:
+    os << "CRC32c";
+    break;
+  }
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const Checksum &c) {
+  c.print(os);
+  return os;
+}
 }
 
 namespace alba {

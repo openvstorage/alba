@@ -24,6 +24,7 @@ module Config = struct
   type t = {
     ips : (string list         [@default []]);
     port :(int option          [@default None]);
+    transport : (string        [@default "tcp"]);
     node_id : string;
     home : string;
     log_level : string;

@@ -112,7 +112,7 @@ let do_get_version
 
 
 let do_scenarios
-      host port
+      host port transport
       n_clients n
       file_names power prefix slice_size namespace
       scenarios =
@@ -123,7 +123,7 @@ let do_scenarios
      Lwt_list.iter_p
        (fun i ->
         Proxy_client.with_client
-          host port
+          host port transport
           (fun client ->
            scenario
              client

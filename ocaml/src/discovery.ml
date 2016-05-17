@@ -75,6 +75,7 @@ type record = {
     ips: string list;
     port :int option;
     tlsPort: int option;
+    useRdma: bool;
     id : string;
   }[@@deriving show]
 
@@ -100,13 +101,15 @@ let parse s addr0 =
         id, None
     in
     let nics = Json.as_list (get_f "network_interfaces") in
-    let port =
-      try Some (Json.as_int (get_f "port"))
+    let get_option_as convertor name =
+      try Some (convertor (get_f name))
       with | Json.JSON_InvalidField _ -> None
     in
-    let tlsPort =
-      try  Some (get_f "tlsPort" |> Json.as_int )
-      with | Json.JSON_InvalidField _ -> None
+    let port    = get_option_as Json.as_int "port" in
+    let tlsPort = get_option_as Json.as_int "tlsPort" in
+    let useRdma =
+      try get_f "useRdma" |> Json.as_bool
+      with | Json.JSON_InvalidField _ -> false
     in
     let set0 = StringSet.of_list addr0 in
     let ip_set =
@@ -124,7 +127,7 @@ let parse s addr0 =
     in
     let ips = StringSet.elements ip_set in
 
-    Good (s, { id; extras; ips; port; tlsPort})
+    Good (s, { id; extras; ips; port; tlsPort; useRdma })
   with
   | exn ->
      let () = Lwt_log.ign_debug_f ~exn "ex => Bad" in
@@ -182,10 +185,13 @@ let discovery seen =
 
 let multicast
       (id:string) (node_id:string) ips
-      (port:int option)
-      (tlsPort:int option) period
+      ~(port:int option)
+      ~(tlsPort:int option)
+      ~(useRdma: bool option)
+      period
       ~(disk_usage:unit -> (int64 * int64) Lwt.t)
   =
+  Lwt_log.debug_f "multicast: .... useRdma:%s" ([%show :bool option] useRdma) >>= fun () ->
   let data (used:int64) (total:int64) =
     let b = Buffer.create 128 in
     let add_s s = Buffer.add_string b s in
@@ -211,22 +217,33 @@ let multicast
       add_s s;
       add_s "\"";
     in
-    let maybe_add_port name = function
+    let maybe_add_int name = function
       | None -> ()
-      | Some port ->
+      | Some i ->
          begin
            add_s ", \"";
            add_s name;
            add_s "\" : ";
-           add_s (Printf.sprintf "%i" port);
+           add_s (Printf.sprintf "%i" i)
+         end
+    in
+    let maybe_add_bool name = function
+      | None -> ()
+      | Some b ->
+         begin
+           add_s ", \"";
+           add_s name;
+           add_s "\" : ";
+           add_s (string_of_bool b)
          end
     in
     add_s "{ ";
     add_pair "id" id;
     add_s ", ";
     add_pair "node_id" node_id;
-    maybe_add_port "port" port;
-    maybe_add_port "tlsPort" tlsPort;
+    maybe_add_int "port" port;
+    maybe_add_int "tlsPort" tlsPort;
+    maybe_add_bool "useRdma" useRdma;
     add_s ", ";
     add_pair "used_bytes" (Printf.sprintf "%Li" used);
     add_s ", ";
@@ -285,7 +302,12 @@ let get_kind buffer_pool (conn_info:Networking2.conn_info) =
       | None   -> false
       | Some _ -> true
     in
-    (conn_info.ips, conn_info.port, use_tls)
+    let use_rdma =
+      match conn_info.transport with
+      | Net_fd.TCP  -> false
+      | Net_fd.RDMA -> true
+    in
+    (conn_info.ips, conn_info.port, use_tls, use_rdma)
   in
   let maybe_kinetic conn_info =
     Lwt_log.debug "is it a kinetic?" >>= fun () ->
