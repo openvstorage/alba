@@ -282,7 +282,7 @@ class nsm_host_access
            if namespace_id = namespace_id'
            then
              begin
-               Lwt_log.info_f
+               Lwt_log.debug_f
                  ~exn
                  "Needlessly refreshed namespace_id as a result of an exception" >>= fun () ->
                Lwt.fail exn

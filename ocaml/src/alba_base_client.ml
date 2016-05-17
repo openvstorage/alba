@@ -377,7 +377,9 @@ class client
         then
           let () =
             Lwt_log.ign_warning_f
-              "could not receive enough fragments for chunk %i; got %i while %i needed\n%!"
+              "could not receive enough fragments for namespace %li, object %S (%S) chunk %i; got %i while %i needed"
+              namespace_id
+              object_name object_id
               chunk_id (Hashtbl.length fragments) k
           in
           Hashtbl.iter
