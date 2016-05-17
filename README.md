@@ -29,7 +29,7 @@ Currently, you might have problems storing gigabyte size objects.
 
 License
 -------
-ALBA is licensed under the [Apache 2.0 license](http://www.apache.org/licenses/LICENSE-2.0).
+ALBA is licensed under the [GNU Affero General Public License v3](http://www.gnu.org/licenses/agpl-3.0.html).
 
 Building Alba
 -------------
@@ -41,10 +41,10 @@ You need the Alba binary on all machines you want to run an alba component. We p
 
 Playing Around
 --------------
-Developers can set up an alba environment on their local machine using the available fabric scripts:
+Developers can set up an alba environment on their local machine using the available setup script:
 
 ```
-$> fab alba.demo_kill alba.demo_setup
+$> ./setup/setup.native nil
 ...
 ```
 
