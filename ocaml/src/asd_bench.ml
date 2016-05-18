@@ -29,10 +29,8 @@ open Cli_bench_common
 
 let bench_blobs path scenarios count value_size partial_read_size =
   let t () =
-    let module D = Asd_server.DirectoryInfo in
     let module B = Generic_bench in
-    let dir_info =
-      D.make
+    let dir_info = Blob_access_factory.make_directory_info
         ~use_fadvise:true
         ~use_fallocate:true
         path
@@ -41,8 +39,7 @@ let bench_blobs path scenarios count value_size partial_read_size =
       let blob = Lwt_bytes.create_random value_size in
       let blob = Asd_protocol.Blob.Lwt_bytes blob in
       let write fnr =
-        D.write_blob
-          dir_info
+        dir_info # write_blob
           (Int64.of_int fnr) blob
           ~post_write:(fun fd len parent_dir -> Lwt.return ())
           ~sync_parent_dirs:true
@@ -57,8 +54,7 @@ let bench_blobs path scenarios count value_size partial_read_size =
       B.measured_loop
         progress
         (fun fnr ->
-         D.with_blob_fd
-           dir_info
+         dir_info # with_blob_fd
            (Int64.of_int fnr)
            (fun fd ->
             let ufd = Lwt_unix.unix_file_descr fd in
