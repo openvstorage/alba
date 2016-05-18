@@ -32,7 +32,7 @@ let claim_osd mgr_access osd_access ~long_id =
 
   let update_osd () =
     osd_access # osd_factory osd_info
-    >>= fun (osd, closer) ->
+    >>= fun ((osd : Osd.osd), closer) ->
     Lwt.finalize
       (fun () ->
        let module IRK = Osd_keys.AlbaInstanceRegistration in
@@ -41,10 +41,10 @@ let claim_osd mgr_access osd_access ~long_id =
          wrap_string IRK.next_alba_instance
        in
        let no_checksum = Checksum.NoChecksum in
-       osd # get_option Osd.High next_alba_instance'
+       osd # global_kvs # get_option Osd.High next_alba_instance'
        >>= function
        | Some _ ->
-          osd # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
+          osd # global_kvs # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
           >>= fun alba_id' ->
           let u_alba_id' = Lwt_bytes.to_string alba_id' in
           Lwt_log.debug_f
@@ -64,7 +64,7 @@ let claim_osd mgr_access osd_access ~long_id =
 
           let open Osd in
 
-          osd # apply_sequence
+          osd # global_kvs # apply_sequence
               Osd.High
               [ Assert.none next_alba_instance';
                 Assert.none_string instance_log_key;
@@ -91,7 +91,7 @@ let claim_osd mgr_access osd_access ~long_id =
                Lwt.return `Continue
             | _  ->
                begin
-                 osd # get_exn
+                 osd # global_kvs # get_exn
                      Osd.High
                      (wrap_string (IRK.instance_log_key 0l))
                  >>= fun alba_id'slice ->

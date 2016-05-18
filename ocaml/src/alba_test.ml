@@ -63,12 +63,11 @@ let delete_fragment
   alba_client # with_osd
     ~osd_id
     (fun osd ->
-     osd # apply_sequence
+     (osd # namespace_kvs namespace_id) # apply_sequence
          Osd.High
          []
          [ Osd.Update.delete_string
              (Osd_keys.AlbaInstance.fragment
-                ~namespace_id
                 ~object_id ~version_id
                 ~chunk_id
                 ~fragment_id) ]
@@ -336,7 +335,7 @@ let test_delete_namespace () =
              (fun c ->
                 let open Osd_keys in
                 let open Slice in
-                c # get_option
+                (c # namespace_kvs namespace_id) # get_option
                   Osd.High
                   (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
                 let p = Option.map Lwt_bytes.to_string ps in
@@ -344,13 +343,12 @@ let test_delete_namespace () =
                 assert (presence = (p <> None));
                 let fragment_key = wrap_string
                                      (AlbaInstance.fragment
-                                        ~namespace_id
                                         ~object_id ~version_id
                                         ~chunk_id:0
                                         ~fragment_id:0
                                      )
                 in
-                c # get_option Osd.High fragment_key >>= fun fs ->
+                (c # namespace_kvs namespace_id) # get_option Osd.High fragment_key >>= fun fs ->
                 let f = Option.map Lwt_bytes.to_string fs in
                 Lwt_io.printlf "got f = %s" ([%show : string option] f) >>= fun () ->
                 assert (fragment = (f <> None));
@@ -413,12 +411,11 @@ let test_clean_obsolete_keys () =
                 let fragment_key =
                   Slice.wrap_string
                     (Osd_keys.AlbaInstance.fragment
-                       ~namespace_id
                        ~object_id ~version_id
                        ~chunk_id:0
                        ~fragment_id:0)
                 in
-                osd_client # get_option Osd.High fragment_key >>= fun data_o ->
+                (osd_client # namespace_kvs namespace_id) # get_option Osd.High fragment_key >>= fun data_o ->
                 assert (assert_ data_o);
                 Lwt.return ()) in
 
@@ -478,12 +475,11 @@ let test_garbage_collect () =
               let fragment_key =
                 Slice.wrap_string
                   (Osd_keys.AlbaInstance.fragment
-                     ~namespace_id
                      ~object_id ~version_id
                      ~chunk_id
                      ~fragment_id)
               in
-                osd_client # get_option Osd.High fragment_key
+                (osd_client # namespace_kvs namespace_id) # get_option Osd.High fragment_key
                 >>= fun data_o ->
                 assert (assert_ data_o);
                 Lwt.return ()) in
@@ -843,7 +839,7 @@ let test_discover_claimed () =
 
             let osd = new Asd_client.asd_osd test_name asd in
 
-            osd # apply_sequence
+            osd # kvs # apply_sequence
               Osd.High
               [ Assert.none next_alba_instance';
                 Assert.none_string instance_log_key;

@@ -70,7 +70,6 @@ let download_packed_fragment
 
   let osd_key =
     Osd_keys.AlbaInstance.fragment
-      ~namespace_id
       ~object_id ~version_id
       ~chunk_id ~fragment_id
     |> Slice.wrap_string
@@ -81,7 +80,7 @@ let download_packed_fragment
      osd_access # with_osd
                 ~osd_id
                 (fun device_client ->
-                 device_client # get_option
+                 (device_client # namespace_kvs namespace_id) # get_option
                                (osd_access # get_default_osd_priority)
                                osd_key
                  >>= E.return))

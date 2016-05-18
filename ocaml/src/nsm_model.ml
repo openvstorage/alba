@@ -1028,6 +1028,13 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     (min_fragment_count, max_disks_per_node)
 
+  (* for backwards compatibility we store the keys to
+   * be deleted as global keys
+   *)
+  let to_global_key key =
+    Osd_keys.AlbaInstance.to_global_key
+      C.namespace_id
+      (key, 0, 0)
 
   let cleanup_for_object_id kv old_object_id =
     let object_key = Keys.objects ~object_id:old_object_id in
@@ -1046,17 +1053,17 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              | Some device_id, version_id ->
                let keys_to_be_deleted =
                  [ Osd_keys.AlbaInstance.fragment
-                     ~namespace_id:C.namespace_id
                      ~object_id:old_object_id
                      ~version_id
                      ~chunk_id
-                     ~fragment_id;
+                     ~fragment_id
+                   |> to_global_key;
                    Osd_keys.AlbaInstance.fragment_recovery_info
-                     ~namespace_id:C.namespace_id
                      ~object_id:old_object_id
                      ~version_id
                      ~chunk_id
-                     ~fragment_id;
+                     ~fragment_id
+                   |> to_global_key;
                  ] in
                List.map
                  (fun key -> Update.set ((Keys.Device.keys_to_be_deleted device_id) ^ key) "")
@@ -1502,18 +1509,20 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           | ((chunk_id, fragment_id), (Some osd_id, version_id)) ->
             let key_to_be_deleted1 =
               Osd_keys.AlbaInstance.fragment
-                ~namespace_id:C.namespace_id
                 ~object_id
                 ~version_id
                 ~chunk_id
-                ~fragment_id in
+                ~fragment_id
+              |> to_global_key
+            in
             let key_to_be_deleted2 =
               Osd_keys.AlbaInstance.fragment_recovery_info
-                ~namespace_id:C.namespace_id
                 ~object_id
                 ~version_id
                 ~chunk_id
-                ~fragment_id in
+                ~fragment_id
+              |> to_global_key
+            in
             List.map
               (fun k -> Update.set ((Keys.Device.keys_to_be_deleted osd_id) ^ k) "")
               [ key_to_be_deleted1; key_to_be_deleted2 ])

@@ -43,7 +43,6 @@ let upload_packed_fragment_data
   let set_data =
     Osd.Update.set
       (AlbaInstance.fragment
-         ~namespace_id
          ~object_id ~version_id
          ~chunk_id ~fragment_id
        |> Slice.wrap_string)
@@ -54,7 +53,6 @@ let upload_packed_fragment_data
     Osd.Update.set
       (Slice.wrap_string
          (AlbaInstance.fragment_recovery_info
-            ~namespace_id
             ~object_id ~version_id
             ~chunk_id ~fragment_id))
       (* TODO do add some checksum *)
@@ -63,7 +61,6 @@ let upload_packed_fragment_data
   let set_gc_tag =
     Osd.Update.set_string
       (AlbaInstance.gc_epoch_tag
-         ~namespace_id
          ~gc_epoch
          ~object_id ~version_id
          ~chunk_id ~fragment_id)
@@ -83,9 +80,12 @@ let upload_packed_fragment_data
        osd_access # with_osd
          ~osd_id
          (fun client ->
-          client # apply_sequence
+          (client # namespace_kvs namespace_id) # apply_sequence
                  (osd_access # get_default_osd_priority)
-                 [ assert_namespace_active; ]
+                 (* TODO move the assert into the osd client...
+                  * (if it's needed there...)
+                  *)
+                 [ (* assert_namespace_active; *) ]
                  [ set_data;
                    set_recovery_info;
                    set_gc_tag; ]))
@@ -548,14 +548,13 @@ let upload_object''
                      let remove_gc_tag =
                        Osd.Update.delete_string
                          (Osd_keys.AlbaInstance.gc_epoch_tag
-                            ~namespace_id
                             ~gc_epoch
                             ~object_id
                             ~version_id
                             ~chunk_id
                             ~fragment_id)
                      in
-                     osd # apply_sequence
+                     (osd # namespace_kvs namespace_id) # apply_sequence
                          (osd_access # get_default_osd_priority)
                          [] [ remove_gc_tag; ] >>= fun _ ->
                      Lwt.return ()))

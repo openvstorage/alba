@@ -42,7 +42,7 @@ let osd_multi_get osd_id cfg_file tls_config keys unescape verbose =
            (fun osd ->
               Lwt_list.map_s
                 (fun key ->
-                   osd # get_option
+                   (osd # global_kvs) # get_option
                      Osd.High
                      (Slice.wrap_string (if unescape
                       then Scanf.unescaped key
@@ -75,7 +75,7 @@ let osd_range osd_id cfg_file tls_config verbose =
        let first = Slice.wrap_string "" in
          client # with_osd ~osd_id
            (fun osd ->
-              osd # range
+            osd # global_kvs # range
                 Osd.High
                 ~first ~finc:true
                 ~last:None

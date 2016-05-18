@@ -127,10 +127,10 @@ module Pool = struct
   end
 
   module Osd = struct
-    type osd = Osd.osd
+    module Osd' = Osd
     open Albamgr_protocol.Protocol
     open Nsm_model
-    type osd_pool = (osd * (unit -> unit Lwt.t)) Lwt_pool2.t
+    type osd_pool = (Osd'.osd * (unit -> unit Lwt.t)) Lwt_pool2.t
 
     type t = {
       pools : (Osd.id, osd_pool) Hashtbl.t;
@@ -161,11 +161,14 @@ module Pool = struct
 
          Asd_client.make_client buffer_pool ~conn_info (Some asd_id)
          >>= fun (asd, closer) ->
-         let osd = new Asd_client.asd_osd asd_id asd in
+         let key_value_osd = new Asd_client.asd_osd asd_id asd in
+         let osd = new Osd'.osd_wrap_key_value_osd key_value_osd in
          Lwt.return (osd, closer)
       | OsdInfo.Kinetic (conn_info', kinetic_id) ->
          let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
-         Kinetic_client.make_client buffer_pool ~conn_info kinetic_id
+         Kinetic_client.make_client buffer_pool ~conn_info kinetic_id >>= fun (client, closer) ->
+         let osd = new Osd'.osd_wrap_key_value_osd client in
+         Lwt.return (osd, closer)
 
     let use_osd t ~(osd_id:int32) f =
       let get_pool () =

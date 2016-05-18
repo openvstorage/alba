@@ -171,7 +171,7 @@ class osd_access
                                (fun osd ->
                                 with_timing_lwt
                                   (fun () ->
-                                   osd # apply_sequence
+                                   osd # global_kvs # apply_sequence
                                        default_osd_priority
                                        []
                                        [ Osd.Update.set_string
@@ -490,7 +490,7 @@ class osd_access
                              Pool.Osd.factory tls_config osd_buffer_pool kind >>= fun (osd, closer) ->
                              Lwt.finalize
                                (fun () ->
-                                osd # get_option
+                                osd # global_kvs # get_option
                                     default_osd_priority
                                     (Slice.wrap_string
                                        (Osd_keys.AlbaInstanceRegistration.instance_log_key 0l)))

@@ -23,6 +23,7 @@ open Generic_bench
 open Checksum
 open Slice
 
+
 let maybe_fail = function
   | Osd.Ok -> Lwt.return_unit
   | Osd.Exn e -> Osd.Error.lwt_fail e
@@ -34,7 +35,8 @@ let deletes (client: Osd.osd) progress n value_size _ period prefix =
     let key_slice = Slice.wrap_string key in
     let delete = Update.Set (key_slice, None) in
     let updates = [delete] in
-    client # apply_sequence Osd.High [] updates >>= maybe_fail
+    client # global_kvs # apply_sequence
+      Osd.High [] updates >>= maybe_fail
   in
   measured_loop progress do_one n >>= fun r ->
   report "deletes" r
@@ -45,7 +47,7 @@ let gets (client: Osd.osd) progress n value_size _ period prefix =
   let do_one i =
     let key = gen () in
     let key_slice = Slice.wrap_string key in
-    client # get_option Osd.High key_slice >>= fun _value ->
+    client # global_kvs # get_option Osd.High key_slice >>= fun _value ->
     let () =
       match _value with
       | None   -> failwith (Printf.sprintf "db[%s] = None?" key)
@@ -62,7 +64,7 @@ let partial_reads (client : Osd.osd) progress n _value_size partial_fetch_size p
   let target = Lwt_bytes.create partial_fetch_size in
   let do_one i =
     let key = gen () in
-    client # partial_get
+    client # global_kvs # partial_get
            Osd.High
            (Slice.wrap_string key)
            [ 0, partial_fetch_size, target, 0 ] >>= function
@@ -87,7 +89,7 @@ let exists (client : Osd.osd) progress n _ _ period prefix =
   let gen = make_key period prefix in
   let do_one i =
     let key = gen () in
-    client # multi_exists
+    client # global_kvs # multi_exists
            Osd.High
            [ (Slice.wrap_string key) ]
     >>= fun _ ->
@@ -124,7 +126,7 @@ let sets (client:Osd.osd) progress n value_size _ period prefix =
                                 false))
     in
     let updates = [set] in
-    client # apply_sequence Osd.High [] updates >>= maybe_fail
+    client # global_kvs # apply_sequence Osd.High [] updates >>= maybe_fail
   in
   measured_loop progress do_one n >>= fun r ->
   report "sets" r
@@ -134,7 +136,7 @@ let range_queries (client:Osd.osd) progress n value_size _ period prefix =
   let do_one i =
     let first_key = gen () in
     let first = Slice.wrap_string first_key in
-    client # range Osd.High
+    client # global_kvs # range Osd.High
            ~first ~finc:false ~last:None ~reverse:false ~max:100
     >>= fun keys ->
     Lwt.return ()
@@ -157,7 +159,9 @@ let upload_fragments (client:Osd.osd) progress n value_size _ period prefix =
     Osd.Assert.value_string
       namespace_status_key active_value
   in
-  client # apply_sequence Osd.High []
+  (client # namespace_kvs namespace_id) # apply_sequence
+         Osd.High
+         []
          [Osd.Update.set
             (Slice.wrap_string namespace_status_key)
             (Blob.Bytes active_value)
@@ -175,7 +179,6 @@ let upload_fragments (client:Osd.osd) progress n value_size _ period prefix =
     let fragment_id = 0 in
     let set_data = Osd.Update.set
                      (AlbaInstance.fragment
-                        ~namespace_id
                         ~object_id ~version_id
                         ~chunk_id ~fragment_id
                       |> Slice.wrap_string)
@@ -187,7 +190,6 @@ let upload_fragments (client:Osd.osd) progress n value_size _ period prefix =
       Osd.Update.set
         (Slice.wrap_string
            (AlbaInstance.fragment_recovery_info
-              ~namespace_id
               ~object_id ~version_id
               ~chunk_id ~fragment_id))
         recovery_info Checksum.NoChecksum true
@@ -196,7 +198,6 @@ let upload_fragments (client:Osd.osd) progress n value_size _ period prefix =
     let set_gc_tag =
       Osd.Update.set_string
         (AlbaInstance.gc_epoch_tag
-           ~namespace_id
            ~gc_epoch
            ~object_id ~version_id
            ~chunk_id ~fragment_id)
@@ -207,7 +208,9 @@ let upload_fragments (client:Osd.osd) progress n value_size _ period prefix =
                    set_recovery_info;
                    set_gc_tag; ]
     in
-    client # apply_sequence Osd.High asserts updates >>= maybe_fail
+    (client # namespace_kvs namespace_id) # apply_sequence
+           Osd.High
+           asserts updates >>= maybe_fail
   in
   measured_loop progress do_one n >>= fun r ->
   report "uploads" r

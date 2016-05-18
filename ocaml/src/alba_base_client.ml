@@ -673,12 +673,11 @@ class client
                                  (fun osd ->
                                   let osd_key =
                                     Osd_keys.AlbaInstance.fragment
-                                      ~namespace_id
                                       ~object_id ~version_id
                                       ~chunk_id ~fragment_id
                                     |> Slice.wrap_string
                                   in
-                                  osd # partial_get
+                                  (osd # namespace_kvs namespace_id) # partial_get
                                       (osd_access # get_default_osd_priority)
                                       osd_key
                                       fragment_intersections) >>=

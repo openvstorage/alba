@@ -181,76 +181,75 @@ let translate alba_asserts alba_updates =
 
 class kinetic_client cid session conn =
 
-  object (self :# Osd.osd)
+object (self :# Osd.key_value_osd)
+  method kvs =
+    object(self')
+      method get_option prio key_s =
+        (* TODO use prio *)
+        let key = slice2s key_s in
+        Lwt.catch
+          (fun () ->
+           Lwt_log.debug_f "get_option ~key:%S" key
+           >>= fun () ->
+           Kinetic.get session conn key >>= fun vco ->
+           Lwt_log.debug_f "get_option result">>= fun () ->
+           Lwt.return vco
+          )
+          (fun exn ->
+           Lwt_io.printlf "get_option failed:%s%!" (Printexc.to_string exn)
+           >>= fun () ->
+           Lwt.fail exn
+          )
+        >>= fun vco ->
+        match vco with
+        | None -> Lwt.return None
+        | Some (v, version) ->
+           let vo_s = Some (Lwt_bytes.of_string v) in
+           Lwt.return vo_s
 
-    method get_option prio key_s =
-      (* TODO use prio *)
-      let key = slice2s key_s in
-      Lwt.catch
-        (fun () ->
-         Lwt_log.debug_f "get_option ~key:%S" key
-         >>= fun () ->
-         Kinetic.get session conn key >>= fun vco ->
-         Lwt_log.debug_f "get_option result">>= fun () ->
-         Lwt.return vco
-        )
-        (fun exn ->
-         Lwt_io.printlf "get_option failed:%s%!" (Printexc.to_string exn)
-         >>= fun () ->
-         Lwt.fail exn
-        )
-      >>= fun vco ->
-      match vco with
-      | None -> Lwt.return None
-      | Some (v, version) ->
-         let vo_s = Some (Lwt_bytes.of_string v) in
-         Lwt.return vo_s
 
+      method get_exn prio key_s =
+        let key = slice2s key_s in
+        Lwt_log.debug_f "kinetic_client.get_exn %S" key >>= fun () ->
+        self' # get_option prio key_s >>= function
+        | None ->
+           let f =  Failure
+                      ( Printf.sprintf "Could not find key:%S on .." key )
+           in
+           Lwt.fail f
+        | Some x -> Lwt.return x
 
-    method get_exn prio key_s =
-      let key = slice2s key_s in
-      Lwt_log.debug_f "kinetic_client.get_exn %S" key >>= fun () ->
-      self # get_option prio key_s >>= function
-      | None ->
-         let f =  Failure
-              ( Printf.sprintf "Could not find key:%S on .." key )
-         in
-         Lwt.fail f
-      | Some x -> Lwt.return x
-
-    method multi_get prio keys =
-      (* TODO the semantics here are different from
+      method multi_get prio keys =
+        (* TODO the semantics here are different from
          those for the asd *)
-      Lwt_list.map_s
-        (fun key -> self # get_option prio key)
-        keys
+        Lwt_list.map_s
+          (fun key -> self' # get_option prio key)
+          keys
 
-    method multi_exists prio keys = failwith "not implemented"
+      method multi_exists prio keys = failwith "not implemented"
 
-    method partial_get prio key slices = Lwt.return Osd.Unsupported
+      method partial_get prio key slices = Lwt.return Osd.Unsupported
 
-    method range prio ~first ~finc ~last ~reverse ~max =
-      (* TODO use prio *)
-      (* TODO this can't handle max > 200 *)
-      let first' = slice2s first in
-      let last',linc = match last with
-        | None -> String.make 10 '\xff' , false
-        | Some (l,linc) -> slice2s l, linc
-      in
-      Kinetic.get_key_range
-        session conn
-        first' finc
-        last' linc
-        reverse max >>= fun keys ->
-      let key_ss = List.map s2slice keys in
-      (* TODO this is subawesome *)
-      Lwt.return ((List.length key_ss, key_ss), key_ss <> [])
+      method range prio ~first ~finc ~last ~reverse ~max =
+        (* TODO use prio *)
+        (* TODO this can't handle max > 200 *)
+        let first' = slice2s first in
+        let last',linc = match last with
+          | None -> String.make 10 '\xff' , false
+          | Some (l,linc) -> slice2s l, linc
+        in
+        Kinetic.get_key_range
+          session conn
+          first' finc
+          last' linc
+          reverse max >>= fun keys ->
+        let key_ss = List.map s2slice keys in
+        (* TODO this is subawesome *)
+        Lwt.return ((List.length key_ss, key_ss), key_ss <> [])
 
 
-    method range_entries prio ~first ~finc ~last ~reverse ~max =
-      Lwt.fail_with "TODO"
-
-    method get_version = Lwt.fail_with "TODO"
+      method range_entries prio ~first ~finc ~last ~reverse ~max =
+        Lwt.fail_with "TODO"
 
     method apply_sequence prio asserts updates =
       (* TODO use prio *)
@@ -334,6 +333,9 @@ class kinetic_client cid session conn =
                            *)
              end
         end
+    end
+
+    method get_version = Lwt.fail_with "TODO"
 
     method set_full full =
       Lwt.fail_with "Kinetic_client: `set_full` is not implemented"

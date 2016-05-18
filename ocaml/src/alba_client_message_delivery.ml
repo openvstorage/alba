@@ -26,7 +26,7 @@ module DK = Osd_keys.AlbaInstance
               
 let _get_next_msg_id client prio =
 
-  client # get_option
+  client # global_kvs # get_option
          prio
          (Slice.wrap_string DK.next_msg_id)
   >>= fun next_id_so ->
@@ -92,7 +92,7 @@ let _deliver_osd_messages (osd_access : Osd_access.osd_access) ~osd_id msgs =
                   next_id_so)
              :: asserts
            in
-           client # apply_sequence
+           client # global_kvs # apply_sequence
                   (osd_access # get_default_osd_priority)
                   asserts'
                   (bump_msg_id :: upds)

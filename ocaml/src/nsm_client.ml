@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Nsm_protocol
 open Protocol
+open Lwt.Infix
 
 class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
   object(self)
@@ -88,10 +89,18 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
       self # query
         ListDeviceKeysToBeDeleted
         (osd_id,
-         RangeQueryArgs.({
+         RangeQueryArgs.(
+           {
              first; finc; last;
              max; reverse;
-           }))
+           })) >>= fun ((cnt, keys), has_more) ->
+      Lwt.return ((cnt,
+                   List.map
+                     (fun key ->
+                      let cnt = Osd_keys.AlbaInstance.verify_global_key namespace_id (key, 0) in
+                      Str.string_after key cnt)
+                     keys),
+                  has_more)
 
     method get_gc_epochs =
       self # query GetGcEpochs ()

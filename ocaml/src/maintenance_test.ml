@@ -539,12 +539,11 @@ let test_verify_namespace () =
        alba_client # with_osd
          ~osd_id
          (fun osd ->
-          osd # apply_sequence
+          (osd # namespace_kvs namespace_id) # apply_sequence
               Osd.High
               []
               [ Osd.Update.set_string
                   (Osd_keys.AlbaInstance.fragment
-                     ~namespace_id
                      ~object_id ~version_id
                      ~chunk_id:0
                      ~fragment_id:1)

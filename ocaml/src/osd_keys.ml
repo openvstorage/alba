@@ -54,29 +54,52 @@ module AlbaInstance = struct
        0l,
        'm')
 
-  let namespace_prefix_serializer buf namespace_id =
+  let _namespace_prefix_serializer buf namespace_id =
     Llio.char_to buf AlbaInstanceRegistration.instance_content_prefix;
     Llio.int32_be_to buf 0l;
     Llio.char_to buf 'n';
     Llio.int32_be_to buf namespace_id
 
+  let to_global_key namespace_id (key, offset, length) =
+    serialize
+      (Llio.pair_to
+         _namespace_prefix_serializer
+         Llio.raw_substring_to)
+      (namespace_id, (key, offset, length))
+
+  let verify_global_key namespace_id (key, offset) =
+    let buf = Llio.make_buffer key offset in
+
+    let p = Llio.char_from buf in
+    assert (p = 'p');
+    let _0l = Llio.int32_be_from buf in
+    assert (_0l = 0l);
+    let n = Llio.char_from buf in
+    assert (n = 'n');
+    let namespace_id' = Llio.int32_be_from buf in
+    assert (namespace_id' = namespace_id);
+
+    (* this returns the amount of bytes processed by the verify *)
+    10
+
   let namespace_status ~namespace_id =
-    serialize namespace_prefix_serializer namespace_id
+    (* TODO *)
+    serialize _namespace_prefix_serializer namespace_id
 
   let namespace_name ~namespace_id =
     serialize
       (Llio.pair_to
-         namespace_prefix_serializer
+         (* TODO *)
+         _namespace_prefix_serializer
          Llio.char_to)
       (namespace_id, 'n')
 
   let gc_epoch_tag
-      ~namespace_id ~gc_epoch
+      ~gc_epoch
       ~object_id ~version_id
       ~chunk_id ~fragment_id =
     serialize
       (fun buf () ->
-         namespace_prefix_serializer buf namespace_id;
          Llio.char_to buf 'g';
          Llio.int64_be_to buf gc_epoch;
          Llio.string_to buf object_id;
@@ -88,13 +111,6 @@ module AlbaInstance = struct
   let parse_gc_epoch_tag key =
     deserialize
       (fun buf ->
-         let p = Llio.char_from buf in
-         assert (p = 'p');
-         let _0l = Llio.int32_be_from buf in
-         assert (_0l = 0l);
-         let n = Llio.char_from buf in
-         assert (n = 'n');
-         let namespace_id = Llio.int32_be_from buf in
          let g = Llio.char_from buf in
          assert (g = 'g');
          let gc_epoch = Llio.int64_be_from buf in
@@ -102,17 +118,15 @@ module AlbaInstance = struct
          let chunk_id = Llio.int_from buf in
          let fragment_id = Llio.int_from buf in
          let version_id = Llio.int_from buf in
-         (namespace_id, gc_epoch, object_id, chunk_id, fragment_id, version_id)
+         (gc_epoch, object_id, chunk_id, fragment_id, version_id)
       )
       key
 
   let fragment
-      ~namespace_id
       ~object_id ~version_id
       ~chunk_id ~fragment_id =
     serialize
       (fun buf () ->
-         namespace_prefix_serializer buf namespace_id;
          Llio.char_to buf 'o';
          Llio.string_to buf object_id;
          Llio.int_to buf chunk_id;
@@ -121,12 +135,10 @@ module AlbaInstance = struct
       ()
 
   let fragment_recovery_info
-      ~namespace_id
       ~object_id
       ~chunk_id ~fragment_id ~version_id =
     serialize
       (fun buf () ->
-         namespace_prefix_serializer buf namespace_id;
          Llio.char_to buf 'r';
          Llio.string_to buf object_id;
          Llio.int_to buf chunk_id;
@@ -134,30 +146,20 @@ module AlbaInstance = struct
          Llio.int_to buf version_id)
       ()
 
-  let fragment_recovery_info_next_prefix
-      ~namespace_id =
+  let fragment_recovery_info_next_prefix =
     serialize
-      (fun buf () ->
-         namespace_prefix_serializer buf namespace_id;
-         Llio.char_to buf (Char.chr (Char.code 'r' + 1)))
-      ()
+      Llio.char_to
+      (Char.chr (Char.code 'r' + 1))
 
   let parse_fragment_recovery_info key =
     deserialize
       (fun buf ->
-         let p = Llio.char_from buf in
-         assert (p = 'p');
-         let _0l = Llio.int32_from buf in
-         assert (_0l = 0l);
-         let n = Llio.char_from buf in
-         assert (n = 'n');
-         let namespace_id = Llio.int32_from buf in
          let r = Llio.char_from buf in
          assert (r = 'r');
          let object_id = Llio.string_from buf in
          let chunk_id = Llio.int_from buf in
          let fragment_id = Llio.int_from buf in
          let version_id = Llio.int_from buf in
-         (namespace_id, object_id, chunk_id, fragment_id, version_id))
+         (object_id, chunk_id, fragment_id, version_id))
       key
 end
