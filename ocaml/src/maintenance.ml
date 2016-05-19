@@ -1220,37 +1220,15 @@ class client ?(retry_timeout = 60.)
            alba_client # with_osd
              ~osd_id
              (fun client ->
-              let namespace_prefix =
-                serialize
-                  Osd_keys.AlbaInstance._namespace_prefix_serializer
-                  namespace_id
+              let rec inner first =
+                client # delete_namespace namespace_id first >>= function
+                | None -> Lwt.return ()
+                | Some next ->
+                   if not (filter work_id)
+                   then Lwt.fail NotMyTask
+                   else inner next
               in
-              let namespace_prefix' = Slice.wrap_string namespace_prefix in
-              let namespace_next_prefix =
-                match (Key_value_store.next_prefix namespace_prefix) with
-                | None -> None
-                | Some (p,b) -> Some (Slice.wrap_string p, b)
-              in
-              let rec inner (first, finc) =
-                (* TODO replace with delete_bucket call! *)
-                (client # namespace_kvs namespace_id) # range
-                       Osd.Low
-                       ~first ~finc
-                       ~last:namespace_next_prefix
-                       ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
-                (client # namespace_kvs namespace_id) # apply_sequence
-                       Osd.Low
-                       []
-                       (List.map
-                          (fun k -> Osd.Update.delete k)
-                          keys) >>= fun _ ->
-                if not (filter work_id)
-                then Lwt.fail NotMyTask
-                else if has_more
-                then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
-                else Lwt.return ()
-              in
-              inner (namespace_prefix', true))
+              inner (Slice.wrap_string ""))
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->

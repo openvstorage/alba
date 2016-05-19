@@ -83,13 +83,11 @@ module AlbaInstance = struct
     10
 
   let namespace_status ~namespace_id =
-    (* TODO *)
     serialize _namespace_prefix_serializer namespace_id
 
   let namespace_name ~namespace_id =
     serialize
       (Llio.pair_to
-         (* TODO *)
          _namespace_prefix_serializer
          Llio.char_to)
       (namespace_id, 'n')

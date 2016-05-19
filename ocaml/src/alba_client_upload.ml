@@ -66,13 +66,6 @@ let upload_packed_fragment_data
          ~chunk_id ~fragment_id)
       "" Checksum.NoChecksum true
   in
-  let assert_namespace_active =
-    Osd.Assert.value_string
-      (AlbaInstance.namespace_status ~namespace_id)
-      (Osd.Osd_namespace_state.(serialize
-                                  to_buffer
-                                  Active)) in
-
   let do_upload () =
     let msg = Printf.sprintf "do_upload ~osd_id:%li" osd_id in
     Lwt_extra2.with_timeout ~msg (osd_access # osd_timeout)
@@ -82,10 +75,7 @@ let upload_packed_fragment_data
          (fun client ->
           (client # namespace_kvs namespace_id) # apply_sequence
                  (osd_access # get_default_osd_priority)
-                 (* TODO move the assert into the osd client...
-                  * (if it's needed there...)
-                  *)
-                 [ (* assert_namespace_active; *) ]
+                 []
                  [ set_data;
                    set_recovery_info;
                    set_gc_tag; ]))

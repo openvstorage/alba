@@ -63,20 +63,22 @@ let _deliver_osd_messages (osd_access : Osd_access.osd_access) ~osd_id msgs =
        if Int32.(next_id =: msg_id)
        then begin
            let open Albamgr_protocol.Protocol.Osd.Message in
-           let asserts, upds =
+           begin
              match msg with
              | AddNamespace (namespace_name, namespace_id) ->
+                client # add_namespace namespace_id >>= fun () ->
                 let namespace_status_key = DK.namespace_status ~namespace_id in
-                [ Osd.Assert.none_string namespace_status_key; ],
-                [ Osd.Update.set_string
-                    namespace_status_key
-                    Osd.Osd_namespace_state.(serialize to_buffer Active)
-                    Checksum.NoChecksum true;
-                  Osd.Update.set_string
-                    (DK.namespace_name ~namespace_id) namespace_name
-                    Checksum.NoChecksum true;
-                ]
-           in
+                Lwt.return
+                  ([ Osd.Assert.none_string namespace_status_key; ],
+                   [ Osd.Update.set_string
+                       namespace_status_key
+                       Osd.Osd_namespace_state.(serialize to_buffer Active)
+                       Checksum.NoChecksum true;
+                     Osd.Update.set_string
+                       (DK.namespace_name ~namespace_id) namespace_name
+                       Checksum.NoChecksum true;
+                   ])
+           end >>= fun (asserts, upds) ->
            let bump_msg_id =
              Osd.Update.set_string
                DK.next_msg_id

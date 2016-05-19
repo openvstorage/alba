@@ -108,32 +108,43 @@ class type osd = object
 
   method namespace_kvs : namespace_id -> key_value_storage
 
-  (* method add_namespace : namespace_id -> unit Lwt.t *)
-  (* method delete_namespace : namespace_id -> int Lwt.t *)
+  (* should be idempotent, don't throw an error when it already exists *)
+  method add_namespace : namespace_id -> unit Lwt.t
+  (* deletes the namespace, returns None when completely removed *)
+  method delete_namespace : namespace_id -> key -> key option Lwt.t
 
-  (* TODO this doesn't belong here! *)
   method set_full : bool -> unit Lwt.t
-  (* TODO this doesn't belong here? *)
   method get_version : (int * int * int * string) Lwt.t
-  (* TODO this doesn't belong here? *)
   method get_long_id : string
 
   method get_disk_usage : (int64 * int64) Lwt.t
 end
 
-(* TODO move to separate file? *)
 open Lwt.Infix
 
 class osd_wrap_key_value_osd (key_value_osd : key_value_osd) =
+let to_global_key namespace_id key =
+  Osd_keys.AlbaInstance.to_global_key
+    namespace_id
+    (key.Slice.buf, key.Slice.offset, key.Slice.length)
+  |> Slice.wrap_string
+in
 object(self :# osd)
   method global_kvs = key_value_osd # kvs
 
   method namespace_kvs namespace_id =
-    let to_global_key key =
-      Osd_keys.AlbaInstance.to_global_key
-        namespace_id
-        (key.Slice.buf, key.Slice.offset, key.Slice.length)
-      |> Slice.wrap_string
+    let to_global_key = to_global_key namespace_id in
+    let last_to_global = function
+      | None ->
+         Osd_keys.AlbaInstance.to_global_key
+           namespace_id
+           ("", 0, 0)
+         |> Key_value_store.next_prefix
+         |> Option.map
+              (fun (s, b) ->
+               Slice.wrap_string s, b)
+      | Some (l, linc) ->
+         Some (to_global_key l, linc)
     in
     let from_global_key key =
       let cnt = Osd_keys.AlbaInstance.verify_global_key
@@ -178,10 +189,7 @@ object(self :# osd)
         key_value_osd # kvs # range
                       prio
                       ~first:(to_global_key first) ~finc
-                      ~last:(Option.map (fun (l, linc) ->
-                                         to_global_key l,
-                                         linc)
-                                        last)
+                      ~last:(last_to_global last)
                       ~reverse ~max >>= fun ((cnt, results), has_more) ->
         Lwt.return ((cnt,
                      List.map from_global_key results),
@@ -195,10 +203,7 @@ object(self :# osd)
         key_value_osd # kvs # range_entries
                       prio
                       ~first:(to_global_key first) ~finc
-                      ~last:(Option.map (fun (l, linc) ->
-                                         to_global_key l,
-                                         linc)
-                                        last)
+                      ~last:(last_to_global last)
                       ~reverse ~max >>= fun ((cnt, results), has_more) ->
         Lwt.return ((cnt,
                      List.map
@@ -210,18 +215,44 @@ object(self :# osd)
                     has_more)
 
       method apply_sequence prio asserts updates =
+        let assert_namespace_active =
+          Assert.value_string
+            (Osd_keys.AlbaInstance.namespace_status ~namespace_id)
+            (Osd_namespace_state.(serialize
+                                        to_buffer
+                                        Active))
+        in
         key_value_osd # kvs # apply_sequence
                       prio
+                      (assert_namespace_active
+                       :: List.map
+                            (function Assert.Value (key, bo) ->
+                                      Assert.Value (to_global_key key, bo))
+                            asserts)
                       (List.map
-                         (function Asd_protocol.Assert.Value (key, bo) ->
-                                   Asd_protocol.Assert.Value (to_global_key key, bo))
-                         asserts)
-                      (List.map
-                         (function Asd_protocol.Update.Set (key, x) ->
-                                   Asd_protocol.Update.Set (to_global_key key, x))
+                         (function Update.Set (key, x) ->
+                                   Update.Set (to_global_key key, x))
                          updates)
 
     end
+
+  method add_namespace namespace_id =
+    Lwt.return_unit
+  method delete_namespace namespace_id first =
+    let kvs = self # namespace_kvs namespace_id in
+    kvs # range
+      Low
+      ~first ~finc:true ~last:None
+      ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
+    (* using global_kvs here to avoid the effects of 'assert_namespace_active' *)
+    self # global_kvs # apply_sequence
+        Low
+        []
+        (List.map
+           (fun key -> Update.delete (to_global_key namespace_id key))
+           keys) >>= function
+    | Ok -> Lwt.return (List.last keys)
+    | Exn e -> Lwt.fail (Asd_protocol.Protocol.Error.Exn e)
 
   method set_full = key_value_osd # set_full
   method get_version = key_value_osd # get_version
