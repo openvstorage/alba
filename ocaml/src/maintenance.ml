@@ -394,38 +394,9 @@ class client ?(retry_timeout = 60.)
                 ~gc_epoch ~version_id:version_id1
         )
       >>= fun () ->
-        (* TODO remove chunk of code below, as it should already be
-         * covered by another part of the maintenance
-         *)
-        Lwt_list.iter_p
-        (fun (chunk_id, fragment_id, source_osd, target_osd) ->
-         alba_client # with_osd
-           ~osd_id:source_osd
-           (fun osd_client ->
-            let key =
-              Osd_keys.AlbaInstance.fragment
-                ~object_id ~version_id:version_id0
-                ~chunk_id ~fragment_id
-            in
-            (osd_client # namespace_kvs namespace_id) # apply_sequence
-                       Osd.Low
-                       [] [Osd.Update.delete_string key]
-            >>= fun s ->
-            match s with
-            | Osd.Ok    -> Lwt.return ()
-            | Osd.Exn e ->
-               Lwt_log.info_f
-                 ("object: %S" ^^
-                 "delete fragment(chunk_id:%i,fragment_id:%i,osd_id:%li): %s" ^^
-                 " => garbage")
-                 object_id chunk_id fragment_id source_osd
-                 ([%show: Osd.Error.t ] e)
-           )
-        ) object_location_movements
-      >>= fun () ->
-        let size = List.length object_location_movements in
-        let () = MStats.new_delta MStats.REBALANCE (float size) in
-        Lwt.return object_location_movements
+      let size = List.length object_location_movements in
+      let () = MStats.new_delta MStats.REBALANCE (float size) in
+      Lwt.return object_location_movements
 
 
     method decommission_device
