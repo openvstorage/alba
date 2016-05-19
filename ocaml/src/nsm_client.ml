@@ -102,6 +102,15 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
                      keys),
                   has_more)
 
+    method mark_keys_deleted ~osd_id ~keys =
+      self # update
+        MarkKeysDeleted
+        [(osd_id,
+          List.map
+            (fun key ->
+             Osd_keys.AlbaInstance.to_global_key namespace_id (key, 0, 0))
+            keys)]
+
     method get_gc_epochs =
       self # query GetGcEpochs ()
 
@@ -129,11 +138,6 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
       self # update
         UpdateObject
         (object_name, object_id, updated_object_locations, gc_epoch, version_id)
-
-    method mark_keys_deleted ~osd_id ~keys =
-      self # update
-        MarkKeysDeleted
-        [(osd_id, keys)]
 
     method enable_gc_epoch gc_epoch =
       self # update

@@ -1920,6 +1920,7 @@ let test_stale_manifest_download () =
      >>= fun mf ->
 
      let download () =
+       Lwt_log.debug_f "Downloading the object..." >>= fun () ->
        alba_client # download_object_to_string
                    ~namespace
                    ~object_name
@@ -1929,6 +1930,7 @@ let test_stale_manifest_download () =
        Lwt.return ()
      in
      let download_slices () =
+       Lwt_log.debug_f "Downloading the object in slices..." >>= fun () ->
        alba_client # download_object_slices_to_string
                    ~namespace
                    ~object_name
@@ -1938,6 +1940,7 @@ let test_stale_manifest_download () =
        Lwt.return ()
      in
      let rewrite_obj () =
+       Lwt_log.debug_f "Rewriting the object..." >>= fun () ->
        let tls_config = Albamgr_test.get_tls_config() in
        _fetch_abm_client_cfg () >>= fun cfg ->
        Alba_client.with_client
@@ -1959,6 +1962,7 @@ let test_stale_manifest_download () =
             (alba_client2 # get_base_client)
             ~namespace_id
             ~manifest >>= fun () ->
+          Lwt_log.debug_f "Cleaning obsolete keys..." >>= fun () ->
           maintenance_client # clean_obsolete_keys_namespace
                              ~once:true ~namespace_id >>= fun () ->
           Lwt.return ())

@@ -1034,7 +1034,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
   let to_global_key key =
     Osd_keys.AlbaInstance.to_global_key
       C.namespace_id
-      (key, 0, 0)
+      (key, 0, String.length key)
 
   let cleanup_for_object_id kv old_object_id =
     let object_key = Keys.objects ~object_id:old_object_id in
