@@ -179,8 +179,10 @@ script () {
             true
             ;;
         system2)
-            ${TEST_DRIVER} ocaml | tail -n256
-            expr $PIPESTATUS && false
+            ${TEST_DRIVER} ocaml | tail -n1000
+            X=$PIPESTATUS
+            cat testresults.xml
+            expr $X && false
             ;;
         disk_failures)
             ${TEST_DRIVER} disk_failures
