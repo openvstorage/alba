@@ -63,14 +63,19 @@ let delete_fragment
   alba_client # with_osd
     ~osd_id
     (fun osd ->
-     (osd # namespace_kvs namespace_id) # apply_sequence
+     osd # global_kvs # apply_sequence
          Osd.High
          []
          [ Osd.Update.delete_string
-             (Osd_keys.AlbaInstance.fragment
-                ~object_id ~version_id
-                ~chunk_id
-                ~fragment_id) ]
+             (let k =
+                Osd_keys.AlbaInstance.fragment
+                  ~object_id ~version_id
+                  ~chunk_id
+                  ~fragment_id
+              in
+              Osd_keys.AlbaInstance.to_global_key
+                namespace_id
+                (k, 0, String.length k)) ]
      >>= fun s ->
      OUnit.assert_equal Osd.Ok s;
      Lwt.return ())
@@ -335,7 +340,7 @@ let test_delete_namespace () =
              (fun c ->
                 let open Osd_keys in
                 let open Slice in
-                (c # namespace_kvs namespace_id) # get_option
+                (c # global_kvs) # get_option
                   Osd.High
                   (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
                 let p = Option.map Lwt_bytes.to_string ps in
