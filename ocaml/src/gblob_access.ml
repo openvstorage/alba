@@ -37,7 +37,7 @@ object(self)
     end
                                         
   val _next_id = ref 0L
-  val _outstanding =  (Hashtbl.create 16 : (int64, (Fragment.t * int32 Lwt.u)) Hashtbl.t)
+  val _outstanding =  (Hashtbl.create 16 : (int64, int32 Lwt.u) Hashtbl.t)
   val _event_fd = IOExecFile.get_event_fd ()
                     
   method private next_completion_id =
@@ -56,7 +56,7 @@ object(self)
     IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
     IOExecFile.file_read handle batch >>= fun () ->
 
-    self # _wait_for_completion completion_id fragment >>= fun ec ->
+    self # _wait_for_completion completion_id >>= fun ec ->
     assert (ec = 0l);
     IOExecFile.file_close handle >>= fun () ->
     failwith "todo: end of get_blob"
@@ -74,7 +74,7 @@ object(self)
         (fun s ->
           let completion_id = IOExecFile.get_completion_id s in
           let ec = IOExecFile.get_error_code s in
-          let fragment, awake = Hashtbl.find _outstanding completion_id in
+          let awake = Hashtbl.find _outstanding completion_id in
           Lwt.wakeup awake ec;
           Hashtbl.remove _outstanding completion_id
         ) ss;
@@ -82,9 +82,9 @@ object(self)
     in
     loop ()
 
-  method _wait_for_completion completion_id fragment : int32 Lwt.t =
+  method _wait_for_completion completion_id : int32 Lwt.t =
     let sleep, awake = Lwt.wait () in
-    let () = Hashtbl.add _outstanding completion_id (fragment, awake) in
+    let () = Hashtbl.add _outstanding completion_id awake in
     sleep 
       
   method write_blob fnr blob ~post_write ~sync_parent_dirs =
@@ -109,7 +109,7 @@ object(self)
     Lwt.finalize
       (fun () ->
         IOExecFile.file_write handle batch >>= fun () ->
-        self # _wait_for_completion completion_id fragment >>= fun ec ->
+        self # _wait_for_completion completion_id >>= fun ec ->
         Lwt_log.debug_f "%Li:write ec=%li" completion_id ec >>= fun () ->
         (* TODO: post write ?? *)
         if ec <> 0l
@@ -118,12 +118,39 @@ object(self)
         else Lwt.return_unit
       )
       (fun () ->
-        (* IOExecFile.free data *)
+        (* TODO: IOExecFile.free data *)
         IOExecFile.file_close handle >>= fun () ->
         Lwt_log.debug_f "write_blob finalizer done"
       )
              
-  method delete_blobs fnrs ~ignore_unlink_error = failwith "todo"
+  method delete_blobs fnrs ~ignore_unlink_error =
+    Lwt_log.debug_f "delete_blobs ~fnrs:%s" ([%show: int64 list] fnrs) >>= fun () ->
+    let fnrs = List.sort Int64.compare fnrs in
+
+    Lwt_list.map_s
+      (fun fnr ->
+        let file_path = self # _get_file_path fnr in
+        let cid = self # next_completion_id in
+        IOExecFile.file_delete file_path cid >>= fun () ->
+        Lwt.return (fnr, cid)
+      )
+      fnrs
+    >>= fun completions ->
+    Lwt_list.map_p
+      (fun (fn, cid) ->
+        self # _wait_for_completion cid >>= fun ec ->
+        Lwt.return (fn, ec)
+      )
+      completions
+    >>= fun results ->
+    let bad = List.filter (fun (_, ec) -> ec <> 0l) results in
+    match bad with
+    | [] -> Lwt.return_unit
+    | (fn,ec)::_  -> if ignore_unlink_error
+                     then Lwt.return_unit
+                     else
+                       (* TODO: unify exceptions from error codes *)
+                       Lwt.fail_with (Printf.sprintf "error deleting:%Li" fn)
   
   method _get_file_dir_name_path fnr = Fnr.get_file_dir_name_path config.files_path fnr
 end
