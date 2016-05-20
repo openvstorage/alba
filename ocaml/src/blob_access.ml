@@ -29,7 +29,33 @@ type directory_status =
   | Exists
   | Creating of unit Lwt.t
 
-let get_file_name fnr = Printf.sprintf "%016Lx" fnr
+
+
+module Fnr = struct
+  let get_file_name fnr = Printf.sprintf "%016Lx" fnr
+
+  let get_file_dir_name_path files_path fnr =
+    let file = get_file_name fnr in
+    let dir = Bytes.create 20 in
+    let rec fill off1 off2 =
+      if off1 < 20
+      then begin
+        Bytes.set dir off1 file.[off2];
+        if off2 mod 2 = 1
+        then begin
+          if off1 <> 19
+          then Bytes.set dir (off1 + 1) '/';
+          fill (off1 + 2) (off2 + 1)
+        end else fill (off1 + 1) (off2 + 1)
+      end
+    in
+    fill 0 0;
+    let path =
+      String.concat
+        Filename.dir_sep
+        [ files_path; dir; file ] in
+    dir, file, path
+end
 
 type fnr = int64
 
@@ -109,7 +135,7 @@ object(self)
 end
   
 class virtual blob_access =
-object
+object(self)
   method virtual config : config
 
   method virtual get_blob : fnr -> int -> bytes Lwt.t
@@ -126,9 +152,18 @@ object
 
   (* TODO: These should go *)
   method virtual _get_file_dir_name_path : fnr -> bytes * bytes * bytes
-  method virtual _get_file_path : fnr -> bytes
+
+  method _get_file_path fnr =
+    let _, _, path = self # _get_file_dir_name_path fnr in
+    path
 end
-                       
+
+class virtual blob_dir_access =
+object
+  inherit blob_access
+  inherit directory_access
+end
+
 class directory_info config =
 object(self)
   inherit blob_access
@@ -136,31 +171,8 @@ object(self)
             
   method config = config  
 
-  method _get_file_dir_name_path fnr =
-    let file = get_file_name fnr in
-    let dir = Bytes.create 20 in
-    let rec fill off1 off2 =
-      if off1 < 20
-      then begin
-        Bytes.set dir off1 file.[off2];
-        if off2 mod 2 = 1
-        then begin
-          if off1 <> 19
-          then Bytes.set dir (off1 + 1) '/';
-          fill (off1 + 2) (off2 + 1)
-        end else fill (off1 + 1) (off2 + 1)
-      end
-    in
-    fill 0 0;
-    let path =
-      String.concat
-        Filename.dir_sep
-        [ config.files_path; dir; file ] in
-    dir, file, path
+  method _get_file_dir_name_path = Fnr.get_file_dir_name_path config.files_path
 
-  method _get_file_path fnr =
-    let _, _, path = self # _get_file_dir_name_path fnr in
-    path
 
   method with_blob_fd fnr f =
     Lwt_extra2.with_fd

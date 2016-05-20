@@ -40,7 +40,8 @@ let asd_start cfg_url slow log_sinks =
            tls_config,tcp_keepalive,
            write_blobs,
            use_fadvise, use_fallocate,
-           rocksdb_block_cache_size
+           rocksdb_block_cache_size,
+           engine
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.transport,
@@ -52,7 +53,8 @@ let asd_start cfg_url slow log_sinks =
         cfg.tls,   cfg.tcp_keepalive,
         cfg.__warranty_void__write_blobs,
         cfg.use_fadvise, cfg.use_fallocate,
-        cfg.rocksdb_block_cache_size
+        cfg.rocksdb_block_cache_size,
+        cfg.blob_io_engine
       in
 
       (if not fsync
@@ -125,6 +127,7 @@ let asd_start cfg_url slow log_sinks =
                             ~write_blobs
                             ~use_fadvise
                             ~use_fallocate
+                            ~engine
   in
 
   lwt_server ~log_sinks ~subcomponent:"asd" t
@@ -673,19 +676,19 @@ let asd_set_full_cmd =
   in
   asd_set_full_t, info
 
-let bench_syncfs root iterations threads size =
+let bench_syncfs root iterations threads size engine =
   let t =
     let entry = Sync_bench.batch_entry_syncfs in
     let post_batch dir_fd = Syncfs.lwt_syncfs dir_fd in
-    Sync_bench.bench_x root entry post_batch iterations threads size
+    Sync_bench.bench_x engine root entry post_batch iterations threads size
     in
   Lwt_main.run t
 
-let bench_fsync root iterations threads size =
+let bench_fsync root iterations threads size engine =
   let t =
     let entry = Sync_bench.batch_entry_fsync in
     let post_batch dir_fd = Lwt.return 0 in
-    Sync_bench.bench_x root entry post_batch iterations threads size
+    Sync_bench.bench_x engine root entry post_batch iterations threads size
   in
   Lwt_main.run t
 
@@ -718,12 +721,14 @@ let root =
 let bench_syncfs_cmd =
   Term.(pure bench_syncfs
         $ root $ iterations $threads $ size
+        $ engine Asd_config.Config.Pure
   ),
   Term.info "bench-syncfs" ~doc:"write files and sync with syncfs"
 
 let bench_fsync_cmd =
   Term.(pure bench_fsync
         $ root $ iterations $threads $ size
+        $ engine Asd_config.Config.Pure
   ),
   Term.info "bench-fsync" ~doc:"write files and sync with fsync"
 

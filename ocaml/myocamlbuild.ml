@@ -134,7 +134,8 @@ let _ = dispatch &
                  ["src/tools/alba_crc32c_stubs.o";
                   "src/tools/alba_gcrypt_stubs.o";
                   "src/tools/alba_wrappers_stubs.o";
-                  "src/other/posix_stubs.o"
+                  "src/other/posix_stubs.o";
+                  "src/gobjfs/gioexec_tools.o";
                  ];
 
              flag ["c";"compile"]
@@ -149,13 +150,13 @@ let _ = dispatch &
                (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
                S [A "-ppx"; A "ppx_lwt -log";];
 
-             flag ["link";"ocaml";"use_rocks"]
-                  (S[A"-cclib";A"-lrocksdb"]);
              flag ["link";"ocaml";"use_gcrypt"]
                   (S[A"-cclib";A"-lgcrypt"]);
              flag ["link";"ocaml";"use_Jerasure"]
                   (S[A"-cclib";A"-lJerasure"]);
              flag ["link";"ocaml";"use_isal"]
                   (S[A"-cclib";A"-lisal"]);
+             flag ["link";"ocaml";"use_gobjfs"]
+                  (S[A"-cclib";A"-lgobjfs"]);
 
           | _ -> ()

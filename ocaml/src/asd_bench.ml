@@ -27,10 +27,12 @@ open Cli_bench_common
 (* TODO bench 1 big file *)
 
 
-let bench_blobs path scenarios count value_size partial_read_size =
+let bench_blobs path scenarios count value_size partial_read_size engine =
   let t () =
     let module B = Generic_bench in
-    let dir_info = Blob_access_factory.make_directory_info
+    let dir_info =
+      Blob_access_factory.make_directory_info
+        ~engine
         ~use_fadvise:true
         ~use_fallocate:true
         path
@@ -98,6 +100,7 @@ let bench_blobs_cmd =
         $ n 10000
         $ value_size 1_000_000
         $ partial_fetch_size 4096
+        $ engine Asd_config.Config.Pure
   ),
   Term.info "asd-bench-blobs"
 

@@ -28,6 +28,7 @@ let suite = "all" >:::[
     Proxy_test.suite;
     Alba_test.suite;
     Disk_safety_test.suite;
+    Asd_config_test.suite;
     Asd_test.suite;
     "alba_crc32c" >::: Alba_crc32c_test.suite;
     Compressors_test.suite;

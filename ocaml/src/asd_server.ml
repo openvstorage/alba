@@ -81,8 +81,6 @@ module Keys = struct
 
 end
 
-
-
 module Value = struct
   type blob =
     | Direct of Slice.t
@@ -1088,6 +1086,7 @@ let run_server
       ~tcp_keepalive
       ~use_fadvise
       ~use_fallocate
+      ~engine
   =
 
   let fsync =
@@ -1153,12 +1152,12 @@ let run_server
       | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
       | exn -> Lwt.fail exn) >>= fun () ->
 
-  let dir_info = make_directory_info ~write_blobs ~use_fallocate ~use_fadvise files_path in
+  let dir_info = make_directory_info ~engine ~write_blobs ~use_fallocate ~use_fadvise files_path in
 
   let parse_filename_to_fnr name =
     try
       let fnr = Scanf.sscanf name "%Lx" Std.id in
-      let file_name = Blob_access.get_file_name fnr in
+      let file_name = Fnr.get_file_name fnr in
       if file_name = name
       then Some fnr
       else None

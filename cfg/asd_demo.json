@@ -45,9 +45,15 @@
 
     // optional. specifies the size of the rocksdb block cache (in bytes)
     // defaults to 0,25% of the size of the disk
-    , "rocksdb_block_cache_size" : 1_000_000
+    , "rocksdb_block_cache_size" : 1000000
     
     // nomen est omen: stay away from these.
     //, "__warranty_void__write_blobs" : true
+
+    // optional. specifies the blob io engine to use
+    // defaults to ["Pure"]
+    //, "blob_io_engine" : ["Pure"]
+    // alternative:
+    //, "blob_io_engine" : ["GioExecFile", "/tmp/asd_demo/gioexecfile.conf"]
 
 }

@@ -44,7 +44,7 @@ let batch_entry_fsync dir_info fnr data size =
   in
   t
 
-let bench_x root entry post_batch iterations n_threads size =
+let bench_x engine root entry post_batch iterations n_threads size =
 
   Lwt_io.printlf
     "bench iterations:%i n_threads:%i size:%i"
@@ -53,6 +53,7 @@ let bench_x root entry post_batch iterations n_threads size =
   let data = Bytes.init size (fun i -> Char.chr (i mod 0xff)) in
   let (dir_info: Blob_access.directory_info) =
     Blob_access_factory.make_directory_info
+      ~engine
       root
       ~use_fadvise:false
       ~use_fallocate:false
