@@ -614,6 +614,10 @@ module HexInt32 = struct
     Format.pp_print_string formatter (show t)
 end
 
+(* a call with return value has_more may return less than the
+ * requested amount of objects/namespaces. when all values in
+ * the range have been delivered has_more=false, otherwise
+ * has_more=true. *)
 type has_more = bool
 type 'a counted_list = 'a Std.counted_list
 type 'a counted_list_more = 'a counted_list * has_more

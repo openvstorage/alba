@@ -42,7 +42,6 @@ module Protocol = struct
       let deser a_deser = from_buffer (fst a_deser), to_buffer (snd a_deser)
     end
 
-  type has_more = bool
 
   type ('request, 'response) query =
     | GetObjectManifestByName : (object_name, Manifest.t option) query

@@ -346,8 +346,6 @@ module Protocol = struct
     Llio.int_to buf port;
     Llio.string_to buf asd_id
 
-  type has_more = bool
-
   type priority =
     | High
     | Low
