@@ -435,7 +435,7 @@ class alba_client (base_client : Alba_base_client.client)
         ~long_id
   end
 
-let with_client albamgr_client_cfg
+let make_client albamgr_client_cfg
                 ?(fragment_cache = (new no_cache :> cache))
                 ?(manifest_cache_size=100_000)
                 ?(bad_fragment_callback = fun
@@ -454,7 +454,7 @@ let with_client albamgr_client_cfg
                 ?(partial_osd_read = true)
                 ?(cache_on_read = true)
                 ?(cache_on_write = true)
-                f
+                ()
   =
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
@@ -483,14 +483,54 @@ let with_client albamgr_client_cfg
                         ~cache_on_read ~cache_on_write
   in
   let client = new alba_client base_client in
+  let closer () =
+    if release_resources
+    then
+      begin
+        base_client # osd_access # finalize;
+        base_client # nsm_host_access # finalize;
+        Lwt_pool2.finalize albamgr_pool
+      end
+    else Lwt.return ()
+  in
+  Lwt.return (client, closer)
+
+let with_client albamgr_client_cfg
+                ?fragment_cache
+                ?manifest_cache_size
+                ?bad_fragment_callback
+                ?albamgr_connection_pool_size
+                ?nsm_host_connection_pool_size
+                ?osd_connection_pool_size
+                ?osd_timeout
+                ?default_osd_priority
+                ~tls_config
+                ?release_resources
+                ?tcp_keepalive
+                ?use_fadvise
+                ?partial_osd_read
+                ?cache_on_read
+                ?cache_on_write
+                f
+  =
+  make_client albamgr_client_cfg
+              ?fragment_cache
+              ?manifest_cache_size
+              ?bad_fragment_callback
+              ?albamgr_connection_pool_size
+              ?nsm_host_connection_pool_size
+              ?osd_connection_pool_size
+              ?osd_timeout
+              ?default_osd_priority
+              ~tls_config
+              ?release_resources
+              ?tcp_keepalive
+              ?use_fadvise
+              ?partial_osd_read
+              ?cache_on_read
+              ?cache_on_write
+              ()
+  >>= fun (client, closer) ->
   Lwt.finalize
     (fun () -> f client)
-    (fun () ->
-     if release_resources
-     then
-       begin
-         base_client # osd_access # finalize;
-         base_client # nsm_host_access # finalize;
-         Lwt_pool2.finalize albamgr_pool
-       end
-     else Lwt.return ())
+    closer
