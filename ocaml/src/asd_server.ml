@@ -24,7 +24,7 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
-open Lwt_bytes2
+
 open Range_query_args
 open Blob_access
 open Blob_access_factory
@@ -166,53 +166,6 @@ let get_value_option kv key =
   Option.map (fun v -> deserialize Value.from_buffer v) vo_raw
 
 let key_exists kv key = (get_value_option kv key) <> None
-
-module Net_fd = struct
-  include Net_fd
-  (*
-    we don't want this to end up in the arakoon plugins,
-    where it's needed nor used
-    and pulls along cstruct and friends
-   *)
-  let sendfile_all ~fd_in ~offset ~(fd_out:t) size =
-    match fd_out with
-    | Plain fd ->
-       Fsutil.sendfile_all
-         ~wait_readable:false
-         ~wait_writeable:true
-         ~detached:true
-         ~fd_in ~offset
-         ~fd_out:fd
-         size
-    | SSL _ssl ->
-       let socket = _ssl_get_socket _ssl in
-       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
-       let reader buffer offset length =
-         Lwt_bytes.read fd_in buffer offset length
-       in
-       let writer buffer offset length =
-         let write_from_source = Lwt_ssl.write_bytes socket buffer in
-         Lwt_extra2._write_all write_from_source offset length
-       in
-       Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
-         (Lwt_extra2.copy_using reader writer size)
-     
-    | Rsocket socket ->
-       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
-       let reader buffer offset length =
-         Lwt_bytes.read fd_in buffer offset length
-       in
-       let writer buffer offset length =
-         let write_from_source offset todo =
-             Lwt_rsocket.Bytes.send socket buffer offset todo []
-         in
-         Lwt_extra2._write_all write_from_source offset length
-       in
-       Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
-         (Lwt_extra2.copy_using reader writer size)
-end
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
@@ -367,27 +320,7 @@ let execute_query : type req res.
            (res,
             fun nfd ->
             Lwt_list.iter_s
-              (fun (fnr, size) ->
-               dir_info # with_blob_fd
-                 fnr
-                 (fun blob_fd ->
-                   let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-                   let () =
-                     if (dir_info # config).use_fadvise
-                     then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL
-                   in
-                   Net_fd.sendfile_all
-                     ~fd_in:blob_fd ~offset:0
-                     ~fd_out:nfd
-                     size
-                   >>= fun () ->
-                   let () =
-                     if (dir_info # config).use_fadvise
-                     then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_DONTNEED
-                   in
-                   Lwt.return_unit
-                 )
-              )
+              (fun (fnr, size) -> dir_info # send_blob_to fnr size nfd)
               (List.rev !write_laters)))
         end
     | MultiExists -> fun (keys, prio) ->
@@ -1430,7 +1363,7 @@ let run_server
            | Net_fd.TCP  -> None
            | Net_fd.RDMA -> Some true
          in
-         Discovery.multicast 
+         Discovery.multicast
            asd_id node_id
            hosts ~port ~tlsPort ~useRdma
            mcast_period

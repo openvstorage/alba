@@ -22,27 +22,26 @@ module GMemPool = struct
       ~release_runtime_lock:false
       "gMempool_free"
       (ptr void @-> returning void)
-      
+
   let init align_size = _gmempool_init align_size
-                                                
-  
+
   let alloc size = _gmempool_alloc size
 
-  
+
 
   let free buffer =
     _gmempool_free buffer
-end   
+end
 
 module Fragment = struct
 
   type fragment_t
   type completion_id = int64
-                         
+
   let fragment_t : fragment_t structure typ = structure "fragment"
   let gCompletionID = int64_t
   let off_t = size_t
-  
+
   let completion_id = field fragment_t "completionID" gCompletionID
   let offset = field fragment_t "offset" off_t
   let size   = field fragment_t "size" size_t
@@ -52,7 +51,7 @@ module Fragment = struct
   type t = (fragment_t, [ `Struct ]) Ctypes.structured
 
   let show t = string_of fragment_t t
-    
+
                 (*
   let set_bytes t  (bytes:Lwt_bytes.t)  =
     setf t addr (to_voidp (bigarray_start array1 bytes))
@@ -61,10 +60,10 @@ module Fragment = struct
     foreign
       "gobjfs_debug_fragment"
       (ptr fragment_t @-> returning void)
-  
-  
+
+
   let to_size = Unsigned.Size_t.of_int
-                  
+
   let make cid off s =
     let t = make fragment_t in
     setf t completion_id cid;
@@ -80,41 +79,41 @@ module Fragment = struct
     getf t addr'
     |> from_voidp char
     |> bigarray_of_ptr array1 s Bigarray.Char
-    
-  
+
+
 end
-                    
+
 
 module Batch = struct
   type _batch
   let _batch : _batch structure typ = structure "gobjfs_batch"
   let count = field _batch "count" size_t
   let array = field _batch "array" Fragment.fragment_t
-                    
+
   let () = seal _batch
 
   type t = (_batch, [ `Struct ]) Ctypes.structured
 
   let show t = string_of _batch t
 
-  
+
 
   let _debug_batch =
     foreign
       "gobjfs_debug_batch"
       (ptr _batch @-> returning void)
-      
+
   let _alloc =
     foreign
       ~check_errno:false
       ~release_runtime_lock:false
       "gobjfs_batch_alloc"
       (int @-> returning (ptr _batch))
-    
+
   let make fragments : t =
     match fragments with
     | [fragment] ->
-       begin         
+       begin
          let bp = _alloc 1 in
          let b = !@ bp in
          _debug_batch bp;
@@ -131,7 +130,7 @@ module Batch = struct
          b
        end
     | _ -> failwith "todo:Batch.make"
-         
+
 end
 
 module Ser = struct
@@ -146,7 +145,7 @@ module IOExecFile = struct
       ~release_runtime_lock:false
       "gobjfs_ioexecfile_service_init"
       (string @-> returning int32_t)
-      
+
   let init config = _init config |> ignore
 
   let _destroy =
@@ -171,10 +170,10 @@ module IOExecFile = struct
   type handle =_handle Ctypes.structure Ctypes_static.ptr
 
   let show_handle h = string_of (ptr _handle) h
-                                
+
   external _convert_open_flags : Unix.open_flag list -> int
     = "gobjfs_ocaml_convert_open_flags"
-        
+
   let _file_open =
     foreign
       ~check_errno:true
@@ -199,7 +198,7 @@ module IOExecFile = struct
     let rc = _file_write handle (addr batch) null in
     Lwt_log.debug_f "file_write ~handle:%s rc=%li" (show_handle handle) rc
     >>= fun () ->
-    
+
     if rc = -1l
     then failwith "ioexecfile:file_write"
     else Lwt.return_unit
@@ -214,14 +213,14 @@ module IOExecFile = struct
     if rc = -1l
     then failwith "ioexecfile:file_read"
     else Lwt.return_unit
-           
+
   let _file_close =
     foreign
       ~check_errno:false
       ~release_runtime_lock:false
       "gobjfs_ioexecfile_file_close"
       (ptr _handle @-> returning int32_t)
-      
+
   let file_close handle =
     let rc = _file_close handle in
     if rc = -1l
@@ -232,7 +231,7 @@ module IOExecFile = struct
     foreign
       "gobjfs_ioexecfile_file_delete"
       (string @-> int64_t @-> returning int32_t)
-      
+
   let file_delete name cid =
     let rc = _file_delete name cid in
     if rc = -1l
@@ -247,11 +246,11 @@ module IOExecFile = struct
       (ptr int @-> returning int32_t)
 
   type fd = Lwt_unix.file_descr
-              
+
   let get_event_fd () =
     let fd = allocate int 0 in
     let rc = _get_event_fd fd in
-    
+
     if rc = -1l
     then failwith "ioexecfile:get_event_fd"
     else let v = (!@ fd) in

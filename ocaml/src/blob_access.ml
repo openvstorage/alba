@@ -69,7 +69,7 @@ end
 class default_directory_access files_path =
 object(self)
   inherit directory_access
-            
+
   val directory_cache : (string, directory_status) Hashtbl.t = Hashtbl.create 3
 
   initializer
@@ -79,7 +79,8 @@ object(self)
       then failwith (Printf.sprintf "'%s' should be an absolute path" p);
       Hashtbl.add directory_cache "." Exists
     end
-  
+
+
   method ensure_dir_exists dir ~sync =
     Lwt_log.debug_f "ensure_dir_exists: %s" dir >>= fun () ->
     match Hashtbl.find directory_cache dir with
@@ -116,7 +117,7 @@ object(self)
       Hashtbl.replace directory_cache dir Exists;
       Lwt.wakeup awake ();
       Lwt.return_unit
-        
+
   method delete_dir = function
     | "."
     | "" -> Lwt.fail_with "just don't"
@@ -131,14 +132,16 @@ object(self)
         | exception Not_found ->
                     Lwt_unix.rmdir full_dir
       end
-        
+
 end
-  
+
 class virtual blob_access =
 object(self)
   method virtual config : config
 
   method virtual get_blob : fnr -> int -> bytes Lwt.t
+
+  method virtual send_blob_to : fnr -> int -> Net_fd.t -> unit Lwt.t
 
   method virtual with_blob_fd : fnr -> (Lwt_unix.file_descr -> unit Lwt.t) -> unit Lwt.t
 
@@ -168,10 +171,37 @@ class directory_info config =
 object(self)
   inherit blob_access
   inherit default_directory_access config.files_path
-            
-  method config = config  
+
+  method config = config
 
   method _get_file_dir_name_path = Fnr.get_file_dir_name_path config.files_path
+
+
+  method send_blob_to fnr size nfd =
+    Lwt_extra2.with_fd
+      (if config.write_blobs
+       then self # _get_file_path fnr
+       else "/dev/zero")
+      ~flags:Lwt_unix.([O_RDONLY;])
+      ~perm:0600
+      (fun blob_fd ->
+        let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
+        let offset = 0 in
+        let () =
+          if config.use_fadvise
+          then Posix.posix_fadvise blob_ufd offset size Posix.POSIX_FADV_SEQUENTIAL
+        in
+        Net_fd.sendfile_all
+          ~fd_in:blob_fd ~offset
+          ~fd_out:nfd
+          size
+        >>= fun () ->
+        let () =
+          if config.use_fadvise
+          then Posix.posix_fadvise blob_ufd offset size Posix.POSIX_FADV_DONTNEED
+        in
+        Lwt.return_unit
+      )
 
 
   method with_blob_fd fnr f =
@@ -191,14 +221,15 @@ object(self)
       (fun fd ->
          Lwt_extra2.read_all fd bs 0 size >>= fun got ->
          assert (got = size);
-         Lwt.return ()) >>= fun () ->
+         Lwt.return ())
+    >>= fun () ->
     Lwt_log.debug_f "got blob %Li" fnr >>= fun () ->
     Lwt.return bs
 
   method write_blob
            (fnr:int64)
            (blob: Asd_protocol.Blob.t)
-           ~(post_write:Asd_io_scheduler.post_write) 
+           ~(post_write:Asd_io_scheduler.post_write)
            ~(sync_parent_dirs:bool)
     =
     Lwt_log.debug_f "writing blob %Li (use_fadvise:%b use_fallocate:%b)"
@@ -263,7 +294,7 @@ object(self)
       "written blob %Li, took %f" fnr t_write
 
   method delete_blobs fnrs ~ignore_unlink_error =
-    
+
     (* TODO bulk sync of (unique) parent filedescriptors *)
     let fnrs = List.sort Int64.compare fnrs in
     Lwt_list.iter_s
@@ -275,8 +306,5 @@ object(self)
           path
       )
       fnrs
-    
+
 end
-
-
-    

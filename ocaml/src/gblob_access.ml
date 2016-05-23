@@ -18,7 +18,6 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Blob_access
 open Lwt.Infix
-       
 open Gobjfs
 open Asd_protocol
 
@@ -35,18 +34,18 @@ object(self)
       GMemPool.init align_size;
       Lwt.ignore_result (self # _inner ())
     end
-                                        
+
   val _next_id = ref 0L
   val _outstanding =  (Hashtbl.create 16 : (int64, int32 Lwt.u) Hashtbl.t)
   val _event_fd = IOExecFile.get_event_fd ()
-                    
+
   method private next_completion_id =
     let r = !_next_id in
     let () = _next_id := Int64.succ r in
     r
-      
+
   method config = config
-                    
+
   method get_blob fnr len =
     let fn = self # _get_file_path fnr in
     let completion_id = self # next_completion_id in
@@ -59,8 +58,18 @@ object(self)
     self # _wait_for_completion completion_id >>= fun ec ->
     assert (ec = 0l);
     IOExecFile.file_close handle >>= fun () ->
-    failwith "todo: end of get_blob"
-    
+    (* TODO: don't blit *)
+    let src = Fragment.get_bytes fragment in
+    let tgt = Bytes.create len in
+    Lwt_bytes.blit_to_bytes src 0 tgt 0 len;
+    (* TODO: free data *)
+    Lwt.return tgt
+
+
+  method send_blob_to fnr len nfd =
+    self # get_blob fnr len >>= fun blob ->
+    Net_fd.write_all nfd blob 0 len
+
   method with_blob_fd fnr f = failwith "todo:with_blob_fd"
 
   method private _inner () : unit Lwt.t =
@@ -85,13 +94,13 @@ object(self)
   method _wait_for_completion completion_id : int32 Lwt.t =
     let sleep, awake = Lwt.wait () in
     let () = Hashtbl.add _outstanding completion_id awake in
-    sleep 
-      
+    sleep
+
   method write_blob fnr blob ~post_write ~sync_parent_dirs =
-    
+
     let dir, _, file_path = self # _get_file_dir_name_path fnr in
     self # ensure_dir_exists dir ~sync:sync_parent_dirs >>= fun () ->
-    
+
     let completion_id = self # next_completion_id  in
     Lwt_log.debug_f "write_blob ~fnr:%Li completion_id:%Li" fnr completion_id >>= fun () ->
     let len = Blob.length blob in
@@ -102,7 +111,7 @@ object(self)
     let src = blob |> Blob.get_bigslice in
     Lwt_bytes.blit src.Bigstring_slice.bs 0 tgt 0 len;
 
-    
+
     let fragments = [fragment] in
     let batch = Batch.make fragments in
     IOExecFile.file_open file_path [Unix.O_WRONLY;Unix.O_CREAT;Unix.O_SYNC] >>= fun handle ->
@@ -122,7 +131,7 @@ object(self)
         IOExecFile.file_close handle >>= fun () ->
         Lwt_log.debug_f "write_blob finalizer done"
       )
-             
+
   method delete_blobs fnrs ~ignore_unlink_error =
     Lwt_log.debug_f "delete_blobs ~fnrs:%s" ([%show: int64 list] fnrs) >>= fun () ->
     let fnrs = List.sort Int64.compare fnrs in
@@ -151,6 +160,6 @@ object(self)
                      else
                        (* TODO: unify exceptions from error codes *)
                        Lwt.fail_with (Printf.sprintf "error deleting:%Li" fn)
-  
+
   method _get_file_dir_name_path fnr = Fnr.get_file_dir_name_path config.files_path fnr
 end
