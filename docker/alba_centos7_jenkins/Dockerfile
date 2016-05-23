@@ -98,7 +98,7 @@ RUN cd isa-l-2.14.0 && make install
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.9.3
+RUN cd arakoon && git pull && git checkout tags/1.9.4
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \
@@ -133,7 +133,7 @@ RUN git clone https://github.com/toolslive/ordma.git \
     && git checkout tags/0.0.2 \
     && eval `${opam_env}` \
     && make install
-    
+
 RUN yum -y install rpm-build
 RUN yum -y install libgcrypt-devel
 
