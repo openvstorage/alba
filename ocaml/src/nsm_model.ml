@@ -1371,6 +1371,11 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       ~max ~reverse
       (fun cur key -> KV.cur_get_value cur |> deserialize Manifest.input)
 
+  let multi_exists kv object_names =
+    List.map
+      (KV.exists kv)
+      object_names
+
   let list_device_objects kv device_id ~first ~finc ~last ~max ~reverse =
     EKV.map_range
       kv

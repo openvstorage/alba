@@ -196,6 +196,8 @@ module Protocol = struct
       Wrap_q NSMHStatistics, 30l , "NSMHStatistics";
 
       Wrap_q (NsmsQuery GetStats), 33l, "Multi GetStats";
+
+      nsm_query MultiExists, 35l, "MultiExists";
     ]
 
   let wrap_unknown_operation f =

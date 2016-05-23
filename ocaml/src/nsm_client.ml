@@ -85,6 +85,11 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
             reverse = false; max;
           })
 
+    method multi_exists names =
+      self # query
+           MultiExists
+           names
+
     method list_device_keys_to_be_deleted ~osd_id ~first ~finc ~last ~max ~reverse =
       self # query
         ListDeviceKeysToBeDeleted

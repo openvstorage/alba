@@ -282,6 +282,9 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
            ~first ~finc ~last
            ~max:(cap_max ~max ())
            ~reverse
+      | MultiExists ->
+         fun object_names ->
+         NSM.multi_exists db object_names
       | GetGcEpochs -> fun () -> snd (NSM.get_gc_epochs db)
       | GetStats -> fun () -> NSM.get_stats db
       | ListObjectsByPolicy ->

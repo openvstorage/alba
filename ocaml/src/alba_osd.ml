@@ -26,7 +26,7 @@ open Lwt.Infix
  * en naar osd_wrap_key_value_osd duwen.
  *)
 class client alba_id (alba_client : Alba_client.alba_client) =
-  let prefix = "X" in
+  let prefix = "TODO" in
   let to_namespace_name namespace_id =
     prefix ^ (serialize ~buf_size:4 Llio.int32_be_to namespace_id)
   in
@@ -54,11 +54,14 @@ class client alba_id (alba_client : Alba_client.alba_client) =
           (self # get_option prio)
           names
 
-      method multi_exists =
-        (* don't answer this from cache ...
-         * add multi exists (of direct multi fetch?) on nsm
-         *)
-        failwith "TODO"
+      method multi_exists _prio names =
+        alba_client # nsm_host_access
+                    # with_nsm_client
+                    ~namespace
+                    (fun nsm -> nsm # multi_exists
+                                    (List.map
+                                       Slice.get_string_unsafe
+                                       names))
 
       method range _prio ~first ~finc ~last ~reverse ~max =
         alba_client # list_objects

@@ -59,6 +59,9 @@ module Protocol = struct
     | ListObjectsByPolicy : ((Policy.policy * object_id) RangeQueryArgs.t,
                              Manifest.t counted_list_more) query
 
+    | MultiExists : (object_name list,
+                     bool list) query
+
     | ListDeviceKeysToBeDeleted : (osd_id * string RangeQueryArgs.t,
                                    string counted_list_more) query
     | GetStats : (unit , NamespaceStats.t) query
@@ -117,6 +120,8 @@ module Protocol = struct
           (Llio.pair_from
              Policy.from_buffer
              Llio.string_from)
+
+      | MultiExists -> Llio.list_from Llio.string_from
 
       | ListDeviceKeysToBeDeleted ->
         Llio.pair_from
@@ -177,6 +182,8 @@ module Protocol = struct
              Policy.to_buffer
              Llio.string_to)
 
+      | MultiExists -> Llio.list_to Llio.string_to
+
       | ListDeviceKeysToBeDeleted ->
         Llio.pair_to
           Llio.int32_to
@@ -235,6 +242,8 @@ module Protocol = struct
       | ListObjectsByOsd ->
         counted_list_more_to Manifest.to_buffer
 
+      | MultiExists -> Llio.list_to Llio.bool_to
+
       | ListDeviceKeysToBeDeleted ->
         counted_list_more_to Llio.string_to
 
@@ -270,6 +279,8 @@ module Protocol = struct
         counted_list_more_from Manifest.from_buffer
       | ListObjectsByPolicy ->
         counted_list_more_from Manifest.from_buffer
+
+      | MultiExists -> Llio.list_from Llio.bool_from
 
       | ListDeviceKeysToBeDeleted ->
         counted_list_more_from Llio.string_from
