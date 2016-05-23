@@ -53,6 +53,8 @@ module Config = struct
       failure_tester : string;
       etcd_home:string;
       etcd : ((string * int) list * string) option;
+
+      alba_blob_io_engine: string list;
     }
 
   let make ?workspace () =
@@ -104,8 +106,15 @@ module Config = struct
       let v = env_or_default "ALBA_TLS" "false" in
       Scanf.sscanf v "%b" (fun x -> x)
     in
-    let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
+    let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None in
+    let alba_blob_io_engine =
+      env_or_default_generic
+        (fun x ->
+          Str.split (Str.regexp ",") x
+        )
+        "ALBA_BLOB_IO_ENGINE" ["Pure"]
     in
+
     {
       home;
       workspace;
@@ -133,6 +142,7 @@ module Config = struct
       failure_tester;
       etcd_home;
       etcd;
+      alba_blob_io_engine;
     }
 
   let default = make ()
@@ -621,12 +631,12 @@ class proxy ?fragment_cache ?ip ?transport
          | None' -> ()
          | Local { path; _ } -> Shell.mkdir path
     in
-    self # start_cmd 
+    self # start_cmd
     |> Shell.detach ~out
 
   method stop =
     (* can't use fuser for rdma based servers *)
-    let start_line = String.concat " " (self # start_cmd) in 
+    let start_line = String.concat " " (self # start_cmd) in
     Printf.sprintf "pkill -f '%s'" start_line
     |> Shell.cmd ~ignore_rc:true
 
@@ -657,7 +667,7 @@ class proxy ?fragment_cache ?ip ?transport
     [ "proxy-list-namespaces" ] |> proxy_cmd_line_with_capture
 
   method cmd_line cmd = proxy_cmd_line cmd
-  
+
 end
 
 type maintenance_cfg = {
@@ -742,6 +752,14 @@ end
 
 
 type tls = { cert:string; key:string; port : int} [@@ deriving yojson]
+type blob_io_engine =
+  | Pure
+  | GioExecFile of string [@@ deriving yojson, show]
+
+let blob_io_engine_from_cfg = function
+  | ["Pure"] -> Pure
+  | ["GioExecFile"; x] -> GioExecFile x
+  | x -> failwith ([% show: string list] x)
 
 type asd_cfg = {
     node_id: string;
@@ -758,6 +776,8 @@ type asd_cfg = {
     __warranty_void__write_blobs  : (bool option [@default None]);
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
+    blob_io_engine : (blob_io_engine [@default Pure]);
+
   }[@@deriving yojson]
 
 let make_asd_config
@@ -767,6 +787,7 @@ let make_asd_config
       ?transport
       ?ip
       node_id asd_id home port tls
+      blob_io_engine
   =
   let ips = match ip with
     | None -> []
@@ -786,6 +807,7 @@ let make_asd_config
    __warranty_void__write_blobs   = write_blobs;
    use_fadvise;
    use_fallocate;
+   blob_io_engine;
   }
 
 
@@ -793,11 +815,13 @@ let make_asd_config
 
 class asd ?write_blobs ?transport ?ip
           node_id asd_id alba_bin arakoon_path home port ~etcd tls
+          (blob_io_engine: blob_io_engine)
   =
   let use_tls = tls <> None in
   let asd_cfg = make_asd_config
                   ?write_blobs ?transport ?ip
                   node_id asd_id home port tls
+                  blob_io_engine
   in
 
   let config_persister, cfg_url =
@@ -851,10 +875,10 @@ class asd ?write_blobs ?transport ?ip
       config_persister asd_cfg
 
     method start_cmd = [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
-                         
+
     method start =
       let out = Printf.sprintf "%s/%s.out" home asd_id in
-      self # start_cmd 
+      self # start_cmd
       |> Shell.detach ~out;
 
     method stop =
@@ -885,7 +909,7 @@ class asd ?write_blobs ?transport ?ip
       let cmd1 = if use_tls then _alba_extend_tls cmd0 else cmd0 in
       let cmd2 = if json then cmd1 @ ["--to-json"] else cmd1 in
       cmd2
-        
+
     method get_remote_version =
       let cmd = self # build_remote_cli ["asd-get-version"] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -897,7 +921,7 @@ class asd ?write_blobs ?transport ?ip
     method set k v =
       let cmd = self # build_remote_cli ["asd-set";k;v] ~json:false in
       cmd |> String.concat " " |> Shell.cmd
-                                    
+
     method get k =
       let cmd = self # build_remote_cli ["asd-multi-get"; k] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -949,7 +973,10 @@ module Deployment = struct
         ?write_blobs
         ?transport ?ip
         n local_nodeid_prefix base_path arakoon_path alba_bin
-        ~etcd (tls:bool) =
+        ~etcd
+        (tls:bool)
+        (blob_io_engine: blob_io_engine)
+    =
     let rec loop asds j =
       if j = n
       then List.rev asds |> Array.of_list
@@ -982,6 +1009,7 @@ module Deployment = struct
                         arakoon_path
                         home (Some port) ~etcd
                         tls_cfg
+                        blob_io_engine
           in
           loop (asd :: asds) (j+1)
         end
@@ -1015,6 +1043,7 @@ module Deployment = struct
       | None -> None,None
       | Some ip ->Some "rdma", Some ip
     in
+
     let proxy = new proxy
                     0 cfg cfg.alba_bin
                     (abm # config_url) cfg.etcd ~v06_proxy:false
@@ -1033,6 +1062,7 @@ module Deployment = struct
                          cfg.alba_bin
                          ~etcd:cfg.etcd
                          cfg.tls
+                         (blob_io_engine_from_cfg cfg.alba_blob_io_engine)
     in
     { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
 
@@ -1361,14 +1391,14 @@ module Test = struct
       alba_connection_port : string ;
       alba_connection_transport : string;
     } [@@ deriving yojson, show]
-                                      
+
   type backend_cfg = {
       backend_connection_manager : backend_connection_manager;
     } [@@ deriving yojson, show]
 
-  let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv" 
+  let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv"
   let backend_cfg_file cfg = backend_cfg_dir cfg  ^ "/backend.json"
-                                                      
+
   let make_backend_cfg cfg ~host ~port ~transport =
       {
         backend_connection_manager = {
@@ -1397,7 +1427,7 @@ module Test = struct
     let json = backend_cfg_to_yojson backend_cfg in
     Yojson.Safe.pretty_to_channel oc json;
     close_out oc
-      
+
   let wrapper f t =
     let t = Deployment.make_default () in
     Deployment.kill t;
@@ -1577,7 +1607,7 @@ module Test = struct
     in
     loop 0;
     Deployment.restart_osds t;
-    
+
     let attempt ()  =
       try
         t.proxy # cmd_line
@@ -1953,6 +1983,7 @@ module Test = struct
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
                                       false
+                                      (blob_io_engine_from_cfg tx.cfg.alba_blob_io_engine)
             }
           else tx
         in
@@ -2191,7 +2222,7 @@ let () =
   if !Sys.interactive
   then ()
   else process_cmd_line ()
-                        
+
 let top_level_run test =
   let t = Deployment.make_default () in
   Test.wrapper test t

@@ -40,10 +40,9 @@ module Fragment = struct
 
   let fragment_t : fragment_t structure typ = structure "fragment"
   let gCompletionID = int64_t
-  let off_t = size_t
 
   let completion_id = field fragment_t "completionID" gCompletionID
-  let offset = field fragment_t "offset" off_t
+  let offset = field fragment_t "offset" size_t
   let size   = field fragment_t "size" size_t
   let addr'   = field fragment_t "addr" (ptr void)
   let () = seal fragment_t
@@ -52,10 +51,6 @@ module Fragment = struct
 
   let show t = string_of fragment_t t
 
-                (*
-  let set_bytes t  (bytes:Lwt_bytes.t)  =
-    setf t addr (to_voidp (bigarray_start array1 bytes))
-                 *)
   let _debug_fragment =
     foreign
       "gobjfs_debug_fragment"
@@ -80,6 +75,15 @@ module Fragment = struct
     |> from_voidp char
     |> bigarray_of_ptr array1 s Bigarray.Char
 
+  let get_completion_id t = getf t completion_id
+
+  let get_offset t =
+    let off = getf t offset in
+    Unsigned.Size_t.to_int off
+
+  let get_size t =
+    let s = getf t size in
+    Unsigned.Size_t.to_int s
 
 end
 

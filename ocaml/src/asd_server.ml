@@ -320,7 +320,7 @@ let execute_query : type req res.
            (res,
             fun nfd ->
             Lwt_list.iter_s
-              (fun (fnr, size) -> dir_info # send_blob_to fnr size nfd)
+              (fun (fnr, size) -> dir_info # send_blob_data_to fnr size [0,size] nfd)
               (List.rev !write_laters)))
         end
     | MultiExists -> fun (keys, prio) ->
@@ -363,42 +363,7 @@ let execute_query : type req res.
                     if cfg.write_blobs
                     then
                       begin
-                        dir_info # with_blob_fd
-                          fnr
-                          (fun blob_fd ->
-                           let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-                           let () =
-                             if cfg.use_fadvise
-                             then
-                               begin
-                                 Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_RANDOM;
-                                 List.iter
-                                   (fun (offset, length) ->
-                                    Posix.posix_fadvise
-                                      blob_ufd
-                                      offset length
-                                      Posix.POSIX_FADV_WILLNEED)
-                                   slices
-                               end
-                           in
-                           Lwt_list.iter_s
-                             (fun (offset, length) ->
-                              Net_fd.sendfile_all
-                                ~fd_in:blob_fd ~offset
-                                ~fd_out:nfd
-                                length
-                              >>= fun () ->
-                              let () =
-                                if cfg.use_fadvise
-                                then
-                                  Posix.posix_fadvise
-                                    blob_ufd
-                                    0 size
-                                    Posix.POSIX_FADV_DONTNEED
-                              in
-                              Lwt.return_unit)
-                             slices
-                          )
+                        dir_info # send_blob_data_to fnr size slices nfd
                       end
                     else
                       Lwt_list.iter_s

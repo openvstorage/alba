@@ -66,11 +66,55 @@ object(self)
     Lwt.return tgt
 
 
-  method send_blob_to fnr len nfd =
-    self # get_blob fnr len >>= fun blob ->
-    Net_fd.write_all nfd blob 0 len
 
-  method with_blob_fd fnr f = failwith "todo:with_blob_fd"
+
+  method _push_blob_data fnr len slices _f =
+    Lwt_log.debug_f "push_blob_data fnr:%Li len:%i slices:%si"
+                    fnr len ([%show : (int * int) list] slices)
+    >>= fun () ->
+    let fragments =
+      List.map
+        (fun (off,len) ->
+          let completion_id = self # next_completion_id in
+          let fragment = Fragment.make completion_id off len in
+          fragment
+        ) slices
+    in
+    let batch = Batch.make fragments in
+    let fn = self # _get_file_path fnr in
+    IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
+    IOExecFile.file_read handle batch >>= fun () ->
+    Lwt_list.map_p
+      (fun fragment ->
+        self # _wait_for_completion (Fragment.get_completion_id fragment) >>= fun ec ->
+        Lwt.return (fragment, ec)
+      )
+      fragments
+    >>= fun results ->
+    Lwt_list.iter_s _f results
+    >>= fun () ->
+    IOExecFile.file_close handle
+
+
+  method push_blob_data fnr len slices f =
+    let _f (fragment,ec) =
+      let offset = Fragment.get_offset fragment
+      and size   = Fragment.get_size   fragment
+      and buffer = Fragment.get_bytes  fragment
+      in
+      f (offset, size) buffer 0 size
+    in
+    self # _push_blob_data fnr len slices _f
+
+  method send_blob_data_to fnr len slices nfd =
+    let _f (fragment,ec) =
+      let size   = Fragment.get_size  fragment
+      and buffer = Fragment.get_bytes fragment
+      in
+      Net_fd.write_all_lwt_bytes nfd buffer 0 size
+    in
+    self # _push_blob_data fnr len slices _f
+
 
   method private _inner () : unit Lwt.t =
     Lwt_log.debug "_inner ()" >>= fun () ->

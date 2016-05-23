@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Lwt.Infix
 open Stat
 let post_write_nothing _ _ _ = Lwt.return_unit
-                                        
+
 let batch_entry_syncfs (dir_info:Blob_access.directory_info) fnr data size =
   let t () =
     let blob = Osd.Blob.Bytes data in
@@ -51,7 +51,7 @@ let bench_x engine root entry post_batch iterations n_threads size =
     iterations n_threads size
   >>= fun () ->
   let data = Bytes.init size (fun i -> Char.chr (i mod 0xff)) in
-  let (dir_info: Blob_access.directory_info) =
+  let (dir_info: Blob_access.blob_dir_access) =
     Blob_access_factory.make_directory_info
       ~engine
       root

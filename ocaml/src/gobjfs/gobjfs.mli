@@ -11,6 +11,9 @@ module Fragment : sig
   type completion_id = int64
   val make : completion_id -> int -> int -> t
   val get_bytes : t -> Lwt_bytes.t
+  val get_completion_id : t -> completion_id
+  val get_offset : t -> int
+  val get_size : t -> int
 end
 
 module Batch : sig

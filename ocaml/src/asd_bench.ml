@@ -52,16 +52,13 @@ let bench_blobs path scenarios count value_size partial_read_size engine =
         count
     in
     let partial_read_scenario progress =
-      let target = Lwt_bytes.create partial_read_size in
       B.measured_loop
         progress
         (fun fnr ->
-         dir_info # with_blob_fd
-           (Int64.of_int fnr)
-           (fun fd ->
-            let ufd = Lwt_unix.unix_file_descr fd in
-            Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
-            Lwt_extra2.read_all_lwt_bytes_exact fd target 0 partial_read_size))
+         dir_info # push_blob_data
+           (Int64.of_int fnr) value_size [0, partial_read_size]
+           (fun _slice _buff _off _len -> Lwt.return_unit)
+        )
         count
     in
     Lwt_list.iter_s

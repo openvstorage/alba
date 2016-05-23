@@ -58,6 +58,8 @@ module Fnr = struct
 end
 
 type fnr = int64
+type offset = int
+type length = int
 
 class virtual directory_access =
 object
@@ -141,9 +143,21 @@ object(self)
 
   method virtual get_blob : fnr -> int -> bytes Lwt.t
 
-  method virtual send_blob_to : fnr -> int -> Net_fd.t -> unit Lwt.t
+  method virtual
+      send_blob_data_to :
+        fnr -> length
+        -> (offset * length) list
+        -> Net_fd.t
+        -> unit Lwt.t
 
-  method virtual with_blob_fd : fnr -> (Lwt_unix.file_descr -> unit Lwt.t) -> unit Lwt.t
+  method virtual (* only used in asd_bench *)
+      push_blob_data :
+        fnr -> length
+        -> (offset * length) list
+        -> ((offset * length) -> Lwt_bytes.t -> offset -> length -> unit Lwt.t)
+        -> unit Lwt.t
+
+  (* method virtual with_blob_fd : fnr -> (Lwt_unix.file_descr -> unit Lwt.t) -> unit Lwt.t *)
 
   method virtual write_blob : fnr
                               -> Asd_protocol.Blob.t
@@ -177,7 +191,7 @@ object(self)
   method _get_file_dir_name_path = Fnr.get_file_dir_name_path config.files_path
 
 
-  method send_blob_to fnr size nfd =
+  method send_blob_data_to fnr size slices nfd =
     Lwt_extra2.with_fd
       (if config.write_blobs
        then self # _get_file_path fnr
@@ -186,25 +200,81 @@ object(self)
       ~perm:0600
       (fun blob_fd ->
         let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-        let offset = 0 in
         let () =
           if config.use_fadvise
-          then Posix.posix_fadvise blob_ufd offset size Posix.POSIX_FADV_SEQUENTIAL
+          then
+            begin
+              Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_RANDOM;
+              List.iter
+                (fun (offset, length) ->
+                  Posix.posix_fadvise
+                    blob_ufd
+                    offset length
+                    Posix.POSIX_FADV_WILLNEED)
+                slices
+            end
         in
-        Net_fd.sendfile_all
-          ~fd_in:blob_fd ~offset
-          ~fd_out:nfd
-          size
-        >>= fun () ->
+        Lwt_list.iter_s
+          (fun (offset, length) ->
+            Net_fd.sendfile_all
+              ~fd_in:blob_fd ~offset
+              ~fd_out:nfd
+              length
+            >>= fun () ->
+            let () =
+              if config.use_fadvise
+              then
+                Posix.posix_fadvise
+                  blob_ufd
+                  0 size
+                  Posix.POSIX_FADV_DONTNEED
+            in
+            Lwt.return_unit)
+          slices
+      )
+  method push_blob_data fnr size slices f =
+    Lwt_extra2.with_fd
+      (if config.write_blobs
+       then self # _get_file_path fnr
+       else "/dev/zero")
+      ~flags:Lwt_unix.([O_RDONLY;])
+      ~perm:0600
+      (fun blob_fd ->
+        let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
         let () =
           if config.use_fadvise
-          then Posix.posix_fadvise blob_ufd offset size Posix.POSIX_FADV_DONTNEED
+          then
+            begin
+              Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_RANDOM;
+              List.iter
+                (fun (offset, length) ->
+                  Posix.posix_fadvise
+                    blob_ufd
+                    offset length
+                    Posix.POSIX_FADV_WILLNEED)
+                slices
+            end
         in
-        Lwt.return_unit
+        Lwt_list.iter_s
+          (fun (offset, length) ->
+            let buffer = Lwt_bytes.create length in
+            (* fill it *)
+            f (offset,length) buffer 0 length
+            >>= fun () ->
+            let () =
+              if config.use_fadvise
+              then
+                Posix.posix_fadvise
+                  blob_ufd
+                  0 size
+                  Posix.POSIX_FADV_DONTNEED
+            in
+            Lwt.return_unit)
+          slices
       )
 
 
-  method with_blob_fd fnr f =
+  method private _with_blob_fd fnr f =
     Lwt_extra2.with_fd
       (if config.write_blobs
        then self # _get_file_path fnr
@@ -213,10 +283,11 @@ object(self)
       ~perm:0600
       f
 
+
   method get_blob fnr size =
     Lwt_log.debug_f "getting blob %Li with size %i" fnr size >>= fun () ->
     let bs = Bytes.create size in
-    self # with_blob_fd
+    self # _with_blob_fd
       fnr
       (fun fd ->
          Lwt_extra2.read_all fd bs 0 size >>= fun got ->
