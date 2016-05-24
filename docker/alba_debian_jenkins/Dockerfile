@@ -92,7 +92,7 @@ RUN cd /usr/src/gtest \
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.9.3
+RUN cd arakoon && git pull && git checkout tags/1.9.4
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
@@ -135,7 +135,7 @@ RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
 RUN wget ${voldrv_jenkins}/volumedriver-pitreplication_${voldrv_version}.deb \
     && dpkg -i volumedriver-pitreplication_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \ 
+RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \
     && dpkg -i volumedriver-server_${voldrv_version}.deb
 
 RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
