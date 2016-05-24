@@ -608,9 +608,11 @@ class proxy ?fragment_cache ?ip ?transport
     Shell.mkdir proxy_base;
     config_persister p_cfg
 
+  method log_file = Printf.sprintf "%s/proxy.out" proxy_base
+
   method start_cmd = [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
   method start =
-    let out = Printf.sprintf "%s/proxy.out" proxy_base in
+    let out = self # log_file in
     let () =
       let open Proxy_cfg in
       match p_cfg with
@@ -1271,7 +1273,10 @@ module Deployment = struct
     let n =
       let cmd = String.concat " " (t.proxy # start_cmd) in
       let s = Printf.sprintf "pgrep -f '%s'" cmd in
-      Shell.cmd_with_capture [s]
+      try Shell.cmd_with_capture [s]
+      with exn ->
+        Shell.cmd (Printf.sprintf "tail -n 1000 %s" (t.proxy # log_file));
+        raise exn
     in
     Scanf.sscanf n " %i" (fun i -> i)
 
