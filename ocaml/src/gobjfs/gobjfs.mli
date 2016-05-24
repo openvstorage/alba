@@ -9,11 +9,13 @@ module Fragment : sig
   type t
   val show : t -> string
   type completion_id = int64
-  val make : completion_id -> int -> int -> t
+  val make : completion_id -> int -> int -> GMemPool.t -> t
   val get_bytes : t -> Lwt_bytes.t
   val get_completion_id : t -> completion_id
   val get_offset : t -> int
   val get_size : t -> int
+
+  val free_bytes : t -> unit
 end
 
 module Batch : sig

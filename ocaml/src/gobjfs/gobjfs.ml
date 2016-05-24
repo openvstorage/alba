@@ -59,12 +59,11 @@ module Fragment = struct
 
   let to_size = Unsigned.Size_t.of_int
 
-  let make cid off s =
+  let make cid off s bytes =
     let t = make fragment_t in
     setf t completion_id cid;
     setf t offset (to_size off);
     setf t size (to_size s);
-    let bytes = GMemPool.alloc s in
     setf t addr' bytes;
     _debug_fragment (addr t);
     t
@@ -85,6 +84,9 @@ module Fragment = struct
     let s = getf t size in
     Unsigned.Size_t.to_int s
 
+  let free_bytes t =
+    let bytes = getf t addr' in
+    GMemPool.free bytes
 end
 
 

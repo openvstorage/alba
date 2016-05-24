@@ -22,7 +22,18 @@ open Gobjfs
 open Asd_protocol
 
 class g_directory_info gioexecfile config =
-
+  let _throw_ex_from ec function_name par =
+    (* TODO: do we need to be specific ? *)
+    let error = Unix.EUNKNOWNERR (Int32.to_int ec) in
+    let ex =Unix.Unix_error(error, function_name, par) in
+    Lwt.fail ex
+  in
+  let _process_results get_ec function_name get_par results =
+    let bad = List.filter (fun t -> get_ec t <> 0l) results in
+    match bad with
+    | [] -> Lwt.return_unit
+    | t ::_  -> _throw_ex_from (get_ec t) function_name  (get_par t)
+  in
 object(self)
   inherit default_directory_access config.files_path
   inherit blob_access
@@ -49,23 +60,32 @@ object(self)
   method get_blob fnr len =
     let fn = self # _get_file_path fnr in
     let completion_id = self # next_completion_id in
-    let fragment = Fragment.make completion_id 0 len in
+    let bytes = GMemPool.alloc len in
+    let fragment = Fragment.make completion_id 0 len bytes in
     let fragments = [ fragment ] in
     let batch = Batch.make fragments in
     IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
     IOExecFile.file_read handle batch >>= fun () ->
-
-    self # _wait_for_completion completion_id >>= fun ec ->
-    assert (ec = 0l);
-    IOExecFile.file_close handle >>= fun () ->
-    (* TODO: don't blit *)
-    let src = Fragment.get_bytes fragment in
-    let tgt = Bytes.create len in
-    Lwt_bytes.blit_to_bytes src 0 tgt 0 len;
-    (* TODO: free data *)
-    Lwt.return tgt
-
-
+    Lwt.finalize
+      (fun () ->
+        self # _wait_for_completion completion_id >>= fun ec ->
+        begin
+          if ec <> 0l
+          then _throw_ex_from ec "get_blob" fn
+          else Lwt.return_unit
+        end
+        >>= fun () ->
+        (* TODO: don't blit *)
+        let src = Fragment.get_bytes fragment in
+        let tgt = Bytes.create len in
+        Lwt_bytes.blit_to_bytes src 0 tgt 0 len;
+        Lwt.return tgt
+      )
+      (fun () ->
+        IOExecFile.file_close handle >>= fun () ->
+        GMemPool.free bytes; (* Fragment.free_bytes fragment bytes *)
+        Lwt.return_unit
+      )
 
 
   method _push_blob_data fnr len slices _f =
@@ -76,25 +96,36 @@ object(self)
       List.map
         (fun (off,len) ->
           let completion_id = self # next_completion_id in
-          let fragment = Fragment.make completion_id off len in
+          let bytes = GMemPool.alloc len in
+          let fragment = Fragment.make completion_id off len bytes in
           fragment
         ) slices
     in
     let batch = Batch.make fragments in
     let fn = self # _get_file_path fnr in
     IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
-    IOExecFile.file_read handle batch >>= fun () ->
-    Lwt_list.map_p
-      (fun fragment ->
-        self # _wait_for_completion (Fragment.get_completion_id fragment) >>= fun ec ->
-        Lwt.return (fragment, ec)
+    Lwt.finalize
+      (fun () ->
+        IOExecFile.file_read handle batch >>= fun () ->
+        Lwt_list.map_p
+          (fun fragment ->
+            self # _wait_for_completion (Fragment.get_completion_id fragment) >>= fun ec ->
+            Lwt.return (fragment, ec)
+          )
+          fragments
+        >>= fun results ->
+        _process_results
+          (fun (_,ec) -> ec)
+          "IOExecFile.file_read"
+          (fun _ -> fn)
+          results
+        >>= fun () ->
+        Lwt_list.iter_s _f results
       )
-      fragments
-    >>= fun results ->
-    Lwt_list.iter_s _f results
-    >>= fun () ->
-    IOExecFile.file_close handle
-
+      (fun () ->
+        List.iter Fragment.free_bytes fragments;
+        IOExecFile.file_close handle
+      )
 
   method push_blob_data fnr len slices f =
     let _f (fragment,ec) =
@@ -148,7 +179,8 @@ object(self)
     let completion_id = self # next_completion_id  in
     Lwt_log.debug_f "write_blob ~fnr:%Li completion_id:%Li" fnr completion_id >>= fun () ->
     let len = Blob.length blob in
-    let fragment = Fragment.make completion_id 0 len in
+    let bytes = GMemPool.alloc len in
+    let fragment = Fragment.make completion_id 0 len bytes in
 
     (* TODO: don't blit *)
     let tgt = Fragment.get_bytes fragment in
@@ -158,7 +190,11 @@ object(self)
 
     let fragments = [fragment] in
     let batch = Batch.make fragments in
-    IOExecFile.file_open file_path [Unix.O_WRONLY;Unix.O_CREAT;Unix.O_SYNC] >>= fun handle ->
+    IOExecFile.file_open
+      file_path
+      [Unix.O_WRONLY;Unix.O_CREAT;Unix.O_SYNC]
+    >>= fun handle ->
+
     Lwt.finalize
       (fun () ->
         IOExecFile.file_write handle batch >>= fun () ->
@@ -166,12 +202,11 @@ object(self)
         Lwt_log.debug_f "%Li:write ec=%li" completion_id ec >>= fun () ->
         (* TODO: post write ?? *)
         if ec <> 0l
-        then
-          Lwt.fail_with (Printf.sprintf "IOExecFile.write:ec=%li" ec)
+        then _throw_ex_from ec "write_blob" file_path
         else Lwt.return_unit
       )
       (fun () ->
-        (* TODO: IOExecFile.free data *)
+        GMemPool.free bytes;
         IOExecFile.file_close handle >>= fun () ->
         Lwt_log.debug_f "write_blob finalizer done"
       )
@@ -185,25 +220,23 @@ object(self)
         let file_path = self # _get_file_path fnr in
         let cid = self # next_completion_id in
         IOExecFile.file_delete file_path cid >>= fun () ->
-        Lwt.return (fnr, cid)
+        Lwt.return (fnr, file_path, cid)
       )
       fnrs
     >>= fun completions ->
     Lwt_list.map_p
-      (fun (fn, cid) ->
+      (fun (fnr, file_path, cid) ->
         self # _wait_for_completion cid >>= fun ec ->
-        Lwt.return (fn, ec)
+        Lwt.return (fnr, file_path, ec)
       )
       completions
     >>= fun results ->
-    let bad = List.filter (fun (_, ec) -> ec <> 0l) results in
-    match bad with
-    | [] -> Lwt.return_unit
-    | (fn,ec)::_  -> if ignore_unlink_error
-                     then Lwt.return_unit
-                     else
-                       (* TODO: unify exceptions from error codes *)
-                       Lwt.fail_with (Printf.sprintf "error deleting:%Li" fn)
+    if ignore_unlink_error
+    then Lwt.return_unit
+    else
+      _process_results (fun (_, _, ec) -> ec)
+                       "delete_blob"
+                       (fun (_,fnr , _) -> fnr) results
 
   method _get_file_dir_name_path fnr = Fnr.get_file_dir_name_path config.files_path fnr
 end
