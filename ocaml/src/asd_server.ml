@@ -1078,7 +1078,7 @@ let run_server
       )
       (if write_blobs
        then
-         (fun fnr blob post_write ->
+         (fun fnr blob ~post_write ->
           dir_info # write_blob
             ~post_write
             fnr
@@ -1086,7 +1086,7 @@ let run_server
             ~sync_parent_dirs:fsync
          )
        else
-         (fun fnr blob post_write ->
+         (fun fnr blob ~post_write ->
           Lwt.return_unit)
       )
   in

@@ -23,8 +23,8 @@ open Lwt.Infix
 type 'a input = (unit -> ('a * int) Lwt.t) * 'a Lwt.u
 type output_blobs = (int64 * Asd_protocol.Blob.t) list * unit Lwt.u
 type sync_rocks   = unit Lwt.u
-                         
-type post_write = Lwt_unix.file_descr -> int -> string -> unit Lwt.t
+
+type post_write = Lwt_unix.file_descr option -> int -> string -> unit Lwt.t
 type 'a t = {
     high_prio_reads  : 'a input     Lwt_buffer.t;
     high_prio_writes : output_blobs Lwt_buffer.t;
@@ -33,7 +33,7 @@ type 'a t = {
     rocksdb_sync     : sync_rocks   Lwt_buffer.t;
     sync_rocksdb     : unit -> unit;
     write_blob       : int64 -> Asd_protocol.Blob.t ->
-                       post_write ->
+                       post_write:post_write ->
                        unit Lwt.t;
   }
 
@@ -194,20 +194,20 @@ let run t ~fsync ~fs_fd =
              in
 
              let sync_parent_dirs_t =
-               if fsync
-               then
                  begin
                    FL.await latch >>= fun parent_dirs ->
-                   Lwt_log.debug_f
-                     "Syncing parent dirs %s"
-                     ([%show : string list] parent_dirs) >>= fun () ->
-                   Lwt_list.iter_p
-                     (fun parent_dir ->
-                      Lwt_extra2.fsync_dir parent_dir)
-                     parent_dirs
+                   if fsync
+                   then
+                     Lwt_log.debug_f
+                       "Syncing parent dirs %s"
+                       ([%show : string list] parent_dirs) >>= fun () ->
+                     Lwt_list.iter_p
+                       (fun parent_dir ->
+                         Lwt_extra2.fsync_dir parent_dir)
+                       parent_dirs
+                   else
+                     Lwt.return_unit
                  end
-               else
-                 Lwt.return ()
              in
 
              Lwt_list.map_p
@@ -216,20 +216,18 @@ let run t ~fsync ~fs_fd =
                   (fun (fnr, blob) ->
                    t.write_blob
                      fnr blob
-                     (fun fd len parent_dir ->
-
-                      if fsync
-                      then
-                        begin
+                     ~post_write:(fun fdo len parent_dir ->
+                       begin
                           (* wait for all the other blobs to be pushed to
                            * the filesystem too before syncing *)
                           FL.notify latch parent_dir;
                           FL.await latch >>= fun _ ->
-
-                          Lwt_unix.fsync fd
+                          match fsync,fdo with
+                          | true, Some fd -> Lwt_unix.fsync fd
+                          | _,_           -> Lwt.return_unit
                         end
-                      else
-                        Lwt.return_unit))
+                     )
+                  )
                   blobs >>= fun () ->
                 Lwt.return waker)
                acc >>= fun wakers ->

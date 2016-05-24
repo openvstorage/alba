@@ -317,44 +317,49 @@ object(self)
            (fun fd ->
              let open Osd in
              let len = Blob.length blob in
-             (if config.use_fallocate
-              then
-                Posix.lwt_fallocate fd 0 0 len
-              else
-                Lwt.return_unit
-             ) >>= fun () ->
-             let open Asd_protocol.Blob in
-             (* TODO push to blob module? *)
-             (match blob with
-              | Lwt_bytes s ->
-                 Lwt_extra2.write_all_lwt_bytes
-                   fd
-                   s 0 len
-              | Bigslice s ->
-                 let open Bigstring_slice in
-                 Lwt_extra2.write_all_lwt_bytes
-                   fd
-                   s.bs s.offset s.length
-              | Bytes s ->
-                 Lwt_extra2.write_all
-                   fd
-                   s 0 len
-              | Slice s ->
-                 let open Slice.Slice in
-                 Lwt_extra2.write_all
-                   fd
-                   s.buf s.offset len
-             )
-             >>= fun () ->
-             let parent_dir = config.files_path ^ "/" ^ dir in
-             post_write fd len parent_dir
-             >>= fun () ->
-             let ufd = Lwt_unix.unix_file_descr fd in
-             let () =
-               if config.use_fadvise
-               then Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED
-             in
-             Lwt.return_unit
+             Lwt.finalize
+               (fun () ->
+                 (if config.use_fallocate
+                  then
+                    Posix.lwt_fallocate fd 0 0 len
+                  else
+                    Lwt.return_unit
+                 ) >>= fun () ->
+                 let open Asd_protocol.Blob in
+                 (* TODO push to blob module? *)
+
+                 (match blob with
+                  | Lwt_bytes s ->
+                     Lwt_extra2.write_all_lwt_bytes
+                       fd
+                       s 0 len
+                  | Bigslice s ->
+                     let open Bigstring_slice in
+                     Lwt_extra2.write_all_lwt_bytes
+                       fd
+                       s.bs s.offset s.length
+                  | Bytes s ->
+                     Lwt_extra2.write_all
+                       fd
+                       s 0 len
+                  | Slice s ->
+                     let open Slice.Slice in
+                     Lwt_extra2.write_all
+                       fd
+                       s.buf s.offset len
+                 )
+               )
+               (fun () ->
+                 let parent_dir = config.files_path ^ "/" ^ dir in
+                 post_write (Some fd) len parent_dir
+                 >>= fun () ->
+                 let ufd = Lwt_unix.unix_file_descr fd in
+                 let () =
+                   if config.use_fadvise
+                   then Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED
+                 in
+                 Lwt.return_unit
+               )
            )
       )
     >>= fun (t_write, ()) ->

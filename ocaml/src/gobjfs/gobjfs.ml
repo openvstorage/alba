@@ -248,7 +248,7 @@ module IOExecFile = struct
   let file_close handle =
     let rc = _file_close handle in
     if rc = -1l
-    then failwith "ioexecfile::file_close"
+    then Lwt.fail_with "ioexecfile::file_close"
     else Lwt.return_unit
 
   let _file_delete =

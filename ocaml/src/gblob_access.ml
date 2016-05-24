@@ -60,14 +60,14 @@ object(self)
   method get_blob fnr len =
     let fn = self # _get_file_path fnr in
     let completion_id = self # next_completion_id in
-    let bytes = GMemPool.alloc len in
-    let fragment = Fragment.make completion_id 0 len bytes in
-    let fragments = [ fragment ] in
-    let batch = Batch.make fragments in
     IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
-    IOExecFile.file_read handle batch >>= fun () ->
+    let bytes = GMemPool.alloc len in
     Lwt.finalize
       (fun () ->
+        let fragment = Fragment.make completion_id 0 len bytes in
+        let fragments = [ fragment ] in
+        let batch = Batch.make fragments in
+        IOExecFile.file_read handle batch >>= fun () ->
         self # _wait_for_completion completion_id >>= fun ec ->
         begin
           if ec <> 0l
@@ -92,6 +92,8 @@ object(self)
     Lwt_log.debug_f "push_blob_data fnr:%Li len:%i slices:%si"
                     fnr len ([%show : (int * int) list] slices)
     >>= fun () ->
+    let fn = self # _get_file_path fnr in
+    IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
     let fragments =
       List.map
         (fun (off,len) ->
@@ -102,8 +104,7 @@ object(self)
         ) slices
     in
     let batch = Batch.make fragments in
-    let fn = self # _get_file_path fnr in
-    IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
+
     Lwt.finalize
       (fun () ->
         IOExecFile.file_read handle batch >>= fun () ->
@@ -200,7 +201,6 @@ object(self)
         IOExecFile.file_write handle batch >>= fun () ->
         self # _wait_for_completion completion_id >>= fun ec ->
         Lwt_log.debug_f "%Li:write ec=%li" completion_id ec >>= fun () ->
-        (* TODO: post write ?? *)
         if ec <> 0l
         then _throw_ex_from ec "write_blob" file_path
         else Lwt.return_unit
@@ -208,6 +208,8 @@ object(self)
       (fun () ->
         GMemPool.free bytes;
         IOExecFile.file_close handle >>= fun () ->
+        let parent_dir = config.files_path ^ "/" ^ dir in
+        post_write None len parent_dir >>= fun () ->
         Lwt_log.debug_f "write_blob finalizer done"
       )
 
