@@ -117,7 +117,7 @@ install () {
     echo "Installing some specific arakoon"
     git clone https://github.com/openvstorage/arakoon.git
     cd arakoon
-    git checkout tags/1.9.3
+    git checkout tags/1.9.4
     make
     export PREFIX=/home/travis/.opam/system
     export OCAML_LIBDIR=`ocamlfind printconf destdir`
@@ -132,12 +132,12 @@ install () {
     apt-cache depends librdmacm-dev
     sudo apt-get -y install libibverbs-dev
     git clone https://github.com/toolslive/ordma.git
-    cd ordma 
+    cd ordma
     git checkout 263106bbcf7f8a9b1421da53a7e2a22db953bce9
     make install
     cd ..
     date
-    
+
     echo "Installing specific orocksdb"
     git clone https://github.com/domsj/orocksdb.git
     cd orocksdb
