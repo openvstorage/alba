@@ -129,11 +129,15 @@ class client alba_id (alba_client : Alba_client.alba_client) =
       get_kvs ~consistent_read:false (to_namespace_name namespace_id)
 
     method add_namespace namespace_id =
-      alba_client # create_namespace
-                  ~namespace:(to_namespace_name namespace_id)
-                  ~preset_name:None (* TODO which preset? *)
-                  () >>= fun _ ->
-      Lwt.return ()
+      alba_client # mgr_access # get_namespace
+                  ~namespace:(to_namespace_name namespace_id) >>= fun r ->
+      if (r <> None)
+      then Lwt.return ()
+      else alba_client # create_namespace
+                       ~namespace:(to_namespace_name namespace_id)
+                       ~preset_name:None (* TODO which preset? *)
+                       () >>= fun _ ->
+           Lwt.return ()
 
     method delete_namespace namespace_id _ =
       alba_client # delete_namespace

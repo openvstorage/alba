@@ -425,6 +425,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Inactive_osd
             | Too_many_disks_per_node
             | Insufficient_fragments
+            | Assert_failed
             | Unknown_operation ->
                let msg = Nsm_model.Err.show err in
                Lwt_log.info_f

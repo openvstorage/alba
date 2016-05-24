@@ -641,6 +641,7 @@ let upload_object'
                 | Namespace_id_not_found
                 | InvalidVersionId
                 | Overwrite_not_allowed
+                | Assert_failed
                 | Too_many_disks_per_node
                 | Insufficient_fragments
                 | Object_not_found ->

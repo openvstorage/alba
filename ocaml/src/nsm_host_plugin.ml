@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Lwt.Infix
 open Registry
 open Prelude
+module Arakoon_update = Update
 open Nsm_model
 open Plugin_extra
 open Nsm_host_protocol
@@ -40,7 +41,7 @@ end
 let deliver_msgs_user_function_name = "nsm_host_user_function"
 
 let transform_updates namespace_id =
-  let open Update in
+  let open Arakoon_update in
 
   let prefix = Keys.namespace_content namespace_id in
   let with_prefix k = prefix ^ k in
@@ -71,7 +72,7 @@ let get_next_msg_id db =
   expected_id_s, expected_id
 
 let handle_msg db =
-  let open Update in
+  let open Arakoon_update in
   let open Protocol in
   let open Message in
   function
@@ -133,9 +134,13 @@ let deliver_msgs (db : user_db) msgs =
     msgs
 
 
-let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (o * Update.Update.t list) Lwt.t = fun db ->
+let get_updates_res : type i o. read_user_db ->
+                           (i, o) Protocol.update ->
+                           i ->
+                           (o * Arakoon_update.Update.t list) Lwt.t =
+  fun db ->
   let open Protocol in
-  let open Update in
+  let open Arakoon_update in
   function
   | CleanupForNamespace -> fun namespace_id ->
     let prefix = Keys.namespace_content namespace_id in
@@ -200,6 +205,9 @@ let get_updates_res : type i o. read_user_db -> (i, o) Protocol.update -> i -> (
         NSM.mark_keys_deleted db device_keys, ()
       | CleanupOsdKeysToBeDeleted -> fun osd_id ->
         NSM.cleanup_osd_keys_to_be_deleted db osd_id
+      | ApplySequence ->
+         fun (asserts, updates) ->
+         NSM.apply_sequence db asserts updates
     in
     let upds, res = get_updates_res tag req in
     let arakoon_upds = transform_updates namespace_id upds in
@@ -352,7 +360,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   begin match get_version () with
     | None ->
       backend # push_update
-        (Update.Update.TestAndSet
+        (Arakoon_update.Update.TestAndSet
            (Keys.nsm_host_version,
             None,
             Some (serialize Llio.int32_to 0l))) >>= fun _ ->
@@ -370,7 +378,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   let check_version () =
     0l = get_version () in
   let assert_version_update =
-    Update.Update.Assert
+    Arakoon_update.Update.Assert
       (Keys.nsm_host_version,
        Some (serialize Llio.int32_to 0l)) in
 
@@ -440,7 +448,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             (fun () ->
                get_updates_res db u req >>= fun (res, upds) ->
                backend # push_update
-                 (Update.Update.Sequence
+                 (Arakoon_update.Update.Sequence
                     (assert_version_update :: upds)) >>= fun _ ->
                Lwt.return (`Succes res))
                (function

@@ -71,7 +71,7 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
     begin
       capacity := 10_000_000L;
       Unix.system (Printf.sprintf "rm -rf %s" path) |> ignore;
-      Unix.mkdir path 0o777
+      Unix.system (Printf.sprintf "mkdir -p %s" path) |> ignore
     end;
   let asd_id = Some test_name in
   let cancel = Lwt_condition.create () in
@@ -436,6 +436,38 @@ let test_capacity port () =
        Lwt.return ())
   in
   Lwt_main.run (t ())
+
+let test_multi_update_for_same_key port () =
+  let test_name = "test_multi_update_for_same_key" in
+  test_with_asd_client
+    test_name port
+    (fun asd ->
+     let key = test_name in
+     let value = Bytes.create (Asd_server.blob_threshold + 2) in
+     let set = Osd.Update.set_string
+                 key value
+                 Checksum.Checksum.NoChecksum false
+     in
+     let delete = Osd.Update.delete_string key in
+     asd # apply_sequence ~prio:High
+         [] [ set; set; ] >>= fun () ->
+     asd # apply_sequence ~prio:High
+         [] [ set; set; set; set; set; ] >>= fun () ->
+     asd # apply_sequence ~prio:High
+         [] [ delete; delete; ] >>= fun () ->
+     asd # apply_sequence ~prio:High
+         [] [ delete; set; ] >>= fun () ->
+     asd # apply_sequence ~prio:High
+         [] [ set; delete; set; set; set; ] >>= fun () ->
+     asd # apply_sequence ~prio:High
+         [] [ delete; ] >>= fun () ->
+
+     (* TODO verify no blobs are left on asd
+      * size accounting should be 0
+      * any other things that should be empty?
+      *)
+
+     Lwt.return ())
 
 open OUnit
 
