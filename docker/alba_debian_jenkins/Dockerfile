@@ -32,7 +32,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libgflags-dev \
         sudo \
         libtool \
-        libboost-all-dev \
         fuse \
         sysstat \
         ncurses-dev
@@ -99,6 +98,20 @@ RUN cd arakoon && eval `${opam_env}` \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
+RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
+RUN apt-get -y install software-properties-common
+RUN add-apt-repository -y ppa:afrank/boost
+
+RUN apt-get update \
+    && apt-cache search libboost1.57 \
+    && apt-get -y --force-yes install \
+      libboost1.57-all-dev \
+      libibverbs-dev \
+      liblttng-ust0 librdmacm1 libtokyocabinet9 \
+      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
+      libhiredis0.10 \
+      omniorb-nameserver
+
 # install specific orocksdb
 RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
@@ -118,13 +131,6 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 RUN apt-get update && apt-get -y install clang-3.5
 
-RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
-RUN apt-get update && apt-get -y --force-yes install \
-      libboost1.57-all \
-      liblttng-ust0 librdmacm1 libtokyocabinet9 \
-      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
-      libhiredis0.10 \
-      omniorb-nameserver
 
 ## This only works from inside the OVS lan...
 # http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/4/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201605030944.5d9e62c_amd64.ddeb
