@@ -34,3 +34,4 @@ true: package(result)
 "src/tools":include
 "src/other":include
 "src/gobjfs":include
+"lib": -traverse

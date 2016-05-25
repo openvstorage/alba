@@ -132,12 +132,12 @@ install () {
     apt-cache depends librdmacm-dev
     sudo apt-get -y install libibverbs-dev
     git clone https://github.com/toolslive/ordma.git
-    cd ordma 
+    cd ordma
     git checkout 263106bbcf7f8a9b1421da53a7e2a22db953bce9
     make install
     cd ..
     date
-    
+
     echo "Installing specific orocksdb"
     git clone https://github.com/domsj/orocksdb.git
     cd orocksdb
@@ -159,6 +159,11 @@ install () {
     ./jenkins/system2/020-build_ocaml.sh
 
     date
+
+    sudo cp ./ocaml/lib/* /usr/local/lib/
+    sudo ldconfig -v
+
+    date
 }
 
 script () {
@@ -170,6 +175,7 @@ script () {
     export ARAKOON_BIN=arakoon
     export WORKSPACE=$(pwd)
     export TEST_DRIVER=./setup/setup.native
+    export LD_LIBRARY_PATH=/usr/local/lib
     env | sort
 
     ./ocaml/alba.native version

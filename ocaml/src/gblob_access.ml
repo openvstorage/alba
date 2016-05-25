@@ -28,12 +28,14 @@ class g_directory_info gioexecfile config =
     let ex =Unix.Unix_error(error, function_name, par) in
     Lwt.fail ex
   in
+
   let _process_results get_ec function_name get_par results =
     let bad = List.filter (fun t -> get_ec t <> 0l) results in
     match bad with
     | [] -> Lwt.return_unit
     | t ::_  -> _throw_ex_from (get_ec t) function_name  (get_par t)
   in
+
 object(self)
   inherit default_directory_access config.files_path
   inherit blob_access
@@ -60,8 +62,10 @@ object(self)
   method get_blob fnr len =
     let fn = self # _get_file_path fnr in
     let completion_id = self # next_completion_id in
+
     IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
     let bytes = GMemPool.alloc len in
+
     Lwt.finalize
       (fun () ->
         let fragment = Fragment.make completion_id 0 len bytes in
@@ -75,7 +79,10 @@ object(self)
           else Lwt.return_unit
         end
         >>= fun () ->
-        (* TODO: don't blit *)
+        (* TODO: don't blit, but this is only used
+                 - in a rare path: get blob from fs to compare with expectation
+                 - in multiget1 : which is deprecated only used by antique proxies
+         *)
         let src = Fragment.get_bytes fragment in
         let tgt = Bytes.create len in
         Lwt_bytes.blit_to_bytes src 0 tgt 0 len;
@@ -83,7 +90,7 @@ object(self)
       )
       (fun () ->
         IOExecFile.file_close handle >>= fun () ->
-        GMemPool.free bytes; (* Fragment.free_bytes fragment bytes *)
+        GMemPool.free bytes;
         Lwt.return_unit
       )
 
