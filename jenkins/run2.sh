@@ -18,6 +18,12 @@ then
     export ALBA_ETCD=127.0.0.1:5000/albas/xxxx/
 fi
 
+if (${ALBA_USE_GIOEXECFILE:-false} -eq true)
+then
+    export ALBA_BLOB_IO_ENGINE=GioExecFile,${WORKSPACE}/cfg/gioexecfile.conf
+
+fi
+
 id
 ulimit -n 1024
 ulimit -c unlimited
