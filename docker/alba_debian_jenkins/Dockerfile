@@ -103,7 +103,7 @@ RUN cd arakoon && eval `${opam_env}` \
 RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
+    && git checkout bd2fa718ac284e1e84b45a648d69626ebc95c857 \
     && ./install_rocksdb.sh \
     && make build install
 
