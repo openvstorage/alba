@@ -83,12 +83,12 @@ RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
 # c++
-RUN apt-get update && apt-get -y install libgtest-dev cmake
-RUN cd /usr/src/gtest \
-        && cmake . \
-        && make \
-        && mv libg* /usr/lib/
+RUN apt-get update && apt-get -y install cmake
 
+# install gtest TODO:specific version ?
+RUN git clone  https://github.com/google/googletest
+RUN cd googletest &&  mkdir build && cd build && cmake .. && sudo make install
+# libgtest.a ends up in /usr/local/lib/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
@@ -120,7 +120,8 @@ RUN apt-get update && apt-get -y install clang-3.5
 
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get update && apt-get -y --force-yes install \
-      libboost1.57-all liblttng-ust0 librdmacm1 libtokyocabinet9 \
+      libboost1.57-all \
+      liblttng-ust0 librdmacm1 libtokyocabinet9 \
       libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
       libhiredis0.10 \
       omniorb-nameserver
@@ -135,7 +136,7 @@ RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
 RUN wget ${voldrv_jenkins}/volumedriver-pitreplication_${voldrv_version}.deb \
     && dpkg -i volumedriver-pitreplication_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \ 
+RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \
     && dpkg -i volumedriver-server_${voldrv_version}.deb
 
 RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
@@ -155,6 +156,22 @@ RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
 RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
     && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
 
+# gobjfs specifics:
+RUN apt-get install -y \
+    libaio1 libaio1-dbg libaio-dev \
+    libz-dev libbz2-dev \
+    libgoogle-glog-dev \
+    libunwind8-dev
+
+ADD https://github.com/openvstorage/alba/raw/gIOExecFile/ocaml/lib/libdce_util.so /usr/local/lib
+ADD https://github.com/openvstorage/alba/raw/gIOExecFile/ocaml/lib/libgobjfs.so   /usr/local/lib
+RUN chmod a+r /usr/local/lib/libgobjfs.so /usr/local/lib/libdce_util.so
+RUN ldconfig -v
+RUN ldd /usr/local/lib/libgobjfs.so
+RUN ldd /usr/local/lib/libdce_util.so
+RUN ld --verbose | grep SEARCH_DIR | tr -s ' ;' \\n
+RUN ls -alh /usr/local/lib
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
 CMD eval `${opam_env}` \
     && echo ${SUITE} \

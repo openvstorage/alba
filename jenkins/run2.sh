@@ -11,6 +11,8 @@ eval `${opam_env}`
 make clean
 make
 
+ldd ./ocaml/alba.native
+
 if (${ALBA_USE_ETCD:-false} -eq true)
 then
     export ALBA_ETCD=127.0.0.1:5000/albas/xxxx/

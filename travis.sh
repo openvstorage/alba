@@ -160,7 +160,7 @@ install () {
 
     date
 
-    sudo cp ./ocaml/lib/* /usr/local/lib/
+    sudo cp ./ocaml/lib/lib*.so /usr/lib/
     sudo ldconfig -v
 
     date
