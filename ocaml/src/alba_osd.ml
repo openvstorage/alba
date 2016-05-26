@@ -25,8 +25,13 @@ open Lwt.Infix
  * dus mss best dit gedrag uit OsdPool weghalen
  * en naar osd_wrap_key_value_osd duwen.
  *)
-class client alba_id (alba_client : Alba_client.alba_client) =
-  let prefix = "TODO" in
+
+(* TODO what about statistics? *)
+
+class client
+        (alba_client : Alba_client.alba_client)
+        ~alba_id ~prefix ~preset_name
+  =
   let to_namespace_name namespace_id =
     prefix ^ (serialize ~buf_size:4 Llio.int32_be_to namespace_id)
   in
@@ -135,7 +140,7 @@ class client alba_id (alba_client : Alba_client.alba_client) =
                    ~checksum_o:(Some cs)
                    ~object_id_hint:None
                    ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
-                   ~cache_on_write:true (* TODO *)
+                   ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
                  >>= fun (mf, _, gc_epoch) ->
                  Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch)))
             updates
@@ -179,17 +184,17 @@ class client alba_id (alba_client : Alba_client.alba_client) =
             asserts
         in
 
-        let nsm_asserts_t = prepare_asserts () in
-        let nsm_updates_t =
-          alba_client # nsm_host_access # with_namespace_id
-                      ~namespace
-                      prepare_updates
-        in
-        nsm_asserts_t >>= fun nsm_asserts ->
-        nsm_updates_t >>= fun nsm_updates ->
-
         Lwt.catch
           (fun () ->
+           let nsm_asserts_t = prepare_asserts () in
+           let nsm_updates_t =
+             alba_client # nsm_host_access # with_namespace_id
+                         ~namespace
+                         prepare_updates
+           in
+           nsm_asserts_t >>= fun nsm_asserts ->
+           nsm_updates_t >>= fun nsm_updates ->
+
            alba_client # nsm_host_access
                        # with_nsm_client
                        ~namespace
@@ -216,7 +221,7 @@ class client alba_id (alba_client : Alba_client.alba_client) =
       then Lwt.return ()
       else alba_client # create_namespace
                        ~namespace:(to_namespace_name namespace_id)
-                       ~preset_name:None (* TODO which preset? *)
+                       ~preset_name
                        () >>= fun _ ->
            Lwt.return ()
 
@@ -231,9 +236,13 @@ class client alba_id (alba_client : Alba_client.alba_client) =
     method get_disk_usage = Lwt.return (failwith "TODO return sth based on asd disk usage")
   end
 
-let make_client abm_cfg_url tls_config =
+(* TODO fragment cache should be plugged in at this level of alba?
+ * not necessarily ... there's just a difference in how big the cached
+ * fragments will be.
+ *)
+let make_client abm_cfg_url tls_config ~prefix ~preset_name =
   Alba_arakoon.config_from_url abm_cfg_url >>= fun cfg ->
   Alba_client.make_client (ref cfg) ~tls_config () >>= fun (alba_client, closer) ->
   alba_client # mgr_access # get_alba_id >>= fun alba_id ->
-  let client = new client alba_id alba_client in
+  let client = new client alba_client ~alba_id ~prefix ~preset_name in
   Lwt.return ((client :> Osd.osd), closer)

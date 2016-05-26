@@ -105,6 +105,8 @@ class client
 
     method get_namespace_osds_info_cache = get_namespace_osds_info_cache
 
+    method get_cache_on_read_write = cache_on_read, cache_on_write
+
     method discover_osds ?check_claimed ?check_claimed_delay () : unit Lwt.t =
       Discovery.discovery
         (fun d ->

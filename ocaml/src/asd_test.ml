@@ -117,6 +117,9 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
 let test_with_asd_client ?write_blobs test_name port f =
   Lwt_main.run (with_asd_client ?write_blobs test_name port f)
 
+(* TODO which tests here can be transformed to key_value_store tests?
+ * => execute those for all osd types ... well at least for asd & alba_osd!
+ *)
 
 let test_set_get_delete ~verify_value (client : Asd_client.client) =
   let key = "key" in
