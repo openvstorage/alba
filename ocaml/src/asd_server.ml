@@ -1087,7 +1087,9 @@ let run_server
          )
        else
          (fun fnr blob ~post_write ->
-          Lwt.return_unit)
+           (* post_write still needs to be called *)
+           post_write None 0 ""
+         )
       )
   in
   Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
