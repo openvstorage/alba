@@ -214,15 +214,16 @@ class alba_client (base_client : Alba_base_client.client)
          ~write_object_data
          ~consistent_read
          ~should_cache
-    >>= fun _len ->
-    Lwt.return !res
+    >>= function
+    | None -> Lwt.return_none
+    | Some _ -> Lwt.return !res
 
   method download_object_to_bytes
            ~namespace
            ~object_name
            ~consistent_read
            ~should_cache
-         : Lwt_bytes.t option Lwt.t =
+         : (Lwt_bytes.t * Nsm_model.Manifest.t) option Lwt.t =
     let res = ref None in
     let write_object_data total_size =
       let bs = Lwt_bytes.create (Int64.to_int total_size) in
@@ -235,6 +236,11 @@ class alba_client (base_client : Alba_base_client.client)
       in
       Lwt.return write
     in
+    let destroy_res () =
+      match !res with
+      | None -> ()
+      | Some x -> Lwt_bytes.unsafe_destroy x
+    in
     Lwt.catch
       (fun () ->
        self # download_object_generic
@@ -243,13 +249,14 @@ class alba_client (base_client : Alba_base_client.client)
             ~write_object_data
             ~consistent_read
             ~should_cache
-       >>= fun _len ->
-       Lwt.return !res)
+       >>= function
+       | Some (mf, _) ->
+          Lwt.return (Some (Option.get_some !res, mf))
+       | None ->
+          let () = destroy_res () in
+          Lwt.return_none)
       (fun exn ->
-       let () = match !res with
-         | None -> ()
-         | Some x -> Lwt_bytes.unsafe_destroy x
-       in
+       let () = destroy_res () in
        Lwt.fail exn)
 
   method download_object_to_string'
@@ -276,8 +283,9 @@ class alba_client (base_client : Alba_base_client.client)
          ~write_object_data
          ~consistent_read
          ~should_cache
-    >>= fun _len ->
-    Lwt.return !res
+    >>= function
+    | None -> Lwt.return_none
+    | Some _ -> Lwt.return !res
 
   method delete_object ~namespace ~object_name ~may_not_exist =
     Lwt_log.debug_f "Deleting object %S (namespace=%S)"

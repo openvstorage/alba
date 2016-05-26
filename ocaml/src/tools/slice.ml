@@ -94,33 +94,8 @@ module Slice = struct
 
   let length t = t.length
 
-  let _memcmp =
-    let open Ctypes in
-    let open Foreign in
-    (* int memcmp(const void *s1, const void *s2, size_t n);
-       do note then int being returned is NOT limited to -1,0,1! *)
-    let inner =
-      foreign
-        "memcmp"
-        (ocaml_string @-> ocaml_string @-> size_t @-> returning int)
-    in
-    fun
-      string1 offset1 length1
-      string2 offset2 length2 ->
-      inner
-        (ocaml_string_start string1 +@ offset1)
-        (ocaml_string_start string2 +@ offset2)
-        (Unsigned.Size_t.of_int (min length1 length2))
-
-  let compare_substrings s1 off1 len1 s2 off2 len2 =
-    match _memcmp s1 off1 len1 s2 off2 len2 with
-    | 0 -> 0
-    | r when r > 0 -> 1
-    | r when r < 0 -> -1
-    | _ -> failwith "ocaml pattern matching ain't too smart"
-
   let compare s1 s2 =
-    compare_substrings
+    Memcmp.compare
       s1.buf s1.offset s1.length
       s2.buf s2.offset s2.length
 

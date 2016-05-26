@@ -172,4 +172,9 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
       self # update
         CleanupOsdKeysToBeDeleted
         osd_id
+
+    method apply_sequence asserts updates =
+      self # update
+           ApplySequence
+           (asserts, updates)
   end

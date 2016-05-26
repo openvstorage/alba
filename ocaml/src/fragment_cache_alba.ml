@@ -117,7 +117,8 @@ class alba_cache
                    ~object_name:(make_object_name ~bid ~name)
                    ~namespace
                    ~consistent_read:false
-                   ~should_cache:true))
+                   ~should_cache:true
+            |> Lwt.map (Option.map fst)))
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup" >>= fun () ->
          Lwt.return_none)

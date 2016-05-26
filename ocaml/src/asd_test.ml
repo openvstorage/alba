@@ -485,4 +485,5 @@ let suite = "asd_test" >:::[
     "test_assert" >:: test_assert 7911;
     "test_partial_get" >:: test_partial_get 7911;
     "test_capacity" >:: test_capacity 7912;
+    "test_multi_update_for_same_key" >:: test_multi_update_for_same_key 7913;
   ]

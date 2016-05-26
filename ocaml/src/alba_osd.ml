@@ -39,6 +39,7 @@ class client alba_id (alba_client : Alba_client.alba_client) =
                     ~object_name
                     ~consistent_read
                     ~should_cache:true
+        |> Lwt.map (Option.map fst)
 
       method get_exn prio name =
         self # get_option prio name >>= function
@@ -84,22 +85,15 @@ class client alba_id (alba_client : Alba_client.alba_client) =
         Lwt_list.map_p
           (fun name ->
            let object_name = Slice.get_string_unsafe name in
-           alba_client # get_object_manifest
-                       ~namespace ~object_name
-                       ~consistent_read ~should_cache:true
-           >>= fun (_, r) ->
-           match r with
+           alba_client # download_object_to_bytes
+                       ~namespace
+                       ~object_name
+                       ~consistent_read
+                       ~should_cache:true
+           >>= function
            | None -> Lwt.fail_with "object missing in range entries"
-           | Some m ->
-              alba_client # download_object_to_bytes
-                          ~namespace
-                          ~object_name
-                          ~consistent_read
-                          ~should_cache:true
-              >>= function
-              | None -> Lwt.fail_with "object missing in range entries (2)"
-              | Some v ->
-                 Lwt.return (name, v, m.Nsm_model.Manifest.checksum))
+           | Some (v, mf) ->
+              Lwt.return (name, v, mf.Nsm_model.Manifest.checksum))
           names >>= fun r ->
         Lwt.return ((cnt, r), has_more)
 
@@ -116,8 +110,95 @@ class client alba_id (alba_client : Alba_client.alba_client) =
         | None -> Lwt.return Osd.NotFound
         | Some _ -> Lwt.return Osd.Success
 
-      method apply_sequence =
-        failwith "TODO"
+      method apply_sequence prio asserts updates =
+        let prepare_updates namespace_id =
+          Lwt_list.map_p
+            (function
+              | Osd.Update.Set (key, None) ->
+                 Lwt.return (Nsm_model.Update.DeleteObject (Slice.get_string_unsafe key))
+              | Osd.Update.Set (key, Some (value, cs, _)) ->
+                 Alba_client_upload.upload_object''
+                   (alba_client # nsm_host_access)
+                   (alba_client # osd_access)
+                   (alba_client # get_base_client # get_preset_cache # get)
+                   (alba_client # get_base_client # get_namespace_osds_info_cache)
+                   ~object_t0:0.
+                   ~timestamp:(Unix.gettimeofday ())
+                   ~namespace_id
+                   ~object_name:(Slice.get_string_unsafe key)
+                   ~object_reader:(let open Asd_protocol.Blob in
+                                   match value with
+                                   | Lwt_bytes s -> new Object_reader.bytes_reader s
+                                   | Bigslice s -> new Object_reader.bigstring_slice_reader s
+                                   | Bytes s -> new Object_reader.string_reader s
+                                   | Slice s -> new Object_reader.slice_reader s)
+                   ~checksum_o:(Some cs)
+                   ~object_id_hint:None
+                   ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
+                   ~cache_on_write:true (* TODO *)
+                 >>= fun (mf, _, gc_epoch) ->
+                 Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch)))
+            updates
+        in
+
+        let prepare_asserts () =
+          Lwt_list.map_p
+            (function
+              | Osd.Assert.Value (key, None) ->
+                 Lwt.return (Nsm_model.Assert.ObjectDoesNotExist (Slice.get_string_unsafe key))
+              | Osd.Assert.Value (key, Some blob) ->
+                 (* TODO can be optimized to not download the object
+                  * if the object was stored with a checksum *)
+                 let object_name = Slice.get_string_unsafe key in
+                 alba_client # download_object_to_bytes
+                             ~namespace
+                             ~object_name
+                             ~consistent_read:true
+                             ~should_cache:true >>= function
+                 | None -> Lwt.fail_with "TODO some assert failed!"
+                 | Some (v, mf) ->
+                    let equal =
+                      let open Asd_protocol.Blob in
+                      match blob with
+                      | Lwt_bytes s ->
+                         Memcmp.equal'' s 0 (Lwt_bytes.length s)
+                      | Bigslice s ->
+                         let open Bigstring_slice in
+                         Memcmp.equal'' s.bs s.offset s.length
+                      | Bytes s ->
+                         Memcmp.equal' s 0 (String.length s)
+                      | Slice s ->
+                         let open Slice in
+                         Memcmp.equal' s.buf s.offset s.length
+                    in
+                    if equal v 0 (Lwt_bytes.length v)
+                    then Lwt.return (Nsm_model.Assert.ObjectHasId
+                                       (object_name,
+                                        mf.Nsm_model.Manifest.object_id))
+                    else Lwt.fail_with "TODO assert failed")
+            asserts
+        in
+
+        let nsm_asserts_t = prepare_asserts () in
+        let nsm_updates_t =
+          alba_client # nsm_host_access # with_namespace_id
+                      ~namespace
+                      prepare_updates
+        in
+        nsm_asserts_t >>= fun nsm_asserts ->
+        nsm_updates_t >>= fun nsm_updates ->
+
+        Lwt.catch
+          (fun () ->
+           alba_client # nsm_host_access
+                       # with_nsm_client
+                       ~namespace
+                       (fun nsm ->
+                        nsm # apply_sequence nsm_asserts nsm_updates) >>= fun () ->
+           Lwt.return Osd.Ok)
+          (fun exn ->
+           (* TODO catch a failed assert and return it in the correct way *)
+           Lwt.return (Osd.Exn Osd.Error.(Unknown_error (666, ""))))
     end
   in
   object(self :# Osd.osd)
