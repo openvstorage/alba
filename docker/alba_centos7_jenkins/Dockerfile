@@ -22,7 +22,7 @@ RUN opam init --root=/home/alba/OPAM --comp 4.02.3
 
 
 
-RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
+RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-6.noarch.rpm
 RUN yum -y update
 RUN yum -y install python-pip openssl-devel gmp-devel which zlib-devel ncurses-devel bzip2
 
@@ -96,6 +96,22 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
+RUN yum -y install cmake3 sudo
+# make sudo work:
+#
+# Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
+#         You have to run "ssh -t hostname sudo <cmd>".
+#
+# Defaults    requiretty          # is line 56
+RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
+
+
+# install gtest TODO:specific version ?
+RUN git clone  https://github.com/google/googletest \
+    && cd googletest &&  mkdir build && cd build && cmake3 .. \
+    && sudo make install
+# libgtest.a ends up in /usr/local/lib/
+
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
 RUN cd arakoon && git pull && git checkout tags/1.9.3
@@ -107,33 +123,27 @@ RUN cd arakoon && eval `${opam_env}` \
 
 # workarounds for limited rocksdb builder in orocksdb
 RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
-RUN yum -y install sudo
-#
-# Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
-#         You have to run "ssh -t hostname sudo <cmd>".
-#
-# Defaults    requiretty          # is line 56
-RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
+
+
 
 # install specific orocksdb
 RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
+    && git checkout bd2fa718ac284e1e84b45a648d69626ebc95c857 \
     && ./install_rocksdb.sh \
+    && cp /usr/local/lib/librocksdb.so* /lib64/ \
+    && sudo ldconfig -v \
     && make build install
 
-# be uniform on shared lib locations
-RUN cp /usr/local/lib/librocksdb.so* /lib64/
-
-#for now, instll ordma manually
+#for now, install ordma manually
 RUN yum -y install librdmacm-devel
 RUN git clone https://github.com/toolslive/ordma.git \
     && cd ordma \
     && git checkout tags/0.0.2 \
     && eval `${opam_env}` \
     && make install
-    
+
 RUN yum -y install rpm-build
 RUN yum -y install libgcrypt-devel
 
@@ -150,8 +160,25 @@ RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-2.0-1.el7.centos.x86_64.rpm
 RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-devel-2.0-1.el7.centos.x86_64.rpm
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
-RUN yum -y install iproute
+# gobjfs specifics:
+# TODO: how to get these on
+RUN yum -y install libaio1
 
+# gobjfs shared lib:
+
+
+RUN git clone https://github.com/openvstorage/gobjfs.git
+RUN cd gobjfs  && git pull && git checkout f8301f15b1e0575cbba4da0adb15e88c9534d978
+RUN cd gobjfs \
+       && mkdir build \
+       && cd build \
+       && cmake3 .. \
+       && make \
+       && cp ../lib/lib*.so /usr/local/lib
+
+ENV LD_LIBRARY_PATH=/usr/local/lib
+
+RUN yum -y install iproute
 ENV opam_env='opam config env --root=/home/alba/OPAM'
 ENV ARAKOON_BIN=arakoon
 CMD eval `${opam_env}` \
