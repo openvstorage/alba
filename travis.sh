@@ -160,8 +160,21 @@ install () {
 
     date
 
-    sudo cp ./ocaml/lib/lib*.so /usr/lib/
-    sudo ldconfig -v
+    echo "Installing gobjfs"
+    pushd .
+    apt-get install -y libaio1 libaio1-dbg libaio-dev libz-dev libbz2-dev \
+            libgoogle-glog-dev libunwind8-dev
+
+    git clone https://github.com/openvstorage/gobjfs.git
+    cd gobjfs
+    git pull
+    git checkout 7b5cd3bc79cd9da219db3d967c25c816a95295c7
+    mkdir build
+    cd build
+    cmake ..
+    make
+    cp ../lib/lib*.so /usr/local/lib
+    popd
 
     date
 }
