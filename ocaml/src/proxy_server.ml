@@ -614,7 +614,7 @@ let run_server hosts port ~transport
                    ~chunk_id
                    ~fragment_id
                    ~version_id:(snd location))) in
-       Alba_client.with_client
+       Alba_client2.with_client
          albamgr_client_cfg
          ~fragment_cache
          ~manifest_cache_size

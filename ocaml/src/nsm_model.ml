@@ -35,24 +35,36 @@ module OsdInfo = struct
 
   type asd_id = string [@@deriving show, yojson]
   type kinetic_id = string [@@ deriving show, yojson]
+  type alba_id = string [@@ deriving show, yojson]
 
   type use_tls  = bool [@@ deriving show, yojson]
   type use_rdma = bool [@@ deriving show, yojson]
   type conn_info = ip list * port * use_tls * use_rdma [@@ deriving show, yojson]
 
+  type alba_cfg = {
+      cfg : Alba_arakoon.Config.t;
+      id  : alba_id;
+      prefix : string;
+      preset : string;
+    } [@@deriving show, yojson]
+
   type kind =
     | Asd     of conn_info * asd_id
     | Kinetic of conn_info * kinetic_id
+    | Alba    of alba_cfg
                    [@@deriving show, yojson]
 
   let get_long_id = function
-    | Asd (_, asd_id)        -> asd_id
-    | Kinetic (_,kinetic_id) -> kinetic_id
+    | Asd (_, asd_id)         -> asd_id
+    | Kinetic (_, kinetic_id) -> kinetic_id
+    | Alba { id; }            -> id
 
   let get_conn_info = function
     | Asd     (info, _)
     | Kinetic (info, _) ->
-      info
+       info
+    (* | Alba (info, _) -> *)
+    (*    `Y info *)
 
   type t = {
     kind : kind;
@@ -85,6 +97,22 @@ module OsdInfo = struct
        failwith "use_rdma"
     | false -> ()
 
+  let kind_to conn_info_to buf = function
+    | Asd (conn_info, asd_id) ->
+       Llio.int8_to buf 1;
+       conn_info_to buf conn_info;
+       Llio.string_to buf asd_id
+    | Kinetic(conn_info, kin_id) ->
+       Llio.int8_to buf 2;
+       conn_info_to buf conn_info;
+       Llio.string_to buf kin_id
+    | Alba { cfg; id; prefix; preset; } ->
+       Llio.int8_to buf 3;
+       Alba_arakoon.Config.to_buffer buf cfg;
+       Llio.string_to buf id;
+       Llio.string_to buf prefix;
+       Llio.string_to buf preset
+
   let _to_buffer_1
       ?(ignore_tls = false)
       buf
@@ -108,16 +136,7 @@ module OsdInfo = struct
       _check_rdma use_rdma
 
     in
-    let () = match kind with
-      | Asd (conn_info, asd_id) ->
-         Llio.int8_to buf 1;
-         conn_info_to buf conn_info;
-         Llio.string_to buf asd_id
-      | Kinetic(conn_info, kin_id) ->
-         Llio.int8_to buf 2;
-         conn_info_to buf conn_info;
-         Llio.string_to buf kin_id
-    in
+    kind_to conn_info_to buf kind;
     Llio.string_to buf node_id;
     Llio.bool_to buf decommissioned;
     Llio.string_to buf other;
@@ -150,16 +169,7 @@ module OsdInfo = struct
     in
     let buf = Buffer.create 128 in
     let () =
-      let () = match kind with
-        | Asd (conn_info, asd_id) ->
-           Llio.int8_to buf 1;
-           conn_info_to buf conn_info;
-           Llio.string_to buf asd_id;
-        | Kinetic(conn_info, kin_id) ->
-           Llio.int8_to buf 2;
-           conn_info_to buf conn_info;
-           Llio.string_to buf kin_id
-      in
+      kind_to conn_info_to buf kind;
       Llio.string_to buf node_id;
       Llio.bool_to buf decommissioned;
       Llio.string_to buf other;
@@ -194,16 +204,7 @@ module OsdInfo = struct
     in
     let buf = Buffer.create 128 in
     let () =
-      let () = match kind with
-        | Asd (conn_info, asd_id) ->
-           Llio.int8_to buf 1;
-           conn_info_to buf conn_info;
-           Llio.string_to buf asd_id;
-        | Kinetic(conn_info, kin_id) ->
-           Llio.int8_to buf 2;
-           conn_info_to buf conn_info;
-           Llio.string_to buf kin_id
-      in
+      kind_to conn_info_to buf kind;
       Llio.string_to buf node_id;
       Llio.bool_to buf decommissioned;
       Llio.string_to buf other;
@@ -241,6 +242,12 @@ module OsdInfo = struct
         let port = Llio.int_from buf in
         let kin_id = Llio.string_from buf in
         Kinetic((ips, port, false, false), kin_id)
+      | 3 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in
@@ -274,6 +281,12 @@ module OsdInfo = struct
     let kind = match kind_v with
       | 1 -> Asd (conn_info, long_id)
       | 2 -> Kinetic(conn_info, long_id)
+      | 3 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k
     in
     let node_id = Llio.string_from buf in
@@ -300,15 +313,28 @@ module OsdInfo = struct
     let buf = Llio.make_buffer bufs 0 in
 
     let kind_v = Llio.int8_from buf in
-    let ips = Llio.list_from Llio.string_from buf in
-    let port = Llio.int_from buf in
-    let use_tls  = Llio.bool_from buf in
-    let use_rdma = Llio.bool_from buf in
-    let conn_info = ips,port,use_tls, use_rdma in
-    let long_id  = Llio.string_from buf in
+    let conn_info_and_id_from () =
+      let ips = Llio.list_from Llio.string_from buf in
+      let port = Llio.int_from buf in
+      let use_tls  = Llio.bool_from buf in
+      let use_rdma = Llio.bool_from buf in
+      let conn_info = ips,port,use_tls, use_rdma in
+      let long_id  = Llio.string_from buf in
+      conn_info, long_id
+    in
     let kind = match kind_v with
-      | 1 -> Asd (conn_info, long_id)
-      | 2 -> Kinetic(conn_info, long_id)
+      | 1 ->
+         let conn_info, long_id = conn_info_and_id_from () in
+         Asd (conn_info, long_id)
+      | 2 ->
+         let conn_info, long_id = conn_info_and_id_from () in
+         Kinetic (conn_info, long_id)
+      | 3 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k
     in
     let node_id = Llio.string_from buf in

@@ -30,7 +30,7 @@ let test_with_alba_client ?bad_fragment_callback f =
     begin
       _fetch_abm_client_cfg () >>= fun abm_ccfg ->
       let tls_config = Albamgr_test.get_tls_config () in
-      Alba_client.with_client
+      Alba_client2.with_client
         ?bad_fragment_callback
         (ref abm_ccfg)
         ~tls_config
@@ -1702,7 +1702,7 @@ let test_invalidate_deleted_namespace () =
   test_with_alba_client
     (fun alba_client1 ->
        _fetch_abm_client_cfg () >>= fun cfg ->
-       Alba_client.with_client
+       Alba_client2.with_client
          (ref cfg)
          ~tls_config
          ~release_resources:true
@@ -1948,7 +1948,7 @@ let test_stale_manifest_download () =
        Lwt_log.debug_f "Rewriting the object..." >>= fun () ->
        let tls_config = Albamgr_test.get_tls_config() in
        _fetch_abm_client_cfg () >>= fun cfg ->
-       Alba_client.with_client
+       Alba_client2.with_client
          (ref cfg)
          ~tls_config
          ~release_resources:true

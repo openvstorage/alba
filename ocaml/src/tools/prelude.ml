@@ -573,6 +573,22 @@ module Hashtbl = struct
       (fun k v acc -> (k, v) :: acc)
       h
       []
+
+  let to_yojson _ value_to_yojson h =
+    to_assoc_list h
+    |> List.map (fun (k, v) -> k, value_to_yojson v)
+    |> (fun x -> `Assoc x)
+
+  let of_yojson _ value_of_yojson = function
+    | `Assoc x ->
+       List.map (fun (k, v) -> k,
+                               match value_of_yojson v with
+                               | `Ok v -> v
+                               | `Error _ -> assert false)
+                x
+       |> from_assoc_list
+       |> fun x -> `Ok x
+    | _ -> `Error "nie goe"
 end
 
 module IntSet = Set.Make(struct type t = int let compare = compare end)

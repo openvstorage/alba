@@ -19,7 +19,6 @@ but WITHOUT ANY WARRANTY of any kind.
 open Lwt_bytes2
 open Slice
 open Alba_statistics
-open Osd_access
 open Lwt.Infix
 
 let get_object_manifest'
@@ -48,7 +47,7 @@ let (>>==) = E.bind
  * the returned fragment bigstring
  *)
 let download_packed_fragment
-      (osd_access : osd_access)
+      (osd_access : Osd_access_type.t)
       ~location
       ~namespace_id
       ~object_id ~object_name
@@ -107,7 +106,7 @@ let download_packed_fragment
  * the returned fragment bigstring
  *)
 let download_fragment
-      (osd_access : osd_access)
+      (osd_access : Osd_access_type.t)
       ~location
       ~namespace_id
       ~object_id ~object_name

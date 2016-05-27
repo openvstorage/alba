@@ -45,7 +45,7 @@ let periodic_load_osds
                            []
                            [ Osd.Update.set_string
                                Osd_keys.test_key
-                               (Lazy.force Osd_access.large_value)
+                               (Lazy.force Osd_access_type.large_value)
                                Checksum.NoChecksum
                                false ])
         in

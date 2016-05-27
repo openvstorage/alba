@@ -27,9 +27,6 @@ open Alba_interval
 open Alba_client_errors
 module Osd_sec = Osd
 open Nsm_host_access
-open Osd_access
-
-
 
 
 let default_buffer_pool = Buffer_pool.default_buffer_pool
@@ -37,12 +34,10 @@ let default_buffer_pool = Buffer_pool.default_buffer_pool
 class client
     (fragment_cache : cache)
     ~(mgr_access : Albamgr_client.client)
+    ~(osd_access : Osd_access_type.t)
     ~manifest_cache_size
     ~bad_fragment_callback
     ~nsm_host_connection_pool_size
-    ~osd_connection_pool_size
-    ~osd_timeout
-    ~default_osd_priority
     ~tls_config
     ~tcp_keepalive
     ~use_fadvise
@@ -59,11 +54,6 @@ class client
         ~tcp_keepalive
   in
 
-  let osd_access =
-    new osd_access mgr_access
-        ~osd_connection_pool_size ~osd_timeout
-        ~default_osd_priority ~tls_config
-  in
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
 
   let get_namespace_osds_info_cache ~namespace_id =
@@ -760,7 +750,7 @@ class client
              Lwt.catch
                (fun () ->
                 Lwt_unix.with_timeout
-                  osd_timeout
+                  (osd_access # osd_timeout)
                   get_from_fragments)
                (fun exn ->
                 Lwt_log.debug_f

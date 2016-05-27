@@ -549,7 +549,11 @@ let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts 
     | None -> Lwt.fail_with "I don't think this is an OSD"
     | Some kind ->
 
-       Remotes.Pool.Osd.factory tls_config Buffer_pool.osd_buffer_pool kind
+       Osd_access.Osd_pool.factory
+         tls_config
+         Buffer_pool.osd_buffer_pool
+         Alba_osd.make_client
+         kind
        >>= fun (osd_client, closer) ->
        Lwt_log.info_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
        let other = "other?" in

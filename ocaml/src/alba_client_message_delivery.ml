@@ -38,9 +38,7 @@ let _get_next_msg_id client prio =
   in
   Lwt.return (next_id_so, next_id)
 
-let _deliver_osd_messages (osd_access : Osd_access.osd_access) ~osd_id msgs =
-  
-
+let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
 
   let get_next_msg_id () =
     osd_access

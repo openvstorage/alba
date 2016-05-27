@@ -19,13 +19,13 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 
 module Config = struct
-  type cluster_id = string [@@deriving show]
+  type cluster_id = string [@@deriving show, yojson]
   (* TODO tls/ssl stuff *)
-  type node_name = string [@@deriving show]
+  type node_name = string [@@deriving show, yojson]
   type node_client_cfg = { ips : string list;
                            port : int; }
-                           [@@deriving show]
-  type t = cluster_id *  (node_name, node_client_cfg) Hashtbl.t
+                           [@@deriving show, yojson]
+  type t = cluster_id *  (node_name, node_client_cfg) Hashtbl.t [@@deriving yojson]
 
   let show ((cluster_id,  cfgs):t) =
     Printf.sprintf

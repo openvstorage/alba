@@ -166,7 +166,11 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
   | None -> failwith "what kind is this?"
   | Some k ->
      let open Networking2 in
-     Remotes.Pool.Osd.factory conn_info.tls_config buffer_pool k >>= fun (client, closer) ->
+     Osd_access.Osd_pool.factory
+       conn_info.tls_config
+       buffer_pool
+       Alba_osd.make_client
+       k >>= fun (client, closer) ->
      Lwt.finalize
        (fun () -> f client)
        closer

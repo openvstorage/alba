@@ -22,7 +22,6 @@ open Lwt_bytes2
 open Checksum
 open Recovery_info
 open Alba_statistics
-open Osd_access
 open Alba_client_common
 open Alba_client_errors
 open Lwt.Infix
@@ -31,7 +30,7 @@ module Osd_sec = Osd
 let fragment_multiple = Fragment_helper.fragment_multiple
 
 let upload_packed_fragment_data
-      (osd_access : osd_access)
+      (osd_access : Osd_access_type.t)
       ~namespace_id ~object_id
       ~version_id ~chunk_id ~fragment_id
       ~packed_fragment ~checksum
@@ -509,7 +508,7 @@ let upload_object''
   Lwt.return (manifest, almost_t_object, gc_epoch)
 
 let cleanup_gc_tags
-      (osd_access : osd_access)
+      (osd_access : Osd_access_type.t)
       mf
       gc_epoch
       ~namespace_id
@@ -550,7 +549,7 @@ let cleanup_gc_tags
 
 let store_manifest
       (nsm_host_access : Nsm_host_access.nsm_host_access)
-      (osd_access : osd_access)
+      (osd_access : Osd_access_type.t)
       manifest_cache
       ~namespace_id
       ~allow_overwrite

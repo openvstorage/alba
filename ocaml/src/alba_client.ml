@@ -18,8 +18,6 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Prelude
 open Fragment_cache
-open Albamgr_access
-open Alba_base_client
 open Alba_statistics
 open Alba_client_errors
 open Lwt.Infix
@@ -443,18 +441,15 @@ class alba_client (base_client : Alba_base_client.client)
         ~long_id
   end
 
-let make_client albamgr_client_cfg
+let make_client (mgr_access : Albamgr_access.mgr_access)
+                ~osd_access
                 ?(fragment_cache = (new no_cache :> cache))
                 ?(manifest_cache_size=100_000)
                 ?(bad_fragment_callback = fun
                     alba_client
                     ~namespace_id ~object_id ~object_name
                     ~chunk_id ~fragment_id ~location -> ())
-                ?(albamgr_connection_pool_size = 10)
                 ?(nsm_host_connection_pool_size = 10)
-                ?(osd_connection_pool_size = 10)
-                ?(osd_timeout = 2.)
-                ?(default_osd_priority = Osd.Low)
                 ~tls_config
                 ?(release_resources = false)
                 ?(tcp_keepalive = Tcp_keepalive2.default)
@@ -464,26 +459,13 @@ let make_client albamgr_client_cfg
                 ?(cache_on_write = true)
                 ()
   =
-  let albamgr_pool =
-    Remotes.Pool.Albamgr.make
-      ~size:albamgr_connection_pool_size
-      albamgr_client_cfg
-      tls_config
-      default_buffer_pool
-      ~tcp_keepalive
-  in
-  let mgr_access =
-    new Albamgr_client.client (new basic_mgr_pooled albamgr_pool)
-  in
   let base_client = new Alba_base_client.client
                         fragment_cache
-                        ~mgr_access
+                        ~mgr_access:(mgr_access :> Albamgr_client.client)
+                        ~osd_access
                         ~manifest_cache_size
                         ~bad_fragment_callback
                         ~nsm_host_connection_pool_size
-                        ~osd_connection_pool_size
-                        ~osd_timeout
-                        ~default_osd_priority
                         ~tls_config
                         ~tcp_keepalive
                         ~use_fadvise
@@ -497,21 +479,18 @@ let make_client albamgr_client_cfg
       begin
         base_client # osd_access # finalize;
         base_client # nsm_host_access # finalize;
-        Lwt_pool2.finalize albamgr_pool
-      end
-    else Lwt.return ()
+        mgr_access # finalize
+      end;
+    Lwt.return ()
   in
   Lwt.return (client, closer)
 
 let with_client albamgr_client_cfg
+                ~osd_access
                 ?fragment_cache
                 ?manifest_cache_size
                 ?bad_fragment_callback
-                ?albamgr_connection_pool_size
                 ?nsm_host_connection_pool_size
-                ?osd_connection_pool_size
-                ?osd_timeout
-                ?default_osd_priority
                 ~tls_config
                 ?release_resources
                 ?tcp_keepalive
@@ -522,14 +501,11 @@ let with_client albamgr_client_cfg
                 f
   =
   make_client albamgr_client_cfg
+              ~osd_access
               ?fragment_cache
               ?manifest_cache_size
               ?bad_fragment_callback
-              ?albamgr_connection_pool_size
               ?nsm_host_connection_pool_size
-              ?osd_connection_pool_size
-              ?osd_timeout
-              ?default_osd_priority
               ~tls_config
               ?release_resources
               ?tcp_keepalive

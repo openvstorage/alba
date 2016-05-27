@@ -17,12 +17,108 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Prelude
-open Remotes
-
 open Slice
 open Lwt.Infix
 open Nsm_model
-let large_value = lazy (String.make (512*1024) 'a')
+
+
+module Osd_pool = struct
+    module Osd' = Osd
+    open Albamgr_protocol.Protocol
+    open Nsm_model
+    type osd_pool = (Osd'.osd * (unit -> unit Lwt.t)) Lwt_pool2.t
+
+    type t = {
+        pools : (Osd.id, osd_pool) Hashtbl.t;
+        get_osd_kind : Osd.id -> OsdInfo.kind Lwt.t;
+        pool_size : int;
+        buffer_pool : Buffer_pool.t;
+        tls_config: Tls.t option;
+        make_alba_osd_client : Alba_arakoon.Config.t ref ->
+                               tls_config:Tls.t Ppx_deriving_runtime.option ->
+                               tcp_keepalive:Tcp_keepalive.t ->
+                               prefix:string ->
+                               preset_name:Albamgr_protocol.Protocol.Preset.name option ->
+                               (Osd'.osd * (unit -> unit Lwt.t)) Lwt.t;
+      }
+
+    let make ~size ~get_osd_kind buffer_pool tls_config make_alba_osd_client =
+      let pools = Hashtbl.create 0 in
+      { pools;
+        get_osd_kind;
+        pool_size = size;
+        buffer_pool;
+        tls_config;
+        make_alba_osd_client;
+      }
+
+    let factory tls_config buffer_pool make_alba_osd_client =
+      function
+      | OsdInfo.Asd (conn_info', asd_id) ->
+         let () =
+           Lwt_log.ign_debug_f
+             "factory: conn_info':%s"
+             ([%show :Nsm_model.OsdInfo.conn_info] conn_info')
+         in
+         let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
+
+         Asd_client.make_client buffer_pool ~conn_info (Some asd_id)
+         >>= fun (asd, closer) ->
+         let key_value_osd = new Asd_client.asd_osd asd_id asd in
+         let osd = new Osd'.osd_wrap_key_value_osd key_value_osd in
+         Lwt.return (osd, closer)
+      | OsdInfo.Kinetic (conn_info', kinetic_id) ->
+         let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
+         Kinetic_client.make_client buffer_pool ~conn_info kinetic_id >>= fun (client, closer) ->
+         let osd = new Osd'.osd_wrap_key_value_osd client in
+         Lwt.return (osd, closer)
+      | OsdInfo.Alba { Nsm_model.OsdInfo.cfg; id; prefix; preset; } ->
+         make_alba_osd_client
+           (ref cfg)
+           ~tls_config
+           ~tcp_keepalive:Tcp_keepalive2.default (* TODO *)
+           ~prefix ~preset_name:(Some preset)
+
+    let use_osd t ~(osd_id:int32) f =
+      let get_pool () =
+        try Hashtbl.find t.pools osd_id |> Lwt.return
+        with Not_found ->
+          begin
+            t.get_osd_kind osd_id >>= fun kind ->
+            let factory () =
+              factory t.tls_config t.buffer_pool t.make_alba_osd_client kind
+            in
+            let p =
+              Lwt_pool2.create
+                t.pool_size
+                ~check:(fun _ exn ->
+                        (* TODO some exns shouldn't invalidate the connection *)
+                        false)
+                ~factory
+                ~cleanup:(fun (_, closer) -> closer ())
+            in
+            Hashtbl.add t.pools osd_id p;
+            Lwt.return p
+          end
+      in
+      get_pool () >>= fun pool ->
+      Lwt_pool2.use
+        pool
+        (fun p -> f (fst p))
+
+    let invalidate t ~osd_id =
+      if Hashtbl.mem t.pools osd_id
+      then begin
+          Lwt_pool2.finalize (Hashtbl.find t.pools osd_id) |> Lwt.ignore_result;
+          Hashtbl.remove t.pools osd_id
+        end
+
+    let invalidate_all t =
+      List.iter
+        (fun (osd_id, _) -> invalidate t ~osd_id)
+        (Hashtbl.to_assoc_list t.pools)
+  end
+
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool
 
 class osd_access
@@ -31,6 +127,7 @@ class osd_access
         ~osd_timeout
         ~default_osd_priority
         ~tls_config
+        make_alba_osd_client
   =
   let () = Lwt_log.ign_debug_f "osd_access ... tls_config:%s" ([%show : Tls.t option] tls_config) in
   let osd_long_id_claim_info = ref StringMap.empty in
@@ -58,7 +155,11 @@ class osd_access
             "refresh_osd_total_used"
             (fun () ->
              let osd_info,osd_state = Hashtbl.find osds_info_cache osd_id in
-             Pool.Osd.factory tls_config osd_buffer_pool osd_info.OsdInfo.kind
+             Osd_pool.factory
+               tls_config
+               osd_buffer_pool
+               make_alba_osd_client
+               osd_info.OsdInfo.kind
              >>= fun (osd, closer) ->
 
              Lwt.finalize
@@ -85,7 +186,7 @@ class osd_access
       Lwt.return (Hashtbl.find osds_info_cache osd_id)
   in
   let osds_pool =
-    Pool.Osd.make
+    Osd_pool.make
       ~size:osd_connection_pool_size
       ~get_osd_kind:(fun osd_id ->
                      get_osd_info ~osd_id >>= fun (osd_info, _) ->
@@ -93,6 +194,7 @@ class osd_access
                      Lwt.return osd_info.kind)
       osd_buffer_pool
       tls_config
+      make_alba_osd_client
   in
 
   let refresh_osd_info ~osd_id =
@@ -112,7 +214,7 @@ class osd_access
   = fun ~osd_id f ->
   Lwt.catch
     (fun () ->
-     Pool.Osd.use_osd
+     Osd_pool.use_osd
        osds_pool
        ~osd_id
        f)
@@ -140,7 +242,7 @@ class osd_access
      (if should_invalidate_pool
       then
         begin
-          Pool.Osd.invalidate osds_pool ~osd_id;
+          Osd_pool.invalidate osds_pool ~osd_id;
           refresh_osd_info ~osd_id
         end
       else
@@ -176,7 +278,7 @@ class osd_access
                                        []
                                        [ Osd.Update.set_string
                                            Osd_keys.test_key
-                                           (Lazy.force large_value)
+                                           (Lazy.force Osd_access_type.large_value)
                                            Checksum.NoChecksum
                                            false ])
                                 >>= function
@@ -216,9 +318,9 @@ class osd_access
       end
   in
 
-  object
+  object(self :# Osd_access_type.t)
 
-    method finalize = Pool.Osd.invalidate_all osds_pool
+    method finalize = Osd_pool.invalidate_all osds_pool
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -266,7 +368,11 @@ class osd_access
     method osd_timeout = osd_timeout
 
     method osd_factory osd_info =
-      Pool.Osd.factory tls_config osd_buffer_pool osd_info.Nsm_model.OsdInfo.kind
+      Osd_pool.factory
+        tls_config
+        osd_buffer_pool
+        make_alba_osd_client
+        osd_info.Nsm_model.OsdInfo.kind
 
     method osds_to_osds_info_cache osds =
       let res = Hashtbl.create 0 in
@@ -412,7 +518,7 @@ class osd_access
                         Lwt_log.ign_info_f
                           "Asd (%li) now has new connection info -> invalidating connection pool"
                           osd_id;
-                        Pool.Osd.invalidate osds_pool ~osd_id
+                        Osd_pool.invalidate osds_pool ~osd_id
                       end
                   in
                   Lwt.return ()
@@ -428,7 +534,11 @@ class osd_access
              (match extras with
               | None ->
                  let kind = OsdInfo.Kinetic (conn_info, id) in
-                 Pool.Osd.factory tls_config osd_buffer_pool kind >>= fun (osd, closer) ->
+                 Osd_pool.factory
+                   tls_config
+                   osd_buffer_pool
+                   make_alba_osd_client
+                   kind >>= fun (osd, closer) ->
                  Lwt.finalize
                    (fun () -> osd # get_disk_usage)
                    closer >>= fun (used, total) ->
@@ -487,7 +597,11 @@ class osd_access
                         let rec inner () =
                           Lwt.catch
                             (fun () ->
-                             Pool.Osd.factory tls_config osd_buffer_pool kind >>= fun (osd, closer) ->
+                             Osd_pool.factory
+                               tls_config
+                               osd_buffer_pool
+                               make_alba_osd_client
+                               kind >>= fun (osd, closer) ->
                              Lwt.finalize
                                (fun () ->
                                 osd # global_kvs # get_option

@@ -58,7 +58,7 @@ let _easiest_upload () =
          end
   in
   Alba_arakoon.config_from_url !cfg_url >>= fun cfg ->
-  Alba_client.with_client
+  Alba_client2.with_client
     (ref cfg)
     ~tls_config
     (fun alba_client ->

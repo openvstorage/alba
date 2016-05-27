@@ -240,9 +240,33 @@ class client
  * not necessarily ... there's just a difference in how big the cached
  * fragments will be.
  *)
-let make_client abm_cfg_url tls_config ~prefix ~preset_name =
-  Alba_arakoon.config_from_url abm_cfg_url >>= fun cfg ->
-  Alba_client.make_client (ref cfg) ~tls_config () >>= fun (alba_client, closer) ->
+let rec make_client
+          abm_cfg
+          ~tls_config
+          ~tcp_keepalive
+          ~prefix
+          ~preset_name =
+  let albamgr_pool =
+    Remotes.Pool.Albamgr.make
+      ~size:10 (* albamgr_connection_pool_size *)
+      abm_cfg
+      tls_config
+      Buffer_pool.default_buffer_pool
+      ~tcp_keepalive
+  in
+  let mgr_access = Albamgr_access.make albamgr_pool in
+  let osd_access =
+    new Osd_access.osd_access mgr_access
+        ~osd_connection_pool_size:10
+        ~osd_timeout:2.
+        ~default_osd_priority:Osd.High
+        ~tls_config
+        make_client
+  in
+  Alba_client.make_client
+    mgr_access
+    ~osd_access
+    ~tls_config () >>= fun (alba_client, closer) ->
   alba_client # mgr_access # get_alba_id >>= fun alba_id ->
   let client = new client alba_client ~alba_id ~prefix ~preset_name in
   Lwt.return ((client :> Osd.osd), closer)

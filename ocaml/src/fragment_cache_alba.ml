@@ -50,12 +50,17 @@ class alba_cache
       Buffer_pool.default_buffer_pool
       ~tcp_keepalive
   in
-  let mgr_access =
-    new Albamgr_client.client (new Albamgr_access.basic_mgr_pooled albamgr_pool)
+  let mgr_access = ((Albamgr_access.make albamgr_pool) :> Albamgr_client.client) in
+  let osd_access =
+    new Osd_access.osd_access mgr_access
+        ~osd_connection_pool_size ~osd_timeout
+        ~default_osd_priority:Osd.High ~tls_config
+        Alba_osd.make_client
   in
   let base_client = new Alba_base_client.client
                         nested_fragment_cache
                         ~mgr_access
+                        ~osd_access
                         ~manifest_cache_size
                         ~bad_fragment_callback:(fun alba_client
                                                     ~namespace_id
@@ -63,9 +68,6 @@ class alba_cache
                                                     ~chunk_id ~fragment_id
                                                     ~location -> ())
                         ~nsm_host_connection_pool_size
-                        ~osd_connection_pool_size
-                        ~osd_timeout
-                        ~default_osd_priority:Osd.High
                         ~tls_config
                         ~tcp_keepalive
                         ~use_fadvise:true
