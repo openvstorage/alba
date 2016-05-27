@@ -175,7 +175,7 @@ RUN apt-get install -y \
 
 # gobjfs shared lib:
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout 7b5cd3bc79cd9da219db3d967c25c816a95295c7
+RUN cd gobjfs  && git pull && git checkout f8301f15b1e0575cbba4da0adb15e88c9534d978
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
