@@ -99,6 +99,11 @@ module Slice = struct
       s1.buf s1.offset s1.length
       s2.buf s2.offset s2.length
 
+  let equal s1 s2 =
+    Memcmp.equal
+      s1.buf s1.offset s1.length
+      s2.buf s2.offset s2.length
+
   let compare' = CompareLib.wrap compare
 
   let to_bigstring t =

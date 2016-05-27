@@ -157,7 +157,6 @@ let run_with_asd_client' ~conn_info asd_id verbose f =
     ~to_json:false ~verbose
     (fun () ->
      Asd_client.with_client
-       buffer_pool
        ~conn_info asd_id
        f)
 
@@ -505,7 +504,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                      (fun () ->
                       let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
                       Asd_client.with_client
-                        buffer_pool ~conn_info (Some long_id)
+                        ~conn_info (Some long_id)
                         (fun client ->
                          client # statistics clear >>= fun stats ->
                          client # get_disk_usage () >>= fun disk_usage ->
@@ -590,7 +589,7 @@ let asd_statistics hosts port_o transport asd_id
                     Asd_client.conn_info_from conn_info' ~tls_config
                   in
                   Asd_client.with_client
-                    buffer_pool ~conn_info asd_id
+                    ~conn_info asd_id
                     _inner
               end
            )

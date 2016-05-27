@@ -162,21 +162,7 @@ class client
                              ~should_cache:true >>= function
                  | None -> Lwt.fail_with "TODO some assert failed!"
                  | Some (v, mf) ->
-                    let equal =
-                      let open Asd_protocol.Blob in
-                      match blob with
-                      | Lwt_bytes s ->
-                         Memcmp.equal'' s 0 (Lwt_bytes.length s)
-                      | Bigslice s ->
-                         let open Bigstring_slice in
-                         Memcmp.equal'' s.bs s.offset s.length
-                      | Bytes s ->
-                         Memcmp.equal' s 0 (String.length s)
-                      | Slice s ->
-                         let open Slice in
-                         Memcmp.equal' s.buf s.offset s.length
-                    in
-                    if equal v 0 (Lwt_bytes.length v)
+                    if Osd.Blob.equal blob (Osd.Blob.Lwt_bytes v)
                     then Lwt.return (Nsm_model.Assert.ObjectHasId
                                        (object_name,
                                         mf.Nsm_model.Manifest.object_id))

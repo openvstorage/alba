@@ -67,6 +67,25 @@ module Blob = struct
     | Bigslice s -> Bigstring_slice.length s
     | Bytes s -> Bytes.length s
     | Slice s -> Slice.length s
+
+  let equal b1 b2 =
+    let t = function
+      | Lwt_bytes s -> `B (Bigstring_slice.wrap_bigstring s)
+      | Bigslice  s -> `B s
+      | Bytes s -> `S (Slice.wrap_string s)
+      | Slice s -> `S s
+    in
+    match t b1, t b2 with
+    | `S s1, `S s2 -> Slice.equal s1 s2
+    | `S s1, `B s2
+    | `B s2, `S s1 ->
+       Memcmp.equal'
+         s1.Slice.buf s1.Slice.offset s1.Slice.length
+         s2.Bigstring_slice.bs s2.Bigstring_slice.offset s2.Bigstring_slice.length
+    | `B s1, `B s2 ->
+       Memcmp.equal''
+         s1.Bigstring_slice.bs s1.Bigstring_slice.offset s1.Bigstring_slice.length
+         s2.Bigstring_slice.bs s2.Bigstring_slice.offset s2.Bigstring_slice.length
 end
 
 module Value = struct

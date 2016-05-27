@@ -340,7 +340,7 @@ let _prologue_response fd lido =
 
 
 
-let make_client buffer_pool ~conn_info (lido:string option)  =
+let make_client ~conn_info (lido:string option)  =
   Networking2.first_connection ~conn_info
   >>= fun (nfd, closer) ->
   Lwt.catch
@@ -356,14 +356,14 @@ let make_client buffer_pool ~conn_info (lido:string option)  =
      closer () >>= fun () ->
      Lwt.fail exn)
 
-let with_client buffer_pool ~conn_info (lido:string option) f =
+let with_client ~conn_info (lido:string option) f =
   (* TODO: validation here? or elsewhere *)
   let () =
     match conn_info.Networking2.ips with
     | [] -> failwith "empty ips list for asd_client.with_client";
     | _ -> ()
   in
-  make_client buffer_pool ~conn_info lido >>= fun (client, closer) ->
+  make_client ~conn_info lido >>= fun (client, closer) ->
   Lwt.finalize
     (fun () -> f client)
     closer

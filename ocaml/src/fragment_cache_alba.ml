@@ -42,6 +42,7 @@ class alba_cache
         ~cache_on_read ~cache_on_write
   =
   let tcp_keepalive = Tcp_keepalive2.default in
+  (* TODO this should probably use a function in Alba_client... *)
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
       ~size:albamgr_connection_pool_size

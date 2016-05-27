@@ -61,8 +61,7 @@ module Osd_pool = struct
              ([%show :Nsm_model.OsdInfo.conn_info] conn_info')
          in
          let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
-
-         Asd_client.make_client buffer_pool ~conn_info (Some asd_id)
+         Asd_client.make_client ~conn_info (Some asd_id)
          >>= fun (asd, closer) ->
          let key_value_osd = new Asd_client.asd_osd asd_id asd in
          let osd = new Osd'.osd_wrap_key_value_osd key_value_osd in
