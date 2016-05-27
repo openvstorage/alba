@@ -98,7 +98,7 @@ RUN cd arakoon && eval `${opam_env}` \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
-RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
+RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get -y install software-properties-common
 RUN add-apt-repository -y ppa:afrank/boost
 
@@ -129,13 +129,17 @@ RUN git clone https://github.com/toolslive/ordma.git \
     && make install
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
-RUN apt-get update && apt-get -y install clang-3.5
+RUN apt-get update && apt-get -y --force-yes install \
+    clang-3.5 \
+    liblz4-1 \
+    libxio0
 
 
 ## This only works from inside the OVS lan...
-# http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/4/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201605030944.5d9e62c_amd64.ddeb
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian
-ENV voldrv_version=5.7.2-dev.201605030944.5d9e62c_amd64
+# http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/304/artifact/volumedriver-core/build/debian/volumedriver-base_5.7.2-dev.201605260958.e6e0bb2_amd64.deb
+
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/304/artifact/volumedriver-core/build/debian/
+ENV voldrv_version=5.7.2-dev.201605260958.e6e0bb2_amd64
 RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
     && dpkg -i volumedriver-base_${voldrv_version}.deb
 
@@ -169,14 +173,16 @@ RUN apt-get install -y \
     libgoogle-glog-dev \
     libunwind8-dev
 
-ADD https://github.com/openvstorage/alba/raw/gIOExecFile/ocaml/lib/libdce_util.so /usr/local/lib
-ADD https://github.com/openvstorage/alba/raw/gIOExecFile/ocaml/lib/libgobjfs.so   /usr/local/lib
-RUN chmod a+r /usr/local/lib/libgobjfs.so /usr/local/lib/libdce_util.so
-RUN ldconfig -v
-RUN ldd /usr/local/lib/libgobjfs.so
-RUN ldd /usr/local/lib/libdce_util.so
-RUN ld --verbose | grep SEARCH_DIR | tr -s ' ;' \\n
-RUN ls -alh /usr/local/lib
+# gobjfs shared lib:
+RUN git clone https://github.com/openvstorage/gobjfs.git
+RUN cd gobjfs  && git pull && git checkout 7b5cd3bc79cd9da219db3d967c25c816a95295c7
+RUN cd gobjfs \
+       && mkdir build \
+       && cd build \
+       && cmake .. \
+       && make \
+       && cp ../lib/lib*.so /usr/local/lib
+
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
 CMD eval `${opam_env}` \
