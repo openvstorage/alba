@@ -18,7 +18,6 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Foreign
 open Ctypes
-open Lwt.Infix
 
 module GMemPool = struct
   type t = unit Ctypes_static.ptr
@@ -83,7 +82,7 @@ module Fragment = struct
     setf t offset (to_size off);
     setf t size (to_size s);
     setf t addr' bytes;
-    _debug_fragment (addr t);
+    (* _debug_fragment (addr t); *)
     t
 
   let get_bytes t : Lwt_bytes.t =
@@ -108,10 +107,11 @@ module Fragment = struct
 end
 
 
+
 module Batch = struct
   type _batch
   let _batch : _batch structure typ = structure "gobjfs_batch"
-  let count = field _batch "count" size_t
+  let _count = field _batch "count" size_t
   let array = field _batch "array" Fragment.fragment_t
 
   let () = seal _batch
@@ -119,7 +119,6 @@ module Batch = struct
   type t = (_batch, [ `Struct ]) Ctypes.structured
 
   let show t = string_of _batch t
-
 
 
   let _debug_batch =
@@ -153,7 +152,7 @@ module Batch = struct
          _debug_batch bp;
          b
        end
-    | _ -> failwith "todo:Batch.make"
+    | _ -> failwith "todo"
 
 end
 
@@ -187,13 +186,19 @@ module IOExecFile = struct
 
   type _handle
   let _handle : _handle structure typ = structure "gobjfs_handle"
-  let fd   = field _handle "fd" int
-  let core = field _handle "core" int
+  let _fd   = field _handle "fd" int
+  let _core = field _handle "core" int
   let () = seal _handle
 
   type handle =_handle Ctypes.structure Ctypes_static.ptr
-
   let show_handle h = string_of (ptr _handle) h
+
+
+  type _event_channel = unit ptr
+  let event_channel : _event_channel typ = ptr void
+
+  type event_channel = _event_channel
+
 
   external _convert_open_flags : Unix.open_flag list -> int
     = "gobjfs_ocaml_convert_open_flags"
@@ -213,16 +218,13 @@ module IOExecFile = struct
   let _file_write =
     foreign
       "gobjfs_ioexecfile_file_write"
-      (ptr _handle @-> ptr Batch._batch @-> ptr void @->returning int32_t)
+      (ptr _handle
+       @-> ptr Batch._batch
+       @-> ptr void
+       @-> returning int32_t)
 
-  let file_write handle batch =
-    Lwt_log.debug_f "file_write ~handle:%s batch:%s"
-                    (show_handle handle) (Batch.show batch)
-    >>= fun () ->
-    let rc = _file_write handle (addr batch) null in
-    Lwt_log.debug_f "file_write ~handle:%s rc=%li" (show_handle handle) rc
-    >>= fun () ->
-
+  let file_write handle batch (event_channel: event_channel) =
+    let rc = _file_write handle (addr batch) event_channel in
     if rc = -1l
     then failwith "ioexecfile:file_write"
     else Lwt.return_unit
@@ -230,10 +232,13 @@ module IOExecFile = struct
   let _file_read =
     foreign
       "gobjfs_ioexecfile_file_read"
-      (ptr _handle @-> ptr Batch._batch @-> ptr void @-> returning int32_t)
+      (ptr _handle
+       @-> ptr Batch._batch
+       @-> ptr void
+       @-> returning int32_t)
 
-  let file_read handle batch =
-    let rc = _file_read handle (addr batch) null in
+  let file_read handle batch (event_channel: event_channel) =
+    let rc = _file_read handle (addr batch) event_channel in
     if rc = -1l
     then failwith "ioexecfile:file_read"
     else Lwt.return_unit
@@ -254,32 +259,42 @@ module IOExecFile = struct
   let _file_delete =
     foreign
       "gobjfs_ioexecfile_file_delete"
-      (string @-> int64_t @-> returning int32_t)
+      (string
+       @-> int64_t
+       @-> ptr void
+       @-> returning int32_t)
 
-  let file_delete name cid =
-    let rc = _file_delete name cid in
+  let file_delete name cid event_channel =
+    let rc = _file_delete name cid event_channel in
     if rc = -1l
-    then failwith "ioexecfile:file_delete"
+    then Lwt.fail_with "ioexecfile:file_delete"
     else Lwt.return_unit
 
-  let _get_event_fd =
+  let _open_event_channel =
+    foreign
+      ~check_errno:true
+      ~release_runtime_lock:false
+      "gobjfs_ioexecfile_event_fd_open"
+      (void @-> returning event_channel)
+
+  let open_event_channel () =
+    let r = _open_event_channel () in
+    r
+
+
+  let _close_event_channel =
     foreign
       ~check_errno:false
       ~release_runtime_lock:false
-      "gobjfs_ioexecfile_get_event_fd"
-      (ptr int @-> returning int32_t)
+      "gobjfs_ioexecfile_event_fd_close"
+      (event_channel @-> returning int32_t)
 
-  type fd = Lwt_unix.file_descr
-
-  let get_event_fd () =
-    let fd = allocate int 0 in
-    let rc = _get_event_fd fd in
-
+  let close_event_channel event_channel =
+    let rc = _close_event_channel event_channel in
     if rc = -1l
-    then failwith "ioexecfile:get_event_fd"
-    else let v = (!@ fd) in
-         let (fd:Unix.file_descr) = Obj.magic v in
-         Lwt_unix.of_unix_file_descr fd
+    then
+      Lwt.fail_with "ioexecfile:close_event_channel"
+    else Lwt.return_unit
 
   type status = {
       completion_id : int64;
@@ -291,14 +306,30 @@ module IOExecFile = struct
 
   let get_error_code s = s.error_code
 
+  let _get_read_fd =
+    foreign
+      "gobjfs_ioexecfile_event_fd_get_read_fd"
+      (event_channel @-> returning int)
+
+  let get_reap_fd event_channel =
+    let fdi = _get_read_fd event_channel in
+    let (fd : Unix.file_descr) = Obj.magic (fdi : int) in
+    Lwt_unix.of_unix_file_descr fd
+
   let reap event_fd (buf:Lwt_bytes.t) =
     let open Lwt.Infix in
     let size = 16 in
     let n = Lwt_bytes.length buf / size in
     let bytes = n * size in
     Lwt_bytes.read event_fd buf 0 bytes >>= fun bytes_read ->
-    Lwt_log.debug_f "bytes_read:%i%!" bytes_read >>= fun () ->
-    assert (bytes_read mod size = 0);
+
+    (if  bytes_read mod size <> 0
+     then Lwt.fail_with "bytes_read not a multiple of 16 ?"
+     else Lwt.return_unit
+    )
+
+    >>= fun ()->
+
     let rec loop acc off =
       if off = bytes_read then List.rev acc
       else
@@ -311,9 +342,3 @@ module IOExecFile = struct
     let r = loop [] 0  in
     Lwt.return (bytes_read / size, r)
 end
-
-(*
-module Version = struct
-  include Gobjfs_version
-end
- *)

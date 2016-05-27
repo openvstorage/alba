@@ -36,6 +36,8 @@ class g_directory_info gioexecfile config =
     | t ::_  -> _throw_ex_from (get_ec t) function_name  (get_par t)
   in
 
+  let event_channel = IOExecFile.open_event_channel () in
+  let reap_fd = IOExecFile.get_reap_fd event_channel in
 object(self)
   inherit default_directory_access config.files_path
   inherit blob_access
@@ -50,7 +52,8 @@ object(self)
 
   val _next_id = ref 0L
   val _outstanding =  (Hashtbl.create 16 : (int64, int32 Lwt.u) Hashtbl.t)
-  val _event_fd = IOExecFile.get_event_fd ()
+  val _event_channel= event_channel
+  val _reap_fd = reap_fd
 
   method private next_completion_id =
     let r = !_next_id in
@@ -71,7 +74,7 @@ object(self)
         let fragment = Fragment.make completion_id 0 len bytes in
         let fragments = [ fragment ] in
         let batch = Batch.make fragments in
-        IOExecFile.file_read handle batch >>= fun () ->
+        IOExecFile.file_read handle batch _event_channel >>= fun () ->
         self # _wait_for_completion completion_id >>= fun ec ->
         begin
           if ec <> 0l
@@ -114,7 +117,7 @@ object(self)
 
     Lwt.finalize
       (fun () ->
-        IOExecFile.file_read handle batch >>= fun () ->
+        IOExecFile.file_read handle batch _event_channel >>= fun () ->
         Lwt_list.map_p
           (fun fragment ->
             self # _wait_for_completion (Fragment.get_completion_id fragment) >>= fun ec ->
@@ -159,8 +162,8 @@ object(self)
     Lwt_log.debug "_inner ()" >>= fun () ->
     let buf = Lwt_bytes.create 256 in
     let rec loop () =
-      Lwt_unix.wait_read _event_fd  >>= fun () ->
-      IOExecFile.reap _event_fd buf >>= fun (n, ss) ->
+      Lwt_unix.wait_read _reap_fd  >>= fun () ->
+      IOExecFile.reap _reap_fd buf >>= fun (n, ss) ->
       Lwt_log.debug_f "reaped:%i" n >>= fun () ->
       List.iter
         (fun s ->
@@ -205,7 +208,7 @@ object(self)
 
     Lwt.finalize
       (fun () ->
-        IOExecFile.file_write handle batch >>= fun () ->
+        IOExecFile.file_write handle batch _event_channel >>= fun () ->
         self # _wait_for_completion completion_id >>= fun ec ->
         Lwt_log.debug_f "%Li:write ec=%li" completion_id ec >>= fun () ->
         if ec <> 0l
@@ -228,7 +231,7 @@ object(self)
       (fun fnr ->
         let file_path = self # _get_file_path fnr in
         let cid = self # next_completion_id in
-        IOExecFile.file_delete file_path cid >>= fun () ->
+        IOExecFile.file_delete file_path cid _event_channel >>= fun () ->
         Lwt.return (fnr, file_path, cid)
       )
       fnrs

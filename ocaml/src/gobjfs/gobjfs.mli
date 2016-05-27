@@ -14,7 +14,7 @@ in the <LICENSE.txt> file of the Open vStorage OSE distribution.
 
 Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
-*)
+ *)
 
 module GMemPool : sig
   type t
@@ -56,28 +56,26 @@ module IOExecFile : sig
   type handle
   val show_handle: handle -> string
 
-  type fd = Lwt_unix.file_descr
+  type event_channel
+
   val file_open: string -> Unix.open_flag list -> handle Lwt.t
-  val file_write: handle -> Batch.t -> unit Lwt.t
-  val file_read: handle -> Batch.t -> unit Lwt.t
+
+  val file_write: handle -> Batch.t -> event_channel -> unit Lwt.t
+  val file_read:  handle -> Batch.t -> event_channel -> unit Lwt.t
+  val file_delete: string -> Fragment.completion_id  -> event_channel -> unit Lwt.t
+
   val file_close: handle -> unit Lwt.t
-  val file_delete: string -> Fragment.completion_id -> unit Lwt.t
-  val get_event_fd : unit -> fd
+
+  val open_event_channel  : unit -> event_channel
+  val close_event_channel : event_channel -> unit Lwt.t
 
   type status
   val show_status : status -> string
+
   val get_completion_id : status -> Fragment.completion_id
   val get_error_code : status -> int32
 
-  val reap : fd -> Lwt_bytes.t -> (int * status list) Lwt.t
-end
+  val get_reap_fd : event_channel -> Lwt_unix.file_descr
+  val reap : Lwt_unix.file_descr -> Lwt_bytes.t -> (int * status list) Lwt.t
 
-(* (* we only want this when packaged distributed as a package *)
-module Version : sig
-  val major : int
-  val minor : int
-  val patch : int
-  val git_revision : string
-  val summary : int * int * int * string
 end
- *)
