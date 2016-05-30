@@ -59,13 +59,6 @@ module OsdInfo = struct
     | Kinetic (_, kinetic_id) -> kinetic_id
     | Alba { id; }            -> id
 
-  let get_conn_info = function
-    | Asd     (info, _)
-    | Kinetic (info, _) ->
-       info
-    (* | Alba (info, _) -> *)
-    (*    `Y info *)
-
   type t = {
     kind : kind;
     decommissioned : bool;

@@ -490,7 +490,9 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
               (fun (_,osd_info) ->
                 let k = osd_info.kind in
                 get_long_id k,
-                get_conn_info k
+                (match k with
+                 | Asd (x, _) -> x
+                 | Kinetic _ | Alba _-> assert false)
               )
               stat_osds
           in
@@ -585,7 +587,10 @@ let asd_statistics hosts port_o transport asd_id
                 | Some (claim_info, osd) ->
                   let conn_info =
                     let open Nsm_model.OsdInfo in
-                    let conn_info' = get_conn_info osd.kind in
+                    let conn_info' = match osd.kind with
+                      | Asd (x, _) -> x
+                      | Kinetic _ | Alba _ -> assert false
+                    in
                     Asd_client.conn_info_from conn_info' ~tls_config
                   in
                   Asd_client.with_client

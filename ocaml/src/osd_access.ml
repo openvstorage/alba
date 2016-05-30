@@ -508,7 +508,10 @@ class osd_access
                   in
                   let conn_info'  =
                     let open OsdInfo in
-                    get_conn_info osd_info.kind
+                    match osd_info.kind with
+                    | Asd (x, _)
+                    | Kinetic (x, _) -> x
+                    | Alba _ -> assert false (* Alba osds don't broadcast *)
                   in
                   let () =
                     if conn_info' <> conn_info

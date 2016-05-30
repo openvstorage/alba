@@ -145,30 +145,36 @@ module Protocol = struct
         =
         let my_compare x y = compare y x in
         let kind =
-          let ips, port, tls, use_rdma = get_conn_info osd.kind in
-          let conn_info' =
-            let ips'  = Option.get_some_default ips ips' in
-            let port' = Option.get_some_default port port' in
-            let real_port, use_tls =
-              let open Tiny_json in
-              match other' with
-              | None -> port', tls
-              | Some other' ->
-                 try
-                   let r = Json.parse other' in
-                   let tlsPort = Json.as_int (Json.getf "tlsPort" r)  in
-                   tlsPort, true
-                 with
-                 | Json.JSON_InvalidField("tlsPort") -> port', false
-                 | ex ->
-                    let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
-                    port', false
+          let get_conn_info' conn_info =
+            let ips, port, tls, use_rdma = conn_info in
+            let conn_info' =
+              let ips'  = Option.get_some_default ips ips' in
+              let port' = Option.get_some_default port port' in
+              let real_port, use_tls =
+                let open Tiny_json in
+                match other' with
+                | None -> port', tls
+                | Some other' ->
+                   try
+                     let r = Json.parse other' in
+                     let tlsPort = Json.as_int (Json.getf "tlsPort" r)  in
+                     tlsPort, true
+                   with
+                   | Json.JSON_InvalidField("tlsPort") -> port', false
+                   | ex ->
+                      let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
+                      port', false
+              in
+              (ips',real_port, use_tls, use_rdma)
             in
-            (ips',real_port, use_tls, use_rdma)
+            conn_info'
           in
           match osd.kind with
-          | Asd (_, asd_id)   -> Asd (conn_info', asd_id)
-          | Kinetic (_, k_id) -> Kinetic (conn_info', k_id)
+          | Asd (conn_info, asd_id)   -> Asd (get_conn_info' conn_info, asd_id)
+          | Kinetic (conn_info, k_id) -> Kinetic (get_conn_info' conn_info, k_id)
+          | Alba x ->
+             (* TODO allow updating albamgr_cfg (+ write loop that does it ... like in proxy) *)
+             Alba x
         in
         let max_n = 10 in
         { node_id = osd.node_id;
