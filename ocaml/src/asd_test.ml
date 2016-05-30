@@ -169,9 +169,8 @@ let test_partial_get port () =
     Osd_kvs_test.test_partial_get
 
 let test_multi_update_for_same_key port () =
-  let test_name = "test_multi_update_for_same_key" in
   test_with_kvs_client
-    test_name port
+    "test_multi_update_for_same_key" port
     Osd_kvs_test.test_multi_update_for_same_key
 
 

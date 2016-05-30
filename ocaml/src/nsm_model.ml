@@ -1513,6 +1513,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         )
         updates'
         []
+      |> List.rev
     in
     List.rev_append updates_for_asserts updates_for_updates, ()
 
@@ -1538,7 +1539,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
   let multi_exists kv object_names =
     List.map
-      (KV.exists kv)
+      (fun name -> KV.exists kv (Keys.names name))
       object_names
 
   let list_device_objects kv device_id ~first ~finc ~last ~max ~reverse =

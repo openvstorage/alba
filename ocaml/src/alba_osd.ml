@@ -160,13 +160,13 @@ class client
                              ~object_name
                              ~consistent_read:true
                              ~should_cache:true >>= function
-                 | None -> Lwt.fail_with "TODO some assert failed!"
+                 | None -> Lwt.fail Nsm_model.Err.(Nsm_exn (Assert_failed, object_name))
                  | Some (v, mf) ->
                     if Osd.Blob.equal blob (Osd.Blob.Lwt_bytes v)
                     then Lwt.return (Nsm_model.Assert.ObjectHasId
                                        (object_name,
                                         mf.Nsm_model.Manifest.object_id))
-                    else Lwt.fail_with "TODO assert failed")
+                    else Lwt.fail Nsm_model.Err.(Nsm_exn (Assert_failed, object_name)))
             asserts
         in
 
@@ -186,10 +186,27 @@ class client
                        ~namespace
                        (fun nsm ->
                         nsm # apply_sequence nsm_asserts nsm_updates) >>= fun () ->
+
+           (* update the manifest cache *)
+           alba_client # nsm_host_access # with_namespace_id
+                       ~namespace
+                       (fun namespace_id ->
+                        List.iter
+                          (function
+                            | Nsm_model.Update.DeleteObject _ -> ()
+                            | Nsm_model.Update.PutObject (mf, _) ->
+                               Manifest_cache.ManifestCache.add
+                                 (alba_client # get_manifest_cache)
+                                 namespace_id mf.Nsm_model.Manifest.name mf)
+                          nsm_updates;
+                        Lwt.return ())
+           >>= fun () ->
            Lwt.return Osd.Ok)
-          (fun exn ->
-           (* TODO catch a failed assert and return it in the correct way *)
-           Lwt.return (Osd.Exn Osd.Error.(Unknown_error (666, ""))))
+          (function
+            | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Assert_failed, key) ->
+               Lwt.return (Osd.Exn Osd.Error.(Assert_failed key))
+            | exn ->
+               Lwt.fail exn)
     end
   in
   object(self :# Osd.osd)
@@ -234,7 +251,7 @@ let rec make_client
           ~preset_name =
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
-      ~size:10 (* albamgr_connection_pool_size *)
+      ~size:10 (* TODO albamgr_connection_pool_size *)
       abm_cfg
       tls_config
       Buffer_pool.default_buffer_pool
@@ -254,5 +271,6 @@ let rec make_client
     ~osd_access
     ~tls_config () >>= fun (alba_client, closer) ->
   alba_client # mgr_access # get_alba_id >>= fun alba_id ->
+  (* TODO create prefix namespace *)
   let client = new client alba_client ~alba_id ~prefix ~preset_name in
   Lwt.return ((client :> Osd.osd), closer)

@@ -87,6 +87,7 @@ let test_multi_exists client =
            Slice.wrap_string "non_existing"
          ]
   >>= fun res ->
+  Lwt_log.debug ([%show : bool list] res) >>= fun () ->
   assert (2 = List.length res);
   assert ([true;false] = res );
   Lwt.return ()
@@ -177,6 +178,7 @@ let test_assert (client : kvs) =
       | Asd_protocol.Protocol.Error.Exn Asd_protocol.Protocol.Error.Assert_failed _ ->
          Lwt.return_unit
       | exn ->
+         Lwt_log.warning ~exn "Got the wrong exn!" >>= fun () ->
          Lwt.fail exn)
   >>= fun () ->
   apply client
