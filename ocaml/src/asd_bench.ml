@@ -57,7 +57,7 @@ let bench_blobs path scenarios count value_size partial_read_size engine =
         (fun fnr ->
          dir_info # push_blob_data
            (Int64.of_int fnr) value_size [0, partial_read_size]
-           (fun _slice _buff _off _len -> Lwt.return_unit)
+           (fun _slice _buff _off -> Lwt.return_unit)
         )
         count
     in

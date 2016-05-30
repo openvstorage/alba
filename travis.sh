@@ -10,7 +10,7 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
-         camlbz \
+         camlbz2 \
          snappy \
          sexplib \
          bisect \
@@ -142,7 +142,7 @@ install () {
     echo "Installing specific orocksdb"
     git clone https://github.com/domsj/orocksdb.git
     cd orocksdb
-    git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9
+    git checkout bd2fa718ac284e1e84b45a648d69626ebc95c857
     ./install_rocksdb.sh
     make build install
     cd ..

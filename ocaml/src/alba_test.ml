@@ -599,6 +599,7 @@ let test_partial_download () =
        >>= fun res ->
        let object_data = Option.get_some res in
        let hasher = Hashes.make_hash (Checksum.algo_of checksum) in
+       assert (String.length object_data = Int64.to_int size);
        hasher # update_string object_data;
        assert (checksum = hasher # final ());
 

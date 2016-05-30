@@ -139,7 +139,6 @@ module Batch = struct
        begin
          let bp = _alloc 1 in
          let b = !@ bp in
-         _debug_batch bp;
          let a = getf b array in
          (* TODO: this is a bad interface *)
          let copy_attr fn =

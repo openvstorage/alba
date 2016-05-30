@@ -141,7 +141,7 @@ class virtual blob_access =
 object(self)
   method virtual config : config
 
-  method virtual get_blob : fnr -> int -> bytes Lwt.t
+  method virtual get_blob : fnr -> int (* size of the blob *) -> bytes Lwt.t
 
   method virtual
       send_blob_data_to :
@@ -154,7 +154,7 @@ object(self)
       push_blob_data :
         fnr -> length
         -> (offset * length) list
-        -> ((offset * length) -> Lwt_bytes.t -> offset -> length -> unit Lwt.t)
+        -> ((offset * length) -> Lwt_bytes.t -> offset -> unit Lwt.t)
         -> unit Lwt.t
 
   (* method virtual with_blob_fd : fnr -> (Lwt_unix.file_descr -> unit Lwt.t) -> unit Lwt.t *)
@@ -259,7 +259,7 @@ object(self)
           (fun (offset, length) ->
             let buffer = Lwt_bytes.create length in
             (* fill it *)
-            f (offset,length) buffer 0 length
+            f (offset,length) buffer 0
             >>= fun () ->
             let () =
               if config.use_fadvise

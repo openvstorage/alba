@@ -24,7 +24,7 @@ open Asd_protocol
 class g_directory_info gioexecfile config =
   let _throw_ex_from ec function_name par =
     (* TODO: do we need to be specific ? *)
-    let error = Unix.EUNKNOWNERR (Int32.to_int ec) in
+    let error = Unix.EUNKNOWNERR (- Int32.to_int ec) in
     let ex =Unix.Unix_error(error, function_name, par) in
     Lwt.fail ex
   in
@@ -64,11 +64,17 @@ object(self)
     let completion_id = self # next_completion_id in
 
     IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
-    let bytes = GMemPool.alloc len in
+    let len' =
+          let remainder = len mod 4096 in
+          if remainder = 0
+          then len
+          else len + (4096 - remainder)
+        in
+    let bytes = GMemPool.alloc len' in
 
     Lwt.finalize
       (fun () ->
-        let fragment = Fragment.make completion_id 0 len bytes in
+        let fragment = Fragment.make completion_id 0 len' bytes in
         let fragments = [ fragment ] in
         let batch = Batch.make fragments in
         IOExecFile.file_read handle batch _event_channel >>= fun () ->
@@ -96,7 +102,7 @@ object(self)
 
 
   method _push_blob_data fnr len slices _f =
-    Lwt_log.debug_f "push_blob_data fnr:%Li len:%i slices:%si"
+    Lwt_log.debug_f "push_blob_data fnr:%Li len:%i slices:%s"
                     fnr len ([%show : (int * int) list] slices)
     >>= fun () ->
     let fn = self # _get_file_path fnr in
@@ -143,6 +149,11 @@ object(self)
         IOExecFile.file_read handle batch _event_channel >>= fun () ->
         Lwt_list.map_p
           (fun correction ->
+            let (completion_id, off', off, len, len', fragment) = correction in
+            Lwt_log.debug_f
+              "push_blob_data: correction:(%Li,off':%i, off:%i, len:%i, len':%i,fragment:%s):"
+              completion_id off' off len len' (Fragment.show fragment)
+            >>= fun () ->
             let completion_id, _, _, _,_, _ = correction in
             self # _wait_for_completion completion_id >>= fun ec ->
             Lwt.return (correction, ec)
@@ -167,7 +178,7 @@ object(self)
       let (completion_id,off',off,len, len',fragment) = correction in
       let buffer = Fragment.get_bytes  fragment in
       let left = off - off' in
-      f (off, len) buffer left len
+      f (off, len) buffer left
     in
     self # _push_blob_data fnr len slices _f
 
@@ -176,6 +187,9 @@ object(self)
       let (completion_id,off',off, len,len',fragment) = correction in
       let buffer = Fragment.get_bytes fragment in
       let left = off' - off in
+      Lwt_log.debug_f "push_blob_data: write bytes: (%Li) left:%i len:%i"
+                      completion_id left len
+      >>= fun () ->
       Net_fd.write_all_lwt_bytes nfd buffer left len
     in
     self # _push_blob_data fnr len slices _f
@@ -219,7 +233,7 @@ object(self)
     then
       begin
         Lwt_log.info_f
-          "ragged blob size: fnr:%Li len:%i (0x%0x) special casing"
+          "ragged blob size: fnr:%Li len:%i (0x%0x) using ordinary write"
           fnr len len
         >>= fun () ->
         Lwt_extra2.with_fd
