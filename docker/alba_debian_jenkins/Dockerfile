@@ -87,6 +87,8 @@ RUN apt-get update && apt-get -y install cmake
 # install gtest TODO:specific version ?
 RUN git clone  https://github.com/google/googletest
 RUN cd googletest &&  mkdir build && cd build && cmake .. && sudo make install
+RUN cd googletest && git log --oneline | head -n 5
+
 # libgtest.a ends up in /usr/local/lib/
 
 # install specific arakoon.
@@ -175,7 +177,7 @@ RUN apt-get install -y \
 
 # gobjfs shared lib:
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout f8301f15b1e0575cbba4da0adb15e88c9534d978
+RUN cd gobjfs  && git pull && git checkout 8732b549a4f1b554be5903a905124397f72e5977
 RUN cd gobjfs \
        && mkdir build \
        && cd build \

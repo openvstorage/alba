@@ -97,6 +97,7 @@ RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
 RUN yum -y install cmake3 sudo
+
 # make sudo work:
 #
 # Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
@@ -105,12 +106,30 @@ RUN yum -y install cmake3 sudo
 # Defaults    requiretty          # is line 56
 RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
 
+RUN echo '%_install_langs C' >> /etc/rpm/macros && \
+    yum -y install epel-release && \
+    echo -e '[ovs]\nname=ovs\nbaseurl=http://yum.openvstorage.org/CentOS/7/x86_64/dists/unstable\nenabled=1\ngpgcheck=0' > /etc/yum.repos.d/ovs.repo && \
+    yum -y update && \
+    yum -y install  \
+                   boost-devel \
+                   libaio-devel \
+                   librdmacm-devel \
+                   gflags-devel \
+                   glog-devel \
+                   libunwind \
+    && \
+    yum clean all && \
+    rm -rf /usr/share/doc/*
+RUN ln -s /usr/lib64/libunwind.so.8 /usr/lib64/libunwind.so
 
 # install gtest TODO:specific version ?
 RUN git clone  https://github.com/google/googletest \
     && cd googletest &&  mkdir build && cd build && cmake3 .. \
     && sudo make install
+RUN cd googletest && git log --oneline | head -n 5
+
 # libgtest.a ends up in /usr/local/lib/
+RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
@@ -160,23 +179,19 @@ RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-2.0-1.el7.centos.x86_64.rpm
 RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-devel-2.0-1.el7.centos.x86_64.rpm
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
-# gobjfs specifics:
-# TODO: how to get these on
-RUN yum -y install libaio1
 
 # gobjfs shared lib:
 
-
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout f8301f15b1e0575cbba4da0adb15e88c9534d978
+RUN cd gobjfs  && git pull && git checkout 8732b549a4f1b554be5903a905124397f72e5977
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
        && cmake3 .. \
        && make \
-       && cp ../lib/lib*.so /usr/local/lib
+       && cp ../lib/lib*.so /usr/lib64/
 
-ENV LD_LIBRARY_PATH=/usr/local/lib
+ENV LD_LIBRARY_PATH=/usr/lib64
 
 RUN yum -y install iproute
 ENV opam_env='opam config env --root=/home/alba/OPAM'

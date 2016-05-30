@@ -160,15 +160,26 @@ install () {
 
     date
 
+    echo "Installing gtest"
+
+    git clone  https://github.com/google/googletest
+    pushd googletest
+    mkdir build && cd build && cmake .. && sudo make install
+    git log --oneline | head -n 5
+    popd
+
+    date
+
     echo "Installing gobjfs"
     pushd .
     apt-get install -y libaio1 libaio1-dbg libaio-dev libz-dev libbz2-dev \
             libgoogle-glog-dev libunwind8-dev
 
+    cmake --version
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout f8301f15b1e0575cbba4da0adb15e88c9534d978
+    git checkout 8732b549a4f1b554be5903a905124397f72e5977
     mkdir build
     cd build
     cmake ..
