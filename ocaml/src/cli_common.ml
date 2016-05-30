@@ -405,6 +405,12 @@ let only_test =
        & info ["only-test"] ~docv:"ONLY-TEST" ~doc:"limit tests to filter:$(docv)"
   )
 
+let node_id default =
+  let doc = "the $(docv) just for this node" in
+  Arg.(value
+       & opt (some string) default
+       & info ["node-id"] ~docv:"NODE_ID" ~doc
+      )
 
 let verify_log_level log_level =
   let levels = [ "debug"; "info"; "notice"; "warning"; "error"; "fatal"; ] in
