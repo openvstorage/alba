@@ -34,6 +34,7 @@ module Osd_pool = struct
         pool_size : int;
         buffer_pool : Buffer_pool.t;
         tls_config: Tls.t option;
+        tcp_keepalive : Tcp_keepalive.t;
         make_alba_osd_client : Alba_arakoon.Config.t ref ->
                                tls_config:Tls.t Ppx_deriving_runtime.option ->
                                tcp_keepalive:Tcp_keepalive.t ->
@@ -42,17 +43,23 @@ module Osd_pool = struct
                                (Osd'.osd * (unit -> unit Lwt.t)) Lwt.t;
       }
 
-    let make ~size ~get_osd_kind buffer_pool tls_config make_alba_osd_client =
+    let make
+          ~size ~get_osd_kind
+          buffer_pool
+          ~tls_config
+          ~tcp_keepalive
+          make_alba_osd_client =
       let pools = Hashtbl.create 0 in
       { pools;
         get_osd_kind;
         pool_size = size;
         buffer_pool;
         tls_config;
+        tcp_keepalive;
         make_alba_osd_client;
       }
 
-    let factory tls_config buffer_pool make_alba_osd_client =
+    let factory tls_config tcp_keepalive buffer_pool make_alba_osd_client =
       function
       | OsdInfo.Asd (conn_info', asd_id) ->
          let () =
@@ -75,7 +82,7 @@ module Osd_pool = struct
          make_alba_osd_client
            (ref cfg)
            ~tls_config
-           ~tcp_keepalive:Tcp_keepalive2.default (* TODO *)
+           ~tcp_keepalive
            ~prefix ~preset_name:(Some preset)
 
     let use_osd t ~(osd_id:int32) f =
@@ -85,7 +92,7 @@ module Osd_pool = struct
           begin
             t.get_osd_kind osd_id >>= fun kind ->
             let factory () =
-              factory t.tls_config t.buffer_pool t.make_alba_osd_client kind
+              factory t.tls_config t.tcp_keepalive t.buffer_pool t.make_alba_osd_client kind
             in
             let p =
               Lwt_pool2.create
@@ -126,6 +133,7 @@ class osd_access
         ~osd_timeout
         ~default_osd_priority
         ~tls_config
+        ~tcp_keepalive
         make_alba_osd_client
   =
   let () = Lwt_log.ign_debug_f "osd_access ... tls_config:%s" ([%show : Tls.t option] tls_config) in
@@ -156,6 +164,7 @@ class osd_access
              let osd_info,osd_state = Hashtbl.find osds_info_cache osd_id in
              Osd_pool.factory
                tls_config
+               tcp_keepalive
                osd_buffer_pool
                make_alba_osd_client
                osd_info.OsdInfo.kind
@@ -192,7 +201,8 @@ class osd_access
                      let open Nsm_model.OsdInfo in
                      Lwt.return osd_info.kind)
       osd_buffer_pool
-      tls_config
+      ~tls_config
+      ~tcp_keepalive
       make_alba_osd_client
   in
 
@@ -369,6 +379,7 @@ class osd_access
     method osd_factory osd_info =
       Osd_pool.factory
         tls_config
+        tcp_keepalive
         osd_buffer_pool
         make_alba_osd_client
         osd_info.Nsm_model.OsdInfo.kind
@@ -538,6 +549,7 @@ class osd_access
                  let kind = OsdInfo.Kinetic (conn_info, id) in
                  Osd_pool.factory
                    tls_config
+                   tcp_keepalive
                    osd_buffer_pool
                    make_alba_osd_client
                    kind >>= fun (osd, closer) ->
@@ -601,6 +613,7 @@ class osd_access
                             (fun () ->
                              Osd_pool.factory
                                tls_config
+                               tcp_keepalive
                                osd_buffer_pool
                                make_alba_osd_client
                                kind >>= fun (osd, closer) ->

@@ -55,7 +55,8 @@ class alba_cache
   let osd_access =
     new Osd_access.osd_access mgr_access
         ~osd_connection_pool_size ~osd_timeout
-        ~default_osd_priority:Osd.High ~tls_config
+        ~default_osd_priority:Osd.High
+        ~tls_config ~tcp_keepalive
         Alba_osd.make_client
   in
   let base_client = new Alba_base_client.client

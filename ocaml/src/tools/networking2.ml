@@ -33,6 +33,8 @@ exception ConnectTimeout
 
 let connect_with ip port transport ~tls_config =
 
+  (* TODO tcp keepalive for all client connections? *)
+
   let address = make_address ip port in
   let fd =
     Net_fd.socket

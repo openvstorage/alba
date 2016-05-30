@@ -46,7 +46,8 @@ let with_client albamgr_client_cfg
   let osd_access =
     new Osd_access.osd_access mgr_access
         ~osd_connection_pool_size ~osd_timeout
-        ~default_osd_priority ~tls_config
+        ~default_osd_priority
+        ~tls_config ~tcp_keepalive
         Alba_osd.make_client
   in
   Alba_client.with_client

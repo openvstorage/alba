@@ -551,6 +551,7 @@ let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts 
 
        Osd_access.Osd_pool.factory
          tls_config
+         Tcp_keepalive2.default
          Buffer_pool.osd_buffer_pool
          Alba_osd.make_client
          kind

@@ -167,6 +167,7 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
      let open Networking2 in
      Osd_access.Osd_pool.factory
        conn_info.tls_config
+       Tcp_keepalive2.default
        buffer_pool
        Alba_osd.make_client
        k >>= fun (client, closer) ->

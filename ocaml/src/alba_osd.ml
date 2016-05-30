@@ -264,6 +264,7 @@ let rec make_client
         ~osd_timeout:2.
         ~default_osd_priority:Osd.High
         ~tls_config
+        ~tcp_keepalive
         make_client
   in
   Alba_client.make_client
