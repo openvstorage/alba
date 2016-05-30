@@ -171,6 +171,7 @@ install () {
     echo "Installing gobjfs"
     pushd .
     sudo apt-get install -y \
+           libboost-all-dev \
            libaio1 libaio1-dbg libaio-dev libz-dev libbz2-dev \
            libgoogle-glog-dev libunwind8-dev
 
@@ -183,7 +184,7 @@ install () {
     cd build
     cmake ..
     make
-    cp ../lib/lib*.so /usr/local/lib
+    sudo cp ../lib/lib*.so /usr/local/lib
     popd
 
     date
@@ -226,12 +227,6 @@ script () {
             g++ --version
             uname -a
             export CXX=g++-4.8
-            sudo apt-get install -y libboost-all-dev # kitchen sink
-            sudo apt-get install -y fuse
-            sudo modprobe fuse
-            wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
-            sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
-
             ./jenkins/cpp/010-build_client.sh
             ${TEST_DRIVER} cpp
             fab alba.smoke_test
