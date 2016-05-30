@@ -10,27 +10,28 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
-         camlbz2.0.6.0 \
-         snappy.0.1.0 \
+         camlbz \
+         snappy \
+         sexplib \
+         bisect \
          lwt.2.5.1 \
-         camltc.0.9.2 \
-         cstruct.1.7.0 \
-         ctypes.0.4.1 \
-         ctypes-foreign.0.4.0 \
-         bisect.1.3 \
-         ocplib-endian.0.8 \
+         camltc \
+         cstruct \
+         ctypes \
+         ctypes-foreign \
+         uuidm  \
+         zarith \
+         mirage-no-xen.1 \
          quickcheck.1.0.2 \
-         uuidm.0.9.5 \
-         zarith.1.3 \
+         cmdliner \
+         conf-libev \
+         depext \
          kinetic-client \
          tiny_json \
-         cmdliner \
          ppx_deriving ppx_deriving_yojson \
-         sexplib.113.00.00 \
          core.113.00.00 \
-         conf-libev \
          redis \
-         uri \
+         uri.1.9.1 \
          result
 "
 
