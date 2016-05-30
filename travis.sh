@@ -156,9 +156,7 @@ install () {
 
     date
 
-    ./jenkins/system2/020-build_ocaml.sh
 
-    date
 
     echo "Installing gtest"
 
@@ -172,8 +170,9 @@ install () {
 
     echo "Installing gobjfs"
     pushd .
-    apt-get install -y libaio1 libaio1-dbg libaio-dev libz-dev libbz2-dev \
-            libgoogle-glog-dev libunwind8-dev
+    sudo apt-get install -y \
+           libaio1 libaio1-dbg libaio-dev libz-dev libbz2-dev \
+           libgoogle-glog-dev libunwind8-dev
 
     cmake --version
     git clone https://github.com/openvstorage/gobjfs.git
@@ -186,6 +185,10 @@ install () {
     make
     cp ../lib/lib*.so /usr/local/lib
     popd
+
+    date
+
+    ./jenkins/system2/020-build_ocaml.sh
 
     date
 }
