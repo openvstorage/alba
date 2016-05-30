@@ -1488,12 +1488,6 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       in
       Hashtbl.fold
         (fun _ update acc ->
-         (* TODO
-          * mss willen er op dezelfde keys werken, via assert&set ipv user function
-          *  ... dan is't een probleem
-          * voorlopig minstens sanity check inbouwen dat niet 2 keer
-          * dezelfde key gemanipuleerd wordt?
-          *)
          let upds =
            let open Update in
            match update with

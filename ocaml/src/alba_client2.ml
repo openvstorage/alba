@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-let with_client albamgr_client_cfg
+let make_client albamgr_client_cfg
                 ?fragment_cache
                 ?manifest_cache_size
                 ?bad_fragment_callback
@@ -32,7 +32,7 @@ let with_client albamgr_client_cfg
                 ?partial_osd_read
                 ?cache_on_read
                 ?cache_on_write
-                f
+                ()
   =
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
@@ -50,7 +50,7 @@ let with_client albamgr_client_cfg
         ~tls_config ~tcp_keepalive
         Alba_osd.make_client
   in
-  Alba_client.with_client
+  Alba_client.make_client
     mgr_access
     ~osd_access
     ?fragment_cache
@@ -64,4 +64,45 @@ let with_client albamgr_client_cfg
     ?partial_osd_read
     ?cache_on_read
     ?cache_on_write
-    f
+    ()
+
+let with_client albamgr_client_cfg
+                ?fragment_cache
+                ?manifest_cache_size
+                ?bad_fragment_callback
+                ?albamgr_connection_pool_size
+                ?nsm_host_connection_pool_size
+                ?osd_connection_pool_size
+                ?osd_timeout
+                ?default_osd_priority
+                ~tls_config
+                ?release_resources
+                ?tcp_keepalive
+                ?use_fadvise
+                ?partial_osd_read
+                ?cache_on_read
+                ?cache_on_write
+                f
+  =
+  let client, closer =
+    make_client albamgr_client_cfg
+                ?fragment_cache
+                ?manifest_cache_size
+                ?bad_fragment_callback
+                ?albamgr_connection_pool_size
+                ?nsm_host_connection_pool_size
+                ?osd_connection_pool_size
+                ?osd_timeout
+                ?default_osd_priority
+                ~tls_config
+                ?release_resources
+                ?tcp_keepalive
+                ?use_fadvise
+                ?partial_osd_read
+                ?cache_on_read
+                ?cache_on_write
+                ()
+  in
+  Lwt.finalize
+    (fun () -> f client)
+    closer

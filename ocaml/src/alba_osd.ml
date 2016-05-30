@@ -267,10 +267,12 @@ let rec make_client
         ~tcp_keepalive
         make_client
   in
-  Alba_client.make_client
-    mgr_access
-    ~osd_access
-    ~tls_config () >>= fun (alba_client, closer) ->
+  let alba_client, closer =
+    Alba_client.make_client
+      mgr_access
+      ~osd_access
+      ~tls_config ()
+  in
   alba_client # mgr_access # get_alba_id >>= fun alba_id ->
   (* TODO create prefix namespace *)
   let client = new client alba_client ~alba_id ~prefix ~preset_name in

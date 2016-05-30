@@ -41,42 +41,28 @@ class alba_cache
         ~partial_osd_read
         ~cache_on_read ~cache_on_write
   =
-  let tcp_keepalive = Tcp_keepalive2.default in
-  (* TODO this should probably use a function in Alba_client... *)
-  let albamgr_pool =
-    Remotes.Pool.Albamgr.make
-      ~size:albamgr_connection_pool_size
+  let client, closer =
+    Alba_client2.make_client
       albamgr_cfg_ref
-      tls_config
-      Buffer_pool.default_buffer_pool
-      ~tcp_keepalive
+      ~fragment_cache:nested_fragment_cache
+      ~manifest_cache_size
+      ~albamgr_connection_pool_size
+      ~nsm_host_connection_pool_size
+      ~osd_connection_pool_size
+      ~osd_timeout
+      ~tls_config
+      ~partial_osd_read
+      ~cache_on_read ~cache_on_write
+      ~default_osd_priority:Osd.High
+      ~bad_fragment_callback:(fun alba_client
+                                  ~namespace_id
+                                  ~object_id ~object_name
+                                  ~chunk_id ~fragment_id
+                                  ~location -> ())
+      ~use_fadvise:true
+      ()
   in
-  let mgr_access = ((Albamgr_access.make albamgr_pool) :> Albamgr_client.client) in
-  let osd_access =
-    new Osd_access.osd_access mgr_access
-        ~osd_connection_pool_size ~osd_timeout
-        ~default_osd_priority:Osd.High
-        ~tls_config ~tcp_keepalive
-        Alba_osd.make_client
-  in
-  let base_client = new Alba_base_client.client
-                        nested_fragment_cache
-                        ~mgr_access
-                        ~osd_access
-                        ~manifest_cache_size
-                        ~bad_fragment_callback:(fun alba_client
-                                                    ~namespace_id
-                                                    ~object_id ~object_name
-                                                    ~chunk_id ~fragment_id
-                                                    ~location -> ())
-                        ~nsm_host_connection_pool_size
-                        ~tls_config
-                        ~tcp_keepalive
-                        ~use_fadvise:true
-                        ~partial_osd_read
-                        ~cache_on_read ~cache_on_write
-  in
-  let client = new Alba_client.alba_client base_client in
+  let base_client = client # get_base_client in
   let make_object_name ~bid ~name =
     match bucket_strategy with
     | OneOnOne _ ->
@@ -167,9 +153,5 @@ class alba_cache
       else
         Lwt.return_unit
 
-    method close () =
-      nested_fragment_cache # close () >>= fun () ->
-      base_client # osd_access # finalize;
-      base_client # nsm_host_access # finalize;
-      Lwt_pool2.finalize albamgr_pool
+    method close () = closer ()
   end

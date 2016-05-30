@@ -479,11 +479,13 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
       begin
         base_client # osd_access # finalize;
         base_client # nsm_host_access # finalize;
-        mgr_access # finalize
-      end;
-    Lwt.return ()
+        mgr_access # finalize;
+        fragment_cache # close ()
+      end
+    else
+      Lwt.return ()
   in
-  Lwt.return (client, closer)
+  (client, closer)
 
 let with_client albamgr_client_cfg
                 ~osd_access
@@ -500,7 +502,8 @@ let with_client albamgr_client_cfg
                 ?cache_on_write
                 f
   =
-  make_client albamgr_client_cfg
+  let client, closer =
+    make_client albamgr_client_cfg
               ~osd_access
               ?fragment_cache
               ?manifest_cache_size
@@ -514,7 +517,7 @@ let with_client albamgr_client_cfg
               ?cache_on_read
               ?cache_on_write
               ()
-  >>= fun (client, closer) ->
+  in
   Lwt.finalize
     (fun () -> f client)
     closer
