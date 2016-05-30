@@ -44,9 +44,6 @@ object(self)
 
   initializer
     begin
-      IOExecFile.init gioexecfile;
-      let align_size = 4096 in
-      GMemPool.init align_size;
       Lwt.ignore_result (self # _inner ())
     end
 
@@ -104,14 +101,40 @@ object(self)
     >>= fun () ->
     let fn = self # _get_file_path fnr in
     IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
-    let fragments =
+    let corrections =
       List.map
         (fun (off,len) ->
           let completion_id = self # next_completion_id in
-          let bytes = GMemPool.alloc len in
-          let fragment = Fragment.make completion_id off len bytes in
-          fragment
+          (*
+              (for now) gobjfs does not support arbitrary partial reads
+              but offset and len needs to be multiples of 4096
+
+              |---- left ------- | ----- len ----- |----- right -----|
+             off'               off             off+len          off'+len'
+
+           *)
+
+          let left = off mod 4096 in
+          let off' =
+            if left = 0
+            then off
+            else off - left
+          in
+          let remainder = (left + len) mod 4096 in
+          let len' =
+            if remainder = 0
+            then left + len
+            else left + len + (4096 - remainder)
+          in
+          let bytes = GMemPool.alloc len' in
+          let fragment = Fragment.make completion_id off' len' bytes in
+          (completion_id, off', off, len, len', fragment)
         ) slices
+    in
+    let fragments =
+      List.map
+        (fun (completion_id, off', off, len, len', fragment) -> fragment)
+        corrections
     in
     let batch = Batch.make fragments in
 
@@ -119,11 +142,12 @@ object(self)
       (fun () ->
         IOExecFile.file_read handle batch _event_channel >>= fun () ->
         Lwt_list.map_p
-          (fun fragment ->
-            self # _wait_for_completion (Fragment.get_completion_id fragment) >>= fun ec ->
-            Lwt.return (fragment, ec)
+          (fun correction ->
+            let completion_id, _, _, _,_, _ = correction in
+            self # _wait_for_completion completion_id >>= fun ec ->
+            Lwt.return (correction, ec)
           )
-          fragments
+          corrections
         >>= fun results ->
         _process_results
           (fun (_,ec) -> ec)
@@ -139,21 +163,20 @@ object(self)
       )
 
   method push_blob_data fnr len slices f =
-    let _f (fragment,ec) =
-      let offset = Fragment.get_offset fragment
-      and size   = Fragment.get_size   fragment
-      and buffer = Fragment.get_bytes  fragment
-      in
-      f (offset, size) buffer 0 size
+    let _f (correction,ec) =
+      let (completion_id,off',off,len, len',fragment) = correction in
+      let buffer = Fragment.get_bytes  fragment in
+      let left = off - off' in
+      f (off, len) buffer left len
     in
     self # _push_blob_data fnr len slices _f
 
   method send_blob_data_to fnr len slices nfd =
-    let _f (fragment,ec) =
-      let size   = Fragment.get_size  fragment
-      and buffer = Fragment.get_bytes fragment
-      in
-      Net_fd.write_all_lwt_bytes nfd buffer 0 size
+    let _f (correction, ec) =
+      let (completion_id,off',off, len,len',fragment) = correction in
+      let buffer = Fragment.get_bytes fragment in
+      let left = off' - off in
+      Net_fd.write_all_lwt_bytes nfd buffer left len
     in
     self # _push_blob_data fnr len slices _f
 
@@ -190,38 +213,73 @@ object(self)
     let completion_id = self # next_completion_id  in
     Lwt_log.debug_f "write_blob ~fnr:%Li completion_id:%Li" fnr completion_id >>= fun () ->
     let len = Blob.length blob in
-    let bytes = GMemPool.alloc len in
-    let fragment = Fragment.make completion_id 0 len bytes in
+    let alignment = 4096 in
+    let remainder = len mod alignment in
+    if remainder <> 0
+    then
+      begin
+        Lwt_log.info_f
+          "ragged blob size: fnr:%Li len:%i (0x%0x) special casing"
+          fnr len len
+        >>= fun () ->
+        Lwt_extra2.with_fd
+          file_path
+          ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
+          ~perm:0o664
+          (fun fd ->
+            let extra = alignment - remainder in
+            let padded_size = len + extra  in
+            let bytes = Lwt_bytes.create padded_size in
+            Lwt.finalize
+              (fun () ->
+                let src = Blob.get_string_unsafe blob in
+                Lwt_bytes.blit_from_bytes src 0 bytes 0 len;
+                Lwt_bytes.fill bytes len extra '\x00';
+                Lwt_extra2.write_all_lwt_bytes fd bytes 0 padded_size
 
-    (* TODO: don't blit *)
-    let tgt = Fragment.get_bytes fragment in
-    let src = blob |> Blob.get_bigslice in
-    Lwt_bytes.blit src.Bigstring_slice.bs 0 tgt 0 len;
+              )
+              (fun () ->
+                Lwt_bytes2.Lwt_bytes.unsafe_destroy bytes;
+                let parent_dir = config.files_path ^ "/" ^ dir in
+                post_write (Some fd) len parent_dir
+              )
+          )
+      end
+    else
+      begin
+        let bytes = GMemPool.alloc len in
+        let fragment = Fragment.make completion_id 0 len bytes in
+
+        (* TODO: don't blit *)
+        let tgt = Fragment.get_bytes fragment in
+        let src = blob |> Blob.get_bigslice in
+        Lwt_bytes.blit src.Bigstring_slice.bs 0 tgt 0 len;
 
 
-    let fragments = [fragment] in
-    let batch = Batch.make fragments in
-    IOExecFile.file_open
-      file_path
-      [Unix.O_WRONLY;Unix.O_CREAT;Unix.O_SYNC]
-    >>= fun handle ->
+        let fragments = [fragment] in
+        let batch = Batch.make fragments in
+        IOExecFile.file_open
+          file_path
+          [Unix.O_WRONLY;Unix.O_CREAT;Unix.O_SYNC]
+        >>= fun handle ->
 
-    Lwt.finalize
-      (fun () ->
-        IOExecFile.file_write handle batch _event_channel >>= fun () ->
-        self # _wait_for_completion completion_id >>= fun ec ->
-        Lwt_log.debug_f "%Li:write ec=%li" completion_id ec >>= fun () ->
-        if ec <> 0l
-        then _throw_ex_from ec "write_blob" file_path
-        else Lwt.return_unit
-      )
-      (fun () ->
-        GMemPool.free bytes;
-        IOExecFile.file_close handle >>= fun () ->
-        let parent_dir = config.files_path ^ "/" ^ dir in
-        post_write None len parent_dir >>= fun () ->
-        Lwt_log.debug_f "write_blob finalizer done"
-      )
+        Lwt.finalize
+          (fun () ->
+            IOExecFile.file_write handle batch _event_channel >>= fun () ->
+            self # _wait_for_completion completion_id >>= fun ec ->
+            Lwt_log.debug_f "%Li:write ec=%li" completion_id ec >>= fun () ->
+            if ec <> 0l
+            then _throw_ex_from ec "write_blob" file_path
+            else Lwt.return_unit
+          )
+          (fun () ->
+            GMemPool.free bytes;
+            IOExecFile.file_close handle >>= fun () ->
+            let parent_dir = config.files_path ^ "/" ^ dir in
+            post_write None len parent_dir >>= fun () ->
+            Lwt_log.debug_f "write_blob finalizer done"
+          )
+      end
 
   method delete_blobs fnrs ~ignore_unlink_error =
     Lwt_log.debug_f "delete_blobs ~fnrs:%s" ([%show: int64 list] fnrs) >>= fun () ->

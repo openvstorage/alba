@@ -759,7 +759,7 @@ type blob_io_engine =
 let blob_io_engine_from_cfg = function
   | ["Pure"] -> Pure
   | ["GioExecFile"; x] -> GioExecFile x
-  | x -> failwith ([% show: string list] x)
+  | x -> failwith (Printf.sprintf "unknown blob io engine :%s" ([% show: string list] x))
 
 type asd_cfg = {
     node_id: string;

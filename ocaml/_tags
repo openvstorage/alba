@@ -29,6 +29,7 @@ true: package(result)
 "src/alba.byte" : use_Jerasure, use_gcrypt, use_isal, use_gobjfs
 "src/disk_failure_tests.native": use_Jerasure, use_gcrypt, use_isal, use_gobjfs
 "src/kinetic_client_test.native": use_Jerasure, use_gcrypt, use_isal, use_gobjfs
+"src/gobjfs/test.native": use_gcrypt, use_gobjfs
 "src":include
 "src/experiments":include
 "src/tools":include

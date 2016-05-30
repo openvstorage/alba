@@ -1028,6 +1028,7 @@ let run_server
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->
     let () = let open Rocks in RocksDb.close db in
+    let () = Blob_access_factory.endgame () in
     Lwt_log.fatal_f "endgame: closed  %s" db_path
   in
 

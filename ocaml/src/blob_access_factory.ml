@@ -22,6 +22,17 @@ let make_directory_access files_path =
   let r = new default_directory_access files_path in
   (r :> directory_access)
 
+let _init = ref false
+let maybe_init_service gioexecfile =
+  if not !_init
+  then
+    begin
+      Gobjfs.IOExecFile.init gioexecfile;
+      let align_size = 4096 in
+      Gobjfs.GMemPool.init align_size;
+      _init := true
+      end
+
 let make_directory_info
       ~engine
       ?(write_blobs = true)
@@ -35,7 +46,8 @@ let make_directory_info
   match engine with
   | Config.Pure -> (new directory_info config :> blob_dir_access)
   | Config.GioExecFile conf_file ->
+     let () = maybe_init_service conf_file in
      (new Gblob_access.g_directory_info conf_file config :> blob_dir_access)
 
-
-
+let endgame () =
+  if !_init then Gobjfs.IOExecFile.destroy()

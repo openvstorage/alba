@@ -324,30 +324,9 @@ object(self)
                     Posix.lwt_fallocate fd 0 0 len
                   else
                     Lwt.return_unit
-                 ) >>= fun () ->
-                 let open Asd_protocol.Blob in
-                 (* TODO push to blob module? *)
-
-                 (match blob with
-                  | Lwt_bytes s ->
-                     Lwt_extra2.write_all_lwt_bytes
-                       fd
-                       s 0 len
-                  | Bigslice s ->
-                     let open Bigstring_slice in
-                     Lwt_extra2.write_all_lwt_bytes
-                       fd
-                       s.bs s.offset s.length
-                  | Bytes s ->
-                     Lwt_extra2.write_all
-                       fd
-                       s 0 len
-                  | Slice s ->
-                     let open Slice.Slice in
-                     Lwt_extra2.write_all
-                       fd
-                       s.buf s.offset len
                  )
+                 >>= fun () ->
+                 Asd_protocol.Blob.write_blob blob fd
                )
                (fun () ->
                  let parent_dir = config.files_path ^ "/" ^ dir in
