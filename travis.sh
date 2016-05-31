@@ -118,7 +118,7 @@ install () {
     echo "Installing some specific arakoon"
     git clone https://github.com/openvstorage/arakoon.git
     cd arakoon
-    git checkout tags/1.9.3
+    git checkout tags/1.9.4
     make
     export PREFIX=/home/travis/.opam/system
     export OCAML_LIBDIR=`ocamlfind printconf destdir`
@@ -214,8 +214,10 @@ script () {
             true
             ;;
         system2)
-            ${TEST_DRIVER} ocaml | tail -n256
-            expr $PIPESTATUS && false
+            ${TEST_DRIVER} ocaml | tail -n1000
+            X=$PIPESTATUS
+            cat testresults.xml
+            expr $X && false
             ;;
         disk_failures)
             ${TEST_DRIVER} disk_failures

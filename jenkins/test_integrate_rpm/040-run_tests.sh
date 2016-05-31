@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
 set -v
-. ./_virt/bin/activate
 
-fab alba.rpm_integration_test:arakoon_version=$arakoon_version,alba_version=$alba_version,xml=True
+find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
+fab alba.rpm_integration_test:arakoon_url=$arakoon_url,alba_url=$alba_url,xml=True

@@ -499,15 +499,18 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
               begin
                 Lwt.catch
                   (fun () ->
-                    let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
-                    Asd_client.with_client
-                      buffer_pool ~conn_info (Some long_id)
-                      (fun client ->
-                       client # statistics clear >>= fun stats ->
-                       client # get_disk_usage () >>= fun disk_usage ->
-                       Lwt.return (stats, disk_usage))
-                    >>= fun r ->
-                    (long_id, Prelude.Error.Ok r) |> Lwt.return
+                   Lwt_unix.with_timeout
+                     1.
+                     (fun () ->
+                      let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
+                      Asd_client.with_client
+                        buffer_pool ~conn_info (Some long_id)
+                        (fun client ->
+                         client # statistics clear >>= fun stats ->
+                         client # get_disk_usage () >>= fun disk_usage ->
+                         Lwt.return (stats, disk_usage))
+                      >>= fun r ->
+                      (long_id, Prelude.Error.Ok r) |> Lwt.return)
                   )
                   (fun exn ->
                     Lwt_log.info_f ~exn "couldn't reach %s" long_id >>= fun () ->
