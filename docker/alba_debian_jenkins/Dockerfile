@@ -91,6 +91,14 @@ RUN cd googletest && git log --oneline | head -n 5
 
 # libgtest.a ends up in /usr/local/lib/
 
+RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
+# Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
+RUN apt-cache search alba
+RUN apt-cache search arakoon
+RUN apt-get update && apt-get install -y --force-yes alba arakoon
+RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
+RUN alba.0.6 version && arakoon --version
+
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
 RUN cd arakoon && git pull && git checkout tags/1.9.4
@@ -99,6 +107,7 @@ RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
+
 
 RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get -y install software-properties-common
@@ -154,12 +163,7 @@ RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \
 RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
     && dpkg -i volumedriver-test_${voldrv_version}.deb
 
-# Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
-RUN apt-cache search alba
-RUN apt-cache search arakoon
-RUN apt-get update && apt-get install -y --force-yes alba arakoon
-RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
-RUN alba.0.6 version && arakoon --version
+
 ENV UID 1001
 ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
