@@ -801,7 +801,7 @@ let () =
       `P "Use `$(mname) $(i,COMMAND) --help' for help on a single command.";`Noblank;
       `P "Use `$(mname) help patterns' for help on patch matching."; `Noblank;
       `P "Use `$(mname) help environment' for help on environment variables.";
-      `S "BUGS"; `P "Check bug reports at http://bugs.example.org.";]
+      `S "BUGS"; `P "Check bug reports at https://github.com/openvstorage/alba/issues .";]
   in
   let default_cmd =
     let doc = "Alba Storage System" in
