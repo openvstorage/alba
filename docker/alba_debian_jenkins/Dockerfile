@@ -155,8 +155,11 @@ RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
     && dpkg -i volumedriver-test_${voldrv_version}.deb
 
 # Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
+RUN apt-cache search alba
+RUN apt-cache search arakoon
 RUN apt-get update && apt-get install -y --force-yes alba arakoon
 RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
+RUN alba.0.6 version && arakoon --version
 ENV UID 1001
 ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
