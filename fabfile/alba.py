@@ -765,21 +765,19 @@ def _alba_package(alba_version, alba_revision):
     alba_package = "%s%s" % (alba_version, alba_suffix)
     return alba_package
 @task
-def deb_integration_test(arakoon_version,
-                         alba_version,
-                         alba_revision = "",
+def deb_integration_test(arakoon_url,
+                         alba_url,
                          xml=False):
 
-    alba_package = _alba_package(alba_version, alba_revision)
     local("sudo dpkg -r arakoon | true")
     local("sudo dpkg -r alba | true")
-    local("rm -f arakoon_%s_amd64.deb | true" % arakoon_version)
-    local("rm -f alba_%s_amd64.deb | true" % alba_package)
+    local("rm -f arakoon_*.deb")
+    local("rm -f alba_*.deb")
 
-    local("wget https://github.com/openvstorage/arakoon/releases/download/%s/arakoon_%s_amd64.deb" % (arakoon_version,arakoon_version))
-    local("sudo gdebi -n arakoon_%s_amd64.deb" % arakoon_version)
-    local("wget http://10.100.129.100:8080/view/alba/job/alba_docker_deb_from_github/lastSuccessfulBuild/artifact/alba_%s_amd64.deb" % alba_package)
-    local("sudo gdebi -n alba_%s_amd64.deb" % alba_package)
+    local("wget %s" % arakoon_url)
+    local("sudo gdebi -n arakoon_*.deb")
+    local("wget %s" % alba_url)
+    local("sudo gdebi -n alba_*.deb")
 
     demo_kill()
 
@@ -813,29 +811,26 @@ def deb_integration_test(arakoon_version,
         dump_junit_xml()
 
 @task
-def rpm_integration_test(arakoon_version,
-                         alba_version,
+def rpm_integration_test(arakoon_url,
+                         alba_url,
                          xml=False):
 
     if not os.path.exists("/etc/redhat-release"):
         raise Exception("should be run on redhat")
-    alba_package = _alba_package(alba_version, "1")
 
     local("sudo yum -y erase arakoon | true")
     local("sudo yum -y erase alba | true")
 
-    arakoon_rpm = "arakoon-%s-3.el7.centos.x86_64.rpm" % arakoon_version
-    alba_rpm = "alba-%s.el7.centos.x86_64.rpm" % alba_package
-    local("rm -f %s" % arakoon_rpm)
-    local("wget https://github.com/openvstorage/arakoon/releases/download/%s/%s" % (arakoon_version, arakoon_rpm))
-    local("rm -f %s" % alba_rpm)
-    local("wget http://10.100.129.100:8080/view/alba/job/alba_docker_rpm_from_github/lastSuccessfulBuild/artifact/rpmbuild/RPMS/x86_64/%s" % (alba_rpm,))
+    local("rm -f arakoon-*")
+    local("wget %s" % arakoon_url)
+    local("rm -f alba-*")
+    local("wget %s" % alba_url)
 
 
     local("sudo yum -y erase arakoon | true")
     local("sudo yum -y erase alba | true")
-    local("sudo yum -y --nogpgcheck localinstall %s" % arakoon_rpm)
-    local("sudo yum -y --nogpgcheck localinstall %s" % alba_rpm)
+    local("sudo yum -y --nogpgcheck localinstall arakoon-*")
+    local("sudo yum -y --nogpgcheck localinstall alba-*")
 
     env['arakoon_bin'] = '/bin/arakoon'
     env['alba_bin'] = '/bin/alba'
