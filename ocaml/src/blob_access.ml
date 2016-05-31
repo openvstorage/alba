@@ -84,7 +84,6 @@ object(self)
 
 
   method ensure_dir_exists dir ~sync =
-    Lwt_log.debug_f "ensure_dir_exists: %s" dir >>= fun () ->
     match Hashtbl.find directory_cache dir with
     | Exists -> Lwt.return ()
     | Creating wait -> wait
