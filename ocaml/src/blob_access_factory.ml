@@ -22,16 +22,19 @@ let make_directory_access files_path =
   let r = new default_directory_access files_path in
   (r :> directory_access)
 
-let _init = ref false
+let _service_handle = ref None
+
 let maybe_init_service gioexecfile =
-  if not !_init
-  then
+  match !_service_handle with
+  | None ->
     begin
-      Gobjfs.IOExecFile.init gioexecfile;
+      let service_handle = Gobjfs.IOExecFile.init gioexecfile in
       let align_size = 4096 in
       Gobjfs.GMemPool.init align_size;
-      _init := true
-      end
+      _service_handle := Some service_handle;
+      service_handle
+    end
+  | Some sh -> sh
 
 let make_directory_info
       ~engine
@@ -46,8 +49,10 @@ let make_directory_info
   match engine with
   | Config.Pure -> (new directory_info config :> blob_dir_access)
   | Config.GioExecFile conf_file ->
-     let () = maybe_init_service conf_file in
-     (new Gblob_access.g_directory_info conf_file config :> blob_dir_access)
+     let service_handle = maybe_init_service conf_file in
+     (new Gblob_access.g_directory_info service_handle config :> blob_dir_access)
 
 let endgame () =
-  if !_init then Gobjfs.IOExecFile.destroy()
+  match !_service_handle with
+  | None -> ()
+  | Some sh -> Gobjfs.IOExecFile.destroy sh

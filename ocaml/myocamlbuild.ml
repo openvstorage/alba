@@ -19,6 +19,7 @@ let dependencies =
       "cstruct";
       "sexplib";
       "rocks";
+      "ordma";
       "cmdliner";
       "snappy";
       "bz2";

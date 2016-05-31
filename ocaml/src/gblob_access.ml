@@ -21,7 +21,7 @@ open Lwt.Infix
 open Gobjfs
 open Asd_protocol
 
-class g_directory_info gioexecfile config =
+class g_directory_info service_handle config =
   let _throw_ex_from ec function_name par =
     (* TODO: do we need to be specific ? *)
     let error = Unix.EUNKNOWNERR (- Int32.to_int ec) in
@@ -36,7 +36,7 @@ class g_directory_info gioexecfile config =
     | t ::_  -> _throw_ex_from (get_ec t) function_name  (get_par t)
   in
 
-  let event_channel = IOExecFile.open_event_channel () in
+  let event_channel = IOExecFile.open_event_channel service_handle in
   let reap_fd = IOExecFile.get_reap_fd event_channel in
 object(self)
   inherit default_directory_access config.files_path
@@ -63,7 +63,8 @@ object(self)
     let fn = self # _get_file_path fnr in
     let completion_id = self # next_completion_id in
 
-    IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
+    IOExecFile.file_open service_handle fn [Unix.O_RDONLY]
+    >>= fun handle ->
     let len' =
           let remainder = len mod 4096 in
           if remainder = 0
@@ -106,7 +107,7 @@ object(self)
                     fnr len ([%show : (int * int) list] slices)
     >>= fun () ->
     let fn = self # _get_file_path fnr in
-    IOExecFile.file_open fn [Unix.O_RDONLY] >>= fun handle ->
+    IOExecFile.file_open service_handle fn [Unix.O_RDONLY] >>= fun handle ->
     let corrections =
       List.map
         (fun (off,len) ->
@@ -250,7 +251,6 @@ object(self)
                 Lwt_bytes.blit_from_bytes src 0 bytes 0 len;
                 Lwt_bytes.fill bytes len extra '\x00';
                 Lwt_extra2.write_all_lwt_bytes fd bytes 0 padded_size
-
               )
               (fun () ->
                 Lwt_bytes2.Lwt_bytes.unsafe_destroy bytes;
@@ -273,8 +273,9 @@ object(self)
         let fragments = [fragment] in
         let batch = Batch.make fragments in
         IOExecFile.file_open
+          service_handle
           file_path
-          [Unix.O_WRONLY;Unix.O_CREAT;Unix.O_SYNC]
+          [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_SYNC]
         >>= fun handle ->
 
         Lwt.finalize
@@ -303,7 +304,8 @@ object(self)
       (fun fnr ->
         let file_path = self # _get_file_path fnr in
         let cid = self # next_completion_id in
-        IOExecFile.file_delete file_path cid _event_channel >>= fun () ->
+        IOExecFile.file_delete service_handle file_path cid _event_channel
+        >>= fun () ->
         Lwt.return (fnr, file_path, cid)
       )
       fnrs

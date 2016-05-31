@@ -168,24 +168,28 @@ module Ser = struct
 end
 
 module IOExecFile = struct
+
+  type service_handle = unit ptr
+  let service_handle : service_handle typ = ptr void
+
   let _init =
     foreign
       ~check_errno:true
       ~release_runtime_lock:false
       "gobjfs_ioexecfile_service_init"
-      (string @-> returning int32_t)
+      (string @-> returning service_handle)
 
-  let init config = _init config |> ignore
+  let init config = _init config
 
   let _destroy =
     foreign
       ~check_errno:false
       ~release_runtime_lock:false
       "gobjfs_ioexecfile_service_destroy"
-      (void @-> returning int32_t)
+      (service_handle @-> returning int32_t)
 
-  let destroy () =
-    let rc = _destroy () in
+  let destroy sh =
+    let rc = _destroy sh in
     if rc = -1l
     then failwith "destroy"
     else ()
@@ -213,11 +217,11 @@ module IOExecFile = struct
     foreign
       ~check_errno:true
       "gobjfs_ioexecfile_file_open"
-      (string @-> int @-> returning (ptr _handle))
+      (service_handle @-> string @-> int @-> returning (ptr _handle))
 
-  let file_open file_name flags =
+  let file_open service_handle file_name flags =
     let int_val = _convert_open_flags flags in
-    let (h:handle) = _file_open file_name int_val in
+    let (h:handle) = _file_open service_handle file_name int_val in
     Lwt.return h
 
 
@@ -265,13 +269,14 @@ module IOExecFile = struct
   let _file_delete =
     foreign
       "gobjfs_ioexecfile_file_delete"
-      (string
+      (service_handle
+       @-> string
        @-> int64_t
        @-> ptr void
        @-> returning int32_t)
 
-  let file_delete name cid event_channel =
-    let rc = _file_delete name cid event_channel in
+  let file_delete service_handle name cid event_channel =
+    let rc = _file_delete service_handle name cid event_channel in
     if rc = -1l
     then Lwt.fail_with "ioexecfile:file_delete"
     else Lwt.return_unit
@@ -281,10 +286,10 @@ module IOExecFile = struct
       ~check_errno:true
       ~release_runtime_lock:false
       "gobjfs_ioexecfile_event_fd_open"
-      (void @-> returning event_channel)
+      (service_handle @-> returning event_channel)
 
-  let open_event_channel () =
-    let r = _open_event_channel () in
+  let open_event_channel service_handle =
+    let r = _open_event_channel service_handle in
     r
 
 
