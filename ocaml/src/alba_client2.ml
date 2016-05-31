@@ -48,7 +48,7 @@ let make_client albamgr_client_cfg
         ~osd_connection_pool_size ~osd_timeout
         ~default_osd_priority
         ~tls_config ~tcp_keepalive
-        Alba_osd.make_client
+        (Alba_osd.make_client ~albamgr_connection_pool_size)
   in
   Alba_client.make_client
     mgr_access

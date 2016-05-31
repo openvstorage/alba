@@ -146,7 +146,7 @@ let alba_add_osd
       tls_config
       Tcp_keepalive2.default
       Buffer_pool.osd_buffer_pool
-      Alba_osd.make_client
+      (Alba_osd.make_client ~albamgr_connection_pool_size:10)
       kind
     >>= fun (osd_client, closer) ->
     Lwt_log.info_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->

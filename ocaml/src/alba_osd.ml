@@ -248,10 +248,12 @@ let rec make_client
           ~tls_config
           ~tcp_keepalive
           ~prefix
-          ~preset_name =
+          ~preset_name
+          ~albamgr_connection_pool_size
+  =
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
-      ~size:10 (* TODO albamgr_connection_pool_size *)
+      ~size:albamgr_connection_pool_size
       abm_cfg
       tls_config
       Buffer_pool.default_buffer_pool
@@ -265,7 +267,7 @@ let rec make_client
         ~default_osd_priority:Osd.High
         ~tls_config
         ~tcp_keepalive
-        make_client
+        (make_client ~albamgr_connection_pool_size)
   in
   let alba_client, closer =
     Alba_client.make_client
