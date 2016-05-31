@@ -1988,7 +1988,7 @@ module Test = struct
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
                                       false
-                                      (blob_io_engine_from_cfg tx.cfg.alba_blob_io_engine)
+                                      Pure
             }
           else tx
         in
