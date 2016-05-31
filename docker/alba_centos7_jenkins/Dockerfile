@@ -183,7 +183,7 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 # gobjfs shared lib:
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout bb065edd26cf17c65cfb29dc89bc87078f90029a
+RUN cd gobjfs  && git pull && git checkout 442778895112ee8753e8001239fd076d513193fd
 RUN cd gobjfs \
        && mkdir build \
        && cd build \

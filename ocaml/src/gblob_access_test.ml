@@ -92,6 +92,10 @@ let _test_partial_read dir_info lwt_bytes =
                     [(0,100); (200,300);(400,500)]
                   ]
 
+let _test_delete dir_info lwt_bytes =
+  let fnr = 0L in
+  dir_info # delete_blobs [fnr] ~ignore_unlink_error:false >>= fun () ->
+  Lwt.return_unit
 
 let _test_generic dir_info =
   let size = 20_000 in
@@ -100,7 +104,8 @@ let _test_generic dir_info =
   _test_write dir_info lwt_bytes >>= fun () ->
   _test_read dir_info lwt_bytes >>= fun () ->
   _test_partial_read dir_info lwt_bytes >>= fun () ->
-  Lwt.return_unit
+  _test_delete dir_info lwt_bytes >>= fun () ->
+  Lwt_io.printlf "end of test%!"
 
 let test_generic () =
   let setup dir =
