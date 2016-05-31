@@ -74,7 +74,7 @@ module Config = struct
 
     let alba_bin    = env_or_default "ALBA_BIN" (alba_home  ^ "/ocaml/alba.native") in
     let alba_plugin_path = env_or_default "ALBA_PLUGIN_HOME" (alba_home ^ "/ocaml") in
-    let alba_06_bin = env_or_default "ALBA_06"  "/usr/bin/alba" in
+    let alba_06_bin = env_or_default "ALBA_06"  "/usr/bin/alba.0.6" in
     let alba_06_plugin_path = env_or_default "ALBA_06_PLUGIN_PATH" "/usr/lib/alba" in
     let license_file = alba_home ^ "/bin/0.6/community_license" in
     let failure_tester = alba_home ^ "/ocaml/disk_failure_tests.native" in
