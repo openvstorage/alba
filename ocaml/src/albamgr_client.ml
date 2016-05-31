@@ -62,6 +62,7 @@ class client (client : basic_client)  =
 object(self)
         (* TODO: this is an indicator we should have a 'capabilities' call *)
     val supports_update_osds                = ref None
+    val supports_update_osds2               = ref None
     val supports_add_osd2                   = ref None
     val supports_list_osds_by_osd_id2       = ref None
     val supports_list_osds_by_long_id2      = ref None
@@ -292,8 +293,8 @@ object(self)
     method update_osd ~long_id changes =
       client # update UpdateOsd (long_id, changes)
 
-    method update_osds updates =
-      Lwt_log.info "update_osds" >>= fun () ->
+    method _update_osds updates =
+      Lwt_log.debug "_update_osds" >>= fun () ->
       let use_feature updates = client # update UpdateOsds updates in
       let alternative updates =
         Lwt_list.fold_left_s
@@ -302,9 +303,16 @@ object(self)
       in
       let args = updates
       and flag = supports_update_osds
-      and name = "update_osds2"
+      and name = "update_osds"
       in
       maybe_use_feature flag name args use_feature alternative
+
+    method update_osds updates =
+      let use_feature = client # update UpdateOsds2 in
+      let alternative = self # _update_osds in
+      maybe_use_feature supports_update_osds2 "update_osds2"
+                        updates
+                        use_feature alternative
 
     method decommission_osd ~long_id =
       client # update DecommissionOsd long_id

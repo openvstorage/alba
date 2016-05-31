@@ -28,6 +28,11 @@ let osd_id =
        & opt (some int32) None
        & info ["osd-id"] ~docv:"OSD_ID" ~doc)
 
+let long_id =
+  Arg.(required
+       & opt (some string) None
+       & info ["long-id"] ~docv:"LONG_ID")
+
 let unescape =
   Arg.(value
        & flag
@@ -166,6 +171,13 @@ let alba_add_osd
   in
   lwt_cmd_line ~to_json:false ~verbose t
 
+let alba_osd_cfg_url =
+  Arg.(value
+       & opt (some url_converter) None
+       & info ["alba-osd-config-url"]
+              ~docv:"ALBA_OSD_CONFIG_URL"
+              ~doc:"config url for alba mgr of the backend that should be added as osd")
+
 let alba_add_osd_cmd =
   Term.(pure alba_add_osd
         $ alba_cfg_url
@@ -180,11 +192,7 @@ let alba_add_osd_cmd =
                & info ["port"; "p";]
                       ~docv:"PORT"
                       ~doc:"the port to connect with")
-        $ Arg.(value
-               & opt (some url_converter) None
-               & info ["alba-osd-config-url"]
-                      ~docv:"ALBA_OSD_CONFIG_URL"
-                      ~doc:"config url for alba mgr of the backend that should be added as osd")
+        $ alba_osd_cfg_url
         $ Arg.(value
                & opt (some string) None
                & info ["prefix"]
@@ -202,9 +210,50 @@ let alba_add_osd_cmd =
   Term.info
     "add-osd"
     ~doc:("add osd to manager so it could be claimed later." ^
-            "The long id is fetched from the device." ^
-              " Note: this is for development purposes only."
-         )
+            "The long id is fetched from the device.")
+
+let alba_update_osd
+      alba_cfg_url tls_config long_id
+      ips' port'
+      alba_osd_mgr_cfg_url
+      to_json verbose
+  =
+  let t () =
+    with_albamgr_client
+      alba_cfg_url tls_config
+      ~attempts:1
+      (fun mgr ->
+       Option.lwt_map
+         Alba_arakoon.config_from_url
+         alba_osd_mgr_cfg_url >>= fun albamgr_cfg' ->
+       mgr # update_osds
+           [ (long_id,
+              Albamgr_protocol.Protocol.Osd.Update.make
+                ~ips' ?port'
+                ?albamgr_cfg'
+                ());
+           ])
+  in
+  lwt_cmd_line_unit ~to_json ~verbose t
+
+let alba_update_osd_cmd =
+  Term.(pure alba_update_osd
+        $ alba_cfg_url
+        $ tls_config
+        $ long_id
+        $ Arg.(value
+               & opt (list string) []
+               & info ["ip"])
+        $ Arg.(value
+               & opt (some int) None
+               & info ["port"])
+        $ alba_osd_cfg_url
+        $ to_json
+        $ verbose
+  ),
+  Term.info
+    "update-osd"
+    ~doc:("update the osd info that is stored in the alba manager")
 
 let alba_claim_osd alba_cfg_file tls_config long_id to_json verbose =
   let t () =
@@ -221,9 +270,7 @@ let alba_claim_osd_cmd =
   Term.(pure alba_claim_osd
         $ alba_cfg_url
         $ tls_config
-        $ Arg.(required
-               & opt (some string) None
-               & info ["long-id"] ~docv:"LONG_ID")
+        $ long_id
         $ to_json $ verbose),
   Term.info
     "claim-osd"
@@ -241,10 +288,7 @@ let alba_decommission_osd_cmd =
   Term.(pure alba_decommission_osd
         $ alba_cfg_url
         $ tls_config
-        $ Arg.(required
-               & opt (some string) None
-               & info ["long-id"] ~docv:"LONG_ID"
-          )
+        $ long_id
         $ to_json $ verbose
   ),
   Term.info
@@ -263,10 +307,7 @@ let alba_purge_osd_cmd =
   Term.(pure alba_purge_osd
         $ alba_cfg_url
         $ tls_config
-        $ Arg.(required
-               & opt (some string) None
-               & info ["long-id"] ~docv:"LONG_ID"
-          )
+        $ long_id
         $ to_json $ verbose
   ),
   Term.info
@@ -277,7 +318,7 @@ let cmds = [
     osd_multi_get_cmd;
     osd_range_cmd;
     alba_add_osd_cmd;
-    (* TODO add alba_update_osd_cmd; *)
+    alba_update_osd_cmd;
     alba_claim_osd_cmd;
     alba_decommission_osd_cmd;
     alba_purge_osd_cmd;

@@ -1117,6 +1117,17 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
          in
          return_upds upds
        end
+    | UpdateOsds2 ->
+       fun updates ->
+       begin
+         let upds =
+           List.fold_left
+             (fun acc (long_id,osd_changes) ->
+             make_update_osd_updates long_id osd_changes acc
+             ) [] updates
+         in
+         return_upds upds
+       end
     | DecommissionOsd -> fun long_id ->
       Lwt.return ((), decommission_osd ~long_id)
     | MarkOsdClaimed -> fun long_id ->

@@ -307,6 +307,13 @@ module Option = struct
     | None -> None
     | Some a -> Some (f a)
 
+  let lwt_map f = function
+    | None -> Lwt.return_none
+    | Some a ->
+       let open Lwt.Infix in
+       f a >>= fun r ->
+       Lwt.return (Some r)
+
   let iter f = function
     | None -> ()
     | Some a -> f a
