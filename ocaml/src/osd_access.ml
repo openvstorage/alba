@@ -26,10 +26,12 @@ module Osd_pool = struct
     module Osd' = Osd
     open Albamgr_protocol.Protocol
     open Nsm_model
-    type osd_pool = (Osd'.osd * (unit -> unit Lwt.t)) Lwt_pool2.t
+    type osd_and_closer = Osd'.osd * (unit -> unit Lwt.t)
+    type osd_pool = osd_and_closer Lwt_pool2.t
 
     type t = {
-        pools : (Osd.id, osd_pool) Hashtbl.t;
+        client_pools : (Osd.id, osd_pool) Hashtbl.t;
+        thread_safe_clients : (Osd.id, osd_and_closer Lwt.t) Hashtbl.t;
         get_osd_kind : Osd.id -> OsdInfo.kind Lwt.t;
         pool_size : int;
         buffer_pool : Buffer_pool.t;
@@ -49,8 +51,10 @@ module Osd_pool = struct
           ~tls_config
           ~tcp_keepalive
           make_alba_osd_client =
-      let pools = Hashtbl.create 0 in
-      { pools;
+      let client_pools = Hashtbl.create 3 in
+      let thread_safe_clients = Hashtbl.create 3 in
+      { client_pools;
+        thread_safe_clients;
         get_osd_kind;
         pool_size = size;
         buffer_pool;
@@ -58,6 +62,13 @@ module Osd_pool = struct
         tcp_keepalive;
         make_alba_osd_client;
       }
+
+    let client_is_thread_safe =
+      let open OsdInfo in
+      function
+      | Asd _
+      | Kinetic _ -> false
+      | Alba _ -> true
 
     let factory tls_config tcp_keepalive buffer_pool make_alba_osd_client =
       function
@@ -86,11 +97,10 @@ module Osd_pool = struct
            ~prefix ~preset_name:(Some preset)
 
     let use_osd t ~(osd_id:int32) f =
-      let get_pool () =
-        try Hashtbl.find t.pools osd_id |> Lwt.return
+      let get_pool kind =
+        try Hashtbl.find t.client_pools osd_id |> Lwt.return
         with Not_found ->
           begin
-            t.get_osd_kind osd_id >>= fun kind ->
             let factory () =
               factory t.tls_config t.tcp_keepalive t.buffer_pool t.make_alba_osd_client kind
             in
@@ -103,26 +113,53 @@ module Osd_pool = struct
                 ~factory
                 ~cleanup:(fun (_, closer) -> closer ())
             in
-            Hashtbl.add t.pools osd_id p;
+            Hashtbl.add t.client_pools osd_id p;
             Lwt.return p
           end
       in
-      get_pool () >>= fun pool ->
-      Lwt_pool2.use
-        pool
-        (fun p -> f (fst p))
+      t.get_osd_kind osd_id >>= fun kind ->
+      if client_is_thread_safe kind
+      then
+        begin
+          (try Hashtbl.find t.thread_safe_clients osd_id
+           with Not_found ->
+             let client_t =
+               factory t.tls_config
+                       t.tcp_keepalive
+                       t.buffer_pool
+                       t.make_alba_osd_client
+                       kind in
+             Hashtbl.add t.thread_safe_clients osd_id client_t;
+             client_t) >>= fun (osd, _) ->
+          f osd
+        end
+      else
+        begin
+          get_pool kind >>= fun pool ->
+          Lwt_pool2.use
+            pool
+            (fun p -> f (fst p))
+        end
 
     let invalidate t ~osd_id =
-      if Hashtbl.mem t.pools osd_id
-      then begin
-          Lwt_pool2.finalize (Hashtbl.find t.pools osd_id) |> Lwt.ignore_result;
-          Hashtbl.remove t.pools osd_id
+      if Hashtbl.mem t.client_pools osd_id
+      then
+        begin
+          Lwt_pool2.finalize (Hashtbl.find t.client_pools osd_id) |> Lwt.ignore_result;
+          Hashtbl.remove t.client_pools osd_id
         end
 
     let invalidate_all t =
       List.iter
         (fun (osd_id, _) -> invalidate t ~osd_id)
-        (Hashtbl.to_assoc_list t.pools)
+        (Hashtbl.to_assoc_list t.client_pools);
+      Lwt_list.iter_p
+        (fun (osd_id, client_t) ->
+         client_t >>= fun (_, closer) ->
+         Hashtbl.remove t.thread_safe_clients osd_id;
+         closer ())
+        (Hashtbl.to_assoc_list t.thread_safe_clients)
+      |> Lwt.ignore_result
   end
 
 let osd_buffer_pool = Buffer_pool.osd_buffer_pool

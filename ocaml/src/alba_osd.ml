@@ -20,12 +20,6 @@ open Prelude
 open Slice
 open Lwt.Infix
 
-(* deze client bevat eigen connection pools ...
- * kan concurrent gebruikt worden
- * dus mss best dit gedrag uit OsdPool weghalen
- * en naar osd_wrap_key_value_osd duwen.
- *)
-
 (* TODO what about statistics? *)
 
 class client
