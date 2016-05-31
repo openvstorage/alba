@@ -1,6 +1,24 @@
+(*
+Copyright (C) 2016 iNuron NV
+
+This file is part of Open vStorage Open Source Edition (OSE), as available from
+
+
+    http://www.openvstorage.org and
+    http://www.openvstorage.com.
+
+This file is free software; you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License v3 (GNU AGPLv3)
+as published by the Free Software Foundation, in version 3 as it comes
+in the <LICENSE.txt> file of the Open vStorage OSE distribution.
+
+Open vStorage is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY of any kind.
+*)
+
 open Lwt.Infix
 
-let fill data=
+let fill data =
   let len = Lwt_bytes.length data in
   let rec loop n =
     if n = len
@@ -28,10 +46,9 @@ let check data boff corr len =
   loop 0
 
 
-let _test_write dir_info size =
-  let lwt_bytes = Lwt_bytes.create size in
+let _test_write dir_info lwt_bytes =
   let blob = Asd_protocol.Blob.Lwt_bytes lwt_bytes in
-  let () = fill lwt_bytes in
+
   let fnr = 0L in
   let nothing fdo _ _ = Lwt.return_unit in
 
@@ -45,7 +62,8 @@ let _test_write dir_info size =
   Lwt.return_unit
 
 
-let _test_read dir_info size =
+let _test_read dir_info lwt_bytes =
+  let size = Lwt_bytes.length lwt_bytes in
   let fnr = 0L in
   dir_info # get_blob fnr size >>= fun (bytes:string) ->
   let lwt_bytes = Lwt_bytes.of_string bytes in
@@ -53,7 +71,7 @@ let _test_read dir_info size =
   check lwt_bytes 0 0 size;
   Lwt.return_unit
 
-let _test_partial_read dir_info size =
+let _test_partial_read dir_info lwt_bytes =
   let fnr = 0L in
   let do_one slices =
     let callback (off', len') buffer boff =
@@ -71,15 +89,17 @@ let _test_partial_read dir_info size =
                     [(4200, 5_000)];
                     [( 100,    10)];
                     [(4090,    16)];
-                    (*[(0,100);(200,300);] *)
+                    [(0,100); (200,300);(400,500)]
                   ]
 
 
 let _test_generic dir_info =
   let size = 20_000 in
-  _test_write dir_info size >>= fun () ->
-  _test_read dir_info size >>= fun () ->
-  _test_partial_read dir_info size >>= fun () ->
+  let lwt_bytes = Lwt_bytes.create size in
+  let () = fill lwt_bytes in
+  _test_write dir_info lwt_bytes >>= fun () ->
+  _test_read dir_info lwt_bytes >>= fun () ->
+  _test_partial_read dir_info lwt_bytes >>= fun () ->
   Lwt.return_unit
 
 let test_generic () =

@@ -113,7 +113,7 @@ object(self)
           let completion_id = self # next_completion_id in
           (*
               (for now) gobjfs does not support arbitrary partial reads
-              but offset and len needs to be multiples of 4096
+              but offset and len need to be multiples of 4096
 
               |---- left ------- | ----- len ----- |----- right -----|
              off'               off             off+len          off'+len'

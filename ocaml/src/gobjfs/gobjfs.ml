@@ -14,7 +14,7 @@ in the <LICENSE.txt> file of the Open vStorage OSE distribution.
 
 Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
- *)
+*)
 
 open Foreign
 open Ctypes
@@ -112,7 +112,7 @@ module Batch = struct
   type _batch
   let _batch : _batch structure typ = structure "gobjfs_batch"
   let _count = field _batch "count" size_t
-  let array = field _batch "array" Fragment.fragment_t
+  let _array = field _batch "array" Fragment.fragment_t (* fragments are 'inlined' *)
 
   let () = seal _batch
 
@@ -134,24 +134,31 @@ module Batch = struct
       (int @-> returning (ptr _batch))
 
   let make fragments : t =
-    match fragments with
-    | [fragment] ->
-       begin
-         let bp = _alloc 1 in
-         let b = !@ bp in
-         let a = getf b array in
-         (* TODO: this is a bad interface *)
+    let len = List.length fragments in
+    if len = 0 then invalid_arg "empty batch";
+    let bp = _alloc len in
+    let b = !@ bp in
+    let a = getf b _array in
+    let rec loop ft = function
+      | [] -> _debug_batch bp; b
+      | fragment :: fragments ->
+         (* TODO: signals a bad interface *)
+
          let copy_attr fn =
-           setf a fn (getf fragment fn)
+           setf ft fn (getf fragment fn)
          in
          copy_attr Fragment.completion_id;
          copy_attr Fragment.offset;
          copy_attr Fragment.size;
          copy_attr Fragment.addr';
-         _debug_batch bp;
-         b
-       end
-    | _ -> failwith "todo"
+
+         let ft_addr  = addr ft in
+         let ft'_addr = ft_addr +@ 1 in
+         let ft' = !@ ft'_addr in
+         loop ft' fragments
+    in
+    loop a fragments
+
 
 end
 
