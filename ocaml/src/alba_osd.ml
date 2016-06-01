@@ -230,7 +230,9 @@ class client
     method set_full _ = failwith "grmbl this method doesn't belong here."
     method get_version = Lwt.return Alba_version.summary
     method get_long_id = alba_id
-    method get_disk_usage = Lwt.return (failwith "TODO return sth based on asd disk usage")
+    method get_disk_usage = Lwt.return
+                              (1000L, 2000L)
+                              (* (failwith "TODO return sth based on asd disk usage") *)
   end
 
 (* TODO fragment cache should be plugged in at this level of alba?
@@ -270,6 +272,14 @@ let rec make_client
       ~tls_config ()
   in
   alba_client # mgr_access # get_alba_id >>= fun alba_id ->
-  (* TODO create prefix namespace *)
+  begin
+    (* ensure the global prefix namespace exists *)
+    let namespace = prefix in
+    alba_client # mgr_access # get_namespace ~namespace >>= function
+    | Some _ -> Lwt.return ()
+    | None ->
+       alba_client # create_namespace ~namespace ~preset_name () >>= fun _ ->
+       Lwt.return ()
+  end >>= fun () ->
   let client = new client alba_client ~alba_id ~prefix ~preset_name in
   Lwt.return ((client :> Osd.osd), closer)

@@ -55,7 +55,7 @@ module Config = struct
       etcd : ((string * int) list * string) option;
     }
 
-  let make ?workspace () =
+  let make ?(n_osds = 12) ?workspace () =
     let home = Sys.getenv "HOME" in
     let workspace =
       match workspace with
@@ -88,7 +88,6 @@ module Config = struct
     let voldrv_backend_test = env_or_default
                               "VOLDRV_BACKEND_TEST"
                               (home ^ "/workspace/VOLDRV/backend_test") in
-    let n_osds = 12 in
     let etcd_home = env_or_default "ETCD_HOME" (workspace ^ "/tmp/etcd") in
     let etcd =
       try
@@ -1229,10 +1228,10 @@ module Deployment = struct
     in
 
     t.abm # persist_config;
-    t.abm # start ;
+    t.abm # start;
 
     t.nsm # persist_config;
-    t.nsm # start ;
+    t.nsm # start;
 
     let _ = t.abm # wait_for_master () in
     let _ = t.nsm # wait_for_master () in
@@ -2061,23 +2060,6 @@ module Test = struct
 
 
 
-  let everything_else ?(xml=false) ?filter ?dump t =
-    let suites =
-      [ big_object;
-        cli;
-        arakoon_changes;
-      ]
-    in
-    let results = List.map (fun s -> s t) suites in
-    let () =
-      if xml
-      then JUnit.dump_xml results "./testresults.xml"
-      else JUnit.dump results
-    in
-    let (rc:int) = JUnit.rc results in
-    rc
-
-
   let test_asd_no_blobs ?(xml=false) ?filter ?dump _t =
     let t = Deployment.make_default ~write_blobs:false () in
     Deployment.kill t;
@@ -2138,6 +2120,116 @@ module Test = struct
     let output = t_ssd.proxy # list_namespaces in
     assert (output = "Found 2 namespaces: [\"demo\"; \"prefix\\000\\000\\000\\000\"]");
     0
+
+  let alba_as_osd ?xml ?filter ?dump _t =
+    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
+    Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
+
+    let make_backend ?(kill=false) ?n_osds name ~base_port =
+      let cfg =
+        Config.make
+          ?n_osds
+          ~workspace:(Printf.sprintf
+                        "%s/tmp/alba_%s"
+                        workspace name) ()
+      in
+      let t = Deployment.make_default ~cfg ~base_port () in
+      if kill then Deployment.kill t;
+      Deployment.setup t;
+      cfg, t
+    in
+
+    let _, t_local1 = make_backend "local_1" ~base_port:4000 ~kill:true in
+    let _, t_local2 = make_backend "local_2"~base_port:5001 in
+    let _, t_local3 = make_backend "local_3"~base_port:6002 in
+
+    let cfg_global, t_global = make_backend "global" ~base_port:7003 ~n_osds:0 in
+
+    let add_backend_as_osd t_local =
+      _alba_cmd_line
+        [ "add-osd";
+          "--config"; t_global.abm # config_url |> Url.canonical;
+          "--alba-osd-config-url"; t_local.abm # config_url |> Url.canonical;
+          (* "--long-id"; long_id; *)
+          "--node-id"; "x";
+          "--prefix"; "alba_osd_prefix";
+          "--preset"; "default"; ];
+      let long_id =
+        Shell.cmd_with_capture
+          [ t_local.cfg.alba_bin; "get-alba-id";
+            "--config"; t_local.abm # config_url |> Url.canonical;
+            "--to-json" ]
+        |> Yojson.Basic.from_string
+        |> Yojson.Basic.Util.member "result"
+        |> Yojson.Basic.Util.member "id"
+        |> function
+            `String x -> x
+          | _ -> assert false
+      in
+      _alba_cmd_line
+        [ "claim-osd";
+          "--config"; t_global.abm # config_url |> Url.canonical;
+          "--long-id"; long_id; ]
+    in
+    add_backend_as_osd t_local1;
+    add_backend_as_osd t_local2;
+    add_backend_as_osd t_local3;
+    _alba_cmd_line
+      [ "deliver-messages";
+        "--config"; t_global.abm # config_url |> Url.canonical; ];
+
+    let objname = "fdsij" in
+    let do_upload () =
+      t_global.proxy # upload_object "demo" cfg_global.arakoon_bin objname
+    in
+
+    do_upload ();
+
+    t_global.proxy # download_object "demo" objname "/tmp/fdsi";
+
+    begin
+      (* there should be a few extra namespaces on local backend 1 *)
+      Shell.cmd_with_capture
+        [ t_global.cfg.alba_bin; "list-namespaces"; "--to-json";
+          "--config"; t_local1.abm # config_url |> Url.canonical; ]
+      |> Yojson.Basic.from_string
+      |> Yojson.Basic.Util.member "result"
+      |> function
+        | `List namespaces -> assert (3 = List.length namespaces)
+        | _ -> assert false
+    end;
+    0
+
+  let everything_else ?(xml=false) ?filter ?dump t =
+    let transform suite name =
+      (fun _t ->
+         let t0 = Unix.gettimeofday () in
+         let result =
+           try let _ : int = suite _t in
+               JUnit.Ok
+           with exn -> JUnit.Err (Printexc.to_string exn)
+         in
+         let d = Unix.gettimeofday () -. t0 in
+         let testcase = JUnit.make_testcase name name d result in
+         JUnit.make_suite name [testcase] d)
+    in
+    let suites =
+      [ big_object;
+        cli;
+        arakoon_changes;
+        transform aaa "aaa";
+        transform alba_as_osd "alba_as_osd";
+      ]
+    in
+    let results = List.map (fun s -> s t) suites in
+    let () =
+      if xml
+      then JUnit.dump_xml results "./testresults.xml"
+      else JUnit.dump results
+    in
+    let (rc:int) = JUnit.rc results in
+    rc
+
 end
 
 
@@ -2158,6 +2250,7 @@ let process_cmd_line () =
       "asd_no_blobs",    Test.test_asd_no_blobs, false;
       "nil",             Test.nil, true;
       "aaa",             Test.aaa, false;
+      "alba_osd",        Test.alba_as_osd, false;
     ]
   in
   let print_suites () =
