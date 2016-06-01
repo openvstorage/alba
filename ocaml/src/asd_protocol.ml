@@ -455,6 +455,10 @@ module Protocol = struct
     List.iter (fun (_, code, desc) -> Hashtbl.add hasht code desc) command_map;
     (fun code -> Hashtbl.find hasht code)
 
+  let code_to_description_nothrow x =
+    try code_to_description x
+    with | Not_found -> Printf.sprintf "unknown operation %li" x
+
 
   let query_request_serializer : type req res. (req, res) query -> req Llio2.serializer
     =

@@ -46,7 +46,7 @@ class client (fd:Net_fd.t) id =
         serialize_request request
         deserialize_response
         f =
-    let description = code_to_description code in
+    let description = code_to_description_nothrow code in
     Lwt_log.debug_f
       "asd_client %s: %s"
       id description >>= fun () ->
@@ -115,6 +115,7 @@ class client (fd:Net_fd.t) id =
           | Error.Exn Error.Unknown_operation ->
              Lwt.return ()
           | exn ->
+             Lwt_log.info_f ~exn "wrong exception" >>= fun () ->
              Lwt.fail exn)
 
     val mutable supports_multiget2 = None

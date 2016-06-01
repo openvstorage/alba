@@ -897,7 +897,7 @@ let asd_protocol
     (if delta > 0.5
      then Lwt_log.info_f
      else Lwt_log.debug_f)
-      "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
+      "Request %s took %f" (Protocol.code_to_description_nothrow code) delta >>= fun () ->
     inner ()
   in
   Llio2.NetFdReader.raw_string_from nfd 4 >>= fun b0 ->
