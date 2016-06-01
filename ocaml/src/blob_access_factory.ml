@@ -38,6 +38,7 @@ let maybe_init_service gioexecfile =
 
 let make_directory_info
       ~engine
+      ~statistics
       ?(write_blobs = true)
                         files_path
                         ~use_fadvise
@@ -47,10 +48,10 @@ let make_directory_info
   let open Asd_config in
   let () = Lwt_log.ign_info_f "engine:%s" (Config.show_blob_io_engine engine) in
   match engine with
-  | Config.Pure -> (new directory_info config :> blob_dir_access)
+  | Config.Pure -> (new directory_info statistics config :> blob_dir_access)
   | Config.GioExecFile conf_file ->
      let service_handle = maybe_init_service conf_file in
-     (new Gblob_access.g_directory_info service_handle config :> blob_dir_access)
+     (new Gblob_access.g_directory_info statistics config service_handle :> blob_dir_access)
 
 let endgame () =
   match !_service_handle with

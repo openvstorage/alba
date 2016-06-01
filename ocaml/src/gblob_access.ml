@@ -20,8 +20,9 @@ open Blob_access
 open Lwt.Infix
 open Gobjfs
 open Asd_protocol
+open Asd_statistics
 
-class g_directory_info service_handle config =
+class g_directory_info statistics config service_handle =
   let _throw_ex_from ec function_name par =
     (* TODO: do we need to be specific ? *)
     let error = Unix.EUNKNOWNERR (- Int32.to_int ec) in
@@ -39,8 +40,9 @@ class g_directory_info service_handle config =
   let event_channel = IOExecFile.open_event_channel service_handle in
   let reap_fd = IOExecFile.get_reap_fd event_channel in
 object(self)
+  inherit blob_access statistics
   inherit default_directory_access config.files_path
-  inherit blob_access
+
 
   initializer
     begin
@@ -103,11 +105,13 @@ object(self)
 
 
   method _push_blob_data fnr len slices _f =
-    Lwt_log.debug_f "push_blob_data fnr:%Li len:%i slices:%s"
-                    fnr len ([%show : (int * int) list] slices)
-    >>= fun () ->
     let fn = self # _get_file_path fnr in
-    IOExecFile.file_open service_handle fn [Unix.O_RDONLY] >>= fun handle ->
+
+    Prelude.with_timing_lwt
+      (fun () ->IOExecFile.file_open service_handle fn [Unix.O_RDONLY] )
+    >>= fun (took, handle) ->
+    AsdStatistics.new_delta _statistics _FILE_OPEN took;
+
     let corrections =
       List.map
         (fun (off,len) ->
@@ -147,31 +151,42 @@ object(self)
 
     Lwt.finalize
       (fun () ->
-        IOExecFile.file_read handle batch _event_channel >>= fun () ->
-        Lwt_list.map_p
-          (fun correction ->
-            let (completion_id, off', off, len, len', fragment) = correction in
-            Lwt_log.debug_f
-              "push_blob_data: correction:(%Li,off':%i, off:%i, len:%i, len':%i,fragment:%s):"
-              completion_id off' off len len' (Fragment.show fragment)
-            >>= fun () ->
-            let completion_id, _, _, _,_, _ = correction in
-            self # _wait_for_completion completion_id >>= fun ec ->
-            Lwt.return (correction, ec)
+        Prelude.with_timing_lwt
+          (fun () ->
+            IOExecFile.file_read handle batch _event_channel >>= fun () ->
+            Lwt_list.map_p
+              (fun correction ->
+                let completion_id, _, _, _,_, _ = correction in
+                Prelude.with_timing_lwt (fun () -> self # _wait_for_completion completion_id)
+                >>= fun (took,ec) ->
+                let () = AsdStatistics.new_delta _statistics _READ_WAIT took in
+                Lwt.return (correction, ec)
+              )
+              corrections
           )
-          corrections
-        >>= fun results ->
+        >>= fun (took,results) ->
+
+        let () = AsdStatistics.new_delta _statistics _READ_BATCH took in
+
         _process_results
           (fun (_,ec) -> ec)
           "IOExecFile.file_read"
           (fun _ -> fn)
           results
         >>= fun () ->
-        Lwt_list.iter_s _f results
+        Prelude.with_timing_lwt
+          (fun () -> Lwt_list.iter_s _f results)
+        >>= fun (took,()) ->
+        let () = AsdStatistics.new_delta _statistics _READ_BATCH_CB took in
+        Lwt.return_unit
       )
       (fun () ->
         List.iter Fragment.free_bytes fragments;
-        IOExecFile.file_close handle
+        Prelude.with_timing_lwt
+          (fun () ->IOExecFile.file_close handle)
+        >>= fun (took,()) ->
+        AsdStatistics.new_delta _statistics _FILE_CLOSE took;
+        Lwt.return_unit
       )
 
   method push_blob_data fnr len slices f =
@@ -188,9 +203,6 @@ object(self)
       let (completion_id,off',off, len,len',fragment) = correction in
       let buffer = Fragment.get_bytes fragment in
       let left = off' - off in
-      Lwt_log.debug_f "push_blob_data: write bytes: (%Li) left:%i len:%i"
-                      completion_id left len
-      >>= fun () ->
       Net_fd.write_all_lwt_bytes nfd buffer left len
     in
     self # _push_blob_data fnr len slices _f
@@ -202,7 +214,7 @@ object(self)
     let rec loop () =
       Lwt_unix.wait_read _reap_fd  >>= fun () ->
       IOExecFile.reap _reap_fd buf >>= fun (n, ss) ->
-      Lwt_log.debug_f "reaped:%i" n >>= fun () ->
+      (*Lwt_log.debug_f "reaped:%i" n >>= fun () -> *)
       List.iter
         (fun s ->
           let completion_id = IOExecFile.get_completion_id s in

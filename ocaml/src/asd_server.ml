@@ -31,6 +31,16 @@ open Blob_access_factory
 
 let blob_threshold = 16 * 1024
 
+let stats_tag_to_string code =
+  try Asd_protocol.Protocol.code_to_description code
+  with
+  | Not_found ->
+     begin
+       try Blob_access.code_to_description code
+       with
+       | Not_found -> Printf.sprintf "unknown operation %li" code
+     end
+
 module KVS = Key_value_store
 
 module Keys = struct
@@ -1050,8 +1060,11 @@ let run_server
     (function
       | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
       | exn -> Lwt.fail exn) >>= fun () ->
+  let stats = AsdStatistics.make () in
 
-  let dir_info = make_directory_info ~engine ~write_blobs ~use_fallocate ~use_fadvise files_path in
+  let dir_info = make_directory_info
+                   ~engine ~statistics:stats
+                   ~write_blobs ~use_fallocate ~use_fadvise files_path in
 
   let parse_filename_to_fnr name =
     try
@@ -1232,7 +1245,7 @@ let run_server
 
   let advancer = new check_garbage_from_advancer next_fnr db in
 
-  let stats = AsdStatistics.make () in
+
   let latest_disk_usage =
     match Rocks.RocksDb.get
             db
@@ -1348,7 +1361,9 @@ let run_server
             ~section "%s"
             (AsdStatistics.show_inner
                stats
-               Asd_protocol.Protocol.code_to_description))
+               stats_tag_to_string
+            )
+      )
       ()
   in
   let threads =

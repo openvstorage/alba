@@ -140,7 +140,7 @@ module Batch = struct
     let b = !@ bp in
     let a = getf b _array in
     let rec loop ft = function
-      | [] -> _debug_batch bp; b
+      | [] -> b
       | fragment :: fragments ->
          (* TODO: signals a bad interface *)
 
@@ -283,13 +283,14 @@ module IOExecFile = struct
 
   let _open_event_channel =
     foreign
-      ~check_errno:true
+      ~check_errno:false
       ~release_runtime_lock:false
       "gobjfs_ioexecfile_event_fd_open"
       (service_handle @-> returning event_channel)
 
   let open_event_channel service_handle =
     let r = _open_event_channel service_handle in
+    if r = null then failwith "ioexecfile:open_event_channel";
     r
 
 

@@ -111,11 +111,11 @@ let asd_start cfg_url slow log_sinks =
                 Lwt_log.info_f "Reloaded capacity & log level"
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
-      
+
       Asd_server.run_server ips port
                             ~transport
                             home ~asd_id ~node_id ~slow
-                            ~fsync 
+                            ~fsync
                             ~limit
                             ~capacity
                             ~multicast
@@ -308,7 +308,7 @@ let asd_disk_usage_cmd =
   in
   let info =
     let doc = "return ASD disk usage (used,cap)" in
-    Term.info "asd-disk-usage" ~doc 
+    Term.info "asd-disk-usage" ~doc
   in
   asd_disk_usage_t, info
 
@@ -419,6 +419,7 @@ let osd_bench_cmd =
   in
   osd_bench_t, info
 
+
 let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
   begin
     let process_results results =
@@ -462,7 +463,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                    "stats: %s, disk_usage:(%Li,%Li)"
                    (Asd_statistics.AsdStatistics.show_inner
                       stats
-                      Asd_protocol.Protocol.code_to_description)
+                      Asd_server.stats_tag_to_string)
                    (fst disk_usage)
                    (snd disk_usage)
               | Error exn -> Printexc.to_string exn
@@ -471,7 +472,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
           )
       in Lwt_list.iter_s f results
     in
-    let t () = 
+    let t () =
       with_alba_client
         cfg_file tls_config
         (fun alba_client ->
@@ -484,7 +485,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                 List.mem (get_long_id k) long_ids
               ) osds
           in
-          
+
           let needed_info =
             List.map
               (fun (_,osd_info) ->
@@ -537,7 +538,7 @@ let asd_multistatistics_cmd =
   in
   let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in
   t, info
-       
+
 let asd_statistics hosts port_o transport asd_id
                    to_json verbose config_o tls_config clear
   =
@@ -553,7 +554,7 @@ let asd_statistics hosts port_o transport asd_id
      else Lwt_io.printl
             (AsdStatistics.show_inner
                stats
-               Asd_protocol.Protocol.code_to_description)
+               Asd_server.stats_tag_to_string)
     )
   in
   let from_asd hosts port transport tls_config asd_id verbose =

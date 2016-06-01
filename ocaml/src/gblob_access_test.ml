@@ -122,9 +122,11 @@ let test_generic () =
     and use_fallocate = true
     in
     let engine = Asd_config.Config.GioExecFile "./cfg/gioexecfile.conf" in
+    let statistics = Asd_statistics.AsdStatistics.make () in
     let dir_info =
       Blob_access_factory.make_directory_info
         ~engine
+        ~statistics
         files_path
         ~use_fadvise
         ~use_fallocate

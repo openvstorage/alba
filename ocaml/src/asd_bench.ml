@@ -30,9 +30,11 @@ open Cli_bench_common
 let bench_blobs path scenarios count value_size partial_read_size engine =
   let t () =
     let module B = Generic_bench in
+    let statistics = Asd_statistics.AsdStatistics.make () in
     let dir_info =
       Blob_access_factory.make_directory_info
         ~engine
+        ~statistics
         ~use_fadvise:true
         ~use_fallocate:true
         path

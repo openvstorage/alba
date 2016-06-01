@@ -51,9 +51,11 @@ let bench_x engine root entry post_batch iterations n_threads size =
     iterations n_threads size
   >>= fun () ->
   let data = Bytes.init size (fun i -> Char.chr (i mod 0xff)) in
+  let statistics = Asd_statistics.AsdStatistics.make () in
   let (dir_info: Blob_access.blob_dir_access) =
     Blob_access_factory.make_directory_info
       ~engine
+      ~statistics
       root
       ~use_fadvise:false
       ~use_fallocate:false

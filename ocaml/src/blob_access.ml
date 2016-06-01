@@ -136,8 +136,27 @@ object(self)
 
 end
 
-class virtual blob_access =
+let _FILE_OPEN     = 40l
+let _FILE_CLOSE    = 41l
+let _READ_BATCH    = 42l
+let _READ_WAIT     = 43l
+let _READ_BATCH_CB = 44l
+
+let code_to_description code =
+  List.assoc
+    code
+    [(_FILE_OPEN, "FileOpen");
+     (_FILE_CLOSE, "FileClose");
+     (_READ_BATCH, "ReadBatch");
+     (_READ_WAIT,  "ReadWait");
+     (_READ_BATCH_CB,"ReadBatchCallback")
+    ]
+
+class virtual blob_access (statistics : Asd_statistics.AsdStatistics.t ) =
+
 object(self)
+  val _statistics = statistics
+
   method virtual config : config
 
   method virtual get_blob : fnr -> int (* size of the blob *) -> bytes Lwt.t
@@ -166,6 +185,7 @@ object(self)
 
   method virtual delete_blobs : fnr list -> ignore_unlink_error:bool -> unit Lwt.t
 
+  method statistics = _statistics
   (* TODO: These should go *)
   method virtual _get_file_dir_name_path : fnr -> bytes * bytes * bytes
 
@@ -174,15 +194,15 @@ object(self)
     path
 end
 
-class virtual blob_dir_access =
+class virtual blob_dir_access statistics =
 object
-  inherit blob_access
+  inherit blob_access statistics
   inherit directory_access
 end
 
-class directory_info config =
+class directory_info statistics config =
 object(self)
-  inherit blob_access
+  inherit blob_access statistics
   inherit default_directory_access config.files_path
 
   method config = config
