@@ -2115,7 +2115,7 @@ module Test = struct
 
     let objname = "fdsij" in
     (* uploading is enough to trigger caching *)
-    t_hdd.proxy # upload_object "demo" cfg_hdd.arakoon_bin objname;
+    t_hdd.proxy # upload_object "demo" cfg_hdd.alba_bin objname;
 
     let output = t_ssd.proxy # list_namespaces in
     assert (output = "Found 2 namespaces: [\"demo\"; \"prefix\\000\\000\\000\\000\"]");
@@ -2143,7 +2143,7 @@ module Test = struct
     let _, t_local2 = make_backend "local_2"~base_port:5001 in
     let _, t_local3 = make_backend "local_3"~base_port:6002 in
 
-    let cfg_global, t_global = make_backend "global" ~base_port:7003 ~n_osds:0 in
+    let cfg_global, t_global = make_backend "global" ~base_port:7004 ~n_osds:0 in
 
     let add_backend_as_osd t_local =
       _alba_cmd_line

@@ -3,6 +3,7 @@
 env | sort
 
 export WORKSPACE=$PWD
+export ALBA_HOME=$PWD
 echo ${WORKSPACE}
 export DRIVER=./setup/setup.native
 
