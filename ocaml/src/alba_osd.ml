@@ -235,10 +235,6 @@ class client
                               (* (failwith "TODO return sth based on asd disk usage") *)
   end
 
-(* TODO fragment cache should be plugged in at this level of alba?
- * not necessarily ... there's just a difference in how big the cached
- * fragments will be.
- *)
 let rec make_client
           abm_cfg
           ~tls_config
