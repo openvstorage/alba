@@ -63,9 +63,13 @@ object(self)
         (* TODO: this is an indicator we should have a 'capabilities' call *)
     val supports_update_osds                = ref None
     val supports_add_osd2                   = ref None
+    val supports_add_osd3                   = ref None
     val supports_list_osds_by_osd_id2       = ref None
+    val supports_list_osds_by_osd_id3       = ref None
     val supports_list_osds_by_long_id2      = ref None
+    val supports_list_osds_by_long_id3      = ref None
     val supports_list_decommissioning_osds2 = ref None
+    val supports_list_decommissioning_osds3 = ref None
     val supports_mark_msgs_delivered        = ref None
 
     method list_nsm_hosts ~first ~finc ~last ~max ~reverse =
@@ -231,11 +235,21 @@ object(self)
 
     method list_osds_by_osd_id ~first ~finc ~last ~reverse ~max =
       let args = RangeQueryArgs.({ first; finc; last; reverse; max; }) in
-      let use_feature args = client # query ListOsdsByOsdId2 args in
-      let alternative args = client # query ListOsdsByOsdId  args in
-      let name = "ListOsdsByOsdId2" in
-      let flag = supports_list_osds_by_osd_id2  in
-      maybe_use_feature flag name args use_feature alternative
+      let use_feature args = client # query ListOsdsByOsdId3 args in
+      let alternative args =
+        maybe_use_feature
+          supports_list_osds_by_osd_id2
+          "ListOsdsByOsdId2"
+          args
+          (client # query ListOsdsByOsdId2)
+          (client # query ListOsdsByOsdId)
+      in
+      maybe_use_feature
+        supports_list_osds_by_osd_id3
+        "ListOsdsByOsdId3"
+        args
+        use_feature
+        alternative
 
     method get_osd_by_osd_id ~osd_id =
       self # list_osds_by_osd_id
@@ -246,11 +260,21 @@ object(self)
 
     method list_osds_by_long_id ~first ~finc ~last ~reverse ~max =
       let args = RangeQueryArgs.({ first; finc; last; reverse; max; })
-      and use_feature args = client # query ListOsdsByLongId2 args
-      and alternative args = client # query ListOsdsByLongId  args
-      and name = "ListOsdsByLongId2"
-      and flag = supports_list_osds_by_long_id2 in
-      maybe_use_feature flag name args use_feature alternative
+      and use_feature args = client # query ListOsdsByLongId3 args
+      and alternative args =
+        maybe_use_feature
+          supports_list_osds_by_long_id2
+          "ListOsdsByLongId2"
+          args
+          (client # query ListOsdsByLongId2)
+          (client # query ListOsdsByLongId)
+      in
+      maybe_use_feature
+        supports_list_osds_by_long_id3
+        "ListOsdsByLongId3"
+        args
+        use_feature
+        alternative
 
     method get_osd_by_long_id ~long_id =
       self # list_osds_by_long_id
@@ -280,14 +304,22 @@ object(self)
       client # query ListAvailableOsds ()
 
     method add_osd osd_info : unit Lwt.t =
-      let use_feature () = client # update AddOsd2 osd_info in
-      let alternative () = client # update AddOsd  osd_info in
-      let args = ()
-      and flag = supports_add_osd2
-      and name = "AddOsd2" in
-      maybe_use_feature flag name args use_feature alternative
-
-
+      let args = osd_info in
+      let use_feature = client # update AddOsd3 in
+      let alternative args =
+        maybe_use_feature
+          supports_add_osd2
+          "AddOsd2"
+          args
+          (client # update AddOsd2)
+          (client # update AddOsd)
+      in
+      maybe_use_feature
+        supports_add_osd3
+        "AddOsd3"
+        args
+        use_feature
+        alternative
 
     method update_osd ~long_id changes =
       client # update UpdateOsd (long_id, changes)
@@ -419,11 +451,21 @@ object(self)
 
     method list_decommissioning_osds ~first ~finc ~last ~reverse ~max =
       let args = RangeQueryArgs.{ first; finc; last; max; reverse; } in
-      let use_feature args = client # query ListDecommissioningOsds2 args in
-      let alternative args = client # query ListDecommissioningOsds  args in
-      let name = "ListDecommissioningOsds2" in
-      let flag = supports_list_decommissioning_osds2 in
-      maybe_use_feature flag name args use_feature alternative
+      let use_feature = client # query ListDecommissioningOsds3 in
+      let alternative args =
+        maybe_use_feature
+          supports_list_decommissioning_osds2
+          "ListDecommissioningOsds2"
+          args
+          (client # query ListDecommissioningOsds2)
+          (client # query ListDecommissioningOsds)
+      in
+      maybe_use_feature
+        supports_list_decommissioning_osds3
+        "ListDecommissioningOsds3"
+        args
+        use_feature
+        alternative
 
     method list_all_decommissioning_osds =
       list_all_x
