@@ -116,19 +116,23 @@ RUN git clone https://github.com/toolslive/ordma.git \
     && make install
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
-RUN apt-get update && apt-get -y install clang-3.5
-
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
+# Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
+RUN apt-get update && apt-get install -y --force-yes alba arakoon
+RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
+
+RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get update && apt-get -y --force-yes install \
+      clang-3.5 \
       libboost1.57-all liblttng-ust0 librdmacm1 libtokyocabinet9 \
       libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
-      libhiredis0.10 \
+      libhiredis0.10 liblz4-1 libxio0 \
       omniorb-nameserver
 
 ## This only works from inside the OVS lan...
-# http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/4/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201605030944.5d9e62c_amd64.ddeb
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-alba-client-timeouts-release-ubuntu-14.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian
-ENV voldrv_version=5.7.2-dev.201605030944.5d9e62c_amd64
+# http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201606011734.d6c3c04_amd64.ddeb
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian
+ENV voldrv_version=5.7.2-dev.201606011734.d6c3c04_amd64
 RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
     && dpkg -i volumedriver-base_${voldrv_version}.deb
 
@@ -141,9 +145,6 @@ RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \
 RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
     && dpkg -i volumedriver-test_${voldrv_version}.deb
 
-# Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
-RUN apt-get update && apt-get install -y --force-yes alba arakoon
-RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 ENV UID 1001
 ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
