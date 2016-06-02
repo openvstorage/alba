@@ -263,6 +263,12 @@ object(self)
                 Lwt_bytes.blit_from_bytes src 0 bytes 0 len;
                 Lwt_bytes.fill bytes len extra '\x00';
                 Lwt_extra2.write_all_lwt_bytes fd bytes 0 padded_size
+                >>= fun () ->
+                (* you need to sync here:
+                   otherwise you might read garbage later on as
+                   the real data is still resides in some buffers
+                  *)
+                Lwt_unix.fsync fd
               )
               (fun () ->
                 Lwt_bytes2.Lwt_bytes.unsafe_destroy bytes;
@@ -279,7 +285,11 @@ object(self)
         (* TODO: don't blit *)
         let tgt = Fragment.get_bytes fragment in
         let src = blob |> Blob.get_bigslice in
-        Lwt_bytes.blit src.Bigstring_slice.bs 0 tgt 0 len;
+        let open Bigstring_slice in
+        Lwt_bytes.blit
+          src.bs src.offset
+          tgt 0
+          len;
 
 
         let fragments = [fragment] in
