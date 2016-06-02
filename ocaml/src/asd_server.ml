@@ -1338,7 +1338,7 @@ let run_server
             *
             * so let's go for 100 bytes per 1_000_000 of capacity
             *)
-           (Int64.to_float !capacity) /. 10_000
+           (Int64.to_float !capacity) /. 10_000.
            |> int_of_float
         | Some v -> v)
       ~db_path ()
