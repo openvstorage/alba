@@ -18,6 +18,8 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open OUnit
 open Asd_config
+open Lwt.Infix
+
 let test_basic_config () =
   let cfg =
     let open Config in
@@ -49,7 +51,20 @@ let test_basic_config () =
   Printf.printf "json=%s\n%!" value;
   ()
 
+let test_demo_config () =
+  Printf.printf "test_demo_config\n";
+  let t =
+    let fn = "cfg/asd_demo.json" in
+    retrieve_cfg (Arakoon_config_url.File fn) >>= fun r ->
+    match r with
+    | `Ok cfg  -> Lwt_io.printlf "cfg=\n%s" ([%show : Asd_config.Config.t] cfg)
+    | `Error x -> Lwt.fail_with x
+
+  in
+  Lwt_main.run t
+
 let suite =
   "asd_config_test" >:::[
-      "test_basic_config" >:: test_basic_config
+      "test_basic_config" >:: test_basic_config;
+      "test_demo_config" >:: test_demo_config
     ]
