@@ -1109,28 +1109,48 @@ module Deployment = struct
       [] long_ids
 
 
-  let parse_harvest osds_json_s =
-    let json = Yojson.Safe.from_string osds_json_s in
+  let _extract_result json_s =
+    let json = Yojson.Safe.from_string json_s in
     let basic = Yojson.Safe.to_basic json  in
     match basic with
     | `Assoc [
         ("success", `Bool true);
-        ("result", `List result)] ->
-       begin
-         (List.fold_left
-            (fun acc x ->
-              begin
-                let fields = Yojson.Basic.Util.to_assoc x in
-                let get_field x = List.assoc x fields in
-                let long_id_field = get_field "long_id" in
-                let long_id = Yojson.Basic.Util.to_string long_id_field in
-                long_id :: acc
-              end
-            )
-            [] result
-         )
-       end
+        ("result", `List result)] -> result
     | _ -> failwith "unexpected json format"
+
+
+  let parse_harvest osds_json_s =
+    let result = _extract_result osds_json_s in
+    List.fold_left
+       (fun acc x ->
+         begin
+           let fields = Yojson.Basic.Util.to_assoc x in
+           let get_field x = List.assoc x fields in
+           let long_id_field = get_field "long_id" in
+           let long_id = Yojson.Basic.Util.to_string long_id_field in
+           long_id :: acc
+         end
+       )
+       [] result
+
+  let parse_used_bytes json_s =
+    let result = _extract_result json_s in
+    List.fold_left (fun acc x ->
+        begin
+          let fields = Yojson.Basic.Util.to_assoc x in
+          let get_field x = List.assoc x fields in
+          let id_field = get_field "id" in
+          let id = Yojson.Basic.Util.to_int id_field in
+          let used_bytes =
+            try
+              let used_bytes_field =
+                get_field "used" in
+              Some (Yojson.Basic.Util.to_int used_bytes_field)
+            with _ -> None
+          in
+          (id, used_bytes)::acc
+        end
+      ) [] result
 
   let harvest_available_osds t =
     let available_json_s =
@@ -1149,6 +1169,32 @@ module Deployment = struct
   let is_local_osd t long_id =
     let suffix = t.cfg.local_nodeid_prefix in
     suffix = Str.last_chars long_id (String.length suffix)
+
+  let list_osds t =
+    let cmd = [
+        t.cfg.alba_bin; "list-osds";
+        "--config"; t.abm # config_url |> Url.canonical;
+        "--to-json"
+
+      ]
+    in
+    let cmd' = if t.cfg.tls then _alba_extend_tls cmd else cmd in
+    cmd'  |> Shell.cmd_with_capture
+
+  let check_used_bytes t =
+    let json = list_osds t in
+    let used_bytes = parse_used_bytes json in
+    List.iter
+      (fun (osd_id, used_bytes) ->
+        match used_bytes with
+        | Some v ->
+           Printf.printf "(%i,%i)\n%!" osd_id v;
+           if v < 0 then
+             failwith (Printf.sprintf "osd:%i has used_bytes:%i ?" osd_id v)
+        | None -> Printf.printf "(%i) has no attribute 'used' ?\n%!" osd_id
+      )
+      used_bytes
+
 
   let claim_local_osds t n =
     let do_round() =
@@ -1313,6 +1359,8 @@ module Deployment = struct
 
   let smoke_test t =
     let _  = proxy_pid t in
+    check_used_bytes t;
+
     ()
 
 end
