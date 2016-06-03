@@ -885,7 +885,11 @@ class asd ?write_blobs ?transport ?ip
 
     method stop =
       let start_line = String.concat " " self # start_cmd in
-      Printf.sprintf "pkill -f '%s'" start_line
+      Printf.sprintf "pkill %s -f '%s'"
+                     (if Random.bool ()
+                      then "-9"
+                      else "")
+                     start_line
       |> Shell.cmd ~ignore_rc:true
 
     method private build_remote_cli ?(json=true) what  =
