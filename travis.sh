@@ -180,7 +180,7 @@ install () {
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout 210d725bad0b977b386a0fa619759ee8e023c6c4
+    git checkout 571efa86896048d9d93c69749f733abfe09c7c54
     mkdir build
     cd build
     cmake ..
