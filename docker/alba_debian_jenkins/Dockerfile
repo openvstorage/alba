@@ -140,6 +140,7 @@ RUN git clone https://github.com/toolslive/ordma.git \
     && make install
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
+
 RUN apt-get update && apt-get -y --force-yes install \
     clang-3.5 \
     liblz4-1 \
@@ -147,10 +148,11 @@ RUN apt-get update && apt-get -y --force-yes install \
 
 
 ## This only works from inside the OVS lan...
-# http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/304/artifact/volumedriver-core/build/debian/volumedriver-base_5.7.2-dev.201605260958.e6e0bb2_amd64.deb
+# http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201606011734.d6c3c04_amd64.ddeb
 
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/304/artifact/volumedriver-core/build/debian/
-ENV voldrv_version=5.7.2-dev.201605260958.e6e0bb2_amd64
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/
+ENV voldrv_version=5.7.2-dev.201606011734.d6c3c04_amd64
+
 RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
     && dpkg -i volumedriver-base_${voldrv_version}.deb
 

@@ -1786,8 +1786,11 @@ module Test = struct
           let t0 = Unix.gettimeofday () in
           let result =
             try
+              Printf.printf "Starting test %s\n" name;
               test t
-            with x -> JUnit.Err (Printexc.to_string x)
+            with x ->
+              Printf.printf "Test %s failed: %s\n" name (Printexc.get_backtrace ());
+              JUnit.Err (Printexc.to_string x)
           in
           let t1 = Unix.gettimeofday () in
           let d = t1 -. t0 in
@@ -1870,6 +1873,7 @@ module Test = struct
       Deployment.setup t';
       wait_for 10;
       two_nodes # stop;
+      wait_for 1;
 
       print_endline "grow the cluster";
       let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000 t.cfg.etcd in
@@ -1900,6 +1904,7 @@ module Test = struct
 
       print_endline "shrink the cluster";
       three_nodes # stop;
+      wait_for 1;
       two_nodes # persist_cluster_config;
       two_nodes # start;
       maybe_copy (t'.abm # config_url) ;

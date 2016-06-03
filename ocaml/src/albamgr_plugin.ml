@@ -1101,6 +1101,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       end
     | AddOsd  -> fun osd -> add_osd osd
     | AddOsd2 -> fun osd -> add_osd osd
+    | AddOsd3 -> fun osd -> add_osd osd
 
     | UpdateOsd ->
        fun (long_id, osd_changes) ->
@@ -1803,6 +1804,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~first ~finc ~last
         ~max:(cap_max ~max ())
         ~reverse
+    | ListOsdsByOsdId3 -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+      list_osds_by_osd_id
+        db
+        ~first ~finc ~last
+        ~max:(cap_max ~max ())
+        ~reverse
     | ListOsdsByLongId -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
       list_osds_by_long_id
         db
@@ -1810,6 +1817,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~max:(cap_max ~max ())
         ~reverse
     | ListOsdsByLongId2 -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
+      list_osds_by_long_id
+        db
+        ~first ~finc ~last
+        ~max:(cap_max ~max ())
+        ~reverse
+    | ListOsdsByLongId3 -> fun { RangeQueryArgs.first; finc; last; max; reverse; } ->
       list_osds_by_long_id
         db
         ~first ~finc ~last
@@ -1918,6 +1931,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ()
     | ListDecommissioningOsds  -> list_decommissioning_osds
     | ListDecommissioningOsds2 -> list_decommissioning_osds
+    | ListDecommissioningOsds3 -> list_decommissioning_osds
     | ListOsdNamespaces -> fun (osd_id,
                                 { RangeQueryArgs.first; finc; last; reverse; max; }) ->
       let module KV = WrapReadUserDb(struct
