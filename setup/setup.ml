@@ -1179,6 +1179,7 @@ module Deployment = struct
 
   let restart_osds t =
     stop_osds t ;
+    Unix.sleep 3;
     Array.iter
       (fun asd -> asd # start)
       t.osds

@@ -45,9 +45,14 @@ module Url = struct
 end
 
 module Shell = struct
+  let _t0 = Unix.gettimeofday()
+
   let _print x =
     let colour = 2 in
-    Printf.printf "\027[38;5;%dm[%s] \027[0m%s\n%!" colour "shell" x
+    let t = Unix.gettimeofday() in
+    let d = t -. _t0 in
+    Printf.printf "\027[38;5;%dm[%03.1f\t%s] \027[0m%s\n%!" colour d "shell" x
+
 
   let cmd ?(ignore_rc=false) x =
     _print x;
