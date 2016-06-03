@@ -121,7 +121,7 @@ let asd_start cfg_url slow log_sinks =
                             ~multicast
                             ~tls_config
                             ~rocksdb_max_open_files:256
-                            ~rocksdb_recycle_log_file_num:(Some 4)
+                            ~rocksdb_recycle_log_file_num:None
                             ~rocksdb_block_cache_size
                             ~tcp_keepalive
                             ~write_blobs

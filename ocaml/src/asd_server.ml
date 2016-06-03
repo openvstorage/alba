@@ -1022,15 +1022,29 @@ let run_server
     Rocks_key_value_store.create'
       ~max_open_files:rocksdb_max_open_files
       ?recycle_log_file_num:rocksdb_recycle_log_file_num
-      ~block_cache_size:(match rocksdb_block_cache_size with
-                         | None ->
-                            (* factor based on a simple measurement of rocksdb
-                             * (on disk) size compared to total space
-                             * occupied by the asd. the idea is that
-                             * most or all of rocksdb would be cached in memory. *)
-                            0.0025 *. Int64.to_float !capacity
-                            |> int_of_float
-                         | Some v -> v)
+      ~block_cache_size:(
+        match rocksdb_block_cache_size with
+        | None ->
+           (* assuming 1MB fragments
+            * we write multiple key value pairs to rocksdb per fragment,
+            * but only one of these should be cached.
+            * This key value pair has the following size:
+            * - key = 1 (asd) + 1+4+1+4 (namespace prefix) + 1+4+32+4+4+4 (object/fragment identification) = 60 bytes
+            * - value = 1+4 (crc32) + 1+8+4 (fnr+size) = 18
+            *
+            * assuming another 8 bytes of overhead by rocksdb then we get in total 86 bytes
+            * that should be cached per fragment
+            *
+            * some notes:
+            * - block cache is uncompressed
+            * - there are other keys (gc tag) that also pollute the cache when deleting them
+            * - we can still optimize the object_id size from 32 bytes down to 8
+            *
+            * so let's go for 100 bytes per 1_000_000 of capacity
+            *)
+           (Int64.to_float !capacity) /. 10_000.
+           |> int_of_float
+        | Some v -> v)
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->

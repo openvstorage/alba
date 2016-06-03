@@ -16,7 +16,7 @@
     // transport is either "tcp" or "rdma"
     // don't specify "rdma" unless the ip(s) are rdma capable
     // "transport" : "tcp", // "tcp" is default
-    
+
     "port": 10000,
     // optional asd_id is optional
     "asd_id" : "a globally unique id for the asd"
@@ -44,9 +44,10 @@
     //, "use_fallocate" : true
 
     // optional. specifies the size of the rocksdb block cache (in bytes)
-    // defaults to 0,25% of the size of the disk
-    , "rocksdb_block_cache_size" : 1000000
-    
+    // defaults to 100 bytes per 1_000_000 bytes of disk size
+    // (rationale is explained in asd_server.ml)
+    , "rocksdb_block_cache_size" : 1_000_000
+
     // nomen est omen: stay away from these.
     //, "__warranty_void__write_blobs" : true
 
