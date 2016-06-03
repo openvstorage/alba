@@ -1755,8 +1755,11 @@ module Test = struct
           let t0 = Unix.gettimeofday () in
           let result =
             try
+              Printf.printf "Starting test %s\n" name;
               test t
-            with x -> JUnit.Err (Printexc.to_string x)
+            with x ->
+              Printf.printf "Test %s failed: %s\n" name (Printexc.get_backtrace ());
+              JUnit.Err (Printexc.to_string x)
           in
           let t1 = Unix.gettimeofday () in
           let d = t1 -. t0 in
