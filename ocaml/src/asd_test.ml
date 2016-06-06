@@ -122,9 +122,9 @@ let test_with_kvs_client ?write_blobs test_name port f =
         (fun asd -> f ((new Asd_client.asd_osd test_name asd) # kvs))
     end
 
-let test_set_get port () =
+let test_set_get_delete port () =
   test_with_kvs_client
-    "test_set_get" port
+    "test_set_get_delete" port
     (Osd_kvs_test.test_set_get_delete ~verify_value:true)
 
 let test_no_blobs port () =
@@ -299,7 +299,7 @@ let test_capacity port () =
 open OUnit
 
 let suite = "asd_test" >:::[
-    "test_set_get" >:: test_set_get 7900;
+    "test_set_get_delete" >:: test_set_get_delete 7900;
     "test_multiget" >:: test_multiget 7901;
     "test_range_query" >:: test_range_query 7902;
     "test_delete" >:: test_delete 7903;

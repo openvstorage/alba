@@ -30,9 +30,9 @@ let test_with_kvs_client
      let client = new Alba_osd.client alba_client ~alba_id ~prefix ~preset_name:None in
      f (client # global_kvs))
 
-let test_set_get () =
+let test_set_get_delete () =
   test_with_kvs_client
-    "test_set_get"
+    "test_set_get_delete"
     (Osd_kvs_test.test_set_get_delete ~verify_value:true)
 
 let test_multiget () =
@@ -78,7 +78,7 @@ let test_multi_update_for_same_key () =
 open OUnit
 
 let suite = "alba_osd_test" >:::[
-    "test_set_get" >:: test_set_get;
+    "test_set_get_delete" >:: test_set_get_delete;
     "test_multiget" >:: test_multiget;
     "test_range_query" >:: test_range_query;
     "test_delete" >:: test_delete;

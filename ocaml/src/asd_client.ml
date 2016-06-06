@@ -372,25 +372,18 @@ class asd_osd (asd_id : string) (asd : client) =
 object(self :# Osd.key_value_osd)
 
   method kvs =
-    object
+    object(self)
       method get_option prio (k:key) =
-        asd # multi_get ~prio [k] >>= fun vcos ->
-        let ho = List.hd_exn vcos in
-        let r =
-          match ho with
-          | None -> None
-          | Some (v,c) -> Some v
-        in
-        Lwt.return r
+        asd # get ~prio k >>= function
+        | None -> Lwt.return_none
+        | Some (v,c) -> Lwt.return (Some v)
 
       method get_exn prio (k:key) =
-        asd # multi_get ~prio [ k; ]
-        >>= function
-        | [ None ] -> Lwt.fail (Failure (Printf.sprintf
+        self # get_option prio k >>= function
+        | None -> Lwt.fail (Failure (Printf.sprintf
                                        "Could not find key %s on asd %S"
                                        (Slice.get_string_unsafe k) asd_id))
-        | [ Some (v, _) ] -> Lwt.return v
-        | _ -> assert false
+        | Some v -> Lwt.return v
 
       method multi_get prio keys =
         asd # multi_get ~prio keys >>= fun vcos ->

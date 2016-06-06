@@ -83,9 +83,10 @@ module Blob = struct
          s1.Slice.buf s1.Slice.offset s1.Slice.length
          s2.Bigstring_slice.bs s2.Bigstring_slice.offset s2.Bigstring_slice.length
     | `B s1, `B s2 ->
+       let open Bigstring_slice in
        Memcmp.equal''
-         s1.Bigstring_slice.bs s1.Bigstring_slice.offset s1.Bigstring_slice.length
-         s2.Bigstring_slice.bs s2.Bigstring_slice.offset s2.Bigstring_slice.length
+         s1.bs s1.offset s1.length
+         s2.bs s2.offset s2.length
 end
 
 module Value = struct
