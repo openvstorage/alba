@@ -59,7 +59,7 @@ module IOExecFile : sig
 
   type event_channel
 
-  val file_open: service_handle -> string -> Unix.open_flag list -> handle Lwt.t
+  val file_open: service_handle -> string -> Unix.open_flag list -> handle
 
   val file_write: handle -> Batch.t -> event_channel -> unit Lwt.t
   val file_read:  handle -> Batch.t -> event_channel -> unit Lwt.t
@@ -67,7 +67,7 @@ module IOExecFile : sig
   val file_delete: service_handle -> string -> Fragment.completion_id
                    -> event_channel -> unit Lwt.t
 
-  val file_close: handle -> unit Lwt.t
+  val file_close: handle -> unit
 
   val open_event_channel  : service_handle -> event_channel
   val close_event_channel : event_channel -> unit Lwt.t

@@ -67,8 +67,7 @@ object(self)
     let fn = self # _get_file_path fnr in
     let completion_id = self # next_completion_id in
 
-    IOExecFile.file_open service_handle fn [Unix.O_RDONLY]
-    >>= fun handle ->
+    let handle = IOExecFile.file_open service_handle fn [Unix.O_RDONLY] in
     let len' =
           let remainder = len mod alignment in
           if remainder = 0
@@ -100,7 +99,7 @@ object(self)
         Lwt.return tgt
       )
       (fun () ->
-        IOExecFile.file_close handle >>= fun () ->
+        let () = IOExecFile.file_close handle in
         GMemPool.free bytes;
         Lwt.return_unit
       )
@@ -109,9 +108,10 @@ object(self)
   method _push_blob_data fnr len slices _f =
     let fn = self # _get_file_path fnr in
 
-    Prelude.with_timing_lwt
-      (fun () ->IOExecFile.file_open service_handle fn [Unix.O_RDONLY] )
-    >>= fun (took, handle) ->
+    let took, handle  =
+      Prelude.with_timing
+        (fun () ->IOExecFile.file_open service_handle fn [Unix.O_RDONLY] )
+    in
     AsdStatistics.new_delta _statistics _FILE_OPEN took;
 
     let corrections =
@@ -184,9 +184,9 @@ object(self)
       )
       (fun () ->
         List.iter Fragment.free_bytes fragments;
-        Prelude.with_timing_lwt
+        let took, () = Prelude.with_timing
           (fun () ->IOExecFile.file_close handle)
-        >>= fun (took,()) ->
+        in
         AsdStatistics.new_delta _statistics _FILE_CLOSE took;
         Lwt.return_unit
       )
@@ -227,7 +227,9 @@ object(self)
         ) ss;
       loop ()
     in
-    loop ()
+    Lwt.catch
+      loop
+      (fun exn -> Lwt_log.fatal ~exn "_inner loop died")
 
   method _wait_for_completion completion_id : int32 Lwt.t =
     let sleep, awake = Lwt.wait () in
@@ -295,11 +297,11 @@ object(self)
 
         let fragments = [fragment] in
         let batch = Batch.make fragments in
-        IOExecFile.file_open
+        let handle = IOExecFile.file_open
           service_handle
           file_path
           [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_SYNC]
-        >>= fun handle ->
+        in
 
         Lwt.finalize
           (fun () ->
@@ -312,7 +314,7 @@ object(self)
           )
           (fun () ->
             GMemPool.free bytes;
-            IOExecFile.file_close handle >>= fun () ->
+            let () = IOExecFile.file_close handle in
             let parent_dir = config.files_path ^ "/" ^ dir in
             post_write None len parent_dir >>= fun () ->
             Lwt_log.debug_f "write_blob finalizer done"

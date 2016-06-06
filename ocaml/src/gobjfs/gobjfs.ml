@@ -222,7 +222,7 @@ module IOExecFile = struct
   let file_open service_handle file_name flags =
     let int_val = _convert_open_flags flags in
     let (h:handle) = _file_open service_handle file_name int_val in
-    Lwt.return h
+    h
 
 
   let _file_write =
@@ -263,8 +263,8 @@ module IOExecFile = struct
   let file_close handle =
     let rc = _file_close handle in
     if rc = -1l
-    then Lwt.fail_with "ioexecfile::file_close"
-    else Lwt.return_unit
+    then failwith "ioexecfile::file_close"
+    else ()
 
   let _file_delete =
     foreign
