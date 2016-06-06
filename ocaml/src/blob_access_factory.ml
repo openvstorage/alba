@@ -56,4 +56,4 @@ let make_directory_info
 let endgame () =
   match !_service_handle with
   | None -> ()
-  | Some sh -> Gobjfs.IOExecFile.destroy sh
+  | Some sh -> Gobjfs.IOExecFile.destroy sh; _service_handle := None

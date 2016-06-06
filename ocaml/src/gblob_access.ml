@@ -37,8 +37,8 @@ class g_directory_info statistics config service_handle =
     | t ::_  -> _throw_ex_from (get_ec t) function_name  (get_par t)
   in
 
-  let event_channel = IOExecFile.open_event_channel service_handle in
-  let reap_fd = IOExecFile.get_reap_fd event_channel in
+  let _event_channel = IOExecFile.open_event_channel service_handle in
+  let _reap_fd  = IOExecFile.get_reap_fd _event_channel in
   let alignment = 4096 in
 
 object(self)
@@ -51,21 +51,21 @@ object(self)
       Lwt.ignore_result (self # _inner ())
     end
 
-  val _next_id = ref 0L
+  val mutable _next_id = 0L
   val _outstanding =  (Hashtbl.create 16 : (int64, int32 Lwt.u) Hashtbl.t)
-  val _event_channel= event_channel
-  val _reap_fd = reap_fd
 
   method private next_completion_id =
-    let r = !_next_id in
-    let () = _next_id := Int64.succ r in
-    r
+    let completion_id = _next_id in
+    let () = _next_id <- Int64.succ completion_id in
+    let sleep, awake = Lwt.wait () in
+    let () = Hashtbl.add _outstanding completion_id awake in
+    (completion_id, sleep)
 
   method config = config
 
   method get_blob fnr len =
     let fn = self # _get_file_path fnr in
-    let completion_id = self # next_completion_id in
+    let completion_id,sleep = self # next_completion_id in
 
     let handle = IOExecFile.file_open service_handle fn [Unix.O_RDONLY] in
     let len' =
@@ -82,7 +82,7 @@ object(self)
         let fragments = [ fragment ] in
         let batch = Batch.make fragments in
         IOExecFile.file_read handle batch _event_channel >>= fun () ->
-        self # _wait_for_completion completion_id >>= fun ec ->
+        sleep >>= fun ec ->
         begin
           if ec <> 0l
           then _throw_ex_from ec "get_blob" fn
@@ -117,7 +117,7 @@ object(self)
     let corrections =
       List.map
         (fun (off,len) ->
-          let completion_id = self # next_completion_id in
+          let completion_id,sleep = self # next_completion_id in
           (*
               (for now) gobjfs does not support arbitrary partial reads
               but offset and len need to be multiples of 4096
@@ -141,12 +141,12 @@ object(self)
           in
           let bytes = GMemPool.alloc len' in
           let fragment = Fragment.make completion_id off' len' bytes in
-          (completion_id, off', off, len, len', fragment)
+          (completion_id, off', off, len, len', fragment, sleep)
         ) slices
     in
     let fragments =
       List.map
-        (fun (completion_id, off', off, len, len', fragment) -> fragment)
+        (fun (completion_id, off', off, len, len', fragment,sleep) -> fragment)
         corrections
     in
     let batch = Batch.make fragments in
@@ -158,8 +158,8 @@ object(self)
             IOExecFile.file_read handle batch _event_channel >>= fun () ->
             Lwt_list.map_p
               (fun correction ->
-                let completion_id, _, _, _,_, _ = correction in
-                Prelude.with_timing_lwt (fun () -> self # _wait_for_completion completion_id)
+                let completion_id, _, _, _,_, _, sleep = correction in
+                Prelude.with_timing_lwt (fun () -> sleep)
                 >>= fun (took,ec) ->
                 let () = AsdStatistics.new_delta _statistics _READ_WAIT took in
                 Lwt.return (correction, ec)
@@ -193,7 +193,7 @@ object(self)
 
   method push_blob_data fnr len slices f =
     let _f (correction,ec) =
-      let (completion_id,off',off,len, len',fragment) = correction in
+      let (completion_id, off',off, len, len',fragment, sleep) = correction in
       let buffer = Fragment.get_bytes  fragment in
       let left = off - off' in
       f (off, len) buffer left
@@ -202,7 +202,7 @@ object(self)
 
   method send_blob_data_to fnr len slices nfd =
     let _f (correction, ec) =
-      let (completion_id,off',off, len,len',fragment) = correction in
+      let (completion_id,off',off, len,len',fragment, sleep) = correction in
       let buffer = Fragment.get_bytes fragment in
       let left = off' - off in
       Net_fd.write_all_lwt_bytes nfd buffer left len
@@ -231,18 +231,14 @@ object(self)
       loop
       (fun exn -> Lwt_log.fatal ~exn "_inner loop died")
 
-  method _wait_for_completion completion_id : int32 Lwt.t =
-    let sleep, awake = Lwt.wait () in
-    let () = Hashtbl.add _outstanding completion_id awake in
-    sleep
+
 
   method write_blob fnr blob ~post_write ~sync_parent_dirs =
 
     let dir, _, file_path = self # _get_file_dir_name_path fnr in
     self # ensure_dir_exists dir ~sync:sync_parent_dirs >>= fun () ->
 
-    let completion_id = self # next_completion_id  in
-    Lwt_log.debug_f "write_blob ~fnr:%Li completion_id:%Li" fnr completion_id >>= fun () ->
+
     let len = Blob.length blob in
     let remainder = len mod alignment in
     if remainder <> 0
@@ -283,6 +279,8 @@ object(self)
     else
       begin
         let bytes = GMemPool.alloc len in
+        let completion_id, sleep = self # next_completion_id  in
+        Lwt_log.debug_f "write_blob ~fnr:%Li completion_id:%Li" fnr completion_id >>= fun () ->
         let fragment = Fragment.make completion_id 0 len bytes in
 
         (* TODO: don't blit *)
@@ -306,7 +304,7 @@ object(self)
         Lwt.finalize
           (fun () ->
             IOExecFile.file_write handle batch _event_channel >>= fun () ->
-            self # _wait_for_completion completion_id >>= fun ec ->
+            sleep >>= fun ec ->
             Lwt_log.debug_f "%Li:write ec=%li" completion_id ec >>= fun () ->
             if ec <> 0l
             then _throw_ex_from ec "write_blob" file_path
@@ -328,16 +326,16 @@ object(self)
     Lwt_list.map_s
       (fun fnr ->
         let file_path = self # _get_file_path fnr in
-        let cid = self # next_completion_id in
-        IOExecFile.file_delete service_handle file_path cid _event_channel
+        let completion_id, sleep = self # next_completion_id in
+        IOExecFile.file_delete service_handle file_path completion_id _event_channel
         >>= fun () ->
-        Lwt.return (fnr, file_path, cid)
+        Lwt.return (fnr, file_path, completion_id, sleep)
       )
       fnrs
     >>= fun completions ->
     Lwt_list.map_p
-      (fun (fnr, file_path, cid) ->
-        self # _wait_for_completion cid >>= fun ec ->
+      (fun (fnr, file_path, completion_id, sleep) ->
+        sleep >>= fun ec ->
         Lwt.return (fnr, file_path, ec)
       )
       completions
