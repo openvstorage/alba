@@ -39,6 +39,8 @@ class g_directory_info statistics config service_handle =
 
   let event_channel = IOExecFile.open_event_channel service_handle in
   let reap_fd = IOExecFile.get_reap_fd event_channel in
+  let alignment = 4096 in
+
 object(self)
   inherit blob_access statistics
   inherit default_directory_access config.files_path
@@ -68,10 +70,10 @@ object(self)
     IOExecFile.file_open service_handle fn [Unix.O_RDONLY]
     >>= fun handle ->
     let len' =
-          let remainder = len mod 4096 in
+          let remainder = len mod alignment in
           if remainder = 0
           then len
-          else len + (4096 - remainder)
+          else len + (alignment - remainder)
         in
     let bytes = GMemPool.alloc len' in
 
@@ -125,17 +127,17 @@ object(self)
 
            *)
 
-          let left = off mod 4096 in
+          let left = off mod alignment in
           let off' =
             if left = 0
             then off
             else off - left
           in
-          let remainder = (left + len) mod 4096 in
+          let remainder = (left + len) mod alignment in
           let len' =
             if remainder = 0
             then left + len
-            else left + len + (4096 - remainder)
+            else left + len + (alignment - remainder)
           in
           let bytes = GMemPool.alloc len' in
           let fragment = Fragment.make completion_id off' len' bytes in
@@ -240,7 +242,6 @@ object(self)
     let completion_id = self # next_completion_id  in
     Lwt_log.debug_f "write_blob ~fnr:%Li completion_id:%Li" fnr completion_id >>= fun () ->
     let len = Blob.length blob in
-    let alignment = 4096 in
     let remainder = len mod alignment in
     if remainder <> 0
     then
