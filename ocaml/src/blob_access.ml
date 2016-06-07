@@ -311,10 +311,7 @@ object(self)
     let bs = Bytes.create size in
     self # _with_blob_fd
       fnr
-      (fun fd ->
-         Lwt_extra2.read_all fd bs 0 size >>= fun got ->
-         assert (got = size);
-         Lwt.return ())
+      (fun fd -> Lwt_extra2.read_all_exact fd bs 0 size )
     >>= fun () ->
     Lwt_log.debug_f "got blob %Li" fnr >>= fun () ->
     Lwt.return bs
