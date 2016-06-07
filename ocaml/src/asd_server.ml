@@ -345,7 +345,9 @@ let execute_query : type req res.
        fun (key, slices, prio) ->
        begin
          Lwt_log.debug_f "PartialGet for %s" (Slice.show key) >>= fun () ->
-         match get_value_option kv key with
+         let took, vo = Prelude.with_timing (fun () -> get_value_option kv key) in
+         let () = AsdStatistics.new_delta stats _ROCKS_LOOKUP took in
+         match vo with
          | None -> return' false
          | Some (_cs, blob) ->
             let cost =

@@ -141,6 +141,7 @@ let _FILE_CLOSE    = 41l
 let _READ_BATCH    = 42l
 let _READ_WAIT     = 43l
 let _READ_BATCH_CB = 44l
+let _ROCKS_LOOKUP  = 45l
 
 let code_to_description code =
   List.assoc
@@ -149,7 +150,8 @@ let code_to_description code =
      (_FILE_CLOSE, "FileClose");
      (_READ_BATCH, "ReadBatch");
      (_READ_WAIT,  "ReadWait");
-     (_READ_BATCH_CB,"ReadBatchCallback")
+     (_READ_BATCH_CB,"ReadBatchCallback");
+     (_ROCKS_LOOKUP, "RocksLookup")
     ]
 
 class virtual blob_access (statistics : Asd_statistics.AsdStatistics.t ) =
