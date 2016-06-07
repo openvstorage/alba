@@ -136,6 +136,7 @@ object(self)
 
 end
 
+(* TODO: don't mix with protocol statistics *)
 let _FILE_OPEN     = 40l
 let _FILE_CLOSE    = 41l
 let _READ_BATCH    = 42l

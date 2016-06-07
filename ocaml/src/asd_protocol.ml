@@ -434,6 +434,10 @@ module Protocol = struct
                       Wrap_query MultiExists,  9l, "MultiExists";
                       Wrap_query GetDiskUsage, 10l, "GetDiskUsage";
                       Wrap_query PartialGet,   11l, "PartialGet";
+                      (* the range from 40l to 80l
+                         is (currently) taken by internal statistics.
+                         see blob_access.ml
+                       *)
                     ]
 
   let wrap_unknown_operation f =
