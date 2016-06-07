@@ -323,7 +323,7 @@ module IOExecFile = struct
       "gobjfs_ioexecfile_event_fd_get_read_fd"
       (event_channel @-> returning int)
 
-  let get_reap_fd event_channel =
+  let get_event_fd event_channel =
     let fdi = _get_read_fd event_channel in
     let (fd : Unix.file_descr) = Obj.magic (fdi : int) in
     Lwt_unix.of_unix_file_descr fd

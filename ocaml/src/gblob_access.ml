@@ -38,7 +38,7 @@ class g_directory_info statistics config service_handle =
   in
 
   let _event_channel = IOExecFile.open_event_channel service_handle in
-  let _reap_fd  = IOExecFile.get_reap_fd _event_channel in
+  let _event_fd  = IOExecFile.get_event_fd _event_channel in
   let alignment = 4096 in
 
 object(self)
@@ -214,8 +214,8 @@ object(self)
     Lwt_log.debug "_inner ()" >>= fun () ->
     let buf = Lwt_bytes.create 256 in
     let rec loop () =
-      Lwt_unix.wait_read _reap_fd  >>= fun () ->
-      IOExecFile.reap _reap_fd buf >>= fun (n, ss) ->
+      Lwt_unix.wait_read _event_fd  >>= fun () ->
+      IOExecFile.reap _event_fd buf >>= fun (n, ss) ->
       (*Lwt_log.debug_f "reaped:%i" n >>= fun () -> *)
       List.iter
         (fun s ->

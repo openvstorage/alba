@@ -78,7 +78,7 @@ module IOExecFile : sig
   val get_completion_id : status -> Fragment.completion_id
   val get_error_code : status -> int32
 
-  val get_reap_fd : event_channel -> Lwt_unix.file_descr
+  val get_event_fd : event_channel -> Lwt_unix.file_descr
   val reap : Lwt_unix.file_descr -> Lwt_bytes.t -> (int * status list) Lwt.t
 
 end
