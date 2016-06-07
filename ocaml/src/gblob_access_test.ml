@@ -82,7 +82,7 @@ let _test_partial_read dir_info lwt_bytes =
       Lwt.return_unit
     in
     let len = List.length slices in
-    dir_info # push_blob_data fnr len slices callback
+    dir_info # get_blob_data fnr len slices callback
   in
   Lwt_list.iter_s do_one [
                     [(4096,     1)];

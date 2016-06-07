@@ -171,7 +171,7 @@ object(self)
         -> unit Lwt.t
 
   method virtual (* only used in asd_bench *)
-      push_blob_data :
+      get_blob_data :
         fnr -> length
         -> (offset * length) list
         -> ((offset * length) -> Lwt_bytes.t -> offset -> unit Lwt.t)
@@ -253,7 +253,7 @@ object(self)
             Lwt.return_unit)
           slices
       )
-  method push_blob_data fnr size slices f =
+  method get_blob_data fnr size slices f =
     Lwt_extra2.with_fd
       (if config.write_blobs
        then self # _get_file_path fnr

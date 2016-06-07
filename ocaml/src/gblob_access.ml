@@ -105,7 +105,7 @@ object(self)
       )
 
 
-  method _push_blob_data fnr len slices _f =
+  method _get_blob_data fnr len slices _f =
     let fn = self # _get_file_path fnr in
 
     let took, handle  =
@@ -191,14 +191,14 @@ object(self)
         Lwt.return_unit
       )
 
-  method push_blob_data fnr len slices f =
+  method get_blob_data fnr len slices f =
     let _f (correction,ec) =
       let (completion_id, off',off, len, len',fragment, sleep) = correction in
       let buffer = Fragment.get_bytes  fragment in
       let left = off - off' in
       f (off, len) buffer left
     in
-    self # _push_blob_data fnr len slices _f
+    self # _get_blob_data fnr len slices _f
 
   method send_blob_data_to fnr len slices nfd =
     let _f (correction, ec) =
@@ -207,7 +207,7 @@ object(self)
       let left = off' - off in
       Net_fd.write_all_lwt_bytes nfd buffer left len
     in
-    self # _push_blob_data fnr len slices _f
+    self # _get_blob_data fnr len slices _f
 
 
   method private _inner () : unit Lwt.t =
