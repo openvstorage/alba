@@ -27,7 +27,7 @@ module Fragment : sig
   type t
   val show : t -> string
   type completion_id = int64
-  val make : completion_id -> int -> int -> GMemPool.t -> t
+  val make : completion_id -> int -> int -> GMemPool.t -> Unix.file_descr -> t
   val get_bytes : t -> Lwt_bytes.t
   val get_completion_id : t -> completion_id
   val get_offset : t -> int

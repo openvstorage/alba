@@ -62,6 +62,8 @@ module Fragment = struct
   let offset = field fragment_t "offset" size_t
   let size   = field fragment_t "size" size_t
   let addr'   = field fragment_t "addr" (ptr void)
+  let socket_fd = field fragment_t "socketFd" int32_t
+
   let () = seal fragment_t
 
   type t = (fragment_t, [ `Struct ]) Ctypes.structured
@@ -76,12 +78,14 @@ module Fragment = struct
 
   let to_size = Unsigned.Size_t.of_int
 
-  let make cid off s bytes =
+  let make cid off s bytes ufd =
     let t = make fragment_t in
     setf t completion_id cid;
     setf t offset (to_size off);
     setf t size (to_size s);
     setf t addr' bytes;
+    let fd32 = Signed.Int32.of_int (Lwt_extra2.unix_fd_to_fd ufd) in
+    setf t socket_fd fd32;
     (* _debug_fragment (addr t); *)
     t
 
@@ -143,7 +147,7 @@ module Batch = struct
       | [] -> b
       | fragment :: fragments ->
          (* TODO: signals a bad interface *)
-
+         Lwt_log.ign_debug_f "fragment:%s" (Fragment.show fragment);
          let copy_attr fn =
            setf ft fn (getf fragment fn)
          in
@@ -151,6 +155,7 @@ module Batch = struct
          copy_attr Fragment.offset;
          copy_attr Fragment.size;
          copy_attr Fragment.addr';
+         copy_attr Fragment.socket_fd;
 
          let ft_addr  = addr ft in
          let ft'_addr = ft_addr +@ 1 in

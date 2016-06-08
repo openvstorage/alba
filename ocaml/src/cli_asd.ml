@@ -265,6 +265,54 @@ let asd_multi_get_cmd =
     Term.info "asd-multi-get" ~doc
   in asd_multi_get_t, info
 
+let asd_partial_get hosts port transport tls_config asd_id key off len verbose =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id verbose
+    (fun client ->
+      let buffer = Lwt_bytes.create len in
+      let slices = [(off,len, buffer, 0)] in
+     client # raw_partial_get ~prio:Osd.High (Slice.wrap_string key) slices
+     >>= fun ok  ->
+     Lwt_io.printlf "ok:%b" ok >>= fun () ->
+     Lwt_io.printlf "value:\n%s" (Lwt_bytes.to_string buffer |> Prelude.to_hex)
+     >>= fun () ->
+     Lwt.return ()
+    )
+
+
+let asd_partial_get_cmd =
+  let doc = "$(docv)" in
+  let key =
+    Arg.(required
+         &  pos 0 (some string) None
+         &  info [] ~docv:"KEY" ~doc)
+  in
+  let off default =
+    let doc = "$(docv) of slice" in
+    Arg.(value
+         & opt int default
+         & info ["o"; "offset"] ~docv:"OFFSET" ~doc)
+  in
+  let len default =
+    let doc = "$(docv) of slice" in
+    Arg.(value
+          & opt int default
+          & info ["l"; "length"] ~docv:"LENGTH" ~doc)
+  in
+  let asd_partial_get_t =
+    Term.(pure asd_partial_get
+          $ hosts $ (port 8_000) $ transport
+          $ tls_config
+          $ lido
+          $ key $ off 0 $ len 512
+          $ verbose)
+  in
+  let info =
+    let doc = "perform a partial get on a remote ASD" in
+    Term.info "asd-partial-get" ~doc
+  in asd_partial_get_t, info
+
 
 let asd_delete hosts port transport tls_config asd_id key verbose =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
@@ -741,6 +789,7 @@ let cmds = [
   asd_start_cmd;
   asd_set_cmd;
   asd_multi_get_cmd;
+  asd_partial_get_cmd;
   asd_delete_cmd;
   asd_range_cmd;
   osd_bench_cmd;

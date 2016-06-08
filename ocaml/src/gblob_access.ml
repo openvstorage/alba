@@ -41,6 +41,8 @@ class g_directory_info statistics config service_handle =
   let _event_fd  = IOExecFile.get_event_fd _event_channel in
   let alignment = 4096 in
 
+  let (_fake_fd:Unix.file_descr)  = Obj.magic (-1) in
+
 object(self)
   inherit blob_access statistics
   inherit default_directory_access config.files_path
@@ -78,7 +80,7 @@ object(self)
 
     Lwt.finalize
       (fun () ->
-        let fragment = Fragment.make completion_id 0 len' bytes in
+        let fragment = Fragment.make completion_id 0 len' bytes _fake_fd in
         let fragments = [ fragment ] in
         let batch = Batch.make fragments in
         IOExecFile.file_read handle batch _event_channel >>= fun () ->
@@ -105,7 +107,7 @@ object(self)
       )
 
 
-  method _get_blob_data fnr len slices _f =
+  method _get_blob_data fnr len slices (socket_fd, _f) =
     let fn = self # _get_file_path fnr in
 
     let took, handle  =
@@ -126,22 +128,27 @@ object(self)
              off'               off             off+len          off'+len'
 
            *)
-
-          let left = off mod alignment in
-          let off' =
-            if left = 0
-            then off
-            else off - left
-          in
-          let remainder = (left + len) mod alignment in
-          let len' =
-            if remainder = 0
-            then left + len
-            else left + len + (alignment - remainder)
-          in
-          let bytes = GMemPool.alloc len' in
-          let fragment = Fragment.make completion_id off' len' bytes in
-          (completion_id, off', off, len, len', fragment, sleep)
+          if socket_fd = _fake_fd
+          then
+            let left = off mod alignment in
+            let off' =
+              if left = 0
+              then off
+              else off - left
+            in
+            let remainder = (left + len) mod alignment in
+            let len' =
+              if remainder = 0
+              then left + len
+              else left + len + (alignment - remainder)
+            in
+            let bytes = GMemPool.alloc len' in
+            let fragment = Fragment.make completion_id off' len' bytes socket_fd in
+            (completion_id, off', off, len, len', fragment, sleep)
+          else
+            let bytes = GMemPool.alloc len in
+            let fragment = Fragment.make completion_id off len bytes socket_fd in
+            (completion_id, off , off, len, len, fragment, sleep)
         ) slices
     in
     let fragments =
@@ -198,16 +205,16 @@ object(self)
       let left = off - off' in
       f (off, len) buffer left
     in
-    self # _get_blob_data fnr len slices _f
+    self # _get_blob_data fnr len slices (_fake_fd,_f)
 
   method send_blob_data_to fnr len slices nfd =
-    let _f (correction, ec) =
-      let (completion_id,off',off, len,len',fragment, sleep) = correction in
-      let buffer = Fragment.get_bytes fragment in
-      let left = off' - off in
-      Net_fd.write_all_lwt_bytes nfd buffer left len
+    Lwt_log.debug_f "send_blob_data_to ~fnr:%Li nfd:%i" fnr (Net_fd.identifier nfd)
+    >>= fun () ->
+    let _f (correction, ec) = Lwt.return_unit in
+    let ufd = match nfd with
+      | Plain fd -> Lwt_unix.unix_file_descr fd
     in
-    self # _get_blob_data fnr len slices _f
+    self # _get_blob_data fnr len slices (ufd, _f)
 
 
   method private _inner () : unit Lwt.t =
@@ -279,7 +286,7 @@ object(self)
         let bytes = GMemPool.alloc len in
         let completion_id, sleep = self # next_completion_id  in
         Lwt_log.debug_f "write_blob ~fnr:%Li completion_id:%Li" fnr completion_id >>= fun () ->
-        let fragment = Fragment.make completion_id 0 len bytes in
+        let fragment = Fragment.make completion_id 0 len bytes _fake_fd in
 
         (* TODO: don't blit *)
         let tgt = Fragment.get_bytes fragment in

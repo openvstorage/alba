@@ -228,7 +228,8 @@ let make_server
                     then
                       Lwt.catch
                         (fun () ->
-                          Net_fd.apply_keepalive tcp_keepalive cl_fd; 
+                          Net_fd.apply_keepalive tcp_keepalive cl_fd;
+                          Net_fd.uncork cl_fd;
                           Lwt_log.info_f "%s: new client connection" server_name >>= fun () ->
                           protocol cl_fd)
                         (function
