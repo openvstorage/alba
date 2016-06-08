@@ -244,7 +244,7 @@ object(self)
     if remainder <> 0
     then
       begin
-        Lwt_log.info_f
+        Lwt_log.debug_f
           "ragged blob size: fnr:%Li len:%i (0x%0x) using ordinary write"
           fnr len len
         >>= fun () ->
@@ -255,24 +255,22 @@ object(self)
           (fun fd ->
             let extra = alignment - remainder in
             let padded_size = len + extra  in
-            let bytes = Lwt_bytes.create padded_size in
             Lwt.finalize
               (fun () ->
-                let src = Blob.get_string_unsafe blob in
-                Lwt_bytes.blit_from_bytes src 0 bytes 0 len;
-                Lwt_bytes.fill bytes len extra '\x00';
-                Lwt_extra2.write_all_lwt_bytes fd bytes 0 padded_size
-                >>= fun () ->
+                maybe_fallocate config fd len >>= fun () ->
+                Blob.write_blob blob fd >>= fun () ->
+                Lwt_unix.ftruncate fd padded_size >>= fun () ->
                 (* you need to sync here:
                    otherwise you might read garbage later on as
-                   the real data is still resides in some buffers
+                   the real data still resides in some buffers
                   *)
                 Lwt_unix.fsync fd
               )
               (fun () ->
-                Lwt_bytes2.Lwt_bytes.unsafe_destroy bytes;
                 let parent_dir = config.files_path ^ "/" ^ dir in
-                post_write (Some fd) len parent_dir
+                post_write (Some fd) len parent_dir >>= fun () ->
+                let ufd = Lwt_unix.unix_file_descr fd in
+                maybe_fadvise_dont_need config ufd len
               )
           )
       end

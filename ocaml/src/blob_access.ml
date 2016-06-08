@@ -68,6 +68,18 @@ object
   method virtual ensure_dir_exists : bytes -> sync : bool -> unit Lwt.t
 end
 
+let maybe_fallocate config fd len =
+  if config.use_fallocate
+  then Posix.lwt_fallocate fd 0 0 len
+  else Lwt.return_unit
+
+let maybe_fadvise_dont_need config ufd len =
+  let () =
+    if config.use_fadvise
+    then Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED
+  in
+  Lwt.return_unit
+
 class default_directory_access files_path =
 object(self)
   inherit directory_access
@@ -243,15 +255,8 @@ object(self)
               ~fd_out:nfd
               length
             >>= fun () ->
-            let () =
-              if config.use_fadvise
-              then
-                Posix.posix_fadvise
-                  blob_ufd
-                  0 size
-                  Posix.POSIX_FADV_DONTNEED
-            in
-            Lwt.return_unit)
+            maybe_fadvise_dont_need config blob_ufd size
+          )
           slices
       )
   method get_blob_data fnr size slices f =
@@ -283,15 +288,8 @@ object(self)
             (* fill it *)
             f (offset,length) buffer 0
             >>= fun () ->
-            let () =
-              if config.use_fadvise
-              then
-                Posix.posix_fadvise
-                  blob_ufd
-                  0 size
-                  Posix.POSIX_FADV_DONTNEED
-            in
-            Lwt.return_unit)
+            maybe_fadvise_dont_need config blob_ufd size
+          )
           slices
       )
 
@@ -338,13 +336,7 @@ object(self)
              let len = Blob.length blob in
              Lwt.finalize
                (fun () ->
-                 (if config.use_fallocate
-                  then
-                    Posix.lwt_fallocate fd 0 0 len
-                  else
-                    Lwt.return_unit
-                 )
-                 >>= fun () ->
+                 maybe_fallocate config fd len >>= fun () ->
                  Asd_protocol.Blob.write_blob blob fd
                )
                (fun () ->
@@ -352,11 +344,7 @@ object(self)
                  post_write (Some fd) len parent_dir
                  >>= fun () ->
                  let ufd = Lwt_unix.unix_file_descr fd in
-                 let () =
-                   if config.use_fadvise
-                   then Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED
-                 in
-                 Lwt.return_unit
+                 maybe_fadvise_dont_need config ufd len
                )
            )
       )
