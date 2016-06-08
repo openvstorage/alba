@@ -340,7 +340,7 @@ let _prologue_response fd lido =
 
 
 
-let make_client buffer_pool ~conn_info (lido:string option)  =
+let make_client ~conn_info (lido:string option)  =
   Networking2.first_connection ~conn_info
   >>= fun (nfd, closer) ->
   Lwt.catch
@@ -356,62 +356,60 @@ let make_client buffer_pool ~conn_info (lido:string option)  =
      closer () >>= fun () ->
      Lwt.fail exn)
 
-let with_client buffer_pool ~conn_info (lido:string option) f =
+let with_client ~conn_info (lido:string option) f =
   (* TODO: validation here? or elsewhere *)
   let () =
     match conn_info.Networking2.ips with
     | [] -> failwith "empty ips list for asd_client.with_client";
     | _ -> ()
   in
-  make_client buffer_pool ~conn_info lido >>= fun (client, closer) ->
+  make_client ~conn_info lido >>= fun (client, closer) ->
   Lwt.finalize
     (fun () -> f client)
     closer
 
 class asd_osd (asd_id : string) (asd : client) =
-  object(self :# Osd.osd)
-  method get_option prio (k:key) =
-    asd # multi_get ~prio [k] >>= fun vcos ->
-    let ho = List.hd_exn vcos in
-    let r =
-      match ho with
-      | None -> None
-      | Some (v,c) -> Some v
-    in
-    Lwt.return r
+object(self :# Osd.key_value_osd)
 
-  method get_exn prio (k:key) =
-    self # get_option prio k
-    >>= function
-    | None -> Lwt.fail (Failure (Printf.sprintf
-                                   "Could not find key %s on asd %S"
-                                   (Slice.get_string_unsafe k) asd_id))
-    | Some v -> Lwt.return v
+  method kvs =
+    object(self)
+      method get_option prio (k:key) =
+        asd # get ~prio k >>= function
+        | None -> Lwt.return_none
+        | Some (v,c) -> Lwt.return (Some v)
 
-  method multi_get prio keys =
-    asd # multi_get ~prio keys >>= fun vcos ->
-    Lwt.return
-      (List.map
-         (Option.map fst)
-         vcos)
+      method get_exn prio (k:key) =
+        self # get_option prio k >>= function
+        | None -> Lwt.fail (Failure (Printf.sprintf
+                                       "Could not find key %s on asd %S"
+                                       (Slice.get_string_unsafe k) asd_id))
+        | Some v -> Lwt.return v
 
-  method multi_exists prio keys = asd # multi_exists ~prio keys
+      method multi_get prio keys =
+        asd # multi_get ~prio keys >>= fun vcos ->
+        Lwt.return
+          (List.map
+             (Option.map fst)
+             vcos)
 
-  method partial_get prio key slices = asd # partial_get ~prio key slices
+      method multi_exists prio keys = asd # multi_exists ~prio keys
 
-  method range prio = asd # range ~prio
+      method partial_get prio key slices = asd # partial_get ~prio key slices
 
-  method range_entries prio = asd # range_entries ~prio
+      method range prio = asd # range ~prio
 
-  method apply_sequence prio asserts (upds: Update.t list) =
-    Lwt.catch
-      (fun () ->
-         asd # apply_sequence ~prio asserts upds >>= fun () ->
-         Lwt.return Osd.Ok)
-      (function
-        | Error.Exn e ->
-           Lwt.return (Osd.Exn e)
-        | exn -> Lwt.fail exn)
+      method range_entries prio = asd # range_entries ~prio
+
+      method apply_sequence prio asserts (upds: Update.t list) =
+        Lwt.catch
+          (fun () ->
+           asd # apply_sequence ~prio asserts upds >>= fun () ->
+           Lwt.return Osd.Ok)
+          (function
+            | Error.Exn e ->
+               Lwt.return (Osd.Exn e)
+            | exn -> Lwt.fail exn)
+    end
 
   method set_full full = asd # set_full full
 

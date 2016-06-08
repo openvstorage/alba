@@ -42,7 +42,6 @@ module Protocol = struct
       let deser a_deser = from_buffer (fst a_deser), to_buffer (snd a_deser)
     end
 
-  type has_more = bool
 
   type ('request, 'response) query =
     | GetObjectManifestByName : (object_name, Manifest.t option) query
@@ -58,6 +57,9 @@ module Protocol = struct
                           Manifest.t counted_list_more) query
     | ListObjectsByPolicy : ((Policy.policy * object_id) RangeQueryArgs.t,
                              Manifest.t counted_list_more) query
+
+    | MultiExists : (object_name list,
+                     bool list) query
 
     | ListDeviceKeysToBeDeleted : (osd_id * string RangeQueryArgs.t,
                                    string counted_list_more) query
@@ -84,6 +86,7 @@ module Protocol = struct
     | MarkKeysDeleted : ((osd_id * string list) list, unit) update
     | CleanupOsdKeysToBeDeleted : (osd_id, int) update
 
+    | ApplySequence : (Assert.t list * Update.t list, unit) update
 
   let overwrite_to buf = function
     | Unconditionally -> Llio.int8_to buf 1
@@ -117,6 +120,8 @@ module Protocol = struct
           (Llio.pair_from
              Policy.from_buffer
              Llio.string_from)
+
+      | MultiExists -> Llio.list_from Llio.string_from
 
       | ListDeviceKeysToBeDeleted ->
         Llio.pair_from
@@ -156,7 +161,10 @@ module Protocol = struct
         (name, object_id, updates, gc_epoch, version_id)
       | CleanupOsdKeysToBeDeleted ->
         Llio.int32_from
-
+      | ApplySequence ->
+         Llio.pair_from
+           (Llio.list_from Assert.from_buffer)
+           (Llio.list_from Update.from_buffer)
 
   let write_query_request : type req res. (req, res) query -> req Llio.serializer
     = function
@@ -176,6 +184,8 @@ module Protocol = struct
           (Llio.pair_to
              Policy.to_buffer
              Llio.string_to)
+
+      | MultiExists -> Llio.list_to Llio.string_to
 
       | ListDeviceKeysToBeDeleted ->
         Llio.pair_to
@@ -214,7 +224,10 @@ module Protocol = struct
         Llio.int_to buf version_id
       | CleanupOsdKeysToBeDeleted ->
         Llio.int32_to
-
+      | ApplySequence ->
+         Llio.pair_to
+           (Llio.list_to Assert.to_buffer)
+           (Llio.list_to Update.to_buffer)
 
   let write_query_response : type req res. (req, res) query -> res Llio.serializer
     = function
@@ -235,6 +248,8 @@ module Protocol = struct
       | ListObjectsByOsd ->
         counted_list_more_to Manifest.to_buffer
 
+      | MultiExists -> Llio.list_to Llio.bool_to
+
       | ListDeviceKeysToBeDeleted ->
         counted_list_more_to Llio.string_to
 
@@ -251,6 +266,7 @@ module Protocol = struct
       | UpdateObject -> Llio.unit_to
       | MarkKeysDeleted -> Llio.unit_to
       | CleanupOsdKeysToBeDeleted -> Llio.int_to
+      | ApplySequence -> Llio.unit_to
 
   let read_query_response : type req res. (req, res) query -> res Llio.deserializer
     = function
@@ -271,6 +287,8 @@ module Protocol = struct
       | ListObjectsByPolicy ->
         counted_list_more_from Manifest.from_buffer
 
+      | MultiExists -> Llio.list_from Llio.bool_from
+
       | ListDeviceKeysToBeDeleted ->
         counted_list_more_from Llio.string_from
 
@@ -287,5 +305,6 @@ module Protocol = struct
       | UpdateObject -> Llio.unit_from
       | MarkKeysDeleted -> Llio.unit_from
       | CleanupOsdKeysToBeDeleted -> Llio.int_from
+      | ApplySequence -> Llio.unit_from
 
 end

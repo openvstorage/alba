@@ -405,6 +405,12 @@ let only_test =
        & info ["only-test"] ~docv:"ONLY-TEST" ~doc:"limit tests to filter:$(docv)"
   )
 
+let node_id default =
+  let doc = "the $(docv) just for this node" in
+  Arg.(value
+       & opt (some string) default
+       & info ["node-id"] ~docv:"NODE_ID" ~doc
+      )
 
 let verify_log_level log_level =
   let levels = [ "debug"; "info"; "notice"; "warning"; "error"; "fatal"; ] in
@@ -427,7 +433,7 @@ let to_level =
 let with_alba_client cfg_url tls_config f =
   Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
   let cfg_ref = ref cfg in
-  Alba_client.with_client cfg_ref ~tls_config f
+  Alba_client2.with_client cfg_ref ~tls_config f
 
 let with_albamgr_client ~attempts cfg_url tls_config f =
   Alba_arakoon.config_from_url cfg_url >>= fun cfg ->

@@ -37,7 +37,7 @@ let verify_and_maybe_repair_object
     if verify_checksum
     then
       fun (osd : Osd.osd) key ~chunk_id ~fragment_id ->
-      osd # get_option
+      (osd # namespace_kvs namespace_id) # get_option
           Osd.Low
           key >>= function
       | None -> Lwt.return `Missing
@@ -52,7 +52,8 @@ let verify_and_maybe_repair_object
             else `ChecksumMismatch)
     else
       fun osd key ~chunk_id ~fragment_id ->
-      osd # multi_exists
+      (* TODO verify multiple objects at once? *)
+      (osd # namespace_kvs namespace_id) # multi_exists
           Osd.Low
           [ key ] >>= function
       | [ true; ] -> Lwt.return `Ok
@@ -63,7 +64,6 @@ let verify_and_maybe_repair_object
   let verify ~osd_id ~chunk_id ~fragment_id ~version_id =
     let key_string =
       Osd_keys.AlbaInstance.fragment
-        ~namespace_id
         ~object_id ~version_id
         ~chunk_id ~fragment_id
     in

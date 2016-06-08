@@ -30,7 +30,7 @@ let test_with_alba_client ?bad_fragment_callback f =
     begin
       _fetch_abm_client_cfg () >>= fun abm_ccfg ->
       let tls_config = Albamgr_test.get_tls_config () in
-      Alba_client.with_client
+      Alba_client2.with_client
         ?bad_fragment_callback
         (ref abm_ccfg)
         ~tls_config
@@ -63,15 +63,19 @@ let delete_fragment
   alba_client # with_osd
     ~osd_id
     (fun osd ->
-     osd # apply_sequence
+     osd # global_kvs # apply_sequence
          Osd.High
          []
          [ Osd.Update.delete_string
-             (Osd_keys.AlbaInstance.fragment
-                ~namespace_id
-                ~object_id ~version_id
-                ~chunk_id
-                ~fragment_id) ]
+             (let k =
+                Osd_keys.AlbaInstance.fragment
+                  ~object_id ~version_id
+                  ~chunk_id
+                  ~fragment_id
+              in
+              Osd_keys.AlbaInstance.to_global_key
+                namespace_id
+                (k, 0, String.length k)) ]
      >>= fun s ->
      OUnit.assert_equal Osd.Ok s;
      Lwt.return ())
@@ -336,7 +340,7 @@ let test_delete_namespace () =
              (fun c ->
                 let open Osd_keys in
                 let open Slice in
-                c # get_option
+                (c # global_kvs) # get_option
                   Osd.High
                   (wrap_string (AlbaInstance.namespace_status ~namespace_id)) >>= fun ps ->
                 let p = Option.map Lwt_bytes.to_string ps in
@@ -344,13 +348,12 @@ let test_delete_namespace () =
                 assert (presence = (p <> None));
                 let fragment_key = wrap_string
                                      (AlbaInstance.fragment
-                                        ~namespace_id
                                         ~object_id ~version_id
                                         ~chunk_id:0
                                         ~fragment_id:0
                                      )
                 in
-                c # get_option Osd.High fragment_key >>= fun fs ->
+                (c # namespace_kvs namespace_id) # get_option Osd.High fragment_key >>= fun fs ->
                 let f = Option.map Lwt_bytes.to_string fs in
                 Lwt_io.printlf "got f = %s" ([%show : string option] f) >>= fun () ->
                 assert (fragment = (f <> None));
@@ -413,12 +416,11 @@ let test_clean_obsolete_keys () =
                 let fragment_key =
                   Slice.wrap_string
                     (Osd_keys.AlbaInstance.fragment
-                       ~namespace_id
                        ~object_id ~version_id
                        ~chunk_id:0
                        ~fragment_id:0)
                 in
-                osd_client # get_option Osd.High fragment_key >>= fun data_o ->
+                (osd_client # namespace_kvs namespace_id) # get_option Osd.High fragment_key >>= fun data_o ->
                 assert (assert_ data_o);
                 Lwt.return ()) in
 
@@ -478,12 +480,11 @@ let test_garbage_collect () =
               let fragment_key =
                 Slice.wrap_string
                   (Osd_keys.AlbaInstance.fragment
-                     ~namespace_id
                      ~object_id ~version_id
                      ~chunk_id
                      ~fragment_id)
               in
-                osd_client # get_option Osd.High fragment_key
+                (osd_client # namespace_kvs namespace_id) # get_option Osd.High fragment_key
                 >>= fun data_o ->
                 assert (assert_ data_o);
                 Lwt.return ()) in
@@ -843,7 +844,7 @@ let test_discover_claimed () =
 
             let osd = new Asd_client.asd_osd test_name asd in
 
-            osd # apply_sequence
+            osd # kvs # apply_sequence
               Osd.High
               [ Assert.none next_alba_instance';
                 Assert.none_string instance_log_key;
@@ -1701,7 +1702,7 @@ let test_invalidate_deleted_namespace () =
   test_with_alba_client
     (fun alba_client1 ->
        _fetch_abm_client_cfg () >>= fun cfg ->
-       Alba_client.with_client
+       Alba_client2.with_client
          (ref cfg)
          ~tls_config
          ~release_resources:true
@@ -1924,6 +1925,7 @@ let test_stale_manifest_download () =
      >>= fun mf ->
 
      let download () =
+       Lwt_log.debug_f "Downloading the object..." >>= fun () ->
        alba_client # download_object_to_string
                    ~namespace
                    ~object_name
@@ -1933,6 +1935,7 @@ let test_stale_manifest_download () =
        Lwt.return ()
      in
      let download_slices () =
+       Lwt_log.debug_f "Downloading the object in slices..." >>= fun () ->
        alba_client # download_object_slices_to_string
                    ~namespace
                    ~object_name
@@ -1942,9 +1945,10 @@ let test_stale_manifest_download () =
        Lwt.return ()
      in
      let rewrite_obj () =
+       Lwt_log.debug_f "Rewriting the object..." >>= fun () ->
        let tls_config = Albamgr_test.get_tls_config() in
        _fetch_abm_client_cfg () >>= fun cfg ->
-       Alba_client.with_client
+       Alba_client2.with_client
          (ref cfg)
          ~tls_config
          ~release_resources:true
@@ -1963,6 +1967,7 @@ let test_stale_manifest_download () =
             (alba_client2 # get_base_client)
             ~namespace_id
             ~manifest >>= fun () ->
+          Lwt_log.debug_f "Cleaning obsolete keys..." >>= fun () ->
           maintenance_client # clean_obsolete_keys_namespace
                              ~once:true ~namespace_id >>= fun () ->
           Lwt.return ())

@@ -18,8 +18,6 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Prelude
 open Fragment_cache
-open Albamgr_access
-open Alba_base_client
 open Alba_statistics
 open Alba_client_errors
 open Lwt.Infix
@@ -214,15 +212,16 @@ class alba_client (base_client : Alba_base_client.client)
          ~write_object_data
          ~consistent_read
          ~should_cache
-    >>= fun _len ->
-    Lwt.return !res
+    >>= function
+    | None -> Lwt.return_none
+    | Some _ -> Lwt.return !res
 
   method download_object_to_bytes
            ~namespace
            ~object_name
            ~consistent_read
            ~should_cache
-         : Lwt_bytes.t option Lwt.t =
+         : (Lwt_bytes.t * Nsm_model.Manifest.t) option Lwt.t =
     let res = ref None in
     let write_object_data total_size =
       let bs = Lwt_bytes.create (Int64.to_int total_size) in
@@ -235,6 +234,11 @@ class alba_client (base_client : Alba_base_client.client)
       in
       Lwt.return write
     in
+    let destroy_res () =
+      match !res with
+      | None -> ()
+      | Some x -> Lwt_bytes.unsafe_destroy x
+    in
     Lwt.catch
       (fun () ->
        self # download_object_generic
@@ -243,13 +247,14 @@ class alba_client (base_client : Alba_base_client.client)
             ~write_object_data
             ~consistent_read
             ~should_cache
-       >>= fun _len ->
-       Lwt.return !res)
+       >>= function
+       | Some (mf, _) ->
+          Lwt.return (Some (Option.get_some !res, mf))
+       | None ->
+          let () = destroy_res () in
+          Lwt.return_none)
       (fun exn ->
-       let () = match !res with
-         | None -> ()
-         | Some x -> Lwt_bytes.unsafe_destroy x
-       in
+       let () = destroy_res () in
        Lwt.fail exn)
 
   method download_object_to_string'
@@ -276,8 +281,9 @@ class alba_client (base_client : Alba_base_client.client)
          ~write_object_data
          ~consistent_read
          ~should_cache
-    >>= fun _len ->
-    Lwt.return !res
+    >>= function
+    | None -> Lwt.return_none
+    | Some _ -> Lwt.return !res
 
   method delete_object ~namespace ~object_name ~may_not_exist =
     Lwt_log.debug_f "Deleting object %S (namespace=%S)"
@@ -435,18 +441,15 @@ class alba_client (base_client : Alba_base_client.client)
         ~long_id
   end
 
-let with_client albamgr_client_cfg
+let make_client (mgr_access : Albamgr_access.mgr_access)
+                ~osd_access
                 ?(fragment_cache = (new no_cache :> cache))
                 ?(manifest_cache_size=100_000)
                 ?(bad_fragment_callback = fun
                     alba_client
                     ~namespace_id ~object_id ~object_name
                     ~chunk_id ~fragment_id ~location -> ())
-                ?(albamgr_connection_pool_size = 10)
                 ?(nsm_host_connection_pool_size = 10)
-                ?(osd_connection_pool_size = 10)
-                ?(osd_timeout = 2.)
-                ?(default_osd_priority = Osd.Low)
                 ~tls_config
                 ?(release_resources = false)
                 ?(tcp_keepalive = Tcp_keepalive2.default)
@@ -454,28 +457,15 @@ let with_client albamgr_client_cfg
                 ?(partial_osd_read = true)
                 ?(cache_on_read = true)
                 ?(cache_on_write = true)
-                f
+                ()
   =
-  let albamgr_pool =
-    Remotes.Pool.Albamgr.make
-      ~size:albamgr_connection_pool_size
-      albamgr_client_cfg
-      tls_config
-      default_buffer_pool
-      ~tcp_keepalive
-  in
-  let mgr_access =
-    new Albamgr_client.client (new basic_mgr_pooled albamgr_pool)
-  in
   let base_client = new Alba_base_client.client
                         fragment_cache
-                        ~mgr_access
+                        ~mgr_access:(mgr_access :> Albamgr_client.client)
+                        ~osd_access
                         ~manifest_cache_size
                         ~bad_fragment_callback
                         ~nsm_host_connection_pool_size
-                        ~osd_connection_pool_size
-                        ~osd_timeout
-                        ~default_osd_priority
                         ~tls_config
                         ~tcp_keepalive
                         ~use_fadvise
@@ -483,14 +473,51 @@ let with_client albamgr_client_cfg
                         ~cache_on_read ~cache_on_write
   in
   let client = new alba_client base_client in
+  let closer () =
+    if release_resources
+    then
+      begin
+        base_client # osd_access # finalize;
+        base_client # nsm_host_access # finalize;
+        mgr_access # finalize;
+        fragment_cache # close ()
+      end
+    else
+      Lwt.return ()
+  in
+  (client, closer)
+
+let with_client albamgr_client_cfg
+                ~osd_access
+                ?fragment_cache
+                ?manifest_cache_size
+                ?bad_fragment_callback
+                ?nsm_host_connection_pool_size
+                ~tls_config
+                ?release_resources
+                ?tcp_keepalive
+                ?use_fadvise
+                ?partial_osd_read
+                ?cache_on_read
+                ?cache_on_write
+                f
+  =
+  let client, closer =
+    make_client albamgr_client_cfg
+              ~osd_access
+              ?fragment_cache
+              ?manifest_cache_size
+              ?bad_fragment_callback
+              ?nsm_host_connection_pool_size
+              ~tls_config
+              ?release_resources
+              ?tcp_keepalive
+              ?use_fadvise
+              ?partial_osd_read
+              ?cache_on_read
+              ?cache_on_write
+              ()
+  in
   Lwt.finalize
     (fun () -> f client)
-    (fun () ->
-     if release_resources
-     then
-       begin
-         base_client # osd_access # finalize;
-         base_client # nsm_host_access # finalize;
-         Lwt_pool2.finalize albamgr_pool
-       end
-     else Lwt.return ())
+    closer

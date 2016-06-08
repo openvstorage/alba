@@ -133,7 +133,7 @@ let reap_osd
 
   let boundary = function
     | i when i = total_workers ->
-      K.fragment_recovery_info_next_prefix ~namespace_id
+      K.fragment_recovery_info_next_prefix
     | i ->
       let b = i * (1 lsl 32) / total_workers in
       let buf = Buffer.create 32 in
@@ -142,7 +142,6 @@ let reap_osd
       let bs = Buffer.contents buf in
 
       K.fragment_recovery_info
-        ~namespace_id
         ~object_id:bs
         ~version_id:0
         ~chunk_id:0 ~fragment_id:0
@@ -159,7 +158,7 @@ let reap_osd
            alba_client # with_osd
              ~osd_id
              (fun osd ->
-                osd # range_entries
+                (osd # namespace_kvs namespace_id) # range_entries
                   Osd.High
                   ~first ~finc
                   ~last:(Some (Slice.wrap_string end_object_id, false))
@@ -183,7 +182,7 @@ let reap_osd
         (fun wb ->
            List.iter
              (fun (k, v, cs) ->
-                let _, object_id, chunk_id, fragment_id, version_id =
+                let object_id, chunk_id, fragment_id, version_id =
                   K.parse_fragment_recovery_info (Slice.get_string_unsafe k) in
                 (* TODO use cs to verify v *)
                 let recovery_info =

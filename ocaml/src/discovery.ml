@@ -346,7 +346,7 @@ let get_kind buffer_pool (conn_info:Networking2.conn_info) =
     Lwt_log.debug "is it an asd?" >>= fun () ->
     Lwt.catch
       (fun () ->
-       Asd_client.make_client buffer_pool ~conn_info (Some "xxx")
+       Asd_client.make_client ~conn_info (Some "xxx")
        >>= fun (client, closer) ->
        Lwt.finalize
          (fun () -> Lwt.return None)

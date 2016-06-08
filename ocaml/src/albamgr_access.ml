@@ -33,4 +33,19 @@ class basic_mgr_pooled (albamgr_pool : Pool.Albamgr.t) =
     method update command req =
       with_basic_albamgr_from_pool
         (fun mgr -> mgr # update command req)
+
+    method finalize =
+      Lwt_pool2.finalize albamgr_pool |> Lwt.ignore_result
   end
+
+class mgr_access (mgr : basic_mgr_pooled) =
+object
+  inherit Albamgr_client.client (mgr :> Albamgr_client.basic_client)
+
+  method finalize = mgr # finalize
+end
+
+let make albamgr_pool =
+  let basic_mgr_pooled = new basic_mgr_pooled albamgr_pool in
+  let mgr_access = new mgr_access basic_mgr_pooled in
+  mgr_access

@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Nsm_protocol
 open Protocol
+open Lwt.Infix
 
 class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
   object(self)
@@ -84,14 +85,36 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
             reverse = false; max;
           })
 
+    method multi_exists names =
+      self # query
+           MultiExists
+           names
+
     method list_device_keys_to_be_deleted ~osd_id ~first ~finc ~last ~max ~reverse =
       self # query
         ListDeviceKeysToBeDeleted
         (osd_id,
-         RangeQueryArgs.({
+         RangeQueryArgs.(
+           {
              first; finc; last;
              max; reverse;
-           }))
+           })) >>= fun ((cnt, keys), has_more) ->
+      Lwt.return ((cnt,
+                   List.map
+                     (fun key ->
+                      let cnt = Osd_keys.AlbaInstance.verify_global_key namespace_id (key, 0) in
+                      Str.string_after key cnt)
+                     keys),
+                  has_more)
+
+    method mark_keys_deleted ~osd_id ~keys =
+      self # update
+        MarkKeysDeleted
+        [(osd_id,
+          List.map
+            (fun key ->
+             Osd_keys.AlbaInstance.to_global_key namespace_id (key, 0, 0))
+            keys)]
 
     method get_gc_epochs =
       self # query GetGcEpochs ()
@@ -121,11 +144,6 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
         UpdateObject
         (object_name, object_id, updated_object_locations, gc_epoch, version_id)
 
-    method mark_keys_deleted ~osd_id ~keys =
-      self # update
-        MarkKeysDeleted
-        [(osd_id, keys)]
-
     method enable_gc_epoch gc_epoch =
       self # update
         EnableGcEpoch
@@ -154,4 +172,9 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
       self # update
         CleanupOsdKeysToBeDeleted
         osd_id
+
+    method apply_sequence asserts updates =
+      self # update
+           ApplySequence
+           (asserts, updates)
   end

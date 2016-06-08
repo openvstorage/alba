@@ -25,11 +25,19 @@ module Osd = struct
   type t = {
     id : Osd.id option;
     alba_id : string option;
-    ips : OsdInfo.ip list;
-    port : OsdInfo.port;
-    use_tls: bool;
-    use_rdma: bool;    
     kind : string;
+
+    (* for asd/kinetic *)
+    ips : OsdInfo.ip list option;
+    port : OsdInfo.port option;
+    use_tls: bool option;
+    use_rdma: bool option;
+
+    (* for alba osd *)
+    albamgr_cfg : Alba_arakoon.Config.t option;
+    prefix : string option;
+    preset : string option;
+
     decommissioned : bool;
     node_id : OsdInfo.node_id;
     long_id : OsdInfo.long_id;
@@ -57,16 +65,33 @@ module Osd = struct
       | AnotherAlba alba -> None, Some alba
       | Available -> None, None
     in
-    let k, conn_info, long_id =
+    let kind, long_id,
+        (ips, port, use_tls, use_rdma),
+        (albamgr_cfg, prefix, preset)
+      =
+      let get_ips_port_tls_rdma (ips, port, use_tls, use_rdma) =
+        Some ips, Some port, Some use_tls, Some use_rdma
+      in
+      let no_alba_osd = None, None, None in
       match kind with
-      | OsdInfo.Asd (conn_info, asd_id)    -> "AsdV1", conn_info, asd_id
-      | OsdInfo.Kinetic(conn_info, kin_id) -> "Kinetic3", conn_info, kin_id
+      | OsdInfo.Asd (conn_info, asd_id) ->
+         "AsdV1", asd_id,
+         get_ips_port_tls_rdma conn_info,
+         no_alba_osd
+      | OsdInfo.Kinetic (conn_info, kin_id) ->
+         "Kinetic3", kin_id,
+         get_ips_port_tls_rdma conn_info,
+         no_alba_osd
+      | OsdInfo.Alba { OsdInfo.id; cfg; prefix; preset } ->
+         "Alba", id,
+         (None, None, None, None),
+         (Some cfg, Some prefix, Some preset)
     in
-    let ips, port, use_tls , use_rdma = conn_info in
     { id; alba_id;
-      kind = k;
+      kind;
       ips; port;
       use_tls; use_rdma;
+      albamgr_cfg; prefix; preset;
       node_id; long_id;
       decommissioned;
       total; used;

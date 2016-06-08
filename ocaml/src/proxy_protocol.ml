@@ -273,12 +273,6 @@ module Protocol = struct
   type overwrite = bool
   type may_not_exist = bool
 
-  (* a call with return value has_more may return less than the
-     requested amount of objects/namespaces. when all values in
-     the range have been delivered has_more=false, otherwise
-     has_more=true. *)
-  type has_more = bool
-
   type preset_name = string
   type offset = Int64.t [@@deriving show]
   type length = int [@@deriving show]

@@ -307,6 +307,13 @@ module Option = struct
     | None -> None
     | Some a -> Some (f a)
 
+  let lwt_map f = function
+    | None -> Lwt.return_none
+    | Some a ->
+       let open Lwt.Infix in
+       f a >>= fun r ->
+       Lwt.return (Some r)
+
   let iter f = function
     | None -> ()
     | Some a -> f a
@@ -573,6 +580,22 @@ module Hashtbl = struct
       (fun k v acc -> (k, v) :: acc)
       h
       []
+
+  let to_yojson _ value_to_yojson h =
+    to_assoc_list h
+    |> List.map (fun (k, v) -> k, value_to_yojson v)
+    |> (fun x -> `Assoc x)
+
+  let of_yojson _ value_of_yojson = function
+    | `Assoc x ->
+       List.map (fun (k, v) -> k,
+                               match value_of_yojson v with
+                               | `Ok v -> v
+                               | `Error _ -> assert false)
+                x
+       |> from_assoc_list
+       |> fun x -> `Ok x
+    | _ -> `Error "nie goe"
 end
 
 module IntSet = Set.Make(struct type t = int let compare = compare end)
@@ -614,6 +637,10 @@ module HexInt32 = struct
     Format.pp_print_string formatter (show t)
 end
 
+(* a call with return value has_more may return less than the
+ * requested amount of objects/namespaces. when all values in
+ * the range have been delivered has_more=false, otherwise
+ * has_more=true. *)
 type has_more = bool
 type 'a counted_list = 'a Std.counted_list
 type 'a counted_list_more = 'a counted_list * has_more

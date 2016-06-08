@@ -6,8 +6,8 @@ LIB = $(START)/lib/alba
 all: build
 
 clean:
-	rm -rf ./ocaml/_build
-	cd ./setup && ocamlbuild -clean
+	cd ocaml && ocamlbuild -clean
+	cd setup && ocamlbuild -clean
 
 build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin \
 	build-disk-failure-tests setup
@@ -41,6 +41,7 @@ build-nsm-plugin: build-cmxs
 	_build/src/key_value_store.cmx \
 	_build/src/mem_key_value_store.cmx \
 	_build/src/osd_keys.cmx \
+	_build/src/alba_arakoon.cmx \
         _build/src/nsm_model.cmx \
 	_build/src/tools/stat.cmx \
 	_build/src/alba_statistics.cmx \

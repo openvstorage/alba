@@ -20,9 +20,6 @@ open Prelude
 open Osd
 open Lwt.Infix
 open Slice
-open Lwt_bytes2
-
-let buffer_pool = Buffer_pool.osd_buffer_pool
 
 let rec wait_asd_connection port asd_id () =
   Lwt.catch
@@ -30,7 +27,6 @@ let rec wait_asd_connection port asd_id () =
      let tls_config = Albamgr_test.get_tls_config () in
      let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port tls_config in
      Asd_client.with_client
-       buffer_pool
        ~conn_info  asd_id
        (fun client -> Lwt.return `Continue))
     (function
@@ -71,7 +67,7 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
     begin
       capacity := 10_000_000L;
       Unix.system (Printf.sprintf "rm -rf %s" path) |> ignore;
-      Unix.mkdir path 0o777
+      Unix.system (Printf.sprintf "mkdir -p %s" path) |> ignore
     end;
   let asd_id = Some test_name in
   let cancel = Lwt_condition.create () in
@@ -105,7 +101,6 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
             (wait_asd_connection port asd_id)>>= fun () ->
           let conn_info = Networking2.make_conn_info [ "127.0.0.1" ] port abm_tls_config in
           Asd_client.with_client
-            buffer_pool
             ~conn_info (Some test_name)
             f >>= fun r ->
           Lwt_condition.broadcast cancel ();
@@ -117,133 +112,67 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
 let test_with_asd_client ?write_blobs test_name port f =
   Lwt_main.run (with_asd_client ?write_blobs test_name port f)
 
+let test_with_kvs_client ?write_blobs test_name port f =
+  Lwt_main.run
+    begin
+      with_asd_client
+        ?write_blobs
+        test_name
+        port
+        (fun asd -> f ((new Asd_client.asd_osd test_name asd) # kvs))
+    end
 
-let test_set_get_delete ~verify_value (client : Asd_client.client) =
-  let key = "key" in
-  let size = Asd_server.blob_threshold + 2 in
-  let value = Bytes.make size 'a' in
-  client # set_string ~prio:High key value true >>= fun () ->
-  client # get_string ~prio:High key >>= fun v_o ->
-  (match v_o with
-   | None -> failwith "oops got None"
-   | Some (v, _) -> if verify_value
-                    then assert (v = value));
-  client # delete_string ~prio:High key
+let test_set_get_delete port () =
+  test_with_kvs_client
+    "test_set_get_delete" port
+    (Osd_kvs_test.test_set_get_delete ~verify_value:true)
 
-let test_set_get port () =
-  test_with_asd_client
-    "test_set_get" port
-    (test_set_get_delete ~verify_value:true)
+let test_no_blobs port () =
+  test_with_kvs_client
+    ~write_blobs:false
+    "test_no_blobs" port
+    (Osd_kvs_test.test_set_get_delete ~verify_value:false)
 
 let test_multiget port () =
-  test_with_asd_client
+  test_with_kvs_client
     "test_multiget" port
-    (fun client ->
-       let value1 = "fdidid" in
-       let value2 = "vasi" in
-       client # set_string ~prio:High "key"  value1 true >>= fun () ->
-       client # set_string ~prio:High "key2" value2 true >>= fun () ->
-       client # multi_get_string ~prio:High ["key"; "key2"] >>= fun res ->
-       assert (2 = List.length res);
-       assert ([ Some value1; Some value2; ] = List.map (Option.map fst) res);
-       Lwt.return ())
+    Osd_kvs_test.test_multiget
 
 let test_multi_exists port () =
-  test_with_asd_client
+  test_with_kvs_client
     "test_multi_exists" port
-    (fun client ->
-     let v = "xxxx" in
-     let existing_key = "exists" in
-     client # set_string ~prio:High existing_key v true >>= fun () ->
-     client # multi_exists ~prio:High [
-              Slice.wrap_string existing_key;
-              Slice.wrap_string "non_existing"
-            ]
-     >>= fun res ->
-     assert (2 = List.length res);
-     assert ([true;false] = res );
-     Lwt.return ()
-    )
+    Osd_kvs_test.test_multi_exists
 
 let test_range_query port () =
-  test_with_asd_client
+  test_with_kvs_client
     "test_range_query" port
-    (fun client ->
-       let v = "" in
-       let set k = Osd.Update.set_string k v Checksum.Checksum.NoChecksum
-                                         false
-       in
-       client # apply_sequence ~prio:High
-         []
-         [ set "" ; set "k"; set "kg"; set "l"; ] >>= fun () ->
-
-       client # range_string ~prio:High
-         ~first:"" ~finc:true ~last:None
-         ~max:(-1) ~reverse:false >>= fun ((cnt, keys), _) ->
-
-       Lwt_io.printlf
-         "Found the following keys: %s"
-         ([%show : string list] keys) >>= fun () ->
-       assert (4 = cnt);
-       assert (keys= [""; "k"; "kg"; "l";]);
-
-       client # range_string ~prio:High
-         ~first:"l" ~finc:true ~last:(Some("o", false))
-         ~max:(-1) ~reverse:false >>= fun ((cnt, keys), _) ->
-
-       Lwt_io.printlf
-         "Found the following keys: %s"
-         ([%show : string list] keys) >>= fun () ->
-       assert (1 = cnt);
-       assert (keys = ["l";]);
-       Lwt.return ())
+    Osd_kvs_test.test_range_query
 
 let test_delete port () =
-  test_with_asd_client
+  test_with_kvs_client
     "test_delete" port
-    (fun client ->
-       let key = "sda" in
-       client # delete_string ~prio:High key >>= fun () ->
-       client # get_string ~prio:High key >>= fun res ->
-       assert (None = res);
-       client # set_string ~prio:High key key false >>= fun () ->
-       client # get_string ~prio:High key >>= fun res ->
-       assert (None <> res);
-       client # delete_string ~prio:High key >>= fun () ->
-       client # get_string ~prio:High key >>= fun res ->
-       assert (None = res);
-       Lwt.return ())
+    Osd_kvs_test.test_delete
 
 let test_list_all port () =
-  test_with_asd_client
+  test_with_kvs_client
     "test_list_all" port
-    (fun client ->
-       let rec add_keys = function
-         | 100 -> Lwt.return ()
-         | n ->
-           client # set_string ~prio:High (string_of_int n) "x" false >>= fun () ->
-           add_keys (n + 1)
-       in
-       add_keys 0 >>= fun () ->
+    Osd_kvs_test.test_list_all
 
-       client # range_all ~prio:High ~max:50 () >>= fun (cnt, _) ->
-       Lwt_log.debug_f "cnt = %i" cnt >>= fun () ->
-       assert (cnt = 100);
+let test_assert port () =
+  test_with_kvs_client
+    "test_assert" port
+    Osd_kvs_test.test_assert
 
-       client # range_all ~prio:High ~max:99 () >>= fun (cnt, _) ->
-       Lwt_log.debug_f "cnt = %i" cnt >>= fun () ->
-       assert (cnt = 100);
+let test_partial_get port () =
+  test_with_kvs_client
+    "test_partial_get" port
+    Osd_kvs_test.test_partial_get
 
-       client # range_all ~prio:High ~max:(-1) () >>= fun (cnt, _) ->
-       assert (cnt = 100);
+let test_multi_update_for_same_key port () =
+  test_with_kvs_client
+    "test_multi_update_for_same_key" port
+    Osd_kvs_test.test_multi_update_for_same_key
 
-       client # range_all ~prio:High ~max:100 () >>= fun (cnt, _) ->
-       assert (cnt = 100);
-
-       client # range_all ~prio:High ~max:49 () >>= fun (cnt, _) ->
-       assert (cnt = 100);
-
-       Lwt.return ())
 
 let test_startup port1 port2 () =
   let tn = "test_startup" in
@@ -319,76 +248,6 @@ let test_unknown_operation port () =
      Lwt.return ()
     )
 
-let test_no_blobs port () =
-  test_with_asd_client
-    ~write_blobs:false
-    "test_no_blobs" port
-    (test_set_get_delete ~verify_value:false)
-
-let test_assert port () =
-  test_with_asd_client
-    "test_assert" port
-    (fun asd ->
-     Lwt.catch
-       (fun () ->
-        asd # apply_sequence ~prio:High
-            [ Osd.Assert.value_string "key" "value"; ]
-            [ Osd.Update.set_string
-                "key"
-                (Bytes.create (Asd_server.blob_threshold + 2))
-                Checksum.Checksum.NoChecksum false; ] >>= fun () ->
-        assert false)
-       (function
-         | Asd_protocol.Protocol.Error.Exn Asd_protocol.Protocol.Error.Assert_failed _ ->
-            Lwt.return_unit
-         | exn ->
-            Lwt.fail exn)
-     >>= fun () ->
-     asd # apply_sequence ~prio:High
-         []
-         [ Osd.Update.set_string
-             "key"
-             (Bytes.create (Asd_server.blob_threshold + 2))
-             Checksum.Checksum.NoChecksum false; ] >>= fun () ->
-     asd # multi_get_string ~prio:High [ "x" ] >>= fun _ ->
-     Lwt.return ())
-
-let test_partial_get port () =
-  test_with_asd_client
-    "test_partial_get" port
-    (fun asd ->
-     let key = Slice.wrap_string "key" in
-     let inner size =
-       let value = Lwt_bytes.create_random size in
-       asd # set ~prio:High key (Blob.Lwt_bytes value) true () >>= fun () ->
-
-       let inner' slices =
-         let destination = Lwt_bytes.create size in
-         let slices =
-           List.map
-             (fun (offset, length, destoff) ->
-              offset, length, destination, destoff)
-             slices
-         in
-         asd # partial_get
-             ~prio:High
-             key
-             slices >>= fun success ->
-         assert (success = Osd.Success);
-         assert (value = destination);
-         Lwt.return ()
-       in
-
-       inner' [ 0, size, 0 ] >>= fun () ->
-       inner' [ 0, size - 15, 0;
-                size - 15, 15, size - 15; ] >>= fun () ->
-       inner' [ size - 15, 15, size - 15;
-                0, size - 15, 0; ] >>= fun () ->
-       Lwt.return ()
-     in
-     inner (Asd_server.blob_threshold - 5) >>= fun () ->
-     inner (Asd_server.blob_threshold + 5))
-
 let test_capacity port () =
   let test_name = "test_capacity" in
   let t () =
@@ -440,7 +299,7 @@ let test_capacity port () =
 open OUnit
 
 let suite = "asd_test" >:::[
-    "test_set_get" >:: test_set_get 7900;
+    "test_set_get_delete" >:: test_set_get_delete 7900;
     "test_multiget" >:: test_multiget 7901;
     "test_range_query" >:: test_range_query 7902;
     "test_delete" >:: test_delete 7903;
@@ -453,4 +312,5 @@ let suite = "asd_test" >:::[
     "test_assert" >:: test_assert 7911;
     "test_partial_get" >:: test_partial_get 7911;
     "test_capacity" >:: test_capacity 7912;
+    "test_multi_update_for_same_key" >:: test_multi_update_for_same_key 7913;
   ]

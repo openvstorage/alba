@@ -38,12 +38,18 @@ module Protocol = struct
         (* switch for old abms *)
         let to_buffer =
           let open Nsm_model.OsdInfo in
-          let (_,_,use_tls, use_rdma) = get_conn_info osd_info.kind in
-          
-          match use_tls,use_rdma with
-          | false,false -> _to_buffer_1 ~ignore_tls:true
-          | true, false -> _to_buffer_2
-          | _           -> _to_buffer_3
+          match osd_info.kind with
+          | Asd     (conn_info, _)
+          | Kinetic (conn_info, _) ->
+             let (_,_,use_tls, use_rdma) = conn_info in
+             begin
+               match use_tls,use_rdma with
+               | false,false -> _to_buffer_1 ~ignore_tls:true
+               | true, false -> _to_buffer_2
+               | _           -> _to_buffer_3
+             end
+          | Alba _ ->
+             _to_buffer_3
         in
         to_buffer buf osd_info
       | UnlinkOsd osd_id ->
@@ -196,6 +202,9 @@ module Protocol = struct
       Wrap_q NSMHStatistics, 30l , "NSMHStatistics";
 
       Wrap_q (NsmsQuery GetStats), 33l, "Multi GetStats";
+
+      nsm_query MultiExists, 35l, "MultiExists";
+      nsm_update ApplySequence, 36l, "ApplySequence";
     ]
 
   let wrap_unknown_operation f =

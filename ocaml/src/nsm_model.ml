@@ -35,24 +35,29 @@ module OsdInfo = struct
 
   type asd_id = string [@@deriving show, yojson]
   type kinetic_id = string [@@ deriving show, yojson]
+  type alba_id = string [@@ deriving show, yojson]
 
   type use_tls  = bool [@@ deriving show, yojson]
   type use_rdma = bool [@@ deriving show, yojson]
   type conn_info = ip list * port * use_tls * use_rdma [@@ deriving show, yojson]
 
+  type alba_cfg = {
+      cfg : Alba_arakoon.Config.t;
+      id  : alba_id;
+      prefix : string;
+      preset : string;
+    } [@@deriving show, yojson]
+
   type kind =
     | Asd     of conn_info * asd_id
     | Kinetic of conn_info * kinetic_id
+    | Alba    of alba_cfg
                    [@@deriving show, yojson]
 
   let get_long_id = function
-    | Asd (_, asd_id)        -> asd_id
-    | Kinetic (_,kinetic_id) -> kinetic_id
-
-  let get_conn_info = function
-    | Asd     (info, _)
-    | Kinetic (info, _) ->
-      info
+    | Asd (_, asd_id)         -> asd_id
+    | Kinetic (_, kinetic_id) -> kinetic_id
+    | Alba { id; }            -> id
 
   type t = {
     kind : kind;
@@ -85,6 +90,22 @@ module OsdInfo = struct
        failwith "use_rdma"
     | false -> ()
 
+  let kind_to conn_info_to buf = function
+    | Asd (conn_info, asd_id) ->
+       Llio.int8_to buf 1;
+       conn_info_to buf conn_info;
+       Llio.string_to buf asd_id
+    | Kinetic(conn_info, kin_id) ->
+       Llio.int8_to buf 2;
+       conn_info_to buf conn_info;
+       Llio.string_to buf kin_id
+    | Alba { cfg; id; prefix; preset; } ->
+       Llio.int8_to buf 3;
+       Alba_arakoon.Config.to_buffer buf cfg;
+       Llio.string_to buf id;
+       Llio.string_to buf prefix;
+       Llio.string_to buf preset
+
   let _to_buffer_1
       ?(ignore_tls = false)
       buf
@@ -108,16 +129,7 @@ module OsdInfo = struct
       _check_rdma use_rdma
 
     in
-    let () = match kind with
-      | Asd (conn_info, asd_id) ->
-         Llio.int8_to buf 1;
-         conn_info_to buf conn_info;
-         Llio.string_to buf asd_id
-      | Kinetic(conn_info, kin_id) ->
-         Llio.int8_to buf 2;
-         conn_info_to buf conn_info;
-         Llio.string_to buf kin_id
-    in
+    kind_to conn_info_to buf kind;
     Llio.string_to buf node_id;
     Llio.bool_to buf decommissioned;
     Llio.string_to buf other;
@@ -150,16 +162,7 @@ module OsdInfo = struct
     in
     let buf = Buffer.create 128 in
     let () =
-      let () = match kind with
-        | Asd (conn_info, asd_id) ->
-           Llio.int8_to buf 1;
-           conn_info_to buf conn_info;
-           Llio.string_to buf asd_id;
-        | Kinetic(conn_info, kin_id) ->
-           Llio.int8_to buf 2;
-           conn_info_to buf conn_info;
-           Llio.string_to buf kin_id
-      in
+      kind_to conn_info_to buf kind;
       Llio.string_to buf node_id;
       Llio.bool_to buf decommissioned;
       Llio.string_to buf other;
@@ -194,16 +197,7 @@ module OsdInfo = struct
     in
     let buf = Buffer.create 128 in
     let () =
-      let () = match kind with
-        | Asd (conn_info, asd_id) ->
-           Llio.int8_to buf 1;
-           conn_info_to buf conn_info;
-           Llio.string_to buf asd_id;
-        | Kinetic(conn_info, kin_id) ->
-           Llio.int8_to buf 2;
-           conn_info_to buf conn_info;
-           Llio.string_to buf kin_id
-      in
+      kind_to conn_info_to buf kind;
       Llio.string_to buf node_id;
       Llio.bool_to buf decommissioned;
       Llio.string_to buf other;
@@ -241,6 +235,12 @@ module OsdInfo = struct
         let port = Llio.int_from buf in
         let kin_id = Llio.string_from buf in
         Kinetic((ips, port, false, false), kin_id)
+      | 3 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in
@@ -274,6 +274,12 @@ module OsdInfo = struct
     let kind = match kind_v with
       | 1 -> Asd (conn_info, long_id)
       | 2 -> Kinetic(conn_info, long_id)
+      | 3 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k
     in
     let node_id = Llio.string_from buf in
@@ -300,15 +306,28 @@ module OsdInfo = struct
     let buf = Llio.make_buffer bufs 0 in
 
     let kind_v = Llio.int8_from buf in
-    let ips = Llio.list_from Llio.string_from buf in
-    let port = Llio.int_from buf in
-    let use_tls  = Llio.bool_from buf in
-    let use_rdma = Llio.bool_from buf in
-    let conn_info = ips,port,use_tls, use_rdma in
-    let long_id  = Llio.string_from buf in
+    let conn_info_and_id_from () =
+      let ips = Llio.list_from Llio.string_from buf in
+      let port = Llio.int_from buf in
+      let use_tls  = Llio.bool_from buf in
+      let use_rdma = Llio.bool_from buf in
+      let conn_info = ips,port,use_tls, use_rdma in
+      let long_id  = Llio.string_from buf in
+      conn_info, long_id
+    in
     let kind = match kind_v with
-      | 1 -> Asd (conn_info, long_id)
-      | 2 -> Kinetic(conn_info, long_id)
+      | 1 ->
+         let conn_info, long_id = conn_info_and_id_from () in
+         Asd (conn_info, long_id)
+      | 2 ->
+         let conn_info, long_id = conn_info_and_id_from () in
+         Kinetic (conn_info, long_id)
+      | 3 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k
     in
     let node_id = Llio.string_from buf in
@@ -649,6 +668,68 @@ module Manifest = struct
          fragment_locations)
 end
 
+module Assert =
+  struct
+    type t =
+      | ObjectExists of object_name
+      | ObjectDoesNotExist of object_name
+      | ObjectHasId of object_name * object_id
+    (* | ObjectHasChecksum ? *)
+
+    let to_buffer buf = function
+      | ObjectExists name ->
+         Llio.int8_to buf 1;
+         Llio.string_to buf name
+      | ObjectDoesNotExist name ->
+         Llio.int8_to buf 2;
+         Llio.string_to buf name
+      | ObjectHasId (name, id) ->
+         Llio.int8_to buf 3;
+         Llio.string_to buf name;
+         Llio.string_to buf id
+
+    let from_buffer buf =
+      match Llio.int8_from buf with
+      | 1 ->
+         let name = Llio.string_from buf in
+         ObjectExists name
+      | 2 ->
+         let name = Llio.string_from buf in
+         ObjectDoesNotExist name
+      | 3 ->
+         let name = Llio.string_from buf in
+         let id = Llio.string_from buf in
+         ObjectHasId (name, id)
+      | k -> raise_bad_tag "Nsm_model.Assert" k
+  end
+
+module Update =
+  struct
+    type t =
+      | PutObject of Manifest.t * GcEpochs.gc_epoch
+      | DeleteObject of object_name
+
+    let to_buffer buf = function
+      | PutObject (mf, gc_epoch) ->
+         Llio.int8_to buf 1;
+         Manifest.to_buffer buf mf;
+         Llio.int64_to buf gc_epoch
+      | DeleteObject name ->
+         Llio.int8_to buf 2;
+         Llio.string_to buf name
+
+    let from_buffer buf =
+      match Llio.int8_from buf with
+      | 1 ->
+         let mf = Manifest.from_buffer buf in
+         let gc_epoch = Llio.int64_from buf in
+         PutObject (mf, gc_epoch)
+      | 2 ->
+         let name = Llio.string_from buf in
+         DeleteObject name
+      | k -> raise_bad_tag "Nsm_model.Update" k
+  end
+
 module ObjectInfo = struct
   type t =
     | ManifestWithObjectId of object_id
@@ -878,6 +959,7 @@ module Err = struct
     | Inactive_osd            [@value 17]
     | Too_many_disks_per_node [@value 18]
     | Insufficient_fragments  [@value 19]
+    | Assert_failed           [@value 20]
   [@@deriving show, enum]
 
   exception Nsm_exn of t * string
@@ -907,6 +989,7 @@ let check_fragment_osd_spread manifest =
        ())
     manifest.Manifest.fragment_locations
 
+module Update' = Key_value_store.Update
 
 module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
@@ -915,12 +998,12 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
   let link_osd kv osd_id osd_info =
     let blob = serialize (OsdInfo.to_buffer ~version:3) osd_info in
     [
-      Update.set (Keys.Device.active_osds ~osd_id) "";
-      Update.set (Keys.Device.info ~osd_id)        blob;
+      Update'.set (Keys.Device.active_osds ~osd_id) "";
+      Update'.set (Keys.Device.info ~osd_id)        blob;
     ]
 
   let unlink_osd kv osd_id =
-    [ Update.delete (Keys.Device.active_osds ~osd_id); ]
+    [ Update'.delete (Keys.Device.active_osds ~osd_id); ]
 
   let get_osd_info kv osd_id =
     let key = Keys.Device.info ~osd_id in
@@ -962,7 +1045,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                 | (_,             (None, _)) -> a
                 | (fragment_size, (Some osd_id, _)) ->
                   let upd =
-                    Update.add
+                    Update'.add
                       (Keys.Device.size osd_id)
                       (Int64.of_int (if delete
                                      then -fragment_size
@@ -1028,12 +1111,19 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     (min_fragment_count, max_disks_per_node)
 
+  (* for backwards compatibility we store the keys to
+   * be deleted as global keys
+   *)
+  let to_global_key key =
+    Osd_keys.AlbaInstance.to_global_key
+      C.namespace_id
+      (key, 0, String.length key)
 
   let cleanup_for_object_id kv old_object_id =
     let object_key = Keys.objects ~object_id:old_object_id in
     let old_manifest, old_manifest_s = get_object_manifest_by_id kv old_object_id in
     let delete_manifest =
-      Update.compare_and_swap
+      Update'.compare_and_swap
         object_key
         (Some old_manifest_s)
         None in
@@ -1046,20 +1136,20 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              | Some device_id, version_id ->
                let keys_to_be_deleted =
                  [ Osd_keys.AlbaInstance.fragment
-                     ~namespace_id:C.namespace_id
                      ~object_id:old_object_id
                      ~version_id
                      ~chunk_id
-                     ~fragment_id;
+                     ~fragment_id
+                   |> to_global_key;
                    Osd_keys.AlbaInstance.fragment_recovery_info
-                     ~namespace_id:C.namespace_id
                      ~object_id:old_object_id
                      ~version_id
                      ~chunk_id
-                     ~fragment_id;
+                     ~fragment_id
+                   |> to_global_key;
                  ] in
                List.map
-                 (fun key -> Update.set ((Keys.Device.keys_to_be_deleted device_id) ^ key) "")
+                 (fun key -> Update'.set ((Keys.Device.keys_to_be_deleted device_id) ^ key) "")
                  keys_to_be_deleted
            in
            (fragment_id + 1, List.rev_append deletes' deletes))
@@ -1080,7 +1170,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let old_devices = Manifest.osds_used old_manifest.fragment_locations in
       DeviceSet.fold
         (fun device_id acc ->
-          Update.delete (Keys.Device.objects device_id old_object_id) :: acc)
+          Update'.delete (Keys.Device.objects device_id old_object_id) :: acc)
         old_devices
         [] in
     let delete_policy =
@@ -1093,8 +1183,8 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           ~k ~max_disks_per_node:old_manifest.max_disks_per_node
           old_manifest.fragment_locations
       in
-      [ Update.delete (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id:old_object_id);
-        Update.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) (-1L); ]
+      [ Update'.delete (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id:old_object_id);
+        Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) (-1L); ]
     in
     (List.concat [delete_manifest;
                   delete_policy;
@@ -1119,7 +1209,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
      if Int64.(minimum_epoch =: gc_epoch) &&
         Int64.(gc_epoch <: next_epoch)
      then
-       Update.compare_and_swap
+       Update'.compare_and_swap
          Keys.gc_epochs
          gc_epoch_so
          (Some (serialize
@@ -1135,7 +1225,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       get_gc_epochs kv in
     if Int64.(gc_epoch =: next_epoch)
     then
-      Update.compare_and_swap
+      Update'.compare_and_swap
         Keys.gc_epochs
         gc_epoch_so
         (Some (serialize
@@ -1162,7 +1252,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let removed_from_devices = DeviceSet.diff old_devices new_devices in
       DeviceSet.fold
         (fun device_id acc ->
-           Update.delete (Keys.Device.objects device_id object_id) :: acc)
+           Update'.delete (Keys.Device.objects device_id object_id) :: acc)
         removed_from_devices
         [] in
     let add_upds =
@@ -1175,8 +1265,8 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
            if osd_info_so = None
            then Err.(failwith ~payload:(Int32.to_string osd_id) Inactive_osd);
 
-           Update.Assert (active_osd_key, osd_info_so) ::
-           Update.set (Keys.Device.objects osd_id object_id) "" ::
+           Update'.Assert (active_osd_key, osd_info_so) ::
+           Update'.set (Keys.Device.objects osd_id object_id) "" ::
            acc)
         added_to_devices
         [] in
@@ -1218,14 +1308,14 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     in
     check_overwrite old_object_id_o overwrite;
     let update_name =
-      Update.compare_and_swap
+      Update'.compare_and_swap
         name_key
         old_object_info_o
         (Some (serialize
                  ObjectInfo.to_buffer
                  (ObjectInfo.ManifestWithObjectId object_id))) in
     let add_manifest =
-      Update.compare_and_swap
+      Update'.compare_and_swap
         (Keys.objects ~object_id)
         None
         (Some (serialize Manifest.output manifest)) in
@@ -1234,7 +1324,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let assert_gc_epoch =
       if not (GcEpochs.is_valid_epoch gc_epochs gc_epoch)
       then Err.failwith Err.Invalid_gc_epoch
-      else Update.Assert (Keys.gc_epochs, gc_epoch_so)
+      else Update'.Assert (Keys.gc_epochs, gc_epoch_so)
     in
 
     let update_osd_sizes = get_osd_size_updates ~delete:false manifest in
@@ -1263,9 +1353,9 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          logical_delta, storage_delta
     in
     let update_logical_size =
-      Update.add Keys.namespace_logical_size logical_delta in
+      Update'.add Keys.namespace_logical_size logical_delta in
     let update_storage_size =
-      Update.add Keys.namespace_storage_size storage_delta in
+      Update'.add Keys.namespace_storage_size storage_delta in
 
     let device_obj_mapping_upds =
       update_device_object_mapping
@@ -1285,8 +1375,8 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           ~k ~max_disks_per_node:manifest.max_disks_per_node
           manifest.fragment_locations
       in
-      [ Update.set (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id) "";
-        Update.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) 1L; ]
+      [ Update'.set (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id) "";
+        Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) 1L; ]
     in
     let upds =
       List.concat [ update_name;
@@ -1318,14 +1408,14 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let logical_delta =
         let key = Keys.namespace_logical_size in
         let to_add = let open Manifest in Int64.neg manifest.size in
-        Update.add key to_add
+        Update'.add key to_add
       in
       let storage_delta =
         let key = Keys.namespace_storage_size in
         let to_add =
           Int64.neg (Manifest.get_summed_fragment_sizes manifest)
         in
-        Update.add key to_add
+        Update'.add key to_add
       in
       let upds2 =
         update_device_object_mapping
@@ -1336,13 +1426,83 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           ~max_disks_per_node:manifest.Manifest.max_disks_per_node
       in
       (List.concat
-         [ Update.compare_and_swap name_key object_info_o None;
+         [ Update'.compare_and_swap name_key object_info_o None;
            upds1;
            upds2;
            [logical_delta ];
            [storage_delta ];
          ],
        Some manifest)
+
+  let apply_sequence kv asserts updates =
+    let updates_for_asserts =
+      List.flatmap
+        (let open Assert in
+         function
+         | ObjectExists name ->
+            let key = Keys.names name in
+            begin
+              match KV.get kv key with
+              | None -> Err.(failwith ~payload:name Assert_failed)
+              | (Some _) as vo -> [ Update'.Assert (key, vo); ]
+            end
+         | ObjectDoesNotExist name ->
+            let key = Keys.names name in
+            begin
+              match KV.get kv key with
+              | None -> [ Update'.Assert (key, None); ]
+              | Some _ -> Err.(failwith ~payload:name Assert_failed)
+            end
+         | ObjectHasId (name, object_id) ->
+            let key = Keys.names name in
+            begin
+              match KV.get kv key with
+              | None -> Err.(failwith ~payload:name Assert_failed)
+              | (Some object_info_s) as vo ->
+                 let object_info = deserialize ObjectInfo.from_buffer object_info_s in
+                 let object_id' = ObjectInfo.get_object_id object_info in
+                 if object_id = object_id'
+                 then [ Update'.Assert (key, vo); ]
+                 else Err.(failwith ~payload:name Assert_failed)
+            end
+        )
+        asserts
+    in
+    let updates_for_updates =
+      (* first filter out doubles for the same key
+       * only the last update for the name has effect,
+       * and otherwise the further update calculation is buggy
+       *)
+      let updates' = Hashtbl.create 3 in
+      let () =
+        List.iter
+          (fun update ->
+           let open Update in
+           let name = match update with
+             | PutObject (mf, gc_epoch) -> mf.Manifest.name
+             | DeleteObject name -> name
+           in
+           Hashtbl.replace updates' name update
+          )
+          updates
+      in
+      Hashtbl.fold
+        (fun _ update acc ->
+         let upds =
+           let open Update in
+           match update with
+           | PutObject (mf, gc_epoch) ->
+              put_object kv Unconditionally mf gc_epoch |> fst
+           | DeleteObject name ->
+              delete_object kv name Unconditionally |> fst
+         in
+         List.rev_append upds acc
+        )
+        updates'
+        []
+      |> List.rev
+    in
+    List.rev_append updates_for_asserts updates_for_updates, ()
 
   let list_objects kv ~first ~finc ~last ~max ~reverse =
     EKV.map_range
@@ -1363,6 +1523,11 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              | None -> Keys.objects_next_prefix)
       ~max ~reverse
       (fun cur key -> KV.cur_get_value cur |> deserialize Manifest.input)
+
+  let multi_exists kv object_names =
+    List.map
+      (fun name -> KV.exists kv (Keys.names name))
+      object_names
 
   let list_device_objects kv device_id ~first ~finc ~last ~max ~reverse =
     EKV.map_range
@@ -1393,7 +1558,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          (fun (device_id, keys) ->
             List.map
               (fun key ->
-                 Update.delete ((Keys.Device.keys_to_be_deleted device_id) ^ key))
+                 Update'.delete ((Keys.Device.keys_to_be_deleted device_id) ^ key))
               keys)
          device_keys)
 
@@ -1416,7 +1581,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let gc_epoch_so, min_max_epoch = get_gc_epochs kv in
       if not (GcEpochs.is_valid_epoch min_max_epoch gc_epoch)
       then Err.failwith Err.Invalid_gc_epoch
-      else Update.Assert (Keys.gc_epochs, gc_epoch_so)
+      else Update'.Assert (Keys.gc_epochs, gc_epoch_so)
     in
     let fragments = Hashtbl.create 3 in
     List.iter
@@ -1447,7 +1612,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
            let upd1 = match osd_id_o with
              | None -> []
              | Some osd_id ->
-               [ Update.add
+               [ Update'.add
                    (Keys.Device.size osd_id)
                    (Int64.of_int fragment_size) ]
            in
@@ -1458,7 +1623,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                      fragment_id with
              | None, _ -> []
              | Some previous_osd_id, _ ->
-               [ Update.add
+               [ Update'.add
                    (Keys.Device.size previous_osd_id)
                    (Int64.of_int (-fragment_size)) ]
            in
@@ -1502,20 +1667,22 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           | ((chunk_id, fragment_id), (Some osd_id, version_id)) ->
             let key_to_be_deleted1 =
               Osd_keys.AlbaInstance.fragment
-                ~namespace_id:C.namespace_id
                 ~object_id
                 ~version_id
                 ~chunk_id
-                ~fragment_id in
+                ~fragment_id
+              |> to_global_key
+            in
             let key_to_be_deleted2 =
               Osd_keys.AlbaInstance.fragment_recovery_info
-                ~namespace_id:C.namespace_id
                 ~object_id
                 ~version_id
                 ~chunk_id
-                ~fragment_id in
+                ~fragment_id
+              |> to_global_key
+            in
             List.map
-              (fun k -> Update.set ((Keys.Device.keys_to_be_deleted osd_id) ^ k) "")
+              (fun k -> Update'.set ((Keys.Device.keys_to_be_deleted osd_id) ^ k) "")
               [ key_to_be_deleted1; key_to_be_deleted2 ])
         obsolete_fragments in
 
@@ -1557,27 +1724,27 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       if fragment_count_old     <> fragment_count_updated ||
          max_disks_per_node_old <> max_disks_per_node_updated
       then
-        [ Update.delete
+        [ Update'.delete
             (Keys.policies
                ~k ~m
                ~fragment_count:fragment_count_old
                ~max_disks_per_node:max_disks_per_node_old
                ~object_id);
-          Update.add
+          Update'.add
             (Keys.policies_cnt
                ~k ~m
                ~fragment_count:fragment_count_old
                ~max_disks_per_node:max_disks_per_node_old)
             (-1L);
 
-          Update.set
+          Update'.set
             (Keys.policies
                ~k ~m
                ~fragment_count:fragment_count_updated
                ~max_disks_per_node:max_disks_per_node_updated
                ~object_id)
             "";
-          Update.add
+          Update'.add
             (Keys.policies_cnt
                ~k ~m
                ~fragment_count:fragment_count_updated
@@ -1590,7 +1757,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     let updated_manifest_s = serialize Manifest.output updated_manifest in
     let update_manifest =
-      Update.compare_and_swap
+      Update'.compare_and_swap
         (Keys.objects ~object_id)
         (Some manifest_old_s)
         (Some updated_manifest_s) in

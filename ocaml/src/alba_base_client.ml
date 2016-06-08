@@ -27,9 +27,6 @@ open Alba_interval
 open Alba_client_errors
 module Osd_sec = Osd
 open Nsm_host_access
-open Osd_access
-
-
 
 
 let default_buffer_pool = Buffer_pool.default_buffer_pool
@@ -37,12 +34,10 @@ let default_buffer_pool = Buffer_pool.default_buffer_pool
 class client
     (fragment_cache : cache)
     ~(mgr_access : Albamgr_client.client)
+    ~(osd_access : Osd_access_type.t)
     ~manifest_cache_size
     ~bad_fragment_callback
     ~nsm_host_connection_pool_size
-    ~osd_connection_pool_size
-    ~osd_timeout
-    ~default_osd_priority
     ~tls_config
     ~tcp_keepalive
     ~use_fadvise
@@ -59,11 +54,6 @@ class client
         ~tcp_keepalive
   in
 
-  let osd_access =
-    new osd_access mgr_access
-        ~osd_connection_pool_size ~osd_timeout
-        ~default_osd_priority ~tls_config
-  in
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
 
   let get_namespace_osds_info_cache ~namespace_id =
@@ -104,6 +94,8 @@ class client
       get_preset_info ~preset_name:ns_info.Namespace.preset_name
 
     method get_namespace_osds_info_cache = get_namespace_osds_info_cache
+
+    method get_cache_on_read_write = cache_on_read, cache_on_write
 
     method discover_osds ?check_claimed ?check_claimed_delay () : unit Lwt.t =
       Discovery.discovery
@@ -673,12 +665,11 @@ class client
                                  (fun osd ->
                                   let osd_key =
                                     Osd_keys.AlbaInstance.fragment
-                                      ~namespace_id
                                       ~object_id ~version_id
                                       ~chunk_id ~fragment_id
                                     |> Slice.wrap_string
                                   in
-                                  osd # partial_get
+                                  (osd # namespace_kvs namespace_id) # partial_get
                                       (osd_access # get_default_osd_priority)
                                       osd_key
                                       fragment_intersections) >>=
@@ -759,7 +750,7 @@ class client
              Lwt.catch
                (fun () ->
                 Lwt_unix.with_timeout
-                  osd_timeout
+                  (osd_access # osd_timeout)
                   get_from_fragments)
                (fun exn ->
                 Lwt_log.debug_f

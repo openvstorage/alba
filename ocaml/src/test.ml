@@ -41,4 +41,6 @@ let suite = "all" >:::[
     Maintenance_coordination_test.suite;
     Posix_test.suite;
     Fragment_cache_config_test.suite;
+    Memcmp_test.suite;
+    Alba_osd_test.suite;
   ]

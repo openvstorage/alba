@@ -22,7 +22,6 @@ open Lwt_bytes2
 open Checksum
 open Recovery_info
 open Alba_statistics
-open Osd_access
 open Alba_client_common
 open Alba_client_errors
 open Lwt.Infix
@@ -31,7 +30,7 @@ module Osd_sec = Osd
 let fragment_multiple = Fragment_helper.fragment_multiple
 
 let upload_packed_fragment_data
-      (osd_access : osd_access)
+      (osd_access : Osd_access_type.t)
       ~namespace_id ~object_id
       ~version_id ~chunk_id ~fragment_id
       ~packed_fragment ~checksum
@@ -43,7 +42,6 @@ let upload_packed_fragment_data
   let set_data =
     Osd.Update.set
       (AlbaInstance.fragment
-         ~namespace_id
          ~object_id ~version_id
          ~chunk_id ~fragment_id
        |> Slice.wrap_string)
@@ -54,7 +52,6 @@ let upload_packed_fragment_data
     Osd.Update.set
       (Slice.wrap_string
          (AlbaInstance.fragment_recovery_info
-            ~namespace_id
             ~object_id ~version_id
             ~chunk_id ~fragment_id))
       (* TODO do add some checksum *)
@@ -63,19 +60,11 @@ let upload_packed_fragment_data
   let set_gc_tag =
     Osd.Update.set_string
       (AlbaInstance.gc_epoch_tag
-         ~namespace_id
          ~gc_epoch
          ~object_id ~version_id
          ~chunk_id ~fragment_id)
       "" Checksum.NoChecksum true
   in
-  let assert_namespace_active =
-    Osd.Assert.value_string
-      (AlbaInstance.namespace_status ~namespace_id)
-      (Osd.Osd_namespace_state.(serialize
-                                  to_buffer
-                                  Active)) in
-
   let do_upload () =
     let msg = Printf.sprintf "do_upload ~osd_id:%li" osd_id in
     Lwt_extra2.with_timeout ~msg (osd_access # osd_timeout)
@@ -83,9 +72,9 @@ let upload_packed_fragment_data
        osd_access # with_osd
          ~osd_id
          (fun client ->
-          client # apply_sequence
+          (client # namespace_kvs namespace_id) # apply_sequence
                  (osd_access # get_default_osd_priority)
-                 [ assert_namespace_active; ]
+                 []
                  [ set_data;
                    set_recovery_info;
                    set_gc_tag; ]))
@@ -228,7 +217,6 @@ let upload_chunk
 let upload_object''
       (nsm_host_access : Nsm_host_access.nsm_host_access)
       osd_access
-      manifest_cache
       get_preset_info
       get_namespace_osds_info_cache
       ~object_t0 ~timestamp
@@ -236,7 +224,6 @@ let upload_object''
       ~(object_name : string)
       ~(object_reader : Object_reader.reader)
       ~(checksum_o: Checksum.t option)
-      ~(allow_overwrite : Nsm_model.overwrite)
       ~(object_id_hint: string option)
       ~fragment_cache
       ~cache_on_write
@@ -510,6 +497,64 @@ let upload_object''
       ~max_disks_per_node
       ~timestamp
   in
+  let almost_t_object t_store_manifest =
+    Statistics.({
+                   size;
+                   hash = hash_time;
+                   chunks = chunk_times;
+                   store_manifest = t_store_manifest;
+                   total = Unix.gettimeofday () -. object_t0;
+                 }) in
+  Lwt.return (manifest, almost_t_object, gc_epoch)
+
+let cleanup_gc_tags
+      (osd_access : Osd_access_type.t)
+      mf
+      gc_epoch
+      ~namespace_id
+  =
+  (* clean up gc tags we left behind on the osds,
+   * if it fails that's no problem, the gc will
+   * come and clean it up later *)
+  Lwt.catch
+    (fun () ->
+     Lwt_list.iteri_p
+       (fun chunk_id chunk_locs ->
+        Lwt_list.iteri_p
+          (fun fragment_id (osd_id_o, version_id) ->
+           match osd_id_o with
+           | None -> Lwt.return ()
+           | Some osd_id ->
+              osd_access # with_osd
+                         ~osd_id
+                         (fun osd ->
+                          let remove_gc_tag =
+                            Osd.Update.delete_string
+                              (Osd_keys.AlbaInstance.gc_epoch_tag
+                                 ~gc_epoch
+                                 ~object_id:mf.Nsm_model.Manifest.object_id
+                                 ~version_id
+                                 ~chunk_id
+                                 ~fragment_id)
+                          in
+                          (osd # namespace_kvs namespace_id) # apply_sequence
+                                                             (osd_access # get_default_osd_priority)
+                                                             [] [ remove_gc_tag; ] >>= fun _ ->
+                          Lwt.return ()))
+          chunk_locs)
+       mf.Nsm_model.Manifest.fragment_locations)
+    (fun exn -> Lwt_log.debug_f ~exn "Error while cleaning up gc tags")
+  |> Lwt.ignore_result
+
+
+let store_manifest
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
+      (osd_access : Osd_access_type.t)
+      manifest_cache
+      ~namespace_id
+      ~allow_overwrite
+      (manifest, almost_t_object, gc_epoch) =
+  let object_name = manifest.Nsm_model.Manifest.name in
   let store_manifest () =
     nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
     client # put_object
@@ -529,48 +574,9 @@ let upload_object''
   >>= fun (t_store_manifest, old_manifest_o) ->
   (* TODO maybe clean up fragments from old object *)
 
-  Lwt.ignore_result begin
-      (* clean up gc tags we left behind on the osds,
-           if it fails that's no problem, the gc will
-           come and clean it up later *)
-      Lwt.catch
-        (fun () ->
-         Lwt_list.iteri_p
-           (fun chunk_id chunk_locs ->
-            Lwt_list.iteri_p
-              (fun fragment_id osd_id_o ->
-               match osd_id_o with
-               | None -> Lwt.return ()
-               | Some osd_id ->
-                  osd_access # with_osd
-                    ~osd_id
-                    (fun osd ->
-                     let remove_gc_tag =
-                       Osd.Update.delete_string
-                         (Osd_keys.AlbaInstance.gc_epoch_tag
-                            ~namespace_id
-                            ~gc_epoch
-                            ~object_id
-                            ~version_id
-                            ~chunk_id
-                            ~fragment_id)
-                     in
-                     osd # apply_sequence
-                         (osd_access # get_default_osd_priority)
-                         [] [ remove_gc_tag; ] >>= fun _ ->
-                     Lwt.return ()))
-              chunk_locs)
-           locations)
-        (fun exn -> Lwt_log.debug_f ~exn "Error while cleaning up gc tags")
-    end;
+  let () = cleanup_gc_tags osd_access manifest gc_epoch ~namespace_id in
 
-  let t_object = Statistics.({
-                                size;
-                                hash = hash_time;
-                                chunks = chunk_times;
-                                store_manifest = t_store_manifest;
-                                total = Unix.gettimeofday () -. object_t0;
-                              }) in
+  let t_object = almost_t_object t_store_manifest in
 
   Lwt_log.debug_f
     ~section:Statistics.section
@@ -602,8 +608,8 @@ let upload_object'
   let object_t0 = Unix.gettimeofday () in
   let do_upload timestamp =
     upload_object''
-      nsm_host_access osd_access
-      manifest_cache
+      nsm_host_access
+      osd_access
       get_preset_info
       get_namespace_osds_info_cache
       ~object_t0 ~timestamp
@@ -611,10 +617,16 @@ let upload_object'
       ~namespace_id
       ~object_reader
       ~checksum_o
-      ~allow_overwrite
       ~object_id_hint
       ~fragment_cache
       ~cache_on_write
+    >>=
+      store_manifest
+        nsm_host_access
+        osd_access
+        manifest_cache
+        ~namespace_id
+        ~allow_overwrite
   in
   Lwt.catch
     (fun () -> do_upload object_t0)
@@ -652,6 +664,7 @@ let upload_object'
                 | Namespace_id_not_found
                 | InvalidVersionId
                 | Overwrite_not_allowed
+                | Assert_failed
                 | Too_many_disks_per_node
                 | Insufficient_fragments
                 | Object_not_found ->

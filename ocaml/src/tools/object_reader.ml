@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Slice
 open Lwt.Infix
 
 class type reader = object
@@ -56,8 +57,9 @@ let with_file_reader ~use_fadvise file_name f =
       Lwt.return r
     )
 
-class string_reader object_data = (object
-  val obj_len = String.length object_data
+class slice_reader object_data =
+object(self :# reader)
+  val obj_len = Slice.length object_data
   val mutable pos = 0
 
   method reset =
@@ -68,10 +70,18 @@ class string_reader object_data = (object
     Lwt.return obj_len
 
   method read cnt target =
-    Lwt_bytes.blit_from_bytes object_data pos target 0 cnt;
+    Lwt_bytes.blit_from_bytes
+      object_data.Slice.buf (pos + object_data.Slice.offset)
+      target 0
+      cnt;
     pos <- pos + cnt;
     Lwt.return_unit
-end : reader)
+end
+
+class string_reader object_data =
+object
+  inherit slice_reader (Slice.wrap_string object_data)
+end
 
 class bytes_reader object_data = (object
   val obj_len = Lwt_bytes.length object_data

@@ -40,12 +40,12 @@ let periodic_load_osds
           alba_client # with_osd
                       ~osd_id
                       (fun osd ->
-                       osd # apply_sequence
+                       osd # global_kvs # apply_sequence
                            Osd.Low
                            []
                            [ Osd.Update.set_string
                                Osd_keys.test_key
-                               (Lazy.force Osd_access.large_value)
+                               (Lazy.force Osd_access_type.large_value)
                                Checksum.NoChecksum
                                false ])
         in
@@ -79,20 +79,18 @@ let periodic_load_osds
                   alba_client # with_osd
                               ~osd_id
                               (fun osd ->
-                               osd # multi_get
+                               osd # global_kvs # get_option
                                    Osd.Low
-                                   [ Slice.wrap_string Osd_keys.test_key; ])
+                                   (Slice.wrap_string Osd_keys.test_key))
                   >>= function
-                  | [ Some _ ] ->
+                  | Some _ ->
                      Osd_state.add_read osd_state;
                      Lwt.return ()
-                  | [ None ] ->
+                  | None ->
                      (* seems like the test blob was not yet available on the osd
                       * so let's put it there and retry... *)
                      write_test_blob () >>= fun _ ->
                      inner ()
-                  | _ ->
-                     Lwt.return ()
                 in
                 inner ())
            end

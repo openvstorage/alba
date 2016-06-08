@@ -26,7 +26,7 @@ module DK = Osd_keys.AlbaInstance
               
 let _get_next_msg_id client prio =
 
-  client # get_option
+  client # global_kvs # get_option
          prio
          (Slice.wrap_string DK.next_msg_id)
   >>= fun next_id_so ->
@@ -38,9 +38,7 @@ let _get_next_msg_id client prio =
   in
   Lwt.return (next_id_so, next_id)
 
-let _deliver_osd_messages (osd_access : Osd_access.osd_access) ~osd_id msgs =
-  
-
+let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
 
   let get_next_msg_id () =
     osd_access
@@ -63,20 +61,22 @@ let _deliver_osd_messages (osd_access : Osd_access.osd_access) ~osd_id msgs =
        if Int32.(next_id =: msg_id)
        then begin
            let open Albamgr_protocol.Protocol.Osd.Message in
-           let asserts, upds =
+           begin
              match msg with
              | AddNamespace (namespace_name, namespace_id) ->
+                client # add_namespace namespace_id >>= fun () ->
                 let namespace_status_key = DK.namespace_status ~namespace_id in
-                [ Osd.Assert.none_string namespace_status_key; ],
-                [ Osd.Update.set_string
-                    namespace_status_key
-                    Osd.Osd_namespace_state.(serialize to_buffer Active)
-                    Checksum.NoChecksum true;
-                  Osd.Update.set_string
-                    (DK.namespace_name ~namespace_id) namespace_name
-                    Checksum.NoChecksum true;
-                ]
-           in
+                Lwt.return
+                  ([ Osd.Assert.none_string namespace_status_key; ],
+                   [ Osd.Update.set_string
+                       namespace_status_key
+                       Osd.Osd_namespace_state.(serialize to_buffer Active)
+                       Checksum.NoChecksum true;
+                     Osd.Update.set_string
+                       (DK.namespace_name ~namespace_id) namespace_name
+                       Checksum.NoChecksum true;
+                   ])
+           end >>= fun (asserts, upds) ->
            let bump_msg_id =
              Osd.Update.set_string
                DK.next_msg_id
@@ -92,7 +92,7 @@ let _deliver_osd_messages (osd_access : Osd_access.osd_access) ~osd_id msgs =
                   next_id_so)
              :: asserts
            in
-           client # apply_sequence
+           client # global_kvs # apply_sequence
                   (osd_access # get_default_osd_priority)
                   asserts'
                   (bump_msg_id :: upds)

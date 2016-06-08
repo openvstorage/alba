@@ -157,7 +157,6 @@ let run_with_asd_client' ~conn_info asd_id verbose f =
     ~to_json:false ~verbose
     (fun () ->
      Asd_client.with_client
-       buffer_pool
        ~conn_info asd_id
        f)
 
@@ -166,7 +165,12 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
   | None -> failwith "what kind is this?"
   | Some k ->
      let open Networking2 in
-     Remotes.Pool.Osd.factory conn_info.tls_config buffer_pool k >>= fun (client, closer) ->
+     Osd_access.Osd_pool.factory
+       conn_info.tls_config
+       Tcp_keepalive2.default
+       buffer_pool
+       (Alba_osd.make_client ~albamgr_connection_pool_size:10)
+       k >>= fun (client, closer) ->
      Lwt.finalize
        (fun () -> f client)
        closer
@@ -416,6 +420,12 @@ let osd_bench_cmd =
   in
   osd_bench_t, info
 
+let asd_osd_info_from_kind k =
+  let open Nsm_model.OsdInfo in
+  match k with
+  | Asd (x, _) -> x
+  | Kinetic _ | Alba _ -> assert false
+
 let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
   begin
     let process_results results =
@@ -481,13 +491,13 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                 List.mem (get_long_id k) long_ids
               ) osds
           in
-          
+
           let needed_info =
             List.map
               (fun (_,osd_info) ->
                 let k = osd_info.kind in
                 get_long_id k,
-                get_conn_info k
+                asd_osd_info_from_kind k
               )
               stat_osds
           in
@@ -501,7 +511,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                      (fun () ->
                       let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
                       Asd_client.with_client
-                        buffer_pool ~conn_info (Some long_id)
+                        ~conn_info (Some long_id)
                         (fun client ->
                          client # statistics clear >>= fun stats ->
                          client # get_disk_usage () >>= fun disk_usage ->
@@ -582,11 +592,11 @@ let asd_statistics hosts port_o transport asd_id
                 | Some (claim_info, osd) ->
                   let conn_info =
                     let open Nsm_model.OsdInfo in
-                    let conn_info' = get_conn_info osd.kind in
+                    let conn_info' = asd_osd_info_from_kind osd.kind in
                     Asd_client.conn_info_from conn_info' ~tls_config
                   in
                   Asd_client.with_client
-                    buffer_pool ~conn_info asd_id
+                    ~conn_info asd_id
                     _inner
               end
            )

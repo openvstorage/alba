@@ -169,13 +169,6 @@ let alba_list_osds cfg_file tls_config node_id to_json verbose attempts =
   in
   lwt_cmd_line ~to_json ~verbose t
 
-let node_id default =
-  let doc = "the $(docv) just for this node" in
-  Arg.(value
-       & opt (some string) default
-       & info ["node-id"] ~docv:"NODE_ID" ~doc
-      )
-
 let alba_list_osds_cmd =
   let alba_list_osds_t =
     Term.(pure alba_list_osds
@@ -536,62 +529,6 @@ let alba_list_work_cmd =
     "list-work"
     ~doc:"list outstanding work items"
 
-
-
-let alba_add_osd cfg_file tls_config host port node_id to_json verbose attempts =
-  let node_id = match node_id with
-    | None ->  failwith "A node id is needed here"
-    | Some n -> n
-  in
-  let t () =
-    let conn_info = Networking2.make_conn_info [host] port tls_config in
-    Discovery.get_kind Buffer_pool.default_buffer_pool conn_info >>= function
-    | None -> Lwt.fail_with "I don't think this is an OSD"
-    | Some kind ->
-
-       Remotes.Pool.Osd.factory tls_config Buffer_pool.osd_buffer_pool kind
-       >>= fun (osd_client, closer) ->
-       Lwt_log.info_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
-       let other = "other?" in
-       (* TODO: we guess it's a 4TB drive for now *)
-       let total = Int64.of_int (1 lsl 42) in
-       let used = 0L in
-       let osd_info =
-         Nsm_model.OsdInfo.({
-                 kind;
-                 decommissioned = false;
-                 node_id;
-                 other;
-                 total; used;
-                 seen = [ Unix.gettimeofday (); ];
-                 read = [];
-                 write = [];
-                 errors = [];
-               })
-       in
-       with_albamgr_client
-         cfg_file ~attempts tls_config
-         (fun client -> client # add_osd osd_info
-         )
-  in
-  lwt_cmd_line ~to_json:false ~verbose t
-
-let alba_add_osd_cmd =
-  Term.(pure alba_add_osd
-        $ alba_cfg_url
-        $ tls_config
-        $ host $ port 8000
-        $ (node_id None)
-        $ to_json $ verbose
-        $ attempts 1
-  ),
-  Term.info
-    "add-osd"
-    ~doc:("add osd to manager so it could be claimed later." ^
-            "The long id is fetched from the device." ^
-              " Note: this is for development purposes only."
-         )
-
 let alba_add_iter_namespace_item cfg_file tls_config namespace name factor action verbose =
   let t () =
     with_albamgr_client
@@ -874,7 +811,7 @@ let cmds = [
     alba_add_nsm_host_cmd;
     alba_update_nsm_host_cmd;
     alba_list_nsm_hosts_cmd;
-    alba_add_osd_cmd;
+
     alba_mgr_statistics_cmd;
 
     alba_list_participants_cmd;

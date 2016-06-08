@@ -28,6 +28,11 @@ let osd_id =
        & opt (some int32) None
        & info ["osd-id"] ~docv:"OSD_ID" ~doc)
 
+let long_id =
+  Arg.(required
+       & opt (some string) None
+       & info ["long-id"] ~docv:"LONG_ID")
+
 let unescape =
   Arg.(value
        & flag
@@ -42,7 +47,7 @@ let osd_multi_get osd_id cfg_file tls_config keys unescape verbose =
            (fun osd ->
               Lwt_list.map_s
                 (fun key ->
-                   osd # get_option
+                   (osd # global_kvs) # get_option
                      Osd.High
                      (Slice.wrap_string (if unescape
                       then Scanf.unescaped key
@@ -75,7 +80,7 @@ let osd_range osd_id cfg_file tls_config verbose =
        let first = Slice.wrap_string "" in
          client # with_osd ~osd_id
            (fun osd ->
-              osd # range
+            osd # global_kvs # range
                 Osd.High
                 ~first ~finc:true
                 ~last:None
@@ -94,6 +99,166 @@ let osd_range_cmd =
         $ verbose),
   Term.info "osd-range" ~doc:"range query on an OSD"
 
+let alba_add_osd
+      cfg_file
+      tls_config
+
+      (* for asd/kinetic *)
+      host port
+      (* for alba osd *)
+      alba_osd_cfg_url prefix preset
+
+      node_id
+      to_json verbose attempts
+  =
+  let node_id = match node_id with
+    | None ->  failwith "A node id is needed here"
+    | Some n -> n
+  in
+  let t () =
+    begin
+      match host, port, alba_osd_cfg_url, prefix, preset with
+      | Some host, Some port, None, None, None ->
+         let conn_info = Networking2.make_conn_info [host] port tls_config in
+         Discovery.get_kind Buffer_pool.default_buffer_pool conn_info >>=
+           (function
+             | None -> Lwt.fail_with "I don't think this is an OSD"
+             | Some kind ->
+                Lwt.return kind)
+      | None, None, Some alba_osd_cfg_url, Some prefix, Some preset ->
+         Alba_arakoon.config_from_url alba_osd_cfg_url >>= fun alba_osd_cfg ->
+         Albamgr_client.with_client'
+           ~attempts
+           alba_osd_cfg
+           ~tls_config
+           ~tcp_keepalive:Tcp_keepalive2.default
+           (fun mgr -> mgr # get_alba_id) >>= fun long_id ->
+         Lwt.return Nsm_model.OsdInfo.(Alba { id = long_id;
+                                              cfg = alba_osd_cfg;
+                                              prefix;
+                                              preset;
+                                            })
+      | _, _, _, _, _ ->
+         failwith "incorrect combination of host, port alba_osd_cfg_url, prefix & preset specified"
+    end >>= fun kind ->
+
+    Osd_access.Osd_pool.factory
+      tls_config
+      Tcp_keepalive2.default
+      Buffer_pool.osd_buffer_pool
+      (Alba_osd.make_client ~albamgr_connection_pool_size:10)
+      kind
+    >>= fun (osd_client, closer) ->
+    Lwt_log.info_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
+    osd_client # get_disk_usage >>= fun (used, total) ->
+    let other = "other?" in
+    let osd_info =
+      Nsm_model.OsdInfo.({
+                            kind;
+                            decommissioned = false;
+                            node_id;
+                            other;
+                            total; used;
+                            seen = [ Unix.gettimeofday (); ];
+                            read = [];
+                            write = [];
+                            errors = [];
+                          })
+    in
+    with_albamgr_client
+      cfg_file ~attempts tls_config
+      (fun client -> client # add_osd osd_info) >>= fun () ->
+    Lwt.return (Nsm_model.OsdInfo.get_long_id kind)
+  in
+  lwt_cmd_line_result
+    ~to_json ~verbose
+    t
+    (fun long_id -> `Assoc [ "long_id", `String long_id ])
+
+let alba_osd_cfg_url =
+  Arg.(value
+       & opt (some url_converter) None
+       & info ["alba-osd-config-url"]
+              ~docv:"ALBA_OSD_CONFIG_URL"
+              ~doc:"config url for alba mgr of the backend that should be added as osd")
+
+let alba_add_osd_cmd =
+  Term.(pure alba_add_osd
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(value
+               & opt (some string) None
+               & info ["host"; "h";]
+                      ~docv:"HOST"
+                      ~doc:"the host to connect with")
+        $ Arg.(value
+               & opt (some int) None
+               & info ["port"; "p";]
+                      ~docv:"PORT"
+                      ~doc:"the port to connect with")
+        $ alba_osd_cfg_url
+        $ Arg.(value
+               & opt (some string) None
+               & info ["prefix"]
+                      ~docv:"PREFIX"
+                      ~doc:"prefix to use for the alba-osd")
+        $ Arg.(value
+               & opt (some string) None
+               & info ["preset"]
+                      ~docv:"PRESET"
+                      ~doc:"preset to use for the alba-osd")
+        $ (node_id None)
+        $ to_json $ verbose
+        $ attempts 1
+  ),
+  Term.info
+    "add-osd"
+    ~doc:("add osd to manager so it could be claimed later." ^
+            "The long id is fetched from the device.")
+
+let alba_update_osd
+      alba_cfg_url tls_config long_id
+      ips' port'
+      alba_osd_mgr_cfg_url
+      to_json verbose
+  =
+  let t () =
+    with_albamgr_client
+      alba_cfg_url tls_config
+      ~attempts:1
+      (fun mgr ->
+       Option.lwt_map
+         Alba_arakoon.config_from_url
+         alba_osd_mgr_cfg_url >>= fun albamgr_cfg' ->
+       mgr # update_osds
+           [ (long_id,
+              Albamgr_protocol.Protocol.Osd.Update.make
+                ~ips' ?port'
+                ?albamgr_cfg'
+                ());
+           ])
+  in
+  lwt_cmd_line_unit ~to_json ~verbose t
+
+let alba_update_osd_cmd =
+  Term.(pure alba_update_osd
+        $ alba_cfg_url
+        $ tls_config
+        $ long_id
+        $ Arg.(value
+               & opt (list string) []
+               & info ["ip"])
+        $ Arg.(value
+               & opt (some int) None
+               & info ["port"])
+        $ alba_osd_cfg_url
+        $ to_json
+        $ verbose
+  ),
+  Term.info
+    "update-osd"
+    ~doc:("update the osd info that is stored in the alba manager")
+
 let alba_claim_osd alba_cfg_file tls_config long_id to_json verbose =
   let t () =
     with_alba_client
@@ -109,9 +274,7 @@ let alba_claim_osd_cmd =
   Term.(pure alba_claim_osd
         $ alba_cfg_url
         $ tls_config
-        $ Arg.(required
-               & opt (some string) None
-               & info ["long-id"] ~docv:"LONG_ID")
+        $ long_id
         $ to_json $ verbose),
   Term.info
     "claim-osd"
@@ -129,10 +292,7 @@ let alba_decommission_osd_cmd =
   Term.(pure alba_decommission_osd
         $ alba_cfg_url
         $ tls_config
-        $ Arg.(required
-               & opt (some string) None
-               & info ["long-id"] ~docv:"LONG_ID"
-          )
+        $ long_id
         $ to_json $ verbose
   ),
   Term.info
@@ -151,10 +311,7 @@ let alba_purge_osd_cmd =
   Term.(pure alba_purge_osd
         $ alba_cfg_url
         $ tls_config
-        $ Arg.(required
-               & opt (some string) None
-               & info ["long-id"] ~docv:"LONG_ID"
-          )
+        $ long_id
         $ to_json $ verbose
   ),
   Term.info
@@ -164,6 +321,8 @@ let alba_purge_osd_cmd =
 let cmds = [
     osd_multi_get_cmd;
     osd_range_cmd;
+    alba_add_osd_cmd;
+    alba_update_osd_cmd;
     alba_claim_osd_cmd;
     alba_decommission_osd_cmd;
     alba_purge_osd_cmd;

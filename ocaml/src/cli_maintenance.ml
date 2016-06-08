@@ -167,7 +167,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       Fragment_cache_config.make_fragment_cache fragment_cache_cfg
       >>= fun (fragment_cache, cache_on_read, cache_on_write) ->
 
-      Alba_client.with_client
+      Alba_client2.with_client
         abm_cfg_ref
         ~fragment_cache
         ~albamgr_connection_pool_size

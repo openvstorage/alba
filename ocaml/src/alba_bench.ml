@@ -71,7 +71,7 @@ let do_scenarios
       file_name power prefix slice_size namespace
       scenarios =
   let period = period_of_power power in
-  Alba_client.with_client
+  Alba_client2.with_client
     ~tcp_keepalive:Tcp_keepalive2.default
     albamgr_cfg
     (fun alba_client ->

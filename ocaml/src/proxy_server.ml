@@ -425,6 +425,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Inactive_osd
             | Too_many_disks_per_node
             | Insufficient_fragments
+            | Assert_failed
             | Unknown_operation ->
                let msg = Nsm_model.Err.show err in
                Lwt_log.info_f
@@ -613,7 +614,7 @@ let run_server hosts port ~transport
                    ~chunk_id
                    ~fragment_id
                    ~version_id:(snd location))) in
-       Alba_client.with_client
+       Alba_client2.with_client
          albamgr_client_cfg
          ~fragment_cache
          ~manifest_cache_size

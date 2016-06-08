@@ -62,17 +62,31 @@ module Blob = struct
     | Bytes s -> s
     | Slice s -> Slice.get_string_unsafe s
 
-  let get_bigslice = function
-    | Lwt_bytes s -> Bigstring_slice.wrap_bigstring s
-    | Bigslice s -> s
-    | Bytes s -> Lwt_bytes.of_string s |> Bigstring_slice.wrap_bigstring
-    | Slice s -> Slice.to_bigstring s |> Bigstring_slice.wrap_bigstring
-
   let length = function
     | Lwt_bytes s -> Lwt_bytes.length s
     | Bigslice s -> Bigstring_slice.length s
     | Bytes s -> Bytes.length s
     | Slice s -> Slice.length s
+
+  let equal b1 b2 =
+    let t = function
+      | Lwt_bytes s -> `B (Bigstring_slice.wrap_bigstring s)
+      | Bigslice  s -> `B s
+      | Bytes s -> `S (Slice.wrap_string s)
+      | Slice s -> `S s
+    in
+    match t b1, t b2 with
+    | `S s1, `S s2 -> Slice.equal s1 s2
+    | `S s1, `B s2
+    | `B s2, `S s1 ->
+       Memcmp.equal'
+         s1.Slice.buf s1.Slice.offset s1.Slice.length
+         s2.Bigstring_slice.bs s2.Bigstring_slice.offset s2.Bigstring_slice.length
+    | `B s1, `B s2 ->
+       let open Bigstring_slice in
+       Memcmp.equal''
+         s1.bs s1.offset s1.length
+         s2.bs s2.offset s2.length
 end
 
 module Value = struct
@@ -345,8 +359,6 @@ module Protocol = struct
     Llio.list_to Llio.string_to buf hosts;
     Llio.int_to buf port;
     Llio.string_to buf asd_id
-
-  type has_more = bool
 
   type priority =
     | High

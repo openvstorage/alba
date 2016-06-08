@@ -113,8 +113,12 @@ module Protocol = struct
     module Update = struct
       open Nsm_model.OsdInfo
       type t = {
+        (* asd/kinetic *)
         ips' : ip list option;
         port' : port option;
+        (* alba osd *)
+        albamgr_cfg' : Alba_arakoon.Config.t option;
+
         total' : int64 option;
         used' : int64 option;
         seen' : float list;
@@ -128,8 +132,9 @@ module Protocol = struct
         ?ips' ?port'
         ?total' ?used'
         ?(seen' = []) ?(read' = []) ?(write' = []) ?(errors' = [])
-        ?other' () =
+        ?other' ?albamgr_cfg' () =
         { ips'; port';
+          albamgr_cfg';
           total'; used';
           seen'; read'; write'; errors';
           other';
@@ -138,6 +143,7 @@ module Protocol = struct
       let apply
           osd
           { ips'; port';
+            albamgr_cfg';
             total'; used';
             seen'; read'; write'; errors';
             other';
@@ -145,30 +151,36 @@ module Protocol = struct
         =
         let my_compare x y = compare y x in
         let kind =
-          let ips, port, tls, use_rdma = get_conn_info osd.kind in
-          let conn_info' =
-            let ips'  = Option.get_some_default ips ips' in
-            let port' = Option.get_some_default port port' in
-            let real_port, use_tls =
-              let open Tiny_json in
-              match other' with
-              | None -> port', tls
-              | Some other' ->
-                 try
-                   let r = Json.parse other' in
-                   let tlsPort = Json.as_int (Json.getf "tlsPort" r)  in
-                   tlsPort, true
-                 with
-                 | Json.JSON_InvalidField("tlsPort") -> port', false
-                 | ex ->
-                    let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
-                    port', false
+          let get_conn_info' conn_info =
+            let ips, port, tls, use_rdma = conn_info in
+            let conn_info' =
+              let ips'  = Option.get_some_default ips ips' in
+              let port' = Option.get_some_default port port' in
+              let real_port, use_tls =
+                let open Tiny_json in
+                match other' with
+                | None -> port', tls
+                | Some other' ->
+                   try
+                     let r = Json.parse other' in
+                     let tlsPort = Json.as_int (Json.getf "tlsPort" r)  in
+                     tlsPort, true
+                   with
+                   | Json.JSON_InvalidField("tlsPort") -> port', false
+                   | ex ->
+                      let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
+                      port', false
+              in
+              (ips',real_port, use_tls, use_rdma)
             in
-            (ips',real_port, use_tls, use_rdma)
+            conn_info'
           in
           match osd.kind with
-          | Asd (_, asd_id)   -> Asd (conn_info', asd_id)
-          | Kinetic (_, k_id) -> Kinetic (conn_info', k_id)
+          | Asd (conn_info, asd_id)   -> Asd (get_conn_info' conn_info, asd_id)
+          | Kinetic (conn_info, k_id) -> Kinetic (get_conn_info' conn_info, k_id)
+          | Alba ({ cfg; _ } as x) -> Alba { x with
+                                           cfg = Option.get_some_default cfg albamgr_cfg';
+                                         }
         in
         let max_n = 10 in
         { node_id = osd.node_id;
@@ -184,8 +196,7 @@ module Protocol = struct
                      osd.errors errors' max_n;
         }
 
-      let to_buffer buf u =
-        let ser_version = 1 in Llio.int8_to buf ser_version;
+      let _to_buffer_1 buf u =
         Llio.option_to (Llio.list_to Llio.string_to) buf u.ips';
         Llio.option_to Llio.int_to buf u.port';
         Llio.option_to Llio.int64_to buf u.total';
@@ -201,9 +212,36 @@ module Protocol = struct
           u.errors';
         Llio.option_to Llio.string_to buf u.other'
 
-      let from_buffer buf =
-        let ser_version = Llio.int8_from buf in
-        assert (ser_version = 1);
+      let _to_buffer_2 buf u =
+        let s =
+          let buf = Buffer.create 128 in
+          Llio.option_to (Llio.list_to Llio.string_to) buf u.ips';
+          Llio.option_to Llio.int_to buf u.port';
+          Llio.option_to Llio.int64_to buf u.total';
+          Llio.option_to Llio.int64_to buf u.used';
+          Llio.list_to Llio.float_to buf u.seen';
+          Llio.list_to Llio.float_to buf u.read';
+          Llio.list_to Llio.float_to buf u.write';
+          Llio.list_to
+            (Llio.pair_to
+               Llio.float_to
+               Llio.string_to)
+            buf
+            u.errors';
+          Llio.option_to Llio.string_to buf u.other';
+          Llio.option_to Alba_arakoon.Config.to_buffer buf u.albamgr_cfg';
+          Buffer.contents buf
+        in
+        Llio.string_to buf s
+
+      let to_buffer buf u ~version =
+        Llio.int8_to buf version;
+        match version with
+        | 2 -> _to_buffer_2 buf u
+        | 1 -> _to_buffer_1 buf u
+        | _ -> assert false
+
+      let _from_buffer_1 buf =
         let ips' =
           Llio.option_from
             (Llio.list_from Llio.string_from) buf in
@@ -221,10 +259,45 @@ module Protocol = struct
             buf in
         let other' = Llio.option_from Llio.string_from buf in
         { ips'; port';
+          albamgr_cfg' = None;
           total'; used';
           seen'; read'; write'; errors';
           other';
         }
+
+      let _from_buffer_2 buf =
+        let bufs = Llio.string_from buf in
+        let buf = Llio.make_buffer bufs 0 in
+        let ips' =
+          Llio.option_from
+            (Llio.list_from Llio.string_from) buf in
+        let port' = Llio.option_from Llio.int_from buf in
+        let total' = Llio.option_from Llio.int64_from buf in
+        let used' = Llio.option_from Llio.int64_from buf in
+        let seen' = Llio.list_from Llio.float_from buf in
+        let read' = Llio.list_from Llio.float_from buf in
+        let write' = Llio.list_from Llio.float_from buf in
+        let errors' =
+          Llio.list_from
+            (Llio.pair_from
+               Llio.float_from
+               Llio.string_from)
+            buf in
+        let other' = Llio.option_from Llio.string_from buf in
+        let albamgr_cfg' = Llio.option_from Alba_arakoon.Config.from_buffer buf in
+        { ips'; port';
+          albamgr_cfg';
+          total'; used';
+          seen'; read'; write'; errors';
+          other';
+        }
+
+      let from_buffer buf =
+        let ser_version = Llio.int8_from buf in
+        match ser_version with
+        | 1 -> _from_buffer_1 buf
+        | 2 -> _from_buffer_2 buf
+        | k -> raise_bad_tag "Albamgr_protocol.Osd.Update" k
     end
 
     module ClaimInfo = struct
@@ -807,6 +880,7 @@ module Protocol = struct
     | AddOsd3 : (OsdInfo.t, unit) update
     | UpdateOsd : (OsdInfo.long_id * Osd.Update.t, unit) update
     | UpdateOsds : ((OsdInfo.long_id * Osd.Update.t) list, unit) update
+    | UpdateOsds2 : ((OsdInfo.long_id * Osd.Update.t) list, unit) update
     | DecommissionOsd : (OsdInfo.long_id, unit) update
     | MarkOsdClaimed : (OsdInfo.long_id, Osd.id) update
     | MarkOsdClaimedByOther : (OsdInfo.long_id * alba_id, unit) update
@@ -1122,6 +1196,11 @@ module Protocol = struct
          (Llio.pair_from
             Llio.string_from
             Osd.Update.from_buffer)
+    | UpdateOsds2 ->
+       Llio.list_from
+         (Llio.pair_from
+            Llio.string_from
+            Osd.Update.from_buffer)
     | DecommissionOsd -> Llio.string_from
     | MarkOsdClaimed -> Llio.string_from
     | MarkOsdClaimedByOther ->
@@ -1179,9 +1258,11 @@ module Protocol = struct
     | AddOsd -> OsdInfo.to_buffer ~version:1
     | AddOsd2 -> OsdInfo.to_buffer ~version:2
     | AddOsd3 -> OsdInfo.to_buffer ~version:3
-    | UpdateOsd -> Llio.pair_to Llio.string_to Osd.Update.to_buffer
+    | UpdateOsd -> Llio.pair_to Llio.string_to (Osd.Update.to_buffer ~version:1)
     | UpdateOsds ->
-       Llio.list_to (Llio.pair_to Llio.string_to Osd.Update.to_buffer)
+       Llio.list_to (Llio.pair_to Llio.string_to (Osd.Update.to_buffer ~version:1))
+    | UpdateOsds2 ->
+       Llio.list_to (Llio.pair_to Llio.string_to (Osd.Update.to_buffer ~version:2))
     | DecommissionOsd -> Llio.string_to
     | MarkOsdClaimed -> Llio.string_to
     | MarkOsdClaimedByOther ->
@@ -1242,6 +1323,7 @@ module Protocol = struct
     | AddOsd3         -> Llio.unit_from
     | UpdateOsd       -> Llio.unit_from
     | UpdateOsds      -> Llio.unit_from
+    | UpdateOsds2      -> Llio.unit_from
     | DecommissionOsd -> Llio.unit_from
     | MarkOsdClaimed  -> Llio.int32_from
     | MarkOsdClaimedByOther -> Llio.unit_from
@@ -1273,6 +1355,7 @@ module Protocol = struct
     | AddOsd3         -> Llio.unit_to
     | UpdateOsd       -> Llio.unit_to
     | UpdateOsds      -> Llio.unit_to
+    | UpdateOsds2      -> Llio.unit_to
     | DecommissionOsd -> Llio.unit_to
     | MarkOsdClaimed -> Llio.int32_to
     | MarkOsdClaimedByOther -> Llio.unit_to
@@ -1379,6 +1462,8 @@ module Protocol = struct
                       Wrap_q ListOsdsByLongId3, 81l, "ListOsdsByLongId3";
                       Wrap_q ListDecommissioningOsds3, 82l, "ListDecommissioningOsds3";
                       Wrap_u AddOsd3, 83l, "AddOsd3";
+
+                      Wrap_u UpdateOsds2, 84l, "UpdateOsds2";
                     ]
 
 

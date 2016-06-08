@@ -394,35 +394,9 @@ class client ?(retry_timeout = 60.)
                 ~gc_epoch ~version_id:version_id1
         )
       >>= fun () ->
-        Lwt_list.iter_p
-        (fun (chunk_id, fragment_id, source_osd, target_osd) ->
-         alba_client # with_osd
-           ~osd_id:source_osd
-           (fun osd_client ->
-            let key =
-              Osd_keys.AlbaInstance.fragment
-                ~namespace_id ~object_id ~version_id:version_id0
-                ~chunk_id ~fragment_id
-            in
-            osd_client # apply_sequence
-                       Osd.Low
-                       [] [Osd.Update.delete_string key]
-            >>= fun s ->
-            match s with
-            | Osd.Ok    -> Lwt.return ()
-            | Osd.Exn e ->
-               Lwt_log.info_f
-                 ("object: %S" ^^
-                 "delete fragment(chunk_id:%i,fragment_id:%i,osd_id:%li): %s" ^^
-                 " => garbage")
-                 object_id chunk_id fragment_id source_osd
-                 ([%show: Osd.Error.t ] e)
-           )
-        ) object_location_movements
-      >>= fun () ->
-        let size = List.length object_location_movements in
-        let () = MStats.new_delta MStats.REBALANCE (float size) in
-        Lwt.return object_location_movements
+      let size = List.length object_location_movements in
+      let () = MStats.new_delta MStats.REBALANCE (float size) in
+      Lwt.return object_location_movements
 
 
     method decommission_device
@@ -574,7 +548,9 @@ class client ?(retry_timeout = 60.)
          the nsm that we successfully deleted 0 keys. *)
       if keys_to_be_deleted <> []
       then begin
-        let upds = List.map Osd.Update.delete_string
+        let upds =
+          List.map
+            Osd.Update.delete_string
             keys_to_be_deleted
         in
 
@@ -587,7 +563,7 @@ class client ?(retry_timeout = 60.)
            alba_client # with_osd
                        ~osd_id
                        (fun osd_client ->
-                        osd_client # apply_sequence
+                        (osd_client # namespace_kvs namespace_id) # apply_sequence
                                    Osd.Low
                                    [] upds >>= function
                         | Osd.Ok -> Lwt.return ()
@@ -672,7 +648,7 @@ class client ?(retry_timeout = 60.)
       let open Slice in
       let last =
         let l = AlbaInstance.gc_epoch_tag
-            ~namespace_id ~gc_epoch:(Int64.succ gc_epoch)
+            ~gc_epoch:(Int64.succ gc_epoch)
             ~object_id:"" ~version_id:0
             ~chunk_id:0 ~fragment_id:0 in
         Some (wrap_string l, false) in
@@ -680,7 +656,7 @@ class client ?(retry_timeout = 60.)
         alba_client # with_osd
           ~osd_id
           (fun client ->
-           client # range
+           (client # namespace_kvs namespace_id) # range
                   Osd.Low
                   ~first ~finc:true ~last
                   ~reverse:false ~max:100)
@@ -689,14 +665,14 @@ class client ?(retry_timeout = 60.)
         (* TODO could optimize here by grouping together per object_id first *)
         Lwt_list.iter_s
           (fun (gc_tag_key:Osd.key) ->
-             let ns', gc_epoch, object_id, chunk_id, fragment_id, version_id =
+             let gc_epoch, object_id, chunk_id, fragment_id, version_id =
                AlbaInstance.parse_gc_epoch_tag (Slice.get_string_unsafe gc_tag_key)
              in
              let cleanup_gc_epoch_tag () =
                alba_client # with_osd
                  ~osd_id
                  (fun client ->
-                  client # apply_sequence
+                  (client # namespace_kvs namespace_id) # apply_sequence
                          Osd.Low
                          [] [ Osd.Update.delete gc_tag_key; ]
                     >>= fun _success ->
@@ -706,12 +682,10 @@ class client ?(retry_timeout = 60.)
                let upds =
                  [ Osd.Update.delete_string
                      (AlbaInstance.fragment
-                        ~namespace_id
                         ~object_id ~version_id
                         ~chunk_id ~fragment_id);
                    Osd.Update.delete_string
                      (AlbaInstance.fragment_recovery_info
-                        ~namespace_id
                         ~object_id ~version_id
                         ~chunk_id ~fragment_id);
                    Osd.Update.delete gc_tag_key; ]
@@ -732,9 +706,11 @@ class client ?(retry_timeout = 60.)
                alba_client # with_osd
                  ~osd_id
                  (fun client ->
-                    client # apply_sequence Osd.Low asserts upds >>= fun _succes ->
-                    (* don't care if it succeeded or not *)
-                    Lwt.return ()) in
+                  (client # namespace_kvs namespace_id) # apply_sequence
+                         Osd.Low
+                         asserts upds >>= fun _succes ->
+                  (* don't care if it succeeded or not *)
+                  Lwt.return ()) in
              alba_client # with_nsm_client'
                ~namespace_id
                (fun nsm_client ->
@@ -758,7 +734,7 @@ class client ?(retry_timeout = 60.)
       in
       let first =
         wrap_string (AlbaInstance.gc_epoch_tag
-                       ~namespace_id ~gc_epoch:0L
+                       ~gc_epoch:0L
                        ~object_id:"" ~version_id:0
                        ~chunk_id:0 ~fragment_id:0)
       in
@@ -1215,36 +1191,15 @@ class client ?(retry_timeout = 60.)
            alba_client # with_osd
              ~osd_id
              (fun client ->
-              let namespace_prefix =
-                serialize
-                  Osd_keys.AlbaInstance.namespace_prefix_serializer
-                  namespace_id
+              let rec inner first =
+                client # delete_namespace namespace_id first >>= function
+                | None -> Lwt.return ()
+                | Some next ->
+                   if not (filter work_id)
+                   then Lwt.fail NotMyTask
+                   else inner next
               in
-              let namespace_prefix' = Slice.wrap_string namespace_prefix in
-              let namespace_next_prefix =
-                match (Key_value_store.next_prefix namespace_prefix) with
-                | None -> None
-                | Some (p,b) -> Some (Slice.wrap_string p, b)
-              in
-              let rec inner (first, finc) =
-                client # range
-                       Osd.Low
-                       ~first ~finc
-                       ~last:namespace_next_prefix
-                       ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
-                client # apply_sequence
-                       Osd.Low
-                       []
-                       (List.map
-                          (fun k -> Osd.Update.delete k)
-                          keys) >>= fun _ ->
-                if not (filter work_id)
-                then Lwt.fail NotMyTask
-                else if has_more
-                then inner (List.last keys |> Option.get_some_default namespace_prefix', false)
-                else Lwt.return ()
-              in
-              inner (namespace_prefix', true))
+              inner (Slice.wrap_string ""))
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->
