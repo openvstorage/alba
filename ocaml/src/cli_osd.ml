@@ -132,8 +132,8 @@ let alba_add_osd
            alba_osd_cfg
            ~tls_config
            ~tcp_keepalive:Tcp_keepalive2.default
-           (fun mgr -> mgr # get_alba_id) >>= fun id ->
-         Lwt.return Nsm_model.OsdInfo.(Alba { id;
+           (fun mgr -> mgr # get_alba_id) >>= fun long_id ->
+         Lwt.return Nsm_model.OsdInfo.(Alba { id = long_id;
                                               cfg = alba_osd_cfg;
                                               prefix;
                                               preset;
@@ -167,9 +167,13 @@ let alba_add_osd
     in
     with_albamgr_client
       cfg_file ~attempts tls_config
-      (fun client -> client # add_osd osd_info)
+      (fun client -> client # add_osd osd_info) >>= fun () ->
+    Lwt.return (Nsm_model.OsdInfo.get_long_id kind)
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line_result
+    ~to_json ~verbose
+    t
+    (fun long_id -> `Assoc [ "long_id", `String long_id ])
 
 let alba_osd_cfg_url =
   Arg.(value
