@@ -529,7 +529,9 @@ let alba_list_work_cmd =
     "list-work"
     ~doc:"list outstanding work items"
 
-let alba_add_iter_namespace_item cfg_file tls_config namespace name factor action verbose =
+let alba_add_iter_namespace_item
+      cfg_file tls_config namespace name factor action
+      ~to_json ~verbose =
   let t () =
     with_albamgr_client
       cfg_file ~attempts:1 tls_config
@@ -546,13 +548,13 @@ let alba_add_iter_namespace_item cfg_file tls_config namespace name factor actio
                             name,
                             factor)) ])
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
-let alba_rewrite_namespace cfg_file tls_arg namespace name factor verbose =
+let alba_rewrite_namespace cfg_file tls_arg namespace name factor to_json verbose =
   alba_add_iter_namespace_item
     cfg_file tls_arg namespace name factor
     Albamgr_protocol.Protocol.Work.Rewrite
-    verbose
+    ~to_json ~verbose
 
 let job_name p =
   Arg.(required
@@ -568,6 +570,7 @@ let alba_rewrite_namespace_cmd =
         $ Arg.(value
                & opt int 1
                & info ["factor"] ~docv:"specifies into how many pieces the job should be divided")
+        $ to_json
         $ verbose
   ),
   Term.info
@@ -578,14 +581,14 @@ let alba_rewrite_namespace_cmd =
 let alba_verify_namespace
       cfg_file tls_config namespace name factor
       no_verify_checksum no_repair_osd_unavailable
-      verbose
+      to_json verbose
   =
   alba_add_iter_namespace_item
     cfg_file tls_config namespace name factor
     (let open Albamgr_protocol.Protocol.Work in
      Verify { checksum = not no_verify_checksum;
               repair_osd_unavailable = not no_repair_osd_unavailable; })
-    verbose
+    ~to_json ~verbose
 
 let alba_verify_namespace_cmd =
   Term.(pure alba_verify_namespace
@@ -602,6 +605,7 @@ let alba_verify_namespace_cmd =
         $ Arg.(value
                & flag
                & info ["no-repair-osd-unavailable"] ~docv:"flag to specify that fragments on unavailable osds should not be repaired")
+        $ to_json
         $ verbose
   ),
   Term.info
@@ -634,7 +638,7 @@ let alba_show_job_progress_cmd =
     "show-job-progress"
     ~doc:"show progress of a certain job"
 
-let alba_clear_job_progress cfg_file tls_config name verbose =
+let alba_clear_job_progress cfg_file tls_config name to_json verbose =
   let t () =
     with_albamgr_client
       cfg_file ~attempts:1 tls_config
@@ -650,13 +654,14 @@ let alba_clear_job_progress cfg_file tls_config name verbose =
           client # update_progress name p None)
          progresses)
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_clear_job_progress_cmd =
   Term.(pure alba_clear_job_progress
         $ alba_cfg_url
         $ tls_config
         $ job_name 0
+        $ to_json
         $ verbose
   ),
   Term.info
