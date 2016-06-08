@@ -6,8 +6,8 @@ LIB = $(START)/lib/alba
 all: build
 
 clean:
-	rm -rf ./ocaml/_build
-	cd ./setup && ocamlbuild -clean
+	cd ocaml && ocamlbuild -clean
+	cd setup && ocamlbuild -clean
 
 build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin \
 	build-disk-failure-tests setup

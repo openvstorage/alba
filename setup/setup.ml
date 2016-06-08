@@ -1239,7 +1239,6 @@ module Deployment = struct
     t.proxy # persist_config;
     t.proxy # start;
 
-
     t.maintenance # write_config_file;
     t.maintenance # start;
 
@@ -1247,6 +1246,8 @@ module Deployment = struct
 
     setup_osds t;
     claim_local_osds t t.cfg.n_osds;
+
+    Unix.sleep 2;
 
     t.proxy # create_namespace "demo";
     install_monitoring t
@@ -2185,7 +2186,7 @@ module Test = struct
 
     let objname = "fdsij" in
     let do_upload () =
-      t_global.proxy # upload_object "demo" cfg_global.arakoon_bin objname
+      t_global.proxy # upload_object "demo" cfg_global.alba_bin objname
     in
 
     do_upload ();
