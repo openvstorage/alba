@@ -24,10 +24,22 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
-open Lwt_bytes2
+
 open Range_query_args
+open Blob_access
+open Blob_access_factory
 
 let blob_threshold = 16 * 1024
+
+let stats_tag_to_string code =
+  try Asd_protocol.Protocol.code_to_description code
+  with
+  | Not_found ->
+     begin
+       try Blob_access.code_to_description code
+       with
+       | Not_found -> Printf.sprintf "unknown operation %li" code
+     end
 
 module KVS = Key_value_store
 
@@ -79,204 +91,6 @@ module Keys = struct
 
 end
 
-module DirectoryInfo = struct
-  type directory_status =
-    | Exists
-    | Creating of unit Lwt.t
-
-  type t = {
-      files_path : string;
-      directory_cache : (string, directory_status) Hashtbl.t;
-      write_blobs : bool;
-      use_fadvise: bool;
-      use_fallocate: bool
-    }
-
-  let make ?(write_blobs = true)
-           ~use_fadvise
-           ~use_fallocate
-           files_path
-    =
-    if files_path.[0] <> '/'
-    then
-      failwith (Printf.sprintf "'%s' should be an absolute path" files_path);
-    let directory_cache = Hashtbl.create 3 in
-    Hashtbl.add directory_cache "." Exists;
-    { files_path;
-      directory_cache;
-      write_blobs;
-      use_fadvise;
-      use_fallocate;
-    }
-
-  let get_file_name fnr =
-    Printf.sprintf "%016Lx" fnr
-
-  let get_file_dir_name_path t fnr =
-    let file = get_file_name fnr in
-    let dir = Bytes.create 20 in
-    let rec fill off1 off2 =
-      if off1 < 20
-      then begin
-        Bytes.set dir off1 file.[off2];
-        if off2 mod 2 = 1
-        then begin
-          if off1 <> 19
-          then Bytes.set dir (off1 + 1) '/';
-          fill (off1 + 2) (off2 + 1)
-        end else fill (off1 + 1) (off2 + 1)
-      end
-    in
-    fill 0 0;
-    let path =
-      String.concat
-        Filename.dir_sep
-        [ t.files_path; dir; file ] in
-    dir, file, path
-
-  let get_file_path t fnr =
-    let _, _, path = get_file_dir_name_path t fnr in
-    path
-
-  let with_blob_fd t fnr f =
-    Lwt_extra2.with_fd
-      (if t.write_blobs
-       then get_file_path t fnr
-       else "/dev/zero")
-      ~flags:Lwt_unix.([O_RDONLY;])
-      ~perm:0600
-      f
-
-  let get_blob t fnr size =
-    Lwt_log.debug_f "getting blob %Li with size %i" fnr size >>= fun () ->
-    let bs = Bytes.create size in
-    with_blob_fd
-      t fnr
-      (fun fd ->
-         Lwt_extra2.read_all fd bs 0 size >>= fun got ->
-         assert (got = size);
-         Lwt.return ()) >>= fun () ->
-    Lwt_log.debug_f "got blob %Li" fnr >>= fun () ->
-    Lwt.return bs
-
-  let rec ensure_dir_exists t dir ~sync =
-    Lwt_log.debug_f "ensure_dir_exists: %s" dir >>= fun () ->
-    match Hashtbl.find t.directory_cache dir with
-    | Exists -> Lwt.return ()
-    | Creating wait -> wait
-    | exception Not_found ->
-      let sleep, awake = Lwt.wait () in
-      (* the sleeper should be woken up under all
-         circumstances, hence the exception handling
-         below.
-         (otherwise this could e.g.
-          block the fragment cache...)
-       *)
-
-      Lwt.catch
-        (fun () ->
-           Hashtbl.add t.directory_cache dir (Creating sleep);
-
-           let parent_dir = Filename.dirname dir in
-           ensure_dir_exists t parent_dir ~sync >>= fun () ->
-
-           Lwt_extra2.create_dir
-             ~sync
-             (Filename.concat t.files_path dir))
-        (function
-          | Unix.Unix_error (Unix.EEXIST, _, _) ->
-            Lwt.return ()
-          | exn ->
-            Hashtbl.remove t.directory_cache dir;
-            (* need to wake up the waiter here so it doesn't wait forever *)
-            Lwt.wakeup_exn awake exn;
-            Lwt.fail exn) >>= fun () ->
-
-      Hashtbl.replace t.directory_cache dir Exists;
-      Lwt.wakeup awake ();
-
-      Lwt.return ()
-
-  let delete_dir t = function
-    | "."
-    | "" -> Lwt.fail_with "just don't"
-    | dir ->
-      begin
-        let full_dir = Filename.concat t.files_path dir in
-        match Hashtbl.find t.directory_cache dir with
-        | Exists ->
-           Hashtbl.remove t.directory_cache dir;
-           Lwt_unix.rmdir full_dir
-        | Creating wait -> Lwt.fail_with (Printf.sprintf "creating %s" dir)
-        | exception Not_found ->
-                    Lwt_unix.rmdir full_dir
-      end
-
-
-  let write_blob
-        t fnr blob
-        ~(post_write:post_write) 
-        ~sync_parent_dirs =
-    Lwt_log.debug_f "writing blob %Li (use_fadvise:%b use_fallocate:%b)"
-                    fnr t.use_fadvise t.use_fallocate
-    >>= fun () ->
-    with_timing_lwt
-      (fun () ->
-         let dir, _, file_path = get_file_dir_name_path t fnr in
-         ensure_dir_exists t dir ~sync:sync_parent_dirs >>= fun () ->
-         Lwt_extra2.with_fd
-           file_path
-           ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
-           ~perm:0o664
-           (fun fd ->
-             let open Blob in
-             let len = Blob.length blob in
-             (if t.use_fallocate
-              then
-                Posix.lwt_fallocate fd 0 0 len
-              else
-                Lwt.return_unit
-             ) >>= fun () ->
-
-             (* TODO push to blob module? *)
-             (match blob with
-              | Lwt_bytes s ->
-                 Lwt_extra2.write_all_lwt_bytes
-                   fd
-                   s 0 len
-              | Bigslice s ->
-                 let open Bigstring_slice in
-                 Lwt_extra2.write_all_lwt_bytes
-                   fd
-                   s.bs s.offset s.length
-              | Bytes s ->
-                 Lwt_extra2.write_all
-                   fd
-                   s 0 len
-              | Slice s ->
-                 let open Slice in
-                 Lwt_extra2.write_all
-                   fd
-                   s.buf s.offset len
-             )
-             >>= fun () ->
-             let parent_dir = t.files_path ^ "/" ^ dir in
-             post_write fd len parent_dir
-             >>= fun () ->
-             let ufd = Lwt_unix.unix_file_descr fd in
-             let () = if t.use_fadvise then Posix.posix_fadvise ufd 0 len Posix.POSIX_FADV_DONTNEED in
-             Lwt.return_unit
-           )
-      )
-    >>= fun (t_write, ()) ->
-
-    (if t_write > 0.5
-     then Lwt_log.info_f
-     else Lwt_log.debug_f)
-      "written blob %Li, took %f" fnr t_write
-
-end
-
 module Value = struct
   type blob =
     | Direct of Slice.t
@@ -319,7 +133,7 @@ module Value = struct
     | Direct value ->
       Lwt.return value
     | OnFs (fnr, size) ->
-      DirectoryInfo.get_blob dir_info fnr size >>=
+      dir_info # get_blob fnr size >>=
       compose Lwt.return Slice.wrap_string
 
   let get_cs = fst
@@ -363,58 +177,11 @@ let get_value_option kv key =
 
 let key_exists kv key = (get_value_option kv key) <> None
 
-module Net_fd = struct
-  include Net_fd
-  (*
-    we don't want this to end up in the arakoon plugins,
-    where it's needed nor used
-    and pulls along cstruct and friends
-   *)
-  let sendfile_all ~fd_in ~offset ~(fd_out:t) size =
-    match fd_out with
-    | Plain fd ->
-       Fsutil.sendfile_all
-         ~wait_readable:false
-         ~wait_writeable:true
-         ~detached:true
-         ~fd_in ~offset
-         ~fd_out:fd
-         size
-    | SSL _ssl ->
-       let socket = _ssl_get_socket _ssl in
-       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
-       let reader buffer offset length =
-         Lwt_bytes.read fd_in buffer offset length
-       in
-       let writer buffer offset length =
-         let write_from_source = Lwt_ssl.write_bytes socket buffer in
-         Lwt_extra2._write_all write_from_source offset length
-       in
-       Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
-         (Lwt_extra2.copy_using reader writer size)
-     
-    | Rsocket socket ->
-       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
-       let reader buffer offset length =
-         Lwt_bytes.read fd_in buffer offset length
-       in
-       let writer buffer offset length =
-         let write_from_source offset todo =
-             Lwt_rsocket.Bytes.send socket buffer offset todo []
-         in
-         Lwt_extra2._write_all write_from_source offset length
-       in
-       Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
-         (Lwt_extra2.copy_using reader writer size)
-end
-
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
                          (Llio2.WriteBuffer.t * (Net_fd.t ->
                                                  unit Lwt.t)) Asd_io_scheduler.t ->
-                         DirectoryInfo.t ->
+                         Blob_access.directory_info ->
                          AsdMgmt.t ->
                          AsdStatistics.t ->
                          (req, res) Protocol.query ->
@@ -519,7 +286,7 @@ let execute_query : type req res.
                     res)
            res)
     | MultiGet2 -> fun (keys, prio) ->
-      if not dir_info.DirectoryInfo.write_blobs
+      if not (dir_info # config).write_blobs
       then
         (* the trick with /dev/zero doesn't work with
          * sendfile, so let's avoid sendfile by pretending this
@@ -563,27 +330,7 @@ let execute_query : type req res.
            (res,
             fun nfd ->
             Lwt_list.iter_s
-              (fun (fnr, size) ->
-               DirectoryInfo.with_blob_fd
-                 dir_info fnr
-                 (fun blob_fd ->
-                   let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-                   let () =
-                     if dir_info.DirectoryInfo.use_fadvise
-                     then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_SEQUENTIAL
-                   in
-                   Net_fd.sendfile_all
-                     ~fd_in:blob_fd ~offset:0
-                     ~fd_out:nfd
-                     size
-                   >>= fun () ->
-                   let () =
-                     if dir_info.DirectoryInfo.use_fadvise
-                     then Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_DONTNEED
-                   in
-                   Lwt.return_unit
-                 )
-              )
+              (fun (fnr, size) -> dir_info # send_blob_data_to fnr size [0,size] nfd)
               (List.rev !write_laters)))
         end
     | MultiExists -> fun (keys, prio) ->
@@ -598,7 +345,9 @@ let execute_query : type req res.
        fun (key, slices, prio) ->
        begin
          Lwt_log.debug_f "PartialGet for %s" (Slice.show key) >>= fun () ->
-         match get_value_option kv key with
+         let took, vo = Prelude.with_timing (fun () -> get_value_option kv key) in
+         let () = AsdStatistics.new_delta stats _ROCKS_LOOKUP took in
+         match vo with
          | None -> return' false
          | Some (_cs, blob) ->
             let cost =
@@ -622,45 +371,11 @@ let execute_query : type req res.
                                               s.Slice.buf (s.Slice.offset + offset) len)
                       slices
                  | Value.OnFs (fnr, size) ->
-                    if dir_info.DirectoryInfo.write_blobs
+                    let cfg = dir_info # config in
+                    if cfg.write_blobs
                     then
                       begin
-                        DirectoryInfo.with_blob_fd
-                          dir_info fnr
-                          (fun blob_fd ->
-                           let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-                           let () =
-                             if dir_info.DirectoryInfo.use_fadvise
-                             then
-                               begin
-                                 Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_RANDOM;
-                                 List.iter
-                                   (fun (offset, length) ->
-                                    Posix.posix_fadvise
-                                      blob_ufd
-                                      offset length
-                                      Posix.POSIX_FADV_WILLNEED)
-                                   slices
-                               end
-                           in
-                           Lwt_list.iter_s
-                             (fun (offset, length) ->
-                              Net_fd.sendfile_all
-                                ~fd_in:blob_fd ~offset
-                                ~fd_out:nfd
-                                length
-                              >>= fun () ->
-                              let () =
-                                if dir_info.DirectoryInfo.use_fadvise
-                                then
-                                  Posix.posix_fadvise
-                                    blob_ufd
-                                    0 size
-                                    Posix.POSIX_FADV_DONTNEED
-                              in
-                              Lwt.return_unit)
-                             slices
-                          )
+                        dir_info # send_blob_data_to fnr size slices nfd
                       end
                     else
                       Lwt_list.iter_s
@@ -681,21 +396,12 @@ let execute_query : type req res.
 
 exception ConcurrentModification
 
-let cleanup_files_to_delete ignore_unlink_error io_sched kv dir_info fnrs =
+let cleanup_files_to_delete ignore_unlink_error _ kv dir_info fnrs =
   if fnrs = []
   then Lwt.return ()
   else begin
-    let fnrs = List.sort Int64.compare fnrs in
-    Lwt_list.iter_s
-      (fun fnr ->
-         let path = DirectoryInfo.get_file_path dir_info fnr in
-
-         (* TODO bulk sync of (unique) parent filedescriptors *)
-         Lwt_extra2.unlink
-           ~may_not_exist:(ignore_unlink_error || not dir_info.DirectoryInfo.write_blobs)
-           ~fsync_parent_dir:true
-           path)
-      fnrs >>= fun () ->
+    dir_info # delete_blobs fnrs ~ignore_unlink_error
+    >>= fun () ->
 
     List.iter
       (fun fnr ->
@@ -719,13 +425,12 @@ let maybe_delete_file kv dir_info fnr =
     (* file is used by a key value pair, don't delete it *)
     Lwt.return ()
   | None ->
-    let file_path = DirectoryInfo.get_file_path dir_info fnr in
-    Lwt_extra2.unlink ~fsync_parent_dir:true file_path >>= fun () ->
-    Rocks.RocksDb.delete
-      kv
-      wo_no_wal
-      (Keys.to_be_deleted fnr);
-    Lwt.return ()
+     dir_info # delete_blobs [fnr] ~ignore_unlink_error:false >>= fun () ->
+     Rocks.RocksDb.delete
+       kv
+       wo_no_wal
+       (Keys.to_be_deleted fnr);
+     Lwt.return_unit
 
 
 let execute_update : type req res.
@@ -733,7 +438,7 @@ let execute_update : type req res.
   release_fnr : (int64 -> unit) ->
   (Llio2.WriteBuffer.t * (Net_fd.t ->
                           unit Lwt.t)) Asd_io_scheduler.t ->
-  DirectoryInfo.t ->
+  directory_info ->
   mgmt: AsdMgmt.t ->
   get_next_fnr : (unit -> int64) ->
   (req, res) Protocol.update ->
@@ -820,7 +525,7 @@ let execute_update : type req res.
             if !allow_getting_file
             then begin
                 let fnr = get_next_fnr () in
-                let file_path = DirectoryInfo.get_file_path dir_info fnr in
+                let file_path = dir_info # _get_file_path fnr in
                 let sleep, awake = Lwt.wait () in
                 files := (fnr, file_path, sleep) :: !files;
                 fnr, file_path, awake
@@ -1194,7 +899,7 @@ let asd_protocol
     (if delta > 0.5
      then Lwt_log.info_f
      else Lwt_log.debug_f)
-      "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
+      "Request %s took %f" (Protocol.code_to_description_nothrow code) delta >>= fun () ->
     inner ()
   in
   Llio2.NetFdReader.raw_string_from nfd 4 >>= fun b0 ->
@@ -1291,6 +996,7 @@ let run_server
       ~tcp_keepalive
       ~use_fadvise
       ~use_fallocate
+      ~engine
   =
 
   let fsync =
@@ -1348,6 +1054,7 @@ let run_server
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->
     let () = let open Rocks in RocksDb.close db in
+    let () = Blob_access_factory.endgame () in
     Lwt_log.fatal_f "endgame: closed  %s" db_path
   in
 
@@ -1369,13 +1076,16 @@ let run_server
     (function
       | Unix.Unix_error (Unix.EEXIST, _, _) -> Lwt.return ()
       | exn -> Lwt.fail exn) >>= fun () ->
+  let stats = AsdStatistics.make () in
 
-  let dir_info = DirectoryInfo.make ~write_blobs ~use_fallocate ~use_fadvise files_path in
+  let dir_info = make_directory_info
+                   ~engine ~statistics:stats
+                   ~write_blobs ~use_fallocate ~use_fadvise files_path in
 
   let parse_filename_to_fnr name =
     try
       let fnr = Scanf.sscanf name "%Lx" Std.id in
-      let file_name = DirectoryInfo.get_file_name fnr in
+      let file_name = Fnr.get_file_name fnr in
       if file_name = name
       then Some fnr
       else None
@@ -1398,17 +1108,18 @@ let run_server
       )
       (if write_blobs
        then
-         (fun fnr blob post_write ->
-          DirectoryInfo.write_blob
+         (fun fnr blob ~post_write ->
+          dir_info # write_blob
             ~post_write
-            dir_info
             fnr
             blob
             ~sync_parent_dirs:fsync
          )
        else
-         (fun fnr blob post_write ->
-          Lwt.return_unit)
+         (fun fnr blob ~post_write ->
+           (* post_write still needs to be called *)
+           post_write None 0 ""
+         )
       )
   in
   Lwt_unix.openfile path [Lwt_unix.O_RDONLY] 0o644 >>= fun fs_fd ->
@@ -1430,9 +1141,7 @@ let run_server
   in
 
   let check_from_dir, check_from_file, check_from_path =
-    DirectoryInfo.get_file_dir_name_path
-      dir_info
-      check_garbage_from
+    dir_info # _get_file_dir_name_path check_garbage_from
   in
 
   let rec collect_all_sub_dirs dir = function
@@ -1542,10 +1251,9 @@ let run_server
       then
         Lwt.ignore_result begin
           let dir, _, _ =
-            DirectoryInfo.get_file_dir_name_path
-              dir_info
+            dir_info # _get_file_dir_name_path
               (Int64.add !counter 256L) in
-          DirectoryInfo.ensure_dir_exists dir_info dir ~sync:fsync
+          dir_info # ensure_dir_exists dir ~sync:fsync
         end;
 
       !counter
@@ -1553,7 +1261,7 @@ let run_server
 
   let advancer = new check_garbage_from_advancer next_fnr db in
 
-  let stats = AsdStatistics.make () in
+
   let latest_disk_usage =
     match Rocks.RocksDb.get
             db
@@ -1652,7 +1360,7 @@ let run_server
            | Net_fd.TCP  -> None
            | Net_fd.RDMA -> Some true
          in
-         Discovery.multicast 
+         Discovery.multicast
            asd_id node_id
            hosts ~port ~tlsPort ~useRdma
            mcast_period
@@ -1669,7 +1377,9 @@ let run_server
             ~section "%s"
             (AsdStatistics.show_inner
                stats
-               Asd_protocol.Protocol.code_to_description))
+               stats_tag_to_string
+            )
+      )
       ()
   in
   let threads =

@@ -575,11 +575,11 @@ let test_partial_download () =
        >>= fun res ->
        let object_data' = Option.get_some res in
        assert (object_data = object_data');
-
+       let input_file = "bin/kinetic-all-0.8.0.4-SNAPSHOT-jar-with-dependencies.jar" in
        client # upload_object_from_file
          ~namespace
          ~object_name
-         ~input_file:"bin/kinetic-all-0.8.0.4-SNAPSHOT-jar-with-dependencies.jar"
+         ~input_file
          ~checksum_o:None
          ~allow_overwrite:Nsm_model.Unconditionally >>= fun (mf, _) ->
 
@@ -599,9 +599,20 @@ let test_partial_download () =
        >>= fun res ->
        let object_data = Option.get_some res in
        let hasher = Hashes.make_hash (Checksum.algo_of checksum) in
+       assert (String.length object_data = Int64.to_int size);
        hasher # update_string object_data;
-       assert (checksum = hasher # final ());
-
+       (if checksum <> hasher # final ()
+       then
+         begin
+           Lwt_io.with_file
+             ~mode:Lwt_io.output (input_file ^ ".bad")
+             (fun oc -> Lwt_io.write oc object_data)
+           >>= fun () ->
+           Lwt.fail_with "downloaded object differs from original"
+         end
+       else
+         Lwt.return_unit)
+       >>= fun () ->
        let hasher = Hashes.make_hash (Checksum.algo_of checksum) in
        let slice_length = Int64.of_int (4096*8) in
        (* read entire file in slices *)

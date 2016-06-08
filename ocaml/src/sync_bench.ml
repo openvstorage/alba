@@ -17,16 +17,15 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
-open Asd_server
 open Stat
 let post_write_nothing _ _ _ = Lwt.return_unit
-                                        
-let batch_entry_syncfs dir_info fnr data size =
+
+let batch_entry_syncfs (dir_info:Blob_access.directory_info) fnr data size =
   let t () =
     let blob = Osd.Blob.Bytes data in
-    DirectoryInfo.write_blob dir_info fnr blob
-                             ~sync_parent_dirs:true
-                             ~post_write:post_write_nothing
+    dir_info # write_blob fnr blob
+      ~sync_parent_dirs:true
+      ~post_write:post_write_nothing
     >>= fun () ->
     Lwt.return ()
   in
@@ -35,8 +34,8 @@ let batch_entry_syncfs dir_info fnr data size =
 let batch_entry_fsync dir_info fnr data size =
   let flags = [Unix.O_WRONLY; Unix.O_CREAT] in
   let t () =
-    let (dir,_,fn) = DirectoryInfo.get_file_dir_name_path dir_info fnr in
-    DirectoryInfo.ensure_dir_exists dir_info dir ~sync:true >>= fun () ->
+    let (dir,_,fn) = dir_info # _get_file_dir_name_path fnr in
+    dir_info # ensure_dir_exists dir ~sync:true >>= fun () ->
     Lwt_unix.openfile fn flags 0o644 >>= fun fd ->
     Lwt_unix.write fd data 0 size >>= fun written ->
     assert (written = size);
@@ -45,17 +44,21 @@ let batch_entry_fsync dir_info fnr data size =
   in
   t
 
-let bench_x root entry post_batch iterations n_threads size =
+let bench_x engine root entry post_batch iterations n_threads size =
 
   Lwt_io.printlf
     "bench iterations:%i n_threads:%i size:%i"
     iterations n_threads size
   >>= fun () ->
   let data = Bytes.init size (fun i -> Char.chr (i mod 0xff)) in
-  let dir_info = DirectoryInfo.make
-                   root
-                   ~use_fadvise:false
-                   ~use_fallocate:false
+  let statistics = Asd_statistics.AsdStatistics.make () in
+  let (dir_info: Blob_access.blob_dir_access) =
+    Blob_access_factory.make_directory_info
+      ~engine
+      ~statistics
+      root
+      ~use_fadvise:false
+      ~use_fallocate:false
   in
   Lwt_unix.openfile root [Unix.O_RDONLY] 0o644 >>= fun dir_fd ->
   let one_batch batch_nr =

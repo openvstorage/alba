@@ -208,7 +208,33 @@ let alba_cfg_url =
        & info ["config"]
               ~env ~docv ~doc )
 
+let engine_converter : Asd_config.Config.blob_io_engine Arg.converter =
+  let parser s =
+    if Bytes.lowercase s = "pure"
+    then `Ok Asd_config.Config.Pure
+    else
+      try
+        let name,conf_file = Scanf.sscanf s "%s,%s" (fun x y -> (x,y)) in
+        if Bytes.lowercase name = "gioexecfile"
+        then
+          `Ok (Asd_config.Config.GioExecFile conf_file)
+        else
+          `Error (Printf.sprintf "%S is not a blob io engine class" name)
+      with
+      | _ -> `Error (Printf.sprintf "could not parse %S into engine" s)
+  in
+  let printer fmt x =
+    Format.pp_print_string fmt (Asd_config.Config.show_blob_io_engine x)
+  in
+  parser, printer
 
+let engine default =
+  Arg.(value
+       & opt engine_converter default
+       & info ["blob-io-engine"]
+              ~docv:"BLOB_IO_ENGINE"
+              ~doc:"strategy for blob io on the device"
+  )
 
 let to_json =
   Arg.(value

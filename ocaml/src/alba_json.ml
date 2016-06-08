@@ -28,7 +28,7 @@ module Osd = struct
     ips : OsdInfo.ip list;
     port : OsdInfo.port;
     use_tls: bool;
-    use_rdma: bool;    
+    use_rdma: bool;
     kind : string;
     decommissioned : bool;
     node_id : OsdInfo.node_id;
@@ -125,7 +125,7 @@ module AsdStatistics = struct
       let open Asd_statistics.AsdStatistics in
       `Assoc (Hashtbl.fold
                 (fun code (stat:Stat.Stat.stat) acc ->
-                 (Asd_protocol.Protocol.code_to_description code, (* Slighty different from before *)
+                 (Asd_server.stats_tag_to_string code, (* Slighty different from before *)
                   Stat.Stat.stat_to_yojson stat) :: acc
                 )
                 stats.G.statistics

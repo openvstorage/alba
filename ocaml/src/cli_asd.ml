@@ -40,7 +40,8 @@ let asd_start cfg_url slow log_sinks =
            tls_config,tcp_keepalive,
            write_blobs,
            use_fadvise, use_fallocate,
-           rocksdb_block_cache_size
+           rocksdb_block_cache_size,
+           engine
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.transport,
@@ -52,7 +53,8 @@ let asd_start cfg_url slow log_sinks =
         cfg.tls,   cfg.tcp_keepalive,
         cfg.__warranty_void__write_blobs,
         cfg.use_fadvise, cfg.use_fallocate,
-        cfg.rocksdb_block_cache_size
+        cfg.rocksdb_block_cache_size,
+        cfg.blob_io_engine
       in
 
       (if not fsync
@@ -109,11 +111,11 @@ let asd_start cfg_url slow log_sinks =
                 Lwt_log.info_f "Reloaded capacity & log level"
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
-      
+
       Asd_server.run_server ips port
                             ~transport
                             home ~asd_id ~node_id ~slow
-                            ~fsync 
+                            ~fsync
                             ~limit
                             ~capacity
                             ~multicast
@@ -125,6 +127,7 @@ let asd_start cfg_url slow log_sinks =
                             ~write_blobs
                             ~use_fadvise
                             ~use_fallocate
+                            ~engine
   in
 
   lwt_server ~log_sinks ~subcomponent:"asd" t
@@ -305,7 +308,7 @@ let asd_disk_usage_cmd =
   in
   let info =
     let doc = "return ASD disk usage (used,cap)" in
-    Term.info "asd-disk-usage" ~doc 
+    Term.info "asd-disk-usage" ~doc
   in
   asd_disk_usage_t, info
 
@@ -416,6 +419,7 @@ let osd_bench_cmd =
   in
   osd_bench_t, info
 
+
 let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
   begin
     let process_results results =
@@ -459,7 +463,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                    "stats: %s, disk_usage:(%Li,%Li)"
                    (Asd_statistics.AsdStatistics.show_inner
                       stats
-                      Asd_protocol.Protocol.code_to_description)
+                      Asd_server.stats_tag_to_string)
                    (fst disk_usage)
                    (snd disk_usage)
               | Error exn -> Printexc.to_string exn
@@ -468,7 +472,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
           )
       in Lwt_list.iter_s f results
     in
-    let t () = 
+    let t () =
       with_alba_client
         cfg_file tls_config
         (fun alba_client ->
@@ -481,7 +485,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
                 List.mem (get_long_id k) long_ids
               ) osds
           in
-          
+
           let needed_info =
             List.map
               (fun (_,osd_info) ->
@@ -534,7 +538,7 @@ let asd_multistatistics_cmd =
   in
   let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in
   t, info
-       
+
 let asd_statistics hosts port_o transport asd_id
                    to_json verbose config_o tls_config clear
   =
@@ -550,7 +554,7 @@ let asd_statistics hosts port_o transport asd_id
      else Lwt_io.printl
             (AsdStatistics.show_inner
                stats
-               Asd_protocol.Protocol.code_to_description)
+               Asd_server.stats_tag_to_string)
     )
   in
   let from_asd hosts port transport tls_config asd_id verbose =
@@ -676,19 +680,19 @@ let asd_set_full_cmd =
   in
   asd_set_full_t, info
 
-let bench_syncfs root iterations threads size =
+let bench_syncfs root iterations threads size engine =
   let t =
     let entry = Sync_bench.batch_entry_syncfs in
     let post_batch dir_fd = Syncfs.lwt_syncfs dir_fd in
-    Sync_bench.bench_x root entry post_batch iterations threads size
+    Sync_bench.bench_x engine root entry post_batch iterations threads size
     in
   Lwt_main.run t
 
-let bench_fsync root iterations threads size =
+let bench_fsync root iterations threads size engine =
   let t =
     let entry = Sync_bench.batch_entry_fsync in
     let post_batch dir_fd = Lwt.return 0 in
-    Sync_bench.bench_x root entry post_batch iterations threads size
+    Sync_bench.bench_x engine root entry post_batch iterations threads size
   in
   Lwt_main.run t
 
@@ -721,12 +725,14 @@ let root =
 let bench_syncfs_cmd =
   Term.(pure bench_syncfs
         $ root $ iterations $threads $ size
+        $ engine Asd_config.Config.Pure
   ),
   Term.info "bench-syncfs" ~doc:"write files and sync with syncfs"
 
 let bench_fsync_cmd =
   Term.(pure bench_fsync
         $ root $ iterations $threads $ size
+        $ engine Asd_config.Config.Pure
   ),
   Term.info "bench-fsync" ~doc:"write files and sync with fsync"
 

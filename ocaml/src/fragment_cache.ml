@@ -269,10 +269,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
 
   object(self)
     inherit cache
-    val dirs = Asd_server.DirectoryInfo.make
-                 root
-                 ~use_fadvise:true
-                 ~use_fallocate:true
+    val dirs = Blob_access_factory.make_directory_access root
+
     val mutable db =
       KV.create'
         ~db_path
@@ -690,7 +688,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
 
       (* might have been the last of it's kind *)
       let rec delete dir =
-        Asd_server.DirectoryInfo.delete_dir dirs dir >>= fun () ->
+        dirs # delete_dir dir >>= fun () ->
         let parent = Filename.dirname dir in
         if parent = root
         then Lwt.return ()
@@ -1010,7 +1008,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
            let dir = Filename.dirname path in
            Lwt_log.debug_f "add...path=%s dir=%s" path dir
            >>= fun () ->
-           Asd_server.DirectoryInfo.ensure_dir_exists dirs dir ~sync:false
+           dirs # ensure_dir_exists dir ~sync:false
            >>= fun () ->
            let total_count = get_int64 db _TOTAL_COUNT in
            let total_size  = get_int64 db _TOTAL_SIZE in

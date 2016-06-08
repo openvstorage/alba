@@ -23,6 +23,10 @@ module Config = struct
                port: int;
              } [@@deriving yojson, show]
 
+  type blob_io_engine =
+    | Pure
+    | GioExecFile of string [@@deriving yojson, show]
+
   type t = {
     ips : (string list         [@default []]);
     port :(int option          [@default None]);
@@ -42,11 +46,13 @@ module Config = struct
     tls : (tls option          [@default None]);
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
     __warranty_void__write_blobs  : (bool [@default true]);
-    
+
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
 
     rocksdb_block_cache_size : (int option [@default None]);
+    blob_io_engine :           (blob_io_engine  [@default Pure]);
+
   } [@@deriving yojson, show]
 end
 

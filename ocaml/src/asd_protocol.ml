@@ -73,6 +73,28 @@ module Blob = struct
     | Bigslice s -> Bigstring_slice.length s
     | Bytes s -> Bytes.length s
     | Slice s -> Slice.length s
+
+  let write_blob blob fd =
+    let len = length blob in
+    match blob with
+    | Lwt_bytes s ->
+       Lwt_extra2.write_all_lwt_bytes
+         fd
+         s 0 len
+    | Bigslice s ->
+       let open Bigstring_slice in
+       Lwt_extra2.write_all_lwt_bytes
+         fd
+         s.bs s.offset s.length
+    | Bytes s ->
+       Lwt_extra2.write_all
+         fd
+         s 0 len
+    | Slice s ->
+       let open Slice in
+       Lwt_extra2.write_all
+         fd
+         s.buf s.offset len
 end
 
 module Value = struct
@@ -412,6 +434,10 @@ module Protocol = struct
                       Wrap_query MultiExists,  9l, "MultiExists";
                       Wrap_query GetDiskUsage, 10l, "GetDiskUsage";
                       Wrap_query PartialGet,   11l, "PartialGet";
+                      (* the range from 40l to 80l
+                         is (currently) taken by internal statistics.
+                         see blob_access.ml
+                       *)
                     ]
 
   let wrap_unknown_operation f =
@@ -431,9 +457,12 @@ module Protocol = struct
   let code_to_description =
     let hasht = Hashtbl.create 3 in
     List.iter (fun (_, code, desc) -> Hashtbl.add hasht code desc) command_map;
-    (fun code ->
-     try Hashtbl.find hasht code with
-     | Not_found -> Printf.sprintf "unknown operation %li" code)
+    (fun code -> Hashtbl.find hasht code)
+
+  let code_to_description_nothrow x =
+    try code_to_description x
+    with | Not_found -> Printf.sprintf "unknown operation %li" x
+
 
   let query_request_serializer : type req res. (req, res) query -> req Llio2.serializer
     =
@@ -451,7 +480,7 @@ module Protocol = struct
          Llio.pair_to
            (Llio.list_to Slice.to_buffer')
            priority_to_buffer'
-      | MultiGet2 -> 
+      | MultiGet2 ->
          Llio.pair_to
            (Llio.list_to Slice.to_buffer')
            priority_to_buffer'

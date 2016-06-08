@@ -10,27 +10,28 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
-         camlbz2.0.6.0 \
-         snappy.0.1.0 \
+         camlbz2 \
+         snappy \
+         sexplib \
+         bisect \
          lwt.2.5.1 \
-         camltc.0.9.2 \
-         cstruct.1.7.0 \
-         ctypes.0.4.1 \
-         ctypes-foreign.0.4.0 \
-         bisect.1.3 \
-         ocplib-endian.0.8 \
+         camltc \
+         cstruct \
+         ctypes \
+         ctypes-foreign \
+         uuidm  \
+         zarith \
+         mirage-no-xen.1 \
          quickcheck.1.0.2 \
-         uuidm.0.9.5 \
-         zarith.1.3 \
+         cmdliner \
+         conf-libev \
+         depext \
          kinetic-client \
          tiny_json \
-         cmdliner \
          ppx_deriving ppx_deriving_yojson \
-         sexplib.113.00.00 \
          core.113.00.00 \
-         conf-libev \
          redis \
-         uri \
+         uri.1.9.1 \
          result
 "
 
@@ -141,7 +142,7 @@ install () {
     echo "Installing specific orocksdb"
     git clone https://github.com/domsj/orocksdb.git
     cd orocksdb
-    git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9
+    git checkout bd2fa718ac284e1e84b45a648d69626ebc95c857
     ./install_rocksdb.sh
     make build install
     cd ..
@@ -153,6 +154,39 @@ install () {
     tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
     sudo cp ./etcd-v2.2.4-linux-amd64/etcd    /usr/bin
     sudo cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
+
+    date
+
+
+
+    echo "Installing gtest"
+
+    git clone  https://github.com/google/googletest
+    pushd googletest
+    mkdir build && cd build && cmake .. && sudo make install
+    git log --oneline | head -n 5
+    popd
+
+    date
+
+    echo "Installing gobjfs"
+    pushd .
+    sudo apt-get install -y \
+           libboost-all-dev \
+           libaio1 libaio1-dbg libaio-dev libz-dev libbz2-dev \
+           libgoogle-glog-dev libunwind8-dev
+
+    cmake --version
+    git clone https://github.com/openvstorage/gobjfs.git
+    cd gobjfs
+    git pull
+    git checkout 571efa86896048d9d93c69749f733abfe09c7c54
+    mkdir build
+    cd build
+    cmake ..
+    make
+    sudo cp ../lib/lib*.so /usr/local/lib
+    popd
 
     date
 
@@ -170,6 +204,7 @@ script () {
     export ARAKOON_BIN=arakoon
     export WORKSPACE=$(pwd)
     export TEST_DRIVER=./setup/setup.native
+    export LD_LIBRARY_PATH=/usr/local/lib
     env | sort
 
     ./ocaml/alba.native version
@@ -195,12 +230,6 @@ script () {
             g++ --version
             uname -a
             export CXX=g++-4.8
-            sudo apt-get install -y libboost-all-dev # kitchen sink
-            sudo apt-get install -y fuse
-            sudo modprobe fuse
-            wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
-            sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
-
             ./jenkins/cpp/010-build_client.sh
             ${TEST_DRIVER} cpp
             fab alba.smoke_test

@@ -27,12 +27,14 @@ open Cli_bench_common
 (* TODO bench 1 big file *)
 
 
-let bench_blobs path scenarios count value_size partial_read_size =
+let bench_blobs path scenarios count value_size partial_read_size engine =
   let t () =
-    let module D = Asd_server.DirectoryInfo in
     let module B = Generic_bench in
+    let statistics = Asd_statistics.AsdStatistics.make () in
     let dir_info =
-      D.make
+      Blob_access_factory.make_directory_info
+        ~engine
+        ~statistics
         ~use_fadvise:true
         ~use_fallocate:true
         path
@@ -41,8 +43,7 @@ let bench_blobs path scenarios count value_size partial_read_size =
       let blob = Lwt_bytes.create_random value_size in
       let blob = Asd_protocol.Blob.Lwt_bytes blob in
       let write fnr =
-        D.write_blob
-          dir_info
+        dir_info # write_blob
           (Int64.of_int fnr) blob
           ~post_write:(fun fd len parent_dir -> Lwt.return ())
           ~sync_parent_dirs:true
@@ -53,17 +54,13 @@ let bench_blobs path scenarios count value_size partial_read_size =
         count
     in
     let partial_read_scenario progress =
-      let target = Lwt_bytes.create partial_read_size in
       B.measured_loop
         progress
         (fun fnr ->
-         D.with_blob_fd
-           dir_info
-           (Int64.of_int fnr)
-           (fun fd ->
-            let ufd = Lwt_unix.unix_file_descr fd in
-            Posix.posix_fadvise ufd 0 value_size Posix.POSIX_FADV_RANDOM;
-            Lwt_extra2.read_all_lwt_bytes_exact fd target 0 partial_read_size))
+         dir_info # get_blob_data
+           (Int64.of_int fnr) value_size [0, partial_read_size]
+           (fun _slice _buff _off -> Lwt.return_unit)
+        )
         count
     in
     Lwt_list.iter_s
@@ -102,6 +99,7 @@ let bench_blobs_cmd =
         $ n 10000
         $ value_size 1_000_000
         $ partial_fetch_size 4096
+        $ engine Asd_config.Config.Pure
   ),
   Term.info "asd-bench-blobs"
 

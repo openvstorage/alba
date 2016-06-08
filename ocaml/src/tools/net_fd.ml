@@ -51,9 +51,9 @@ let identifier = function
   | SSL _ssl   ->
      let fd = _ssl_get_fd _ssl in
      Lwt_extra2.lwt_unix_fd_to_fd fd
-  | Rsocket fd -> Lwt_rsocket.identifier fd 
+  | Rsocket fd -> Lwt_rsocket.identifier fd
 
-                 
+
 let socket domain typ x transport (tls:Tls.t option) =
   match transport with
   | TCP ->
@@ -66,7 +66,7 @@ let socket domain typ x transport (tls:Tls.t option) =
         let fd = Lwt_unix.socket domain typ x in
         let state = Config (fd,tls) in
         SSL { state }
-     end 
+     end
   | RDMA ->
      let socket = Lwt_rsocket.socket domain typ x in
      Rsocket socket
@@ -120,7 +120,7 @@ let accept = function
   | Rsocket fd ->
      Lwt_rsocket.accept fd >>= fun (cl_fd,cl_sa) ->
      Lwt.return (Some (Rsocket cl_fd, cl_sa))
-     
+
 let apply_keepalive tcp_keepalive = function
   | Plain fd   -> Tcp_keepalive.apply fd tcp_keepalive
   | SSL _ssl ->
@@ -139,12 +139,12 @@ let connect fd address = match fd with
           Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
           let state' = failwith "todo" in
           _ssl.state <- state';
-          Lwt.return_unit                     
+          Lwt.return_unit
        | Using _ -> failwith "already connected"
-  (* 
+  (*
     Lwt_unix.connect fd address >>= fun () ->
-    Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s -> 
-    let r = Net_fd.wrap_ssl lwt_s in 
+    Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
+    let r = Net_fd.wrap_ssl lwt_s in
    *)
      end
   | Rsocket fd ->
@@ -186,7 +186,7 @@ let write_all nfd bytes offset length = match nfd with
        Lwt_rsocket.send socket bytes offset todo []
      in
      Lwt_extra2._write_all write_from_source offset length
-                           
+
 let write_all' nfd bytes = write_all nfd bytes 0 (Bytes.length bytes)
 
 let write_all_lwt_bytes nfd bs offset length = match nfd with
@@ -201,7 +201,7 @@ let write_all_lwt_bytes nfd bs offset length = match nfd with
        Lwt_rsocket.Bytes.send socket bs offset todo []
      in
      Lwt_extra2._write_all write_from_source offset length
-                           
+
 let read_all nfd target offset length = match nfd with
   | Plain fd -> Lwt_extra2.read_all fd target offset length
   | SSL _ssl ->
@@ -244,14 +244,14 @@ let read_all_lwt_bytes_exact nfd target offset length = match nfd with
 
 let cork = function
   | Plain fd ->
-     Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false 
+     Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false
   | SSL _ssl ->
      let fd = _ssl_get_fd _ssl in
      Lwt_unix.setsockopt
        fd
-       Lwt_unix.TCP_NODELAY false 
+       Lwt_unix.TCP_NODELAY false
   | Rsocket fd  ->
-     Lwt_rsocket.setsockopt fd Lwt_unix.TCP_NODELAY false    
+     Lwt_rsocket.setsockopt fd Lwt_unix.TCP_NODELAY false
 
 let uncork = function
   | Plain fd   ->
@@ -263,5 +263,46 @@ let uncork = function
        Lwt_unix.TCP_NODELAY true
   | Rsocket socket ->
      Lwt_rsocket.setsockopt socket Lwt_unix.TCP_NODELAY true
-  
-      
+
+(* note: using this pulls in ctypes etc,
+   so you shouldn't use this module
+   in the arakoon plugins *)
+
+let sendfile_all ~fd_in ~offset ~(fd_out:t) size =
+    match fd_out with
+    | Plain fd ->
+       Fsutil.sendfile_all
+         ~wait_readable:false
+         ~wait_writeable:true
+         ~detached:true
+         ~fd_in ~offset
+         ~fd_out:fd
+         size
+    | SSL _ssl ->
+       let socket = _ssl_get_socket _ssl in
+       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
+       let reader buffer offset length =
+         Lwt_bytes.read fd_in buffer offset length
+       in
+       let writer buffer offset length =
+         let write_from_source = Lwt_ssl.write_bytes socket buffer in
+         Lwt_extra2._write_all write_from_source offset length
+       in
+       Buffer_pool.with_buffer
+         Buffer_pool.default_buffer_pool
+         (Lwt_extra2.copy_using reader writer size)
+
+    | Rsocket socket ->
+       Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
+       let reader buffer offset length =
+         Lwt_bytes.read fd_in buffer offset length
+       in
+       let writer buffer offset length =
+         let write_from_source offset todo =
+             Lwt_rsocket.Bytes.send socket buffer offset todo []
+         in
+         Lwt_extra2._write_all write_from_source offset length
+       in
+       Buffer_pool.with_buffer
+         Buffer_pool.default_buffer_pool
+         (Lwt_extra2.copy_using reader writer size)

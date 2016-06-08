@@ -118,7 +118,10 @@ class coordinator
             (fun () ->
              client # get_participants ~prefix:registration_prefix
              >>= fun (cnt, participants) ->
-
+             Lwt_log.debug_f
+               "check_position_loop: participants:%s"
+               ([% show : (string* int) list] participants)
+             >>= fun () ->
              let modulo' = cnt in
              let remainder' = (List.find_index (fun (name', _) -> name' = name) participants)
                               |> Option.get_some in

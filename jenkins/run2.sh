@@ -11,9 +11,17 @@ eval `${opam_env}`
 make clean
 make
 
+ldd ./ocaml/alba.native
+
 if (${ALBA_USE_ETCD:-false} -eq true)
 then
     export ALBA_ETCD=127.0.0.1:5000/albas/xxxx/
+fi
+
+if (${ALBA_USE_GIOEXECFILE:-false} -eq true)
+then
+    export ALBA_BLOB_IO_ENGINE=GioExecFile,${WORKSPACE}/cfg/gioexecfile.conf
+
 fi
 
 id

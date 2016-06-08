@@ -22,7 +22,7 @@ RUN opam init --root=/home/alba/OPAM --comp 4.02.3
 
 
 
-RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-5.noarch.rpm
+RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-6.noarch.rpm
 RUN yum -y update
 RUN yum -y install python-pip openssl-devel gmp-devel which zlib-devel ncurses-devel bzip2
 
@@ -96,6 +96,41 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
+RUN yum -y install cmake3 sudo
+
+# make sudo work:
+#
+# Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
+#         You have to run "ssh -t hostname sudo <cmd>".
+#
+# Defaults    requiretty          # is line 56
+RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
+
+RUN echo '%_install_langs C' >> /etc/rpm/macros && \
+    yum -y install epel-release && \
+    echo -e '[ovs]\nname=ovs\nbaseurl=http://yum.openvstorage.org/CentOS/7/x86_64/dists/unstable\nenabled=1\ngpgcheck=0' > /etc/yum.repos.d/ovs.repo && \
+    yum -y update && \
+    yum -y install  \
+                   boost-devel \
+                   libaio-devel \
+                   librdmacm-devel \
+                   gflags-devel \
+                   glog-devel \
+                   libunwind \
+    && \
+    yum clean all && \
+    rm -rf /usr/share/doc/*
+RUN ln -s /usr/lib64/libunwind.so.8 /usr/lib64/libunwind.so
+
+# install gtest TODO:specific version ?
+RUN git clone  https://github.com/google/googletest \
+    && cd googletest &&  mkdir build && cd build && cmake3 .. \
+    && sudo make install
+RUN cd googletest && git log --oneline | head -n 5
+
+# libgtest.a ends up in /usr/local/lib/
+RUN cp /usr/local/lib/libgtest.a /lib64/
+
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
 RUN cd arakoon && git pull && git checkout tags/1.9.5
@@ -107,26 +142,20 @@ RUN cd arakoon && eval `${opam_env}` \
 
 # workarounds for limited rocksdb builder in orocksdb
 RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
-RUN yum -y install sudo
-#
-# Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
-#         You have to run "ssh -t hostname sudo <cmd>".
-#
-# Defaults    requiretty          # is line 56
-RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
+
+
 
 # install specific orocksdb
 RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
+    && git checkout bd2fa718ac284e1e84b45a648d69626ebc95c857 \
     && ./install_rocksdb.sh \
+    && cp /usr/local/lib/librocksdb.so* /lib64/ \
+    && sudo ldconfig -v \
     && make build install
 
-# be uniform on shared lib locations
-RUN cp /usr/local/lib/librocksdb.so* /lib64/
-
-#for now, instll ordma manually
+#for now, install ordma manually
 RUN yum -y install librdmacm-devel
 RUN git clone https://github.com/toolslive/ordma.git \
     && cd ordma \
@@ -150,8 +179,21 @@ RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-2.0-1.el7.centos.x86_64.rpm
 RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-devel-2.0-1.el7.centos.x86_64.rpm
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
-RUN yum -y install iproute
 
+# gobjfs shared lib:
+
+RUN git clone https://github.com/openvstorage/gobjfs.git
+RUN cd gobjfs  && git pull && git checkout 571efa86896048d9d93c69749f733abfe09c7c54
+RUN cd gobjfs \
+       && mkdir build \
+       && cd build \
+       && cmake3 .. \
+       && make \
+       && cp ../lib/lib*.so /usr/lib64/
+
+ENV LD_LIBRARY_PATH=/usr/lib64
+
+RUN yum -y install iproute
 ENV opam_env='opam config env --root=/home/alba/OPAM'
 ENV ARAKOON_BIN=arakoon
 CMD eval `${opam_env}` \
