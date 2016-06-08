@@ -703,10 +703,10 @@ let alba_cache_eviction_cmd =
         $ tls_config
         $ Arg.(value
                & opt_all string []
-               & info ~docv:"prefix used by the cache, from which items should be evicted (may be specified multiple times)" ["prefix"])
+               & info ~doc:"prefix used by the cache, from which items should be evicted (may be specified multiple times)" ["prefix"])
         $ Arg.(value
                & opt_all string []
-               & info ~docv:"preset used for new namespaces in the cache (may be specified multiple times)" ["preset"])
+               & info ~doc:"preset used for new namespaces in the cache (may be specified multiple times)" ["preset"])
         $ log_sinks),
   Term.info "cache-eviction" ~doc:"alba cache eviction process"
 

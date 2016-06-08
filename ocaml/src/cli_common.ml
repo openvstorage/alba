@@ -213,13 +213,12 @@ let alba_cfg_url =
 let to_json =
   Arg.(value
        & flag
-       & info ["to-json"] ~docv:"only output json to stdout")
+       & info ["to-json"] ~doc:"only output json to stdout")
 
 let verbose =
   Arg.(value
        & flag
-       & info ["verbose"] ~docv:"more output on cli"
-  )
+       & info ["verbose"] ~doc:"more output on cli")
 
 let port default =
   let doc = "tcp $(docv)" in

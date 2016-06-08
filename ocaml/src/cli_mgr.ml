@@ -559,7 +559,9 @@ let alba_rewrite_namespace cfg_file tls_arg namespace name factor to_json verbos
 let job_name p =
   Arg.(required
        & pos p (some string) None
-       & info [] ~docv:"JOB_NAME")
+       & info []
+              ~docv:"JOB_NAME"
+              ~doc:"name of the job to be added. it should be unique. can be used with show-job-progress / clear-job-progress")
 
 let alba_rewrite_namespace_cmd =
   Term.(pure alba_rewrite_namespace
@@ -569,7 +571,7 @@ let alba_rewrite_namespace_cmd =
         $ job_name 1
         $ Arg.(value
                & opt int 1
-               & info ["factor"] ~docv:"specifies into how many pieces the job should be divided")
+               & info ["factor"] ~doc:"specifies into how many pieces the job should be divided")
         $ to_json
         $ verbose
   ),
@@ -598,13 +600,13 @@ let alba_verify_namespace_cmd =
         $ job_name 1
         $ Arg.(value
                & opt int 1
-               & info ["factor"] ~docv:"specifies into how many pieces the job should be divided")
+               & info ["factor"] ~doc:"specifies into how many pieces the job should be divided")
         $ Arg.(value
                & flag
-               & info ["no-verify-checksum"] ~docv:"flag to specify checksums should not be verified")
+               & info ["no-verify-checksum"] ~doc:"flag to specify checksums should not be verified")
         $ Arg.(value
                & flag
-               & info ["no-repair-osd-unavailable"] ~docv:"flag to specify that fragments on unavailable osds should not be repaired")
+               & info ["no-repair-osd-unavailable"] ~doc:"flag to specify that fragments on unavailable osds should not be repaired")
         $ to_json
         $ verbose
   ),
@@ -778,7 +780,7 @@ let alba_get_abm_client_config_cmd =
         $ tls_config
         $ Arg.(value
                & flag
-               & info ["allow-dirty"] ~docv:"allow fetching the config from a non slave node")
+               & info ["allow-dirty"] ~doc:"allow fetching the config from a non slave node")
         $ verbose),
   Term.info "get-abm-client-config"
 
