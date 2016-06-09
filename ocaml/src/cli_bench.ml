@@ -48,7 +48,7 @@ let scenarios =
 let robust =
   Arg.(value
        & flag
-       & info ["robust"] ~docv:"robust writes (with retry loop)")
+       & info ["robust"] ~doc:"robust writes (with retry loop)")
 
 let map_scenarios scenarios robust =
   let open Proxy_bench in

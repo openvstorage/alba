@@ -140,7 +140,7 @@ let asd_start_cmd =
           $ cfg_url
           $ Arg.(value
                  & flag
-                 & info ["slow"] ~docv:"artifically slow down an asd (only for testing purposes!)")
+                 & info ["slow"] ~doc:"artifically slow down an asd (only for testing purposes!)")
           $ log_sinks)
   in
   let info =
