@@ -662,12 +662,14 @@ type maintenance_cfg = {
     albamgr_cfg_url : Url.t;
     log_level : string;
     tls_client : tls_client option;
+    __retry_timeout : float;
   } [@@deriving yojson]
 
 let make_maintenance_config abm_cfg_url tls_client =
   { albamgr_cfg_url = abm_cfg_url;
     log_level = "debug";
-    tls_client ;
+    tls_client;
+    __retry_timeout = 10.;
   }
 
 class maintenance id cfg (abm_cfg_url:Url.t) etcd =
@@ -1299,6 +1301,25 @@ module Deployment = struct
         `String x -> x
       | _ -> assert false
 
+  type show_namespace_result = {
+      logical : int;
+      storage : int;
+      storage_per_osd : (int * int) list;
+      bucket_count : ((int*int*int*int) * int) list;
+    } [@@deriving yojson]
+
+  let show_namespace t namespace =
+    let open Yojson.Safe in
+    Shell.cmd_with_capture
+      [ t.cfg.alba_bin; "show-namespace";
+        "--config"; t.abm # config_url |> Url.canonical;
+        namespace; "--to-json"; ]
+    |> from_string
+    |> Util.member "result"
+    |> show_namespace_result_of_yojson
+    |> function
+      | `Error x -> failwith x
+      | `Ok x -> x
 end
 
 module JUnit = struct
@@ -2212,6 +2233,9 @@ module Test = struct
         | _ -> assert false
     end;
 
+    let show_namespace_1 = show_namespace t_global "demo" in
+    assert (show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]);
+
     (* unlink a backend *)
     let local_1_alba_id = get_alba_id t_local1 in
     _alba_cmd_line
@@ -2219,32 +2243,45 @@ module Test = struct
         "--config"; t_global.abm # config_url |> Url.canonical;
         "--long-id"; local_1_alba_id; ];
 
-    let rec wait_for_condition i f =
+    let rec wait_for_condition i msg f =
       if f ()
       then ()
       else if i = 0
-      then failwith "took too long!"
+      then failwith (Printf.sprintf "%s: took too long!" msg)
       else
         begin
           Printf.printf "%i\n%!" i;
           Unix.sleep 1;
-          wait_for_condition (i - 1) f
+          wait_for_condition (i - 1) msg f
         end
     in
 
-    (* wait until the 'osd' is no longer known by the global backend *)
     wait_for_condition
-      150
+      120
+      "local backend osd no longer known by the global backend"
       (fun () ->
        let long_ids = harvest_osds t_global in
        not (List.mem local_1_alba_id long_ids));
 
     (* check buckets voor global demo namespace? *)
+    let show_namespace_2 = show_namespace t_global "demo" in
+    assert (show_namespace_2.bucket_count = [ (2,2,3,3), 3]);
 
     (* add backend again *)
+    add_backend_as_osd t_local1;
 
-    (* upload an object *)
-    (* wait for all data to be repaired *)
+    wait_for_condition
+      150
+      "all data should be repaired"
+      (fun () ->
+       let show_namespace_3 = show_namespace t_global "demo" in
+       (show_namespace_3.bucket_count = [ (2,2,4,4), 3]));
+
+    (* upload another object *)
+    do_upload "3";
+
+    t_global.proxy # download_object "demo" objname "/tmp/fdsi";
+    t_global.proxy # download_object "demo" "3" "/tmp/fdsi";
 
     0
 
