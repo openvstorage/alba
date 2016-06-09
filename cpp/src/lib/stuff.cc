@@ -34,7 +34,6 @@ uint64_t get_file_size(const std::string &file_name) {
   return size;
 }
 
-
 char hexlify(unsigned char c) {
   char r;
   if (c < 10) {

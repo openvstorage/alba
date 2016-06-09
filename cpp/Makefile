@@ -1,7 +1,7 @@
 CXX ?= g++
 
 
-# g++ 5 and clang++-3.7 have binary compatibility problems 
+# g++ 5 and clang++-3.7 have binary compatibility problems
 # & dynamic linking with boost libraries causes arbitrary segv's for g++
 # So this is currently the GCD : statically link the boost stuff
 
@@ -9,7 +9,7 @@ OPTIMIZATION = 0
 WARNINGS = \
 	-Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo \
 	-Woverloaded-virtual -Wnon-virtual-dtor
-FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC 
+FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC
 
 CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
 
@@ -19,7 +19,7 @@ LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_o
 
 LIBS_exec = -L/usr/local/lib \
 	-Wl,-Bstatic -lboost_log -lboost_system -lboost_thread -lboost_program_options \
-	-Wl,-Bdynamic -L./lib -lalba -lrdmacm -lpthread 
+	-Wl,-Bdynamic -L./lib -lalba -lrdmacm -lpthread
 
 
 all: compile_lib compile_tests
@@ -28,7 +28,11 @@ all: compile_lib compile_tests
 	$(CXX) -shared -Wl,-soname,libalba.so.1 \
 	    $(LIBDIRS) $(LIBS_lib) \
 	    -o lib/libalba.so.1.0.1 src/lib/alba_logger.o \
-	    src/lib/checksum.o src/lib/io.o src/lib/llio.o src/lib/proxy_client.o \
+	    src/lib/checksum.o src/lib/io.o src/lib/llio.o \
+	    src/lib/proxy_client.o \
+            src/lib/generic_proxy_client.o \
+            src/lib/tcp_proxy_client.o \
+	    src/lib/rdma_proxy_client.o \
 	    src/lib/proxy_protocol.o src/lib/stuff.o
 
 	cd lib && ln -f -s libalba.so.1.0.1 libalba.so.1
@@ -56,6 +60,9 @@ compile_lib:
 	$(CMD) -c src/lib/checksum.cc -o src/lib/checksum.o
 	$(CMD) -c src/lib/io.cc -o src/lib/io.o
 	$(CMD) -c src/lib/proxy_client.cc -o src/lib/proxy_client.o
+	$(CMD) -c src/lib/generic_proxy_client.cc -o src/lib/generic_proxy_client.o
+	$(CMD) -c src/lib/tcp_proxy_client.cc -o src/lib/tcp_proxy_client.o
+	$(CMD) -c src/lib/rdma_proxy_client.cc -o src/lib/rdma_proxy_client.o
 
 compile_tests:
 	$(CMD) -I/usr/include/gtest \

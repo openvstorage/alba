@@ -16,8 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#ifndef ALBA_PROXY_PROTOCOL_H
-#define ALBA_PROXY_PROTOCOL_H
+#pragma once
 
 #include "llio.h"
 #include "checksum.h"
@@ -67,6 +66,11 @@ struct ObjectSlices {
   const std::vector<SliceDescriptor> slices;
 };
 
+struct Manifest {
+  std::string name;
+  std::string compressed;
+};
+
 using std::string;
 using boost::optional;
 using llio::message_builder;
@@ -113,6 +117,16 @@ void write_write_object_fs_request(message_builder &mb,
                                    const Checksum *checksum);
 void read_write_object_fs_response(message &m, Status &status);
 
+void write_write_object_fs2_request(message_builder &mb,
+                                    const string &namespace_,
+                                    const string &object_name,
+                                    const string &input_file,
+                                    const bool allow_overwrite,
+                                    const Checksum *checksum);
+
+void read_write_object_fs2_response(message &m, Status &status,
+                                    Manifest &manifest);
+
 void write_delete_object_request(message_builder &mb, const string &namespace_,
                                  const string &object_name,
                                  const bool may_not_exist);
@@ -146,10 +160,7 @@ void write_get_proxy_version_request(message_builder &mb);
 void read_get_proxy_version_response(message &m, Status &status, int32_t &major,
                                      int32_t &minor, int32_t &version,
                                      std::string &hash);
-void write_ping_request(message_builder & mb, const double delay);
-void read_ping_response(message &m, Status &status, double& timestamp);
- 
+void write_ping_request(message_builder &mb, const double delay);
+void read_ping_response(message &m, Status &status, double &timestamp);
 }
 }
-
-#endif

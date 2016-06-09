@@ -220,3 +220,15 @@ TEST(proxy_client, test_ping) {
     EXPECT_NEAR(delta, 5.0, eps);
   }
 }
+
+/*
+TEST(proxy_client, test_write_fs2){
+    init_log();
+    config cfg;
+    auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+    string name = "object name";
+    string file("./ocaml/alba.native");
+    auto mf = client -> write_object_fs2(cfg.NAMESPACE, name, file,
+                                         proxy_client::allow_overwrite::T, nullptr);
+}
+*/

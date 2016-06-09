@@ -177,6 +177,9 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | WriteObjectFs   -> fun (namespace, object_name, _,_,_)  ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
+  | WriteObjectFs2  -> fun (namespace, object_name, _,_,_) ->
+                       Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
+
   | ReadObjectsSlices -> fun (namespace, objects_slices, consistent_read) ->
                          Printf.sprintf
                            "(%S,%s )"
@@ -217,6 +220,35 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                              i -> o Lwt.t
                           =
     let open Protocol in
+    let write_object_fs stats (namespace,
+                               object_name,
+                               input_file,
+                               allow_overwrite,
+                               checksum_o)
+      =
+      let open Nsm_model in
+      Lwt.catch
+        (fun () ->
+           alba_client # upload_object_from_file
+             ~namespace
+             ~object_name ~input_file
+             ~checksum_o
+             ~allow_overwrite:(if allow_overwrite
+                               then Unconditionally
+                               else NoPrevious)
+           >>= fun (mf , upload_stats) ->
+           let open Alba_statistics.Statistics in
+           ProxyStatistics.new_upload stats namespace upload_stats.total;
+           Lwt.return mf
+        )
+        (let open Alba_client_errors.Error in
+          function
+          | Err.Nsm_exn (Err.Overwrite_not_allowed, _) ->
+            Protocol.Error.failwith Protocol.Error.OverwriteNotAllowed
+          | Exn FileNotFound ->
+             Protocol.Error.failwith Protocol.Error.FileNotFound
+          | exn -> Lwt.fail exn)
+    in
     function
     | ListNamespaces -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
       (* TODO only return namespaces which are active? hmm, maybe creating too... *)
@@ -267,28 +299,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                                   input_file,
                                   allow_overwrite,
                                   checksum_o) ->
-      let open Nsm_model in
-      Lwt.catch
-        (fun () ->
-           alba_client # upload_object_from_file
-             ~namespace
-             ~object_name ~input_file
-             ~checksum_o
-             ~allow_overwrite:(if allow_overwrite
-                               then Unconditionally
-                               else NoPrevious)
-           >>= fun (_mf , upload_stats) ->
-           let open Alba_statistics.Statistics in
-           ProxyStatistics.new_upload stats namespace upload_stats.total;
-           Lwt.return ()
-        )
-        (let open Alba_client_errors.Error in
-          function
-          | Err.Nsm_exn (Err.Overwrite_not_allowed, _) ->
-            Protocol.Error.failwith Protocol.Error.OverwriteNotAllowed
-          | Exn FileNotFound ->
-             Protocol.Error.failwith Protocol.Error.FileNotFound
-          | exn -> Lwt.fail exn)
+                       write_object_fs stats (namespace,
+                                              object_name,
+                                              input_file,
+                                              allow_overwrite,
+                                              checksum_o
+                                             ) >>= fun mf -> Lwt.return_unit
+    | WriteObjectFs2 -> write_object_fs
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->

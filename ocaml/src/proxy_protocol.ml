@@ -303,6 +303,12 @@ module Protocol = struct
                        overwrite *
                        Checksum.Checksum.t option,
                        unit) request
+    | WriteObjectFs2 : (Namespace.name
+                        * object_name
+                        * file_name
+                        * overwrite
+                        * Checksum.Checksum.t option,
+                        Nsm_model.Manifest.t) request
     | DeleteObject : (Namespace.name *
                       object_name *
                       may_not_exist,
@@ -346,6 +352,7 @@ module Protocol = struct
                       18, Wrap OsdView,    "OsdView";
                       19, Wrap GetClientConfig, "GetClientConfig";
                       20, Wrap Ping, "Ping";
+                      21, Wrap WriteObjectFs2, "WriteObjectFs2";
                     ]
 
   module Error = struct
@@ -422,6 +429,14 @@ module Protocol = struct
         Deser.string
         Deser.bool
         (Deser.option Checksum_deser.deser')
+    | WriteObjectFs2 ->
+       Deser.tuple5
+         Deser.string
+         Deser.string
+         Deser.string
+         Deser.bool
+         (Deser.option Checksum_deser.deser')
+
     | DeleteObject ->
       Deser.tuple3
         Deser.string
@@ -461,6 +476,7 @@ module Protocol = struct
     | ListObjects -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | ReadObjectFs -> Deser.unit
     | WriteObjectFs -> Deser.unit
+    | WriteObjectFs2 -> Manifest_deser.deser
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string

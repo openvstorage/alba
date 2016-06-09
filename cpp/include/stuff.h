@@ -16,8 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#ifndef STUFF_H
-#define STUFF_H
+#pragma once
 
 #include <stdint.h>
 #include <sys/stat.h>
@@ -47,4 +46,3 @@ std::ostream &operator<<(std::ostream &os, const std::vector<T> &ts) {
 }
 }
 }
-#endif

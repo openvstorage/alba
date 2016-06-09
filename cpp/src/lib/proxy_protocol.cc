@@ -34,6 +34,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _DROP_CACHE 16
 #define _GET_PROXY_VERSION 17
 #define _PING 20
+#define _WRITE_OBJECT_FS2 21
 
 namespace alba {
 namespace proxy_protocol {
@@ -155,13 +156,13 @@ void read_read_object_fs_response(message &m, Status &status) {
   read_status(m, status);
 }
 
-void write_write_object_fs_request(message_builder &mb,
-                                   const string &namespace_,
-                                   const string &object_name,
-                                   const string &input_file,
-                                   const bool allow_overwrite,
-                                   const Checksum *checksum) {
-  write_tag(mb, _WRITE_OBJECT_FS);
+void _write_write_object_fs_request(message_builder &mb, uint32_t tag,
+                                    const string &namespace_,
+                                    const string &object_name,
+                                    const string &input_file,
+                                    const bool allow_overwrite,
+                                    const Checksum *checksum) {
+  write_tag(mb, tag);
   to(mb, namespace_);
   to(mb, object_name);
   to(mb, input_file);
@@ -173,8 +174,37 @@ void write_write_object_fs_request(message_builder &mb,
   }
 }
 
+void write_write_object_fs_request(message_builder &mb,
+                                   const string &namespace_,
+                                   const string &object_name,
+                                   const string &input_file,
+                                   const bool allow_overwrite,
+                                   const Checksum *checksum) {
+
+  _write_write_object_fs_request(mb, _WRITE_OBJECT_FS, namespace_, object_name,
+                                 input_file, allow_overwrite, checksum);
+}
+
+void write_write_object_fs2_request(message_builder &mb,
+                                    const string &namespace_,
+                                    const string &object_name,
+                                    const string &input_file,
+                                    const bool allow_overwrite,
+                                    const Checksum *checksum) {
+
+  _write_write_object_fs_request(mb, _WRITE_OBJECT_FS2, namespace_, object_name,
+                                 input_file, allow_overwrite, checksum);
+}
+
 void read_write_object_fs_response(message &m, Status &status) {
   read_status(m, status);
+}
+
+void read_write_object_fs2_response(message &m, Status &status, Manifest &mf) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    from(m, mf.compressed);
+  }
 }
 
 void write_delete_object_request(message_builder &mb, const string &namespace_,
