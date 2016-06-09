@@ -437,18 +437,21 @@ class client ?(retry_timeout = 60.)
               let _, updated_locations =
                 List.fold_left
                   (fun (chunk_id, acc) fragment_locations ->
-                   List.fold_left
-                     (fun (fragment_id, acc) (osd_id_o, version) ->
-                      let acc = match osd_id_o with
-                        | None -> acc
-                        | Some osd_id ->
-                           if Hashtbl.mem purging_osds osd_id
-                           then (chunk_id, fragment_id, None) :: acc
-                           else acc
-                      in
-                      (fragment_id + 1, acc))
-                     (0, acc)
-                     fragment_locations)
+                   let _, acc =
+                     List.fold_left
+                       (fun (fragment_id, acc) (osd_id_o, version) ->
+                        let acc = match osd_id_o with
+                          | None -> acc
+                          | Some osd_id ->
+                             if Hashtbl.mem purging_osds osd_id
+                             then (chunk_id, fragment_id, None) :: acc
+                             else acc
+                        in
+                        (fragment_id + 1, acc))
+                       (0, acc)
+                       fragment_locations
+                   in
+                   (chunk_id + 1, acc))
                   (0, [])
                   manifest.fragment_locations
               in
