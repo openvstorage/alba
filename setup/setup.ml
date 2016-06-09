@@ -514,22 +514,19 @@ let _alba_extend_tls ?(cfg=Config.default) cmd =
   cmd @ [Printf.sprintf
            "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
 
+let maybe_extend_tls cfg cmd =
+  if cfg.tls
+  then _alba_extend_tls cmd
+  else cmd
+
 let _alba_cmd ~cfg ~cwd ~ignore_tls x =
-  let maybe_extend_tls cmd =
-    if not ignore_tls && cfg.tls
-    then
-      begin
-        _alba_extend_tls cmd
-      end
-    else cmd
-  in
   let cmd = (cfg.alba_bin :: x) in
   let cmd1 = match cwd with
     | Some dir -> "cd":: dir ::"&&":: cmd
     | None -> cmd
   in
   cmd1
-  |> maybe_extend_tls
+  |> maybe_extend_tls cfg
 
 let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
   _alba_cmd ~cfg ~cwd ~ignore_tls x
@@ -1105,19 +1102,21 @@ module Deployment = struct
        end
     | _ -> failwith "unexpected json format"
 
+  let _harvest_osds t c =
+    [ t.cfg.alba_bin;
+      c;
+      "--config"; t.abm # config_url |> Url.canonical ;
+      "--to-json";
+    ]
+    |> maybe_extend_tls t.cfg
+    |> Shell.cmd_with_capture
+    |> parse_harvest
+
   let harvest_available_osds t =
-    let available_json_s =
-      let cmd =
-        [t.cfg.alba_bin;
-         "list-available-osds";
-         "--config"; t.abm # config_url |> Url.canonical ;
-         "--to-json"
-        ]
-      in
-      let cmd' = if t.cfg.tls then _alba_extend_tls cmd else cmd in
-      cmd' |> Shell.cmd_with_capture
-    in
-    parse_harvest available_json_s
+    _harvest_osds t "list-available-osds"
+
+  let harvest_osds t =
+    _harvest_osds t "list-osds"
 
   let is_local_osd t long_id =
     let suffix = t.cfg.local_nodeid_prefix in
@@ -1287,6 +1286,18 @@ module Deployment = struct
   let smoke_test t =
     let _  = proxy_pid t in
     ()
+
+  let get_alba_id t =
+    Shell.cmd_with_capture
+      [ t.cfg.alba_bin; "get-alba-id";
+        "--config"; t.abm # config_url |> Url.canonical;
+        "--to-json" ]
+    |> Yojson.Basic.from_string
+    |> Yojson.Basic.Util.member "result"
+    |> Yojson.Basic.Util.member "id"
+    |> function
+        `String x -> x
+      | _ -> assert false
 
 end
 
@@ -2152,8 +2163,9 @@ module Test = struct
     let _, t_local1 = make_backend "local_1" ~base_port:4000 ~kill:true in
     let _, t_local2 = make_backend "local_2"~base_port:5001 in
     let _, t_local3 = make_backend "local_3"~base_port:6002 in
+    let _, t_local4 = make_backend "local_4"~base_port:7003 in
 
-    let cfg_global, t_global = make_backend "global" ~base_port:7004 ~n_osds:0 in
+    let cfg_global, t_global = make_backend "global" ~base_port:7503 ~n_osds:0 in
 
     let add_backend_as_osd t_local =
       _alba_cmd_line
@@ -2164,36 +2176,27 @@ module Test = struct
           "--node-id"; "x";
           "--prefix"; "alba_osd_prefix";
           "--preset"; "default"; ];
-      let long_id =
-        Shell.cmd_with_capture
-          [ t_local.cfg.alba_bin; "get-alba-id";
-            "--config"; t_local.abm # config_url |> Url.canonical;
-            "--to-json" ]
-        |> Yojson.Basic.from_string
-        |> Yojson.Basic.Util.member "result"
-        |> Yojson.Basic.Util.member "id"
-        |> function
-            `String x -> x
-          | _ -> assert false
-      in
       _alba_cmd_line
         [ "claim-osd";
           "--config"; t_global.abm # config_url |> Url.canonical;
-          "--long-id"; long_id; ]
+          "--long-id"; get_alba_id t_local; ]
     in
     add_backend_as_osd t_local1;
     add_backend_as_osd t_local2;
     add_backend_as_osd t_local3;
+    add_backend_as_osd t_local4;
     _alba_cmd_line
       [ "deliver-messages";
         "--config"; t_global.abm # config_url |> Url.canonical; ];
 
-    let objname = "fdsij" in
-    let do_upload () =
+    let do_upload objname =
       t_global.proxy # upload_object "demo" cfg_global.alba_bin objname
     in
 
-    do_upload ();
+    let objname = "fdsij" in
+    do_upload objname;
+    do_upload "1";
+    do_upload "2";
 
     t_global.proxy # download_object "demo" objname "/tmp/fdsi";
 
@@ -2208,6 +2211,41 @@ module Test = struct
         | `List namespaces -> assert (3 = List.length namespaces)
         | _ -> assert false
     end;
+
+    (* unlink a backend *)
+    let local_1_alba_id = get_alba_id t_local1 in
+    _alba_cmd_line
+      [ "purge-osd";
+        "--config"; t_global.abm # config_url |> Url.canonical;
+        "--long-id"; local_1_alba_id; ];
+
+    let rec wait_for_condition i f =
+      if f ()
+      then ()
+      else if i = 0
+      then failwith "took too long!"
+      else
+        begin
+          Printf.printf "%i\n%!" i;
+          Unix.sleep 1;
+          wait_for_condition (i - 1) f
+        end
+    in
+
+    (* wait until the 'osd' is no longer known by the global backend *)
+    wait_for_condition
+      150
+      (fun () ->
+       let long_ids = harvest_osds t_global in
+       not (List.mem local_1_alba_id long_ids));
+
+    (* check buckets voor global demo namespace? *)
+
+    (* add backend again *)
+
+    (* upload an object *)
+    (* wait for all data to be repaired *)
+
     0
 
   let everything_else ?(xml=false) ?filter ?dump t =
