@@ -1676,4 +1676,12 @@ class client ?(retry_timeout = 60.)
       (alba_client # mgr_access)
       (alba_client # nsm_host_access)
       (alba_client # osd_access)
-  end
+
+  method cache_eviction () : unit Lwt.t =
+    Alba_eviction.alba_eviction
+      alba_client
+      ~get_prefix_preset_pairs:
+      (fun () ->
+       let open Maintenance_config in
+       maintenance_config.cache_eviction_prefix_preset_pairs)
+end

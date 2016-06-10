@@ -683,33 +683,6 @@ let namespace_recovery_agent_cmd =
   ),
   Term.info "namespace-recovery-agent" ~doc:"recover the contents of a namespace from the osds"
 
-let alba_cache_eviction
-      cfg_file tls_config
-      prefixes presets
-      log_sinks =
-  let t () =
-    with_alba_client
-      cfg_file tls_config
-      (fun client ->
-       Alba_eviction.alba_eviction
-         client
-         ~prefixes ~presets)
-  in
-  lwt_server ~log_sinks ~subcomponent:"cache_eviction" t
-
-let alba_cache_eviction_cmd =
-  Term.(pure alba_cache_eviction
-        $ alba_cfg_url
-        $ tls_config
-        $ Arg.(value
-               & opt_all string []
-               & info ~doc:"prefix used by the cache, from which items should be evicted (may be specified multiple times)" ["prefix"])
-        $ Arg.(value
-               & opt_all string []
-               & info ~doc:"preset used for new namespaces in the cache (may be specified multiple times)" ["preset"])
-        $ log_sinks),
-  Term.info "cache-eviction" ~doc:"alba cache eviction process"
-
 let unit_tests produce_xml alba_cfg_url tls_config only_test =
   Albamgr_test.ccfg_url_ref := Some alba_cfg_url;
   let () = Albamgr_test._tls_config_ref := tls_config in
@@ -833,8 +806,6 @@ let () =
       alba_get_disk_safety_cmd;
 
       namespace_recovery_agent_cmd;
-
-      alba_cache_eviction_cmd;
 
       unit_tests_cmd;
 
