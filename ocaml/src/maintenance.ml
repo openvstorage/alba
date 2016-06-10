@@ -169,7 +169,9 @@ class client ?(retry_timeout = 60.)
       Maintenance_config.({ enable_auto_repair = false;
                             auto_repair_timeout_seconds = 1.;
                             auto_repair_disabled_nodes = [];
-                            enable_rebalance = false; })
+                            enable_rebalance = false;
+                            cache_eviction_prefix_preset_pairs = [];
+                          })
 
     method get_maintenance_config = maintenance_config
 

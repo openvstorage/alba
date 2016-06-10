@@ -678,7 +678,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                                      { enable_auto_repair = true;
                                        auto_repair_timeout_seconds = 60. *. 15.;
                                        auto_repair_disabled_nodes = [];
-                                       enable_rebalance = true; }); ])
+                                       enable_rebalance = true;
+                                       cache_eviction_prefix_preset_pairs = [];
+                                     }); ])
           >>= fun _ ->
           Lwt.return ())
          (function
