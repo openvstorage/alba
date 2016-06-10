@@ -203,7 +203,8 @@ void read_write_object_fs_response(message &m, Status &status) {
 void read_write_object_fs2_response(message &m, Status &status, Manifest &mf) {
   read_status(m, status);
   if (status.is_ok()) {
-    from(m, mf.compressed);
+
+    from(m, mf);
   }
 }
 

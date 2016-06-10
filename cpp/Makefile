@@ -15,11 +15,19 @@ CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
 
 LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib -L/usr/lib
 
-LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options
+LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options \
+           -lsnappy
 
 LIBS_exec = -L/usr/local/lib \
 	-Wl,-Bstatic -lboost_log -lboost_system -lboost_thread -lboost_program_options \
-	-Wl,-Bdynamic -L./lib -lalba -lrdmacm -lpthread
+	-Wl,-Bdynamic -L./lib -lalba -lrdmacm -lpthread -lsnappy
+
+_OBJECTS = stuff.o manifest.o alba_logger.o \
+           proxy_protocol.o llio.o checksum.o \
+           io.o proxy_client.o generic_proxy_client.o \
+	   tcp_proxy_client.o rdma_proxy_client.o
+
+OBJECTS = $(patsubst %,src/lib/%,$(_OBJECTS))
 
 
 all: compile_lib compile_tests
@@ -27,13 +35,7 @@ all: compile_lib compile_tests
 	mkdir -p ./lib
 	$(CXX) -shared -Wl,-soname,libalba.so.1 \
 	    $(LIBDIRS) $(LIBS_lib) \
-	    -o lib/libalba.so.1.0.1 src/lib/alba_logger.o \
-	    src/lib/checksum.o src/lib/io.o src/lib/llio.o \
-	    src/lib/proxy_client.o \
-            src/lib/generic_proxy_client.o \
-            src/lib/tcp_proxy_client.o \
-	    src/lib/rdma_proxy_client.o \
-	    src/lib/proxy_protocol.o src/lib/stuff.o
+	    -o lib/libalba.so.1.0.1 $(OBJECTS)
 
 	cd lib && ln -f -s libalba.so.1.0.1 libalba.so.1
 	cd lib && ln -f -s libalba.so.1 libalba.so
@@ -52,17 +54,10 @@ all: compile_lib compile_tests
 	    src/examples/test_client.o \
 	    $(LIBDIRS) $(LIBS_exec) -o bin/test_client.out
 
-compile_lib:
-	$(CMD) -c src/lib/stuff.cc -o src/lib/stuff.o
-	$(CMD) -c src/lib/alba_logger.cc -o src/lib/alba_logger.o
-	$(CMD) -c src/lib/proxy_protocol.cc -o src/lib/proxy_protocol.o
-	$(CMD) -c src/lib/llio.cc -o src/lib/llio.o
-	$(CMD) -c src/lib/checksum.cc -o src/lib/checksum.o
-	$(CMD) -c src/lib/io.cc -o src/lib/io.o
-	$(CMD) -c src/lib/proxy_client.cc -o src/lib/proxy_client.o
-	$(CMD) -c src/lib/generic_proxy_client.cc -o src/lib/generic_proxy_client.o
-	$(CMD) -c src/lib/tcp_proxy_client.cc -o src/lib/tcp_proxy_client.o
-	$(CMD) -c src/lib/rdma_proxy_client.cc -o src/lib/rdma_proxy_client.o
+%.o: %.cc
+	$(CMD) -c $< -o $@
+
+compile_lib: $(OBJECTS)
 
 compile_tests:
 	$(CMD) -I/usr/include/gtest \

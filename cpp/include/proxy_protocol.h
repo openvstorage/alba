@@ -20,6 +20,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include "llio.h"
 #include "checksum.h"
+#include "manifest.h"
 
 namespace alba {
 namespace proxy_protocol {
@@ -64,11 +65,6 @@ struct SliceDescriptor {
 struct ObjectSlices {
   const std::string &object_name;
   const std::vector<SliceDescriptor> slices;
-};
-
-struct Manifest {
-  std::string name;
-  std::string compressed;
 };
 
 using std::string;

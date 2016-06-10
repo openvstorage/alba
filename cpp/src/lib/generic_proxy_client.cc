@@ -292,7 +292,5 @@ double GenericProxy_client::ping(double delay) {
   check_status(__PRETTY_FUNCTION__);
   return result;
 }
-
-
 }
 }

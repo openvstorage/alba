@@ -65,7 +65,8 @@ public:
   virtual void write_object_fs(const std::string &namespace_,
                                const std::string &object_name,
                                const std::string &input_file,
-                               const allow_overwrite, const Checksum *checksum) = 0;
+                               const allow_overwrite,
+                               const Checksum *checksum) = 0;
 
   virtual void read_object_fs(const std::string &namespace_,
                               const std::string &object_name,
@@ -135,7 +136,5 @@ std::unique_ptr<Proxy_client> make_proxy_client(
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
         expiry_time,
     const Transport &transport);
-
-
 }
 }

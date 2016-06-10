@@ -1,29 +1,29 @@
 /*
-  Copyright (C) 2016 iNuron NV
+Copyright (C) 2016 iNuron NV
 
-  This file is part of Open vStorage Open Source Edition (OSE), as available from
+This file is part of Open vStorage Open Source Edition (OSE), as available from
 
 
-  http://www.openvstorage.org and
-  http://www.openvstorage.com.
+    http://www.openvstorage.org and
+    http://www.openvstorage.com.
 
-  This file is free software; you can redistribute it and/or modify it
-  under the terms of the GNU Affero General Public License v3 (GNU AGPLv3)
-  as published by the Free Software Foundation, in version 3 as it comes
-  in the <LICENSE.txt> file of the Open vStorage OSE distribution.
+This file is free software; you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License v3 (GNU AGPLv3)
+as published by the Free Software Foundation, in version 3 as it comes
+in the <LICENSE.txt> file of the Open vStorage OSE distribution.
 
-  Open vStorage is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY of any kind.
+Open vStorage is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
 
 #include "proxy_client.h"
 
-namespace alba{
+namespace alba {
 namespace proxy_client {
 
-class GenericProxy_client : public Proxy_client{
+class GenericProxy_client : public Proxy_client {
 public:
   virtual bool namespace_exists(const std::string &name);
 
@@ -77,7 +77,6 @@ public:
 
   virtual void drop_cache(const std::string &namespace_);
 
-
   virtual std::tuple<int32_t, int32_t, int32_t, std::string>
   get_proxy_version();
 
@@ -98,6 +97,5 @@ protected:
       _expiry_time;
   virtual void check_status(const char *function_name) = 0;
 };
-
 }
 }

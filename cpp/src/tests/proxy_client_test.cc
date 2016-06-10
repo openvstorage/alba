@@ -21,6 +21,10 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/algorithm/string.hpp>
 #include "proxy_client.h"
 #include "alba_logger.h"
+#include "manifest.h"
+
+#include <iostream>
+#include <fstream>
 
 using std::string;
 using std::cout;
@@ -221,14 +225,32 @@ TEST(proxy_client, test_ping) {
   }
 }
 
-/*
+
+TEST(proxy_client, manifest){
+    std::ifstream file;
+    file.exceptions ( std::ifstream::failbit | std::ifstream::badbit );
+    file.open ("./bin/the_manifest.bin");
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string data = buffer.str();
+    auto size = data.size();
+    std:: cout <<"size:" << size << std::endl;
+
+    proxy_protocol::Manifest mf;
+    std::vector<char> v(data.begin(), data.end());
+    llio::message m(v);
+    from(m,mf);
+
+    std::cout << mf << std::endl;
+}
+
 TEST(proxy_client, test_write_fs2){
     init_log();
     config cfg;
     auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
-    string name = "object name";
+    string name = "with_manifest";
     string file("./ocaml/alba.native");
     auto mf = client -> write_object_fs2(cfg.NAMESPACE, name, file,
                                          proxy_client::allow_overwrite::T, nullptr);
+
 }
-*/

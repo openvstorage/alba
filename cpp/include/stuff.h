@@ -23,6 +23,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <string>
 #include <iostream>
 #include <vector>
+#include <memory>
 
 namespace alba {
 namespace stuff {
@@ -33,6 +34,19 @@ uint8_t unhex(char c);
 
 void dump_buffer(std::ostream &os, const char *row, int size);
 void dump_hex(std::ostream &os, unsigned char c);
+
+template <typename X>
+std::ostream &operator<<(std::ostream &os, const std::shared_ptr<X> &xp) {
+  const X &x = *xp;
+  os << "&(" << x << ")";
+  return os;
+}
+
+template <typename X, typename Y>
+std::ostream &operator<<(std::ostream &os, const std::pair<X, Y> &p) {
+  os << "(" << p.first << ", " << p.second << ")";
+  return os;
+}
 
 template <typename T>
 std::ostream &operator<<(std::ostream &os, const std::vector<T> &ts) {

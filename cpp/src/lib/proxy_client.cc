@@ -29,15 +29,6 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace proxy_client {
 
-    /*using std::string;
-using std::vector;
-using std::tuple;
-using boost::optional;
-using llio::message;
-using llio::message_builder;
-    */
-
-
 std::unique_ptr<Proxy_client> make_proxy_client(
     const std::string &ip, const std::string &port,
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &

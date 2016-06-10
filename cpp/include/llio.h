@@ -74,6 +74,10 @@ public:
     _pos = 0;
   }
 
+  message(std::vector<char> &buffer) {
+    _buffer = buffer;
+    _pos = 0;
+  }
   const char *current() { return &_buffer.data()[_pos]; }
 
   void skip(int x) { _pos += x; }
