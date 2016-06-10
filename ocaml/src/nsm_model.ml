@@ -1586,9 +1586,16 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let fragments = Hashtbl.create 3 in
     List.iter
       (fun (chunk_id, fragment_id, osd_id_o) ->
+       let key = chunk_id, fragment_id in
+       if Hashtbl.mem fragments key
+       then
+         (* we don't want multiple updates for the same fragment,
+          * it indicates a buggy client! *)
+         Err.(failwith ~payload:"duplicate chunk_id,fragment_id for update_manifest" Unknown)
+       else
          Hashtbl.add
            fragments
-           (chunk_id, fragment_id)
+           key
            (osd_id_o, version_id))
       new_fragments;
     let manifest_old, manifest_old_s = get_object_manifest_by_id kv object_id in

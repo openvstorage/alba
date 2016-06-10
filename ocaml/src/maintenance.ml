@@ -437,27 +437,42 @@ class client ?(retry_timeout = 60.)
               let _, updated_locations =
                 List.fold_left
                   (fun (chunk_id, acc) fragment_locations ->
-                   List.fold_left
-                     (fun (fragment_id, acc) (osd_id_o, version) ->
-                      let acc = match osd_id_o with
-                        | None -> acc
-                        | Some osd_id ->
-                           if Hashtbl.mem purging_osds osd_id
-                           then (chunk_id, fragment_id, None) :: acc
-                           else acc
-                      in
-                      (fragment_id + 1, acc))
-                     (0, acc)
-                     fragment_locations)
+                   let _, acc =
+                     List.fold_left
+                       (fun (fragment_id, acc) (osd_id_o, version) ->
+                        let acc = match osd_id_o with
+                          | None -> acc
+                          | Some osd_id ->
+                             if Hashtbl.mem purging_osds osd_id
+                             then (chunk_id, fragment_id, None) :: acc
+                             else acc
+                        in
+                        (fragment_id + 1, acc))
+                       (0, acc)
+                       fragment_locations
+                   in
+                   (chunk_id + 1, acc))
                   (0, [])
                   manifest.fragment_locations
               in
-              client # update_manifest
-                ~object_name:manifest.name
-                ~object_id:manifest.object_id
-                updated_locations
-                ~gc_epoch
-                ~version_id:(manifest.version_id + 1))
+              Lwt.catch
+                (fun () ->
+                 client # update_manifest
+                        ~object_name:manifest.name
+                        ~object_id:manifest.object_id
+                        updated_locations
+                        ~gc_epoch
+                        ~version_id:(manifest.version_id + 1))
+                (fun exn ->
+                 let open Nsm_model.Manifest in
+                 Lwt_log.info_f
+                   ~exn
+                   "Exn while purging osd %li (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+                   osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
+                 Lwt_extra2.ignore_errors
+                   ~logging:true
+                   (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest))
+             )
          else
            Lwt.catch
              (fun () ->

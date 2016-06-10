@@ -514,22 +514,19 @@ let _alba_extend_tls ?(cfg=Config.default) cmd =
   cmd @ [Printf.sprintf
            "--tls=%s,%s,%s" cacert my_client_pem my_client_key]
 
+let maybe_extend_tls cfg cmd =
+  if cfg.tls
+  then _alba_extend_tls cmd
+  else cmd
+
 let _alba_cmd ~cfg ~cwd ~ignore_tls x =
-  let maybe_extend_tls cmd =
-    if not ignore_tls && cfg.tls
-    then
-      begin
-        _alba_extend_tls cmd
-      end
-    else cmd
-  in
   let cmd = (cfg.alba_bin :: x) in
   let cmd1 = match cwd with
     | Some dir -> "cd":: dir ::"&&":: cmd
     | None -> cmd
   in
   cmd1
-  |> maybe_extend_tls
+  |> maybe_extend_tls cfg
 
 let _alba_cmd_line ?(cfg=Config.default) ?cwd ?(ignore_tls=false) x =
   _alba_cmd ~cfg ~cwd ~ignore_tls x
@@ -665,12 +662,14 @@ type maintenance_cfg = {
     albamgr_cfg_url : Url.t;
     log_level : string;
     tls_client : tls_client option;
+    __retry_timeout : float;
   } [@@deriving yojson]
 
 let make_maintenance_config abm_cfg_url tls_client =
   { albamgr_cfg_url = abm_cfg_url;
     log_level = "debug";
-    tls_client ;
+    tls_client;
+    __retry_timeout = 10.;
   }
 
 class maintenance id cfg (abm_cfg_url:Url.t) etcd =
@@ -1105,19 +1104,21 @@ module Deployment = struct
        end
     | _ -> failwith "unexpected json format"
 
+  let _harvest_osds t c =
+    [ t.cfg.alba_bin;
+      c;
+      "--config"; t.abm # config_url |> Url.canonical ;
+      "--to-json";
+    ]
+    |> maybe_extend_tls t.cfg
+    |> Shell.cmd_with_capture
+    |> parse_harvest
+
   let harvest_available_osds t =
-    let available_json_s =
-      let cmd =
-        [t.cfg.alba_bin;
-         "list-available-osds";
-         "--config"; t.abm # config_url |> Url.canonical ;
-         "--to-json"
-        ]
-      in
-      let cmd' = if t.cfg.tls then _alba_extend_tls cmd else cmd in
-      cmd' |> Shell.cmd_with_capture
-    in
-    parse_harvest available_json_s
+    _harvest_osds t "list-available-osds"
+
+  let harvest_osds t =
+    _harvest_osds t "list-osds"
 
   let is_local_osd t long_id =
     let suffix = t.cfg.local_nodeid_prefix in
@@ -1288,6 +1289,37 @@ module Deployment = struct
     let _  = proxy_pid t in
     ()
 
+  let get_alba_id t =
+    Shell.cmd_with_capture
+      [ t.cfg.alba_bin; "get-alba-id";
+        "--config"; t.abm # config_url |> Url.canonical;
+        "--to-json" ]
+    |> Yojson.Basic.from_string
+    |> Yojson.Basic.Util.member "result"
+    |> Yojson.Basic.Util.member "id"
+    |> function
+        `String x -> x
+      | _ -> assert false
+
+  type show_namespace_result = {
+      logical : int;
+      storage : int;
+      storage_per_osd : (int * int) list;
+      bucket_count : ((int*int*int*int) * int) list;
+    } [@@deriving yojson]
+
+  let show_namespace t namespace =
+    let open Yojson.Safe in
+    Shell.cmd_with_capture
+      [ t.cfg.alba_bin; "show-namespace";
+        "--config"; t.abm # config_url |> Url.canonical;
+        namespace; "--to-json"; ]
+    |> from_string
+    |> Util.member "result"
+    |> show_namespace_result_of_yojson
+    |> function
+      | `Error x -> failwith x
+      | `Ok x -> x
 end
 
 module JUnit = struct
@@ -2152,8 +2184,9 @@ module Test = struct
     let _, t_local1 = make_backend "local_1" ~base_port:4000 ~kill:true in
     let _, t_local2 = make_backend "local_2"~base_port:5001 in
     let _, t_local3 = make_backend "local_3"~base_port:6002 in
+    let _, t_local4 = make_backend "local_4"~base_port:7003 in
 
-    let cfg_global, t_global = make_backend "global" ~base_port:7004 ~n_osds:0 in
+    let cfg_global, t_global = make_backend "global" ~base_port:7503 ~n_osds:0 in
 
     let add_backend_as_osd t_local =
       _alba_cmd_line
@@ -2164,36 +2197,27 @@ module Test = struct
           "--node-id"; "x";
           "--prefix"; "alba_osd_prefix";
           "--preset"; "default"; ];
-      let long_id =
-        Shell.cmd_with_capture
-          [ t_local.cfg.alba_bin; "get-alba-id";
-            "--config"; t_local.abm # config_url |> Url.canonical;
-            "--to-json" ]
-        |> Yojson.Basic.from_string
-        |> Yojson.Basic.Util.member "result"
-        |> Yojson.Basic.Util.member "id"
-        |> function
-            `String x -> x
-          | _ -> assert false
-      in
       _alba_cmd_line
         [ "claim-osd";
           "--config"; t_global.abm # config_url |> Url.canonical;
-          "--long-id"; long_id; ]
+          "--long-id"; get_alba_id t_local; ]
     in
     add_backend_as_osd t_local1;
     add_backend_as_osd t_local2;
     add_backend_as_osd t_local3;
+    add_backend_as_osd t_local4;
     _alba_cmd_line
       [ "deliver-messages";
         "--config"; t_global.abm # config_url |> Url.canonical; ];
 
-    let objname = "fdsij" in
-    let do_upload () =
+    let do_upload objname =
       t_global.proxy # upload_object "demo" cfg_global.alba_bin objname
     in
 
-    do_upload ();
+    let objname = "fdsij" in
+    do_upload objname;
+    do_upload "1";
+    do_upload "2";
 
     t_global.proxy # download_object "demo" objname "/tmp/fdsi";
 
@@ -2208,6 +2232,57 @@ module Test = struct
         | `List namespaces -> assert (3 = List.length namespaces)
         | _ -> assert false
     end;
+
+    let show_namespace_1 = show_namespace t_global "demo" in
+    assert (show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]);
+
+    (* unlink a backend *)
+    let local_1_alba_id = get_alba_id t_local1 in
+    _alba_cmd_line
+      [ "purge-osd";
+        "--config"; t_global.abm # config_url |> Url.canonical;
+        "--long-id"; local_1_alba_id; ];
+
+    let rec wait_for_condition i msg f =
+      if f ()
+      then ()
+      else if i = 0
+      then failwith (Printf.sprintf "%s: took too long!" msg)
+      else
+        begin
+          Printf.printf "%i\n%!" i;
+          Unix.sleep 1;
+          wait_for_condition (i - 1) msg f
+        end
+    in
+
+    wait_for_condition
+      120
+      "local backend osd no longer known by the global backend"
+      (fun () ->
+       let long_ids = harvest_osds t_global in
+       not (List.mem local_1_alba_id long_ids));
+
+    (* check buckets voor global demo namespace? *)
+    let show_namespace_2 = show_namespace t_global "demo" in
+    assert (show_namespace_2.bucket_count = [ (2,2,3,3), 3]);
+
+    (* add backend again *)
+    add_backend_as_osd t_local1;
+
+    wait_for_condition
+      150
+      "all data should be repaired"
+      (fun () ->
+       let show_namespace_3 = show_namespace t_global "demo" in
+       (show_namespace_3.bucket_count = [ (2,2,4,4), 3]));
+
+    (* upload another object *)
+    do_upload "3";
+
+    t_global.proxy # download_object "demo" objname "/tmp/fdsi";
+    t_global.proxy # download_object "demo" "3" "/tmp/fdsi";
+
     0
 
   let everything_else ?(xml=false) ?filter ?dump t =

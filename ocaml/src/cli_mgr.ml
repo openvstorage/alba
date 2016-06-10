@@ -434,10 +434,10 @@ let alba_list_decommissioning_osds
            client # get_alba_id >>= fun alba_id ->
            let res =
              List.map
-               (fun (id, info) ->
+               (fun (osd_id, info) ->
                   Alba_json.Osd.make
                     alba_id
-                    (Osd.ClaimInfo.ThisAlba id)
+                    (Osd.ClaimInfo.ThisAlba osd_id)
                     info)
                osds
            in
@@ -459,6 +459,55 @@ let alba_list_decommissioning_osds_cmd =
   Term.info
     "list-decommissioning-osds"
     ~doc:"list osds that are not yet fully decommissioned"
+
+
+let alba_list_purging_osds
+      cfg_file tls_config to_json verbose attempts
+  =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts tls_config
+      (fun client ->
+         client # list_all_purging_osds >>= fun (cnt, osds) ->
+         let open Albamgr_protocol.Protocol in
+         Lwt_list.map_p
+           (fun osd_id ->
+              client # get_osd_by_osd_id ~osd_id >>= function
+              | None -> Lwt.return None
+              | Some osd_info -> Lwt.return (Some (osd_id, osd_info)))
+           osds >>= fun osds ->
+         let osds = List.map_filter Std.id osds in
+         if to_json
+         then
+           client # get_alba_id >>= fun alba_id ->
+           let res =
+             List.map
+               (fun (osd_id, info) ->
+                 Alba_json.Osd.make
+                   alba_id
+                   (Osd.ClaimInfo.ThisAlba osd_id)
+                   info)
+               osds
+           in
+           print_result res Alba_json.Osd.t_list_to_yojson
+         else
+           Lwt_log.info_f "%i osds still decommissioning: %s"
+             cnt
+             ([%show : (Osd.id * Nsm_model.OsdInfo.t) list] osds))
+  in
+  lwt_cmd_line ~to_json ~verbose t
+
+let alba_list_purging_osds_cmd =
+  Term.(pure alba_list_purging_osds
+        $ alba_cfg_url
+        $ tls_config
+        $ to_json $ verbose
+        $ attempts 1
+  ),
+  Term.info
+    "list-purging-osds"
+    ~doc:"list osds that are not yet fully purged"
+
 
 let alba_list_participants cfg_file tls_config prefix verbose =
   let t () =
@@ -814,6 +863,7 @@ let cmds = [
     alba_list_all_osds_cmd;
     alba_list_available_osds_cmd;
     alba_list_decommissioning_osds_cmd;
+    alba_list_purging_osds_cmd;
 
     alba_add_nsm_host_cmd;
     alba_update_nsm_host_cmd;
