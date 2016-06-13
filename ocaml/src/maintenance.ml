@@ -169,7 +169,9 @@ class client ?(retry_timeout = 60.)
       Maintenance_config.({ enable_auto_repair = false;
                             auto_repair_timeout_seconds = 1.;
                             auto_repair_disabled_nodes = [];
-                            enable_rebalance = false; })
+                            enable_rebalance = false;
+                            cache_eviction_prefix_preset_pairs = Hashtbl.create 0;
+                          })
 
     method get_maintenance_config = maintenance_config
 
@@ -1674,4 +1676,12 @@ class client ?(retry_timeout = 60.)
       (alba_client # mgr_access)
       (alba_client # nsm_host_access)
       (alba_client # osd_access)
-  end
+
+  method cache_eviction () : unit Lwt.t =
+    Alba_eviction.alba_eviction
+      alba_client
+      ~get_prefix_preset_pairs:
+      (fun () ->
+       let open Maintenance_config in
+       maintenance_config.cache_eviction_prefix_preset_pairs)
+end

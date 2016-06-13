@@ -44,6 +44,10 @@ class client
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
   =
+  let () =
+    osd_access # populate_osds_info_cache
+    |> Lwt.ignore_result
+  in
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
     new nsm_host_access
@@ -941,4 +945,24 @@ class client
         let r = Some (manifest, t_object) in
         Lwt.return r
 
+    method deliver_nsm_host_messages ~nsm_host_id =
+      Alba_client_message_delivery.deliver_nsm_host_messages
+        mgr_access nsm_host_access osd_access
+        ~nsm_host_id
+
+    method drop_cache_by_id ~global namespace_id =
+      Manifest_cache.ManifestCache.drop manifest_cache namespace_id;
+      fragment_cache # drop namespace_id ~global
+
+    method drop_cache ~global namespace =
+      self # nsm_host_access # with_namespace_id
+        ~namespace
+        (self # drop_cache_by_id ~global)
+
+    method delete_namespace ~namespace =
+      Alba_client_namespace.delete_namespace
+        mgr_access nsm_host_access
+        (self # deliver_nsm_host_messages)
+        (self # drop_cache_by_id ~global:true)
+        ~namespace
   end

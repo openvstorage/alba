@@ -697,6 +697,8 @@ let test_automatic_repair () =
          auto_repair_add_disabled_nodes = [];
          auto_repair_remove_disabled_nodes = [];
          enable_rebalance' = None;
+         add_cache_eviction_prefix_preset_pairs = [];
+         remove_cache_eviction_prefix_preset_pairs = [];
        }) >>= fun _ ->
 
      Lwt.async

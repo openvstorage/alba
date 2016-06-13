@@ -24,7 +24,11 @@ type t = {
     auto_repair_disabled_nodes : string list;
 
     enable_rebalance : bool;
-  } [@@deriving show, yojson]
+
+    cache_eviction_prefix_preset_pairs : (string, string) Hashtbl.t;
+  } [@@deriving yojson]
+
+let show t = to_yojson t |> Yojson.Safe.pretty_to_string
 
 let from_buffer buf =
   let ser_version = Llio.int8_from buf in
@@ -33,21 +37,37 @@ let from_buffer buf =
   let auto_repair_timeout_seconds = Llio.float_from buf in
   let auto_repair_disabled_nodes = Llio.list_from Llio.string_from buf in
   let enable_rebalance = Llio.bool_from buf in
+  let cache_eviction_prefix_preset_pairs =
+    maybe_from_buffer
+      (Llio.hashtbl_from
+         (Llio.pair_from
+            Llio.string_from
+            Llio.string_from))
+      (Hashtbl.create 0)
+      buf
+  in
   { enable_auto_repair;
     auto_repair_timeout_seconds;
     auto_repair_disabled_nodes;
     enable_rebalance;
+    cache_eviction_prefix_preset_pairs;
   }
 
 let to_buffer buf { enable_auto_repair;
                     auto_repair_timeout_seconds;
                     auto_repair_disabled_nodes;
-                    enable_rebalance; } =
+                    enable_rebalance;
+                    cache_eviction_prefix_preset_pairs;
+                  } =
   Llio.int8_to buf 1;
   Llio.bool_to buf enable_auto_repair;
   Llio.float_to buf auto_repair_timeout_seconds;
   Llio.list_to Llio.string_to buf auto_repair_disabled_nodes;
-  Llio.bool_to buf enable_rebalance
+  Llio.bool_to buf enable_rebalance;
+  Llio.hashtbl_to
+    Llio.string_to Llio.string_to
+    buf
+    cache_eviction_prefix_preset_pairs;
 
 module Update = struct
     type t = {
@@ -57,6 +77,9 @@ module Update = struct
         auto_repair_remove_disabled_nodes : string list;
 
         enable_rebalance' : bool option;
+
+        add_cache_eviction_prefix_preset_pairs : (string * string) list;
+        remove_cache_eviction_prefix_preset_pairs : string list;
       }
 
     let from_buffer buf =
@@ -69,34 +92,61 @@ module Update = struct
       let auto_repair_add_disabled_nodes =
         Llio.list_from Llio.string_from buf in
       let enable_rebalance' = Llio.option_from Llio.bool_from buf in
+      let add_cache_eviction_prefix_preset_pairs,
+          remove_cache_eviction_prefix_preset_pairs =
+        maybe_from_buffer
+          (Llio.pair_from
+             (Llio.list_from
+                (Llio.pair_from Llio.string_from Llio.string_from))
+             (Llio.list_from Llio.string_from))
+          ([], [])
+          buf
+      in
       { enable_auto_repair';
         auto_repair_timeout_seconds';
         auto_repair_remove_disabled_nodes;
         auto_repair_add_disabled_nodes;
         enable_rebalance';
+        add_cache_eviction_prefix_preset_pairs;
+        remove_cache_eviction_prefix_preset_pairs;
       }
 
     let to_buffer buf { enable_auto_repair';
                         auto_repair_timeout_seconds';
                         auto_repair_remove_disabled_nodes;
                         auto_repair_add_disabled_nodes;
-                        enable_rebalance'; } =
+                        enable_rebalance';
+                        add_cache_eviction_prefix_preset_pairs;
+                        remove_cache_eviction_prefix_preset_pairs;
+                      } =
       Llio.int8_to buf 1;
       Llio.option_to Llio.bool_to buf enable_auto_repair';
       Llio.option_to Llio.float_to buf auto_repair_timeout_seconds';
       Llio.list_to Llio.string_to buf auto_repair_remove_disabled_nodes;
       Llio.list_to Llio.string_to buf auto_repair_add_disabled_nodes;
-      Llio.option_to Llio.bool_to buf enable_rebalance'
+      Llio.option_to Llio.bool_to buf enable_rebalance';
+      Llio.list_to
+        (Llio.pair_to Llio.string_to Llio.string_to)
+        buf
+        add_cache_eviction_prefix_preset_pairs;
+      Llio.list_to Llio.string_to
+        buf
+        remove_cache_eviction_prefix_preset_pairs
 
     let apply { enable_auto_repair;
                 auto_repair_timeout_seconds;
                 auto_repair_disabled_nodes;
-                enable_rebalance; }
+                enable_rebalance;
+                cache_eviction_prefix_preset_pairs;
+              }
               { enable_auto_repair';
                 auto_repair_timeout_seconds';
                 auto_repair_remove_disabled_nodes;
                 auto_repair_add_disabled_nodes;
-                enable_rebalance'; }
+                enable_rebalance';
+                add_cache_eviction_prefix_preset_pairs;
+                remove_cache_eviction_prefix_preset_pairs;
+              }
       =
       { enable_auto_repair = Option.get_some_default
                                enable_auto_repair
@@ -113,5 +163,20 @@ module Update = struct
                auto_repair_disabled_nodes);
         enable_rebalance = Option.get_some_default
                              enable_rebalance
-                             enable_rebalance'; }
+                             enable_rebalance';
+        cache_eviction_prefix_preset_pairs =
+          let () =
+            List.iter
+              (fun prefix ->
+               Hashtbl.remove cache_eviction_prefix_preset_pairs prefix)
+              remove_cache_eviction_prefix_preset_pairs
+          in
+          let () =
+            List.iter
+              (fun (prefix, preset) ->
+               Hashtbl.replace cache_eviction_prefix_preset_pairs prefix preset)
+              add_cache_eviction_prefix_preset_pairs
+          in
+          cache_eviction_prefix_preset_pairs;
+      }
   end

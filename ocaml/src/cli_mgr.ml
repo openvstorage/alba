@@ -749,6 +749,8 @@ let alba_update_maintenance_config
       auto_repair_add_disabled_nodes
       auto_repair_remove_disabled_nodes
       enable_rebalance'
+      add_cache_eviction_prefix_preset_pairs
+      remove_cache_eviction_prefix_preset_pairs
       verbose
   =
   let t () =
@@ -756,12 +758,15 @@ let alba_update_maintenance_config
       cfg_file ~attempts:1 tls_config
       (fun client ->
        client # update_maintenance_config
-              Maintenance_config.Update.({ enable_auto_repair';
-                                           auto_repair_timeout_seconds';
-                                           auto_repair_add_disabled_nodes;
-                                           auto_repair_remove_disabled_nodes;
-                                           enable_rebalance';
-                                         }) >>= fun maintenance_config ->
+              Maintenance_config.Update.(
+         { enable_auto_repair';
+           auto_repair_timeout_seconds';
+           auto_repair_add_disabled_nodes;
+           auto_repair_remove_disabled_nodes;
+           enable_rebalance';
+           add_cache_eviction_prefix_preset_pairs;
+           remove_cache_eviction_prefix_preset_pairs;
+         }) >>= fun maintenance_config ->
        Lwt_io.printlf
          "Maintenance config now is %s"
          (Maintenance_config.show maintenance_config))
@@ -793,6 +798,14 @@ let alba_update_maintenance_config_cmd =
                           info ["enable-rebalance"]);
                          (Some false,
                           info ["disable-rebalance"]); ])
+        $ Arg.(value
+               & opt_all (pair string string) []
+               & info ["add-cache-eviction"]
+                      ~doc:"add a prefix,preset for cache eviction")
+        $ Arg.(value
+               & opt_all string []
+               & info ["remove-cache-eviction"]
+                      ~doc:"remove a prefix for cache eviction")
         $ verbose
   ),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"

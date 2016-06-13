@@ -222,6 +222,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                     (maintenance_client # report_stats 60. );
                     (refresh_albamgr_cfg abm_cfg_url abm_cfg_ref);
                     (maintenance_client # refresh_purging_osds ());
+                    (maintenance_client # cache_eviction ());
                   ]
                 in
 
