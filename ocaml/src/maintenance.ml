@@ -170,7 +170,7 @@ class client ?(retry_timeout = 60.)
                             auto_repair_timeout_seconds = 1.;
                             auto_repair_disabled_nodes = [];
                             enable_rebalance = false;
-                            cache_eviction_prefix_preset_pairs = [];
+                            cache_eviction_prefix_preset_pairs = Hashtbl.create 0;
                           })
 
     method get_maintenance_config = maintenance_config

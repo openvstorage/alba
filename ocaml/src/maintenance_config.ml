@@ -25,8 +25,10 @@ type t = {
 
     enable_rebalance : bool;
 
-    cache_eviction_prefix_preset_pairs : (string * string) list;
-  } [@@deriving show, yojson]
+    cache_eviction_prefix_preset_pairs : (string, string) Hashtbl.t;
+  } [@@deriving yojson]
+
+let show t = to_yojson t |> Yojson.Safe.pretty_to_string
 
 let from_buffer buf =
   let ser_version = Llio.int8_from buf in
@@ -37,11 +39,11 @@ let from_buffer buf =
   let enable_rebalance = Llio.bool_from buf in
   let cache_eviction_prefix_preset_pairs =
     maybe_from_buffer
-      (Llio.list_from
+      (Llio.hashtbl_from
          (Llio.pair_from
             Llio.string_from
             Llio.string_from))
-      []
+      (Hashtbl.create 0)
       buf
   in
   { enable_auto_repair;
@@ -62,8 +64,8 @@ let to_buffer buf { enable_auto_repair;
   Llio.float_to buf auto_repair_timeout_seconds;
   Llio.list_to Llio.string_to buf auto_repair_disabled_nodes;
   Llio.bool_to buf enable_rebalance;
-  Llio.list_to
-    (Llio.pair_to Llio.string_to Llio.string_to)
+  Llio.hashtbl_to
+    Llio.string_to Llio.string_to
     buf
     cache_eviction_prefix_preset_pairs;
 
@@ -77,7 +79,7 @@ module Update = struct
         enable_rebalance' : bool option;
 
         add_cache_eviction_prefix_preset_pairs : (string * string) list;
-        remove_cache_eviction_prefix_preset_pairs : (string * string) list;
+        remove_cache_eviction_prefix_preset_pairs : string list;
       }
 
     let from_buffer buf =
@@ -96,8 +98,7 @@ module Update = struct
           (Llio.pair_from
              (Llio.list_from
                 (Llio.pair_from Llio.string_from Llio.string_from))
-             (Llio.list_from
-                (Llio.pair_from Llio.string_from Llio.string_from)))
+             (Llio.list_from Llio.string_from))
           ([], [])
           buf
       in
@@ -128,8 +129,7 @@ module Update = struct
         (Llio.pair_to Llio.string_to Llio.string_to)
         buf
         add_cache_eviction_prefix_preset_pairs;
-      Llio.list_to
-        (Llio.pair_to Llio.string_to Llio.string_to)
+      Llio.list_to Llio.string_to
         buf
         remove_cache_eviction_prefix_preset_pairs
 
@@ -165,13 +165,18 @@ module Update = struct
                              enable_rebalance
                              enable_rebalance';
         cache_eviction_prefix_preset_pairs =
-          List.filter
-            (fun pair ->
-             not (List.mem
-                    pair
-                    remove_cache_eviction_prefix_preset_pairs))
-            (List.rev_append
-               add_cache_eviction_prefix_preset_pairs
-               cache_eviction_prefix_preset_pairs);
+          let () =
+            List.iter
+              (fun prefix ->
+               Hashtbl.remove cache_eviction_prefix_preset_pairs prefix)
+              remove_cache_eviction_prefix_preset_pairs
+          in
+          let () =
+            List.iter
+              (fun (prefix, preset) ->
+               Hashtbl.replace cache_eviction_prefix_preset_pairs prefix preset)
+              add_cache_eviction_prefix_preset_pairs
+          in
+          cache_eviction_prefix_preset_pairs;
       }
   end

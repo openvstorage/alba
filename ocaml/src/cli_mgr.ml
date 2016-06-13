@@ -803,9 +803,9 @@ let alba_update_maintenance_config_cmd =
                & info ["add-cache-eviction"]
                       ~doc:"add a prefix,preset for cache eviction")
         $ Arg.(value
-               & opt_all (pair string string) []
+               & opt_all string []
                & info ["remove-cache-eviction"]
-                      ~doc:"remove a prefix,preset for cache eviction")
+                      ~doc:"remove a prefix for cache eviction")
         $ verbose
   ),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"

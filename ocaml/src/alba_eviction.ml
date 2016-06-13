@@ -161,8 +161,10 @@ let alba_eviction
            (* more than half of the disks are >90% filled,
             * so let's do some cleanup *)
            do_eviction alba_client
-                       ~prefixes:(get_prefix_preset_pairs ()
-                                  |> List.map fst)
+                       ~prefixes:(Hashtbl.fold
+                                    (fun prefix _ acc -> prefix :: acc)
+                                    (get_prefix_preset_pairs ())
+                                    [])
          else
            Lwt.return ()
        end
