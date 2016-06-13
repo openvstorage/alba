@@ -112,9 +112,6 @@ let alba_eviction
       (alba_client : Alba_base_client.client)
       ~get_prefix_preset_pairs
   =
-  (* TODO is this still needed here? *)
-  Lwt.ignore_result (alba_client # osd_access # populate_osds_info_cache);
-
   let coordinator =
     Maintenance_coordination.make_maintenance_coordinator
       (alba_client # mgr_access)

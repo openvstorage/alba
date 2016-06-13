@@ -44,6 +44,10 @@ class client
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
   =
+  let () =
+    osd_access # populate_osds_info_cache
+    |> Lwt.ignore_result
+  in
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =
     new nsm_host_access
