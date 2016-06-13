@@ -19,6 +19,9 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "proxy_client.h"
 #include "tcp_proxy_client.h"
 #include "rdma_proxy_client.h"
+
+#include "rora_proxy_client.h"
+
 #include "alba_logger.h"
 
 #include <iostream>
@@ -29,12 +32,12 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace proxy_client {
 
-std::unique_ptr<Proxy_client> make_proxy_client(
+std::unique_ptr<Proxy_client> _make_proxy_client(
     const std::string &ip, const std::string &port,
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
         expiry_time,
     const Transport &transport) {
-  Proxy_client *r = NULL;
+  Proxy_client *r = nullptr;
 
   switch (transport) {
   case Transport::tcp: {
@@ -46,6 +49,16 @@ std::unique_ptr<Proxy_client> make_proxy_client(
   }
   std::unique_ptr<Proxy_client> result(r);
   return result;
+}
+
+std::unique_ptr<Proxy_client> make_proxy_client(
+    const std::string &ip, const std::string &port,
+    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
+        expiry_time,
+    const Transport &transport) {
+
+  return std::unique_ptr<Proxy_client>(new RoraProxy_client(
+      _make_proxy_client(ip, port, expiry_time, transport)));
 }
 
 std::ostream &operator<<(std::ostream &os, Transport t) {

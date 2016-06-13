@@ -126,6 +126,8 @@ public:
     add_raw(ip, 1);
   }
 
+  std::string as_string() noexcept { return _buffer.str(); }
+
 private:
   std::ostringstream _buffer;
 };

@@ -85,7 +85,11 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   from(m2, version2);
   assert(version2 == 1);
   from(m2, mf.encoding_scheme);
-  from(m2, mf.compression);
+
+  proxy_protocol::Compression *compression = nullptr;
+  from(m2, compression);
+  mf.compression = compression;
+
   from(m2, mf.encrypt_info);
   from(m2, mf.checksum);
   from(m2, mf.size);
@@ -127,6 +131,40 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
 }
 }
 namespace proxy_protocol {
+
+boost::optional<lookup_result_t>
+Manifest::to_chunk_fragment(uint32_t pos) const {
+  int chunk_index = -1;
+  uint32_t total = 0;
+  auto it = chunk_sizes.begin();
+
+  while (total <= pos) {
+    chunk_index++;
+    auto chunk_size = *it;
+    total += chunk_size;
+    it++;
+  }
+
+  auto &chunk_fragment_locations = fragment_locations[chunk_index];
+
+  uint32_t chunk_size = chunk_sizes[chunk_index];
+  total -= chunk_size;
+  uint32_t fragment_length = chunk_size / encoding_scheme.k;
+  uint32_t pos_in_chunk = pos - total;
+
+  uint32_t fragment_index = pos_in_chunk / fragment_length;
+  auto p = chunk_fragment_locations[fragment_index];
+  auto fragment_version = p.second;
+  auto maybe_osd = p.first;
+  if (maybe_osd) {
+    uint32_t pos_in_fragment = pos - (total + fragment_index * fragment_length);
+    lookup_result_t r(chunk_index, fragment_index, pos_in_fragment,
+                      fragment_length, fragment_version, *maybe_osd);
+    return r;
+  } else {
+    return boost::none;
+  }
+}
 
 std::ostream &operator<<(std::ostream &os, const EncodingScheme &scheme) {
   os << "EncodingScheme{k=" << scheme.k << ", m=" << scheme.m
@@ -211,7 +249,7 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
 
   for (auto &c : mf.fragment_checksums) {
     os << "  [";
-    for (const std::shared_ptr<alba::Checksum> &fc : c) {
+    for (auto &fc : c) {
       os << *fc << ", ";
     }
     os << "], " << std::endl;

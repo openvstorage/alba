@@ -74,6 +74,20 @@ typedef std::pair<boost::optional<uint32_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
 
+struct lookup_result_t {
+  uint32_t chunk_index;
+  uint32_t fragment_index;
+  uint32_t pos_in_fragment;
+  uint32_t fragment_length;
+  uint32_t fragment_version;
+  uint32_t osd;
+
+  lookup_result_t(uint32_t ci, uint32_t fi, uint32_t pif, uint32_t fl,
+                  uint32_t fv, uint32_t osd)
+      : chunk_index(ci), fragment_index(fi), pos_in_fragment(pif),
+        fragment_length(fl), fragment_version(fv), osd(osd) {}
+};
+
 struct Manifest {
   std::string name;
   std::string object_id;
@@ -91,8 +105,10 @@ struct Manifest {
   uint32_t max_disks_per_node;
   double timestamp = 1.0;
 
+  boost::optional<lookup_result_t> to_chunk_fragment(uint32_t offset) const;
 
   ~Manifest() {
+      /*
     if (compression != nullptr) {
       delete compression;
     }
@@ -102,6 +118,7 @@ struct Manifest {
     if (checksum != nullptr) {
       delete checksum;
     }
+      */
   }
 };
 

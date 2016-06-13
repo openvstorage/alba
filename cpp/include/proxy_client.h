@@ -88,12 +88,6 @@ public:
                       const std::vector<proxy_protocol::ObjectSlices> &,
                       const consistent_read) = 0;
 
-  virtual proxy_protocol::Manifest
-  write_object_fs2(const std::string &namespace_,
-                   const std::string &object_name,
-                   const std::string &input_file, const allow_overwrite,
-                   const Checksum *checksum) = 0;
-
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache) = 0;
@@ -121,6 +115,18 @@ public:
   virtual double ping(const double delay) = 0;
 
   virtual ~Proxy_client(){};
+
+  /*
+  TODO:
+  protected:
+
+    friend class proxy_client_test_write_fs2_Test;//?
+  */
+  virtual proxy_protocol::Manifest
+  write_object_fs2(const std::string &namespace_,
+                   const std::string &object_name,
+                   const std::string &input_file, const allow_overwrite,
+                   const Checksum *checksum) = 0;
 };
 
 enum class Transport { tcp, rdma };
