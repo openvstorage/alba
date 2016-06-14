@@ -77,7 +77,7 @@ let alba_create_preset_cmd =
   ),
   Term.info
     "create-preset"
-    ~doc:"create a new preset. the preset is read from either --input-url if specified, orotherwise from stdin, as json, pls have a look at cfg/preset.json for more details."
+    ~doc:"create a new preset. the preset is read from either --input-url if specified, or otherwise from stdin, as json. have a look at cfg/preset.json for more details."
 
 let alba_update_preset
       cfg_url tls_config
@@ -113,7 +113,7 @@ let alba_update_preset_cmd =
         $ to_json $ verbose),
   Term.info
     "update-preset"
-    ~doc:"update an existing preset. the preset is read from either --input-url if specified, orotherwise from stdin, pls have a look at cfg/update_preset.json for more details."
+    ~doc:"update an existing preset. the preset is read from either --input-url if specified, or otherwise from stdin. have a look at cfg/update_preset.json for more details."
 
 let alba_preset_set_default cfg_url tls_config preset_name to_json verbose =
   let t () =
