@@ -28,12 +28,22 @@ let preset_name p =
          ~docv:"PRESET_NAME"
          ~doc:"name of the preset")
 
+let input_url =
+  Arg.(value
+       & opt (some url_converter) None
+       & info ["input-url"]
+              ~doc:"url for the preset input json")
+
+let from_input_url = function
+  | None -> Lwt_io.read Lwt_io.stdin
+  | Some url -> Arakoon_config_url.retrieve url
+
 let alba_create_preset
-    cfg_url tls_config preset_name
+    cfg_url tls_config preset_name input_url
     to_json verbose
   =
   let t () =
-    Lwt_io.read Lwt_io.stdin >>= fun txt ->
+    from_input_url input_url >>= fun txt ->
     let json = Yojson.Safe.from_string txt in
     let preset' =
       match Alba_json.Preset.of_yojson json with
@@ -61,20 +71,21 @@ let alba_create_preset_cmd =
         $ alba_cfg_url
         $ tls_config
         $ preset_name 0
+        $ input_url
         $ to_json
         $ verbose
   ),
   Term.info
     "create-preset"
-    ~doc:"create a new preset. the preset is read from stdin as json, pls have a look at cfg/preset.json for more details."
+    ~doc:"create a new preset. the preset is read from either --input-url if specified, or otherwise from stdin, as json. have a look at cfg/preset.json for more details."
 
 let alba_update_preset
       cfg_url tls_config
-      preset_name
+      preset_name input_url
       to_json verbose
   =
   let t () =
-    Lwt_io.read Lwt_io.stdin >>= fun txt ->
+    from_input_url input_url >>= fun txt ->
     let json = Yojson.Safe.from_string txt in
     let open Albamgr_protocol.Protocol in
     let preset_updates =
@@ -98,10 +109,11 @@ let alba_update_preset_cmd =
         $ alba_cfg_url
         $ tls_config
         $ preset_name 0
+        $ input_url
         $ to_json $ verbose),
   Term.info
     "update-preset"
-    ~doc:"update an existing preset. the preset is read from stdin as json, pls have a look at cfg/update_preset.json for more details."
+    ~doc:"update an existing preset. the preset is read from either --input-url if specified, or otherwise from stdin. have a look at cfg/update_preset.json for more details."
 
 let alba_preset_set_default cfg_url tls_config preset_name to_json verbose =
   let t () =
