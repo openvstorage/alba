@@ -1031,7 +1031,8 @@ class client ?(retry_timeout = 60.)
       in
       alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache ->
 
-      let best_policy, best_actual_fragment_count =
+      let ((best_k, best_m, _, best_max_disks_per_node) as best_policy),
+          best_actual_fragment_count =
         Alba_client_common.get_best_policy_exn
           policies
           osds_info_cache
@@ -1043,101 +1044,187 @@ class client ?(retry_timeout = 60.)
         (Policy.show_policy best_policy) best_actual_fragment_count
       >>= fun () ->
 
-      (* first get all buckets
-       * - for non existing buckets -> rewrite all objects
-       * - for existing buckets: iter from worst until best policy
-       *   rewrite objects in weak buckets
-       *   for current best policy: do orange repair
+      (* 2 phases in repair by policy:
+       * 1) repair weakest objects (`Regenerate or `Rewrite), until none are weaker than what's currently possible
+       * 2) rebalance based on max_disks_per_node, until all are maximally spread
        *)
 
       alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
 
       nsm # get_stats >>= fun stats ->
-      let (_, bucket_counts) = stats.Nsm_model.NamespaceStats.bucket_count in
+      let (_, bucket_count) = stats.Nsm_model.NamespaceStats.bucket_count in
 
-      let policies_rev = List.rev policies in
+      Lwt_log.debug_f
+        "Found buckets %s for namespace_id:%li"
+        ([%show : (Policy.policy * int64) list] bucket_count)
+        namespace_id >>= fun () ->
 
-      let policies_rev =
-        List.fold_left
-          (fun acc ((k,m,_,_), cnt) ->
-           if cnt > 0L
-           then
-             begin
-               if List.exists
-                    (fun (k', m', _, _) -> k' = k && m' = m)
-                    acc
-               then acc
-               else (k,m,0,0) :: acc
-             end
-           else
-             acc)
-          policies_rev
-          bucket_counts
+      let buckets =
+        bucket_count
+        |> List.filter (fun (_, cnt) -> cnt > 0L)
+        |> List.map fst
+        |> List.map_filter_rev
+             (fun ((k, m, fragment_count, max_disks_per_node) as bucket) ->
+              if (k, m) = (best_k, best_m)
+              then
+                begin
+                  let open Compare in
+                  match Int.compare' fragment_count best_actual_fragment_count with
+                  | LT -> Some (bucket, `Regenerate)
+                  | EQ
+                  | GT ->
+                     if max_disks_per_node > best_max_disks_per_node
+                     then Some (bucket, `Rebalance)
+                     else None
+                end
+              else
+                begin
+                  let is_more_preferred_bucket =
+                    let rec inner = function
+                      | [] -> false
+                      | ((k', m', fragment_count', max_disks_per_node') as policy) :: policies ->
+                         if policy = best_policy
+                         then false
+                         else
+                           begin
+                             if
+                               (* does the bucket match this policy? *)
+                               k = k'
+                               && m = m'
+                               && fragment_count >= fragment_count'
+                               && max_disks_per_node <= max_disks_per_node'
+                             then true
+                             else inner policies
+                           end
+                    in
+                    inner policies
+                  in
+                  if is_more_preferred_bucket
+                  then
+                    (* this will be handled by another part of the maintenance process
+                     * (when osds are considered dead/unavailable for writes for
+                     *  a long enough time the objects in these buckets will be
+                     *  repaired/rewritten)
+                     *)
+                    None
+                  else
+                    Some (bucket, `Rewrite)
+                end)
+        |> List.sort
+             (fun (bucket1, j1) (bucket2, j2) ->
+              let compare_bucket_safety (k1, _, fragment_count1, _) (k2, _, fragment_count2, _) =
+                (fragment_count1 - k1) - (fragment_count2 - k2)
+              in
+              let get_max_disks_per_node (_, _, _, x) = x in
+              match j1, j2 with
+              | `Rebalance, `Rebalance ->
+                 compare
+                   (get_max_disks_per_node bucket1)
+                   (get_max_disks_per_node bucket2)
+              | `Regenerate, `Rebalance
+              | `Rewrite, `Rebalance ->
+                 1
+              | `Rebalance, `Regenerate
+              | `Rebalance, `Rewrite ->
+                 -1
+              | `Rewrite,    `Rewrite
+              | `Regenerate, `Rewrite
+              | `Rewrite,    `Regenerate
+              | `Regenerate, `Regenerate ->
+                 compare_bucket_safety bucket1 bucket2)
       in
 
-      let rec inner = function
-        | [] -> Lwt.fail_with "should never get here"
-        | policy :: tl ->
-          let k, m, _, _ = policy in
-          if policy = best_policy
-          then begin
-            nsm # list_objects_by_policy'
-              ~first:((k,m,0,0), "") ~finc:true
-              ~last:(Some (((k, m, best_actual_fragment_count, 0), ""), false))
-              ~max:200 >>= fun ((cnt, objs), _) ->
+      let handle_bucket ((k, m, fragment_count, max_disks_per_node), job) =
+        nsm # list_objects_by_policy
+            ~k ~m
+            ~fragment_count
+            ~max_disks_per_node
+            ~max:200 >>= fun ((cnt, objs), _) ->
 
-            let do_one manifest =
-              let _, problem_fragments =
-                 List.fold_left
-                   (fun (chunk_id, acc) chunk_location ->
-                    let actual_fragments = List.map_filter_rev fst chunk_location in
-                    let actual_fragments_count = List.length actual_fragments in
-                    let missing_fragments =
-                      List.map_filter
-                        (fun (fragment_id, (osd_id_o, _)) ->
-                         match osd_id_o with
-                         | None -> Some (chunk_id, fragment_id)
-                         | Some _ -> None)
-                        (List.mapi
-                           (fun fragment_id osd_id_o -> fragment_id, osd_id_o)
-                           chunk_location)
-                    in
-                    let to_generate =
-                      List.take
-                        (best_actual_fragment_count - actual_fragments_count)
-                        missing_fragments
-                    in
-                    let acc' =
-                      List.rev_append
-                        to_generate
-                        acc
-                    in
-                    chunk_id + 1, acc')
-                   (0, [])
-                   manifest.Nsm_model.Manifest.fragment_locations
+        Lwt_log.debug_f
+          "repair by policy for namespace_id:%li, handling bucket (%i,%i,%i,%i), got %i items"
+          namespace_id
+          k m fragment_count max_disks_per_node
+          cnt >>= fun () ->
+
+        let regenerate manifest =
+          let _, problem_fragments =
+            List.fold_left
+              (fun (chunk_id, acc) chunk_location ->
+               let actual_fragments = List.map_filter_rev fst chunk_location in
+               let actual_fragments_count = List.length actual_fragments in
+               let missing_fragments =
+                 List.map_filter
+                   (fun (fragment_id, (osd_id_o, _)) ->
+                    match osd_id_o with
+                    | None -> Some (chunk_id, fragment_id)
+                    | Some _ -> None)
+                   (List.mapi
+                      (fun fragment_id osd_id_o -> fragment_id, osd_id_o)
+                      chunk_location)
                in
-               self # repair_object
-                    ~namespace_id
-                    ~manifest
-                    ~problem_fragments
-            in
-            Lwt_list.iter_s do_one objs >>= fun () ->
-            Lwt.return (cnt > 0)
-          end
-          else begin
-            nsm # list_objects_by_policy ~k ~m ~max:200 >>= fun ((cnt, objs), _) ->
-            if cnt > 0
-            then
-              Lwt_list.iter_s
-                (fun manifest -> _throttled_rewrite_object alba_client ~namespace_id ~manifest)
-                objs >>= fun () ->
-              Lwt.return true
-            else
-              inner tl
-          end
+               let to_generate =
+                 List.take
+                   (best_actual_fragment_count - actual_fragments_count)
+                   missing_fragments
+               in
+               let acc' =
+                 List.rev_append
+                   to_generate
+                   acc
+               in
+               chunk_id + 1, acc')
+              (0, [])
+              manifest.Nsm_model.Manifest.fragment_locations
+          in
+          self # repair_object
+               ~namespace_id
+               ~manifest
+               ~problem_fragments
+        in
+
+        let rewrite manifest =
+          _timed_rewrite_object alba_client ~namespace_id ~manifest
+        in
+
+        let rebalance manifest =
+          (* TODO
+           * should be similar to the other rebalance ...
+           * difference is how source & target osd are chosen
+           * NOTE: rebalance based on node spread (this one)
+           *       and rebalance based on disk usage can work
+           *       against each other!
+           *)
+          Lwt.return ()
+        in
+
+        let do_one =
+          match job with
+          | `Rewrite ->
+             rewrite
+          | `Regenerate ->
+             fun manifest ->
+             Lwt.catch
+               (fun () -> regenerate manifest)
+               (fun exn ->
+                Lwt_log.info_f
+                  ~exn
+                  "Regenerate for object failed, falling back to rewrite" >>= fun () ->
+                rewrite manifest)
+          | `Rebalance ->
+             rebalance
+        in
+
+        Lwt_list.iter_s do_one objs >>= fun () ->
+        Lwt.return (cnt > 0)
       in
 
-      inner policies_rev >>= fun repaired_some ->
+      (match List.hd buckets with
+       | None ->
+          Lwt_log.debug_f "No buckets to repair by policy for namespace_id:%li" namespace_id >>= fun () ->
+          Lwt.return_false
+       | Some x -> handle_bucket x)
+      >>= fun repaired_some ->
 
       if repaired_some && filter namespace_id
       then self # repair_by_policy_namespace ~namespace_id

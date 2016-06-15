@@ -1075,12 +1075,12 @@ let test_repair_by_policy () =
 
        alba_client # get_base_client # with_nsm_client ~namespace
          (fun nsm ->
-            nsm # list_objects_by_policy
+            nsm # list_objects_by_policy'
               ~k:1 ~m:0
               ~max:100 >>= fun ((cnt, _),_) ->
             assert (cnt = 0);
 
-            nsm # list_objects_by_policy
+            nsm # list_objects_by_policy'
               ~k:2 ~m:1
               ~max:100 >>= fun ((cnt, _),_) ->
             assert (cnt = 1);

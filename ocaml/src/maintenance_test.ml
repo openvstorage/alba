@@ -315,10 +315,7 @@ let test_repair_orange () =
          alba_client namespace_id mf 0 0 >>= fun () ->
 
        alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
-       nsm # list_objects_by_policy'
-         ~first:((5,4,8,0),"") ~finc:true
-         ~last:(Some (((5,4,9,0), ""), false))
-         ~max:10 >>= fun ((cnt, _), _) ->
+       nsm # list_objects_by_policy' ~k:5 ~m:4 ~max:10 >>= fun ((cnt, _), _) ->
        assert (cnt = 1);
 
        with_maintenance_client
@@ -347,11 +344,12 @@ let test_repair_orange2 () =
        let namespace = test_name in
 
        (*
-          - object with a too wide policy
-          - kill a fragment from it
-          - repair -> should use all osds
-            (that is repairing shouldn't fail because it can't be fully repaired)
-       *)
+        * object with a too wide policy
+        * kill a fragment from it
+        * repair -> should use all osds
+        *  (that is repairing shouldn't fail because it can't be fully repaired)
+        * the regenerated fragment should be a data fragment, not one of the parity fragments
+        *)
 
        let preset_name = test_name in
        let preset =
@@ -391,7 +389,10 @@ let test_repair_orange2 () =
          ~should_cache:false >>= fun (_, mf_o) ->
        let mf' = Option.get_some mf_o in
 
+       Lwt_log.debug_f "new manifest: %s" (Nsm_model.Manifest.show mf') >>= fun () ->
+
        let open Nsm_model in
+       (* missing data fragment is regenerated *)
        let osd_id_o, version = Layout.index mf'.Manifest.fragment_locations 0 0 in
        assert (version = 2);
        assert (osd_id_o <> None);
