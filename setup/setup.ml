@@ -2143,11 +2143,12 @@ module Test = struct
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
     Deployment.setup t_ssd;
     let cfg_hdd = Config.make ~workspace:(workspace ^ "/tmp/alba_hdd") () in
+    let the_prefix, the_preset = "my_prefix", "default" in
     let t_hdd =
       Deployment.make_default
         ~fragment_cache:Proxy_cfg.(Alba { albamgr_cfg_url = Url.canonical (t_ssd.abm # config_url);
-                                          bucket_strategy = OneOnOne { prefix = "prefix";
-                                                                       preset = "default"; };
+                                          bucket_strategy = OneOnOne { prefix = the_prefix;
+                                                                       preset = the_preset; };
                                           manifest_cache_size = 1_000_000;
                                           cache_on_read_ = true; cache_on_write_ = true;
                                         })
@@ -2160,7 +2161,21 @@ module Test = struct
     t_hdd.proxy # upload_object "demo" cfg_hdd.alba_bin objname;
 
     let output = t_ssd.proxy # list_namespaces in
-    assert (output = "Found 2 namespaces: [\"demo\"; \"prefix\\000\\000\\000\\000\"]");
+    assert (output = "Found 2 namespaces: [\"demo\"; \"my_prefix\\000\\000\\000\\000\"]");
+
+    begin
+      (* verify that the cache backend knows it is used as a cache! *)
+      Shell.cmd_with_capture
+        [ t_ssd.cfg.alba_bin; "get-maintenance-config";
+          "--config"; t_ssd.abm # config_url |> Url.canonical;
+          "--to-json" ]
+      |> Yojson.Basic.from_string
+      |> Yojson.Basic.Util.member "result"
+      |> Yojson.Basic.Util.member "cache_eviction_prefix_preset_pairs"
+      |> Yojson.Basic.Util.member the_prefix
+      |> fun r -> assert (r = `String the_preset)
+    end;
+
     0
 
   let alba_as_osd ?xml ?filter ?dump _t =
