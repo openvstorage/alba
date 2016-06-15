@@ -83,7 +83,7 @@ public:
   virtual double ping(const double delay);
 
   virtual void
-  osd_info(std::vector<std::pair<uint32_t, proxy_protocol::OsdInfo>> &result);
+  osd_info(std::vector<std::pair<osd_t, proxy_protocol::OsdInfo>> &result);
 
   GenericProxy_client(const boost::asio::time_traits<
       boost::posix_time::ptime>::duration_type &expiry_time);

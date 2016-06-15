@@ -16,23 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#pragma once
-#include <string>
-#include <vector>
-#include "alba_common.h"
-
-namespace alba {
-namespace proxy_protocol {
-
-struct OsdInfo {
-  std::string long_id;
-  std::vector<std::string> ips;
-  uint32_t port;
-  bool use_tls;
-  bool use_rdma;
-  std::string node_id;
-};
-
-std::ostream &operator<<(std::ostream &, const OsdInfo &);
-}
+namespace alba{
+    typedef uint32_t osd_t;
+    typedef unsigned char byte;
 }

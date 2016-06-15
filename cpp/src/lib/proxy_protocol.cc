@@ -321,13 +321,13 @@ void read_ping_response(message &m, Status &status, double &timestamp) {
 void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
 
 void read_osd_info_response(message &m, Status &status,
-                            std::vector<std::pair<uint32_t, OsdInfo>> &result) {
+                            std::vector<std::pair<osd_t, OsdInfo>> &result) {
   read_status(m, status);
   if (status.is_ok()) {
     uint32_t n;
     from(m, n);
     for (uint32_t i = 0; i < n; i++) {
-      uint32_t osd_id;
+      osd_t osd_id;
       from(m, osd_id);
       std::string info_s;
       from(m, info_s);

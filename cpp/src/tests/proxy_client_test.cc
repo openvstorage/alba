@@ -233,7 +233,7 @@ void _compare(proxy_protocol::lookup_result_t& exp,
     EXPECT_EQ(exp.pos_in_fragment,  act. pos_in_fragment);
     EXPECT_EQ(exp.fragment_length,  act. fragment_length);
     EXPECT_EQ(exp.fragment_version, act. fragment_version);
-    EXPECT_EQ(exp.osd,              act. osd);
+    EXPECT_EQ(exp._osd,             act. _osd);
 }
 
 TEST(proxy_client, manifest){

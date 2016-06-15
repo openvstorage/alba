@@ -292,7 +292,7 @@ double GenericProxy_client::ping(double delay) {
 }
 
 void GenericProxy_client::osd_info(
-    std::vector<std::pair<uint32_t, proxy_protocol::OsdInfo>> &result) {
+    std::vector<std::pair<osd_t, proxy_protocol::OsdInfo>> &result) {
   _expires_from_now(_expiry_time);
   message_builder mb;
   proxy_protocol::write_osd_info_request(mb);

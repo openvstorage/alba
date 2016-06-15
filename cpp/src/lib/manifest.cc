@@ -219,9 +219,9 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   const char *bytes = mf.object_id.data();
   const int bytes_size = mf.object_id.size();
   stuff::dump_buffer(os, bytes, bytes_size);
-
+  using alba::stuff::operator<<;
   os << "`, " << std::endl
-     << "  chunk_sizes = ..."
+     << "  chunk_sizes = " << mf.chunk_sizes
      << "," << std::endl
      << "  encoding_scheme = " << mf.encoding_scheme << "," << std::endl
      << "  compression =..."
@@ -230,44 +230,16 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
      << std::endl
      << "  checksum= " << *mf.checksum << "," << std::endl
      << "  size = " << mf.size << std::endl
-     << "  fragment_locations = [" << std::endl;
-
-  // TODO: why doesn't it do the right thing automatically?
-
-  for (auto &t : mf.fragment_locations) {
-    os << "  [";
-    for (auto &fl : t) {
-      os << fl << ", ";
-    }
-    os << "], " << std::endl;
-  }
-
-  os << "  ], " << std::endl
-     << "  fragment_checksums = [" << std::endl;
-
-  for (auto &c : mf.fragment_checksums) {
-    os << "  [";
-    for (auto &fc : c) {
-      os << *fc << ", ";
-    }
-    os << "], " << std::endl;
-  }
-  os << "  ], ";
-
-  os << std::endl
+     << "  fragment_locations = " << mf.fragment_locations
+     << "," << std::endl
+     << "  fragment_checksums = " << mf.fragment_checksums
+     << "," << std::endl
      << "  fragment_packed_sizes = [" << std::endl;
 
-  // TODO: template def in stuff.h but it doesn't find it.
   for (const std::vector<uint32_t> &c : mf.fragment_packed_sizes) {
-    os << "  [";
-
-    for (auto fps : c) {
-      os << fps << ", ";
-    }
-    os << "], " << std::endl;
+      os << c << "," << std::endl;
   }
   os << "  ], ";
-
   os << std::endl
      << "  version_id = " << mf.version_id << "," << std::endl
      << "  timestamp = " << mf.timestamp // TODO: decent formatting?

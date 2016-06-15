@@ -17,6 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
+#include "alba_common.h"
 
 namespace alba {
 namespace proxy_protocol {
@@ -74,18 +75,19 @@ typedef std::pair<boost::optional<uint32_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
 
+
 struct lookup_result_t {
   uint32_t chunk_index;
   uint32_t fragment_index;
   uint32_t pos_in_fragment;
   uint32_t fragment_length;
   uint32_t fragment_version;
-  uint32_t osd;
+  osd_t _osd;
 
   lookup_result_t(uint32_t ci, uint32_t fi, uint32_t pif, uint32_t fl,
-                  uint32_t fv, uint32_t osd)
+                  uint32_t fv, osd_t osd)
       : chunk_index(ci), fragment_index(fi), pos_in_fragment(pif),
-        fragment_length(fl), fragment_version(fv), osd(osd) {}
+        fragment_length(fl), fragment_version(fv), _osd(osd) {}
 };
 
 struct Manifest {

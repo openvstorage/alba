@@ -103,11 +103,10 @@ std::string fragment_key(const std::string &object_id, uint32_t version_id,
   return mb.as_string();
 }
 
-using alba::proxy_protocol::byte;
 typedef std::tuple<std::string, uint32_t, uint32_t, byte *> asd_slice;
-typedef uint32_t osd;
 
-void _dump(std::map<osd, std::vector<asd_slice>> &per_osd) {
+
+void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   for (auto &item : per_osd) {
     auto osd = item.first;
     auto asd_slices = item.second;
@@ -129,7 +128,7 @@ bool RoraProxy_client::_short_path_one(
 
   // one object, maybe multiple slices and or fragments involved
   ALBA_LOG(DEBUG, "_short_path_one(" << namespace_ << ", ...)");
-  std::map<osd, std::vector<asd_slice>> per_osd;
+  std::map<osd_t, std::vector<asd_slice>> per_osd;
 
   for (auto &sd : object_slices.slices) {
     uint32_t bytes_to_read = sd.size;
@@ -144,7 +143,7 @@ bool RoraProxy_client::_short_path_one(
 
       auto &coords = *maybe_coords;
 
-      uint32_t osd = coords.osd;
+      osd_t osd = coords._osd;
       auto it = per_osd.find(osd);
       if (it == per_osd.end()) {
         std::vector<asd_slice> slices;
@@ -268,7 +267,7 @@ double RoraProxy_client::ping(const double delay) {
 }
 
 void RoraProxy_client::osd_info(
-    std::vector<std::pair<uint32_t, proxy_protocol::OsdInfo>> &result) {
+    std::vector<std::pair<osd_t, proxy_protocol::OsdInfo>> &result) {
   _delegate->osd_info(result);
 }
 }

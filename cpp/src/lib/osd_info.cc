@@ -15,6 +15,7 @@ in the <LICENSE.txt> file of the Open vStorage OSE distribution.
 Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
+#include "stuff.h"
 #include "osd_info.h"
 #include "llio.h"
 #include <iostream>
@@ -42,16 +43,13 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
 
 namespace proxy_protocol {
 std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
+  using alba::stuff::operator<<;
   os << "OsdInfo("
      << " port=" << info.port
-     << " ips=[" //<< info.ips // pick up from template in stuff.h ?
-
-      ;
-  for (auto &ip : info.ips) {
-    os << ip << ", ";
-  };
-  os << "], "
-     << ", use_tls=" << info.use_tls << ", use_rdma=" << info.use_rdma << ")";
+     << ", ips= " << info.ips
+     << ", use_tls=" << info.use_tls
+     << ", use_rdma=" << info.use_rdma
+     << ")";
   return os;
 }
 }
