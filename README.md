@@ -17,6 +17,8 @@ Alba supports the following high-end set of features:
 * namespaces
 * repair
 * rebalancing
+* flash acceleration
+* global and local recovery
 * ...
 
 
