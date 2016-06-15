@@ -34,7 +34,7 @@ template <> void from(message &m, proxy_protocol::EncodingScheme &es) {
   from(m, es.w);
 }
 
-template <> void from(message &m, proxy_protocol::Compression *&c) {
+void from(message &m, std::unique_ptr<proxy_protocol::Compression> &p) {
   uint8_t type;
   from(m, type);
   proxy_protocol::Compression *r;
@@ -50,15 +50,15 @@ template <> void from(message &m, proxy_protocol::Compression *&c) {
   }; break;
   default: { throw "serialization error"; };
   }
-  c = r;
+  p.reset(r);
 }
 
-template <> void from(message &m, proxy_protocol::EncryptInfo *&info) {
+void from(message &m, std::unique_ptr<proxy_protocol::EncryptInfo> &p) {
   uint8_t type;
   from(m, type);
   switch (type) {
   case 1: {
-    info = new proxy_protocol::NoEncryption();
+    p.reset(new proxy_protocol::NoEncryption());
   }; break;
   default: { throw "serialization error"; };
   }
@@ -86,9 +86,7 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   assert(version2 == 1);
   from(m2, mf.encoding_scheme);
 
-  proxy_protocol::Compression *compression = nullptr;
-  from(m2, compression);
-  mf.compression = compression;
+  from(m2, mf.compression);
 
   from(m2, mf.encrypt_info);
   from(m2, mf.checksum);

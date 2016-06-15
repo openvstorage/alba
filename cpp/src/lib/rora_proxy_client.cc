@@ -53,16 +53,18 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
                                        const std::string &input_file,
                                        const allow_overwrite overwrite,
                                        const Checksum *checksum) {
-  proxy_protocol::Manifest mf = _delegate->write_object_fs2(
-      namespace_, object_name, input_file, overwrite, checksum);
-  ALBA_LOG(DEBUG, mf);
+  using namespace proxy_protocol;
+  std::unique_ptr<Manifest> mfp(new Manifest());
+  _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
+                              checksum, *mfp);
+  ALBA_LOG(DEBUG, *mfp);
   auto key = std::pair<std::string, std::string>(namespace_, object_name);
-  auto value = mf;
+
   auto it = _cache.find(key);
   if (it != _cache.end()) {
     _cache.erase(it);
   }
-  _cache.emplace(key, value);
+  _cache.emplace(std::make_pair(key, std::move(mfp)));
 }
 
 void RoraProxy_client::read_object_fs(const std::string &namespace_,
@@ -112,11 +114,9 @@ void _dump(std::map<osd, std::vector<asd_slice>> &per_osd) {
     std::cout << osd << ": [";
     for (auto &asd_slice : asd_slices) {
 
-      void* p = std::get<3>(asd_slice);
-      std::cout << "( " << std::get<1>(asd_slice)
-                << ", " << std::get<2>(asd_slice)
-                << ", " << p
-                << "),";
+      void *p = std::get<3>(asd_slice);
+      std::cout << "( " << std::get<1>(asd_slice) << ", "
+                << std::get<2>(asd_slice) << ", " << p << "),";
     }
     std::cout << "]," << std::endl;
   }
@@ -142,14 +142,13 @@ bool RoraProxy_client::_short_path_one(
         return false;
       }
 
-
       auto &coords = *maybe_coords;
 
       uint32_t osd = coords.osd;
       auto it = per_osd.find(osd);
       if (it == per_osd.end()) {
         std::vector<asd_slice> slices;
-        per_osd.insert(make_pair(osd,slices));
+        per_osd.insert(make_pair(osd, slices));
         it = per_osd.find(osd);
       }
 
@@ -181,22 +180,18 @@ bool RoraProxy_client::_short_path_one(
 
 bool RoraProxy_client::_short_path_many(
     const std::string &namespace_,
-    const std::vector<std::pair<proxy_protocol::ObjectSlices,
-                                proxy_protocol::Manifest>> &short_path) {
+    const std::vector<short_path_entry> &short_path) {
   // for now, we can't do it.
   ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", ...)");
   bool result = true;
   for (auto &object_slices_mf : short_path) {
     auto object_slices = object_slices_mf.first;
-    auto mf = object_slices_mf.second;
     // in // ?
-    result &= _short_path_one(namespace_, object_slices, mf);
+    result &=
+        _short_path_one(namespace_, object_slices, object_slices_mf.second);
   }
   return result;
 }
-
-typedef std::pair<proxy_protocol::ObjectSlices, proxy_protocol::Manifest>
-    short_path_entry;
 
 void RoraProxy_client::read_objects_slices(
     const std::string &namespace_,
@@ -216,10 +211,10 @@ void RoraProxy_client::read_objects_slices(
       if (it == _cache.end()) {
         via_proxy.push_back(object_slices);
       } else {
-        auto mf = it->second;
+
         auto p =
-            std::pair<proxy_protocol::ObjectSlices, proxy_protocol::Manifest>(
-                object_slices, mf);
+            std::pair<proxy_protocol::ObjectSlices, proxy_protocol::Manifest &>(
+                object_slices, *it->second);
         short_path.push_back(p);
       }
     };
@@ -238,12 +233,14 @@ void RoraProxy_client::read_objects_slices(
   }
 }
 
-proxy_protocol::Manifest RoraProxy_client::write_object_fs2(
-    const std::string &namespace_, const std::string &object_name,
-    const std::string &input_file, const allow_overwrite allow_overwrite_,
-    const Checksum *checksum) {
+void RoraProxy_client::write_object_fs2(const std::string &namespace_,
+                                        const std::string &object_name,
+                                        const std::string &input_file,
+                                        const allow_overwrite allow_overwrite_,
+                                        const Checksum *checksum,
+                                        proxy_protocol::Manifest &mf) {
   return _delegate->write_object_fs2(namespace_, object_name, input_file,
-                                     allow_overwrite_, checksum);
+                                     allow_overwrite_, checksum, mf);
 }
 
 std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(

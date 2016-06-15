@@ -94,9 +94,9 @@ struct Manifest {
   std::vector<uint32_t> chunk_sizes;
   EncodingScheme encoding_scheme;
 
-  Compression *compression = nullptr;
-  EncryptInfo *encrypt_info = nullptr;
-  alba::Checksum *checksum = nullptr;
+  std::unique_ptr<Compression> compression;
+  std::unique_ptr<EncryptInfo> encrypt_info;
+  std::unique_ptr<alba::Checksum> checksum;
   uint64_t size;
   layout<fragment_location_t> fragment_locations;
   layout<std::shared_ptr<alba::Checksum>> fragment_checksums;
@@ -107,19 +107,9 @@ struct Manifest {
 
   boost::optional<lookup_result_t> to_chunk_fragment(uint32_t offset) const;
 
-  ~Manifest() {
-      /*
-    if (compression != nullptr) {
-      delete compression;
-    }
-    if (encrypt_info != nullptr) {
-      delete encrypt_info;
-    }
-    if (checksum != nullptr) {
-      delete checksum;
-    }
-      */
-  }
+  Manifest() = default;
+  Manifest &operator=(const Manifest &) = delete;
+  Manifest(const Manifest &) = delete;
 };
 
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);

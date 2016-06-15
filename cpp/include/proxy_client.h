@@ -122,11 +122,11 @@ public:
 
     friend class proxy_client_test_write_fs2_Test;//?
   */
-  virtual proxy_protocol::Manifest
-  write_object_fs2(const std::string &namespace_,
-                   const std::string &object_name,
-                   const std::string &input_file, const allow_overwrite,
-                   const Checksum *checksum) = 0;
+  virtual void write_object_fs2(const std::string &namespace_,
+                                const std::string &object_name,
+                                const std::string &input_file,
+                                const allow_overwrite, const Checksum *checksum,
+                                proxy_protocol::Manifest &) = 0;
 };
 
 enum class Transport { tcp, rdma };

@@ -69,11 +69,13 @@ public:
                           const std::vector<proxy_protocol::ObjectSlices> &,
                           const consistent_read);
 
-  virtual proxy_protocol::Manifest
+  virtual void
   write_object_fs2(const std::string &namespace_,
                    const std::string &object_name,
                    const std::string &input_file, const allow_overwrite,
-                   const Checksum *checksum);
+                   const Checksum *checksum,
+                   proxy_protocol::Manifest&
+      );
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -91,13 +93,14 @@ public:
   virtual ~RoraProxy_client(){};
 
 private:
+  typedef std::pair<proxy_protocol::ObjectSlices, proxy_protocol::Manifest&>
+      short_path_entry;
 
   std::unique_ptr<Proxy_client> _delegate;
-  std::map<strpair, proxy_protocol::Manifest> _cache;
+  std::map<strpair, std::unique_ptr<proxy_protocol::Manifest>> _cache;
 
   bool _short_path_many(const std::string& namespace_,
-                        const std::vector<std::pair<proxy_protocol::ObjectSlices,
-                        proxy_protocol::Manifest>> & short_path);
+                        const std::vector<short_path_entry> & short_path);
   bool _short_path_one(const std::string& namespace_,
                        const proxy_protocol::ObjectSlices& object_slices,
                        const proxy_protocol::Manifest& manifest);

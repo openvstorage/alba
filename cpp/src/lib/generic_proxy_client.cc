@@ -200,10 +200,10 @@ void GenericProxy_client::read_objects_slices(
   check_status(__PRETTY_FUNCTION__);
 }
 
-proxy_protocol::Manifest GenericProxy_client::write_object_fs2(
+void GenericProxy_client::write_object_fs2(
     const string &namespace_, const string &object_name,
     const string &input_file, const allow_overwrite allow_overwrite,
-    const Checksum *checksum) {
+    const Checksum *checksum, proxy_protocol::Manifest &mf) {
   _expires_from_now(_expiry_time);
 
   message_builder mb;
@@ -213,10 +213,8 @@ proxy_protocol::Manifest GenericProxy_client::write_object_fs2(
   _output(mb);
 
   message response = _input();
-  proxy_protocol::Manifest mf;
   proxy_protocol::read_write_object_fs2_response(response, _status, mf);
   check_status(__PRETTY_FUNCTION__);
-  return mf;
 }
 
 tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(

@@ -63,11 +63,11 @@ public:
                       const std::vector<proxy_protocol::ObjectSlices> &,
                       const consistent_read);
 
-  virtual proxy_protocol::Manifest
-  write_object_fs2(const std::string &namespace_,
-                   const std::string &object_name,
-                   const std::string &input_file, const allow_overwrite,
-                   const Checksum *checksum);
+  virtual void write_object_fs2(const std::string &namespace_,
+                                const std::string &object_name,
+                                const std::string &input_file,
+                                const allow_overwrite, const Checksum *checksum,
+                                proxy_protocol::Manifest &);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
