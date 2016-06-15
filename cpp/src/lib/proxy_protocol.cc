@@ -33,8 +33,10 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _INVALIDATE_CACHE 14
 #define _DROP_CACHE 16
 #define _GET_PROXY_VERSION 17
+
 #define _PING 20
 #define _WRITE_OBJECT_FS2 21
+#define _OSD_INFO 22
 
 namespace alba {
 namespace proxy_protocol {
@@ -313,6 +315,28 @@ void read_ping_response(message &m, Status &status, double &timestamp) {
   read_status(m, status);
   if (status.is_ok()) {
     from(m, timestamp);
+  }
+}
+
+void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
+
+void read_osd_info_response(message &m, Status &status,
+                            std::vector<std::pair<uint32_t, OsdInfo>> &result) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    uint32_t n;
+    from(m, n);
+    for (uint32_t i = 0; i < n; i++) {
+      uint32_t osd_id;
+      from(m, osd_id);
+      std::string info_s;
+      from(m, info_s);
+      std::vector<char> mv(info_s.begin(), info_s.end());
+      llio::message m2(mv);
+      OsdInfo info;
+      from(m2, info);
+      result.push_back(std::make_pair(osd_id, info));
+    }
   }
 }
 }

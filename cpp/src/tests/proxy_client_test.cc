@@ -277,6 +277,19 @@ TEST(proxy_client, manifest){
 
 }
 
+TEST(proxy_client, test_osd_info){
+    init_log();
+    config cfg;
+    auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+    std::vector<std::pair<uint32_t, proxy_protocol::OsdInfo>> result;
+    client -> osd_info(result);
+    for(auto& p: result){
+        auto osd = p.first;
+        const proxy_protocol::OsdInfo& osd_info = p.second;
+        std::cout << "osd:" << osd <<" info: " << osd_info << std::endl;
+    }
+}
+
 TEST(proxy_client, test_partial_read){
     init_log();
     config cfg;
@@ -291,6 +304,7 @@ TEST(proxy_client, test_partial_read){
     using namespace proxy_protocol;
     byte * buf = new byte[8192];
     SliceDescriptor sd {buf, 0,4096};
+
     //slice that spans 2 fragments.
     SliceDescriptor sd2{&buf[4096], (1<<20) -10 , 4096};
 
@@ -302,5 +316,5 @@ TEST(proxy_client, test_partial_read){
                                   objects_slices,
                                   proxy_client::consistent_read::F
         );
-
+    delete [] buf;
 }

@@ -21,6 +21,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "llio.h"
 #include "checksum.h"
 #include "manifest.h"
+#include "osd_info.h"
 
 namespace alba {
 namespace proxy_protocol {
@@ -158,5 +159,9 @@ void read_get_proxy_version_response(message &m, Status &status, int32_t &major,
                                      std::string &hash);
 void write_ping_request(message_builder &mb, const double delay);
 void read_ping_response(message &m, Status &status, double &timestamp);
+
+void write_osd_info_request(message_builder &mb);
+void read_osd_info_response(message &m, Status &status,
+                            std::vector<std::pair<uint32_t, OsdInfo>> &result);
 }
 }

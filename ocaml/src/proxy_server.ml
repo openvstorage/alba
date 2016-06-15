@@ -197,8 +197,9 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | DeleteObject    -> fun _ -> "_"
   | GetVersion      -> fun _ -> "-"
   | OsdView         -> fun _ -> "-"
-  | GetClientConfig -> fun _ -> "()"
+  | GetClientConfig -> fun () -> "()"
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
+  | OsdInfo         -> fun () -> "()"
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -379,6 +380,21 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          Lwt_unix.sleep delay >>= fun () ->
          let t0 = Unix.gettimeofday() in
          Lwt.return t0
+       end
+    | OsdInfo ->
+       fun stats () ->
+       begin
+         let cache = alba_client # osd_access # osds_info_cache in
+         let info =
+           Hashtbl.fold
+             (fun osd_id (osd,_) (c,acc) ->
+               let c' = c + 1
+               and acc' = (osd_id, osd) :: acc
+               in
+               (c',acc')
+             ) cache (0,[])
+         in
+         Lwt.return info
        end
   in
   let module Llio = Llio2.WriteBuffer in

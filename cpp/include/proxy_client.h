@@ -114,6 +114,11 @@ public:
    */
   virtual double ping(const double delay) = 0;
 
+  /* retrieve information about osds
+   */
+  virtual void osd_info(
+      std::vector<std::pair<uint32_t, proxy_protocol::OsdInfo>> &result) = 0;
+
   virtual ~Proxy_client(){};
 
   /*

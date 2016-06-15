@@ -266,5 +266,10 @@ RoraProxy_client::get_proxy_version() {
 double RoraProxy_client::ping(const double delay) {
   return _delegate->ping(delay);
 }
+
+void RoraProxy_client::osd_info(
+    std::vector<std::pair<uint32_t, proxy_protocol::OsdInfo>> &result) {
+  _delegate->osd_info(result);
+}
 }
 }

@@ -332,6 +332,7 @@ module Protocol = struct
                           * Osd_state.t) Std.counted_list) request
     | GetClientConfig : (unit, Alba_arakoon.Config.t) request
     | Ping : (float, float) request
+    | OsdInfo : (unit, (Int32.t * Nsm_model.OsdInfo.t) Std.counted_list ) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -353,6 +354,7 @@ module Protocol = struct
                       19, Wrap GetClientConfig, "GetClientConfig";
                       20, Wrap Ping, "Ping";
                       21, Wrap WriteObjectFs2, "WriteObjectFs2";
+                      22, Wrap OsdInfo, "OsdInfo";
                     ]
 
   module Error = struct
@@ -466,7 +468,7 @@ module Protocol = struct
     | OsdView         -> Deser.unit
     | GetClientConfig -> Deser.unit
     | Ping            -> Deser.float
-
+    | OsdInfo         -> Deser.unit
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | NamespaceExists -> Deser.bool
@@ -492,14 +494,17 @@ module Protocol = struct
        let deser_claim =
          Deser.counted_list
            (Deser.tuple2 Deser.string Osd_deser.ClaimInfo.deser) in
-       let deser_osd   = Osd_deser.OsdInfo.from_buffer,
-                         Osd_deser.OsdInfo.to_buffer
-       in
        Deser.tuple2
          deser_claim
          (Deser.counted_list
-            (Deser.tuple3 Deser.int32 deser_osd Osd_state.deser_state))
+            (Deser.tuple3
+               Deser.int32
+               Osd_deser.OsdInfo.deser_json
+               Osd_state.deser_state))
     | GetClientConfig ->
        Alba_arakoon_deser.Config.from_buffer, Alba_arakoon_deser.Config.to_buffer
     | Ping -> Deser.float
+    | OsdInfo ->
+       Deser.counted_list (Deser.tuple2 Deser.int32
+                                        Osd_deser.OsdInfo.deser)
 end
