@@ -1188,31 +1188,95 @@ class client ?(retry_timeout = 60.)
         in
 
         let rebalance manifest =
-          (* TODO
-           * should be similar to the other rebalance ...
-           * difference is how source & target osd are chosen
-           * NOTE: rebalance based on node spread (this one)
+          (* NOTE: rebalance based on node spread (this one)
            *       and rebalance based on disk usage can work
            *       against each other!
            *)
+          (* we only look at the node spread of the first chunk.
+           * this could be considered a (performance) bug:
+           * rebalance would fail and the object would then get rewritten.
+           * in practice all chunks will use the same set of osds to store
+           * the fragment.
+           * if they don't all use the same set of osds then there's a bug
+           * in the other rebalance too. (part of the problem is the
+           * interface of rebalance object, it takes ~source_osd & ~target_osd
+           * as arguments, while it should be about individual fragments
+           * that have to be moved elsewhere...)
+           *)
+          let osds_of_first_chunk =
+            List.hd_exn manifest.Nsm_model.Manifest.fragment_locations
+            |> List.map fst
+            |> List.map_filter_rev Std.id
+          in
+
+          Lwt_list.map_p
+            (fun osd_id ->
+             alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+             Lwt.return (osd_id, osd_info.Nsm_model.OsdInfo.node_id))
+            osds_of_first_chunk
+          >>= fun osds_with_node_id ->
+
+          let osds_per_node = Hashtbl.create 3 in
+          let () =
+            List.iter
+              (fun (osd_id, node_id) ->
+               let osds = try Hashtbl.find osds_per_node node_id
+                          with Not_found -> []
+               in
+               Hashtbl.replace osds_per_node node_id (osd_id :: osds))
+              osds_with_node_id
+          in
+          let _, source_osd =
+            Hashtbl.fold
+              (fun node_id osds (cnt, osd_id) ->
+               let cnt' = List.length osds in
+               if cnt' > cnt
+               then cnt', List.hd_exn osds
+               else cnt, osd_id)
+              osds_per_node
+              (0, 0l)
+          in
+          let osds_to_keep =
+            List.filter
+              (fun osd_id -> osd_id <> source_osd)
+              osds_of_first_chunk
+          in
+          Maintenance_helper.choose_new_devices
+            alba_client
+            osds_info_cache
+            osds_to_keep
+            1
+          >>= fun extra_devices ->
+          let target_osd = match extra_devices with
+            | [ osd_id, _ ] -> osd_id
+            | _ -> assert false
+          in
+          self # rebalance_object
+               ~namespace_id
+               ~manifest
+               ~source_osd
+               ~target_osd >>= fun _ ->
           Lwt.return ()
         in
 
         let do_one =
+          let wrap_rewrite name f =
+            fun manifest ->
+            Lwt.catch
+              (fun () -> f manifest)
+              (fun exn ->
+               Lwt_log.info_f
+                 ~exn
+                 "%s for object failed, falling back to rewrite" name >>= fun () ->
+               rewrite manifest)
+          in
           match job with
           | `Rewrite ->
              rewrite
           | `Regenerate ->
-             fun manifest ->
-             Lwt.catch
-               (fun () -> regenerate manifest)
-               (fun exn ->
-                Lwt_log.info_f
-                  ~exn
-                  "Regenerate for object failed, falling back to rewrite" >>= fun () ->
-                rewrite manifest)
+             wrap_rewrite "Regenerate" regenerate
           | `Rebalance ->
-             rebalance
+             wrap_rewrite "Rebalance" rebalance
         in
 
         Lwt_list.iter_s do_one objs >>= fun () ->
