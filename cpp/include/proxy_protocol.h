@@ -161,6 +161,6 @@ void read_ping_response(message &m, Status &status, double &timestamp);
 
 void write_osd_info_request(message_builder &mb);
 void read_osd_info_response(message &m, Status &status,
-                            std::vector<std::pair<osd_t, OsdInfo>> &result);
+                            std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result);
 }
 }

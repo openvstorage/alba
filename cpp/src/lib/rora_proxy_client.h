@@ -18,10 +18,15 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include "proxy_client.h"
+#include "osd_info.h"
 
 namespace alba{
 namespace proxy_client {
 typedef std::pair<std::string, std::string> strpair;
+using namespace proxy_protocol;
+typedef std::pair<ObjectSlices, Manifest&> short_path_entry;
+typedef std::tuple<std::string, uint32_t, uint32_t, byte *> asd_slice;
+
 
 class RoraProxy_client : public Proxy_client{
 public:
@@ -66,7 +71,7 @@ public:
 
   virtual void
       read_objects_slices(const std::string &namespace_,
-                          const std::vector<proxy_protocol::ObjectSlices> &,
+                          const std::vector<ObjectSlices> &,
                           const consistent_read);
 
   virtual void
@@ -74,7 +79,7 @@ public:
                    const std::string &object_name,
                    const std::string &input_file, const allow_overwrite,
                    const Checksum *checksum,
-                   proxy_protocol::Manifest&
+                   Manifest&
       );
 
   virtual std::tuple<uint64_t, Checksum *>
@@ -89,16 +94,18 @@ public:
   get_proxy_version();
 
   virtual double ping(const double delay);
-  virtual void osd_info(std::vector<std::pair<osd_t, proxy_protocol::OsdInfo>>& result);
+  virtual void osd_info(std::vector<std::pair<osd_t,
+                        std::unique_ptr<proxy_protocol::OsdInfo>>> &result);
   virtual ~RoraProxy_client(){};
 
 private:
-  typedef std::pair<proxy_protocol::ObjectSlices, proxy_protocol::Manifest&>
-      short_path_entry;
+
 
   std::unique_ptr<Proxy_client> _delegate;
-  std::map<strpair, std::unique_ptr<proxy_protocol::Manifest>> _cache;
+  std::map<strpair, std::unique_ptr<Manifest>> _cache;
+  std::map<osd_t,   std::unique_ptr<OsdInfo>> _osd_infos;
 
+  void _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>>& per_osd);
   bool _short_path_many(const std::string& namespace_,
                         const std::vector<short_path_entry> & short_path);
   bool _short_path_one(const std::string& namespace_,

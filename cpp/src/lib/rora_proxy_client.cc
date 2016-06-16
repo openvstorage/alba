@@ -53,7 +53,7 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
                                        const std::string &input_file,
                                        const allow_overwrite overwrite,
                                        const Checksum *checksum) {
-  using namespace proxy_protocol;
+
   std::unique_ptr<Manifest> mfp(new Manifest());
   _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
                               checksum, *mfp);
@@ -103,7 +103,7 @@ std::string fragment_key(const std::string &object_id, uint32_t version_id,
   return mb.as_string();
 }
 
-typedef std::tuple<std::string, uint32_t, uint32_t, byte *> asd_slice;
+
 
 
 void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
@@ -121,10 +121,32 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   }
 }
 
+void RoraProxy_client::_maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>>& per_osd){
+    ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos");
+    bool ok = true;
+    for(auto& item: per_osd){
+        osd_t osd = item.first;
+        auto it = _osd_infos.find(osd);
+        if (it == _osd_infos.end()){
+            ok = false;
+            break;
+        }
+    }
+    if (!ok){
+        std::vector<std::pair<osd_t,std::unique_ptr<OsdInfo>>> result;
+        this -> osd_info(result);
+        _osd_infos.clear();
+        for(std::pair<osd_t,std::unique_ptr<OsdInfo>> &p : result){
+            osd_t osd = p.first;
+            _osd_infos.emplace(osd, std::move(p.second));
+        }
+    }
+}
+
 bool RoraProxy_client::_short_path_one(
     const std::string &namespace_,
-    const proxy_protocol::ObjectSlices &object_slices,
-    const proxy_protocol::Manifest &manifest) {
+    const ObjectSlices &object_slices,
+    const Manifest &manifest) {
 
   // one object, maybe multiple slices and or fragments involved
   ALBA_LOG(DEBUG, "_short_path_one(" << namespace_ << ", ...)");
@@ -171,6 +193,7 @@ bool RoraProxy_client::_short_path_one(
     }
   }
   // everything to read is now nicely sorted per osd.
+  _maybe_update_osd_infos(per_osd);
   // TODO: contact OSD and fill buffers.
   _dump(per_osd);
 
@@ -194,13 +217,13 @@ bool RoraProxy_client::_short_path_many(
 
 void RoraProxy_client::read_objects_slices(
     const std::string &namespace_,
-    const std::vector<proxy_protocol::ObjectSlices> &slices,
+    const std::vector<ObjectSlices> &slices,
     const consistent_read consistent_read_) {
 
   if (consistent_read_ == consistent_read::T) {
     _delegate->read_objects_slices(namespace_, slices, consistent_read_);
   } else {
-    std::vector<proxy_protocol::ObjectSlices> via_proxy;
+    std::vector<ObjectSlices> via_proxy;
     std::vector<short_path_entry> short_path;
     for (auto &object_slices : slices) {
       auto object_name = object_slices.object_name;
@@ -212,7 +235,7 @@ void RoraProxy_client::read_objects_slices(
       } else {
 
         auto p =
-            std::pair<proxy_protocol::ObjectSlices, proxy_protocol::Manifest &>(
+            std::pair<ObjectSlices, Manifest &>(
                 object_slices, *it->second);
         short_path.push_back(p);
       }
@@ -222,7 +245,7 @@ void RoraProxy_client::read_objects_slices(
     _delegate->read_objects_slices(namespace_, via_proxy, consistent_read_);
     // short_path.
     if (!_short_path_many(namespace_, short_path)) {
-      std::vector<proxy_protocol::ObjectSlices> via_proxy2;
+      std::vector<ObjectSlices> via_proxy2;
       for (auto &p : short_path) {
         auto object_slices = p.first;
         via_proxy2.push_back(object_slices);
@@ -237,7 +260,7 @@ void RoraProxy_client::write_object_fs2(const std::string &namespace_,
                                         const std::string &input_file,
                                         const allow_overwrite allow_overwrite_,
                                         const Checksum *checksum,
-                                        proxy_protocol::Manifest &mf) {
+                                        Manifest &mf) {
   return _delegate->write_object_fs2(namespace_, object_name, input_file,
                                      allow_overwrite_, checksum, mf);
 }
@@ -266,8 +289,8 @@ double RoraProxy_client::ping(const double delay) {
   return _delegate->ping(delay);
 }
 
-void RoraProxy_client::osd_info(
-    std::vector<std::pair<osd_t, proxy_protocol::OsdInfo>> &result) {
+void RoraProxy_client::osd_info(std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result) {
+    ALBA_LOG(DEBUG, "RoraProxy_client::osd_info");
   _delegate->osd_info(result);
 }
 }

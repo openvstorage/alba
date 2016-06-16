@@ -321,7 +321,7 @@ void read_ping_response(message &m, Status &status, double &timestamp) {
 void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
 
 void read_osd_info_response(message &m, Status &status,
-                            std::vector<std::pair<osd_t, OsdInfo>> &result) {
+                            std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result) {
   read_status(m, status);
   if (status.is_ok()) {
     uint32_t n;
@@ -333,9 +333,9 @@ void read_osd_info_response(message &m, Status &status,
       from(m, info_s);
       std::vector<char> mv(info_s.begin(), info_s.end());
       llio::message m2(mv);
-      OsdInfo info;
-      from(m2, info);
-      result.push_back(std::make_pair(osd_id, info));
+      std::unique_ptr<OsdInfo>  info(new OsdInfo);
+      from(m2, *info);
+      result.push_back(std::make_pair(osd_id, std::move(info)));
     }
   }
 }
