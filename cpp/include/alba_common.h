@@ -16,6 +16,9 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
+#pragma once
+#include <cinttypes>
+
 namespace alba {
 typedef uint32_t osd_t;
 typedef unsigned char byte;

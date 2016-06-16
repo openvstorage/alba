@@ -20,6 +20,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "manifest.h"
 #include "alba_logger.h"
 #include "manifest_cache.h"
+#include "osd_access.h"
 
 namespace alba {
 namespace proxy_client {
@@ -101,14 +102,15 @@ std::string fragment_key(const std::string &object_id, uint32_t version_id,
 
 void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   for (auto &item : per_osd) {
-    auto osd = item.first;
-    auto asd_slices = item.second;
+    osd_t osd = item.first;
+    auto &asd_slices = item.second;
     std::cout << osd << ": [";
     for (auto &asd_slice : asd_slices) {
 
-      void *p = std::get<3>(asd_slice);
-      std::cout << "( " << std::get<1>(asd_slice) << ", "
-                << std::get<2>(asd_slice) << ", " << p << "),";
+      void *p = asd_slice.bytes;
+      std::cout << "( " << asd_slice.offset
+                << ", " << asd_slice.len
+                << ", " << p << "),";
     }
     std::cout << "]," << std::endl;
   }
@@ -120,20 +122,16 @@ void RoraProxy_client::_maybe_update_osd_infos(
   bool ok = true;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
-    auto it = _osd_infos.find(osd);
-    if (it == _osd_infos.end()) {
+    if (OsdAccess::getInstance().osd_is_known(osd)) {
       ok = false;
       break;
     }
   }
+
   if (!ok) {
     std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> result;
     this->osd_info(result);
-    _osd_infos.clear();
-    for (std::pair<osd_t, std::unique_ptr<OsdInfo>> &p : result) {
-      osd_t osd = p.first;
-      _osd_infos.emplace(osd, std::move(p.second));
-    }
+    OsdAccess::getInstance().update(result);
   }
 }
 
@@ -166,7 +164,7 @@ bool RoraProxy_client::_short_path_one(const std::string &namespace_,
         it = per_osd.find(osd);
       }
 
-      int bytes_in_slice;
+      uint32_t bytes_in_slice;
       if (coords.pos_in_fragment + bytes_to_read <= coords.fragment_length) {
         bytes_in_slice = bytes_to_read;
       } else {
@@ -177,7 +175,7 @@ bool RoraProxy_client::_short_path_one(const std::string &namespace_,
           fragment_key(manifest.object_id, coords.fragment_version,
                        coords.chunk_index, coords.fragment_index);
 
-      auto slice = asd_slice(key, coords.pos_in_fragment, bytes_in_slice, buf);
+      auto slice = asd_slice{key, coords.pos_in_fragment, bytes_in_slice, buf};
 
       it->second.push_back(slice);
       buf += bytes_in_slice;
@@ -189,8 +187,8 @@ bool RoraProxy_client::_short_path_one(const std::string &namespace_,
   _maybe_update_osd_infos(per_osd);
   // TODO: contact OSD and fill buffers.
   _dump(per_osd);
-
-  return true;
+  bool ok = OsdAccess :: getInstance().read_osds_slices(per_osd);
+  return ok;
 }
 
 bool RoraProxy_client::_short_path_many(
@@ -241,6 +239,7 @@ void RoraProxy_client::read_objects_slices(
         auto object_slices = p.first;
         via_proxy2.push_back(object_slices);
       }
+      ALBA_LOG(DEBUG, "partial read via delegate");
       _delegate->read_objects_slices(namespace_, via_proxy2, consistent_read_);
     }
   }

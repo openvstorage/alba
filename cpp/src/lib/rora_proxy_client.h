@@ -19,13 +19,12 @@ but WITHOUT ANY WARRANTY of any kind.
 #pragma once
 #include "proxy_client.h"
 #include "osd_info.h"
-
+#include "osd_access.h"
 namespace alba {
 namespace proxy_client {
 typedef std::pair<std::string, std::string> strpair;
 using namespace proxy_protocol;
 typedef std::pair<ObjectSlices, Manifest &> short_path_entry;
-typedef std::tuple<std::string, uint32_t, uint32_t, byte *> asd_slice;
 
 class RoraProxy_client : public Proxy_client {
 public:
@@ -93,7 +92,7 @@ public:
 private:
   std::unique_ptr<Proxy_client> _delegate;
 
-  std::map<osd_t, std::unique_ptr<OsdInfo>> _osd_infos;
+
 
   void
   _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);

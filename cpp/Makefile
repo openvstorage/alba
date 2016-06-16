@@ -1,5 +1,6 @@
 CXX ?= g++
-
+ALBA_HOME ?=../
+GOBJFS_HOME ?=$(ALBA_HOME)/../gobjfs
 
 # g++ 5 and clang++-3.7 have binary compatibility problems
 # & dynamic linking with boost libraries causes arbitrary segv's for g++
@@ -11,22 +12,28 @@ WARNINGS = \
 	-Woverloaded-virtual -Wnon-virtual-dtor
 FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC
 
-CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
+CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include -I$(GOBJFS_HOME)/include
 
-LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib -L/usr/lib
+LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib \
+          -L/usr/lib \
+          -L$(GOBJFS_HOME)/lib
 
 LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options \
-           -lsnappy
+           -lsnappy \
+           -lgobjfs_client $(GOBJFS_HOME)/thirdparty/xio/lib/libxio.so
 
 LIBS_exec = -L/usr/local/lib \
-	-Wl,-Bstatic -lboost_log -lboost_system -lboost_thread -lboost_program_options \
-	-Wl,-Bdynamic -L./lib -lalba -lrdmacm -lpthread -lsnappy
+	-Wl,-Bstatic \
+	  -lboost_log -lboost_system -lboost_thread -lboost_program_options \
+	-Wl,-Bdynamic \
+	-L./lib -lalba -lrdmacm -lpthread \
+	-lsnappy -lgobjfs_client $(GOBJFS_HOME)/thirdparty/xio/lib/libxio.so
 
 _OBJECTS = stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
            io.o proxy_client.o generic_proxy_client.o \
 	   tcp_proxy_client.o rdma_proxy_client.o rora_proxy_client.o \
-	   osd_info.o manifest_cache.o
+	   osd_info.o manifest_cache.o osd_access.o
 
 OBJECTS = $(patsubst %,src/lib/%,$(_OBJECTS))
 

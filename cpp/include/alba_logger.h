@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #pragma once
 
 #include <iostream>
+#include <sstream>
 #include <functional>
 
 namespace alba {
