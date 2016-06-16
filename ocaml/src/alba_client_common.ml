@@ -16,16 +16,23 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Prelude
 open Alba_client_errors
 
 let get_best_policy policies osds_info_cache =
+  let osds =
+    Hashtbl.fold
+      (fun osd_id osd_info acc ->
+       (osd_id, osd_info.Nsm_model.OsdInfo.node_id) :: acc)
+      osds_info_cache
+      []
+  in
   Policy.get_first_applicable_policy
     policies
-    (Hashtbl.fold
-       (fun osd_id osd_info acc ->
-          (osd_id, osd_info.Nsm_model.OsdInfo.node_id) :: acc)
-       osds_info_cache
-       [])
+    osds
+  |> Option.map
+       (fun (policy, cnt) ->
+        policy, cnt, Policy.required_osds_per_node osds cnt)
 
 let get_best_policy_exn policies osds_info_cache =
   match get_best_policy policies osds_info_cache with

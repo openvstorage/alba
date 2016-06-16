@@ -862,7 +862,7 @@ class client ?(retry_timeout = 60.)
       let open Albamgr_protocol.Protocol.Preset in
       let policies = preset.policies in
       let best = Alba_client_common.get_best_policy_exn policies osd_info_cache in
-      let (best_k, best_m, _, _), _ = best in
+      let (best_k, best_m, _, _), _, _ = best in
       let current_k,current_m =
         let open Nsm_model in
         let es, compression = match manifest.Manifest.storage_scheme with
@@ -1031,8 +1031,9 @@ class client ?(retry_timeout = 60.)
       in
       alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache ->
 
-      let ((best_k, best_m, _, best_max_disks_per_node) as best_policy),
-          best_actual_fragment_count =
+      let ((best_k, best_m, _, _) as best_policy),
+          best_actual_fragment_count,
+          best_actual_max_disks_per_node =
         Alba_client_common.get_best_policy_exn
           policies
           osds_info_cache
@@ -1073,7 +1074,7 @@ class client ?(retry_timeout = 60.)
                   | LT -> Some (bucket, `Regenerate)
                   | EQ
                   | GT ->
-                     if max_disks_per_node > best_max_disks_per_node
+                     if max_disks_per_node > best_actual_max_disks_per_node
                      then Some (bucket, `Rebalance)
                      else None
                 end

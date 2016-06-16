@@ -58,6 +58,30 @@ let get_applicable_osd_count max_osds_per_node osds =
     node_osds
     0
 
+let required_osds_per_node osds desired_fragment_count =
+  let rec inner node_osds osds_per_node possible_fragment_count =
+    let node_osds, possible_fragment_count =
+      List.fold_left
+        (fun (acc, cnt) node_osds ->
+         match node_osds with
+         | [] -> acc, cnt
+         | _ :: tl -> tl :: acc, cnt + 1)
+        ([], possible_fragment_count)
+        node_osds
+    in
+    if possible_fragment_count >= desired_fragment_count
+    then osds_per_node
+    else inner node_osds (osds_per_node + 1) possible_fragment_count
+  in
+  let node_osds =
+    List.group_by
+      (fun (osd_id, node_id) -> node_id)
+      osds
+    |> Hashtbl.to_assoc_list
+    |> List.map snd
+  in
+  inner node_osds 1 0
+
 let get_first_applicable_policy (policies : policy list) osds =
   List.find'
     (fun ((k, m, min_fragment_count, max_osds_per_node) as policy) ->
