@@ -45,11 +45,8 @@ namespace proxy_protocol {
 std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
   using alba::stuff::operator<<;
   os << "OsdInfo("
-     << " port=" << info.port
-     << ", ips= " << info.ips
-     << ", use_tls=" << info.use_tls
-     << ", use_rdma=" << info.use_rdma
-     << ")";
+     << " port=" << info.port << ", ips= " << info.ips
+     << ", use_tls=" << info.use_tls << ", use_rdma=" << info.use_rdma << ")";
   return os;
 }
 }

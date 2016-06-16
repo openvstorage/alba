@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "rora_proxy_client.h"
 #include "manifest.h"
 #include "alba_logger.h"
+#include "manifest_cache.h"
 
 namespace alba {
 namespace proxy_client {
@@ -59,12 +60,7 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
                               checksum, *mfp);
   ALBA_LOG(DEBUG, *mfp);
   auto key = std::pair<std::string, std::string>(namespace_, object_name);
-
-  auto it = _cache.find(key);
-  if (it != _cache.end()) {
-    _cache.erase(it);
-  }
-  _cache.emplace(std::make_pair(key, std::move(mfp)));
+  ManifestCache::getInstance().add(key, std::move(mfp));
 }
 
 void RoraProxy_client::read_object_fs(const std::string &namespace_,
@@ -103,9 +99,6 @@ std::string fragment_key(const std::string &object_id, uint32_t version_id,
   return mb.as_string();
 }
 
-
-
-
 void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   for (auto &item : per_osd) {
     auto osd = item.first;
@@ -121,32 +114,32 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   }
 }
 
-void RoraProxy_client::_maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>>& per_osd){
-    ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos");
-    bool ok = true;
-    for(auto& item: per_osd){
-        osd_t osd = item.first;
-        auto it = _osd_infos.find(osd);
-        if (it == _osd_infos.end()){
-            ok = false;
-            break;
-        }
+void RoraProxy_client::_maybe_update_osd_infos(
+    std::map<osd_t, std::vector<asd_slice>> &per_osd) {
+  ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos");
+  bool ok = true;
+  for (auto &item : per_osd) {
+    osd_t osd = item.first;
+    auto it = _osd_infos.find(osd);
+    if (it == _osd_infos.end()) {
+      ok = false;
+      break;
     }
-    if (!ok){
-        std::vector<std::pair<osd_t,std::unique_ptr<OsdInfo>>> result;
-        this -> osd_info(result);
-        _osd_infos.clear();
-        for(std::pair<osd_t,std::unique_ptr<OsdInfo>> &p : result){
-            osd_t osd = p.first;
-            _osd_infos.emplace(osd, std::move(p.second));
-        }
+  }
+  if (!ok) {
+    std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> result;
+    this->osd_info(result);
+    _osd_infos.clear();
+    for (std::pair<osd_t, std::unique_ptr<OsdInfo>> &p : result) {
+      osd_t osd = p.first;
+      _osd_infos.emplace(osd, std::move(p.second));
     }
+  }
 }
 
-bool RoraProxy_client::_short_path_one(
-    const std::string &namespace_,
-    const ObjectSlices &object_slices,
-    const Manifest &manifest) {
+bool RoraProxy_client::_short_path_one(const std::string &namespace_,
+                                       const ObjectSlices &object_slices,
+                                       const Manifest &manifest) {
 
   // one object, maybe multiple slices and or fragments involved
   ALBA_LOG(DEBUG, "_short_path_one(" << namespace_ << ", ...)");
@@ -216,8 +209,7 @@ bool RoraProxy_client::_short_path_many(
 }
 
 void RoraProxy_client::read_objects_slices(
-    const std::string &namespace_,
-    const std::vector<ObjectSlices> &slices,
+    const std::string &namespace_, const std::vector<ObjectSlices> &slices,
     const consistent_read consistent_read_) {
 
   if (consistent_read_ == consistent_read::T) {
@@ -228,15 +220,14 @@ void RoraProxy_client::read_objects_slices(
     for (auto &object_slices : slices) {
       auto object_name = object_slices.object_name;
       auto key = strpair(namespace_, object_name);
-
-      auto it = _cache.find(key);
-      if (it == _cache.end()) {
+      auto &cache = ManifestCache::getInstance();
+      auto it = cache.find(key);
+      if (it == cache.end()) {
         via_proxy.push_back(object_slices);
       } else {
 
         auto p =
-            std::pair<ObjectSlices, Manifest &>(
-                object_slices, *it->second);
+            std::pair<ObjectSlices, Manifest &>(object_slices, *it->second);
         short_path.push_back(p);
       }
     };
@@ -289,8 +280,9 @@ double RoraProxy_client::ping(const double delay) {
   return _delegate->ping(delay);
 }
 
-void RoraProxy_client::osd_info(std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result) {
-    ALBA_LOG(DEBUG, "RoraProxy_client::osd_info");
+void RoraProxy_client::osd_info(
+    std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result) {
+  ALBA_LOG(DEBUG, "RoraProxy_client::osd_info");
   _delegate->osd_info(result);
 }
 }

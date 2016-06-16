@@ -18,6 +18,10 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include "alba_common.h"
+#include "checksum.h"
+#include <iostream>
+#include <memory>
+#include <boost/optional.hpp>
 
 namespace alba {
 namespace proxy_protocol {
@@ -74,7 +78,6 @@ class NoEncryption : public EncryptInfo {
 typedef std::pair<boost::optional<uint32_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
-
 
 struct lookup_result_t {
   uint32_t chunk_index;

@@ -221,8 +221,7 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   stuff::dump_buffer(os, bytes, bytes_size);
   using alba::stuff::operator<<;
   os << "`, " << std::endl
-     << "  chunk_sizes = " << mf.chunk_sizes
-     << "," << std::endl
+     << "  chunk_sizes = " << mf.chunk_sizes << "," << std::endl
      << "  encoding_scheme = " << mf.encoding_scheme << "," << std::endl
      << "  compression =..."
      << "," << std::endl
@@ -230,14 +229,12 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
      << std::endl
      << "  checksum= " << *mf.checksum << "," << std::endl
      << "  size = " << mf.size << std::endl
-     << "  fragment_locations = " << mf.fragment_locations
-     << "," << std::endl
-     << "  fragment_checksums = " << mf.fragment_checksums
-     << "," << std::endl
+     << "  fragment_locations = " << mf.fragment_locations << "," << std::endl
+     << "  fragment_checksums = " << mf.fragment_checksums << "," << std::endl
      << "  fragment_packed_sizes = [" << std::endl;
 
   for (const std::vector<uint32_t> &c : mf.fragment_packed_sizes) {
-      os << c << "," << std::endl;
+    os << c << "," << std::endl;
   }
   os << "  ], ";
   os << std::endl

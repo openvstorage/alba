@@ -16,7 +16,28 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
+#include "manifest_cache.h"
 namespace alba {
-typedef uint32_t osd_t;
-typedef unsigned char byte;
+namespace proxy_client {
+
+ManifestCache &ManifestCache::getInstance() {
+  static ManifestCache instance;
+  return instance;
+}
+
+void ManifestCache::add(strpair key, std::unique_ptr<Manifest> mfp) {
+  ALBA_LOG(DEBUG, "ManifestCache::add");
+  auto it = _cache.find(key);
+  if (it != _cache.end()) {
+    _cache.erase(it);
+  }
+  _cache.emplace(std::make_pair(key, std::move(mfp)));
+}
+
+manifest_cache::iterator ManifestCache::find(strpair &key) {
+  return _cache.find(key);
+}
+
+manifest_cache::iterator ManifestCache::end() { return _cache.end(); }
+}
 }

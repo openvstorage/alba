@@ -20,67 +20,59 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "proxy_client.h"
 #include "osd_info.h"
 
-namespace alba{
+namespace alba {
 namespace proxy_client {
 typedef std::pair<std::string, std::string> strpair;
 using namespace proxy_protocol;
-typedef std::pair<ObjectSlices, Manifest&> short_path_entry;
+typedef std::pair<ObjectSlices, Manifest &> short_path_entry;
 typedef std::tuple<std::string, uint32_t, uint32_t, byte *> asd_slice;
 
-
-class RoraProxy_client : public Proxy_client{
+class RoraProxy_client : public Proxy_client {
 public:
-    RoraProxy_client(std::unique_ptr<Proxy_client> delegate);
+  RoraProxy_client(std::unique_ptr<Proxy_client> delegate);
 
-    virtual bool
-        namespace_exists(const std::string &name);
+  virtual bool namespace_exists(const std::string &name);
 
-    virtual void
-        create_namespace(const std::string &name,
-                         const boost::optional<std::string> &preset_name);
+  virtual void
+  create_namespace(const std::string &name,
+                   const boost::optional<std::string> &preset_name);
 
-    virtual void
-        delete_namespace(const std::string &name);
+  virtual void delete_namespace(const std::string &name);
 
-    virtual std::tuple<std::vector<std::string>, has_more>
-        list_namespaces(const std::string &first, const include_first,
-                        const boost::optional<std::string> &last, const include_last,
-                        const int max, const reverse reverse = reverse::F);
+  virtual std::tuple<std::vector<std::string>, has_more>
+  list_namespaces(const std::string &first, const include_first,
+                  const boost::optional<std::string> &last, const include_last,
+                  const int max, const reverse reverse = reverse::F);
 
-    virtual void write_object_fs(const std::string &namespace_,
-                                 const std::string &object_name,
-                                 const std::string &input_file,
-                                 const allow_overwrite,
-                                 const Checksum *checksum);
-
-    virtual void read_object_fs(const std::string &namespace_,
-                                const std::string &object_name,
-                                const std::string &dest_file,
-                                const consistent_read, const should_cache);
-
-    virtual void delete_object(const std::string &namespace_,
+  virtual void write_object_fs(const std::string &namespace_,
                                const std::string &object_name,
-                               const may_not_exist);
+                               const std::string &input_file,
+                               const allow_overwrite, const Checksum *checksum);
 
+  virtual void read_object_fs(const std::string &namespace_,
+                              const std::string &object_name,
+                              const std::string &dest_file,
+                              const consistent_read, const should_cache);
 
-    virtual std::tuple<std::vector<std::string>, has_more>
-        list_objects(const std::string &namespace_, const std::string &first,
-                     const include_first, const boost::optional<std::string> &last,
-                     const include_last, const int max,
-                     const reverse reverse = reverse::F);
+  virtual void delete_object(const std::string &namespace_,
+                             const std::string &object_name,
+                             const may_not_exist);
 
-  virtual void
-      read_objects_slices(const std::string &namespace_,
-                          const std::vector<ObjectSlices> &,
-                          const consistent_read);
+  virtual std::tuple<std::vector<std::string>, has_more>
+  list_objects(const std::string &namespace_, const std::string &first,
+               const include_first, const boost::optional<std::string> &last,
+               const include_last, const int max,
+               const reverse reverse = reverse::F);
 
-  virtual void
-  write_object_fs2(const std::string &namespace_,
-                   const std::string &object_name,
-                   const std::string &input_file, const allow_overwrite,
-                   const Checksum *checksum,
-                   Manifest&
-      );
+  virtual void read_objects_slices(const std::string &namespace_,
+                                   const std::vector<ObjectSlices> &,
+                                   const consistent_read);
+
+  virtual void write_object_fs2(const std::string &namespace_,
+                                const std::string &object_name,
+                                const std::string &input_file,
+                                const allow_overwrite, const Checksum *checksum,
+                                Manifest &);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -94,32 +86,25 @@ public:
   get_proxy_version();
 
   virtual double ping(const double delay);
-  virtual void osd_info(std::vector<std::pair<osd_t,
-                        std::unique_ptr<proxy_protocol::OsdInfo>>> &result);
+  virtual void osd_info(std::vector<
+      std::pair<osd_t, std::unique_ptr<proxy_protocol::OsdInfo>>> &result);
   virtual ~RoraProxy_client(){};
 
 private:
-
-
   std::unique_ptr<Proxy_client> _delegate;
-  std::map<strpair, std::unique_ptr<Manifest>> _cache;
-  std::map<osd_t,   std::unique_ptr<OsdInfo>> _osd_infos;
 
-  void _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>>& per_osd);
-  bool _short_path_many(const std::string& namespace_,
-                        const std::vector<short_path_entry> & short_path);
-  bool _short_path_one(const std::string& namespace_,
-                       const proxy_protocol::ObjectSlices& object_slices,
-                       const proxy_protocol::Manifest& manifest);
+  std::map<osd_t, std::unique_ptr<OsdInfo>> _osd_infos;
 
+  void
+  _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);
+  bool _short_path_many(const std::string &namespace_,
+                        const std::vector<short_path_entry> &short_path);
+  bool _short_path_one(const std::string &namespace_,
+                       const proxy_protocol::ObjectSlices &object_slices,
+                       const proxy_protocol::Manifest &manifest);
 };
 
-std::string fragment_key(const std::string& object_id,
-                         uint32_t version_id,
-                         uint32_t chunk_id,
-                         uint32_t fragment_id
-    );
-
-
+std::string fragment_key(const std::string &object_id, uint32_t version_id,
+                         uint32_t chunk_id, uint32_t fragment_id);
 }
 }

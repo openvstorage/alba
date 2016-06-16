@@ -55,7 +55,6 @@ struct Status {
   std::string _what;
 };
 
-
 struct SliceDescriptor {
   byte *buf;
   const uint64_t offset;
@@ -160,7 +159,8 @@ void write_ping_request(message_builder &mb, const double delay);
 void read_ping_response(message &m, Status &status, double &timestamp);
 
 void write_osd_info_request(message_builder &mb);
-void read_osd_info_response(message &m, Status &status,
-                            std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result);
+void read_osd_info_response(
+    message &m, Status &status,
+    std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result);
 }
 }
