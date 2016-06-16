@@ -43,4 +43,5 @@ let suite = "all" >:::[
     Fragment_cache_config_test.suite;
     Memcmp_test.suite;
     Alba_osd_test.suite;
+    Policy_test.suite;
   ]

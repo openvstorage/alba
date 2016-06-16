@@ -21,6 +21,29 @@ open Nsm_model
 open Recovery_info
 open Lwt.Infix
 
+let choose_new_devices
+      (alba_client : Alba_base_client.client)
+      osds_info_cache'
+      osds_to_keep
+      no_fragments_to_be_repaired
+  =
+  (* update osds_info_cache' to make sure it contains all
+   * osds that will be force chosen *)
+  Lwt_list.iter_p
+    (fun osd_id ->
+     alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+     Hashtbl.replace osds_info_cache' osd_id osd_info;
+     Lwt.return ())
+    osds_to_keep >>= fun () ->
+
+  let extra_devices =
+    Choose.choose_extra_devices
+      no_fragments_to_be_repaired
+      osds_info_cache'
+      osds_to_keep
+  in
+  Lwt.return extra_devices
+
 let upload_missing_fragments
       (alba_client : Alba_base_client.client)
       osds_info_cache'
@@ -44,21 +67,13 @@ let upload_missing_fragments
       ok_fragments
   in
 
-  (* update osds_info_cache' to make sure it contains all
-                osds that will be force chosen *)
-  Lwt_list.iter_p
-    (fun osd_id ->
-     alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
-     Hashtbl.replace osds_info_cache' osd_id osd_info;
-     Lwt.return ())
-    ok_fragments' >>= fun () ->
+  choose_new_devices
+    alba_client
+    osds_info_cache'
+    ok_fragments'
+    (List.length fragments_to_be_repaired)
+  >>= fun extra_devices ->
 
-  let extra_devices =
-    Choose.choose_extra_devices
-      (List.length fragments_to_be_repaired)
-      osds_info_cache'
-      ok_fragments'
-  in
   let live_ones =
     let open Nsm_model in
     Hashtbl.fold

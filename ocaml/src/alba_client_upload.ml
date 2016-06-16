@@ -278,7 +278,7 @@ let upload_object''
       | exn ->
          Lwt.fail exn)
   >>= fun (((k, m, min_fragment_count, max_disks_per_node),
-            actual_fragment_count),
+            actual_fragment_count, _),
            osds_info_cache') ->
 
   let storage_scheme, encrypt_info =
