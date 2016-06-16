@@ -47,7 +47,14 @@ end
 module Shell = struct
   let _print x =
     let colour = 2 in
-    Printf.printf "\027[38;5;%dm[%s] \027[0m%s\n%!" colour "shell" x
+    let time_f = Unix.gettimeofday () in
+    let time = Unix.localtime time_f in
+    Printf.printf
+      "\027[38;5;%dm[%s %02d:%02d:%02d.%06d] \027[0m%s\n%!"
+      colour "shell"
+      time.Unix.tm_hour time.Unix.tm_min time.Unix.tm_sec
+      (int_of_float ((mod_float time_f 1.) *. 1_000_000.))
+      x
 
   let cmd ?(ignore_rc=false) x =
     _print x;

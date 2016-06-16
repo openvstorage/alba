@@ -67,23 +67,31 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
            first; finc; last;
            max; reverse; })
 
-    method list_objects_by_policy ~k ~m ~max =
-      self # query
-        ListObjectsByPolicy
-        RangeQueryArgs.({
-            first = ((k, m, 0, 0), ""); finc = true;
-            last = Some (((k, m+1, 0, 0), ""), false);
-            reverse = false;
-            max;
-          })
-
-    method list_objects_by_policy' ~first ~finc ~last ~max =
+    method list_objects_by_policy_raw ~first ~finc ~last ~max =
       self # query
         ListObjectsByPolicy
         RangeQueryArgs.({
             first; finc; last;
             reverse = false; max;
           })
+
+    method list_objects_by_policy ~k ~m ~fragment_count ~max_disks_per_node ~max =
+      self # list_objects_by_policy_raw
+           ~first:((k,m,fragment_count,max_disks_per_node), "") ~finc:true
+           ~last:(Some (((* the sorting of the list by policy index is a bit strange,
+                          * max_disks_per_node is negated first, resulting in the need for this ... *)
+                         (if max_disks_per_node = 1
+                          then (k, m, fragment_count + 1, 0)
+                          else (k, m, fragment_count, max_disks_per_node - 1)),
+                         ""),
+                        false))
+           ~max
+
+    method list_objects_by_policy' ~k ~m ~max =
+      self # list_objects_by_policy_raw
+           ~first:((k, m, 0, 0), "") ~finc:true
+           ~last:(Some (((k, m+1, 0, 0), ""), false))
+           ~max
 
     method multi_exists names =
       self # query

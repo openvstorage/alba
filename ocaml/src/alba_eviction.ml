@@ -20,7 +20,7 @@ open Prelude
 open Lwt.Infix
 
 let do_eviction
-      (alba_client : Alba_client.alba_client)
+      (alba_client : Alba_base_client.client)
       ~prefixes =
   Lwt_list.map_p
     (fun prefix ->
@@ -35,7 +35,7 @@ let do_eviction
   in
   Lwt_list.map_p
     (fun (name, namespace) ->
-     alba_client # get_base_client # with_nsm_client
+     alba_client # with_nsm_client
                  ~namespace:name
                  (fun nsm_client ->
                   nsm_client # get_stats >>= fun stats ->
@@ -71,7 +71,7 @@ let do_eviction
   let delete_objects () =
     Lwt_list.iter_p
       (fun namespace_id ->
-       alba_client # get_base_client # with_nsm_client'
+       alba_client # with_nsm_client'
                    ~namespace_id
                    (fun nsm_client ->
                     let first, last, reverse = make_first_last_reverse () in
@@ -109,12 +109,9 @@ let do_eviction
     ]
 
 let alba_eviction
-      (alba_client : Alba_client.alba_client)
-      ~prefixes
-      ~presets
+      (alba_client : Alba_base_client.client)
+      ~get_prefix_preset_pairs
   =
-  Lwt.ignore_result (alba_client # osd_access # populate_osds_info_cache);
-
   let coordinator =
     Maintenance_coordination.make_maintenance_coordinator
       (alba_client # mgr_access)
@@ -163,7 +160,11 @@ let alba_eviction
          then
            (* more than half of the disks are >90% filled,
             * so let's do some cleanup *)
-           do_eviction alba_client ~prefixes
+           do_eviction alba_client
+                       ~prefixes:(Hashtbl.fold
+                                    (fun prefix _ acc -> prefix :: acc)
+                                    (get_prefix_preset_pairs ())
+                                    [])
          else
            Lwt.return ()
        end

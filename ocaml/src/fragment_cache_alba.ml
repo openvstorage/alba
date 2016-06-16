@@ -62,6 +62,37 @@ class alba_cache
       ~use_fadvise:true
       ()
   in
+  let () =
+    (* ignored thread to register that the specified prefix,preset
+     * pair is used as a cache by another backend
+     *)
+    Lwt.ignore_result
+      (let rec inner () =
+         Lwt.catch
+           (fun () ->
+            client # mgr_access # update_maintenance_config
+                   Maintenance_config.Update.(
+              { enable_auto_repair' = None;
+                auto_repair_timeout_seconds' = None;
+                auto_repair_add_disabled_nodes = [];
+                auto_repair_remove_disabled_nodes = [];
+                enable_rebalance' = None;
+                add_cache_eviction_prefix_preset_pairs = [
+                    match bucket_strategy with
+                    | OneOnOne { prefix;
+                                 preset; } -> (prefix, preset); ];
+                remove_cache_eviction_prefix_preset_pairs = [];
+              }) >>= fun (_ : Maintenance_config.t) ->
+            Lwt.return `Done)
+           (fun exn ->
+            Lwt_log.info_f ~exn "Exception while registering usage of prefix,preset as a cache" >>= fun () ->
+            Lwt.return `Retry) >>= function
+         | `Done -> Lwt.return ()
+         | `Retry -> Lwt_extra2.sleep_approx 60. >>= fun () ->
+                     inner ()
+       in
+       inner ())
+  in
   let base_client = client # get_base_client in
   let make_object_name ~bid ~name =
     match bucket_strategy with

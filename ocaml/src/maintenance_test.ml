@@ -315,10 +315,7 @@ let test_repair_orange () =
          alba_client namespace_id mf 0 0 >>= fun () ->
 
        alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
-       nsm # list_objects_by_policy'
-         ~first:((5,4,8,0),"") ~finc:true
-         ~last:(Some (((5,4,9,0), ""), false))
-         ~max:10 >>= fun ((cnt, _), _) ->
+       nsm # list_objects_by_policy' ~k:5 ~m:4 ~max:10 >>= fun ((cnt, _), _) ->
        assert (cnt = 1);
 
        with_maintenance_client
@@ -347,11 +344,12 @@ let test_repair_orange2 () =
        let namespace = test_name in
 
        (*
-          - object with a too wide policy
-          - kill a fragment from it
-          - repair -> should use all osds
-            (that is repairing shouldn't fail because it can't be fully repaired)
-       *)
+        * object with a too wide policy
+        * kill a fragment from it
+        * repair -> should use all osds
+        *  (that is repairing shouldn't fail because it can't be fully repaired)
+        * the regenerated fragment should be a data fragment, not one of the parity fragments
+        *)
 
        let preset_name = test_name in
        let preset =
@@ -391,12 +389,101 @@ let test_repair_orange2 () =
          ~should_cache:false >>= fun (_, mf_o) ->
        let mf' = Option.get_some mf_o in
 
+       Lwt_log.debug_f "new manifest: %s" (Nsm_model.Manifest.show mf') >>= fun () ->
+
        let open Nsm_model in
+       (* missing data fragment is regenerated *)
        let osd_id_o, version = Layout.index mf'.Manifest.fragment_locations 0 0 in
        assert (version = 2);
        assert (osd_id_o <> None);
 
        Lwt.return ())
+
+let test_rebalance_node_spread () =
+  (* policy (5,4,8,4)
+   * regular upload
+   * move a fragment so all osds of a node are used
+   * query buckets, assert
+   * repair_by_policy
+   * query buckets, assert
+   *)
+  let test_name = "test_rebalance_node_spread" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+     let preset_name = test_name in
+     let preset =
+       Albamgr_protocol.Protocol.Preset.(
+         { _DEFAULT with
+           policies = [ (5,4,8,4); ];
+         }) in
+     alba_client # mgr_access # create_preset
+                 preset_name
+                 preset >>= fun () ->
+
+     alba_client # create_namespace ~preset_name:(Some preset_name) ~namespace ()
+     >>= fun namespace_id ->
+
+     let object_name = test_name in
+     let object_data = get_random_string 399 in
+     alba_client # get_base_client # upload_object_from_string
+                 ~namespace
+                 ~object_name
+                 ~object_data
+                 ~allow_overwrite:Nsm_model.NoPrevious
+                 ~checksum_o:None >>= fun (mf, _) ->
+
+     let get_buckets () =
+       alba_client # nsm_host_access
+                   # with_nsm_client ~namespace
+                   (fun nsm -> nsm # get_stats) >>= fun stats ->
+       Lwt.return (snd stats.Nsm_model.NamespaceStats.bucket_count)
+     in
+
+     get_buckets () >>= fun r ->
+     assert (r = [ (5,4,9,3), 1L; ]);
+
+     (* move a fragment to create a sub awesome node spread *)
+     let is_osd_used mf osd_id =
+       List.mem (Some osd_id, 0) (List.hd_exn mf.Nsm_model.Manifest.fragment_locations)
+     in
+     let target_osd =
+       let rec inner = function
+         | [] -> assert false
+         | osd_id :: tl ->
+            if is_osd_used mf osd_id
+            then inner tl
+            else osd_id
+       in
+       inner [ 0l; 1l; 2l; 3l; ]
+     in
+     let source_osd =
+       if is_osd_used mf 4l
+       then 4l
+       else 5l
+     in
+     with_maintenance_client
+       alba_client
+       (fun mc ->
+        mc # rebalance_object
+           ~namespace_id
+           ~manifest:mf
+           ~source_osd
+           ~target_osd) >>= fun _ ->
+
+     get_buckets () >>= fun r ->
+     assert (r = [ (5,4,9,4), 1L; ]);
+
+     with_maintenance_client
+         alba_client
+         (fun mc ->
+          mc # repair_by_policy_namespace ~namespace_id)
+       >>= fun () ->
+
+     get_buckets () >>= fun r ->
+     assert (r = [ (5,4,9,3), 1L; ]);
+
+     Lwt.return ())
 
 let test_rewrite_namespace () =
   let test_name = "test_rewrite_namespace" in
@@ -697,6 +784,8 @@ let test_automatic_repair () =
          auto_repair_add_disabled_nodes = [];
          auto_repair_remove_disabled_nodes = [];
          enable_rebalance' = None;
+         add_cache_eviction_prefix_preset_pairs = [];
+         remove_cache_eviction_prefix_preset_pairs = [];
        }) >>= fun _ ->
 
      Lwt.async
@@ -743,6 +832,7 @@ let suite = "maintenance_test" >:::[
     "test_rebalance_namespace_2" >:: test_rebalance_namespace_2;
     "test_repair_orange" >:: test_repair_orange;
     "test_repair_orange2" >:: test_repair_orange2;
+    "test_rebalance_node_spread" >:: test_rebalance_node_spread;
     "test_rewrite_namespace" >:: test_rewrite_namespace;
     "test_verify_namespace" >:: test_verify_namespace;
     "test_automatic_repair" >:: test_automatic_repair;

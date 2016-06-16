@@ -36,6 +36,7 @@ module Config = struct
     tls_client : Tls.t option [@default None];
     load : (int [@default 10]);
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
+    __retry_timeout : (float [@default 60.]);
     } [@@deriving yojson, show]
 
   let abm_cfg_url_from_cfg (t:t) : Prelude.Url.t =
@@ -126,6 +127,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       and lwt_preemptive_thread_pool_min_size = cfg.lwt_preemptive_thread_pool_min_size
       and lwt_preemptive_thread_pool_max_size = cfg.lwt_preemptive_thread_pool_max_size
       and tcp_keepalive                       = cfg.tcp_keepalive
+      and retry_timeout                       = cfg.__retry_timeout
       in
       let () = match cfg.chattiness with
         | None -> ()
@@ -182,7 +184,10 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
         ~cache_on_read ~cache_on_write
         (fun client ->
            let maintenance_client =
-             new Maintenance.client (client # get_base_client) ~load:cfg.load
+             new Maintenance.client
+                 (client # get_base_client)
+                 ~retry_timeout
+                 ~load:cfg.load
            in
            let coordinator = maintenance_client # get_coordinator in
            Lwt.catch
@@ -217,6 +222,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                     (maintenance_client # report_stats 60. );
                     (refresh_albamgr_cfg abm_cfg_url abm_cfg_ref);
                     (maintenance_client # refresh_purging_osds ());
+                    (maintenance_client # cache_eviction ());
                   ]
                 in
 

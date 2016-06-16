@@ -28,13 +28,6 @@ class alba_client (base_client : Alba_base_client.client)
   let mgr_access = base_client # mgr_access in
   let nsm_host_access = base_client # nsm_host_access in
   let osd_access = base_client # osd_access in
-  let fragment_cache = base_client # get_fragment_cache in
-
-  let deliver_nsm_host_messages ~nsm_host_id =
-    Alba_client_message_delivery.deliver_nsm_host_messages
-      mgr_access nsm_host_access osd_access
-      ~nsm_host_id
-  in
 
   object(self)
     method get_base_client = base_client
@@ -52,7 +45,7 @@ class alba_client (base_client : Alba_base_client.client)
         mgr_access
         (base_client # get_preset_info)
         (base_client # deliver_messages_to_most_osds)
-        deliver_nsm_host_messages
+        (base_client # deliver_nsm_host_messages)
         ~namespace ~preset_name ?nsm_host_id ()
 
     method upload_object_from_file = base_client # upload_object_from_file
@@ -404,31 +397,17 @@ class alba_client (base_client : Alba_base_client.client)
            let open Manifest_cache in
            ManifestCache.invalidate (base_client # get_manifest_cache) namespace_id)
 
-    method drop_cache_by_id ~global namespace_id =
-      Manifest_cache.ManifestCache.drop (base_client # get_manifest_cache) namespace_id;
-      fragment_cache # drop namespace_id ~global
-
-    method drop_cache ~global namespace =
-      self # nsm_host_access # with_namespace_id
-        ~namespace
-        (self # drop_cache_by_id ~global)
-
-    method deliver_nsm_host_messages ~nsm_host_id =
-      Alba_client_message_delivery.deliver_nsm_host_messages
-        mgr_access nsm_host_access osd_access
-        ~nsm_host_id
+    method deliver_nsm_host_messages =
+      base_client # deliver_nsm_host_messages
 
     method deliver_osd_messages ~osd_id =
       Alba_client_message_delivery.deliver_osd_messages
         mgr_access nsm_host_access osd_access
         ~osd_id
 
-    method delete_namespace ~namespace =
-      Alba_client_namespace.delete_namespace
-        mgr_access nsm_host_access
-        deliver_nsm_host_messages
-        (self # drop_cache_by_id ~global:true)
-        ~namespace
+    method drop_cache = base_client # drop_cache
+
+    method delete_namespace = base_client # delete_namespace
 
     method decommission_osd ~long_id =
       Alba_client_osd.decommission_osd
