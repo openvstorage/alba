@@ -6,7 +6,7 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
              protobuf-compiler libjerasure-dev \
              build-essential automake autoconf yasm \
              procps python-pip \
-             aspcud"
+             aspcud redis-server"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \

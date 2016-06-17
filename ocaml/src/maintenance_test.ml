@@ -786,6 +786,7 @@ let test_automatic_repair () =
          enable_rebalance' = None;
          add_cache_eviction_prefix_preset_pairs = [];
          remove_cache_eviction_prefix_preset_pairs = [];
+         redis_lru_cache_eviction' = None;
        }) >>= fun _ ->
 
      Lwt.async

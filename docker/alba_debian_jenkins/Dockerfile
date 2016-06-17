@@ -35,7 +35,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libboost-all-dev \
         fuse \
         sysstat \
-        ncurses-dev
+        ncurses-dev \
+        redis-server
 
 RUN useradd jenkins -u 1001 -g root
 

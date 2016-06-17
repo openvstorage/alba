@@ -171,6 +171,7 @@ class client ?(retry_timeout = 60.)
                             auto_repair_disabled_nodes = [];
                             enable_rebalance = false;
                             cache_eviction_prefix_preset_pairs = Hashtbl.create 0;
+                            redis_lru_cache_eviction = None;
                           })
 
     method get_maintenance_config = maintenance_config
@@ -1830,10 +1831,123 @@ class client ?(retry_timeout = 60.)
       (alba_client # osd_access)
 
   method cache_eviction () : unit Lwt.t =
-    Alba_eviction.alba_eviction
-      alba_client
-      ~get_prefix_preset_pairs:
-      (fun () ->
-       let open Maintenance_config in
-       maintenance_config.cache_eviction_prefix_preset_pairs)
+    let do_random_eviction () =
+      Alba_eviction.do_random_eviction
+        alba_client
+        ~prefixes:(
+          Hashtbl.fold
+            (fun prefix _ acc -> prefix :: acc)
+            maintenance_config.Maintenance_config.cache_eviction_prefix_preset_pairs
+            [])
+    in
+
+    let rec get_redis_lru_cache_eviction () =
+      Lwt.catch
+        (fun () ->
+         alba_client # mgr_access # get_maintenance_config >>= fun r ->
+         Lwt.return (`Success r.Maintenance_config.redis_lru_cache_eviction))
+        (fun exn ->
+         Lwt.return `Retry) >>= function
+      | `Success x -> Lwt.return x
+      | `Retry ->
+         Lwt_unix.sleep 10. >>= fun () ->
+         get_redis_lru_cache_eviction ()
+    in
+    get_redis_lru_cache_eviction () >>= function
+    | None ->
+       Lwt_extra2.run_forever
+         "random-eviction"
+         (fun () ->
+          if Alba_eviction.should_evict alba_client coordinator
+          then do_random_eviction ()
+          else Lwt.return ())
+         60.
+    | Some { Maintenance_config.host; port; key; } ->
+       let () =
+         Lwt_extra2.run_forever
+           "redis-lru-eviction"
+           (fun () ->
+            if Alba_eviction.should_evict alba_client coordinator
+            then
+              begin
+                Lwt.catch
+                  (fun () ->
+                   let module R = Redis_lwt.Client in
+                   R.with_connection
+                     R.({ host; port; })
+                     (fun client ->
+                      R.zrangebyscore
+                        client
+                        key
+                        0. max_float
+                        ~limit:(0, 100)
+                      >>= fun items ->
+
+                      let items =
+                        List.map
+                          (fun r ->
+                           match r with
+                           | `Bulk (Some b) -> b
+                           | x -> assert false)
+                          items
+                      in
+                      let items' =
+                        List.map
+                          (fun b ->
+                           let version, namespace_id, name =
+                             deserialize
+                               (Llio.tuple3_from
+                                  Llio.int8_from
+                                  Llio.int32_from
+                                  Llio.string_from)
+                               b
+                           in
+                           assert (version = 1);
+                           namespace_id, name)
+                          items
+                        |> List.group_by
+                             (fun (namespace_id, _) -> namespace_id)
+                        |> Hashtbl.to_assoc_list
+                      in
+
+                      Lwt_list.iter_p
+                        (fun (namespace_id, names) ->
+                         alba_client # nsm_host_access # get_nsm_by_id
+                                     ~namespace_id >>= fun client ->
+                         client # apply_sequence
+                                []
+                                (List.map
+                                   (fun (_, name) -> Nsm_model.Update.DeleteObject name)
+                                   names)
+                        )
+                        items' >>= fun () ->
+
+                      R.zrem client key items >>= fun _ ->
+                      Lwt.return ())
+                  )
+                  (fun exn ->
+                   Lwt_log.info_f
+                     ~exn
+                     "redis based lru eviction failed, doing fallback to random" >>= fun () ->
+                   do_random_eviction ())
+              end
+            else
+              Lwt.return ())
+           60.
+         |> Lwt.ignore_result
+       in
+
+       Lwt_extra2.run_forever
+         "redis-lru-eviction-garbage-collect"
+         (fun () ->
+          let rec inner () =
+            (* TODO
+             * - scan a few key ranges at random
+             * - (conditionally) add items to redis
+             * - sleep or not depending on the amount of garbage found
+             *)
+            Lwt.return ()
+          in
+          inner ())
+         60.
 end

@@ -1211,7 +1211,7 @@ module Deployment = struct
 
 
 
-  let setup t =
+  let setup ?redis_lru t =
     let cfg = t.cfg in
     let _ = _arakoon_cmd_line ["--version"] in
     let _ = _alba_cmd_line ~ignore_tls:true ["version"] in
@@ -1242,6 +1242,18 @@ module Deployment = struct
     let _ = t.abm # wait_for_master () in
     let _ = t.nsm # wait_for_master () in
 
+    begin
+      match redis_lru with
+      | None -> ()
+      | Some (port, key) ->
+         Printf.sprintf "redis-server --port %i" port |> Shell.cmd;
+         Unix.sleep 1;
+         _alba_cmd_line
+           [ "update-maintenance-config";
+             "--set-redis-lru-cache-eviction";
+             Printf.sprintf "127.0.0.1:%i/%s" port key; ]
+    end;
+
     t.proxy # persist_config;
     t.proxy # start;
 
@@ -1268,6 +1280,8 @@ module Deployment = struct
     let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
     pkill "arakoon";
     pkill "alba";
+    pkill "etcd";
+    pkill "redis-server";
     pkill "'java.*SimulatorRunner.*'";
     "fuser -k -f " ^ cfg.monitoring_file |> Shell.cmd ~ignore_rc:true ;
     t.abm # remove_dirs;
@@ -1502,7 +1516,6 @@ module Test = struct
 
   let ocaml ?(xml=false) ?filter ?dump t =
     begin
-
       let cfg = t.Deployment.cfg in
       if cfg.tls
       then
@@ -2142,7 +2155,12 @@ module Test = struct
     let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:4000 () in
     Deployment.kill t_ssd;
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
-    Deployment.setup t_ssd;
+
+    let key_for_lru_tracking = "key_for_lru_tracking" in
+    Deployment.setup
+      ~redis_lru:(6379, key_for_lru_tracking)
+      t_ssd;
+
     let cfg_hdd = Config.make ~workspace:(workspace ^ "/tmp/alba_hdd") () in
     let the_prefix, the_preset = "my_prefix", "default" in
     let t_hdd =
