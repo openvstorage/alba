@@ -41,8 +41,9 @@ A Name Space Manager (NSM) host is an Arakoon cluster running with the nsm_host 
 The namespace manager is the remote API offered by the NSM host to manipulate most of the object metadata during normal operation. Its coordinates can be retrieved from the ALBA Manager by (proxy) clients and maintenance agents.
 
 
-## OSDs, ASDs and Seagate Kinetic drives
-ALBA supports 2 types of devices: Seagate Kinetic drives and ASDs. The Seagate Kinetic drives are ethernet-connected HDD with an open source object API designed specifically for hyperscale and scale-out environments. An ASD (ALBA Storage Device) is a our own pure software based implementation of the same concept on top of normal SATA disks: a Socket Server on top of RocksDb, offering persistence for meta data and small values, while large values reside on the file system. Every atomic multi-update is synced before the acknowledgement is returned. To have acceptable performance updates for multiple clients are written to the disk in batches. This is effectively a trade-off, increasing latency for throughput, which is perfectly acceptable for our use case (writes by the VM are already acknowledged when they hit the write buffer).
+## Backends, OSDs, ASDs and Seagate Kinetic drives
+ALBA supports 3 types of devices: ALBA backends, Seagate Kinetic drives and ASDs. The Seagate Kinetic drives are ethernet-connected HDD with an open source object API designed specifically for hyperscale and scale-out environments. An ASD (ALBA Storage Daemon) is a our own pure software based implementation of the same concept on top of normal SATA disks: a Socket Server on top of RocksDb, offering persistence for meta data and small values, while large values reside on the file system. Every atomic multi-update is synced before the acknowledgement is returned. To have acceptable performance updates for multiple clients are written to the disk in batches. This is effectively a trade-off, increasing latency for throughput, which is perfectly acceptable for our use case (writes by the VM are already acknowledged when they hit the write buffer). Note that multiple ASD processes can run on a single disk.
+
 
 ASD’s follow the same strategy as the Kinetic drives, advertising themselves via a UDP multicast of a json config file. A single parser can be used to retrieve connection information for ASD and Kinetic drive alike.
 
@@ -55,7 +56,6 @@ that compose this object.
 
 ALBA divides the object in chunks to ensure data safety. By Spreading the fragments across multiple OSDs, a drive or even node failure can be survived. Objects should be dispersed with over disks with a certain number (k) data fragments, a certain number (m) of parity fragments, and a limit (x) on the number of disks from the same node that can be used for a specific object. An upload can be successful, even when not all (k + m) fragments are stored. There’s a minimum number of fragments (c), with (k ≤ c ≤ k + m) that needs to have been stored, before an upload can be considered successful. The tuple (k, m, c, x) describes a **policy**.
 Objects can also be encrypted or compressed. The combination of one or more policies, the type of compression and the encryption key is a **preset**.
-
 
 ## ALBA Config files
 The ALBA configuration file is located at `/opt/OpenvStorage/config/alba.json`. For the maintenance process the node specific config file is located at `/opt/OpenvStorage/config/arakoon/<backend_name>-abm/<backend_name>.json`.
