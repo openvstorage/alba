@@ -2,13 +2,17 @@
 ALBA(ALternative BAckend) is a distributed object store, like Swift, Ceph and Amplistor. ALBA is highly optimised for Open vStorage as it is optimized to store Volume Drives SCOs. It aggregates a set of OSDs like Alba's ASDs or Seagate's Kinetic Drives into a pool of storage that you can use as a storage backend for Open vStorage.
 
 Alba supports the following high-end set of features:
+
 * erasure coding
-* x-way replication
+* replication
 * (optional) compression
 * (optional) encryption
 * partial reads
 * namespaces
-* [self healing](selfhealing.md) (repair, rebalancing)
+* repair
+* rebalancing
+* flash acceleration
+* global and local recovery
 * ...
 
 Unlike most alternatives, ALBA is a consistent store. Since it is optimised for the types of objects Open vStorage's volume driver needs to store and retrieve, Alba has become the default object storage backend for Open vStorage.
