@@ -1,6 +1,6 @@
 # ALBA Proxy
 The ALBA proxy sits between the [Volume Driver](https://github.com/openvstorage/volumedriver) and the [ALBA backend](README.md). It runs as a process on the Storage Router host and takes the SCOs coming from the Volume Driver and stores them according to a policy on the different OSDs of the backend.
-There is an ALBA Proxy per vPool which is available on the Storage Router. The port on which a vPool is listening for a certain vPool can be found in the config file of the proxy (`/opt/OpenvStorage/config/storagedriver/storagedriver/<vpool_name>_alba.json`).
+There is an ALBA Proxy per vPool which is available on the Storage Router. The port on which a proxy is listening for a certain vPool can be found in the config file of the proxy (`/opt/OpenvStorage/config/storagedriver/storagedriver/<vpool_name>_alba.json`).
 
 
 ## ALBA Proxy Config files
