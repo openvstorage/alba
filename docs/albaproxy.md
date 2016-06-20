@@ -1,5 +1,5 @@
 # ALBA Proxy
-The ALBA proxy sits between the [Volume Driver](../VolumeDriver/README.md) and the [ALBA backend](README.md). It runs as a process on the Storage Router host and takes the SCOs coming from the Volume Driver and stores them according to a policy on the different OSDs of the backend.
+The ALBA proxy sits between the [Volume Driver](https://github.com/openvstorage/volumedriver) and the [ALBA backend](README.md). It runs as a process on the Storage Router host and takes the SCOs coming from the Volume Driver and stores them according to a policy on the different OSDs of the backend.
 There is an ALBA Proxy per vPool which is available on the Storage Router. The port on which a vPool is listening for a certain vPool can be found in the config file of the proxy (`/opt/OpenvStorage/config/storagedriver/storagedriver/<vpool_name>_alba.json`).
 
 
@@ -99,8 +99,6 @@ To upload an object to a namespace, execute in the shell
 ```
 root@cmp02:~# alba proxy-list-objects '<namespace>' '</path/to/file>' '<key in ALBA>'  -h 127.0.0.1 -p 26203
 ```
-
-More commands can be found in the [ALBA CLI documentation](../../Administration/usingthecli/alba.md).
 
 ## Use the OVS client to manage an ALBA proxy
 The OVS python client allow to manage an ALBA proxy. In the below example we retrieve the proxy version.

@@ -11,12 +11,12 @@ Alba supports the following high-end set of features:
 * [self healing](selfhealing.md) (repair, rebalancing)
 * ...
 
-Unlike most alternatives, Alba is a consistent store. Since it is optimised for the types of objects Open vStorage's volume driver needs to store and retrieve, Alba has become the default object storage backend for Open vStorage.
+Unlike most alternatives, ALBA is a consistent store. Since it is optimised for the types of objects Open vStorage's volume driver needs to store and retrieve, Alba has become the default object storage backend for Open vStorage.
 
 
 ## Architecture
 
-![](../Images/ALBA Architecture.png)
+![](ALBA Architecture.png)
 
 ### ALBA Proxy
 ALBA currently run a proxy service on the same host as the Volume Driver.
