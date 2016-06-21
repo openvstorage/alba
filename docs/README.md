@@ -40,14 +40,12 @@ A Name Space Manager (NSM) host is an Arakoon cluster running with the nsm_host 
 ### Namespace Manager
 The namespace manager is the remote API offered by the NSM host to manipulate most of the object metadata during normal operation. Its coordinates can be retrieved from the ALBA Manager by (proxy) clients and maintenance agents.
 
-
 ## Backends, OSDs, ASDs and Seagate Kinetic drives
 ALBA supports 3 types of devices: ALBA backends, Seagate Kinetic drives and ASDs. The Seagate Kinetic drives are ethernet-connected HDD with an open source object API designed specifically for hyperscale and scale-out environments. An ASD (ALBA Storage Daemon) is a our own pure software based implementation of the same concept on top of normal SATA disks: a Socket Server on top of RocksDb, offering persistence for meta data and small values, while large values reside on the file system. Every atomic multi-update is synced before the acknowledgement is returned. To have acceptable performance updates for multiple clients are written to the disk in batches. This is effectively a trade-off, increasing latency for throughput, which is perfectly acceptable for our use case (writes by the VM are already acknowledged when they hit the write buffer). Note that multiple ASD processes can run on a single disk.
 
+ASD’s follow the same strategy as the Kinetic drives, advertising themselves via a UDP multicast of a json config file. A single parser can be used to retrieve connection information for ASD and Kinetic drive alike. OSDs (Object Storage Daemon) are generic abstraction over ASDs and Seagate Kinetic drives.
 
-ASD’s follow the same strategy as the Kinetic drives, advertising themselves via a UDP multicast of a json config file. A single parser can be used to retrieve connection information for ASD and Kinetic drive alike.
-
-OSDs (Object Storage Daemon) are generic abstraction over ASDs and Seagate Kinetic drives.
+An ALBA backends can also be added to a global ALBA backend. This allows to define a policy across multiple backends (multiple datacenters).
 
 ## Fragments & Objects
 Alba stores objects, grouped per namespace. These objects are divided into chunks which are encoded into fragments. The fragments are stored onto OSDs under a key.
@@ -58,8 +56,9 @@ ALBA divides the object in chunks to ensure data safety. By Spreading the fragme
 Objects can also be encrypted or compressed. The combination of one or more policies, the type of compression and the encryption key is a **preset**.
 
 ## ALBA Config files
-The ALBA configuration file is located at `/opt/OpenvStorage/config/alba.json`. For the maintenance process the node specific config file is located at `/opt/OpenvStorage/config/arakoon/<backend_name>-abm/<backend_name>.json`.
-For the rebalancer the node specific config file is located at `/opt/OpenvStorage/config/arakoon/<backend_name>-abm/<backend_name>-rebalancer.json`. More info on the ALBA config files can be found [here](../../Administration/Configs/alba.md)
+The ALBA configuration files are stored in ETCD. 
+
+More info on the ALBA config files can be found [here](https://openvstorage.gitbooks.io/framework/content/docs/etcd.html)
 
 
 ## ALBA Log files
