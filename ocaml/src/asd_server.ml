@@ -215,7 +215,7 @@ module DirectoryInfo = struct
 
   let write_blob
         t fnr blob
-        ~(post_write:post_write) 
+        ~(post_write:post_write)
         ~sync_parent_dirs =
     Lwt_log.debug_f "writing blob %Li (use_fadvise:%b use_fallocate:%b)"
                     fnr t.use_fadvise t.use_fallocate
@@ -393,7 +393,7 @@ module Net_fd = struct
        Buffer_pool.with_buffer
          Buffer_pool.default_buffer_pool
          (Lwt_extra2.copy_using reader writer size)
-     
+
     | Rsocket socket ->
        Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
        let reader buffer offset length =
@@ -1272,11 +1272,15 @@ class check_garbage_from_advancer check_garbage_from kv =
       end
   end
 
+let register_rocks_for_callback rocks = Alba_wrappers.RocksCB.register_db rocks
+let _rora_server = ref None
+
 let run_server
       ?cancel
       ?(write_blobs = true)
       (hosts:string list)
-      (port:int option)
+      ~(port:int option)
+      ~(rora_port : int option)
       ~(transport: Net_fd.transport)
       (path:string)
       ~asd_id ~node_id
@@ -1344,7 +1348,19 @@ let run_server
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->
+  let () = register_rocks_for_callback db in
+  let maybe_shutdown_rora_server () =
+    match !_rora_server with
+    | None -> Lwt.return_unit
+    | Some w ->
+       begin
+         Lwt_log.fatal_f "closing rora server" >>= fun () ->
+         Lwt.wakeup w ();
+         Lwt.return_unit
+       end
+  in
   let endgame () =
+    maybe_shutdown_rora_server() >>= fun () ->
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->
     let () = let open Rocks in RocksDb.close db in
@@ -1616,6 +1632,35 @@ let run_server
        in
        t :: threads
   in
+  let maybe_add_rora_server threads =
+    match rora_port with
+    | None -> threads
+    | Some port ->
+       begin
+         let host = match List.hd hosts with
+           | None -> "127.0.0.1"
+           | Some h -> h
+         in
+         let asleep, awakene = Lwt.wait() in
+         let t =
+           Lwt_log.debug_f "starting rora server host:%s port:%i" host port
+           >>= fun () ->
+           let num_cores = 2 in
+           let queue_depth = 8 in
+           let handle = Rora_server.start
+                          transport
+                          host
+                          port
+                          num_cores
+                          queue_depth
+           in
+           Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->
+           asleep  >>= fun () ->
+           let _ = Rora_server.stop handle in
+           Lwt.return_unit
+         in t:: threads
+       end
+  in
   let maybe_add_tls_server threads =
       match tls with
       | None -> threads
@@ -1652,7 +1697,7 @@ let run_server
            | Net_fd.TCP  -> None
            | Net_fd.RDMA -> Some true
          in
-         Discovery.multicast 
+         Discovery.multicast
            asd_id node_id
            hosts ~port ~tlsPort ~useRdma
            mcast_period
@@ -1679,6 +1724,7 @@ let run_server
       io_sched_t;
     ]
     |> maybe_add_plain_server
+    |> maybe_add_rora_server
     |> maybe_add_tls_server
     |> maybe_add_multicast
   in

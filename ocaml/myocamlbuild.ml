@@ -38,6 +38,11 @@ let run_cmd cmd () =
     line
   with | End_of_file -> "Not available"
 
+let gobjfs_home =
+  try Sys.getenv "GOBJFS_HOME"
+  with Not_found ->
+       (Sys.getenv "ALBA_HOME") ^ "../gobjfs"
+
 let time () =
   let open Unix in
   let tm = gmtime (time()) in
@@ -138,12 +143,12 @@ let _ = dispatch &
                  ];
 
              flag ["c";"compile"]
-                  (S[(*A"-ccopt"; A"-march=opteron"; *)
-                     A"-ccopt"; A"-Wall";
+                  (S[A"-ccopt"; A"-Wall";
                      A"-ccopt"; A"-Wextra";
-                     A"-ccopt"; A"-Werror";
+                     (* A"-ccopt"; A"-Werror"; *)
                      A"-ccopt"; A"-ggdb3";
                      A"-ccopt"; A"-O2";
+                     A"-ccopt"; A("-I"^ gobjfs_home ^ "/include");
                   ]);
              flag ["ocaml"; "compile"; "ppx_lwt"] &
                (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
@@ -157,5 +162,9 @@ let _ = dispatch &
                   (S[A"-cclib";A"-lJerasure"]);
              flag ["link";"ocaml";"use_isal"]
                   (S[A"-cclib";A"-lisal"]);
-
+             flag ["link";"ocaml"; "use_gobjfs"]
+                  (S[A"-cclib"; A"-lgobjfs_server";
+                     A"-cclib"; A"-lxio";
+                     A"-cclib"; A"-lgobjfs";
+                  ]);
           | _ -> ()

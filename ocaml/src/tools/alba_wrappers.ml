@@ -23,3 +23,12 @@ module Sys2 = struct
     let get_maxrss () = alba_get_maxrss ()
     let lwt_get_maxrss () = Lwt_preemptive.detach get_maxrss ()
 end
+external _register_db : Rocks.RocksDb.t -> unit = "alba_register_db"
+
+
+module RocksCB = struct
+
+
+  let register_db db = _register_db db
+
+end

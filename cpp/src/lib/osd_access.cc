@@ -67,16 +67,17 @@ bool OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
 
     int backdoor_port = osd_info.port + 1000; // TODO: how do I know?
     std::string &ip = osd_info.ips[0];
-
+    ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip << " port: " << backdoor_port);
     int err = ctx_attr_set_transport(ctx_attr,
                                      transport_name.c_str(),
                                      ip.c_str(),
                                      backdoor_port);
-
+    ALBA_LOG(DEBUG, "set_transport err:" << err);
     assert(err==0);
     std::shared_ptr<gobjfs::xio::client_ctx> ctx = ctx_new(ctx_attr);
     err = ctx_init(ctx);
-    assert(err = 0);
+    ALBA_LOG(DEBUG, "ctx_init err:"<< err);
+    assert(err == 0);
 
 
     std::vector<giocb*> iocb_vec;

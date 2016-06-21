@@ -133,7 +133,7 @@ RUN apt-get update && apt-get -y --force-yes install \
       libboost-all-dev libgoogle-glog-dev
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout 5f415c425a1d818138e1c9dcc177cefde14787a4
+RUN cd gobjfs  && git pull && git checkout ea7d54788591ff0829e1465f28258448064ca742
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
