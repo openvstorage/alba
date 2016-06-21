@@ -35,7 +35,7 @@ ALBA is licensed under the [GNU Affero General Public License v3](http://www.gnu
 
 Documentation
 -------------
-You can consult a GitBook with all ALBA documenation online by visiting [https://www.gitbook.com/book/openvstorage/alba/details](https://www.gitbook.com/book/openvstorage/alba/details).
+You can consult a GitBook with all ALBA documenation online by visiting [https://openvstorage.gitbooks.io/alba](https://openvstorage.gitbooks.io/alba).
 
 
 
