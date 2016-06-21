@@ -99,6 +99,32 @@ To upload an object to a namespace, execute in the shell
 ```
 root@cmp02:~# alba proxy-list-objects '<namespace>' '</path/to/file>' '<key in ALBA>'  -h 127.0.0.1 -p 26203
 ```
+### Benchmark an ALBA proxy
+To benchmark an ALBA proxy
+```
+root@perf-roub-01:~# alba proxy-bench -h 188.165.13.24 -p 26204 5ac4217e-54fb-4d93-a05f-e7ab77342d16 --scenario writes --file=/root/a.log
+writes (robust=false):
+             100             200             300             400             500             600             700             800             900            1000 (   51.18s; 19.54/s)
+            1100            1200            1300            1400            1500            1600            1700            1800            1900            2000 (  106.91s; 18.71/s)
+            2100            2200            2300            2400            2500            2600            2700            2800            2900            3000 (  160.17s; 18.73/s)
+            3100            3200            3300            3400            3500            3600            3700            3800            3900            4000 (  214.19s; 18.68/s)
+            4100            4200            4300            4400            4500            4600            4700            4800            4900            5000 (  269.93s; 18.52/s)
+            5100            5200            5300            5400            5500            5600            5700            5800            5900            6000 (  325.21s; 18.45/s)
+            6100            6200            6300            6400            6500            6600            6700            6800            6900            7000 (  381.53s; 18.35/s)
+            7100            7200            7300            7400            7500            7600            7700            7800            7900            8000 (  436.24s; 18.34/s)
+            8100            8200            8300            8400            8500            8600            8700            8800            8900            9000 (  492.31s; 18.28/s)
+            9100            9200            9300            9400            9500            9600            9700            9800            9900           10000 (  548.66s; 18.23/s)
+
+writes
+ took: 548.656098s or (18.226354 /s)
+ latency: 54.865610ms
+ min: 32.439947ms
+ max: 267.340899ms
+ 
+
+
+```
+
 
 ## Use the OVS client to manage an ALBA proxy
 The OVS python client allow to manage an ALBA proxy. In the below example we retrieve the proxy version.
