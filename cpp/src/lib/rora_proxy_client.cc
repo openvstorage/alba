@@ -185,7 +185,6 @@ bool RoraProxy_client::_short_path_one(const std::string &namespace_,
   }
   // everything to read is now nicely sorted per osd.
   _maybe_update_osd_infos(per_osd);
-  // TODO: contact OSD and fill buffers.
   _dump(per_osd);
   bool ok = OsdAccess :: getInstance().read_osds_slices(per_osd);
   return ok;

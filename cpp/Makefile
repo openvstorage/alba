@@ -20,14 +20,14 @@ LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib \
 
 LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options \
            -lsnappy \
-           -lgobjfs_client $(GOBJFS_HOME)/thirdparty/xio/lib/libxio.so
+	   -lgobjfs_client -lxio
 
 LIBS_exec = -L/usr/local/lib \
 	-Wl,-Bstatic \
 	  -lboost_log -lboost_system -lboost_thread -lboost_program_options \
 	-Wl,-Bdynamic \
 	-L./lib -lalba -lrdmacm -lpthread \
-	-lsnappy -lgobjfs_client $(GOBJFS_HOME)/thirdparty/xio/lib/libxio.so
+	-lsnappy -lgobjfs_client -lxio
 
 _OBJECTS = stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
