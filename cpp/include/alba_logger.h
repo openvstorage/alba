@@ -16,10 +16,10 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#ifndef ALBA_LOGGER
-#define ALBA_LOGGER
+#pragma once
 
 #include <iostream>
+#include <sstream>
 #include <functional>
 
 namespace alba {
@@ -46,4 +46,3 @@ std::function<void(AlbaLogLevel, std::string &)> *getLogger(AlbaLogLevel);
   }
 }
 }
-#endif

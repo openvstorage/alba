@@ -21,6 +21,10 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/algorithm/string.hpp>
 #include "proxy_client.h"
 #include "alba_logger.h"
+#include "manifest.h"
+
+#include <iostream>
+#include <fstream>
 
 using std::string;
 using std::cout;
@@ -219,4 +223,103 @@ TEST(proxy_client, test_ping) {
     std::cout << "delta:" << delta << std::endl;
     EXPECT_NEAR(delta, 5.0, eps);
   }
+}
+
+void _compare(proxy_protocol::lookup_result_t& exp,
+              proxy_protocol::lookup_result_t& act){
+
+    EXPECT_EQ(exp.chunk_index,      act. chunk_index);
+    EXPECT_EQ(exp.fragment_index,   act. fragment_index);
+    EXPECT_EQ(exp.pos_in_fragment,  act. pos_in_fragment);
+    EXPECT_EQ(exp.fragment_length,  act. fragment_length);
+    EXPECT_EQ(exp.fragment_version, act. fragment_version);
+    EXPECT_EQ(exp._osd,             act. _osd);
+}
+
+TEST(proxy_client, manifest){
+    using namespace proxy_protocol;
+    std::ifstream file;
+    file.exceptions ( std::ifstream::failbit | std::ifstream::badbit );
+    file.open ("./bin/the_manifest.bin");
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string data = buffer.str();
+    auto size = data.size();
+    std:: cout <<"size:" << size << std::endl;
+
+    Manifest mf;
+    std::vector<char> v(data.begin(), data.end());
+    llio::message m(v);
+    from(m,mf);
+
+    std::cout << mf << std::endl;
+    uint32_t tests[] = {0,
+                        10,
+                        (1 << 20) + 2,
+                        (5 << 20) + 2,
+    };
+
+    lookup_result_t expecteds[] ={
+        lookup_result_t( 0, 0, 0, 1 << 20 ,0, 9),
+        lookup_result_t( 0, 0,10, 1 << 20 ,0, 9),
+        lookup_result_t( 0, 1, 2, 1 << 20 ,0, 6),
+        lookup_result_t( 1, 0, 2, 1 << 20 ,0, 9),
+    };
+
+    for (int i = 0; i< 4; i++){
+        auto pos = tests[i];
+        auto& expected = expecteds[i];
+        auto maybelookup_result = mf.to_chunk_fragment(pos);
+        EXPECT_FALSE(maybelookup_result == boost::none);
+        auto &lookup_result = *maybelookup_result;
+        _compare (expected, lookup_result);
+    }
+
+}
+
+TEST(proxy_client, test_osd_info){
+    init_log();
+    config cfg;
+    auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+
+    std::vector<std::pair<osd_t,
+                          std::unique_ptr<proxy_protocol::OsdInfo>
+                          >
+               > result;
+
+    client -> osd_info(result);
+    for(auto& p: result){
+        auto osd = p.first;
+        const proxy_protocol::OsdInfo& osd_info = *p.second;
+        std::cout << "osd:" << osd <<" info: " << osd_info << std::endl;
+    }
+}
+
+TEST(proxy_client, test_partial_read){
+    init_log();
+    config cfg;
+    auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+    std::ostringstream sos;
+    sos << "with_manifest" << std::rand();
+    string name = sos.str();
+    string file("./ocaml/alba.native");
+    client -> write_object_fs(cfg.NAMESPACE, name, file,
+                              proxy_client::allow_overwrite::T,
+                              nullptr);
+    using namespace proxy_protocol;
+    byte * buf = new byte[8192];
+    SliceDescriptor sd {buf, 0,4096};
+
+    //slice that spans 2 fragments.
+    SliceDescriptor sd2{&buf[4096], (1<<20) -10 , 4096};
+
+    std::vector<SliceDescriptor> slices { sd,sd2};
+    ObjectSlices object_slices{name, slices};
+    std::vector<ObjectSlices> objects_slices {object_slices};
+
+    client -> read_objects_slices(cfg.NAMESPACE,
+                                  objects_slices,
+                                  proxy_client::consistent_read::F
+        );
+    delete [] buf;
 }

@@ -177,6 +177,9 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | WriteObjectFs   -> fun (namespace, object_name, _,_,_)  ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
+  | WriteObjectFs2  -> fun (namespace, object_name, _,_,_) ->
+                       Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
+
   | ReadObjectsSlices -> fun (namespace, objects_slices, consistent_read) ->
                          Printf.sprintf
                            "(%S,%s )"
@@ -194,8 +197,9 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | DeleteObject    -> fun _ -> "_"
   | GetVersion      -> fun _ -> "-"
   | OsdView         -> fun _ -> "-"
-  | GetClientConfig -> fun _ -> "()"
+  | GetClientConfig -> fun () -> "()"
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
+  | OsdInfo         -> fun () -> "()"
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -217,6 +221,35 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                              i -> o Lwt.t
                           =
     let open Protocol in
+    let write_object_fs stats (namespace,
+                               object_name,
+                               input_file,
+                               allow_overwrite,
+                               checksum_o)
+      =
+      let open Nsm_model in
+      Lwt.catch
+        (fun () ->
+           alba_client # upload_object_from_file
+             ~namespace
+             ~object_name ~input_file
+             ~checksum_o
+             ~allow_overwrite:(if allow_overwrite
+                               then Unconditionally
+                               else NoPrevious)
+           >>= fun (mf , upload_stats) ->
+           let open Alba_statistics.Statistics in
+           ProxyStatistics.new_upload stats namespace upload_stats.total;
+           Lwt.return mf
+        )
+        (let open Alba_client_errors.Error in
+          function
+          | Err.Nsm_exn (Err.Overwrite_not_allowed, _) ->
+            Protocol.Error.failwith Protocol.Error.OverwriteNotAllowed
+          | Exn FileNotFound ->
+             Protocol.Error.failwith Protocol.Error.FileNotFound
+          | exn -> Lwt.fail exn)
+    in
     function
     | ListNamespaces -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
       (* TODO only return namespaces which are active? hmm, maybe creating too... *)
@@ -267,28 +300,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                                   input_file,
                                   allow_overwrite,
                                   checksum_o) ->
-      let open Nsm_model in
-      Lwt.catch
-        (fun () ->
-           alba_client # upload_object_from_file
-             ~namespace
-             ~object_name ~input_file
-             ~checksum_o
-             ~allow_overwrite:(if allow_overwrite
-                               then Unconditionally
-                               else NoPrevious)
-           >>= fun (_mf , upload_stats) ->
-           let open Alba_statistics.Statistics in
-           ProxyStatistics.new_upload stats namespace upload_stats.total;
-           Lwt.return ()
-        )
-        (let open Alba_client_errors.Error in
-          function
-          | Err.Nsm_exn (Err.Overwrite_not_allowed, _) ->
-            Protocol.Error.failwith Protocol.Error.OverwriteNotAllowed
-          | Exn FileNotFound ->
-             Protocol.Error.failwith Protocol.Error.FileNotFound
-          | exn -> Lwt.fail exn)
+                       write_object_fs stats (namespace,
+                                              object_name,
+                                              input_file,
+                                              allow_overwrite,
+                                              checksum_o
+                                             ) >>= fun mf -> Lwt.return_unit
+    | WriteObjectFs2 -> write_object_fs
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->
@@ -362,6 +380,21 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          Lwt_unix.sleep delay >>= fun () ->
          let t0 = Unix.gettimeofday() in
          Lwt.return t0
+       end
+    | OsdInfo ->
+       fun stats () ->
+       begin
+         let cache = alba_client # osd_access # osds_info_cache in
+         let info =
+           Hashtbl.fold
+             (fun osd_id (osd,_) (c,acc) ->
+               let c' = c + 1
+               and acc' = (osd_id, osd) :: acc
+               in
+               (c',acc')
+             ) cache (0,[])
+         in
+         Lwt.return info
        end
   in
   let module Llio = Llio2.WriteBuffer in

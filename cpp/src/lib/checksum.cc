@@ -103,6 +103,12 @@ template <> void from(message &m, alba::Checksum *&r) {
   }
 }
 
+template <> void from(message &m, std::unique_ptr<alba::Checksum> &p) {
+  alba::Checksum *c;
+  from(m, c);
+  p.reset(c);
+}
+
 template <>
 void to(message_builder &mb, alba::Checksum const *const &checksum) noexcept {
   checksum->to(mb);

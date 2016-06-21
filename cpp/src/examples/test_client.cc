@@ -30,7 +30,7 @@ but WITHOUT ANY WARRANTY of any kind.
 using std::string;
 using std::cout;
 using std::endl;
-using alba::proxy_client::TCPProxy_client;
+
 using namespace alba::stuff;
 
 namespace po = boost::program_options;

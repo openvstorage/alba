@@ -126,8 +126,20 @@ RUN apt-get update && apt-get -y --force-yes install \
       clang-3.5 \
       libboost1.57-all liblttng-ust0 librdmacm1 libtokyocabinet9 \
       libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
-      libhiredis0.10 liblz4-1 libxio0 \
-      omniorb-nameserver
+      libhiredis0.10 liblz4-1 libxio-dev libxio0 \
+      omniorb-nameserver \
+      libunwind8-dev libaio1 libaio1-dbg libaio-dev \
+      libz-dev libbz2-dev \
+      libboost-all-dev libgoogle-glog-dev
+
+RUN git clone https://github.com/openvstorage/gobjfs.git
+RUN cd gobjfs  && git pull && git checkout 5f415c425a1d818138e1c9dcc177cefde14787a4
+RUN cd gobjfs \
+       && mkdir build \
+       && cd build \
+       && cmake .. \
+       && make \
+       && cp ../lib/lib*.so /usr/local/lib
 
 ## This only works from inside the OVS lan...
 # http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201606011734.d6c3c04_amd64.ddeb
