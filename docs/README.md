@@ -62,4 +62,4 @@ More info on the ALBA config files can be found [here](https://openvstorage.gitb
 
 
 ## ALBA Log files
-The log files for the ALBA maintenance process and the rebalancer can be found under `/var/log/upstart/ovs-alba-maintenance_<backend_name>.log` and `/var/log/upstart/ovs-alba-rebalancer_<backend_name>.log`.
+The log files for the ALBA maintenance process can be found under `/var/log/upstart/ovs-alba-maintenance_<backend_name>.log` and `/var/log/upstart/ovs-alba-rebalancer_<backend_name>.log`.
