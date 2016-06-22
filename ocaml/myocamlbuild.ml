@@ -141,7 +141,12 @@ let _ = dispatch &
                   "src/tools/alba_wrappers_stubs.o";
                   "src/other/posix_stubs.o"
                  ];
+             dep ["ocaml"; "compile";]
+                 ["src/tools/alba_rora_stubs.o";];
 
+             flag ["ocaml"; "link"; ]
+                  (S[A"-cclib";A "-Wl,-E"; (* link like this to allow ctype-style bindings *)
+                     A"src/tools/alba_rora_stubs.o";]);
              flag ["c";"compile"]
                   (S[A"-ccopt"; A"-Wall";
                      A"-ccopt"; A"-Wextra";
