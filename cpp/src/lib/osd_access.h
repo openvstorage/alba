@@ -21,6 +21,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <map>
 #include <vector>
 #include <memory>
+#include <mutex>
 #include "osd_info.h"
 namespace alba{
 namespace proxy_client{
@@ -46,6 +47,7 @@ public:
     bool read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 private:
     OsdAccess(){}
+    std::mutex _osd_infos_mutex;
     std::map<osd_t, std::unique_ptr<OsdInfo>> _osd_infos;
 
     bool read_osd_slices(osd_t, std::vector<asd_slice>&);

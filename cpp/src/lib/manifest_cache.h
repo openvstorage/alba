@@ -20,6 +20,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <utility>
 #include <string>
 #include <map>
+#include <mutex>
 #include "manifest.h"
 
 namespace alba {
@@ -44,6 +45,8 @@ public:
 
 private:
   ManifestCache() {}
+
+  std::mutex _cache_mutex;
   std::map<strpair, std::unique_ptr<Manifest>> _cache;
 };
 }

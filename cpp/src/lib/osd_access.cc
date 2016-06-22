@@ -33,13 +33,20 @@ OsdAccess &OsdAccess::getInstance(){
 bool OsdAccess::osd_is_known(osd_t osd){
   return (_osd_infos.find(osd) == _osd_infos.end());
 }
+
 void OsdAccess::update(std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &infos){
   ALBA_LOG(DEBUG, "OsdAccess::update");
+
+  _osd_infos_mutex.lock();
+
   _osd_infos.clear();
   for (std::pair<osd_t, std::unique_ptr<OsdInfo>> &p : infos) {
     osd_t osd = p.first;
     _osd_infos.emplace(osd, std::move(p.second));
   }
+
+  _osd_infos_mutex.unlock();
+
 }
 
 bool OsdAccess::read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &per_osd){
