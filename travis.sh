@@ -148,6 +148,23 @@ install () {
 
     date
 
+    sudo apt-get -y install \
+         libxio0 libxio-dev \
+         libunwind8-dev \
+         libaio-dev libaio1 libaio1-dbg \
+         libz-dev libbz2-dev libgoogle-glog-dev
+
+    echo "Installing gobjfs"
+    git clone https://github.com/openvstorage/gobjfs.git
+    cd gobjfs
+    git pull
+    git checkout ea7d54788591ff0829e1465f28258448064ca742
+    mkdir build
+    cd build
+    cmake ..
+    make
+    cp ../lib/lib*.so /usr/local/lib
+
     echo "Installing etcd"
     curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
     tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
