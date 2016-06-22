@@ -1654,6 +1654,7 @@ let run_server
                           num_cores
                           queue_depth
            in
+           let () = _rora_server := Some awakene in
            Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->
            asleep  >>= fun () ->
            let _ = Rora_server.stop handle in
