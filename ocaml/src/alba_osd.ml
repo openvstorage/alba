@@ -267,15 +267,25 @@ let rec make_client
       ~osd_access
       ~tls_config ()
   in
-  alba_client # mgr_access # get_alba_id >>= fun alba_id ->
-  begin
-    (* ensure the global prefix namespace exists *)
-    let namespace = prefix in
-    alba_client # mgr_access # get_namespace ~namespace >>= function
-    | Some _ -> Lwt.return ()
-    | None ->
-       alba_client # create_namespace ~namespace ~preset_name () >>= fun _ ->
-       Lwt.return ()
-  end >>= fun () ->
-  let client = new client alba_client ~alba_id ~prefix ~preset_name in
-  Lwt.return ((client :> Osd.osd), closer)
+  let closer () =
+    mgr_access # finalize;
+    osd_access # finalize;
+    closer ()
+  in
+  Lwt.catch
+    (fun () ->
+     alba_client # mgr_access # get_alba_id >>= fun alba_id ->
+     begin
+       (* ensure the global prefix namespace exists *)
+       let namespace = prefix in
+       alba_client # mgr_access # get_namespace ~namespace >>= function
+       | Some _ -> Lwt.return ()
+       | None ->
+          alba_client # create_namespace ~namespace ~preset_name () >>= fun _ ->
+          Lwt.return ()
+     end >>= fun () ->
+     let client = new client alba_client ~alba_id ~prefix ~preset_name in
+     Lwt.return ((client :> Osd.osd), closer))
+    (fun exn ->
+     closer () >>= fun () ->
+     Lwt.fail exn)
