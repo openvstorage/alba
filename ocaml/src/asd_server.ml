@@ -1354,7 +1354,7 @@ let run_server
     | None -> Lwt.return_unit
     | Some w ->
        begin
-         Lwt_log.fatal_f "closing rora server" >>= fun () ->
+         Lwt_log.fatal "closing rora server" >>= fun () ->
          Lwt.wakeup w ();
          Lwt.return_unit
        end
@@ -1641,7 +1641,7 @@ let run_server
            | None -> "127.0.0.1"
            | Some h -> h
          in
-         let asleep, awakene = Lwt.wait() in
+         let sleeper, awakener = Lwt.wait() in
          let t =
            Lwt_log.debug_f "starting rora server host:%s port:%i" host port
            >>= fun () ->
@@ -1654,9 +1654,9 @@ let run_server
                           num_cores
                           queue_depth
            in
-           let () = _rora_server := Some awakene in
+           let () = _rora_server := Some awakener in
            Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->
-           asleep  >>= fun () ->
+           sleeper  >>= fun () ->
            let _ = Rora_server.stop handle in
            Lwt.return_unit
          in t:: threads

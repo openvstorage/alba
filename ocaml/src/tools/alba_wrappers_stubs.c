@@ -61,6 +61,7 @@ static void* _DB_POINTER = NULL;
 
 CAMLprim value alba_register_db( value v )
 {
+    CAMLparam1(v);
     uint64_t i;
     i = Long_val(v);
     _DB_POINTER= (void*) i;
@@ -74,7 +75,7 @@ CAMLprim value alba_register_db( value v )
     (a ~4KB buffer is more than enough)
 */
 
-int rocks_db_transformer(const char* old,
+int alba_rocks_db_transformer(const char* old,
                          /*const*/ int old_len,
                          char* new_name){
     printf("rocks_db_transformer (DB pointer: %p)\n", _DB_POINTER);
@@ -105,15 +106,16 @@ CAMLprim value alba_start_rora_server(value v_transport,
                                       value v_queue_depth
     ){
     CAMLparam5(v_transport, v_host, v_port, v_number_cores, v_queue_depth);
-
+    CAMLlocal1(ml_xi);
     const char* transport = String_val(v_transport);
     const char* host = String_val(v_host);
     const int port = Int_val(v_port);
     const int32_t number_cores = Int_val(v_number_cores);
     const int32_t queue_depth = Int_val(v_queue_depth);
-    /*const*/ void* file_translator_func = &rocks_db_transformer;
+    /*const*/ void* file_translator_func = &alba_rocks_db_transformer;
     const bool is_new_instance = false;
     printf("port=%i\n", port);
+    fflush(stdout);
     void* x = gobjfs_xio_server_start(
         transport,
         host,
@@ -127,14 +129,15 @@ CAMLprim value alba_start_rora_server(value v_transport,
     printf("server:%p\n",x);
     fflush(stdout);
     int64_t xi = (int64_t) x;
-    return caml_copy_int64(xi);
+    ml_xi = caml_copy_int64(xi);
+    CAMLreturn(ml_xi);
 }
 
 CAMLprim value alba_stop_rora_server(value v_handle){
     CAMLparam1(v_handle);
     const int64_t handle = Int64_val(v_handle);
-    const void* p = (void*) handle;
-    printf("server:%p\n", p);
+    void* p = (void*) handle;
+    printf("stop server:%p\n", p);
     fflush(stdout);
     int rc = gobjfs_xio_server_stop(p);
     return Val_int(rc);
