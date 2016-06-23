@@ -41,7 +41,7 @@ module Config = struct
       alba_06_plugin_path :string;
       license_file : string;
       tls : bool;
-
+      ip: string option;
       alba_rdma : string option; (* ip of the rdma capable nic *)
       alba_rora : bool; (* use rora back door on ASDs *)
       local_nodeid_prefix : string;
@@ -104,6 +104,7 @@ module Config = struct
     let tls = env_or_default "ALBA_TLS" "false" |> get_bool in
     let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
     and alba_rora = env_or_default "ALBA_RORA" "false" |> get_bool
+    and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     in
     {
       home;
@@ -121,6 +122,7 @@ module Config = struct
       alba_06_plugin_path;
       license_file;
       tls;
+      ip = alba_ip;
       alba_rdma;
       alba_rora;
       local_nodeid_prefix;
@@ -769,11 +771,11 @@ let make_asd_config
       ~use_rora
       ~(port:int)
       ?transport
-      ?ip
+      ~(ip:string option)
       node_id asd_id home tls
   =
   let ips = match ip with
-    | None -> []
+    | None -> failwith "no ip ?";
     | Some ip -> [ip]
   in
   let rora_port = match use_rora with
@@ -800,12 +802,12 @@ let make_asd_config
 
 
 
-class asd ?write_blobs ?transport ?ip ~use_rora
+class asd ?write_blobs ?transport ~ip ~use_rora
           node_id asd_id alba_bin arakoon_path home ~(port:int) ~etcd tls
   =
   let use_tls = tls <> None in
   let asd_cfg = make_asd_config
-                  ?write_blobs ?transport ?ip
+                  ?write_blobs ?transport ~ip
                   node_id asd_id home ~port tls ~use_rora
   in
 
@@ -960,7 +962,7 @@ module Deployment = struct
   let make_osds
         ?(base_port=8000)
         ?write_blobs
-        ?transport ?ip ~use_rora
+        ?transport ~ip ~use_rora
         n local_nodeid_prefix base_path arakoon_path alba_bin
         ~etcd (tls:bool) =
     let rec loop asds j =
@@ -989,7 +991,7 @@ module Deployment = struct
           let asd = new asd
                         ?write_blobs
                         ?transport
-                        ?ip
+                        ~ip
                         ~use_rora
                         node_id_s asd_id
                         alba_bin
@@ -1003,7 +1005,8 @@ module Deployment = struct
     loop [] 0
 
   let make_default
-        ?(cfg = Config.default) ?(base_port=4000)
+        ?(cfg = Config.default)
+        ?(base_port=4000)
         ?write_blobs ?fragment_cache () =
     let abm =
       let id = "abm"
@@ -1026,7 +1029,7 @@ module Deployment = struct
     in
     let transport,ip =
       match cfg.alba_rdma with
-      | None -> None,None
+      | None -> None, cfg.ip
       | Some ip ->Some "rdma", Some ip
     in
     let proxy = new proxy
@@ -1039,7 +1042,7 @@ module Deployment = struct
     let osds = make_osds ~base_port:(base_port*2)
                          ?write_blobs
                          ?transport ~use_rora:cfg.alba_rora
-                         ?ip
+                         ~ip:cfg.ip
                          cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
@@ -1432,8 +1435,15 @@ module Test = struct
 
   let _get_ip_transport cfg =
     match cfg.alba_rdma with
-        | None -> "127.0.0.1","TCP"
-        | Some rdma -> rdma,"RDMA"
+    | None   ->
+       begin
+         let ip = match cfg.ip with
+         | None    -> "127.0.0.1"
+         | Some ip -> ip
+         in
+         ip, "TCP"
+       end
+    | Some rdma -> rdma, "RDMA"
 
   let backend_cfg_persister cfg =
     let backend_cfg =
@@ -2006,6 +2016,7 @@ module Test = struct
                                       tx.cfg.local_nodeid_prefix
                                       tx.cfg.alba_base_path
                                       tx.cfg.arakoon_path
+                                      ~ip:tx.cfg.ip
                                       ~use_rora:false
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
