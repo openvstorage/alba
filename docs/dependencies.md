@@ -1,6 +1,6 @@
 |    lib                                                            |rdb|changes|link type | license type  |      |      |
 | -- | -- | -- | -- | -- | -- | -- |
-| [boost](boost|http://www.boost.org/) |   |       |shared    | boost license | \ | \ |
+| [boost](http://www.boost.org/) |   |       |shared    | boost license | \ | \ |
 | [Jerasure](http://web.eecs.utk.edu/~plank/plank/www/software.html) |   |       |shared    |               | \ | \ |
 | [rocksdb](http://rocksdb.org/)                                     |   |       |shared    | BSD           | \ | \ |
 | [bz2](http://www.bzip.org/)                                       |   |       |shared    | BSD-like      | \ | \ |
