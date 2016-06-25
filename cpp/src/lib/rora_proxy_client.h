@@ -96,9 +96,9 @@ private:
 
   void
   _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);
-  bool _short_path_many(const std::string &namespace_,
+  int _short_path_many(const std::string &namespace_,
                         const std::vector<short_path_entry> &short_path);
-  bool _short_path_one(const std::string &namespace_,
+  int _short_path_one(const std::string &namespace_,
                        const proxy_protocol::ObjectSlices &object_slices,
                        const proxy_protocol::Manifest &manifest);
 };

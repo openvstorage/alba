@@ -109,6 +109,7 @@ struct Manifest {
   uint32_t version_id;
   uint32_t max_disks_per_node;
   double timestamp = 1.0;
+  uint32_t namespace_id;
 
   boost::optional<lookup_result_t> to_chunk_fragment(uint32_t offset) const;
 

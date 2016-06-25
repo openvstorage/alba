@@ -30,17 +30,85 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <assert.h>
 #include <gobjfs_server.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 static void* _DB_POINTER = NULL;
+static char* _ROOT_PATH = NULL;
+static int   _ROOT_PATH_LENGTH = -1;
 
-CAMLprim value alba_register_db( value v )
-{
-    CAMLparam1(v);
-    uint64_t i;
-    i = Long_val(v);
-    _DB_POINTER= (void*) i;
-    return Val_unit;
+
+rocksdb_t* alba_rocksdb_open_and_register(
+    const rocksdb_options_t* options,
+    const char* name, char** errptr
+    ){
+    rocksdb_t* result = rocksdb_open(options, name, errptr);
+    _DB_POINTER = result;
+    return result;
 }
+
+
+char hexlify(uint8_t c) {
+    char r;
+    if (c < 10) {
+        r = c + 48;
+    } else {
+        r = c + 87;
+    }
+    return r;
+}
+
+void convert_hex(uint8_t c, char* tgt) {
+    char h0 = hexlify(c >> 4);
+    char h1 = hexlify(c & 0x0f);
+    tgt[0] = h0;
+    tgt[1] = h1;
+}
+
+
+int _get_fnr_flen(char* returned_value, uint64_t *fnr, uint32_t *flen){
+    printf("_get_fnr_flen\n");fflush(stdout);
+    //
+    // 03 3f 57 45 d9 02 00 00 00 00 00 00 00 00 d7 f2 0a 00
+    int pos = 0;
+    printf("xxxx\n");fflush(stdout);
+    uint8 checksum_type = returned_value[pos++];
+    printf("checksum_type:%i\n", checksum_type);fflush(stdout);
+    assert(checksum_type = 3);
+    pos += 4;// crc
+    uint8 blob_type = returned_value[pos++];
+    printf("blob_type:%i\n", blob_type);fflush(stdout);
+    assert(blob_type = 2);//on Fs.
+
+    char* fnr_addr       = &returned_value[pos];
+    uint64_t* fnr_addr64 = (uint64_t*) fnr_addr;
+    uint64_t _fnr = *fnr_addr64;
+    *fnr = _fnr;
+
+    printf("_fnr:%Lx\n", _fnr);fflush(stdout);
+    pos += 8;
+    char* flen_addr = &returned_value[pos];
+    uint32_t* flen_addr32 = (uint32_t*) flen_addr;
+    uint32_t _flen = *flen_addr32;
+    printf("_flen:%lx\n", _flen);fflush(stdout);
+    *flen = _flen;
+
+
+    return 0;
+}
+
+int file_exists (char * fileName)
+{
+    struct stat buf;
+    int i = stat ( fileName, &buf );
+    /* File found */
+    if ( i == 0 )
+    {
+        return 1;
+    }
+    return 0;
+
+}
+
 
 /**
     new_name needs to be a '\0' terminated C-string
@@ -51,32 +119,77 @@ CAMLprim value alba_register_db( value v )
 int alba_rocks_db_transformer(const char* old,
                          /*const*/ int old_len,
                          char* new_name){
-    printf("rocks_db_transformer (DB pointer: %p)\n", _DB_POINTER);
+    printf("rocks_db_transformer (DB pointer: %p) old_len:%i\n", _DB_POINTER, old_len);
     fflush(stdout);
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
+    if (old_len <= 0){
+        return -1;
+    }
+    // add the prefix for public keys.
+    int public_key_len = old_len + 1;
+    char* public_key = (char*) malloc(public_key_len);
+
+    public_key[0] = '\x00';
+    memcpy(&public_key[1], old, old_len);
+
     size_t len;
     char *err = NULL;
     char *returned_value =
-        rocksdb_get(_DB_POINTER, readoptions, old, old_len, &len, &err);
+        rocksdb_get(_DB_POINTER, readoptions, public_key, public_key_len, &len, &err);
+
     if(err){
         printf("err:%s\n",err);
         fflush(stdout);
         free(err);
-        return 1;
+        return -1;
     }
-    printf("new_name:%s", new_name);
-    fflush(stdout);
+    if(returned_value == NULL){
+        return -1;
+    }
+
+    uint32_t fragment_length;
+    uint64_t fnr;
+    _get_fnr_flen(returned_value, &fnr, &fragment_length);
     assert(len < 4096);
-    strcpy(returned_value,new_name);
-    free(returned_value);
-    return 0;
+    int result = -1;
+    if (returned_value != NULL){
+        memcpy(new_name,_ROOT_PATH,_ROOT_PATH_LENGTH);
+        size_t pos = 0;
+        size_t new_name_pos = _ROOT_PATH_LENGTH;
+        new_name[new_name_pos++] = '/';
+
+        uint8_t cs[] = {0,0,0,0, 0,0,0,0};
+        for(int i= 7;i>=0;i--){
+            cs[i] = fnr & 0xff;
+            fnr = fnr >> 8;
+        }
+        while(pos < 7){
+            uint8_t c = cs[pos];
+            convert_hex(c, &new_name[new_name_pos]);
+            pos ++;
+            new_name_pos += 2;
+            new_name[new_name_pos++] = '/';
+        }
+        sprintf(&new_name[new_name_pos], "%016x", cs[7]);
+        /*
+        if(file_exists(new_name)==1){
+            printf("this file EXISTS\n");fflush(stdout);
+        }
+        */
+        free(returned_value);
+        result = 0;
+    }
+    free(public_key);
+    return result;
 }
 
 int64_t alba_alternative_start(const char* transport,
                                const char* host,
                                const int port,
                                const int cores,
-                               const int queue_depth
+                               const int queue_depth,
+                               const char* root_path,
+                               const int root_path_len
                                ){
     void* x = gobjfs_xio_server_start(
                                       transport,
@@ -87,41 +200,19 @@ int64_t alba_alternative_start(const char* transport,
                                       (void*) &alba_rocks_db_transformer,
                                       false
                                       );
+    _ROOT_PATH=(char*)malloc(root_path_len);
+    _ROOT_PATH_LENGTH = root_path_len;
+    memcpy(_ROOT_PATH,root_path,_ROOT_PATH_LENGTH);
+
     return (int64_t)x;
 }
 
-
-CAMLprim value alba_start_rora_server(value v_transport,
-                                      value v_host,
-                                      value v_port,
-                                      value v_number_cores,
-                                      value v_queue_depth
-    ){
-    CAMLparam5(v_transport, v_host, v_port, v_number_cores, v_queue_depth);
-    CAMLlocal1(ml_xi);
-    /*const*/ void* file_translator_func = &alba_rocks_db_transformer;
-    void* x = gobjfs_xio_server_start(
-        String_val(v_transport),
-        String_val(v_host),
-        Int_val(v_port),
-        Int_val(v_number_cores),
-        Int_val(v_queue_depth),
-        file_translator_func,
-        false
-        );
-    if (x == 0){
-       caml_failwith("could not start rora server");
-    }
-    int64_t xi = (int64_t) x;
-    ml_xi = caml_copy_int64(xi);
-    CAMLreturn(ml_xi);
-
-}
 
 CAMLprim value alba_stop_rora_server(value v_handle){
     CAMLparam1(v_handle);
     const int64_t handle = Int64_val(v_handle);
     void* p = (void*) handle;
     int rc = gobjfs_xio_server_stop(p);
+    free(_ROOT_PATH);
     return Val_int(rc);
 }

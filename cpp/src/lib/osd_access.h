@@ -50,7 +50,7 @@ private:
     std::mutex _osd_infos_mutex;
     std::map<osd_t, std::unique_ptr<OsdInfo>> _osd_infos;
 
-    bool read_osd_slices(osd_t, std::vector<asd_slice>&);
+    int read_osd_slices(osd_t, std::vector<asd_slice>&);
 };
 
 }

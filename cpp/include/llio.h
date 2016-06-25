@@ -145,6 +145,9 @@ void to(message_builder &mb, const std::vector<T> &ts) noexcept {
   }
 }
 
+void to_be(message_builder &mb, const uint32_t &i) noexcept;
+
+
 template <typename T> void from(message &m, std::vector<T> &ts) noexcept {
 
   uint32_t size;

@@ -80,7 +80,7 @@ let _easiest_upload () =
        ~allow_overwrite:(if allow_overwrite
                          then Unconditionally
                          else NoPrevious)
-     >>= fun (manifest, _) ->
+     >>= fun (manifest, _,_) ->
      Lwt_io.printlf "manifest=%s" ([%show : Nsm_model.Manifest.t] manifest)
      >>= fun()->
      let open Manifest in
@@ -92,7 +92,7 @@ let _easiest_upload () =
 let easiest_upload ctx =
   let () =
     Lwt_log.default :=
-      Lwt_log.channel 
+      Lwt_log.channel
         ~channel:Lwt_io.stdout
         ~close_mode:`Keep
         ~template:"$(date).$(milliseconds) $(message)"
@@ -102,7 +102,7 @@ let easiest_upload ctx =
   in
   Lwt_engine.set (new Lwt_rsocket.rselect);
 
-  
+
   let dump_stats =
     let t0 = Unix.gettimeofday() in
     fun () ->
@@ -132,7 +132,7 @@ let easiest_upload ctx =
           _easiest_upload())
       (fun () ->
         dump_stats ()
-        
+
       )
   in
   let combined = Lwt.pick [t (); report ()] in

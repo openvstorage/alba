@@ -1272,7 +1272,6 @@ class check_garbage_from_advancer check_garbage_from kv =
       end
   end
 
-let register_rocks_for_callback rocks = Alba_wrappers.RocksCB.register_db rocks
 let _rora_server = ref None
 
 let run_server
@@ -1348,7 +1347,6 @@ let run_server
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->
-  let () = register_rocks_for_callback db in
   let maybe_shutdown_rora_server () =
     match !_rora_server with
     | None -> Lwt.return_unit
@@ -1653,6 +1651,8 @@ let run_server
                           port
                           num_cores
                           queue_depth
+                          files_path
+                          (String.length files_path)
            in
            let () = _rora_server := Some awakener in
            Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->

@@ -20,8 +20,3 @@ module Sys2 : sig
     val get_maxrss : unit -> int
     val lwt_get_maxrss : unit -> int Lwt.t
 end
-
-module RocksCB : sig
-  val register_db : Rocks.RocksDb.t -> unit
-
-end

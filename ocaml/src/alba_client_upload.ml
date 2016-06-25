@@ -588,7 +588,7 @@ let store_manifest
     manifest_cache
     namespace_id object_name manifest;
 
-  Lwt.return (manifest, t_object)
+  Lwt.return (manifest, t_object, namespace_id)
 
 let upload_object'
       nsm_host_access osd_access

@@ -88,16 +88,25 @@ std::tuple<std::vector<std::string>, has_more> RoraProxy_client::list_objects(
                                  include_last_, max, reverse_);
 }
 
-std::string fragment_key(const std::string &object_id, uint32_t version_id,
+std::string fragment_key(const uint32_t namespace_id,
+                         const std::string &object_id, uint32_t version_id,
                          uint32_t chunk_id, uint32_t fragment_id) {
   llio::message_builder mb;
+  char instance_content_prefix = 'p';
+  mb.add_raw(&instance_content_prefix, 1);
+  uint32_t zero = 0;
+  to(mb, zero);
+  char namespace_char = 'n';
+  mb.add_raw(&namespace_char, 1);
+  llio::to_be(mb, namespace_id);
   char prefix = 'o';
   mb.add_raw(&prefix, 1);
   to(mb, object_id);
   to(mb, chunk_id);
   to(mb, fragment_id);
   to(mb, version_id);
-  return mb.as_string();
+  std::string r = mb.as_string();
+  return r.substr(4,r.size() - 4);
 }
 
 void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
@@ -135,7 +144,7 @@ void RoraProxy_client::_maybe_update_osd_infos(
   }
 }
 
-bool RoraProxy_client::_short_path_one(const std::string &namespace_,
+int RoraProxy_client::_short_path_one(const std::string &namespace_,
                                        const ObjectSlices &object_slices,
                                        const Manifest &manifest) {
 
@@ -172,7 +181,8 @@ bool RoraProxy_client::_short_path_one(const std::string &namespace_,
       }
 
       std::string key =
-          fragment_key(manifest.object_id, coords.fragment_version,
+          fragment_key(manifest.namespace_id,
+                       manifest.object_id, coords.fragment_version,
                        coords.chunk_index, coords.fragment_index);
 
       auto slice = asd_slice{key, coords.pos_in_fragment, bytes_in_slice, buf};
@@ -186,21 +196,21 @@ bool RoraProxy_client::_short_path_one(const std::string &namespace_,
   // everything to read is now nicely sorted per osd.
   _maybe_update_osd_infos(per_osd);
   _dump(per_osd);
-  bool ok = OsdAccess :: getInstance().read_osds_slices(per_osd);
-  return ok;
+  return OsdAccess :: getInstance().read_osds_slices(per_osd);
 }
 
-bool RoraProxy_client::_short_path_many(
+int RoraProxy_client::_short_path_many(
     const std::string &namespace_,
     const std::vector<short_path_entry> &short_path) {
   // for now, we can't do it.
   ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", ...)");
-  bool result = true;
+  int result = 0;
   for (auto &object_slices_mf : short_path) {
     auto object_slices = object_slices_mf.first;
     // in // ?
-    result &=
-        _short_path_one(namespace_, object_slices, object_slices_mf.second);
+    int current_result = _short_path_one(namespace_, object_slices, object_slices_mf.second);
+    ALBA_LOG(DEBUG, "current_result=" << current_result);
+    result |= current_result;
   }
   return result;
 }
@@ -232,13 +242,16 @@ void RoraProxy_client::read_objects_slices(
 
     _delegate->read_objects_slices(namespace_, via_proxy, consistent_read_);
     // short_path.
-    if (!_short_path_many(namespace_, short_path)) {
+    int result = _short_path_many(namespace_, short_path);
+    ALBA_LOG(DEBUG, "_short_path_many => " << result);
+    if (result) {
+      ALBA_LOG(DEBUG, "result=" << result <<" => partial read via delegate");
       std::vector<ObjectSlices> via_proxy2;
       for (auto &p : short_path) {
         auto object_slices = p.first;
         via_proxy2.push_back(object_slices);
       }
-      ALBA_LOG(DEBUG, "partial read via delegate");
+
       _delegate->read_objects_slices(namespace_, via_proxy2, consistent_read_);
     }
   }

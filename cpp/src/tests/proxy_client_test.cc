@@ -295,17 +295,45 @@ TEST(proxy_client, test_osd_info){
     }
 }
 
-TEST(proxy_client, test_partial_read){
+void _generic_partial_read_test(std::string& namespace_,
+                                std::string& name,
+                                std::vector<proxy_protocol::ObjectSlices>& objects_slices){
     init_log();
     config cfg;
     auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+    client -> create_namespace(namespace_, boost::none);
+
+    string file("./ocaml/alba.native");
+    client -> write_object_fs(namespace_, name, file,
+                              proxy_client::allow_overwrite::T,
+                              nullptr);
+    client -> read_objects_slices(namespace_,
+
+                                  objects_slices,
+                                  proxy_client::consistent_read::F);
+}
+
+TEST(proxy_client, test_partial_read_trivial){
+    std::string namespace_("test_partial_read_trivial");
     std::ostringstream sos;
     sos << "with_manifest" << std::rand();
     string name = sos.str();
-    string file("./ocaml/alba.native");
-    client -> write_object_fs(cfg.NAMESPACE, name, file,
-                              proxy_client::allow_overwrite::T,
-                              nullptr);
+    using namespace proxy_protocol;
+    byte * buf = new byte[8192];
+    SliceDescriptor sd {buf, 0,4096};
+
+    std::vector<SliceDescriptor> slices { sd };
+    ObjectSlices object_slices{name, slices};
+    std::vector<ObjectSlices> objects_slices {object_slices};
+    _generic_partial_read_test(namespace_, name, objects_slices);
+    delete [] buf;
+}
+
+TEST(proxy_client, test_partial_read_multislice){
+    std::string namespace_("test_partial_read_multi_slice");
+    std::ostringstream sos;
+    sos << "with_manifest" << std::rand();
+    string name = sos.str();
     using namespace proxy_protocol;
     byte * buf = new byte[8192];
     SliceDescriptor sd {buf, 0,4096};
@@ -313,13 +341,36 @@ TEST(proxy_client, test_partial_read){
     //slice that spans 2 fragments.
     SliceDescriptor sd2{&buf[4096], (1<<20) -10 , 4096};
 
-    std::vector<SliceDescriptor> slices { sd,sd2};
+    std::vector<SliceDescriptor> slices { sd , sd2 };
     ObjectSlices object_slices{name, slices};
     std::vector<ObjectSlices> objects_slices {object_slices};
+    _generic_partial_read_test(namespace_, name, objects_slices);
+    delete [] buf;
+}
 
-    client -> read_objects_slices(cfg.NAMESPACE,
-                                  objects_slices,
-                                  proxy_client::consistent_read::F
-        );
+TEST(proxy_client, test_partial_reads){
+    init_log();
+    config cfg;
+    std::string namespace_("test_partial_reads");
+    std::ostringstream sos;
+    sos << "with_manifest" << std::rand();
+    string name = sos.str();
+    using namespace proxy_protocol;
+    byte * buf = new byte[32768];
+    auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+    client -> create_namespace(namespace_, boost::none);
+    string file("./ocaml/alba.native");
+    client -> write_object_fs(namespace_, name, file,
+                              proxy_client::allow_overwrite::T,
+                              nullptr);
+    for(int i = 0;i < 8;i++){
+        SliceDescriptor sd {buf, 0, 4096};
+        std::vector<SliceDescriptor> slices { sd };
+        ObjectSlices object_slices{name, slices};
+        std::vector<ObjectSlices> objects_slices {object_slices};
+        client -> read_objects_slices(namespace_,
+                                      objects_slices,
+                                      proxy_client::consistent_read::F);
+    }
     delete [] buf;
 }

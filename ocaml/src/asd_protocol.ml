@@ -463,7 +463,7 @@ module Protocol = struct
          Llio.pair_to
            (Llio.list_to Slice.to_buffer')
            priority_to_buffer'
-      | MultiGet2 -> 
+      | MultiGet2 ->
          Llio.pair_to
            (Llio.list_to Slice.to_buffer')
            priority_to_buffer'

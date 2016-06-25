@@ -20,6 +20,7 @@
 
 #include <gobjfs_client.h>
 #include <assert.h>
+#include "stuff.h"
 
 namespace alba {
 namespace proxy_client{
@@ -59,9 +60,8 @@ bool OsdAccess::read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &per_os
 }
 
 using namespace gobjfs::xio;
-bool OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
+int OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
     ALBA_LOG(DEBUG, "OsdAccess::read_osd_slices(" << osd << ")");
-    bool ok = true;
 
     std::shared_ptr<gobjfs::xio::client_ctx_attr> ctx_attr = ctx_attr_new();
 
@@ -96,6 +96,11 @@ bool OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
         iocb -> aio_nbytes = slice.len;
         iocb -> aio_buf    = slice.bytes;
         std::string& key = slice.key;
+
+        std::cout << std::endl;
+        alba::stuff::dump_buffer(std::cout, key.data(), key.size());
+        std::cout << std::endl;
+
         iocb_vec.push_back(iocb);
         key_vec.push_back(key);
     }
@@ -107,13 +112,10 @@ bool OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
         aio_finish(ctx, elem);
         free(elem);
     }
-    if(ret != 0){
-        ok = false;
-    }
-
+    ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
     //ctx_destroy(ctx);
     //ctx_attr_destroy(ctx_attr);
-    return ok;
+    return ret;
 }
 }
 }

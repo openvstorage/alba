@@ -237,10 +237,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              ~allow_overwrite:(if allow_overwrite
                                then Unconditionally
                                else NoPrevious)
-           >>= fun (mf , upload_stats) ->
+           >>= fun (mf , upload_stats, namespace_id) ->
            let open Alba_statistics.Statistics in
            ProxyStatistics.new_upload stats namespace upload_stats.total;
-           Lwt.return mf
+           Lwt_log.debug_f "write_object_fs %S %S => namespace_id:%li"
+                           namespace object_name namespace_id
+           >>= fun () ->
+           Lwt.return (mf, namespace_id)
         )
         (let open Alba_client_errors.Error in
           function
@@ -305,7 +308,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                                               input_file,
                                               allow_overwrite,
                                               checksum_o
-                                             ) >>= fun mf -> Lwt.return_unit
+                                             )
+                       >>= fun (_mf, _namespace_id) ->
+                       Lwt.return_unit
     | WriteObjectFs2 -> write_object_fs
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch

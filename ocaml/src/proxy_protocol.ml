@@ -308,7 +308,7 @@ module Protocol = struct
                         * file_name
                         * overwrite
                         * Checksum.Checksum.t option,
-                        Nsm_model.Manifest.t) request
+                        Nsm_model.Manifest.t * int32 ) request
     | DeleteObject : (Namespace.name *
                       object_name *
                       may_not_exist,
@@ -478,7 +478,7 @@ module Protocol = struct
     | ListObjects -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | ReadObjectFs -> Deser.unit
     | WriteObjectFs -> Deser.unit
-    | WriteObjectFs2 -> Manifest_deser.deser
+    | WriteObjectFs2 -> Deser.tuple2 Manifest_deser.deser Deser.int32
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string

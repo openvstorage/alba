@@ -45,9 +45,9 @@ module Slice = struct
     Format.pp_print_string formatter (show t)
 
   let show_limited_escaped s =
-    if s.length < 50
-    then Printf.sprintf "%S" (get_string_unsafe s)
-    else "..."
+    if s.length < 60
+    then Printf.sprintf "Hex:%S" ((get_string_unsafe s)|> to_hex)
+    else Printf.sprintf "...(%i bytes)" s.length
 
   let pp_limited_escaped formatter t =
     Format.pp_print_string formatter (show_limited_escaped t)
