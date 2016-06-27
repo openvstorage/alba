@@ -159,7 +159,8 @@ int alba_rocks_db_transformer(const char* old,
         new_name[new_name_pos++] = '/';
 
         uint8_t cs[] = {0,0,0,0, 0,0,0,0};
-        for(int i= 7;i>=0;i--){
+        int i;
+        for(i= 7;i>=0;i--){
             cs[i] = fnr & 0xff;
             fnr = fnr >> 8;
         }
