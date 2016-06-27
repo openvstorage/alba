@@ -424,7 +424,7 @@ let asd_osd_info_from_kind k =
   let open Nsm_model.OsdInfo in
   match k with
   | Asd (x, _) -> x
-  | Kinetic _ | Alba _ -> assert false
+  | Kinetic _ | Alba _ | Alba2 _ -> assert false
 
 let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
   begin
