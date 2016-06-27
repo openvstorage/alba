@@ -282,15 +282,13 @@ TEST(proxy_client, test_osd_info){
     config cfg;
     auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
-    std::vector<std::pair<osd_t,
-                          std::unique_ptr<proxy_protocol::OsdInfo>
-                          >
-               > result;
+    std::vector<std::pair<osd_t, proxy_protocol::info_caps>> result;
 
     client -> osd_info(result);
     for(auto& p: result){
         auto osd = p.first;
-        const proxy_protocol::OsdInfo& osd_info = *p.second;
+        auto& ic =  p.second;
+        const proxy_protocol::OsdInfo& osd_info = *ic.first;
         std::cout << "osd:" << osd <<" info: " << osd_info << std::endl;
     }
 }

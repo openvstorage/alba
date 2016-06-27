@@ -92,6 +92,7 @@ class type key_value_osd =
     method get_version : (int * int * int * string) Lwt.t
     method get_long_id : string
     method get_disk_usage : (int64 * int64) Lwt.t
+    method capabilities : Capabilities.OsdCapabilities.t Lwt.t
   end
 
 type namespace_id = int32
@@ -118,6 +119,7 @@ class type osd = object
   method get_long_id : string
 
   method get_disk_usage : (int64 * int64) Lwt.t
+  method capabilities : Capabilities.OsdCapabilities.t Lwt.t
 end
 
 open Lwt.Infix
@@ -258,4 +260,5 @@ object(self :# osd)
   method get_version = key_value_osd # get_version
   method get_long_id = key_value_osd # get_long_id
   method get_disk_usage = key_value_osd # get_disk_usage
+  method capabilities = key_value_osd # capabilities
 end

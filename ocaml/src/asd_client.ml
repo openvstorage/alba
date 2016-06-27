@@ -302,6 +302,9 @@ class client (fd:Net_fd.t) id =
 
     method get_disk_usage () =
       self # query GetDiskUsage () Lwt.return
+
+    method capabilities () =
+      self # query Capabilities () Lwt.return
   end
 
 exception BadLongId of string * string
@@ -416,4 +419,5 @@ object(self :# Osd.key_value_osd)
   method get_version = asd # get_version ()
   method get_long_id = asd_id
   method get_disk_usage = asd # get_disk_usage ()
+  method capabilities = asd # capabilities ()
 end

@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "osd_info.h"
 #include "llio.h"
 #include <iostream>
-
+#include "alba_logger.h"
 namespace alba {
 namespace llio {
 template <> void from(message &m, proxy_protocol::OsdInfo &info) {
@@ -39,8 +39,30 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   from(inner, info.use_tls);
   from(inner, info.use_rdma);
 }
+
+template <> void from(message&m, proxy_protocol::OsdCapabilities &caps){
+    uint32_t size;
+    from(m, size);
+    for(uint i = 0;i < size;i++){
+        uint8_t version;
+        from(m, version);
+        assert(version == 1);
+        uint8_t tag;
+        from(m,tag);
+        switch(tag){
+        case 1: {};break;// for now, we don't care
+        case 2: {};break;
+        case 3: {
+            uint32_t port;
+            from(m,port);
+            caps.port.emplace(port);
+        };break;
+        default: { throw "serialization error"; };
+        }
+    }
 }
 
+}
 namespace proxy_protocol {
 std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
   using alba::stuff::operator<<;
@@ -49,5 +71,20 @@ std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
      << ", use_tls=" << info.use_tls << ", use_rdma=" << info.use_rdma << ")";
   return os;
 }
+
+std::ostream &operator<<(std::ostream& os, const OsdCapabilities &caps){
+    os << "OsdCapabilities( port= ";
+
+    if(boost::none == caps.port){
+        os <<"None";
+    }else{
+        int port = *caps.port;
+        os << "Some " << port;
+    }
+
+    os << ")";
+  return os;
+}
+
 }
 }

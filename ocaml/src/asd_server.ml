@@ -678,6 +678,20 @@ let execute_query : type req res.
        fun () ->
        let open AsdMgmt in
        return' (mgmt.latest_disk_usage, !(mgmt.capacity))
+    | Capabilities ->
+       fun () ->
+       let open Capabilities.OsdCapabilities in
+       let result0 = [CMultiGet2;CPartialGet] in
+       let len0 = List.length result0 in
+
+       let result =
+         match mgmt.AsdMgmt.rora_port with
+         | None   -> (len0, result0)
+         | Some p ->
+            let result1 = (CRoraFetcher p):: result0  in
+            (len0 + 1, result1)
+       in
+       return' result
 
 exception ConcurrentModification
 
@@ -1603,6 +1617,7 @@ let run_server
   let mgmt = AsdMgmt.make ~latest_disk_usage
                           ~capacity
                           ~limit
+                          ~rora_port
   in
 
   let protocol nfd =

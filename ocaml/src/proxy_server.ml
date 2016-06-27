@@ -365,9 +365,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        let state_info =
          Hashtbl.fold
            (fun osd_id ((osd:Nsm_model.OsdInfo.t),
-                        (state:Osd_state.t)) (c,acc) ->
+                        (state:Osd_state.t),
+                        (capabilities:Capabilities.OsdCapabilities.t)
+                       ) (c,acc) ->
             let c' = c+1
-            and acc' = (osd_id, osd, state) :: acc
+            and acc' = (osd_id, osd, state) :: acc (*TODO: capababilities? *)
             in
             (c',acc')
            )
@@ -392,9 +394,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          let cache = alba_client # osd_access # osds_info_cache in
          let info =
            Hashtbl.fold
-             (fun osd_id (osd,_) (c,acc) ->
+             (fun osd_id (osd, _, capabilities) (c,acc) ->
                let c' = c + 1
-               and acc' = (osd_id, osd) :: acc
+               and acc' = (osd_id, osd, capabilities) :: acc
                in
                (c',acc')
              ) cache (0,[])

@@ -322,7 +322,11 @@ void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
 
 void read_osd_info_response(
     message &m, Status &status,
-    std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result) {
+    std::vector<std::pair<osd_t,
+                         std::pair<std::unique_ptr<OsdInfo>,
+                                   std::unique_ptr<OsdCapabilities>>
+                         >
+                > &result) {
   read_status(m, status);
   if (status.is_ok()) {
     uint32_t n;
@@ -336,7 +340,12 @@ void read_osd_info_response(
       llio::message m2(mv);
       std::unique_ptr<OsdInfo> info(new OsdInfo);
       from(m2, *info);
-      result.push_back(std::make_pair(osd_id, std::move(info)));
+      std::unique_ptr<OsdCapabilities> caps (new OsdCapabilities);
+      from(m, *caps);
+      result.push_back(std::make_pair(osd_id,
+                                      std::make_pair(std::move(info),
+                                                     std::move(caps))
+                                          ));
     }
   }
 }

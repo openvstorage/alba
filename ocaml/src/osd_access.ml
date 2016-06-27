@@ -180,14 +180,14 @@ class osd_access
     let open Albamgr_protocol.Protocol in
     (Hashtbl.create 3
      : (Osd.id,
-        OsdInfo.t * Osd_state.t) Hashtbl.t) in
-  let add_osd_info ~osd_id osd_info =
+        OsdInfo.t * Osd_state.t  * Capabilities.OsdCapabilities.t) Hashtbl.t) in
+  let add_osd_info ~osd_id osd_info capabilities =
     if not (Hashtbl.mem osds_info_cache osd_id)
     then
       begin
         let open Albamgr_protocol.Protocol in
         let osd_state = Osd_state.make () in
-        let info' = (osd_info, osd_state) in
+        let info' = (osd_info, osd_state, capabilities) in
         Hashtbl.replace osds_info_cache osd_id info';
         let long_id = OsdInfo.(get_long_id osd_info.kind) in
         osd_long_id_claim_info :=
@@ -198,7 +198,7 @@ class osd_access
         Lwt_extra2.run_forever
             "refresh_osd_total_used"
             (fun () ->
-             let osd_info,osd_state = Hashtbl.find osds_info_cache osd_id in
+             let osd_info,osd_state,capabilities = Hashtbl.find osds_info_cache osd_id in
              Osd_pool.factory
                tls_config
                tcp_keepalive
@@ -209,10 +209,17 @@ class osd_access
 
              Lwt.finalize
                (fun () ->
-                osd # get_disk_usage >>= fun ((used,total ) as disk_usage) ->
+                 osd # get_disk_usage >>= fun ((used,total ) as disk_usage) ->
+                 Lwt.catch
+                   (fun () ->osd # capabilities)
+                   (fun exn -> Lwt.return capabilities)
+                 >>= fun capabilities' ->
+
                 Osd_state.add_disk_usage osd_state disk_usage;
                 let osd_info' = OsdInfo.{ osd_info with used;total } in
-                let () = Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state) in
+                let () = Hashtbl.replace osds_info_cache osd_id
+                                         (osd_info', osd_state, capabilities')
+                in
                 Lwt.return ())
                closer)
           60.
@@ -227,14 +234,14 @@ class osd_access
         | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
         | Some info -> info
       in
-      add_osd_info ~osd_id  osd_info;
+      add_osd_info ~osd_id  osd_info Capabilities.OsdCapabilities.default;
       Lwt.return (Hashtbl.find osds_info_cache osd_id)
   in
   let osds_pool =
     Osd_pool.make
       ~size:osd_connection_pool_size
       ~get_osd_kind:(fun osd_id ->
-                     get_osd_info ~osd_id >>= fun (osd_info, _) ->
+                     get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
                      let open Nsm_model.OsdInfo in
                      Lwt.return osd_info.kind)
       osd_buffer_pool
@@ -247,8 +254,8 @@ class osd_access
     mgr_access # get_osd_by_osd_id ~osd_id >>= function
     | None -> assert false
     | Some osd_info' ->
-       let osd_info, osd_state = Hashtbl.find osds_info_cache osd_id in
-       Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state);
+       let osd_info, osd_state, capabilities = Hashtbl.find osds_info_cache osd_id in
+       Hashtbl.replace osds_info_cache osd_id (osd_info', osd_state, capabilities);
        let open Nsm_model.OsdInfo in
        Lwt.return (osd_info.kind <> osd_info'.kind)
   in
@@ -265,7 +272,7 @@ class osd_access
        ~osd_id
        f)
     (fun exn ->
-     get_osd_info ~osd_id >>= fun (_, state) ->
+     get_osd_info ~osd_id >>= fun (_, state,_) ->
 
      let add_to_errors =
        let open Asd_protocol.Protocol.Error in
@@ -346,7 +353,7 @@ class osd_access
       | `OkAgain ->
          Lwt.return ()
     in
-    get_osd_info ~osd_id >>= fun (_, state) ->
+    get_osd_info ~osd_id >>= fun (_, state, _) ->
     if state.Osd_state.disqualified
     then Lwt.return ()
     else begin
@@ -385,7 +392,10 @@ class osd_access
                       ~last:None ~reverse:false
                       ~max:(-1) >>= fun ((cnt, osds), has_more) ->
            List.iter
-             (fun (osd_id, osd_info) -> add_osd_info ~osd_id osd_info)
+             (fun (osd_id, osd_info) -> add_osd_info
+                                          ~osd_id
+                                          osd_info
+                                          Capabilities.OsdCapabilities.default)
              osds;
 
            (if has_more
@@ -426,7 +436,7 @@ class osd_access
       Lwt_list.iter_p
         (fun osd_id ->
          let open Nsm_model.OsdInfo in
-         get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
+         get_osd_info ~osd_id >>= fun (osd_info, osd_state, osd_capabilities) ->
          let osd_ok =
            not osd_info.decommissioned
            && Osd_state.osd_ok osd_state
@@ -435,7 +445,8 @@ class osd_access
          then Hashtbl.add
                 res
                 osd_id
-                osd_info;
+                osd_info
+         ;
          Lwt.return ())
         osds >>= fun () ->
       Lwt.return res
@@ -475,7 +486,7 @@ class osd_access
         let updates =
           Hashtbl.fold
             (fun k v acc ->
-             let osd_info, osd_state = v in
+             let osd_info, osd_state, osd_capabilities = v in
              let acc' =
                (* TODO filter out those that accumulated no updates *)
                let update = make_update k osd_info osd_state in
@@ -528,7 +539,7 @@ class osd_access
                 Lwt.return ()
              | ThisAlba osd_id ->
                 begin
-                  get_osd_info ~osd_id >>= fun (osd_info, osd_state) ->
+                  get_osd_info ~osd_id >>= fun (osd_info, osd_state, osd_capabilities) ->
                   Osd_state.add_ips_port osd_state ips port;
                   Osd_state.add_json osd_state json;
                   Osd_state.add_seen osd_state;
@@ -552,7 +563,7 @@ class osd_access
                   let () =
                     Hashtbl.replace
                       osds_info_cache osd_id
-                      (osd_info', osd_state)
+                      (osd_info', osd_state, osd_capabilities)
                   in
                   let conn_info'  =
                     let open OsdInfo in

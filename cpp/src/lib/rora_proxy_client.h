@@ -85,8 +85,7 @@ public:
   get_proxy_version();
 
   virtual double ping(const double delay);
-  virtual void osd_info(std::vector<
-      std::pair<osd_t, std::unique_ptr<proxy_protocol::OsdInfo>>> &result);
+  virtual void osd_info(std::vector<std::pair<osd_t, info_caps>> &result);
   virtual ~RoraProxy_client(){};
 
 private:

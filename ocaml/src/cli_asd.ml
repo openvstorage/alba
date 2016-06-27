@@ -686,6 +686,33 @@ let asd_set_full_cmd =
   in
   asd_set_full_t, info
 
+let asd_capabilities hosts port tls_config asd_id verbose =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id verbose
+    (fun client ->
+      client # capabilities ()
+      >>= fun (count,r) ->
+      Lwt_list.iter_s
+        (fun c ->
+          Lwt_io.printl ([%show: Capabilities.OsdCapabilities.capability] c)
+        ) r
+    )
+
+let asd_capabilities_cmd =
+  let asd_capabilities_t =
+    Term.(pure asd_capabilities
+          $ hosts $ (port 8_000) $ tls_config
+          $ lido
+          $ verbose
+    )
+  in
+  let info =
+    let doc = "list this asd's capabilities" in
+    Term.info "asd-capabilities" ~doc
+  in
+  asd_capabilities_t, info
+
 let bench_syncfs root iterations threads size =
   let t =
     let entry = Sync_bench.batch_entry_syncfs in
@@ -754,7 +781,9 @@ let cmds = [
   asd_set_full_cmd;
   asd_get_version_cmd;
   asd_disk_usage_cmd;
+  asd_capabilities_cmd;
   bench_syncfs_cmd;
   bench_fsync_cmd;
+
   (* Asd_kaboom.kaboom_cmd; *)
 ]

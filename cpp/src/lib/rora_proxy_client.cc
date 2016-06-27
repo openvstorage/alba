@@ -131,14 +131,15 @@ void RoraProxy_client::_maybe_update_osd_infos(
   bool ok = true;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
-    if (OsdAccess::getInstance().osd_is_known(osd)) {
+    if (OsdAccess::getInstance().osd_is_unknown(osd)) {
       ok = false;
       break;
     }
   }
 
   if (!ok) {
-    std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> result;
+    ALBA_LOG(DEBUG, "RoraProxy_client:: refresh from proxy");
+    std::vector<std::pair<osd_t, info_caps>> result;
     this->osd_info(result);
     OsdAccess::getInstance().update(result);
   }
@@ -292,7 +293,7 @@ double RoraProxy_client::ping(const double delay) {
 }
 
 void RoraProxy_client::osd_info(
-    std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &result) {
+    std::vector<std::pair<osd_t, info_caps>> &result) {
   ALBA_LOG(DEBUG, "RoraProxy_client::osd_info");
   _delegate->osd_info(result);
 }

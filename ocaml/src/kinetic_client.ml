@@ -344,6 +344,7 @@ object (self :# Osd.key_value_osd)
     method get_disk_usage =
       (* TODO real implementation *)
       Lwt.return (Int64.shift_left 1L 41, Int64.shift_left 1L 42)
+    method capabilities = Lwt.fail_with "TODO:capabilities"
   end
 
 let _client_id = ref 0

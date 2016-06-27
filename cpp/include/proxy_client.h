@@ -117,7 +117,7 @@ public:
   /* retrieve information about osds
    */
   virtual void osd_info(std::vector<
-      std::pair<osd_t, std::unique_ptr<proxy_protocol::OsdInfo>>> &result) = 0;
+      std::pair<osd_t, proxy_protocol::info_caps>> &result) = 0;
 
   virtual ~Proxy_client(){};
 

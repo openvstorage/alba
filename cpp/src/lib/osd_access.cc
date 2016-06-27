@@ -31,19 +31,18 @@ OsdAccess &OsdAccess::getInstance(){
 }
 //TODO: protect resources from // access.
 
-bool OsdAccess::osd_is_known(osd_t osd){
+bool OsdAccess::osd_is_unknown(osd_t osd){
   return (_osd_infos.find(osd) == _osd_infos.end());
 }
 
-void OsdAccess::update(std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &infos){
+void OsdAccess::update(std::vector<std::pair<osd_t, info_caps>> &infos){
   ALBA_LOG(DEBUG, "OsdAccess::update");
 
   _osd_infos_mutex.lock();
 
   _osd_infos.clear();
-  for (std::pair<osd_t, std::unique_ptr<OsdInfo>> &p : infos) {
-    osd_t osd = p.first;
-    _osd_infos.emplace(osd, std::move(p.second));
+  for (auto &p : infos) {
+      _osd_infos.emplace(p.first,std::move(p.second));
   }
 
   _osd_infos_mutex.unlock();
@@ -66,14 +65,20 @@ int OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
     std::shared_ptr<gobjfs::xio::client_ctx_attr> ctx_attr = ctx_attr_new();
 
     auto it = _osd_infos.find(osd);
-    auto& osd_info = *it -> second;
+    const auto& ic = it -> second;
+    const auto& osd_info = ic.first;
+    const auto& osd_caps = ic.second;
     std::string transport_name("tcp");
-    if (osd_info . use_rdma){
+    if (osd_info -> use_rdma){
         transport_name = "rdma";
     }
+    if(boost::none == osd_caps -> port){
+        return 1;
+    }
 
-    int backdoor_port = osd_info.port + 1000; // TODO: how do I know?
-    std::string &ip = osd_info.ips[0];
+    int backdoor_port = *osd_caps -> port;
+
+    std::string &ip = osd_info -> ips[0];
     ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip << " port: " << backdoor_port);
     int err = ctx_attr_set_transport(ctx_attr,
                                      transport_name.c_str(),

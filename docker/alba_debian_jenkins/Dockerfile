@@ -143,13 +143,13 @@ RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout ea7d54788591ff0829e1465f28258448064ca742
+RUN cd gobjfs  && git pull && git checkout 26b7d99b0bfe82374807bdd790a61ff380590d38
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
        && cmake .. \
        && make \
-       && cp ../lib/lib*.so /usr/local/lib
+       && make install
 
 ## This only works from inside the OVS lan...
 # http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201606011734.d6c3c04_amd64.ddeb
@@ -172,6 +172,11 @@ ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
 ENV VOLDRV_BACKEND_TEST=backend_test
 ENV GOBJFS_HOME=/gobjfs/
+
+RUN git clone https://github.com/openvstorage/alba.git \
+    && cd alba && git checkout rora && git pull
+RUN eval `${opam_env}` && export ALBA_HOME=/alba/ && cd alba && make
+RUN eval `${opam_env}` && export ALBA_HOME=/alba/ && cd alba/cpp && make
 
 # Install etcd:
 RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz

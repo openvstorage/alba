@@ -23,6 +23,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <memory>
 #include <mutex>
 #include "osd_info.h"
+
 namespace alba{
 namespace proxy_client{
 
@@ -40,15 +41,15 @@ public:
 
     OsdAccess(OsdAccess const &) = delete;
     void operator=(OsdAccess const &) = delete;
-    bool osd_is_known(osd_t);
+    bool osd_is_unknown(osd_t);
 
-    void update(std::vector<std::pair<osd_t, std::unique_ptr<OsdInfo>>> &infos);
+    void update(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &infos);
 
     bool read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 private:
     OsdAccess(){}
     std::mutex _osd_infos_mutex;
-    std::map<osd_t, std::unique_ptr<OsdInfo>> _osd_infos;
+    std::map<osd_t, info_caps> _osd_infos;
 
     int read_osd_slices(osd_t, std::vector<asd_slice>&);
 };

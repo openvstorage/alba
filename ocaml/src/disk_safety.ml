@@ -28,7 +28,7 @@ let get_namespace_safety
 
   Lwt_list.map_p
     (fun osd_id ->
-       alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+       alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
        Lwt.return (osd_id, osd_info.OsdInfo.node_id))
     dead_ns_osds
   >>= fun osds_with_node_id ->

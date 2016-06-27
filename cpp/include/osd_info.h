@@ -20,6 +20,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <string>
 #include <vector>
 #include "alba_common.h"
+#include <boost/optional.hpp>
 
 namespace alba {
 namespace proxy_protocol {
@@ -33,6 +34,14 @@ struct OsdInfo {
   std::string node_id;
 };
 
+struct OsdCapabilities{
+    boost::optional<uint32_t> port = boost::none;
+};
+
+typedef std::pair<std::unique_ptr<OsdInfo>, std::unique_ptr<OsdCapabilities>> info_caps;
+
+
 std::ostream &operator<<(std::ostream &, const OsdInfo &);
+std::ostream &operator<<(std::ostream &, const OsdCapabilities &);
 }
 }
