@@ -121,7 +121,7 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
         [(osd_id,
           List.map
             (fun key ->
-             Osd_keys.AlbaInstance.to_global_key namespace_id (key, 0, 0))
+             Osd_keys.AlbaInstance.to_global_key namespace_id (key, 0, String.length key))
             keys)]
 
     method get_gc_epochs =

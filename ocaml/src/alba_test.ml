@@ -438,6 +438,17 @@ let test_clean_obsolete_keys () =
 
          assert_fragment ((=) None) >>= fun () ->
 
+         client # with_nsm_client'
+           ~namespace_id
+           (fun nsm ->
+            nsm # list_device_keys_to_be_deleted
+                ~first:"" ~finc:true
+                ~last:None
+                ~max:100 ~reverse:false
+                ~osd_id:osd_id_first_fragment) >>= fun r ->
+         Lwt_log.debug_f "%s" ([%show : string list] (r |> fst |> snd)) >>= fun () ->
+         assert (r = ((0, []), false));
+
          Lwt.return ()))
 
 let test_garbage_collect () =
