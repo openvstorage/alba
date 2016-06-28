@@ -26,24 +26,23 @@ ManifestCache &ManifestCache::getInstance() {
   return instance;
 }
 
-void ManifestCache::add(strpair key, std::unique_ptr<Manifest> mfp) {
+void ManifestCache::add(strpair key, std::shared_ptr<Manifest> mfp) {
   ALBA_LOG(DEBUG, "ManifestCache::add");
 
-  _cache_mutex.lock();
-
+  std::lock_guard<std::mutex> lock(_cache_mutex);
   auto it = _cache.find(key);
   if (it != _cache.end()) {
     _cache.erase(it);
   }
-  _cache.emplace(std::make_pair(key, std::move(mfp)));
+  _cache[key] = std::move(mfp);
 
-  _cache_mutex.unlock();
 }
 
-manifest_cache::iterator ManifestCache::find(strpair &key) {
+const manifest_cache::iterator ManifestCache::find(strpair &key) {
+  std::lock_guard<std::mutex> lock(_cache_mutex);
   return _cache.find(key);
 }
 
-manifest_cache::iterator ManifestCache::end() { return _cache.end(); }
+const manifest_cache::iterator ManifestCache::end() { return _cache.end(); }
 }
 }

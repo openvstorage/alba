@@ -34,6 +34,16 @@ struct asd_slice {
   byte *bytes;
 };
 
+struct osd_access_exception : std::exception {
+osd_access_exception(uint32_t return_code, std::string what)
+    : _return_code(return_code), _what(what) {}
+
+    uint32_t _return_code;
+    std::string _what;
+
+    virtual const char *what() const noexcept { return _what.c_str(); }
+};
+
 using namespace proxy_protocol;
 class OsdAccess {
 public:
@@ -51,9 +61,15 @@ private:
   OsdAccess() {}
   std::mutex _osd_infos_mutex;
   std::map<osd_t, info_caps> _osd_infos;
+
+  std::mutex _osd_ctxs_mutex;
   std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>> _osd_ctxs;
 
-  int read_osd_slices(osd_t, std::vector<asd_slice> &);
+  const std::map<osd_t, info_caps>::iterator _find_osd(osd_t);
+
+  int _read_osd_slices(osd_t, std::vector<asd_slice> &);
+  std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>>::iterator _find_ctx(osd_t);
+  void _set_ctx(osd_t, std::shared_ptr<gobjfs::xio::client_ctx>);
 };
 }
 }

@@ -29,7 +29,7 @@ namespace proxy_client {
 typedef std::pair<std::string, std::string> strpair;
 
 using namespace proxy_protocol;
-typedef std::map<strpair, std::unique_ptr<Manifest>> manifest_cache;
+typedef std::map<strpair, std::shared_ptr<Manifest>> manifest_cache;
 class ManifestCache {
 public:
   static ManifestCache &getInstance();
@@ -37,17 +37,17 @@ public:
   ManifestCache(ManifestCache const &) = delete;
   void operator=(ManifestCache const &) = delete;
 
-  void add(strpair key, std::unique_ptr<Manifest> mfp);
+  void add(strpair key, std::shared_ptr<Manifest> mfp);
 
-  manifest_cache::iterator find(strpair &key);
+  const manifest_cache::iterator find(strpair &key);
 
-  manifest_cache::iterator end();
+  const manifest_cache::iterator end();
 
 private:
   ManifestCache() {}
 
   std::mutex _cache_mutex;
-  std::map<strpair, std::unique_ptr<Manifest>> _cache;
+  std::map<strpair, std::shared_ptr<Manifest>> _cache;
 };
 }
 }

@@ -77,7 +77,7 @@ void dump_buffer(std::ostream &os, const char *row, int size) {
 void dump_data(std::ostream &os, char **rows, int k, int block_size) {
   for (int i = 0; i < k; i++) {
     char *start = rows[i];
-    dump_buffer(std::cout, start, block_size);
+    dump_buffer(os, start, block_size);
     os << std::endl;
   }
 }
