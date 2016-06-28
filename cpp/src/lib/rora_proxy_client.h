@@ -91,15 +91,13 @@ public:
 private:
   std::unique_ptr<Proxy_client> _delegate;
 
-
-
   void
   _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);
   int _short_path_many(const std::string &namespace_,
-                        const std::vector<short_path_entry> &short_path);
+                       const std::vector<short_path_entry> &short_path);
   int _short_path_one(const std::string &namespace_,
-                       const proxy_protocol::ObjectSlices &object_slices,
-                       const proxy_protocol::Manifest &manifest);
+                      const proxy_protocol::ObjectSlices &object_slices,
+                      const proxy_protocol::Manifest &manifest);
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,

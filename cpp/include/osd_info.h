@@ -34,12 +34,12 @@ struct OsdInfo {
   std::string node_id;
 };
 
-struct OsdCapabilities{
-    boost::optional<uint32_t> port = boost::none;
+struct OsdCapabilities {
+  boost::optional<uint32_t> port = boost::none;
 };
 
-typedef std::pair<std::unique_ptr<OsdInfo>, std::unique_ptr<OsdCapabilities>> info_caps;
-
+typedef std::pair<std::unique_ptr<OsdInfo>, std::unique_ptr<OsdCapabilities>>
+    info_caps;
 
 std::ostream &operator<<(std::ostream &, const OsdInfo &);
 std::ostream &operator<<(std::ostream &, const OsdCapabilities &);

@@ -24,36 +24,36 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <mutex>
 #include "osd_info.h"
 #include <gobjfs_client.h>
-namespace alba{
-namespace proxy_client{
+namespace alba {
+namespace proxy_client {
 
-struct asd_slice{
-    std::string key;
-    uint32_t offset;
-    uint32_t len;
-    byte* bytes;
+struct asd_slice {
+  std::string key;
+  uint32_t offset;
+  uint32_t len;
+  byte *bytes;
 };
 
 using namespace proxy_protocol;
 class OsdAccess {
 public:
-    static OsdAccess &getInstance();
+  static OsdAccess &getInstance();
 
-    OsdAccess(OsdAccess const &) = delete;
-    void operator=(OsdAccess const &) = delete;
-    bool osd_is_unknown(osd_t);
+  OsdAccess(OsdAccess const &) = delete;
+  void operator=(OsdAccess const &) = delete;
+  bool osd_is_unknown(osd_t);
 
-    void update(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &infos);
+  void update(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &infos);
 
-    bool read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
+  bool read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
+
 private:
-    OsdAccess(){}
-    std::mutex _osd_infos_mutex;
-    std::map<osd_t, info_caps> _osd_infos;
-    std::map<osd_t,std::shared_ptr<gobjfs::xio::client_ctx>> _osd_ctxs;
+  OsdAccess() {}
+  std::mutex _osd_infos_mutex;
+  std::map<osd_t, info_caps> _osd_infos;
+  std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>> _osd_ctxs;
 
-    int read_osd_slices(osd_t, std::vector<asd_slice>&);
+  int read_osd_slices(osd_t, std::vector<asd_slice> &);
 };
-
 }
 }

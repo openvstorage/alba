@@ -160,11 +160,7 @@ void read_ping_response(message &m, Status &status, double &timestamp);
 
 void write_osd_info_request(message_builder &mb);
 
-
-void read_osd_info_response(
-    message &m,
-    Status &status,
-    std::vector<std::pair<osd_t, info_caps>> &result);
-
+void read_osd_info_response(message &m, Status &status,
+                            std::vector<std::pair<osd_t, info_caps>> &result);
 }
 }

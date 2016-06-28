@@ -40,28 +40,27 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   from(inner, info.use_rdma);
 }
 
-template <> void from(message&m, proxy_protocol::OsdCapabilities &caps){
-    uint32_t size;
-    from(m, size);
-    for(uint i = 0;i < size;i++){
-        uint8_t version;
-        from(m, version);
-        assert(version == 1);
-        uint8_t tag;
-        from(m,tag);
-        switch(tag){
-        case 1: {};break;// for now, we don't care
-        case 2: {};break;
-        case 3: {
-            uint32_t port;
-            from(m,port);
-            caps.port.emplace(port);
-        };break;
-        default: { throw "serialization error"; };
-        }
+template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
+  uint32_t size;
+  from(m, size);
+  for (uint i = 0; i < size; i++) {
+    uint8_t version;
+    from(m, version);
+    assert(version == 1);
+    uint8_t tag;
+    from(m, tag);
+    switch (tag) { case 1: { }; break; // for now, we don't care
+    case 2: {
+    }; break;
+    case 3: {
+      uint32_t port;
+      from(m, port);
+      caps.port.emplace(port);
+    }; break;
+    default: { throw "serialization error"; };
     }
+  }
 }
-
 }
 namespace proxy_protocol {
 std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
@@ -72,19 +71,18 @@ std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
   return os;
 }
 
-std::ostream &operator<<(std::ostream& os, const OsdCapabilities &caps){
-    os << "OsdCapabilities( port= ";
+std::ostream &operator<<(std::ostream &os, const OsdCapabilities &caps) {
+  os << "OsdCapabilities( port= ";
 
-    if(boost::none == caps.port){
-        os <<"None";
-    }else{
-        int port = *caps.port;
-        os << "Some " << port;
-    }
+  if (boost::none == caps.port) {
+    os << "None";
+  } else {
+    int port = *caps.port;
+    os << "Some " << port;
+  }
 
-    os << ")";
+  os << ")";
   return os;
 }
-
 }
 }

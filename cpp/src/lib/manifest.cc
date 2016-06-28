@@ -127,7 +127,6 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   from(m2, mf.max_disks_per_node);
   from(m2, mf.timestamp);
   from(m, mf.namespace_id);
-
 }
 }
 namespace proxy_protocol {
@@ -242,8 +241,7 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   os << std::endl
      << "  version_id = " << mf.version_id << "," << std::endl
      << "  timestamp = " << mf.timestamp // TODO: decent formatting?
-     << "  namespace_id = " << mf.namespace_id
-     << "} ";
+     << "  namespace_id = " << mf.namespace_id << "} ";
   return os;
 }
 }
