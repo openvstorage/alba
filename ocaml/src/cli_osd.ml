@@ -133,11 +133,11 @@ let alba_add_osd
            ~tls_config
            ~tcp_keepalive:Tcp_keepalive2.default
            (fun mgr -> mgr # get_alba_id) >>= fun long_id ->
-         Lwt.return Nsm_model.OsdInfo.(Alba { id = long_id;
-                                              cfg = alba_osd_cfg;
-                                              prefix;
-                                              preset;
-                                            })
+         Lwt.return Nsm_model.OsdInfo.(Alba2 { id = long_id;
+                                               cfg = alba_osd_cfg;
+                                               prefix;
+                                               preset;
+                                             })
       | _, _, _, _, _ ->
          failwith "incorrect combination of host, port alba_osd_cfg_url, prefix & preset specified"
     end >>= fun kind ->

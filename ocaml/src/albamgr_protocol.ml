@@ -178,7 +178,12 @@ module Protocol = struct
           match osd.kind with
           | Asd (conn_info, asd_id)   -> Asd (get_conn_info' conn_info, asd_id)
           | Kinetic (conn_info, k_id) -> Kinetic (get_conn_info' conn_info, k_id)
-          | Alba ({ cfg; _ } as x) -> Alba { x with
+          | Alba  ({ cfg; _ } as x) -> Alba
+                                         { x with
+                                           cfg = Option.get_some_default cfg albamgr_cfg';
+                                         }
+          | Alba2 ({ cfg; _ } as x) -> Alba2
+                                         { x with
                                            cfg = Option.get_some_default cfg albamgr_cfg';
                                          }
         in

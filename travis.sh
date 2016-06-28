@@ -25,7 +25,7 @@ OPAM_DEPENDS="ocamlfind \
          kinetic-client \
          tiny_json \
          cmdliner \
-         ppx_deriving ppx_deriving_yojson \
+         ppx_deriving.3.3 ppx_deriving_yojson.2.4 \
          sexplib.113.00.00 \
          core.113.00.00 \
          conf-libev \

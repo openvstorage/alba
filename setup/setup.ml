@@ -2162,7 +2162,7 @@ module Test = struct
     t_hdd.proxy # upload_object "demo" cfg_hdd.alba_bin objname;
 
     let output = t_ssd.proxy # list_namespaces in
-    assert (output = "Found 2 namespaces: [\"demo\"; \"my_prefix\\000\\000\\000\\000\"]");
+    assert (output = "Found 2 namespaces: [\"demo\"; \"my_prefix_000000000\"]");
 
     begin
       (* verify that the cache backend knows it is used as a cache! *)
@@ -2248,7 +2248,11 @@ module Test = struct
       |> Yojson.Basic.from_string
       |> Yojson.Basic.Util.member "result"
       |> function
-        | `List namespaces -> assert (3 = List.length namespaces)
+        | `List namespaces ->
+           Printf.printf "namespaces = %s\n" (Yojson.Basic.to_string (`List namespaces));
+           assert (3 = List.length namespaces);
+           assert (Yojson.Basic.to_string (`List namespaces) =
+                     "namespaces = [{\"id\":1,\"name\":\"alba_osd_prefix\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":2,\"name\":\"alba_osd_prefix_000000000\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":0,\"name\":\"demo\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"}]")
         | _ -> assert false
     end;
 

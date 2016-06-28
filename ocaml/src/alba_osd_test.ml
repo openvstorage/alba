@@ -27,7 +27,12 @@ let test_with_kvs_client
 
      let prefix = test_name in
      alba_client # create_namespace ~namespace:prefix ~preset_name:None () >>= fun _ ->
-     let client = new Alba_osd.client alba_client ~alba_id ~prefix ~preset_name:None in
+     let client = new Alba_osd.client
+                      alba_client
+                      ~alba_id
+                      ~prefix ~preset_name:None
+                      ~namespace_name_format:1
+     in
      f (client # global_kvs))
 
 let test_set_get_delete () =
