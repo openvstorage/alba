@@ -39,9 +39,7 @@ public:
 
   void add(strpair key, std::shared_ptr<Manifest> mfp);
 
-  const manifest_cache::iterator find(strpair &key);
-
-  const manifest_cache::iterator end();
+  std::shared_ptr<Manifest> find(strpair &key);
 
 private:
   ManifestCache() {}

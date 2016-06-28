@@ -38,7 +38,7 @@ module Rocks_key_value_store_ = struct
          Options.set_block_based_table_factory options bbto;
          Cache.destroy cache
     in
-    RocksDb.open_db_with_wrapper options db_path "alba_rocksdb_open_and_register"
+    RocksDb.open_db options db_path
 
   let create () =
     create' ~db_path:(string_of_int (Random.int 1_000_000))

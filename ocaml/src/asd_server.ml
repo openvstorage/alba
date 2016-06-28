@@ -1361,6 +1361,8 @@ let run_server
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->
+  let () = Rora_server.register_rocksdb db in
+
   let maybe_shutdown_rora_server () =
     match !_rora_server with
     | None -> Lwt.return_unit

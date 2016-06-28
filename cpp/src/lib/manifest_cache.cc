@@ -38,11 +38,17 @@ void ManifestCache::add(strpair key, std::shared_ptr<Manifest> mfp) {
 
 }
 
-const manifest_cache::iterator ManifestCache::find(strpair &key) {
-  std::lock_guard<std::mutex> lock(_cache_mutex);
-  return _cache.find(key);
+std::shared_ptr<Manifest> ManifestCache::find(strpair &key) {
+  std::lock_guard<std::mutex> g(_cache_mutex);
+  auto it = _cache.find(key);
+  if (it == _cache.end()){
+      return nullptr;
+  }else {
+      return it -> second;
+  }
+
 }
 
-const manifest_cache::iterator ManifestCache::end() { return _cache.end(); }
+
 }
 }

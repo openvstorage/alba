@@ -99,11 +99,10 @@ RUN cd arakoon && eval `${opam_env}` \
     && make install
 
 # install specific orocksdb
-# TODO: move back to official repo once pr is in
-RUN git clone https://github.com/toolslive/orocksdb.git \
+RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 46b9e83edf01035ef209e39a1652514122e60c28 \
+    && git checkout cb393e5c86d2f54ca1787b310764063f68f564e4 \
     && ./install_rocksdb.sh \
     && make build install
 
@@ -143,7 +142,7 @@ RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout 26b7d99b0bfe82374807bdd790a61ff380590d38
+RUN cd gobjfs  && git pull && git checkout 6db3e354a48bd015c6bd940ab3809885656861ac
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
@@ -172,11 +171,6 @@ ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
 ENV VOLDRV_BACKEND_TEST=backend_test
 ENV GOBJFS_HOME=/gobjfs/
-
-RUN git clone https://github.com/openvstorage/alba.git \
-    && cd alba && git checkout rora && git pull
-RUN eval `${opam_env}` && export ALBA_HOME=/alba/ && cd alba && make
-RUN eval `${opam_env}` && export ALBA_HOME=/alba/ && cd alba/cpp && make
 
 # Install etcd:
 RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz

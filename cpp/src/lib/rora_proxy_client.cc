@@ -146,12 +146,12 @@ void RoraProxy_client::_maybe_update_osd_infos(
 
 int RoraProxy_client::_short_path_one(const std::string &namespace_,
                                       const ObjectSlices &object_slices,
-                                      const Manifest &manifest) {
+                                      std::shared_ptr<Manifest> mfp) {
 
   // one object, maybe multiple slices and or fragments involved
   ALBA_LOG(DEBUG, "_short_path_one(" << namespace_ << ", ...)");
   std::map<osd_t, std::vector<asd_slice>> per_osd;
-
+  const Manifest& manifest = *mfp;
   for (auto &sd : object_slices.slices) {
     uint32_t bytes_to_read = sd.size;
     uint32_t offset = sd.offset;
@@ -228,13 +228,11 @@ void RoraProxy_client::read_objects_slices(
       auto object_name = object_slices.object_name;
       auto key = strpair(namespace_, object_name);
       auto &cache = ManifestCache::getInstance();
-      auto it = cache.find(key);
-      if (it == cache.end()) {
+      auto mfp = cache.find(key);
+      if (nullptr == mfp) {
         via_proxy.push_back(object_slices);
       } else {
-
-        auto p =
-            std::pair<ObjectSlices, Manifest &>(object_slices, *it->second);
+        auto p = std::make_pair(object_slices, mfp);
         short_path.push_back(p);
       }
     };

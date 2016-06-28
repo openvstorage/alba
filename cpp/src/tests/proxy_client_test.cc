@@ -194,7 +194,7 @@ TEST(proxy_client, test_ping) {
   init_log();
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
-  double eps = 0.05;
+  double eps = 0.1;// otherwise it might fail under valgrind (it was 0.85 once)
   struct timeval timeval0;
   gettimeofday(&timeval0, NULL);
   double t0 = stamp();

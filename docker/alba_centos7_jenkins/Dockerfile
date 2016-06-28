@@ -150,11 +150,10 @@ RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
 
 
 # install specific orocksdb
-# TODO: move back to official repo once pr is in
-RUN git clone https://github.com/toolslive/orocksdb.git \
+RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 46b9e83edf01035ef209e39a1652514122e60c28 \
+    && git checkout cb393e5c86d2f54ca1787b310764063f68f564e4 \
     && ./install_rocksdb.sh \
     && cp /usr/local/lib/librocksdb.so* /lib64/ \
     && sudo ldconfig -v \
@@ -188,7 +187,7 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 # gobjfs shared lib:
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout 26b7d99b0bfe82374807bdd790a61ff380590d38
+RUN cd gobjfs  && git pull && git checkout 6db3e354a48bd015c6bd940ab3809885656861ac
 RUN cd gobjfs \
        && mkdir build \
        && cd build \

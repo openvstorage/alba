@@ -29,7 +29,6 @@ OsdAccess &OsdAccess::getInstance() {
   static OsdAccess instance;
   return instance;
 }
-// TODO: protect resources from // access.
 
 bool OsdAccess::osd_is_unknown(osd_t osd) {
   std::lock_guard<std::mutex> lock(_osd_infos_mutex);
@@ -101,8 +100,8 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     std::string &ip = osd_info->ips[0];
     ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
                            << " port: " << backdoor_port);
-    int err = ctx_attr_set_transport(ctx_attr, transport_name.c_str(),
-                                     ip.c_str(), backdoor_port);
+    int err = ctx_attr_set_transport(ctx_attr, transport_name,
+                                     ip, backdoor_port);
     ALBA_LOG(DEBUG, "set_transport err:" << err);
     if(err != 0){
         throw osd_access_exception(err,"ctx_attr_set_transport");

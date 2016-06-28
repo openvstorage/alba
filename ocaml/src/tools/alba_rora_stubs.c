@@ -36,14 +36,11 @@ static void* _DB_POINTER = NULL;
 static char* _ROOT_PATH = NULL;
 static int   _ROOT_PATH_LENGTH = -1;
 
-
-rocksdb_t* alba_rocksdb_open_and_register(
-    const rocksdb_options_t* options,
-    const char* name, char** errptr
-    ){
-    rocksdb_t* result = rocksdb_open(options, name, errptr);
-    _DB_POINTER = result;
-    return result;
+CAMLprim value alba_register_rocksdb(value v_rocks){
+    CAMLparam1(v_rocks);
+    const uint64_t raw = Nativeint_val(v_rocks);
+    _DB_POINTER = (void*) raw;
+    return Val_unit;
 }
 
 
@@ -66,33 +63,32 @@ void convert_hex(uint8_t c, char* tgt) {
 
 
 int _get_fnr_flen(char* returned_value, uint64_t *fnr, uint32_t *flen){
-    printf("_get_fnr_flen\n");fflush(stdout);
-    //
-    // 03 3f 57 45 d9 02 00 00 00 00 00 00 00 00 d7 f2 0a 00
     int pos = 0;
-    printf("xxxx\n");fflush(stdout);
+
     uint8 checksum_type = returned_value[pos++];
-    printf("checksum_type:%i\n", checksum_type);fflush(stdout);
-    assert(checksum_type = 3);
-    pos += 4;// crc
+    switch(checksum_type){
+    case 1: { /* NoChecksum  */      }; break;
+    case 2: { /* Sha1  */  pos += 24;}; break;
+    case 3: { /* Crc32c */ pos +=  4;}; break;
+    default:{return 1;}
+    }
+
     uint8 blob_type = returned_value[pos++];
-    printf("blob_type:%i\n", blob_type);fflush(stdout);
-    assert(blob_type = 2);//on Fs.
+    switch(blob_type){
+    case 1: { /* DirectValue */ return 2; }; break;// We don't support this.
+    case 2: { /* onFs */   }; break;
+    default:{ return 3;};
+    }
 
     char* fnr_addr       = &returned_value[pos];
     uint64_t* fnr_addr64 = (uint64_t*) fnr_addr;
     uint64_t _fnr = *fnr_addr64;
     *fnr = _fnr;
-
-    printf("_fnr:%Lx\n", _fnr);fflush(stdout);
     pos += 8;
     char* flen_addr = &returned_value[pos];
     uint32_t* flen_addr32 = (uint32_t*) flen_addr;
     uint32_t _flen = *flen_addr32;
-    printf("_flen:%lx\n", _flen);fflush(stdout);
     *flen = _flen;
-
-
     return 0;
 }
 
