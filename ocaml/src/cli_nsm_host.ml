@@ -107,8 +107,69 @@ let list_device_objects_cmd =
   Term.info "dev-list-device-objects"
             ~doc:"objects from the namespace that have fragments on this device"
 
+
+let list_osd_keys_to_be_deleted
+      cfg_file tls_config
+      osd_id namespace_id
+      first finc max
+      reverse verbose
+  =
+  let t () =
+    with_alba_client
+      cfg_file
+      tls_config
+      (fun alba_client ->
+       alba_client # with_nsm_client'
+         ~namespace_id
+         (fun nsm_client ->
+          nsm_client # list_device_keys_to_be_deleted
+            ~osd_id
+            ~first ~finc ~last:None
+            ~max ~reverse
+          >>= fun ((cnt,xs), more) ->
+          Lwt_io.printlf "found %i items:" cnt >>= fun () ->
+          Lwt_list.iter_s
+            (Lwt_io.printlf "%s")
+            xs
+          >>= fun () ->
+          Lwt.return ()
+      ))
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let list_osd_keys_to_be_deleted_cmd =
+  let osd_id default =
+    let doc = "osd's short id" in
+    Arg.(value
+         & opt int32 default
+         & info ["osd_id"] ~docv:"OSD_ID" ~doc)
+  in
+  let namespace_id default =
+    let doc = "namespace id" in
+    Arg.(value
+         & opt int32 default
+         & info ["namespace_id"] ~docv:"NAMESPACE_ID" ~doc)
+  in
+  let make_opt_bool name = Arg.(value & opt bool false & info [name]) in
+  let reverse = make_opt_bool "reverse" in
+  Term.(pure list_osd_keys_to_be_deleted
+        $ alba_cfg_url
+        $ tls_config
+        $ osd_id 0l
+        $ namespace_id 0l
+        $ first $ finc
+        $ max
+        $ reverse
+        $ verbose
+  ),
+  Term.info "dev-list-osd-keys-to-be-deleted"
+            ~doc:"list keys that have to be deleted"
+
+
+
 let cmds =
   [
     nsm_host_statistics_cmd;
     list_device_objects_cmd;
+    list_osd_keys_to_be_deleted_cmd;
   ]
