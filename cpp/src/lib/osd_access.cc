@@ -18,7 +18,6 @@
 #include "osd_access.h"
 #include "alba_logger.h"
 
-#include <gobjfs_client.h>
 #include <assert.h>
 #include "stuff.h"
 
@@ -62,35 +61,41 @@ using namespace gobjfs::xio;
 int OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
     ALBA_LOG(DEBUG, "OsdAccess::read_osd_slices(" << osd << ")");
 
-    std::shared_ptr<gobjfs::xio::client_ctx_attr> ctx_attr = ctx_attr_new();
+    auto ctx_it = _osd_ctxs.find(osd);
 
-    auto it = _osd_infos.find(osd);
-    const auto& ic = it -> second;
-    const auto& osd_info = ic.first;
-    const auto& osd_caps = ic.second;
-    std::string transport_name("tcp");
-    if (osd_info -> use_rdma){
-        transport_name = "rdma";
+    if (ctx_it == _osd_ctxs.end()){
+        std::shared_ptr<gobjfs::xio::client_ctx_attr> ctx_attr = ctx_attr_new();
+
+        auto it = _osd_infos.find(osd);
+        const auto& ic = it -> second;
+        const auto& osd_info = ic.first;
+        const auto& osd_caps = ic.second;
+        std::string transport_name("tcp");
+        if (osd_info -> use_rdma){
+            transport_name = "rdma";
+        }
+        if(boost::none == osd_caps -> port){
+            return 1;
+        }
+
+        int backdoor_port = *osd_caps -> port;
+
+        std::string &ip = osd_info -> ips[0];
+        ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip << " port: " << backdoor_port);
+        int err = ctx_attr_set_transport(ctx_attr,
+                                         transport_name.c_str(),
+                                         ip.c_str(),
+                                         backdoor_port);
+        ALBA_LOG(DEBUG, "set_transport err:" << err);
+        assert(err==0);
+        std::shared_ptr<gobjfs::xio::client_ctx> ctx = ctx_new(ctx_attr);
+        err = ctx_init(ctx);
+        ALBA_LOG(DEBUG, "ctx_init err:"<< err);
+        assert(err == 0);
+        _osd_ctxs.emplace(osd, ctx);
+        ctx_it = _osd_ctxs.find(osd);
     }
-    if(boost::none == osd_caps -> port){
-        return 1;
-    }
-
-    int backdoor_port = *osd_caps -> port;
-
-    std::string &ip = osd_info -> ips[0];
-    ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip << " port: " << backdoor_port);
-    int err = ctx_attr_set_transport(ctx_attr,
-                                     transport_name.c_str(),
-                                     ip.c_str(),
-                                     backdoor_port);
-    ALBA_LOG(DEBUG, "set_transport err:" << err);
-    assert(err==0);
-    std::shared_ptr<gobjfs::xio::client_ctx> ctx = ctx_new(ctx_attr);
-    err = ctx_init(ctx);
-    ALBA_LOG(DEBUG, "ctx_init err:"<< err);
-    assert(err == 0);
-
+    auto ctx = ctx_it -> second;
 
     std::vector<giocb*> iocb_vec;
     std::vector<std::string> key_vec;
@@ -101,11 +106,6 @@ int OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
         iocb -> aio_nbytes = slice.len;
         iocb -> aio_buf    = slice.bytes;
         std::string& key = slice.key;
-
-        std::cout << std::endl;
-        alba::stuff::dump_buffer(std::cout, key.data(), key.size());
-        std::cout << std::endl;
-
         iocb_vec.push_back(iocb);
         key_vec.push_back(key);
     }
@@ -118,6 +118,9 @@ int OsdAccess::read_osd_slices(osd_t osd, std::vector<asd_slice> & slices){
         free(elem);
     }
     ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
+
+    //TODO: when is the context considered 'bad' (and should be removed from the map) ?
+
     //ctx_destroy(ctx);
     //ctx_attr_destroy(ctx_attr);
     return ret;

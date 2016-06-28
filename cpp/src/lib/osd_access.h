@@ -23,7 +23,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <memory>
 #include <mutex>
 #include "osd_info.h"
-
+#include <gobjfs_client.h>
 namespace alba{
 namespace proxy_client{
 
@@ -50,6 +50,7 @@ private:
     OsdAccess(){}
     std::mutex _osd_infos_mutex;
     std::map<osd_t, info_caps> _osd_infos;
+    std::map<osd_t,std::shared_ptr<gobjfs::xio::client_ctx>> _osd_ctxs;
 
     int read_osd_slices(osd_t, std::vector<asd_slice>&);
 };
