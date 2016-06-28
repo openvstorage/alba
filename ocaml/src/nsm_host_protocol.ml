@@ -48,7 +48,8 @@ module Protocol = struct
                | true, false -> _to_buffer_2
                | _           -> _to_buffer_3
              end
-          | Alba _ ->
+          | Alba _
+          | Alba2 _ ->
              _to_buffer_3
         in
         to_buffer buf osd_info

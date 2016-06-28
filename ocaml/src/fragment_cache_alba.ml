@@ -103,7 +103,7 @@ class alba_cache
     match bucket_strategy with
     | OneOnOne { prefix;
                  preset; } ->
-       let namespace = prefix ^ (serialize ~buf_size:4 Llio.int32_be_to bid) in
+       let namespace = Printf.sprintf "%s_%09li" prefix bid in
        Lwt.catch
          (fun () -> f namespace)
          (fun exn ->

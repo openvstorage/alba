@@ -668,14 +668,14 @@ type maintenance_cfg = {
     __retry_timeout : float;
   } [@@deriving yojson]
 
-let make_maintenance_config abm_cfg_url tls_client =
+let make_maintenance_config ?(__retry_timeout = 60.) abm_cfg_url tls_client =
   { albamgr_cfg_url = abm_cfg_url;
     log_level = "debug";
     tls_client;
-    __retry_timeout = 10.;
+    __retry_timeout;
   }
 
-class maintenance id cfg (abm_cfg_url:Url.t) etcd =
+class maintenance ?__retry_timeout id cfg (abm_cfg_url:Url.t) etcd =
   let maintenance_base =
     Printf.sprintf "%s/maintenance/%02i" cfg.alba_base_path id
   in
@@ -686,7 +686,7 @@ class maintenance id cfg (abm_cfg_url:Url.t) etcd =
     | Some etcd -> abm_cfg_url
   in
   let tls_client = make_tls_client cfg in
-  let m_cfg = make_maintenance_config maintenance_abm_cfg_url tls_client in
+  let m_cfg = make_maintenance_config ?__retry_timeout maintenance_abm_cfg_url tls_client in
 
   let config_persister, cfg_url = match etcd with
     | None ->
@@ -1005,8 +1005,10 @@ module Deployment = struct
     loop [] 0
 
   let make_default
+        ?__retry_timeout
         ?(cfg = Config.default)
         ?(base_port=4000)
+        ?(cfg = Config.default) ?(base_port=4000)
         ?write_blobs ?fragment_cache () =
     let abm =
       let id = "abm"
@@ -1038,7 +1040,7 @@ module Deployment = struct
                     (base_port * 2 + 2000)
                     ?fragment_cache ?transport ?ip
     in
-    let maintenance = new maintenance 0 cfg  (abm # config_url) cfg.etcd in
+    let maintenance = new maintenance ?__retry_timeout 0 cfg  (abm # config_url) cfg.etcd in
     let osds = make_osds ~base_port:(base_port*2)
                          ?write_blobs
                          ?transport ~use_rora:cfg.alba_rora
@@ -2183,7 +2185,7 @@ module Test = struct
     t_hdd.proxy # upload_object "demo" cfg_hdd.alba_bin objname;
 
     let output = t_ssd.proxy # list_namespaces in
-    assert (output = "Found 2 namespaces: [\"demo\"; \"my_prefix\\000\\000\\000\\000\"]");
+    assert (output = "Found 2 namespaces: [\"demo\"; \"my_prefix_000000000\"]");
 
     begin
       (* verify that the cache backend knows it is used as a cache! *)
@@ -2204,7 +2206,7 @@ module Test = struct
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
 
-    let make_backend ?(kill=false) ?n_osds name ~base_port =
+    let make_backend ?__retry_timeout ?(kill=false) ?n_osds name ~base_port =
       let cfg =
         Config.make
           ?n_osds
@@ -2212,7 +2214,7 @@ module Test = struct
                         "%s/tmp/alba_%s"
                         workspace name) ()
       in
-      let t = Deployment.make_default ~cfg ~base_port () in
+      let t = Deployment.make_default ?__retry_timeout ~cfg ~base_port () in
       if kill then Deployment.kill t;
       Deployment.setup t;
       cfg, t
@@ -2223,7 +2225,10 @@ module Test = struct
     let _, t_local3 = make_backend "local_3"~base_port:6002 in
     let _, t_local4 = make_backend "local_4"~base_port:7003 in
 
-    let cfg_global, t_global = make_backend "global" ~base_port:7503 ~n_osds:0 in
+    let cfg_global, t_global = make_backend "global"
+                                            ~base_port:7503 ~n_osds:0
+                                            ~__retry_timeout:10.
+    in
 
     let add_backend_as_osd t_local =
       _alba_cmd_line
@@ -2266,7 +2271,11 @@ module Test = struct
       |> Yojson.Basic.from_string
       |> Yojson.Basic.Util.member "result"
       |> function
-        | `List namespaces -> assert (3 = List.length namespaces)
+        | `List namespaces ->
+           Printf.printf "namespaces = %s\n" (Yojson.Basic.to_string (`List namespaces));
+           assert (3 = List.length namespaces);
+           assert (Yojson.Basic.to_string (`List namespaces) =
+                     "namespaces = [{\"id\":1,\"name\":\"alba_osd_prefix\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":2,\"name\":\"alba_osd_prefix_000000000\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":0,\"name\":\"demo\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"}]")
         | _ -> assert false
     end;
 

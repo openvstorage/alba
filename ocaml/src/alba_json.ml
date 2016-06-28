@@ -86,6 +86,10 @@ module Osd = struct
          "Alba", id,
          (None, None, None, None),
          (Some cfg, Some prefix, Some preset)
+      | OsdInfo.Alba2 { OsdInfo.id; cfg; prefix; preset } ->
+         "Alba2", id,
+         (None, None, None, None),
+         (Some cfg, Some prefix, Some preset)
     in
     { id; alba_id;
       kind;

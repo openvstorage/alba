@@ -42,6 +42,7 @@ module Osd_pool = struct
                                tcp_keepalive:Tcp_keepalive.t ->
                                prefix:string ->
                                preset_name:Albamgr_protocol.Protocol.Preset.name option ->
+                               namespace_name_format:int ->
                                (Osd'.osd * (unit -> unit Lwt.t)) Lwt.t;
       }
 
@@ -68,7 +69,8 @@ module Osd_pool = struct
       function
       | Asd _
       | Kinetic _ -> false
-      | Alba _ -> true
+      | Alba _
+      | Alba2 _ -> true
 
     let factory tls_config tcp_keepalive buffer_pool make_alba_osd_client =
       function
@@ -95,6 +97,14 @@ module Osd_pool = struct
            ~tls_config
            ~tcp_keepalive
            ~prefix ~preset_name:(Some preset)
+           ~namespace_name_format:0
+      | OsdInfo.Alba2 { Nsm_model.OsdInfo.cfg; id; prefix; preset; } ->
+         make_alba_osd_client
+           (ref cfg)
+           ~tls_config
+           ~tcp_keepalive
+           ~prefix ~preset_name:(Some preset)
+           ~namespace_name_format:1
 
     let use_osd t ~(osd_id:int32) f =
       let get_pool kind =
@@ -570,7 +580,8 @@ class osd_access
                     match osd_info.kind with
                     | Asd (x, _)
                     | Kinetic (x, _) -> x
-                    | Alba _ -> assert false (* Alba osds don't broadcast *)
+                    | Alba _
+                    | Alba2 _ -> assert false (* Alba osds don't broadcast *)
                   in
                   let () =
                     if conn_info' <> conn_info

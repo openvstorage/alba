@@ -52,12 +52,14 @@ module OsdInfo = struct
     | Asd     of conn_info * asd_id
     | Kinetic of conn_info * kinetic_id
     | Alba    of alba_cfg
+    | Alba2   of alba_cfg
                    [@@deriving show, yojson]
 
   let get_long_id = function
     | Asd (_, asd_id)         -> asd_id
     | Kinetic (_, kinetic_id) -> kinetic_id
-    | Alba { id; }            -> id
+    | Alba  { id; }
+    | Alba2 { id; }           -> id
 
   type t = {
     kind : kind;
@@ -101,6 +103,12 @@ module OsdInfo = struct
        Llio.string_to buf kin_id
     | Alba { cfg; id; prefix; preset; } ->
        Llio.int8_to buf 3;
+       Alba_arakoon.Config.to_buffer buf cfg;
+       Llio.string_to buf id;
+       Llio.string_to buf prefix;
+       Llio.string_to buf preset
+    | Alba2 { cfg; id; prefix; preset; } ->
+       Llio.int8_to buf 4;
        Alba_arakoon.Config.to_buffer buf cfg;
        Llio.string_to buf id;
        Llio.string_to buf prefix;
@@ -241,6 +249,12 @@ module OsdInfo = struct
         let prefix = Llio.string_from buf in
         let preset = Llio.string_from buf in
         Alba { cfg; id; prefix; preset; }
+      | 4 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba2 { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in
@@ -280,6 +294,12 @@ module OsdInfo = struct
         let prefix = Llio.string_from buf in
         let preset = Llio.string_from buf in
         Alba { cfg; id; prefix; preset; }
+      | 4 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba2 { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k
     in
     let node_id = Llio.string_from buf in
@@ -328,6 +348,12 @@ module OsdInfo = struct
         let prefix = Llio.string_from buf in
         let preset = Llio.string_from buf in
         Alba { cfg; id; prefix; preset; }
+      | 4 ->
+        let cfg = Alba_arakoon.Config.from_buffer buf in
+        let id = Llio.string_from buf in
+        let prefix = Llio.string_from buf in
+        let preset = Llio.string_from buf in
+        Alba2 { cfg; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k
     in
     let node_id = Llio.string_from buf in

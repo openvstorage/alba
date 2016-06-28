@@ -25,9 +25,14 @@ open Lwt.Infix
 class client
         (alba_client : Alba_client.alba_client)
         ~alba_id ~prefix ~preset_name
+        ~namespace_name_format
   =
-  let to_namespace_name namespace_id =
-    prefix ^ (serialize ~buf_size:4 Llio.int32_be_to namespace_id)
+  let to_namespace_name =
+    match namespace_name_format with
+    | 0 -> fun namespace_id ->
+           prefix ^ (serialize ~buf_size:4 Llio.int32_be_to namespace_id)
+    | 1 -> Printf.sprintf "%s_%09li" prefix
+    | _ -> assert false
   in
   let get_kvs ~consistent_read namespace =
     object(self :# Osd.key_value_storage)
@@ -243,6 +248,7 @@ let rec make_client
           ~prefix
           ~preset_name
           ~albamgr_connection_pool_size
+          ~namespace_name_format
   =
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
@@ -268,15 +274,31 @@ let rec make_client
       ~osd_access
       ~tls_config ()
   in
-  alba_client # mgr_access # get_alba_id >>= fun alba_id ->
-  begin
-    (* ensure the global prefix namespace exists *)
-    let namespace = prefix in
-    alba_client # mgr_access # get_namespace ~namespace >>= function
-    | Some _ -> Lwt.return ()
-    | None ->
-       alba_client # create_namespace ~namespace ~preset_name () >>= fun _ ->
-       Lwt.return ()
-  end >>= fun () ->
-  let client = new client alba_client ~alba_id ~prefix ~preset_name in
-  Lwt.return ((client :> Osd.osd), closer)
+  let closer () =
+    mgr_access # finalize;
+    osd_access # finalize;
+    closer ()
+  in
+  Lwt.catch
+    (fun () ->
+     alba_client # mgr_access # get_alba_id >>= fun alba_id ->
+     begin
+       (* ensure the global prefix namespace exists *)
+       let namespace = prefix in
+       alba_client # mgr_access # get_namespace ~namespace >>= function
+       | Some _ -> Lwt.return ()
+       | None ->
+          alba_client # create_namespace ~namespace ~preset_name () >>= fun _ ->
+          Lwt.return ()
+     end >>= fun () ->
+     let client =
+       new client
+           alba_client
+           ~alba_id
+           ~prefix ~preset_name
+           ~namespace_name_format
+     in
+     Lwt.return ((client :> Osd.osd), closer))
+    (fun exn ->
+     closer () >>= fun () ->
+     Lwt.fail exn)
