@@ -91,6 +91,17 @@ before_install () {
     sudo pip install fabric junit-xml
 
     date
+
+    sudo add-apt-repository "deb http://apt.openvstorage.org unstable main"
+
+    sudo apt-get -y install \
+         libxio0 libxio-dev \
+         libunwind8-dev libaio-dev libaio1 libaio1-dbg libaio-dev \
+         libz-dev libbz2-dev \
+         libgoogle-glog-dev libibverbs-dev
+
+    date
+
 }
 
 install () {
@@ -127,10 +138,12 @@ install () {
 
     date
 
+
+
     echo "Installing ordma"
     sudo apt-get -y install librdmacm-dev
     apt-cache depends librdmacm-dev
-    sudo apt-get -y install libibverbs-dev
+
     git clone https://github.com/toolslive/ordma.git
     cd ordma
     git checkout 263106bbcf7f8a9b1421da53a7e2a22db953bce9
@@ -141,24 +154,18 @@ install () {
     echo "Installing specific orocksdb"
     git clone https://github.com/domsj/orocksdb.git
     cd orocksdb
-    git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9
+    git checkout cb393e5c86d2f54ca1787b310764063f68f564e4
     ./install_rocksdb.sh
     make build install
     cd ..
 
     date
 
-    sudo apt-get -y install \
-         libxio0 libxio-dev \
-         libunwind8-dev \
-         libaio-dev libaio1 libaio1-dbg \
-         libz-dev libbz2-dev libgoogle-glog-dev
-
     echo "Installing gobjfs"
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout ea7d54788591ff0829e1465f28258448064ca742
+    git checkout 6db3e354a48bd015c6bd940ab3809885656861ac
     mkdir build
     cd build
     cmake ..
