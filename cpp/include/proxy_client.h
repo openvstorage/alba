@@ -146,6 +146,7 @@ std::unique_ptr<Proxy_client> make_proxy_client(
     const std::string &ip, const std::string &port,
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
         expiry_time,
-    const Transport &transport);
+    const Transport &transport,
+    bool use_rora = true);
 }
 }

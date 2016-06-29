@@ -125,6 +125,7 @@ let asd_start cfg_url slow log_sinks =
                             ~write_blobs
                             ~use_fadvise
                             ~use_fallocate
+                            ~log_level:(to_level log_level)
   in
 
   lwt_server ~log_sinks ~subcomponent:"asd" t

@@ -9,13 +9,23 @@ let _start =
   foreign
     "alba_start_rora_server"
     (string @-> string @-> int @-> int @-> int
-     @-> string
+     @-> string @-> int
      @-> int
      @-> returning int64_t)
 
-let start transport host port cores queue_depth files_path files_path_length =
+let start transport host port cores queue_depth files_path files_path_length log_level =
+  let log_level' =
+    let open Lwt_log in
+    match log_level with
+    | Debug   -> 1
+    | Info    -> 2
+    | Notice  -> 2 (* boost doesn't have this *)
+    | Warning -> 3
+    | Error   -> 4
+    | Fatal   -> 5
+  in
   _start (transport_s transport) host port cores queue_depth
-         files_path files_path_length
+         files_path files_path_length log_level'
 
 
 let stop h =

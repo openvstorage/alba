@@ -1308,6 +1308,7 @@ let run_server
       ~tcp_keepalive
       ~use_fadvise
       ~use_fallocate
+      ~log_level
   =
 
   let fsync =
@@ -1670,6 +1671,7 @@ let run_server
                           queue_depth
                           files_path
                           (String.length files_path)
+                          log_level
            in
            let () = _rora_server := Some awakener in
            Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->

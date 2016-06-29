@@ -44,7 +44,7 @@ before_install () {
     date
 
     env | sort
-
+    sudo add-apt-repository "deb http://apt.openvstorage.org unstable main" | sudo tee -a /etc/apt/sources.list
     sudo add-apt-repository "deb http://us-central1.gce.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse"
     sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
 
@@ -59,7 +59,7 @@ before_install () {
     sudo apt-key update
 
     echo "Installing general dependencies"
-    sudo apt-get install -q ${APT_DEPENDS} \
+    sudo apt-get install -q --force-yes ${APT_DEPENDS} \
          ocaml ocaml-native-compilers camlp4-extra opam
 
     date
@@ -92,9 +92,7 @@ before_install () {
 
     date
 
-    sudo add-apt-repository "deb http://apt.openvstorage.org unstable main"
-
-    sudo apt-get -y install \
+    sudo apt-get --force-yes -y install \
          libxio0 libxio-dev \
          libunwind8-dev libaio-dev libaio1 libaio1-dbg libaio-dev \
          libz-dev libbz2-dev \
@@ -165,7 +163,7 @@ install () {
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout 822f8b6fd6ef9b0c712d4019df0a5c7bd2800eb9
+    git checkout 46f2818c4accb20b955e86530dc6c4c56ec01a3e
     mkdir build
     cd build
     cmake ..

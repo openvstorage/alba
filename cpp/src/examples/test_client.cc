@@ -22,6 +22,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/log/trivial.hpp>
 
 #include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <fstream>
 
 #include "stuff.h"
@@ -86,11 +88,12 @@ void partial_read_benchmark(const string& host,
                             const Transport& transport,
                             const string& namespace_,
                             const string& file_name,
-                            const int n
+                            const int n,
+                            const bool use_rora
     ){
 
     ALBA_LOG(WARNING, "partial_read_benchmark(" << host << ", " << port <<", " << transport << ")");
-    auto client = make_proxy_client(host, port, timeout, transport);
+    auto client = make_proxy_client(host, port, timeout, transport, use_rora);
     string name = "object_000";
     const alba::Checksum* checksum = nullptr;
     using namespace alba::proxy_protocol;
@@ -109,14 +112,14 @@ void partial_read_benchmark(const string& host,
     std::vector<ObjectSlices> objects_slices {object_slices};
 
 
-    high_resolution_clock::time_point t1, t2;
+    high_resolution_clock::time_point t0, t1, t2;
     double min_dur = 1000000;
     double max_dur = 0;
     std::vector<double> borders{100,200,250, 300, 350, 400, 800,100000};
     int borders_size = borders.size();
     int last_index = borders_size- 1;
     std::vector<double> dur_buckets(borders_size);
-
+    t0 = high_resolution_clock::now();
     for(int i= 0;i < n;i++){
         t1 = high_resolution_clock::now();
         client -> read_objects_slices(namespace_, objects_slices,
@@ -124,7 +127,6 @@ void partial_read_benchmark(const string& host,
         t2 = high_resolution_clock::now();
 
         int duration = duration_cast<microseconds>( t2 - t1 ).count();
-        cout << duration << std::endl;
 
         if(duration < min_dur){
             min_dur = duration;
@@ -146,6 +148,18 @@ void partial_read_benchmark(const string& host,
         }
         if(!set){
             dur_buckets[last_index] = dur_buckets[last_index] + 1;
+        }
+        int dur2 = duration_cast<seconds>(t2 - t0).count();
+        int reporting_period = 1;
+        if(dur2 > reporting_period){
+            auto time2 = system_clock::to_time_t(t2);
+            //struct tm tm;
+            char buffer[26];
+            ctime_r(&time2, buffer);
+            buffer[24] = '\0';  // Removes the newline that is added
+            //localtime_r(&time2, &tm);
+            cout << buffer << " i:" << i << std::endl;
+            t0 = t0 + seconds(reporting_period);
         }
 
     }
@@ -191,15 +205,13 @@ int main(int argc, const char *argv[]) {
       ("namespace", po::value<string>(), "the namespace for the relevant operation")
       ("name", po::value<string>(),"the name of the object to download/upload/delete")
       ("allow-cached", po::value<bool>()->default_value(false),"can we use cached information?")
-      (
-          "consistent-read", po::value<bool>()->default_value(true),
-          "consistent read?")("transport", po::value<string>(),
-                              "rdma | tcp (default = tcp)")(
-          "file", po::value<string>(), "file to work with for download/upload")(
-          "length", po::value<uint32_t>(), "length for partial object read")(
-          "offset", po::value<uint64_t>()->default_value(0),
-          "offset for partial object read")
-      ("benchmark-size", po::value<uint32_t>() -> default_value(1000), "size of benchmark");
+      ("consistent-read", po::value<bool>()->default_value(true),"consistent read?")
+      ("transport", po::value<string>(),"rdma | tcp (default = tcp)")
+      ("file", po::value<string>(), "file to work with for download/upload")
+      ("length", po::value<uint32_t>(), "length for partial object read")
+      ("offset", po::value<uint64_t>()->default_value(0),"offset for partial object read")
+      ("benchmark-size", po::value<uint32_t>() -> default_value(1000), "size of benchmark")
+      ("use-rora", po::value<bool>() -> default_value(false), "use rora fetcher or not");
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
 
@@ -348,7 +360,8 @@ int main(int argc, const char *argv[]) {
     string ns = getRequiredStringArg(vm, "namespace");
     string file = getRequiredStringArg(vm, "file");
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
-    partial_read_benchmark(host,port,timeout,transport, ns, file, n);
+    bool use_rora = getRequiredArg<bool>(vm, "use-rora");
+    partial_read_benchmark(host,port,timeout,transport, ns, file, n, use_rora);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "

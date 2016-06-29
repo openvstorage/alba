@@ -179,8 +179,11 @@ int64_t alba_start_rora_server(const char* transport,
                                const int cores,
                                const int queue_depth,
                                const char* root_path,
-                               const int root_path_len
+                               const int root_path_len,
+                               const int debug_level
                                ){
+    gobjfs_init_logging(debug_level);
+
     void* x = gobjfs_xio_server_start(
                                       transport,
                                       host,
