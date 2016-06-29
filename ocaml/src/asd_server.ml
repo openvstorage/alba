@@ -1662,7 +1662,7 @@ let run_server
            >>= fun () ->
            let num_cores = 2 in
            let queue_depth = 8 in
-           let handle = Rora_server.alternative_start
+           let handle = Rora_server.start
                           transport
                           host
                           port

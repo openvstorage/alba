@@ -36,13 +36,9 @@ static void* _DB_POINTER = NULL;
 static char* _ROOT_PATH = NULL;
 static int   _ROOT_PATH_LENGTH = -1;
 
-CAMLprim value alba_register_rocksdb(value v_rocks){
-    CAMLparam1(v_rocks);
-    const uint64_t raw = Nativeint_val(v_rocks);
-    _DB_POINTER = (void*) raw;
-    return Val_unit;
+void alba_register_rocksdb_c(int64_t p){
+    _DB_POINTER = (void*) p;
 }
-
 
 char hexlify(uint8_t c) {
     char r;
@@ -115,8 +111,6 @@ int file_exists (char * fileName)
 int alba_rocks_db_transformer(const char* old,
                          /*const*/ int old_len,
                          char* new_name){
-    printf("rocks_db_transformer (DB pointer: %p) old_len:%i\n", _DB_POINTER, old_len);
-    fflush(stdout);
     rocksdb_readoptions_t *readoptions = rocksdb_readoptions_create();
     if (old_len <= 0){
         return -1;
@@ -134,7 +128,6 @@ int alba_rocks_db_transformer(const char* old,
         rocksdb_get(_DB_POINTER, readoptions, public_key, public_key_len, &len, &err);
 
     if(err){
-        printf("err:%s\n",err);
         fflush(stdout);
         free(err);
         return -1;
@@ -180,7 +173,7 @@ int alba_rocks_db_transformer(const char* old,
     return result;
 }
 
-int64_t alba_alternative_start(const char* transport,
+int64_t alba_start_rora_server(const char* transport,
                                const char* host,
                                const int port,
                                const int cores,
@@ -204,12 +197,8 @@ int64_t alba_alternative_start(const char* transport,
     return (int64_t)x;
 }
 
-
-CAMLprim value alba_stop_rora_server(value v_handle){
-    CAMLparam1(v_handle);
-    const int64_t handle = Int64_val(v_handle);
-    void* p = (void*) handle;
-    int rc = gobjfs_xio_server_stop(p);
+int alba_stop_rora_server(int64_t p){
+    int rc =  gobjfs_xio_server_stop((void*) p);
     free(_ROOT_PATH);
-    return Val_int(rc);
+    return rc;
 }

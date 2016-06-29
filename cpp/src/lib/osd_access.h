@@ -68,7 +68,7 @@ private:
   const std::map<osd_t, info_caps>::iterator _find_osd(osd_t);
 
   int _read_osd_slices(osd_t, std::vector<asd_slice> &);
-  std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>>::iterator _find_ctx(osd_t);
+  std::shared_ptr<gobjfs::xio::client_ctx>  _find_ctx(osd_t);
   void _set_ctx(osd_t, std::shared_ptr<gobjfs::xio::client_ctx>);
 };
 }

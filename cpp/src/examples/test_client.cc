@@ -21,6 +21,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/program_options/parsers.hpp>
 #include <boost/log/trivial.hpp>
 
+#include <chrono>
 #include <fstream>
 
 #include "stuff.h"
@@ -76,6 +77,90 @@ void proxy_get_version(const string &host, const string &port,
        << ")" << endl;
 }
 
+using namespace std::chrono;
+
+void partial_read_benchmark(const string& host,
+                            const string& port,
+                            const boost::asio::time_traits<
+                            boost::posix_time::ptime>::duration_type &timeout,
+                            const Transport& transport,
+                            const string& namespace_,
+                            const string& file_name,
+                            const int n
+    ){
+
+    ALBA_LOG(WARNING, "partial_read_benchmark(" << host << ", " << port <<", " << transport << ")");
+    auto client = make_proxy_client(host, port, timeout, transport);
+    string name = "object_000";
+    const alba::Checksum* checksum = nullptr;
+    using namespace alba::proxy_protocol;
+    client -> write_object_fs(namespace_,
+                              name,
+                              file_name,
+                              allow_overwrite::T,
+                              checksum);
+
+    ALBA_LOG(INFO, "uploaded" << file_name);
+
+    std::vector<alba::byte> buffer(4096);
+    SliceDescriptor sd {&buffer[0], 0,4096};
+    std::vector<SliceDescriptor> slices { sd };
+    ObjectSlices object_slices{name, slices};
+    std::vector<ObjectSlices> objects_slices {object_slices};
+
+
+    high_resolution_clock::time_point t1, t2;
+    double min_dur = 1000000;
+    double max_dur = 0;
+    std::vector<double> borders{100,200,250, 300, 350, 400, 800,100000};
+    int borders_size = borders.size();
+    int last_index = borders_size- 1;
+    std::vector<double> dur_buckets(borders_size);
+
+    for(int i= 0;i < n;i++){
+        t1 = high_resolution_clock::now();
+        client -> read_objects_slices(namespace_, objects_slices,
+                                      consistent_read::F);
+        t2 = high_resolution_clock::now();
+
+        int duration = duration_cast<microseconds>( t2 - t1 ).count();
+        cout << duration << std::endl;
+
+        if(duration < min_dur){
+            min_dur = duration;
+        }
+        if(duration > max_dur){
+            max_dur = duration;
+        }
+        int border_index = 0;
+        bool set = false;
+
+        while (border_index < last_index){
+            double border = borders[border_index];
+            if (duration < border){
+                dur_buckets[border_index] = dur_buckets[border_index] + 1;
+                set = true;
+                break;
+            }
+            border_index++;
+        }
+        if(!set){
+            dur_buckets[last_index] = dur_buckets[last_index] + 1;
+        }
+
+    }
+
+    cout << "min_dur:" << min_dur <<std::endl;
+    cout << "max_dur:" << max_dur <<std::endl;
+    cout << "borders:" << borders <<std::endl;
+    cout << "buckets:" << dur_buckets << std::endl;
+}
+
+
+
+
+
+
 int main(int argc, const char *argv[]) {
   alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
     switch (level) {
@@ -95,25 +180,26 @@ int main(int argc, const char *argv[]) {
       "\tdownload-object, download-object-partial, "
       " upload-object, delete-object, list-objects, "
       " show-object, delete-namespace, create-namespace, "
-      " list-namespaces, invalidata-cache, proxy-get-version")(
+      " list-namespaces, invalidata-cache, proxy-get-version"
+      " partial-read-benchmark"
+      )(
       "port", po::value<string>()->default_value("10000"),
       "the alba proxy port number")(
       "host", po::value<string>()->default_value("127.0.0.1"),
       "the alba proxy port hostname")
 
-      ("namespace", po::value<string>(),
-       "the namespace for the relevant operation")(
-          "name", po::value<string>(),
-          "the name of the object to download/upload/delete")(
-          "allow-cached", po::value<bool>()->default_value(false),
-          "can we use cached information?")(
+      ("namespace", po::value<string>(), "the namespace for the relevant operation")
+      ("name", po::value<string>(),"the name of the object to download/upload/delete")
+      ("allow-cached", po::value<bool>()->default_value(false),"can we use cached information?")
+      (
           "consistent-read", po::value<bool>()->default_value(true),
           "consistent read?")("transport", po::value<string>(),
                               "rdma | tcp (default = tcp)")(
           "file", po::value<string>(), "file to work with for download/upload")(
           "length", po::value<uint32_t>(), "length for partial object read")(
           "offset", po::value<uint64_t>()->default_value(0),
-          "offset for partial object read");
+          "offset for partial object read")
+      ("benchmark-size", po::value<uint32_t>() -> default_value(1000), "size of benchmark");
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
 
@@ -258,6 +344,11 @@ int main(int argc, const char *argv[]) {
     string ns = getRequiredStringArg(vm, "namespace");
     bool result = client->namespace_exists(ns);
     cout << "namespace_exists(" << ns << ") => " << result << endl;
+  } else if("partial-read-benchmark") {
+    string ns = getRequiredStringArg(vm, "namespace");
+    string file = getRequiredStringArg(vm, "file");
+    uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
+    partial_read_benchmark(host,port,timeout,transport, ns, file, n);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "

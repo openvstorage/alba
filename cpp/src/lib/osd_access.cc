@@ -40,10 +40,15 @@ const std::map<osd_t, info_caps>::iterator OsdAccess::_find_osd(osd_t osd){
   return _osd_infos.find(osd);
 }
 
-std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>>::iterator
+std::shared_ptr<gobjfs::xio::client_ctx>
 OsdAccess::_find_ctx(osd_t osd){
   std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
-  return _osd_ctxs.find(osd);
+  auto it = _osd_ctxs.find(osd);
+  if(it == _osd_ctxs.end()){
+      return nullptr;
+  } else{
+      return it -> second;
+  }
 }
 
 void OsdAccess::_set_ctx(osd_t osd,
@@ -78,9 +83,9 @@ using namespace gobjfs::xio;
 int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
   ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices(" << osd << ")");
 
-  auto ctx_it = _find_ctx(osd);
+  auto ctx = _find_ctx(osd);
 
-  if (ctx_it == _osd_ctxs.end()) {
+  if (ctx== nullptr) {
     std::shared_ptr<gobjfs::xio::client_ctx_attr> ctx_attr = ctx_attr_new();
 
     auto it = _find_osd(osd);
@@ -107,17 +112,14 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
         throw osd_access_exception(err,"ctx_attr_set_transport");
     }
 
-    std::shared_ptr<gobjfs::xio::client_ctx> ctx = ctx_new(ctx_attr);
+    ctx = ctx_new(ctx_attr);
     err = ctx_init(ctx);
     ALBA_LOG(DEBUG, "ctx_init err:" << err);
     if(err !=0){
         throw osd_access_exception(err, "ctx_init");
     }
     _set_ctx(osd,ctx);
-    ctx_it = _find_ctx(osd);
   }
-
-  auto ctx = ctx_it->second;
   size_t n_slices = slices.size();
   std::vector<giocb*> iocb_vec(n_slices);
   std::vector<giocb> giocb_vec(n_slices);
