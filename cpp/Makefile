@@ -80,6 +80,8 @@ compile_tests:
 
 clean:
 	find -name "*.o" | xargs rm
+	rm -rf ./lib/*
+	rm -rf ./bin/*
 
 format:
 	find -name "*.cc" | xargs clang-format-3.6 -i

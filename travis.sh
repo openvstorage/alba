@@ -45,6 +45,8 @@ before_install () {
 
     env | sort
     sudo add-apt-repository "deb http://apt.openvstorage.org unstable main" | sudo tee -a /etc/apt/sources.list
+    sudo add-apt-repository "deb http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" | sudo tee -a /etc/apt/sources.list
+
     sudo add-apt-repository "deb http://us-central1.gce.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse"
     sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
 
@@ -96,7 +98,8 @@ before_install () {
          libxio0 libxio-dev \
          libunwind8-dev libaio-dev libaio1 libaio1-dbg libaio-dev \
          libz-dev libbz2-dev \
-         libgoogle-glog-dev libibverbs-dev
+         libgoogle-glog-dev libibverbs-dev \
+         libboost1.57-all-dev libboost1.57-all
 
     date
 
@@ -163,7 +166,7 @@ install () {
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout 46f2818c4accb20b955e86530dc6c4c56ec01a3e
+    git checkout e11d3d160217006b3cc3e903541a10212075384f
     mkdir build
     cd build
     cmake ..
@@ -217,7 +220,6 @@ script () {
             g++ --version
             uname -a
             export CXX=g++-4.8
-            sudo apt-get install -y libboost-all-dev # kitchen sink
             sudo apt-get install -y fuse
             sudo modprobe fuse
             wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
