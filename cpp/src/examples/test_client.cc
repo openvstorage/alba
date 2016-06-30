@@ -20,6 +20,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/program_options/variables_map.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/log/core.hpp>
+#include <boost/log/expressions.hpp>
 
 #include <chrono>
 #include <ctime>
@@ -92,7 +94,11 @@ void partial_read_benchmark(const string& host,
                             const bool use_rora
     ){
 
-    ALBA_LOG(WARNING, "partial_read_benchmark(" << host << ", " << port <<", " << transport << ")");
+    ALBA_LOG(WARNING, "partial_read_benchmark("
+             << host << ", " << port
+             << ", " << transport
+             << ", use_rora=" << use_rora
+             << ")");
     auto client = make_proxy_client(host, port, timeout, transport, use_rora);
     string name = "object_000";
     const alba::Checksum* checksum = nullptr;
@@ -115,7 +121,7 @@ void partial_read_benchmark(const string& host,
     high_resolution_clock::time_point t0, t1, t2;
     double min_dur = 1000000;
     double max_dur = 0;
-    std::vector<double> borders{100,200,250, 300, 350, 400, 800,100000};
+    std::vector<double> borders{100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 800,100000};
     int borders_size = borders.size();
     int last_index = borders_size- 1;
     std::vector<double> dur_buckets(borders_size);
@@ -187,6 +193,13 @@ int main(int argc, const char *argv[]) {
 
   ALBA_LOG(WARNING, "cucu")
 
+  //gobjfs directly plugs in boost logging.
+  namespace logging = boost::log;
+  logging::core::get()->set_filter
+      (
+       logging::trivial::severity >= logging::trivial::info
+       );
+
   po::options_description desc("Allowed options");
   desc.add_options()("help", "produce help message")(
       "command", po::value<string>(),
@@ -211,7 +224,8 @@ int main(int argc, const char *argv[]) {
       ("length", po::value<uint32_t>(), "length for partial object read")
       ("offset", po::value<uint64_t>()->default_value(0),"offset for partial object read")
       ("benchmark-size", po::value<uint32_t>() -> default_value(1000), "size of benchmark")
-      ("use-rora", po::value<bool>() -> default_value(false), "use rora fetcher or not");
+      ("use-rora", po::value<bool>() -> default_value(true), "use rora fetcher or not");
+
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
 
