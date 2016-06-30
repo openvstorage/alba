@@ -103,6 +103,13 @@ before_install () {
 
     date
 
+    pushd .
+    git clone  https://github.com/google/googletest
+    cd googletest; mkdir build; cd build; cmake ..; sudo make install
+    popd
+
+    date
+
 }
 
 install () {
@@ -111,12 +118,6 @@ install () {
     date
 
     eval `opam config env`
-
-    wget https://gist.github.com/domsj/f2d7726e5d9895d498fb/raw/ab6f9b8dd9cc736dfcef6f36992a60a5241e0175/librocksdb.so.4.3.1
-    sudo cp librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so.4.3.1
-    sudo ln -s /usr/local/lib/librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so.4.3
-    sudo ln -s /usr/local/lib/librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so.4
-    sudo ln -s /usr/local/lib/librocksdb.so.4.3.1 /usr/local/lib/librocksdb.so
 
     date
 
@@ -157,12 +158,19 @@ install () {
     cd orocksdb
     git checkout cb393e5c86d2f54ca1787b310764063f68f564e4
     ./install_rocksdb.sh
+
+    pushd .
+    cd rocksdb
+    sudo make install
+    popd
+
     make build install
     cd ..
 
     date
 
     echo "Installing gobjfs"
+    pushd .
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
@@ -171,7 +179,8 @@ install () {
     cd build
     cmake ..
     make
-    cp ../lib/lib*.so /usr/local/lib
+    sudo make install
+    popd
 
     echo "Installing etcd"
     curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
@@ -180,7 +189,9 @@ install () {
     sudo cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
 
     date
-
+    pwd
+    eval `opam config env`
+    export ALBA_HOME=$(pwd)
     ./jenkins/system2/020-build_ocaml.sh
 
     date
@@ -195,6 +206,7 @@ script () {
     export ARAKOON_BIN=arakoon
     export WORKSPACE=$(pwd)
     export TEST_DRIVER=./setup/setup.native
+    export LD_LIBRARY_PATH=/usr/local/lib
     env | sort
 
     ./ocaml/alba.native version
@@ -220,11 +232,6 @@ script () {
             g++ --version
             uname -a
             export CXX=g++-4.8
-            sudo apt-get install -y fuse
-            sudo modprobe fuse
-            wget http://ppa.launchpad.net/anatol/tup/ubuntu/pool/main/t/tup/tup_0.7.2.12+ga582fee_amd64.deb
-            sudo dpkg -i tup_0.7.2.12+ga582fee_amd64.deb
-
             ./jenkins/cpp/010-build_client.sh
             ${TEST_DRIVER} cpp
             fab alba.smoke_test

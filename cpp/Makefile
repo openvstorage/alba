@@ -79,7 +79,7 @@ compile_tests:
 	$(CMD) -c src/examples/test_client.cc -o src/examples/test_client.o
 
 clean:
-	find -name "*.o" | xargs rm
+	find -name "*.o" | xargs rm -f
 	rm -rf ./lib/*
 	rm -rf ./bin/*
 

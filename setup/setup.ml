@@ -779,7 +779,7 @@ let make_asd_config
       node_id asd_id home tls
   =
   let ips = match ip with
-    | None -> failwith "no ip ?";
+    | None -> [local_ip_address ()];
     | Some ip -> [ip]
   in
   let rora_port = match use_rora with

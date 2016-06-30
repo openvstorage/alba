@@ -24,7 +24,7 @@ mkdir -p                               %{buildroot}%{_bindir}
 cp ocaml/alba.native                   %{buildroot}%{_bindir}/alba
 mkdir -p                               %{buildroot}%{_libdir}/alba/
 
-for i in Jerasure rocksdb isal gf_complete; \
+for i in Jerasure rocksdb isal gf_complete gobjfs_server; \
     do ldd ./ocaml/alba.native \
             | grep $i \
             | grep "=> /" \
