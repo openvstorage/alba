@@ -44,6 +44,7 @@ module Config = struct
       ip: string option;
       alba_rdma : string option; (* ip of the rdma capable nic *)
       alba_rora : bool; (* use rora back door on ASDs *)
+      alba_asd_log_level : string;
       local_nodeid_prefix : string;
       n_osds : int;
 
@@ -105,6 +106,7 @@ module Config = struct
     let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
     and alba_rora = env_or_default "ALBA_RORA" "false" |> get_bool
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
+    and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
     in
     {
       home;
@@ -125,6 +127,7 @@ module Config = struct
       ip = alba_ip;
       alba_rdma;
       alba_rora;
+      alba_asd_log_level;
       local_nodeid_prefix;
       n_osds;
 
@@ -772,6 +775,7 @@ let make_asd_config
       ~(port:int)
       ?transport
       ~(ip:string option)
+      ~log_level
       node_id asd_id home tls
   =
   let ips = match ip with
@@ -787,7 +791,7 @@ let make_asd_config
    home;
    port=(Some port);
    ips;
-   log_level = "debug";
+   log_level;
    limit= 99;
    __sync_dont_use = false;
    multicast = Some 10.0;
@@ -803,12 +807,12 @@ let make_asd_config
 
 
 class asd ?write_blobs ?transport ~ip ~use_rora
-          node_id asd_id alba_bin arakoon_path home ~(port:int) ~etcd tls
+          node_id asd_id alba_bin arakoon_path home ~(port:int) ~etcd tls ~log_level
   =
   let use_tls = tls <> None in
   let asd_cfg = make_asd_config
                   ?write_blobs ?transport ~ip
-                  node_id asd_id home ~port tls ~use_rora
+                  node_id asd_id home ~port tls ~use_rora ~log_level
   in
 
   let config_persister, cfg_url =
@@ -964,7 +968,7 @@ module Deployment = struct
         ?write_blobs
         ?transport ~ip ~use_rora
         n local_nodeid_prefix base_path arakoon_path alba_bin
-        ~etcd (tls:bool) =
+        ~etcd (tls:bool) ~log_level =
     let rec loop asds j =
       if j = n
       then List.rev asds |> Array.of_list
@@ -997,7 +1001,7 @@ module Deployment = struct
                         alba_bin
                         arakoon_path
                         home ~port ~etcd
-                        tls_cfg
+                        tls_cfg ~log_level
           in
           loop (asd :: asds) (j+1)
         end
@@ -1051,7 +1055,7 @@ module Deployment = struct
                          cfg.arakoon_path
                          cfg.alba_bin
                          ~etcd:cfg.etcd
-                         cfg.tls
+                         cfg.tls ~log_level:cfg.alba_asd_log_level
     in
     { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
 
@@ -2023,6 +2027,7 @@ module Test = struct
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
                                       false
+                                      ~log_level:tx.cfg.alba_asd_log_level
             }
           else tx
         in
