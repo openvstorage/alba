@@ -233,7 +233,9 @@ void RoraProxy_client::read_objects_slices(
       auto &cache = ManifestCache::getInstance();
       auto mfp = cache.find(key);
       if (nullptr != mfp
-          && compressor_t::NO_COMPRESSION == mfp -> compression -> get_compressor()){
+          && compressor_t::NO_COMPRESSION == mfp -> compression  -> get_compressor()
+          && encryption_t::NO_ENCRYPTION  == mfp -> encrypt_info -> get_encryption()
+          ){
 
           auto p = std::make_pair(object_slices, mfp);
           short_path.push_back(p);
