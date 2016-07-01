@@ -85,3 +85,4 @@ clean:
 
 format:
 	find -name "*.cc" | xargs clang-format-3.6 -i
+	find -name "*.h"  | xargs clang-format-3.6 -i

@@ -1420,6 +1420,7 @@ module Test = struct
       alba_connection_host : string ;
       alba_connection_port : string ;
       alba_connection_transport : string;
+      alba_connection_use_rora : bool;
     } [@@ deriving yojson, show]
 
   type backend_cfg = {
@@ -1429,13 +1430,14 @@ module Test = struct
   let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv"
   let backend_cfg_file cfg = backend_cfg_dir cfg  ^ "/backend.json"
 
-  let make_backend_cfg cfg ~host ~port ~transport =
+  let make_backend_cfg cfg ~host ~port ~transport ~use_rora =
       {
         backend_connection_manager = {
           backend_type = "ALBA";
           alba_connection_host = host;
           alba_connection_port = port;
           alba_connection_transport = transport; (* "RDMA" | "TCP" *)
+          alba_connection_use_rora = use_rora;
         }
       }
 
@@ -1454,11 +1456,14 @@ module Test = struct
   let backend_cfg_persister cfg =
     let backend_cfg =
       let host, transport = _get_ip_transport cfg
-      and port = "10000" in
+      and port = "10000"
+      and use_rora = cfg.alba_rora
+      in
       make_backend_cfg cfg
                        ~host
                        ~port
                        ~transport
+                       ~use_rora
     in
     let oc = open_out (backend_cfg_file cfg) in
     let json = backend_cfg_to_yojson backend_cfg in

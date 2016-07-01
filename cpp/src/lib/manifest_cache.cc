@@ -26,6 +26,11 @@ ManifestCache &ManifestCache::getInstance() {
   return instance;
 }
 
+static size_t _manifest_cache_capacity = 10000;
+void ManifestCache::set_capacity(size_t capacity) {
+  _manifest_cache_capacity = capacity;
+}
+
 void ManifestCache::add(strpair key, std::shared_ptr<Manifest> mfp) {
   ALBA_LOG(DEBUG, "ManifestCache::add");
 
@@ -34,21 +39,28 @@ void ManifestCache::add(strpair key, std::shared_ptr<Manifest> mfp) {
   if (it != _cache.end()) {
     _cache.erase(it);
   }
-  _cache[key] = std::move(mfp);
 
+  if (_cache.size() > _manifest_cache_capacity) {
+    it = _cache.begin();
+    const strpair &key = it->first;
+    using namespace alba::stuff;
+    ALBA_LOG(DEBUG, "cache is full(" << _manifest_cache_capacity
+                                     << "), evicting victim: " << key);
+
+    _cache.erase(it);
+  }
+
+  _cache[key] = std::move(mfp);
 }
 
 std::shared_ptr<Manifest> ManifestCache::find(strpair &key) {
   std::lock_guard<std::mutex> g(_cache_mutex);
   auto it = _cache.find(key);
-  if (it == _cache.end()){
-      return nullptr;
-  }else {
-      return it -> second;
+  if (it == _cache.end()) {
+    return nullptr;
+  } else {
+    return it->second;
   }
-
 }
-
-
 }
 }

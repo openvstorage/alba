@@ -22,6 +22,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/log/trivial.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
+#include <boost/optional/optional_io.hpp>
 
 #include <chrono>
 #include <ctime>
@@ -83,103 +84,88 @@ void proxy_get_version(const string &host, const string &port,
 
 using namespace std::chrono;
 
-void partial_read_benchmark(const string& host,
-                            const string& port,
-                            const boost::asio::time_traits<
-                            boost::posix_time::ptime>::duration_type &timeout,
-                            const Transport& transport,
-                            const string& namespace_,
-                            const string& file_name,
-                            const int n,
-                            const bool use_rora
-    ){
+void partial_read_benchmark(
+    const string &host, const string &port,
+    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
+        timeout,
+    const Transport &transport, const string &namespace_,
+    const string &file_name, const int n,
+    const boost::optional<RoraConfig> &rora_config) {
 
-    ALBA_LOG(WARNING, "partial_read_benchmark("
-             << host << ", " << port
-             << ", " << transport
-             << ", use_rora=" << use_rora
-             << ")");
-    auto client = make_proxy_client(host, port, timeout, transport, use_rora);
-    string name = "object_000";
-    const alba::Checksum* checksum = nullptr;
-    using namespace alba::proxy_protocol;
-    client -> write_object_fs(namespace_,
-                              name,
-                              file_name,
-                              allow_overwrite::T,
-                              checksum);
+  ALBA_LOG(WARNING, "partial_read_benchmark("
+                        << host << ", " << port << ", " << transport
+                        << ", rora_config =" << rora_config << ")");
+  auto client = make_proxy_client(host, port, timeout, transport, rora_config);
+  string name = "object_000";
+  const alba::Checksum *checksum = nullptr;
+  using namespace alba::proxy_protocol;
+  client->write_object_fs(namespace_, name, file_name, allow_overwrite::T,
+                          checksum);
 
-    ALBA_LOG(INFO, "uploaded" << file_name);
+  ALBA_LOG(INFO, "uploaded" << file_name);
 
-    std::vector<alba::byte> buffer(4096);
-    SliceDescriptor sd {&buffer[0], 0,4096};
-    std::vector<SliceDescriptor> slices { sd };
-    ObjectSlices object_slices{name, slices};
-    std::vector<ObjectSlices> objects_slices {object_slices};
+  std::vector<alba::byte> buffer(4096);
+  SliceDescriptor sd{&buffer[0], 0, 4096};
+  std::vector<SliceDescriptor> slices{sd};
+  ObjectSlices object_slices{name, slices};
+  std::vector<ObjectSlices> objects_slices{object_slices};
 
+  high_resolution_clock::time_point t0, t1, t2;
+  double min_dur = 1000000;
+  double max_dur = 0;
+  std::vector<double> borders{100, 125, 150, 175, 200, 225,
+                              250, 300, 350, 400, 800, 100000};
+  int borders_size = borders.size();
+  int last_index = borders_size - 1;
+  std::vector<double> dur_buckets(borders_size);
+  t0 = high_resolution_clock::now();
+  for (int i = 0; i < n; i++) {
+    t1 = high_resolution_clock::now();
+    client->read_objects_slices(namespace_, objects_slices, consistent_read::F);
+    t2 = high_resolution_clock::now();
 
-    high_resolution_clock::time_point t0, t1, t2;
-    double min_dur = 1000000;
-    double max_dur = 0;
-    std::vector<double> borders{100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 800,100000};
-    int borders_size = borders.size();
-    int last_index = borders_size- 1;
-    std::vector<double> dur_buckets(borders_size);
-    t0 = high_resolution_clock::now();
-    for(int i= 0;i < n;i++){
-        t1 = high_resolution_clock::now();
-        client -> read_objects_slices(namespace_, objects_slices,
-                                      consistent_read::F);
-        t2 = high_resolution_clock::now();
+    int duration = duration_cast<microseconds>(t2 - t1).count();
 
-        int duration = duration_cast<microseconds>( t2 - t1 ).count();
-
-        if(duration < min_dur){
-            min_dur = duration;
-        }
-        if(duration > max_dur){
-            max_dur = duration;
-        }
-        int border_index = 0;
-        bool set = false;
-
-        while (border_index < last_index){
-            double border = borders[border_index];
-            if (duration < border){
-                dur_buckets[border_index] = dur_buckets[border_index] + 1;
-                set = true;
-                break;
-            }
-            border_index++;
-        }
-        if(!set){
-            dur_buckets[last_index] = dur_buckets[last_index] + 1;
-        }
-        int dur2 = duration_cast<seconds>(t2 - t0).count();
-        int reporting_period = 1;
-        if(dur2 > reporting_period){
-            auto time2 = system_clock::to_time_t(t2);
-            //struct tm tm;
-            char buffer[26];
-            ctime_r(&time2, buffer);
-            buffer[24] = '\0';  // Removes the newline that is added
-            //localtime_r(&time2, &tm);
-            cout << buffer << " i:" << i << std::endl;
-            t0 = t0 + seconds(reporting_period);
-        }
-
+    if (duration < min_dur) {
+      min_dur = duration;
     }
+    if (duration > max_dur) {
+      max_dur = duration;
+    }
+    int border_index = 0;
+    bool set = false;
 
-    cout << "min_dur:" << min_dur <<std::endl;
-    cout << "max_dur:" << max_dur <<std::endl;
-    cout << "borders:" << borders <<std::endl;
-    cout << "buckets:" << dur_buckets << std::endl;
+    while (border_index < last_index) {
+      double border = borders[border_index];
+      if (duration < border) {
+        dur_buckets[border_index] = dur_buckets[border_index] + 1;
+        set = true;
+        break;
+      }
+      border_index++;
+    }
+    if (!set) {
+      dur_buckets[last_index] = dur_buckets[last_index] + 1;
+    }
+    int dur2 = duration_cast<seconds>(t2 - t0).count();
+    int reporting_period = 1;
+    if (dur2 > reporting_period) {
+      auto time2 = system_clock::to_time_t(t2);
+      // struct tm tm;
+      char buffer[26];
+      ctime_r(&time2, buffer);
+      buffer[24] = '\0'; // Removes the newline that is added
+      // localtime_r(&time2, &tm);
+      cout << buffer << " i:" << i << std::endl;
+      t0 = t0 + seconds(reporting_period);
+    }
+  }
+
+  cout << "min_dur:" << min_dur << std::endl;
+  cout << "max_dur:" << max_dur << std::endl;
+  cout << "borders:" << borders << std::endl;
+  cout << "buckets:" << dur_buckets << std::endl;
 }
-
-
-
-
-
 
 int main(int argc, const char *argv[]) {
   alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
@@ -193,12 +179,10 @@ int main(int argc, const char *argv[]) {
 
   ALBA_LOG(WARNING, "cucu")
 
-  //gobjfs directly plugs in boost logging.
+  // gobjfs directly plugs in boost logging.
   namespace logging = boost::log;
-  logging::core::get()->set_filter
-      (
-       logging::trivial::severity >= logging::trivial::info
-       );
+  logging::core::get()->set_filter(logging::trivial::severity >=
+                                   logging::trivial::info);
 
   po::options_description desc("Allowed options");
   desc.add_options()("help", "produce help message")(
@@ -208,23 +192,29 @@ int main(int argc, const char *argv[]) {
       " upload-object, delete-object, list-objects, "
       " show-object, delete-namespace, create-namespace, "
       " list-namespaces, invalidata-cache, proxy-get-version"
-      " partial-read-benchmark"
-      )(
-      "port", po::value<string>()->default_value("10000"),
-      "the alba proxy port number")(
+      " partial-read-benchmark")("port",
+                                 po::value<string>()->default_value("10000"),
+                                 "the alba proxy port number")(
       "host", po::value<string>()->default_value("127.0.0.1"),
       "the alba proxy port hostname")
 
-      ("namespace", po::value<string>(), "the namespace for the relevant operation")
-      ("name", po::value<string>(),"the name of the object to download/upload/delete")
-      ("allow-cached", po::value<bool>()->default_value(false),"can we use cached information?")
-      ("consistent-read", po::value<bool>()->default_value(true),"consistent read?")
-      ("transport", po::value<string>(),"rdma | tcp (default = tcp)")
-      ("file", po::value<string>(), "file to work with for download/upload")
-      ("length", po::value<uint32_t>(), "length for partial object read")
-      ("offset", po::value<uint64_t>()->default_value(0),"offset for partial object read")
-      ("benchmark-size", po::value<uint32_t>() -> default_value(1000), "size of benchmark")
-      ("use-rora", po::value<bool>() -> default_value(true), "use rora fetcher or not");
+      ("namespace", po::value<string>(),
+       "the namespace for the relevant operation")(
+          "name", po::value<string>(),
+          "the name of the object to download/upload/delete")(
+          "allow-cached", po::value<bool>()->default_value(false),
+          "can we use cached information?")(
+          "consistent-read", po::value<bool>()->default_value(true),
+          "consistent read?")("transport", po::value<string>(),
+                              "rdma | tcp (default = tcp)")(
+          "file", po::value<string>(), "file to work with for download/upload")(
+          "length", po::value<uint32_t>(), "length for partial object read")(
+          "offset", po::value<uint64_t>()->default_value(0),
+          "offset for partial object read")(
+          "benchmark-size", po::value<uint32_t>()->default_value(1000),
+          "size of benchmark")("use-rora",
+                               po::value<bool>()->default_value(true),
+                               "use rora fetcher or not");
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -370,12 +360,17 @@ int main(int argc, const char *argv[]) {
     string ns = getRequiredStringArg(vm, "namespace");
     bool result = client->namespace_exists(ns);
     cout << "namespace_exists(" << ns << ") => " << result << endl;
-  } else if("partial-read-benchmark") {
+  } else if ("partial-read-benchmark") {
     string ns = getRequiredStringArg(vm, "namespace");
     string file = getRequiredStringArg(vm, "file");
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
     bool use_rora = getRequiredArg<bool>(vm, "use-rora");
-    partial_read_benchmark(host,port,timeout,transport, ns, file, n, use_rora);
+    boost::optional<RoraConfig> rora_config = boost::none;
+    if (use_rora) {
+      rora_config = RoraConfig(100);
+    }
+    partial_read_benchmark(host, port, timeout, transport, ns, file, n,
+                           rora_config);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "

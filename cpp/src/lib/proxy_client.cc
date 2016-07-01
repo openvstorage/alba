@@ -56,15 +56,15 @@ std::unique_ptr<Proxy_client> make_proxy_client(
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
         expiry_time,
     const Transport &transport,
-    bool use_rora
-    ) {
+    const boost::optional<RoraConfig> &rora_config) {
 
-  auto inner_client = _make_proxy_client(ip,port,expiry_time, transport);
-  if(use_rora){
-      return std::unique_ptr<Proxy_client>(new RoraProxy_client(std::move(inner_client)));
-    } else{
-      return inner_client;
-    }
+  auto inner_client = _make_proxy_client(ip, port, expiry_time, transport);
+  if (boost::none == rora_config) {
+    return inner_client;
+  } else {
+    return std::unique_ptr<Proxy_client>(
+        new RoraProxy_client(std::move(inner_client), *rora_config));
+  }
 }
 
 std::ostream &operator<<(std::ostream &os, Transport t) {
@@ -92,6 +92,12 @@ std::istream &operator>>(std::istream &is, Transport &t) {
   }
 
   return is;
+}
+
+std::ostream &operator<<(std::ostream &os, const RoraConfig &cfg) {
+  os << "RoraConfig{"
+     << "manifest_cache_size=" << cfg.manifest_cache_size << "}";
+  return os;
 }
 }
 }

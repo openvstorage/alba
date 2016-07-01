@@ -24,8 +24,11 @@ but WITHOUT ANY WARRANTY of any kind.
 
 namespace alba {
 namespace proxy_client {
-RoraProxy_client::RoraProxy_client(std::unique_ptr<Proxy_client> delegate)
-    : _delegate(std::move(delegate)) {}
+RoraProxy_client::RoraProxy_client(std::unique_ptr<Proxy_client> delegate,
+                                   const RoraConfig &rora_config)
+    : _delegate(std::move(delegate)) {
+  ManifestCache::set_capacity(rora_config.manifest_cache_size);
+}
 
 bool RoraProxy_client::namespace_exists(const std::string &name) {
   return _delegate->namespace_exists(name);
@@ -151,7 +154,7 @@ int RoraProxy_client::_short_path_one(const std::string &namespace_,
   // one object, maybe multiple slices and or fragments involved
   ALBA_LOG(DEBUG, "_short_path_one(" << namespace_ << ", ...)");
   std::map<osd_t, std::vector<asd_slice>> per_osd;
-  const Manifest& manifest = *mfp;
+  const Manifest &manifest = *mfp;
   for (auto &sd : object_slices.slices) {
     uint32_t bytes_to_read = sd.size;
     uint32_t offset = sd.offset;

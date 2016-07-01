@@ -33,6 +33,7 @@ typedef std::map<strpair, std::shared_ptr<Manifest>> manifest_cache;
 class ManifestCache {
 public:
   static ManifestCache &getInstance();
+  static void set_capacity(size_t capacity);
 
   ManifestCache(ManifestCache const &) = delete;
   void operator=(ManifestCache const &) = delete;

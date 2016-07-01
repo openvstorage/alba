@@ -142,7 +142,7 @@ RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout e11d3d160217006b3cc3e903541a10212075384f
+RUN cd gobjfs  && git pull && git checkout 193261f52f7b9c90e4e6ba063e720bdbe4ffebe9
 RUN cd gobjfs \
        && mkdir build \
        && cd build \

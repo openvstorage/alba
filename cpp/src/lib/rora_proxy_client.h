@@ -28,7 +28,7 @@ typedef std::pair<ObjectSlices, std::shared_ptr<Manifest>> short_path_entry;
 
 class RoraProxy_client : public Proxy_client {
 public:
-  RoraProxy_client(std::unique_ptr<Proxy_client> delegate);
+  RoraProxy_client(std::unique_ptr<Proxy_client> delegate, const RoraConfig &);
 
   virtual bool namespace_exists(const std::string &name);
 

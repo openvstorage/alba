@@ -38,6 +38,12 @@ struct proxy_exception : std::exception {
   virtual const char *what() const noexcept { return _what.c_str(); }
 };
 
+struct RoraConfig {
+  RoraConfig(const size_t size = 10000) : manifest_cache_size(size) {}
+
+  size_t manifest_cache_size;
+};
+
 BOOLEAN_ENUM(has_more)
 BOOLEAN_ENUM(include_first)
 BOOLEAN_ENUM(include_last)
@@ -147,6 +153,8 @@ std::unique_ptr<Proxy_client> make_proxy_client(
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
         expiry_time,
     const Transport &transport,
-    bool use_rora = true);
+    const boost::optional<RoraConfig> &rora = boost::none);
+
+std::ostream &operator<<(std::ostream &, const RoraConfig &);
 }
 }
