@@ -178,7 +178,7 @@ install () {
     mkdir build
     cd build
     cmake ..
-    make
+    make | tail
     sudo make install
     popd
 
