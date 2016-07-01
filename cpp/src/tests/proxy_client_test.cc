@@ -314,14 +314,31 @@ TEST(proxy_client, test_partial_read_trivial) {
   sos << "with_manifest" << std::rand();
   string name = sos.str();
   using namespace proxy_protocol;
-  byte *buf = new byte[8192];
-  SliceDescriptor sd{buf, 0, 4096};
+  uint32_t block_size = 4096;
+  std::vector<byte> bytes(block_size);
+  SliceDescriptor sd{&bytes[0], 0, block_size};
 
   std::vector<SliceDescriptor> slices{sd};
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
   _generic_partial_read_test(namespace_, name, objects_slices);
-  delete[] buf;
+  std::ifstream for_comparison("./ocaml/alba.native", std::ios::binary);
+  std::vector<byte> bytes2(block_size);
+  for_comparison.read((char*)&bytes2[0], block_size);
+  auto ok = true;
+  for(uint32_t i=0;i < block_size;i++){
+      const byte b0 = bytes[i];
+      const byte b2 = bytes2[i];
+      if(b0 != b2){
+          std::cout << "error[" <<i <<"]:"
+                    << (int)b0 << "!="
+                    << (int) b2
+                    << std::endl;
+          ok = false;
+      }
+  }
+  EXPECT_TRUE(ok);
+
 }
 
 TEST(proxy_client, test_partial_read_multislice) {
