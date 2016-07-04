@@ -28,7 +28,10 @@ namespace llio {
 template <> void from(message &m, proxy_protocol::EncodingScheme &es) {
   uint8_t version;
   from(m, version);
-  assert(version == 1);
+  if (version != 1) {
+    throw deserialisation_exception("unexpected EncodingScheme version");
+  }
+
   from(m, es.k);
   from(m, es.m);
   from(m, es.w);
@@ -48,7 +51,7 @@ void from(message &m, std::unique_ptr<proxy_protocol::Compression> &p) {
   case 3: {
     r = new proxy_protocol::BZip2Compression();
   }; break;
-  default: { throw "serialization error"; };
+  default: { throw deserialisation_exception("unknown compression type"); };
   }
   p.reset(r);
 }
@@ -60,14 +63,17 @@ void from(message &m, std::unique_ptr<proxy_protocol::EncryptInfo> &p) {
   case 1: {
     p.reset(new proxy_protocol::NoEncryption());
   }; break;
-  default: { throw "serialization error"; };
+  default: { throw deserialisation_exception("unknown encryption scheme)"); };
   }
 }
 
 template <> void from(message &m, proxy_protocol::Manifest &mf) {
   uint8_t version;
   from(m, version);
-  assert(version == 1);
+  if (version != 1) {
+    throw deserialisation_exception("unexpecteded Manifest version");
+  }
+
   std::string compressed;
   from(m, compressed);
 
@@ -83,7 +89,10 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
 
   uint8_t version2;
   from(m2, version2);
-  assert(version2 == 1);
+  if (version2 != 1) {
+    throw deserialisation_exception("unexpected version2");
+  }
+
   from(m2, mf.encoding_scheme);
 
   from(m2, mf.compression);
@@ -93,12 +102,16 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   from(m2, mf.size);
   uint8_t layout_tag;
   from(m2, layout_tag);
-  assert(layout_tag == 1);
+  if (layout_tag != 1) {
+    throw deserialisation_exception("unexpected layout tag");
+  }
   from(m2, mf.fragment_locations);
 
   uint8_t layout_tag2;
   from(m2, layout_tag2);
-  assert(layout_tag2 == 1);
+  if (layout_tag2 != 1) {
+    throw deserialisation_exception("unexpected layout tag 2");
+  }
 
   uint32_t n_chunks;
   from(m2, n_chunks);
@@ -119,8 +132,10 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
 
   uint8_t layout_tag3;
   from(m2, layout_tag3);
+  if (layout_tag3 != 1) {
+    throw deserialisation_exception("unexpected layout tag 3");
+  }
 
-  assert(layout_tag3 == 1);
   from(m2, mf.fragment_packed_sizes);
 
   from(m2, mf.version_id);

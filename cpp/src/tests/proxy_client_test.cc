@@ -299,7 +299,8 @@ void _generic_partial_read_test(
   boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
                                   rora_config);
-  client->create_namespace(namespace_, boost::none);
+  boost::optional<std::string> preset{"preset_rora"};
+  client->create_namespace(namespace_, preset);
 
   string file("./ocaml/alba.native");
   client->write_object_fs(namespace_, name, file,
@@ -324,21 +325,20 @@ TEST(proxy_client, test_partial_read_trivial) {
   _generic_partial_read_test(namespace_, name, objects_slices);
   std::ifstream for_comparison("./ocaml/alba.native", std::ios::binary);
   std::vector<byte> bytes2(block_size);
-  for_comparison.read((char*)&bytes2[0], block_size);
+  for_comparison.read((char *)&bytes2[0], block_size);
   auto ok = true;
-  for(uint32_t i=0;i < block_size;i++){
-      const byte b0 = bytes[i];
-      const byte b2 = bytes2[i];
-      if(b0 != b2){
-          std::cout << "error[" <<i <<"]:"
-                    << (int)b0 << "!="
-                    << (int) b2
-                    << std::endl;
-          ok = false;
-      }
+  BOOST_LOG_TRIVIAL(info) << "comparing blocks";
+  for (uint32_t i = 0; i < block_size; i++) {
+    const byte b0 = bytes[i];
+    const byte b2 = bytes2[i];
+    if (b0 != b2) {
+      std::cout << "error[" << i << "]:" << (int)b0 << "!=" << (int)b2
+                << std::endl;
+      ok = false;
+      break;
+    }
   }
   EXPECT_TRUE(ok);
-
 }
 
 TEST(proxy_client, test_partial_read_multislice) {
@@ -371,7 +371,8 @@ TEST(proxy_client, test_partial_reads) {
   boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
                                   rora_config);
-  client->create_namespace(namespace_, boost::none);
+  boost::optional<std::string> preset{"preset_rora"};
+  client->create_namespace(namespace_, preset);
   string file("./ocaml/alba.native");
   client->write_object_fs(namespace_, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
@@ -392,7 +393,8 @@ TEST(proxy_client, manifest_cache_eviction) {
   boost::optional<alba::proxy_client::RoraConfig> rora_config{10};
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
                                   rora_config);
-  client->create_namespace(namespace_, boost::none);
+  boost::optional<std::string> preset{"preset_rora"};
+  client->create_namespace(namespace_, preset);
   string file("./ocaml/alba.native");
   for (int i = 0; i < 20; i++) {
     std::ostringstream sos;

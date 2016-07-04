@@ -25,7 +25,10 @@ namespace llio {
 template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   uint8_t version;
   from(m, version);
-  assert(version == 3);
+  if (version != 3) {
+    throw deserialisation_exception(
+        "unexpected version while deserializing OsdInfo");
+  }
   std::string inner_s;
   from(m, inner_s);
   std::vector<char> inner_v(inner_s.begin(), inner_s.end());
@@ -33,7 +36,10 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
 
   uint8_t kind;
   from(inner, kind);
-  assert(kind == 1);
+  if (kind != 1) {
+    throw deserialisation_exception(
+        "unexpected kind while deserializing OsdInfo");
+  }
   from(inner, info.ips);
   from(inner, info.port);
   from(inner, info.use_tls);
@@ -46,7 +52,12 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
   for (uint i = 0; i < size; i++) {
     uint8_t version;
     from(m, version);
-    assert(version == 1);
+
+    if (version != 1) {
+      throw deserialisation_exception(
+          "unexpected version while deserializing OsdCapabilities");
+    }
+
     uint8_t tag;
     from(m, tag);
     switch (tag) { case 1: { }; break; // for now, we don't care
@@ -57,7 +68,7 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
       from(m, port);
       caps.port.emplace(port);
     }; break;
-    default: { throw "serialization error"; };
+    default: { throw deserialisation_exception("OsdCapabilities"); };
     }
   }
 }

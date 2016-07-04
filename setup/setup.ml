@@ -1480,10 +1480,23 @@ module Test = struct
 
   let no_wrapper f t = f t
 
+  let _create_preset t name file =
+    _alba_cmd_line
+      ~cwd:t.Deployment.cfg.alba_home
+      [
+        "create-preset"; name;
+        "--config"; t.abm # config_url |> Url.canonical;
+        " < "; file;
+      ]
+
   let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let cfg = t.Deployment.cfg in
     let host, transport = _get_ip_transport cfg
     and port = "10000"
+    in
+    let () = _create_preset t
+                            "preset_rora"
+                            "./cfg/preset_no_compression.json"
     in
     let cmd =
       ["cd";cfg.alba_home; "&&";
@@ -1839,16 +1852,13 @@ module Test = struct
     let suite = JUnit.make_suite suite_name results d in
     suite
 
+
   let big_object t =
     let inner () =
       let preset = "preset_no_compression" in
       let namespace ="big" in
       let name = "big_object" in
-      _alba_cmd_line ~cwd:t.Deployment.cfg.alba_home [
-                       "create-preset"; preset;
-                       "--config"; t.abm # config_url |> Url.canonical;
-                       " < "; "./cfg/preset_no_compression.json";
-                     ];
+      let () = _create_preset t preset "./cfg/preset_no_compression.json" in
       _alba_cmd_line [
           "create-namespace";namespace ;preset;
           "--config"; t.abm # config_url |> Url.canonical;
