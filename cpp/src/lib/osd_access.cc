@@ -71,15 +71,18 @@ void OsdAccess::update(std::vector<std::pair<osd_t, info_caps>> &infos) {
   }
 }
 
-bool OsdAccess::read_osds_slices(
+int OsdAccess::read_osds_slices(
     std::map<osd_t, std::vector<asd_slice>> &per_osd) {
-
+  int rc = 0;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     auto &osd_slices = item.second;
-    _read_osd_slices(osd, osd_slices);
+    rc = _read_osd_slices(osd, osd_slices);
+    if(rc) {
+        break;
+    }
   }
-  return false;
+  return rc;
 }
 
 using namespace gobjfs::xio;
@@ -100,7 +103,8 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
       transport_name = "rdma";
     }
     if (boost::none == osd_caps->port) {
-      return 1;
+      ALBA_LOG(DEBUG, "osd " << osd << " has no rora port. returning -1");
+      return -1;
     }
 
     int backdoor_port = *osd_caps->port;
@@ -147,13 +151,9 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
   }
   ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
   if (ret != 0 && ctx_is_disconnected(ctx)) {
+    ALBA_LOG(INFO, "removing bad ctx");
     _remove_ctx(osd);
   }
-  // TODO: when is the context considered 'bad' (and should be removed from the
-  // map) ?
-
-  // ctx_destroy(ctx);
-  // ctx_attr_destroy(ctx_attr);
   return ret;
 }
 }

@@ -55,7 +55,7 @@ public:
 
   void update(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &infos);
 
-  bool read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
+  int read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 
 private:
   OsdAccess() {}

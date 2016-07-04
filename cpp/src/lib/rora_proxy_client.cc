@@ -166,7 +166,7 @@ int RoraProxy_client::_short_path_one(const std::string &namespace_,
     while (bytes_to_read > 0) {
       auto maybe_coords = manifest.to_chunk_fragment(offset);
       if (maybe_coords == boost::none) {
-        return false;
+        return -1;
       }
 
       auto &coords = *maybe_coords;
