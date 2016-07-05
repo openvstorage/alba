@@ -41,8 +41,10 @@ module Config = struct
       alba_06_plugin_path :string;
       license_file : string;
       tls : bool;
-
+      ip: string option;
       alba_rdma : string option; (* ip of the rdma capable nic *)
+      alba_rora : bool; (* use rora back door on ASDs *)
+      alba_asd_log_level : string;
       local_nodeid_prefix : string;
       n_osds : int;
 
@@ -99,11 +101,12 @@ module Config = struct
         Some (peers, path)
       with Not_found -> None
     in
-    let tls =
-      let v = env_or_default "ALBA_TLS" "false" in
-      Scanf.sscanf v "%b" (fun x -> x)
-    in
+    let get_bool s = Scanf.sscanf s "%b" (fun x -> x) in
+    let tls = env_or_default "ALBA_TLS" "false" |> get_bool in
     let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
+    and alba_rora = env_or_default "ALBA_RORA" "false" |> get_bool
+    and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
+    and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
     in
     {
       home;
@@ -121,7 +124,10 @@ module Config = struct
       alba_06_plugin_path;
       license_file;
       tls;
+      ip = alba_ip;
       alba_rdma;
+      alba_rora;
+      alba_asd_log_level;
       local_nodeid_prefix;
       n_osds;
 
@@ -619,12 +625,12 @@ class proxy ?fragment_cache ?ip ?transport
          | None' -> ()
          | Local { path; _ } -> Shell.mkdir path
     in
-    self # start_cmd 
+    self # start_cmd
     |> Shell.detach ~out
 
   method stop =
     (* can't use fuser for rdma based servers *)
-    let start_line = String.concat " " (self # start_cmd) in 
+    let start_line = String.concat " " (self # start_cmd) in
     Printf.sprintf "pkill -f '%s'" start_line
     |> Shell.cmd ~ignore_rc:true
 
@@ -655,7 +661,7 @@ class proxy ?fragment_cache ?ip ?transport
     [ "proxy-list-namespaces" ] |> proxy_cmd_line_with_capture
 
   method cmd_line cmd = proxy_cmd_line cmd
-  
+
 end
 
 type maintenance_cfg = {
@@ -758,26 +764,34 @@ type asd_cfg = {
     __warranty_void__write_blobs  : (bool option [@default None]);
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
+    rora_port : int option;
   }[@@deriving yojson]
 
 let make_asd_config
       ?write_blobs
       ?(use_fadvise = true)
       ?(use_fallocate = true)
+      ~use_rora
+      ~(port:int)
       ?transport
-      ?ip
-      node_id asd_id home port tls
+      ~(ip:string option)
+      ~log_level
+      node_id asd_id home tls
   =
   let ips = match ip with
-    | None -> []
+    | None -> [local_ip_address ()];
     | Some ip -> [ip]
+  in
+  let rora_port = match use_rora with
+    | false -> None
+    | true -> Some (port + 1000)
   in
   {node_id;
    asd_id;
    home;
-   port;
+   port=(Some port);
    ips;
-   log_level = "debug";
+   log_level;
    limit= 99;
    __sync_dont_use = false;
    multicast = Some 10.0;
@@ -786,18 +800,19 @@ let make_asd_config
    __warranty_void__write_blobs   = write_blobs;
    use_fadvise;
    use_fallocate;
+   rora_port;
   }
 
 
 
 
-class asd ?write_blobs ?transport ?ip
-          node_id asd_id alba_bin arakoon_path home port ~etcd tls
+class asd ?write_blobs ?transport ~ip ~use_rora
+          node_id asd_id alba_bin arakoon_path home ~(port:int) ~etcd tls ~log_level
   =
   let use_tls = tls <> None in
   let asd_cfg = make_asd_config
-                  ?write_blobs ?transport ?ip
-                  node_id asd_id home port tls
+                  ?write_blobs ?transport ~ip
+                  node_id asd_id home ~port tls ~use_rora ~log_level
   in
 
   let config_persister, cfg_url =
@@ -851,10 +866,10 @@ class asd ?write_blobs ?transport ?ip
       config_persister asd_cfg
 
     method start_cmd = [alba_bin; "asd-start"; "--config"; Url.canonical cfg_url]
-                         
+
     method start =
       let out = Printf.sprintf "%s/%s.out" home asd_id in
-      self # start_cmd 
+      self # start_cmd
       |> Shell.detach ~out;
 
     method stop =
@@ -877,7 +892,7 @@ class asd ?write_blobs ?transport ?ip
       in
       let p = match tls with
         | Some tls -> tls.port
-        | None -> begin match port with | Some p -> p | None -> failwith "bad config" end
+        | None -> port
       in
       let cmd0 = [ alba_bin;]
                  @ what
@@ -889,7 +904,7 @@ class asd ?write_blobs ?transport ?ip
       let cmd1 = if use_tls then _alba_extend_tls cmd0 else cmd0 in
       let cmd2 = if json then cmd1 @ ["--to-json"] else cmd1 in
       cmd2
-        
+
     method get_remote_version =
       let cmd = self # build_remote_cli ["asd-get-version"] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -901,7 +916,7 @@ class asd ?write_blobs ?transport ?ip
     method set k v =
       let cmd = self # build_remote_cli ["asd-set";k;v] ~json:false in
       cmd |> String.concat " " |> Shell.cmd
-                                    
+
     method get k =
       let cmd = self # build_remote_cli ["asd-multi-get"; k] ~json:false in
       cmd |> Shell.cmd_with_capture
@@ -951,9 +966,9 @@ module Deployment = struct
   let make_osds
         ?(base_port=8000)
         ?write_blobs
-        ?transport ?ip
+        ?transport ~ip ~use_rora
         n local_nodeid_prefix base_path arakoon_path alba_bin
-        ~etcd (tls:bool) =
+        ~etcd (tls:bool) ~log_level =
     let rec loop asds j =
       if j = n
       then List.rev asds |> Array.of_list
@@ -980,12 +995,13 @@ module Deployment = struct
           let asd = new asd
                         ?write_blobs
                         ?transport
-                        ?ip
+                        ~ip
+                        ~use_rora
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
-                        home (Some port) ~etcd
-                        tls_cfg
+                        home ~port ~etcd
+                        tls_cfg ~log_level
           in
           loop (asd :: asds) (j+1)
         end
@@ -994,6 +1010,8 @@ module Deployment = struct
 
   let make_default
         ?__retry_timeout
+        ?(cfg = Config.default)
+        ?(base_port=4000)
         ?(cfg = Config.default) ?(base_port=4000)
         ?write_blobs ?fragment_cache () =
     let abm =
@@ -1017,7 +1035,7 @@ module Deployment = struct
     in
     let transport,ip =
       match cfg.alba_rdma with
-      | None -> None,None
+      | None -> None, cfg.ip
       | Some ip ->Some "rdma", Some ip
     in
     let proxy = new proxy
@@ -1029,15 +1047,15 @@ module Deployment = struct
     let maintenance = new maintenance ?__retry_timeout 0 cfg  (abm # config_url) cfg.etcd in
     let osds = make_osds ~base_port:(base_port*2)
                          ?write_blobs
-                         ?transport
-                         ?ip
+                         ?transport ~use_rora:cfg.alba_rora
+                         ~ip:cfg.ip
                          cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_base_path
                          cfg.arakoon_path
                          cfg.alba_bin
                          ~etcd:cfg.etcd
-                         cfg.tls
+                         cfg.tls ~log_level:cfg.alba_asd_log_level
     in
     { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
 
@@ -1402,44 +1420,56 @@ module Test = struct
       alba_connection_host : string ;
       alba_connection_port : string ;
       alba_connection_transport : string;
+      alba_connection_use_rora : bool;
     } [@@ deriving yojson, show]
-                                      
+
   type backend_cfg = {
       backend_connection_manager : backend_connection_manager;
     } [@@ deriving yojson, show]
 
-  let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv" 
+  let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv"
   let backend_cfg_file cfg = backend_cfg_dir cfg  ^ "/backend.json"
-                                                      
-  let make_backend_cfg cfg ~host ~port ~transport =
+
+  let make_backend_cfg cfg ~host ~port ~transport ~use_rora =
       {
         backend_connection_manager = {
           backend_type = "ALBA";
           alba_connection_host = host;
           alba_connection_port = port;
           alba_connection_transport = transport; (* "RDMA" | "TCP" *)
+          alba_connection_use_rora = use_rora;
         }
       }
 
   let _get_ip_transport cfg =
     match cfg.alba_rdma with
-        | None -> "127.0.0.1","TCP"
-        | Some rdma -> rdma,"RDMA"
+    | None   ->
+       begin
+         let ip = match cfg.ip with
+         | None    -> "127.0.0.1"
+         | Some ip -> ip
+         in
+         ip, "TCP"
+       end
+    | Some rdma -> rdma, "RDMA"
 
   let backend_cfg_persister cfg =
     let backend_cfg =
       let host, transport = _get_ip_transport cfg
-      and port = "10000" in
+      and port = "10000"
+      and use_rora = cfg.alba_rora
+      in
       make_backend_cfg cfg
                        ~host
                        ~port
                        ~transport
+                       ~use_rora
     in
     let oc = open_out (backend_cfg_file cfg) in
     let json = backend_cfg_to_yojson backend_cfg in
     Yojson.Safe.pretty_to_channel oc json;
     close_out oc
-      
+
   let wrapper f t =
     let t = Deployment.make_default () in
     Deployment.kill t;
@@ -1450,10 +1480,23 @@ module Test = struct
 
   let no_wrapper f t = f t
 
+  let _create_preset t name file =
+    _alba_cmd_line
+      ~cwd:t.Deployment.cfg.alba_home
+      [
+        "create-preset"; name;
+        "--config"; t.abm # config_url |> Url.canonical;
+        " < "; file;
+      ]
+
   let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let cfg = t.Deployment.cfg in
     let host, transport = _get_ip_transport cfg
     and port = "10000"
+    in
+    let () = _create_preset t
+                            "preset_rora"
+                            "./cfg/preset_no_compression.json"
     in
     let cmd =
       ["cd";cfg.alba_home; "&&";
@@ -1619,7 +1662,7 @@ module Test = struct
     in
     loop 0;
     Deployment.restart_osds t;
-    
+
     let attempt ()  =
       try
         t.proxy # cmd_line
@@ -1809,16 +1852,13 @@ module Test = struct
     let suite = JUnit.make_suite suite_name results d in
     suite
 
+
   let big_object t =
     let inner () =
       let preset = "preset_no_compression" in
       let namespace ="big" in
       let name = "big_object" in
-      _alba_cmd_line ~cwd:t.Deployment.cfg.alba_home [
-                       "create-preset"; preset;
-                       "--config"; t.abm # config_url |> Url.canonical;
-                       " < "; "./cfg/preset_no_compression.json";
-                     ];
+      let () = _create_preset t preset "./cfg/preset_no_compression.json" in
       _alba_cmd_line [
           "create-namespace";namespace ;preset;
           "--config"; t.abm # config_url |> Url.canonical;
@@ -1997,9 +2037,12 @@ module Test = struct
                                       tx.cfg.local_nodeid_prefix
                                       tx.cfg.alba_base_path
                                       tx.cfg.arakoon_path
+                                      ~ip:tx.cfg.ip
+                                      ~use_rora:false
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
                                       false
+                                      ~log_level:tx.cfg.alba_asd_log_level
             }
           else tx
         in
@@ -2397,7 +2440,7 @@ let () =
   if !Sys.interactive
   then ()
   else process_cmd_line ()
-                        
+
 let top_level_run test =
   let t = Deployment.make_default () in
   Test.wrapper test t

@@ -34,7 +34,7 @@ let periodic_load_osds
   let open Nsm_model in
   let do_one (osd_id, osd_info) =
         alba_client # osd_access # get_osd_info ~osd_id
-        >>= fun (_, osd_state) ->
+        >>= fun (_, osd_state,_) ->
 
         let write_test_blob () =
           alba_client # with_osd

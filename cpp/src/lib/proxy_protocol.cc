@@ -33,7 +33,10 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _INVALIDATE_CACHE 14
 #define _DROP_CACHE 16
 #define _GET_PROXY_VERSION 17
+
 #define _PING 20
+#define _WRITE_OBJECT_FS2 21
+#define _OSD_INFO 22
 
 namespace alba {
 namespace proxy_protocol {
@@ -155,13 +158,13 @@ void read_read_object_fs_response(message &m, Status &status) {
   read_status(m, status);
 }
 
-void write_write_object_fs_request(message_builder &mb,
-                                   const string &namespace_,
-                                   const string &object_name,
-                                   const string &input_file,
-                                   const bool allow_overwrite,
-                                   const Checksum *checksum) {
-  write_tag(mb, _WRITE_OBJECT_FS);
+void _write_write_object_fs_request(message_builder &mb, uint32_t tag,
+                                    const string &namespace_,
+                                    const string &object_name,
+                                    const string &input_file,
+                                    const bool allow_overwrite,
+                                    const Checksum *checksum) {
+  write_tag(mb, tag);
   to(mb, namespace_);
   to(mb, object_name);
   to(mb, input_file);
@@ -173,8 +176,38 @@ void write_write_object_fs_request(message_builder &mb,
   }
 }
 
+void write_write_object_fs_request(message_builder &mb,
+                                   const string &namespace_,
+                                   const string &object_name,
+                                   const string &input_file,
+                                   const bool allow_overwrite,
+                                   const Checksum *checksum) {
+
+  _write_write_object_fs_request(mb, _WRITE_OBJECT_FS, namespace_, object_name,
+                                 input_file, allow_overwrite, checksum);
+}
+
+void write_write_object_fs2_request(message_builder &mb,
+                                    const string &namespace_,
+                                    const string &object_name,
+                                    const string &input_file,
+                                    const bool allow_overwrite,
+                                    const Checksum *checksum) {
+
+  _write_write_object_fs_request(mb, _WRITE_OBJECT_FS2, namespace_, object_name,
+                                 input_file, allow_overwrite, checksum);
+}
+
 void read_write_object_fs_response(message &m, Status &status) {
   read_status(m, status);
+}
+
+void read_write_object_fs2_response(message &m, Status &status, Manifest &mf) {
+  read_status(m, status);
+  if (status.is_ok()) {
+
+    from(m, mf);
+  }
 }
 
 void write_delete_object_request(message_builder &mb, const string &namespace_,
@@ -282,6 +315,34 @@ void read_ping_response(message &m, Status &status, double &timestamp) {
   read_status(m, status);
   if (status.is_ok()) {
     from(m, timestamp);
+  }
+}
+
+void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
+
+void read_osd_info_response(
+    message &m, Status &status,
+    std::vector<std::pair<osd_t, std::pair<std::unique_ptr<OsdInfo>,
+                                           std::unique_ptr<OsdCapabilities>>>> &
+        result) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    uint32_t n;
+    from(m, n);
+    for (uint32_t i = 0; i < n; i++) {
+      osd_t osd_id;
+      from(m, osd_id);
+      std::string info_s;
+      from(m, info_s);
+      std::vector<char> mv(info_s.begin(), info_s.end());
+      llio::message m2(mv);
+      std::unique_ptr<OsdInfo> info(new OsdInfo);
+      from(m2, *info);
+      std::unique_ptr<OsdCapabilities> caps(new OsdCapabilities);
+      from(m, *caps);
+      result.push_back(std::make_pair(
+          osd_id, std::make_pair(std::move(info), std::move(caps))));
+    }
   }
 }
 }

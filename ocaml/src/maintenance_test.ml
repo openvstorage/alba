@@ -57,9 +57,9 @@ let test_rebalance_one () =
        ~object_data
        ~checksum_o:None
        ~allow_overwrite:NoPrevious
-     >>= fun (manifest,stats) ->
+     >>= fun (manifest,stats,_) ->
      Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest) >>= fun () ->
-     let base_client = alba_client # get_base_client in 
+     let base_client = alba_client # get_base_client in
      base_client # get_namespace_osds_info_cache ~namespace_id >>= fun cache ->
 
      let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
@@ -92,7 +92,7 @@ let test_rebalance_one () =
        in
        DeviceSet.choose possible_sources
      in
-     
+
      with_nice_error_log
        (fun () ->
         with_maintenance_client
@@ -171,7 +171,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
                          ~object_data
                          ~checksum_o:None
                          ~allow_overwrite:Nsm_model.NoPrevious
-             >>= fun (manifest,stats) ->
+             >>= fun (manifest,stats,_) ->
              _loop (i+1)
            end
        in
@@ -308,7 +308,7 @@ let test_repair_orange () =
          ~object_name
          ~object_data
          ~allow_overwrite:NoPrevious
-         ~checksum_o:(Alba_test.get_checksum_o object_data) >>= fun (mf, _) ->
+         ~checksum_o:(Alba_test.get_checksum_o object_data) >>= fun (mf, _,_) ->
 
        Alba_test.maybe_delete_fragment
          ~update_manifest:true
@@ -371,7 +371,7 @@ let test_repair_orange2 () =
          ~object_name
          ~object_data
          ~allow_overwrite:Nsm_model.NoPrevious
-         ~checksum_o:None >>= fun (mf, object_id) ->
+         ~checksum_o:None >>= fun (mf, object_id,_) ->
 
        Alba_test.maybe_delete_fragment
          ~update_manifest:true
@@ -431,7 +431,7 @@ let test_rebalance_node_spread () =
                  ~object_name
                  ~object_data
                  ~allow_overwrite:Nsm_model.NoPrevious
-                 ~checksum_o:None >>= fun (mf, _) ->
+                 ~checksum_o:None >>= fun (mf, _,_) ->
 
      let get_buckets () =
        alba_client # nsm_host_access
@@ -505,7 +505,7 @@ let test_rewrite_namespace () =
                ~object_name:name
                ~object_data:name
                ~checksum_o:None
-               ~allow_overwrite:NoPrevious >>= fun (mf, _) ->
+               ~allow_overwrite:NoPrevious >>= fun (mf, _,_) ->
         Lwt.return mf
        )
        objs >>= fun manifests ->
@@ -605,7 +605,7 @@ let test_verify_namespace () =
                  ~object_name
                  ~object_data:"efg"
                  ~checksum_o:None
-                 ~allow_overwrite:NoPrevious >>= fun (mf, _) ->
+                 ~allow_overwrite:NoPrevious >>= fun (mf, _,_) ->
 
      let object_id = mf.Manifest.object_id in
 
@@ -769,7 +769,7 @@ let test_automatic_repair () =
                        ~object_data:"fsdioap"
                        ~checksum_o:None
                        ~allow_overwrite:Nsm_model.NoPrevious
-           >>= fun (mf, _) ->
+           >>= fun (mf, _,_) ->
            Lwt.return ())
           (Int.range 0 5) >>= fun () ->
 

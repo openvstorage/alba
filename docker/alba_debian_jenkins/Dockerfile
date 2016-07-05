@@ -32,7 +32,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libgflags-dev \
         sudo \
         libtool \
-        libboost-all-dev \
         fuse \
         sysstat \
         ncurses-dev
@@ -103,9 +102,28 @@ RUN cd arakoon && eval `${opam_env}` \
 RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 8bc61d8a451a2724399247abf76643aa7b2a07e9 \
+    && git checkout cb393e5c86d2f54ca1787b310764063f68f564e4 \
     && ./install_rocksdb.sh \
     && make build install
+
+RUN echo "deb http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
+    > /etc/apt/sources.list.d/boost_repo.list
+RUN echo "deb-src http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
+    > /etc/apt/sources.list.d/boost_src_repo.list
+run apt-get update && apt-get -y --force-yes install \
+    libboost1.57-all-dev libboost1.57-all
+
+RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
+RUN apt-get update && apt-get -y --force-yes install \
+      clang-3.5 \
+      liblttng-ust0 librdmacm1 libtokyocabinet9 \
+      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
+      libhiredis0.10 liblz4-1 libxio-dev libxio0 \
+      omniorb-nameserver \
+      libunwind8-dev libaio1 libaio1-dbg libaio-dev \
+      libz-dev libbz2-dev \
+      libgoogle-glog-dev libibverbs-dev
+
 
 #for now, install ordma manually
 RUN apt-get update && apt-get -y install librdmacm-dev
@@ -121,13 +139,16 @@ RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sou
 RUN apt-get update && apt-get install -y --force-yes alba arakoon
 RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
-RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
-RUN apt-get update && apt-get -y --force-yes install \
-      clang-3.5 \
-      libboost1.57-all liblttng-ust0 librdmacm1 libtokyocabinet9 \
-      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
-      libhiredis0.10 liblz4-1 libxio0 \
-      omniorb-nameserver
+
+
+RUN git clone https://github.com/openvstorage/gobjfs.git
+RUN cd gobjfs  && git pull && git checkout 193261f52f7b9c90e4e6ba063e720bdbe4ffebe9
+RUN cd gobjfs \
+       && mkdir build \
+       && cd build \
+       && cmake .. \
+       && make \
+       && make install
 
 ## This only works from inside the OVS lan...
 # http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201606011734.d6c3c04_amd64.ddeb
@@ -149,13 +170,13 @@ ENV UID 1001
 ENV ARAKOON_BIN=arakoon
 ENV VOLDRV_TEST=volumedriver_test
 ENV VOLDRV_BACKEND_TEST=backend_test
+ENV GOBJFS_HOME=/gobjfs/
 
 # Install etcd:
 RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
 RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
 RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
     && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
-
 
 CMD eval `${opam_env}` \
     && echo ${SUITE} \

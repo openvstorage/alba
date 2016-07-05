@@ -61,6 +61,12 @@ template <> void to(message_builder &mb, const uint32_t &i) noexcept {
   mb.add_raw(ip, 4);
 }
 
+void to_be(message_builder &mb, const uint32_t &i) noexcept {
+  uint32_t res =
+      (i >> 24) | ((i << 8) & 0x00ff0000) | ((i >> 8) & 0x0000ff00) | (i << 24);
+  to(mb, res);
+}
+
 template <> void from<uint32_t>(message &m, uint32_t &i) {
 
   const char *ib = m.current();

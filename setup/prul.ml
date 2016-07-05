@@ -25,6 +25,17 @@ let get_some = function
 let peers_s peers =
   String.concat "," (List.map (fun (h,p) -> Printf.sprintf "%s:%i" h p) peers)
 
+let local_ip_address () =
+  let open Unix in
+  let s = socket PF_INET SOCK_DGRAM 0 in
+  let sa = ADDR_INET((inet_addr_of_string "8.8.8.8"),0) in
+  let () = connect s sa in
+  let sa2 = getsockname s in
+  match sa2 with
+  | ADDR_UNIX _     -> failwith "can't happen"
+  | ADDR_INET (x,_) ->
+     string_of_inet_addr x
+
 module Url = struct
   type t =
     | File of string

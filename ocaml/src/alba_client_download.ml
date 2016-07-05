@@ -98,7 +98,7 @@ let download_packed_fragment
      Lwt_log.warning msg >>= fun () ->
      E.fail `FragmentMissing
   | Some data ->
-     osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
+     osd_access # get_osd_info ~osd_id >>= fun (_, state,_) ->
      Osd_state.add_read state;
      E.return (osd_id, data)
 

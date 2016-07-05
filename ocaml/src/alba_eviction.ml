@@ -129,7 +129,7 @@ let alba_eviction
      then
        begin
 
-         (* TODO maybe use some info from the involved presets to decide when 
+         (* TODO maybe use some info from the involved presets to decide when
           * to remove items from the cache ...
           * decided for now to use a simpler way to make that decision (see below) *)
          (* Lwt_list.map_p *)
@@ -140,7 +140,7 @@ let alba_eviction
 
          let cnt_total, cnt_full, _ =
            Hashtbl.fold
-             (fun osd_id (osd_info, osd_state)
+             (fun osd_id (osd_info, osd_state, osd_capabilities)
                   (cnt_total, cnt_full, acc) ->
               let open Nsm_model in
               let used = Int64.to_float osd_info.OsdInfo.used in
