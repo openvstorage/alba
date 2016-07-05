@@ -883,7 +883,7 @@ class asd ?write_blobs ?transport ~ip ~use_rora
 
     method private build_remote_cli ?(json=true) what  =
       let ip = match ip with
-        | None -> "127.0.0.1"
+        | None -> local_ip_address()
         | Some ip -> ip
       in
       let transport = match transport with
@@ -1421,6 +1421,7 @@ module Test = struct
       alba_connection_port : string ;
       alba_connection_transport : string;
       alba_connection_use_rora : bool;
+      alba_connection_preset : string;
     } [@@ deriving yojson, show]
 
   type backend_cfg = {
@@ -1430,7 +1431,7 @@ module Test = struct
   let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv"
   let backend_cfg_file cfg = backend_cfg_dir cfg  ^ "/backend.json"
 
-  let make_backend_cfg cfg ~host ~port ~transport ~use_rora =
+  let make_backend_cfg cfg ~host ~port ~transport ~use_rora ~preset_name =
       {
         backend_connection_manager = {
           backend_type = "ALBA";
@@ -1438,6 +1439,7 @@ module Test = struct
           alba_connection_port = port;
           alba_connection_transport = transport; (* "RDMA" | "TCP" *)
           alba_connection_use_rora = use_rora;
+          alba_connection_preset = preset_name;
         }
       }
 
@@ -1459,11 +1461,13 @@ module Test = struct
       and port = "10000"
       and use_rora = cfg.alba_rora
       in
+      let preset_name = if use_rora then "preset_rora" else "default" in
       make_backend_cfg cfg
                        ~host
                        ~port
                        ~transport
                        ~use_rora
+                       ~preset_name
     in
     let oc = open_out (backend_cfg_file cfg) in
     let json = backend_cfg_to_yojson backend_cfg in
@@ -1582,6 +1586,10 @@ module Test = struct
 
   let voldrv_backend ?(xml=false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
+    let () = _create_preset t
+                            "preset_rora"
+                            "./cfg/preset_no_compression.json"
+    in
     _make_backend_cfg_dir cfg;
     backend_cfg_persister cfg;
     let cmd = [
@@ -1607,6 +1615,10 @@ module Test = struct
 
   let voldrv_tests ?(xml = false) ?filter ?dump t =
     let cfg = t.Deployment.cfg in
+    let () = _create_preset t
+                            "preset_rora"
+                            "./cfg/preset_no_compression.json"
+    in
     _make_backend_cfg_dir cfg;
     backend_cfg_persister cfg;
     let cmd = [cfg.voldrv_test;
