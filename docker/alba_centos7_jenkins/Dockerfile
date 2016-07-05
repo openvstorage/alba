@@ -137,7 +137,7 @@ RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.9.5
+RUN cd arakoon && git pull && git checkout tags/1.9.7
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \
