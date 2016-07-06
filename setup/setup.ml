@@ -1246,7 +1246,7 @@ module Deployment = struct
       match redis_lru with
       | None -> ()
       | Some (port, key) ->
-         Printf.sprintf "redis-server --port %i" port |> Shell.cmd;
+         Printf.sprintf "redis-server --port %i &" port |> Shell.cmd;
          Unix.sleep 1;
          _alba_cmd_line
            [ "update-maintenance-config";
