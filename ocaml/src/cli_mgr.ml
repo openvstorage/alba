@@ -813,6 +813,7 @@ let alba_update_maintenance_config_cmd =
             let parser s =
               try
                 let uri = Uri.of_string s in
+                assert (Uri.scheme uri = Some "redis");
                 `Ok Maintenance_config.(
                   { host = Uri.host uri |> Option.get_some;
                     port = Uri.port uri |> Option.get_some;
@@ -830,8 +831,8 @@ let alba_update_maintenance_config_cmd =
           in
           value
                & opt (some converter) None
-               & info ["set-redis-lru-cache-eviction"]
-                      ~doc:"set redis lru cache eviction parameters (e.g. 127.0.0.1:6379/key_for_sorted_set)")
+               & info ["set-lru-cache-eviction"]
+                      ~doc:"set lru cache eviction parameters (e.g. redis://127.0.0.1:6379/key_for_sorted_set)")
         $ verbose
   ),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"

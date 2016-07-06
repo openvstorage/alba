@@ -1250,8 +1250,9 @@ module Deployment = struct
          Unix.sleep 1;
          _alba_cmd_line
            [ "update-maintenance-config";
-             "--set-redis-lru-cache-eviction";
-             Printf.sprintf "127.0.0.1:%i/%s" port key; ]
+             "--config"; t.abm # config_url |> Url.canonical;
+             "--set-lru-cache-eviction";
+             Printf.sprintf "redis://127.0.0.1:%i/%s" port key; ]
     end;
 
     t.proxy # persist_config;
