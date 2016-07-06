@@ -157,16 +157,18 @@ install () {
     git clone https://github.com/domsj/orocksdb.git
     cd orocksdb
     git checkout cb393e5c86d2f54ca1787b310764063f68f564e4
-    ./install_rocksdb.sh
 
+    # TODO: replace this with travis-ci caching
+    echo "downloading prebuilt rocksdb"
     pushd .
+    wget https://github.com/toolslive/orocksdb/releases/download/dummy/rocksdb_alba_travis.tgz
+    tar -zxvf ./rocksdb_alba_travis.tgz
     cd rocksdb
     sudo make install
     popd
 
     make build install
     cd ..
-
     date
 
     echo "Installing gobjfs"
