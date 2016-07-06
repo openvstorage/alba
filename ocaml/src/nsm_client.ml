@@ -130,6 +130,9 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
     method get_object_manifest_by_name object_name =
       self # query GetObjectManifestByName object_name
 
+    method get_object_manifests_by_name object_names =
+      self # query GetObjectManifestsByName object_names
+
     method get_object_manifest_by_id object_id =
       self # query GetObjectManifestById object_id
 

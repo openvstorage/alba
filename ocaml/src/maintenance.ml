@@ -1873,57 +1873,103 @@ class client ?(retry_timeout = 60.)
                 Lwt.catch
                   (fun () ->
                    let module R = Redis_lwt.Client in
+                   let collect_some_garbage client =
+                     R.zrangebyscore
+                       client
+                       key
+                       0. max_float
+                       ~limit:(0, 100)
+                     >>= fun items ->
+
+                     let items =
+                       List.map
+                         (fun r ->
+                          match r with
+                          | `Bulk (Some b) -> b
+                          | x -> assert false)
+                         items
+                     in
+                     let items' =
+                       List.map
+                         (fun b ->
+                          let version, namespace_id, name =
+                            deserialize
+                              (Llio.tuple3_from
+                                 Llio.int8_from
+                                 Llio.int32_from
+                                 Llio.string_from)
+                              b
+                          in
+                          assert (version = 1);
+                          namespace_id, name)
+                         items
+                       |> List.group_by
+                            (fun (namespace_id, _) -> namespace_id)
+                       |> Hashtbl.to_assoc_list
+                     in
+
+                     Lwt_list.map_p
+                       (fun (namespace_id, names) ->
+                        let names = List.map snd names in
+                        alba_client # nsm_host_access # get_nsm_by_id
+                                    ~namespace_id >>= fun client ->
+                        client # get_object_manifests_by_name names >>= fun mfs ->
+
+                        let size =
+                          List.fold_left
+                            (fun acc ->
+                             function
+                             | None -> acc
+                             | Some mf ->
+                                let obj_disk_size =
+                                  List.fold_left
+                                    (fun acc sizes ->
+                                     List.fold_left
+                                       (+)
+                                       acc
+                                       sizes)
+                                    0
+                                    mf.Nsm_model.Manifest.fragment_packed_sizes
+                                in
+                                Int64.(add acc (of_int obj_disk_size)))
+                            0L
+                            mfs
+                        in
+
+                        client # apply_sequence
+                               []
+                               (List.map
+                                  (fun name -> Nsm_model.Update.DeleteObject name)
+                                  names) >>= fun () ->
+                        Lwt.return size
+                       )
+                       items' >>= fun sizes ->
+
+                     R.zrem client key items >>= fun _ ->
+                     Lwt.return (List.fold_left Int64.add 0L sizes)
+                   in
                    R.with_connection
                      R.({ host; port; })
                      (fun client ->
-                      R.zrangebyscore
-                        client
-                        key
-                        0. max_float
-                        ~limit:(0, 100)
-                      >>= fun items ->
-
-                      let items =
-                        List.map
-                          (fun r ->
-                           match r with
-                           | `Bulk (Some b) -> b
-                           | x -> assert false)
-                          items
+                      let total_disk_size =
+                        Hashtbl.fold
+                          (fun _ (osd_info, _) acc ->
+                           Int64.add acc osd_info.Nsm_model.OsdInfo.total)
+                          (alba_client # osd_access # osds_info_cache)
+                          0L
                       in
-                      let items' =
-                        List.map
-                          (fun b ->
-                           let version, namespace_id, name =
-                             deserialize
-                               (Llio.tuple3_from
-                                  Llio.int8_from
-                                  Llio.int32_from
-                                  Llio.string_from)
-                               b
-                           in
-                           assert (version = 1);
-                           namespace_id, name)
-                          items
-                        |> List.group_by
-                             (fun (namespace_id, _) -> namespace_id)
-                        |> Hashtbl.to_assoc_list
+                      (* collect 1% of objects *)
+                      let target = Int64.div total_disk_size 100L in
+                      let rec inner acc =
+                        if acc > target
+                        then Lwt.return ()
+                        else
+                          begin
+                            collect_some_garbage client >>= fun size ->
+                            inner (Int64.add acc size)
+                          end
                       in
-
-                      Lwt_list.iter_p
-                        (fun (namespace_id, names) ->
-                         alba_client # nsm_host_access # get_nsm_by_id
-                                     ~namespace_id >>= fun client ->
-                         client # apply_sequence
-                                []
-                                (List.map
-                                   (fun (_, name) -> Nsm_model.Update.DeleteObject name)
-                                   names)
-                        )
-                        items' >>= fun () ->
-
-                      R.zrem client key items >>= fun _ ->
-                      Lwt.return ())
+                      inner 0L)
                   )
                   (fun exn ->
                    Lwt_log.info_f
