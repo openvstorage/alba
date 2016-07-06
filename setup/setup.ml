@@ -1837,6 +1837,7 @@ module Test = struct
           "create-namespace";namespace ;preset;
           "--config"; t.abm # config_url |> Url.canonical;
         ];
+      Unix.sleep 1;
       let cfg = t.cfg in
       let object_file = cfg.alba_base_path ^ "/obj" in
       "truncate -s 1G " ^ object_file |> Shell.cmd;
@@ -2378,6 +2379,9 @@ let process_cmd_line () =
       "nil",             Test.nil, true;
       "aaa",             Test.aaa, false;
       "alba_osd",        Test.alba_as_osd, false;
+      "big_object",      (fun ?xml ?filter ?dump t ->
+                          let _ : JUnit.suite = Test.big_object t in
+                          0), true;
     ]
   in
   let print_suites () =
