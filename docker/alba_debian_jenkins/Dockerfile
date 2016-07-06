@@ -73,7 +73,6 @@ RUN eval `${opam_env}` && \
         ppx_deriving.3.1 \
         ppx_deriving_yojson \
         core.113.00.00 \
-        redis \
         uri.1.9.1 \
         result
 
@@ -90,6 +89,10 @@ RUN cd /usr/src/gtest \
         && make \
         && mv libg* /usr/lib/
 
+# install specific ocaml-redis
+RUN git clone http://github.com/domsj/ocaml-redis
+RUN cd ocaml-redis && git pull && git checkout 9b662c271c64af700bbec5a44ae6f383d3418a3f
+RUN cd ocaml-redis && eval `${opam_env}` && make build install
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git

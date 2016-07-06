@@ -29,7 +29,6 @@ OPAM_DEPENDS="ocamlfind \
          sexplib.113.00.00 \
          core.113.00.00 \
          conf-libev \
-         redis \
          uri \
          result
 "
@@ -111,6 +110,15 @@ install () {
     opam install ${OPAM_DEPENDS} || true
     opam depext arakoon.1.9.0
     opam install ${OPAM_DEPENDS}
+
+    date
+
+    opam remove redis
+    git clone http://github.com/domsj/ocaml-redis
+    cd ocaml-redis
+    git checkout 9b662c271c64af700bbec5a44ae6f383d3418a3f
+    make build install
+    cd ..
 
     date
 
