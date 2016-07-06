@@ -2,6 +2,11 @@ sudo: required
 dist: trusty
 language: generic
 
+cache:
+  directories:
+  - $HOME/orocksdb/
+
+
 env:
   - SUITE=system2
 #  - SUITE=system2 ALBA_TLS=true
