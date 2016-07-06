@@ -195,7 +195,7 @@ RUN cd gobjfs \
        && make \
        && make install
 
-ENV LD_LIBRARY_PATH=/usr/lib64
+ENV LD_LIBRARY_PATH=/usr/lib64:/usr/local/lib
 ENV GOBJFS_HOME=/gobjfs/
 
 RUN yum -y install iproute
