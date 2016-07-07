@@ -106,7 +106,7 @@ install: build-alba
 	echo $(START)
 
 	echo $(LIB)
-	for i in Jerasure rocksdb isal gf_complete; \
+	for i in Jerasure rocksdb isal gf_complete gobjfs gobjfs_server; \
         do ldd ./ocaml/alba.native \
            | grep $$i \
            | grep "=> /" \

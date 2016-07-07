@@ -16,71 +16,64 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#ifndef ALBA_CHECKSUM_H
-#define ALBA_CHECKSUM_H
+#pragma once
 
 #include <iostream>
 #include "io.h"
 #include "stuff.h"
 #include "llio.h"
 
-namespace alba{
+namespace alba {
 #define SHA_SIZE 20
-    enum class algo_t { NO_CHECKSUM, SHA1, CRC32c };
+enum class algo_t { NO_CHECKSUM, SHA1, CRC32c };
 
-    class Checksum {
-    public:
-        virtual ~Checksum() {};
-        virtual algo_t get_algo() const = 0;
-        virtual void print(std::ostream& os) const = 0;
-        virtual void to(llio::message_builder& mb) const = 0;
-    };
+class Checksum {
+public:
+  virtual ~Checksum(){};
+  virtual algo_t get_algo() const = 0;
+  virtual void print(std::ostream &os) const = 0;
+  virtual void to(llio::message_builder &mb) const = 0;
+};
 
-    class NoChecksum :public Checksum{
-    public:
-        virtual algo_t get_algo() const { return algo_t :: NO_CHECKSUM;}
+class NoChecksum : public Checksum {
+public:
+  virtual algo_t get_algo() const { return algo_t::NO_CHECKSUM; }
 
-        virtual void print(std::ostream& os) const {
-            os << "NoChecksum()";
-        }
-        virtual void to(llio::message_builder&mb) const {
-            mb.add_type(1);
-        }
-    };
+  virtual void print(std::ostream &os) const { os << "NoChecksum()"; }
+  virtual void to(llio::message_builder &mb) const { mb.add_type(1); }
+};
 
-    class Sha1 :public Checksum{
-    public:
-    Sha1(std::string& digest) : _digest(digest){};
-        algo_t get_algo() const { return algo_t :: SHA1;};
+class Sha1 : public Checksum {
+public:
+  Sha1(std::string &digest) : _digest(digest){};
+  algo_t get_algo() const { return algo_t::SHA1; };
 
-        void to(llio::message_builder&mb) const{
-            mb.add_type(2);
-            llio::to<uint32_t>(mb, SHA_SIZE);
-            mb.add_raw(_digest.data(), SHA_SIZE);
-        }
-        void print(std::ostream& os) const;
+  void to(llio::message_builder &mb) const {
+    mb.add_type(2);
+    llio::to<uint32_t>(mb, SHA_SIZE);
+    mb.add_raw(_digest.data(), SHA_SIZE);
+  }
+  void print(std::ostream &os) const;
 
-        std::string _digest;
-    };
+  std::string _digest;
+};
 
-    class Crc32c :public Checksum{
-    public:
-    Crc32c(uint32_t digest) : _digest(digest){};
-        algo_t get_algo() const { return algo_t :: CRC32c;};
+class Crc32c : public Checksum {
+public:
+  Crc32c(uint32_t digest) : _digest(digest){};
+  algo_t get_algo() const { return algo_t::CRC32c; };
 
-        void to(llio::message_builder&mb) const{
-            mb.add_type(3);
-            llio::to<uint32_t>(mb, _digest);
-        }
-        void print(std::ostream& os) const;
+  void to(llio::message_builder &mb) const {
+    mb.add_type(3);
+    llio::to<uint32_t>(mb, _digest);
+  }
+  void print(std::ostream &os) const;
 
-        uint32_t _digest;
-    };
+  uint32_t _digest;
+};
 
-    std:: ostream& operator<<(std::ostream&, const algo_t &);
-    std:: ostream& operator<<(std::ostream&, const Checksum& );
+std::ostream &operator<<(std::ostream &, const algo_t &);
+std::ostream &operator<<(std::ostream &, const Checksum &);
 
-    bool verify(const Checksum& c0, const Checksum& c1);
+bool verify(const Checksum &c0, const Checksum &c1);
 }
-
-#endif

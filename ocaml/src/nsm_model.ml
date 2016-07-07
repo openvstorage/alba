@@ -123,7 +123,7 @@ module OsdInfo = struct
         seen; read; write; errors; } =
 
     let ser_version = 1 in
-    
+
     Llio.int8_to buf ser_version;
     let conn_info_to buf (ips,port,use_tls,use_rdma) =
       if use_tls && not ignore_tls

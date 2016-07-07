@@ -2,20 +2,28 @@ WARNINGS  = -Wall -Wextra -Wno-unknown-pragmas
 WARNINGS += -Wctor-dtor-privacy -Wsign-promo
 WARNINGS += -Woverloaded-virtual -Wnon-virtual-dtor
 
-flags = $(WARNINGS) -std=c++11 -ggdb3 -gdwarf-3 -O3 -fPIC -DBOOST_LOG_DYN_LINK
+flags = $(WARNINGS) -std=c++11 -ggdb3 -gdwarf-3 -O0 -fPIC
 
 includes = -I./include
 
-link_blurb = -L/usr/local/lib
-link_blurb += -L/usr/lib/x86_64_linux-gnu -L/usr/lib
-#
-link_blurb += -L@(ROOT)/alba/lib
-link_blurb += -lboost_system -lboost_thread
-link_blurb += -lboost_log -lpthread
-link_blurb += -lboost_program_options
+LIBDIRS  = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib
+LIBDIRS += -L/usr/lib -L$(GOBJFS_HOME)/lib
+
+LIBS_lib  = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options
+LIBS_lib += -lsnappy
+LIBS_lib += -lgobjfs_client -lxio
+
+LIBS_exec  = -L/usr/local/lib
+LIBS_exec += -Wl,-Bstatic
+LIBS_exec += -lboost_log -lboost_system -lboost_thread -lboost_program_options
+LIBS_exec += -Wl,-Bdynamic
+LIBS_exec += -L./lib -lalba -lrdmacm -lpthread 
+LIBS_exec += -lsnappy -lgobjfs_client -lxio
 
 tests = src/tests/llio_test.cc
 tests += src/tests/proxy_client_test.cc
+
+examples = src/examples/test_client.cc
 
 : foreach src/lib/*.cc |> \
   @(COMPILER) $(flags) $(includes) \
@@ -25,7 +33,7 @@ tests += src/tests/proxy_client_test.cc
 # shared_lib
 : {obj0} |> \
   @(COMPILER) -shared -Wl,-soname,libalba.so.1 \
-  -o lib/libalba.so.1.0.1 %f $(link_blurb) \
+  -o lib/libalba.so.1.0.1 %f $(LIBDIRS) $(LIBS_lib) \
   |> lib/libalba.so.1.0.1 {shared_lib}
 
 : {shared_lib} |> \
@@ -49,18 +57,17 @@ tests += src/tests/proxy_client_test.cc
   @(COMPILER) $(flags) ./src/tests/main.cc \
   $(includes) \
   -I/usr/include/gtest \
-  -L./lib -lalba \
-  /usr/lib/libgtest.a \
-  %f   $(link_blurb) \
+  %f   $(LIBDIRS) $(LIBS_exec) -lgtest \
    -o bin/unit_tests.out \
   |> bin/unit_tests.out
 
-# examples:
-examples = src/examples/test_client.cc
+#examples
 
-:foreach $(examples) | {shared_lib} {alias} {alias1} |> \
-  @(COMPILER) $(flags) $(includes) \
-    -L./lib -lalba\
-    $(link_blurb) \
-    %f -o %o \
-  |> bin/%B.out
+:src/examples/test_client.cc |>\
+  @(COMPILER) -Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo -Woverloaded-virtual -Wnon-virtual-dtor -std=c++11 -ggdb3 -gdwarf-3 -O0 -fPIC -I./include -I/home/romain/workspace/ALBA/ovs_gobjfs/include -c %f -o %o \
+  |> src/examples/test_client.o {test_client_obj}
+
+:{test_client_obj} | {shared_lib} {alias} {alias1}  |> \
+  @(COMPILER) %f $(LIBDIRS) $(LIBS_exec) -o %o \
+  |> ./bin/test_client.out
+

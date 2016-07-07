@@ -215,7 +215,7 @@ module DirectoryInfo = struct
 
   let write_blob
         t fnr blob
-        ~(post_write:post_write) 
+        ~(post_write:post_write)
         ~sync_parent_dirs =
     Lwt_log.debug_f "writing blob %Li (use_fadvise:%b use_fallocate:%b)"
                     fnr t.use_fadvise t.use_fallocate
@@ -393,7 +393,7 @@ module Net_fd = struct
        Buffer_pool.with_buffer
          Buffer_pool.default_buffer_pool
          (Lwt_extra2.copy_using reader writer size)
-     
+
     | Rsocket socket ->
        Lwt_unix.lseek fd_in offset Lwt_unix.SEEK_SET >>= fun _ ->
        let reader buffer offset length =
@@ -678,6 +678,20 @@ let execute_query : type req res.
        fun () ->
        let open AsdMgmt in
        return' (mgmt.latest_disk_usage, !(mgmt.capacity))
+    | Capabilities ->
+       fun () ->
+       let open Capabilities.OsdCapabilities in
+       let result0 = [CMultiGet2;CPartialGet] in
+       let len0 = List.length result0 in
+
+       let result =
+         match mgmt.AsdMgmt.rora_port with
+         | None   -> (len0, result0)
+         | Some p ->
+            let result1 = (CRoraFetcher p):: result0  in
+            (len0 + 1, result1)
+       in
+       return' result
 
 exception ConcurrentModification
 
@@ -1272,11 +1286,14 @@ class check_garbage_from_advancer check_garbage_from kv =
       end
   end
 
+let _rora_server = ref None
+
 let run_server
       ?cancel
       ?(write_blobs = true)
       (hosts:string list)
-      (port:int option)
+      ~(port:int option)
+      ~(rora_port : int option)
       ~(transport: Net_fd.transport)
       (path:string)
       ~asd_id ~node_id
@@ -1291,6 +1308,7 @@ let run_server
       ~tcp_keepalive
       ~use_fadvise
       ~use_fallocate
+      ~log_level
   =
 
   let fsync =
@@ -1344,7 +1362,20 @@ let run_server
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->
+  let () = Rora_server.register_rocksdb db in
+
+  let maybe_shutdown_rora_server () =
+    match !_rora_server with
+    | None -> Lwt.return_unit
+    | Some w ->
+       begin
+         Lwt_log.fatal "closing rora server" >>= fun () ->
+         Lwt.wakeup w ();
+         Lwt.return_unit
+       end
+  in
   let endgame () =
+    maybe_shutdown_rora_server() >>= fun () ->
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->
     let () = let open Rocks in RocksDb.close db in
@@ -1589,6 +1620,7 @@ let run_server
   let mgmt = AsdMgmt.make ~latest_disk_usage
                           ~capacity
                           ~limit
+                          ~rora_port
   in
 
   let protocol nfd =
@@ -1622,6 +1654,39 @@ let run_server
                  ~tls:None protocol
        in
        (wrap_t t "plain server") :: threads
+  in
+  let maybe_add_rora_server threads =
+    match rora_port with
+    | None -> threads
+    | Some port ->
+       begin
+         let host = match List.hd hosts with
+           | None -> "127.0.0.1"
+           | Some h -> h
+         in
+         let sleeper, awakener = Lwt.wait() in
+         let t =
+           Lwt_log.debug_f "starting rora server host:%s port:%i" host port
+           >>= fun () ->
+           let num_cores = 2 in
+           let queue_depth = 8 in
+           let handle = Rora_server.start
+                          transport
+                          host
+                          port
+                          num_cores
+                          queue_depth
+                          files_path
+                          (String.length files_path)
+                          log_level
+           in
+           let () = _rora_server := Some awakener in
+           Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->
+           sleeper  >>= fun () ->
+           let _ = Rora_server.stop handle in
+           Lwt.return_unit
+         in t:: threads
+       end
   in
   let maybe_add_tls_server threads =
       match tls with
@@ -1659,7 +1724,7 @@ let run_server
            | Net_fd.TCP  -> None
            | Net_fd.RDMA -> Some true
          in
-         Discovery.multicast 
+         Discovery.multicast
            asd_id node_id
            hosts ~port ~tlsPort ~useRdma
            mcast_period
@@ -1686,6 +1751,7 @@ let run_server
       wrap_t io_sched_t "io_sched_t";
     ]
     |> maybe_add_plain_server
+    |> maybe_add_rora_server
     |> maybe_add_tls_server
     |> maybe_add_multicast
   in

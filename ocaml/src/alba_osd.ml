@@ -238,6 +238,7 @@ class client
     method get_disk_usage = Lwt.return
                               (1000L, 2000L)
                               (* (failwith "TODO return sth based on asd disk usage") *)
+    method capabilities = Lwt.fail_with "TODO:capabilities"
   end
 
 let rec make_client

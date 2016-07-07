@@ -81,7 +81,7 @@ let upload_packed_fragment_data
   in
 
   do_upload () >>= fun apply_result ->
-  osd_access # get_osd_info ~osd_id >>= fun (_, state) ->
+  osd_access # get_osd_info ~osd_id >>= fun (_, state, _) ->
   match apply_result with
   | Osd_sec.Ok ->
      Osd_state.add_write state;
@@ -588,7 +588,7 @@ let store_manifest
     manifest_cache
     namespace_id object_name manifest;
 
-  Lwt.return (manifest, t_object)
+  Lwt.return (manifest, t_object, namespace_id)
 
 let upload_object'
       nsm_host_access osd_access

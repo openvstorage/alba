@@ -28,7 +28,7 @@ class type t =
              Albamgr_protocol.Protocol.Osd.ClaimInfo.t StringMap.t
     method get_osd_info :
              osd_id:Albamgr_protocol.Protocol.Osd.id ->
-             (Nsm_model.OsdInfo.t * Osd_state.t) Lwt.t
+             (Nsm_model.OsdInfo.t * Osd_state.t * Capabilities.OsdCapabilities.t) Lwt.t
     method osd_factory :
              Nsm_model.OsdInfo.t ->
              (Osd.osd_wrap_key_value_osd * (unit -> unit Lwt.t))
@@ -36,7 +36,7 @@ class type t =
     method osd_timeout : float
     method osds_info_cache :
              (Albamgr_protocol.Protocol.Osd.id,
-              Nsm_model.OsdInfo.t * Osd_state.t)
+              Nsm_model.OsdInfo.t * Osd_state.t * Capabilities.OsdCapabilities.t)
                Hashtbl.t
     method osds_to_osds_info_cache :
              Albamgr_protocol.Protocol.Osd.id list ->

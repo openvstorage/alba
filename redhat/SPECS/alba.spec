@@ -2,7 +2,7 @@
 
 Summary: Alba
 Name: alba
-Version: 0.9.12
+Version: 0.9.13
 Release: 1%{?dist}
 License: Proprietary license
 ExclusiveArch: x86_64
@@ -24,7 +24,7 @@ mkdir -p                               %{buildroot}%{_bindir}
 cp ocaml/alba.native                   %{buildroot}%{_bindir}/alba
 mkdir -p                               %{buildroot}%{_libdir}/alba/
 
-for i in Jerasure rocksdb isal gf_complete; \
+for i in Jerasure rocksdb isal gf_complete gobjfs gobjfs_server; \
     do ldd ./ocaml/alba.native \
             | grep $i \
             | grep "=> /" \
@@ -48,6 +48,8 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
+* Tue Jul 05 2016 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 0.9.13
+- Create Alba 0.9.13 RPM package
 * Tue Jun 28 2016 Jan Doms <jan.doms@openvstorage.com> - 0.9.12
 - Create Alba 0.9.12 RPM package
 * Wed Jun 22 2016 Jan Doms <jan.doms@openvstorage.com> - 0.9.11

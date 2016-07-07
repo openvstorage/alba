@@ -32,6 +32,22 @@ module OsdInfo =
       match of_yojson json with
       | `Error s -> failwith s
       | `Ok t -> t
+
+    let deser_json = from_buffer, to_buffer
+
+    let deser =
+      let from_buffer buf =
+        let s = Llio2.ReadBuffer.string_from buf in
+        Prelude.deserialize Nsm_model.OsdInfo.from_buffer s
+      in
+      let to_buffer buf t =
+        let s =
+          Prelude.serialize
+            (Nsm_model.OsdInfo.to_buffer ~version:3) t
+        in
+        Llio2.WriteBuffer.string_to buf s
+      in
+        from_buffer, to_buffer
   end
 
 module ClaimInfo =

@@ -114,7 +114,7 @@ let should_evict (alba_client : Alba_base_client.client) coordinator =
     begin
       let cnt_total, cnt_full, _ =
         Hashtbl.fold
-          (fun osd_id (osd_info, osd_state)
+          (fun osd_id (osd_info, osd_state, _)
                (cnt_total, cnt_full, acc) ->
            let open Nsm_model in
            let used = Int64.to_float osd_info.OsdInfo.used in

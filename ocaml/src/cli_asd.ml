@@ -32,8 +32,8 @@ let asd_start cfg_url slow log_sinks =
     | `Error err -> Lwt.fail_with err
     | `Ok cfg ->
 
-       let ips,         port,      transport,
-           home,
+       let ips,         port,      rora_port,
+           transport, home,
            node_id,     log_level, asd_id,
            fsync,       limit,     capacity,
            multicast, buffer_size,
@@ -43,8 +43,8 @@ let asd_start cfg_url slow log_sinks =
            rocksdb_block_cache_size
         =
         let open Config in
-        cfg.ips,     cfg.port,      cfg.transport,
-        cfg.home,
+        cfg.ips,     cfg.port,      cfg.rora_port,
+        cfg.transport, cfg.home,
         cfg.node_id, cfg.log_level, cfg.asd_id,
         cfg.__sync_dont_use,
         cfg.limit, cfg.capacity,
@@ -109,11 +109,11 @@ let asd_start cfg_url slow log_sinks =
                 Lwt_log.info_f "Reloaded capacity & log level"
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
-      
-      Asd_server.run_server ips port
+
+      Asd_server.run_server ips ~port ~rora_port
                             ~transport
                             home ~asd_id ~node_id ~slow
-                            ~fsync 
+                            ~fsync
                             ~limit
                             ~capacity
                             ~multicast
@@ -125,6 +125,7 @@ let asd_start cfg_url slow log_sinks =
                             ~write_blobs
                             ~use_fadvise
                             ~use_fallocate
+                            ~log_level:(to_level log_level)
   in
 
   lwt_server ~log_sinks ~subcomponent:"asd" t
@@ -309,7 +310,7 @@ let asd_disk_usage_cmd =
   in
   let info =
     let doc = "return ASD disk usage (used,cap)" in
-    Term.info "asd-disk-usage" ~doc 
+    Term.info "asd-disk-usage" ~doc
   in
   asd_disk_usage_t, info
 
@@ -478,7 +479,7 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
           )
       in Lwt_list.iter_s f results
     in
-    let t () = 
+    let t () =
       with_alba_client
         cfg_file tls_config
         (fun alba_client ->
@@ -544,7 +545,7 @@ let asd_multistatistics_cmd =
   in
   let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in
   t, info
-       
+
 let asd_statistics hosts port_o transport asd_id
                    to_json verbose config_o tls_config clear
   =
@@ -686,6 +687,33 @@ let asd_set_full_cmd =
   in
   asd_set_full_t, info
 
+let asd_capabilities hosts port tls_config asd_id verbose =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id verbose
+    (fun client ->
+      client # capabilities ()
+      >>= fun (count,r) ->
+      Lwt_list.iter_s
+        (fun c ->
+          Lwt_io.printl ([%show: Capabilities.OsdCapabilities.capability] c)
+        ) r
+    )
+
+let asd_capabilities_cmd =
+  let asd_capabilities_t =
+    Term.(pure asd_capabilities
+          $ hosts $ (port 8_000) $ tls_config
+          $ lido
+          $ verbose
+    )
+  in
+  let info =
+    let doc = "list this asd's capabilities" in
+    Term.info "asd-capabilities" ~doc
+  in
+  asd_capabilities_t, info
+
 let bench_syncfs root iterations threads size =
   let t =
     let entry = Sync_bench.batch_entry_syncfs in
@@ -754,7 +782,9 @@ let cmds = [
   asd_set_full_cmd;
   asd_get_version_cmd;
   asd_disk_usage_cmd;
+  asd_capabilities_cmd;
   bench_syncfs_cmd;
   bench_fsync_cmd;
+
   (* Asd_kaboom.kaboom_cmd; *)
 ]

@@ -16,8 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#ifndef ALBA_LLIO_H
-#define ALBA_LLIO_H
+#pragma once
 
 #include <istream>
 #include <ostream>
@@ -30,7 +29,7 @@ namespace alba {
 namespace llio {
 
 struct stream_exception : virtual std::exception {
-  stream_exception(const std::string& what) : _what(what) {}
+  stream_exception(const std::string &what) : _what(what) {}
 
   virtual const char *what() const noexcept { return _what.c_str(); }
 
@@ -38,15 +37,15 @@ struct stream_exception : virtual std::exception {
 };
 
 struct input_stream_exception : virtual stream_exception {
-  input_stream_exception(const std::string& what) : stream_exception(what) {}
+  input_stream_exception(const std::string &what) : stream_exception(what) {}
 };
 
 struct output_stream_exception : virtual stream_exception {
-  output_stream_exception(const std::string& what) : stream_exception(what) {}
+  output_stream_exception(const std::string &what) : stream_exception(what) {}
 };
 
 struct deserialisation_exception : virtual std::exception {
-  deserialisation_exception(const std::string& what) : _what(what) {}
+  deserialisation_exception(const std::string &what) : _what(what) {}
 
   virtual const char *what() const noexcept { return _what.c_str(); }
 
@@ -57,7 +56,7 @@ void check_stream(const std::istream &is);
 
 class message {
 public:
-  message(std::function<void (char* , const int)> reader){
+  message(std::function<void(char *, const int)> reader) {
     uint32_t size;
     reader((char *)&size, sizeof(uint32_t));
     _buffer.resize(size);
@@ -65,7 +64,6 @@ public:
     _pos = 0;
   }
 
-  
   message(std::istream &is) {
     uint32_t size;
     is.read((char *)&size, 4);
@@ -76,8 +74,10 @@ public:
     _pos = 0;
   }
 
-  
-  
+  message(std::vector<char> &buffer) {
+    _buffer = buffer;
+    _pos = 0;
+  }
   const char *current() { return &_buffer.data()[_pos]; }
 
   void skip(int x) { _pos += x; }
@@ -90,46 +90,43 @@ private:
 class message_builder {
 public:
   message_builder() : _buffer() {
-     const uint32_t size_res = 0x77777777;
-     const char* size_resp = (const char*)(&size_res);
-     _buffer.write(size_resp,4);
+    const uint32_t size_res = 0x77777777;
+    const char *size_resp = (const char *)(&size_res);
+    _buffer.write(size_resp, 4);
   }
 
   void output_using(
-       /*void (*writer) (const char* buffer,  const int len)*/
-      std::function<void (const char* , const int)> writer)
-  {
+      /*void (*writer) (const char* buffer,  const int len)*/
+      std::function<void(const char *, const int)> writer) {
     const std::string bs = _buffer.str();
     uint32_t bs_size = bs.size();
     uint32_t size = bs_size - 4;
-    const char* data = bs.data();
-    //DIRTY: "trust me, I know what I'm doing (TM)"
-    uint32_t* data_mut = (uint32_t*) data;
+    const char *data = bs.data();
+    // DIRTY: "trust me, I know what I'm doing (TM)"
+    uint32_t *data_mut = (uint32_t *)data;
     data_mut[0] = size;
     writer(data, bs_size);
   }
 
-  void output(std::ostream &os){
-    output_using(
-                 [&](const char* buffer,
-                     const int len) -> void {
-                   os.write(buffer,len);
-                 });
+  void output(std::ostream &os) {
+    output_using([&](const char *buffer, const int len)
+                     -> void { os.write(buffer, len); });
     os.flush();
     if (!os) {
       throw output_stream_exception("invalid outputstream");
     }
   }
-  
-  
+
   void add_raw(const char *b, uint32_t size) noexcept {
     _buffer.write(b, size);
   }
 
-  void add_type(const uint8_t i) noexcept{
+  void add_type(const uint8_t i) noexcept {
     const char *ip = (const char *)(&i);
     add_raw(ip, 1);
   }
+
+  std::string as_string() noexcept { return _buffer.str(); }
 
 private:
   std::ostringstream _buffer;
@@ -147,6 +144,8 @@ void to(message_builder &mb, const std::vector<T> &ts) noexcept {
     to(mb, *iter);
   }
 }
+
+void to_be(message_builder &mb, const uint32_t &i) noexcept;
 
 template <typename T> void from(message &m, std::vector<T> &ts) noexcept {
 
@@ -196,4 +195,3 @@ template <typename X> void from(message &m, boost::optional<X> &xo) noexcept {
 }
 }
 }
-#endif

@@ -205,7 +205,7 @@ class client ?(retry_timeout = 60.)
 
     val maybe_dead_osds = Hashtbl.create 3
     method should_repair ~osd_id =
-      alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+      alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
       Lwt.return ((maintenance_config.Maintenance_config.enable_auto_repair
                    && Hashtbl.mem maybe_dead_osds osd_id)
                   || osd_info.Nsm_model.OsdInfo.decommissioned)
@@ -1213,7 +1213,7 @@ class client ?(retry_timeout = 60.)
 
           Lwt_list.map_p
             (fun osd_id ->
-             alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+             alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
              Lwt.return (osd_id, osd_info.Nsm_model.OsdInfo.node_id))
             osds_of_first_chunk
           >>= fun osds_with_node_id ->
@@ -1880,7 +1880,7 @@ class client ?(retry_timeout = 60.)
                      (fun client ->
                       let total_disk_size =
                         Hashtbl.fold
-                          (fun _ (osd_info, _) acc ->
+                          (fun _ (osd_info, _, _) acc ->
                            Int64.add acc osd_info.Nsm_model.OsdInfo.total)
                           (alba_client # osd_access # osds_info_cache)
                           0L

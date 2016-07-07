@@ -1,6 +1,9 @@
 FROM ubuntu:14.04.3
 RUN echo "deb http://archive.ubuntu.com/ubuntu/ trusty-backports main restricted universe multiverse" > /etc/apt/sources.list.d/trusty-backports.list
-RUN apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+
+RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
+
+RUN apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get install --force-yes -y \
     build-essential sudo python-dev python-pip wget gdebi-core
 RUN pip install fabric junit-xml
 

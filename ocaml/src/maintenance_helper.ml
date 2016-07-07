@@ -31,7 +31,7 @@ let choose_new_devices
    * osds that will be force chosen *)
   Lwt_list.iter_p
     (fun osd_id ->
-     alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _) ->
+     alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
      Hashtbl.replace osds_info_cache' osd_id osd_info;
      Lwt.return ())
     osds_to_keep >>= fun () ->
