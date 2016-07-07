@@ -97,7 +97,7 @@ RUN cd isa-l-2.14.0 && make install
 
 # install specific ocaml-redis
 RUN git clone http://github.com/domsj/ocaml-redis
-RUN cd ocaml-redis && git pull && git checkout 9b662c271c64af700bbec5a44ae6f383d3418a3f
+RUN cd ocaml-redis && git pull && git checkout e965be3621c809eec563a13e3b64475e63a5ef96
 RUN cd ocaml-redis && eval `${opam_env}` && make build install
 
 # install specific arakoon.
