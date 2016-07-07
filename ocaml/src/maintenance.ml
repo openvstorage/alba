@@ -1831,14 +1831,16 @@ class client ?(retry_timeout = 60.)
       (alba_client # osd_access)
 
   method cache_eviction () : unit Lwt.t =
+    let get_prefixes () =
+      Hashtbl.fold
+        (fun prefix _ acc -> prefix :: acc)
+        maintenance_config.Maintenance_config.cache_eviction_prefix_preset_pairs
+        []
+    in
     let do_random_eviction () =
       Alba_eviction.do_random_eviction
         alba_client
-        ~prefixes:(
-          Hashtbl.fold
-            (fun prefix _ acc -> prefix :: acc)
-            maintenance_config.Maintenance_config.cache_eviction_prefix_preset_pairs
-            [])
+        ~prefixes:(get_prefixes ())
     in
 
     let rec get_redis_lru_cache_eviction () =
@@ -1863,7 +1865,7 @@ class client ?(retry_timeout = 60.)
           else Lwt.return ())
          60.
     | Some { Maintenance_config.host; port; key; } ->
-       let () =
+       let t1 =
          Lwt_extra2.run_forever
            "redis-lru-eviction"
            (fun () ->
@@ -1873,81 +1875,6 @@ class client ?(retry_timeout = 60.)
                 Lwt.catch
                   (fun () ->
                    let module R = Redis_lwt.Client in
-                   let collect_some_garbage client =
-                     R.zrangebyscore
-                       client
-                       key
-                       0. max_float
-                       ~limit:(0, 100)
-                     >>= fun items ->
-
-                     let items =
-                       List.map
-                         (fun r ->
-                          match r with
-                          | `Bulk (Some b) -> b
-                          | x -> assert false)
-                         items
-                     in
-                     let items' =
-                       List.map
-                         (fun b ->
-                          let version, namespace_id, name =
-                            deserialize
-                              (Llio.tuple3_from
-                                 Llio.int8_from
-                                 Llio.int32_from
-                                 Llio.string_from)
-                              b
-                          in
-                          assert (version = 1);
-                          namespace_id, name)
-                         items
-                       |> List.group_by
-                            (fun (namespace_id, _) -> namespace_id)
-                       |> Hashtbl.to_assoc_list
-                     in
-
-                     Lwt_list.map_p
-                       (fun (namespace_id, names) ->
-                        let names = List.map snd names in
-                        alba_client # nsm_host_access # get_nsm_by_id
-                                    ~namespace_id >>= fun client ->
-                        client # get_object_manifests_by_name names >>= fun mfs ->
-
-                        let size =
-                          List.fold_left
-                            (fun acc ->
-                             function
-                             | None -> acc
-                             | Some mf ->
-                                let obj_disk_size =
-                                  List.fold_left
-                                    (fun acc sizes ->
-                                     List.fold_left
-                                       (+)
-                                       acc
-                                       sizes)
-                                    0
-                                    mf.Nsm_model.Manifest.fragment_packed_sizes
-                                in
-                                Int64.(add acc (of_int obj_disk_size)))
-                            0L
-                            mfs
-                        in
-
-                        client # apply_sequence
-                               []
-                               (List.map
-                                  (fun name -> Nsm_model.Update.DeleteObject name)
-                                  names) >>= fun () ->
-                        Lwt.return size
-                       )
-                       items' >>= fun sizes ->
-
-                     R.zrem client key items >>= fun _ ->
-                     Lwt.return (List.fold_left Int64.add 0L sizes)
-                   in
                    R.with_connection
                      R.({ host; port; })
                      (fun client ->
@@ -1965,7 +1892,10 @@ class client ?(retry_timeout = 60.)
                         then Lwt.return ()
                         else
                           begin
-                            collect_some_garbage client >>= fun size ->
+                            Alba_eviction.lru_collect_some_garbage
+                              alba_client
+                              client
+                              key >>= fun size ->
                             inner (Int64.add acc size)
                           end
                       in
@@ -1980,20 +1910,97 @@ class client ?(retry_timeout = 60.)
             else
               Lwt.return ())
            60.
-         |> Lwt.ignore_result
        in
 
-       Lwt_extra2.run_forever
-         "redis-lru-eviction-garbage-collect"
-         (fun () ->
-          let rec inner () =
-            (* TODO
-             * - scan a few key ranges at random
-             * - (conditionally) add items to redis
-             * - sleep or not depending on the amount of garbage found
-             *)
-            Lwt.return ()
-          in
-          inner ())
-         60.
+       let t2 =
+         Lwt_extra2.run_forever
+           "redis-lru-eviction-garbage-collect"
+           (fun () ->
+            let rec inner delay =
+              let delay = max delay 1. in
+              Lwt.catch
+                (fun () ->
+                 let prefixes = get_prefixes () in
+                 Lwt_list.map_p
+                   (fun prefix ->
+                    alba_client # mgr_access # list_all_namespaces_with_prefix prefix)
+                   prefixes >>= fun namespaces ->
+                 let namespaces =
+                   List.fold_left
+                     (fun acc (_, namespaces) ->
+                      List.rev_append namespaces acc)
+                     []
+                     namespaces
+                 in
+                 let length = List.length namespaces in
+                 let (namespace, ns_info) = List.nth_exn namespaces (Random.int length) in
+                 let namespace_id = ns_info.Albamgr_protocol.Protocol.Namespace.id in
+                 alba_client # nsm_host_access # get_nsm_by_id ~namespace_id
+                 >>= fun nsm_client ->
+                 let first, last, reverse = make_first_last_reverse () in
+                 nsm_client # list_objects_by_id
+                        ~first ~finc:true ~last
+                        ~reverse ~max:200 >>= fun ((_, mfs), _) ->
+                 if mfs = []
+                 then
+                   begin
+                     (* maybe the namespace was empty ...
+                      * if so detect it and throw it away
+                      *)
+                     nsm_client # list_objects_by_id
+                                ~first:"" ~finc:true ~last:None
+                                ~reverse:false ~max:1 >>= fun ((_, mfs), _) ->
+                     if mfs = []
+                     then
+                       begin
+                         alba_client # delete_namespace ~namespace >>= fun () ->
+                         Lwt.return 0.
+                       end
+                     else
+                       Lwt.return (delay *. 1.5)
+                   end
+                 else
+                   begin
+                     let items = List.map
+                                   (fun mf ->
+                                    let open Nsm_model.Manifest in
+                                    mf.timestamp,
+                                    serialize
+                                      (Llio.tuple3_to
+                                         Llio.int8_to
+                                         Llio.int32_to
+                                         Llio.string_to)
+                                      (1, namespace_id, mf.name))
+                                   mfs
+                     in
+                     let module R = Redis_lwt.Client in
+                     R.with_connection
+                       R.({ host; port; })
+                       (fun client ->
+                        Redis_lwt.Client.zadd
+                          client
+                          key
+                          ~x:`NX
+                          items)
+                     >>= fun count ->
+                     if count = 0
+                     then
+                       Lwt.return (delay *. 1.5)
+                     else
+                       (* found garbage, scan again for more... *)
+                       Lwt.return 0.
+                   end
+                )
+                (fun exn ->
+                 Lwt_log.info_f ~exn "Exception during redis-lru-eviction-garbage-collect" >>= fun () ->
+                 Lwt.return (delay *. 1.5)) >>= fun delay ->
+              let delay = min 60. delay in
+              Lwt_extra2.sleep_approx delay >>= fun () ->
+              inner delay
+            in
+            inner 1.)
+           60.
+       in
+
+       Lwt.join [ t1; t2; ]
 end
