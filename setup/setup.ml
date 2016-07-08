@@ -1144,27 +1144,26 @@ module Deployment = struct
     suffix = Str.last_chars long_id (String.length suffix)
 
   let claim_local_osds t n =
-    let do_round() =
+    let rec loop c =
       let long_ids = harvest_available_osds t in
       let locals =
         List.filter
           (is_local_osd t)
           long_ids
       in
-      let claimed = claim_osds t locals in
-      List.length claimed
-    in
-    let rec loop j c =
-      if j = n
-      then ()
+      if n = List.length locals
+      then
+        let _ : string list = claim_osds t locals in
+        ()
       else if c > 20
       then failwith "could not claim enough local osds after 20 attempts"
       else
-        let n_claimed = do_round() in
-        Unix.sleep 1;
-        loop (j+n_claimed) (c+1)
+        begin
+          Unix.sleep 1;
+          loop (c+1)
+        end
     in
-    loop 0 0
+    loop 0
 
   let stop_osds t =
     Array.iter (fun asd -> asd # stop) t.osds
