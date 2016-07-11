@@ -322,6 +322,10 @@ module Protocol = struct
                              (object_name * (offset * length) list) list *
                            consistent_read,
                            data) request
+    | ReadObjectsSlices2 : (Namespace.name *
+                             (object_name * (offset * length) list) list *
+                           consistent_read,
+                           (data * (object_name Std.counted_list ))) request
     | InvalidateCache : (Namespace.name, unit) request
     | DropCache : (Namespace.name, unit) request
     | ProxyStatistics : (bool, ProxyStatistics.t) request
@@ -359,6 +363,7 @@ module Protocol = struct
                       20, Wrap Ping, "Ping";
                       21, Wrap WriteObjectFs2, "WriteObjectFs2";
                       22, Wrap OsdInfo, "OsdInfo";
+                      23, Wrap ReadObjectsSlices2, "ReadObjectsSlices2";
                     ]
 
   module Error = struct
@@ -465,6 +470,17 @@ module Protocol = struct
                     Deser.int64
                     Deser.int))))
         Deser.bool
+    | ReadObjectsSlices2 ->
+       Deser.tuple3
+        Deser.string
+        (Deser.list
+           (Deser.pair
+              Deser.string
+              (Deser.list
+                 (Deser.tuple2
+                    Deser.int64
+                    Deser.int))))
+        Deser.bool
     | InvalidateCache -> Deser.string
     | DropCache -> Deser.string
     | ProxyStatistics -> Deser.bool
@@ -486,6 +502,10 @@ module Protocol = struct
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string
+    | ReadObjectsSlices2 ->
+       Deser.tuple2
+         Deser.string
+         (Deser.counted_list Deser.string)
     | InvalidateCache -> Deser.unit
     | DropCache -> Deser.unit
     | ProxyStatistics -> ProxyStatistics.deser

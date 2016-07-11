@@ -293,22 +293,47 @@ TEST(proxy_client, test_osd_info) {
 
 void _generic_partial_read_test(
     std::string &namespace_, std::string &name,
-    std::vector<proxy_protocol::ObjectSlices> &objects_slices) {
+    std::vector<proxy_protocol::ObjectSlices> &objects_slices,
+    bool clear_before_read) {
   init_log();
   config cfg;
   boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
                                   rora_config);
   boost::optional<std::string> preset{"preset_rora"};
-  client->create_namespace(namespace_, preset);
+  std::ostringstream nos;
+  nos << namespace_ << "_" << std::rand();
+  string actual_namespace{nos.str()};
+  BOOST_LOG_TRIVIAL(info) << "creating namespace " << actual_namespace;
+  client->create_namespace(actual_namespace, preset);
 
   string file("./ocaml/alba.native");
-  client->write_object_fs(namespace_, name, file,
+  client->write_object_fs(actual_namespace, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
-  client->read_objects_slices(namespace_, objects_slices,
+  if (clear_before_read) {
+    client->invalidate_cache(actual_namespace);
+  }
+  client->read_objects_slices(actual_namespace, objects_slices,
                               proxy_client::consistent_read::F);
 }
 
+void _compare_blocks(std::vector<byte> &block1, std::vector<byte> &block2,
+                     uint32_t off, uint32_t len) {
+  auto ok = true;
+  BOOST_LOG_TRIVIAL(info) << "comparing blocks";
+  for (uint32_t i = 0; i < len; i++) {
+    uint32_t pos = off + i;
+    const byte b1 = block1[pos];
+    const byte b2 = block2[pos];
+    if (b1 != b2) {
+      std::cout << "error[" << pos << "]:" << (int)b1 << "!=" << (int)b2
+                << std::endl;
+      ok = false;
+      break;
+    }
+  }
+  EXPECT_TRUE(ok);
+}
 TEST(proxy_client, test_partial_read_trivial) {
   std::string namespace_("test_partial_read_trivial");
   std::ostringstream sos;
@@ -322,23 +347,28 @@ TEST(proxy_client, test_partial_read_trivial) {
   std::vector<SliceDescriptor> slices{sd};
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
-  _generic_partial_read_test(namespace_, name, objects_slices);
+  _generic_partial_read_test(namespace_, name, objects_slices, false);
   std::ifstream for_comparison("./ocaml/alba.native", std::ios::binary);
   std::vector<byte> bytes2(block_size);
   for_comparison.read((char *)&bytes2[0], block_size);
-  auto ok = true;
-  BOOST_LOG_TRIVIAL(info) << "comparing blocks";
-  for (uint32_t i = 0; i < block_size; i++) {
-    const byte b0 = bytes[i];
-    const byte b2 = bytes2[i];
-    if (b0 != b2) {
-      std::cout << "error[" << i << "]:" << (int)b0 << "!=" << (int)b2
-                << std::endl;
-      ok = false;
-      break;
-    }
-  }
-  EXPECT_TRUE(ok);
+  _compare_blocks(bytes, bytes2, 0, block_size);
+}
+
+TEST(proxy_client, test_partial_read_trivial2) {
+  std::srand(std::time(0));
+  std::string namespace_("test_partial_read_trivial2");
+  std::ostringstream sos;
+  sos << "with_manifest" << std::rand();
+  string name = sos.str();
+  using namespace proxy_protocol;
+  uint32_t block_size = 4096;
+  std::vector<byte> bytes(block_size);
+  SliceDescriptor sd{&bytes[0], 0, block_size};
+
+  std::vector<SliceDescriptor> slices{sd};
+  ObjectSlices object_slices{name, slices};
+  std::vector<ObjectSlices> objects_slices{object_slices};
+  _generic_partial_read_test(namespace_, name, objects_slices, true);
 }
 
 TEST(proxy_client, test_partial_read_multislice) {
@@ -356,7 +386,7 @@ TEST(proxy_client, test_partial_read_multislice) {
   std::vector<SliceDescriptor> slices{sd, sd2};
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
-  _generic_partial_read_test(namespace_, name, objects_slices);
+  _generic_partial_read_test(namespace_, name, objects_slices, false);
   delete[] buf;
 }
 

@@ -42,6 +42,8 @@ public:
 
   std::shared_ptr<Manifest> find(strpair &key);
 
+  void invalidate_namespace(const std::string &);
+
 private:
   ManifestCache() {}
 

@@ -24,8 +24,9 @@ but WITHOUT ANY WARRANTY of any kind.
 
 namespace alba {
 namespace proxy_client {
-RoraProxy_client::RoraProxy_client(std::unique_ptr<Proxy_client> delegate,
-                                   const RoraConfig &rora_config)
+RoraProxy_client::RoraProxy_client(
+    std::unique_ptr<GenericProxy_client> delegate,
+    const RoraConfig &rora_config)
     : _delegate(std::move(delegate)) {
   ManifestCache::set_capacity(rora_config.manifest_cache_size);
 }
@@ -207,7 +208,7 @@ int RoraProxy_client::_short_path_one(const std::string &namespace_,
 int RoraProxy_client::_short_path_many(
     const std::string &namespace_,
     const std::vector<short_path_entry> &short_path) {
-  // for now, we can't do it.
+
   ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", ...)");
   int result = 0;
   for (auto &object_slices_mf : short_path) {
@@ -221,12 +222,22 @@ int RoraProxy_client::_short_path_many(
   return result;
 }
 
+void _process(const std::vector<object_info> &object_infos) {
+  ALBA_LOG(DEBUG, "_process");
+  for (auto &object_info : object_infos) {
+    ALBA_LOG(DEBUG, "object_info:" << object_info);
+  }
+}
+
 void RoraProxy_client::read_objects_slices(
     const std::string &namespace_, const std::vector<ObjectSlices> &slices,
     const consistent_read consistent_read_) {
 
   if (consistent_read_ == consistent_read::T) {
-    _delegate->read_objects_slices(namespace_, slices, consistent_read_);
+    std::vector<object_info> object_infos;
+    _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
+                                    object_infos);
+    _process(object_infos);
   } else {
     std::vector<ObjectSlices> via_proxy;
     std::vector<short_path_entry> short_path;
@@ -247,8 +258,10 @@ void RoraProxy_client::read_objects_slices(
       }
     };
     // short_path & via_proxy could go in //
-
-    _delegate->read_objects_slices(namespace_, via_proxy, consistent_read_);
+    std::vector<object_info> object_infos;
+    _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
+                                    object_infos);
+    _process(object_infos);
     // short_path.
     int result = _short_path_many(namespace_, short_path);
     ALBA_LOG(DEBUG, "_short_path_many => " << result);
@@ -259,8 +272,10 @@ void RoraProxy_client::read_objects_slices(
         auto object_slices = p.first;
         via_proxy2.push_back(object_slices);
       }
-
-      _delegate->read_objects_slices(namespace_, via_proxy2, consistent_read_);
+      std::vector<object_info> object_infos2;
+      _delegate->read_objects_slices2(namespace_, via_proxy2, consistent_read_,
+                                      object_infos2);
+      _process(object_infos2);
     }
   }
 }
@@ -283,6 +298,7 @@ std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(
 }
 
 void RoraProxy_client::invalidate_cache(const std::string &namespace_) {
+  ManifestCache::getInstance().invalidate_namespace(namespace_);
   _delegate->invalidate_cache(namespace_);
 }
 

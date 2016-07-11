@@ -78,8 +78,8 @@ int OsdAccess::read_osds_slices(
     osd_t osd = item.first;
     auto &osd_slices = item.second;
     rc = _read_osd_slices(osd, osd_slices);
-    if(rc) {
-        break;
+    if (rc) {
+      break;
     }
   }
   return rc;

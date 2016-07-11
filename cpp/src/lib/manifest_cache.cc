@@ -62,5 +62,11 @@ std::shared_ptr<Manifest> ManifestCache::find(strpair &key) {
     return it->second;
   }
 }
+
+void ManifestCache::invalidate_namespace(const std::string &namespace_) {
+  ALBA_LOG(DEBUG, "ManifestCache::invalidate_namespace(" << namespace_ << ")");
+  std::lock_guard<std::mutex> g(_cache_mutex);
+  _cache.clear();
+}
 }
 }

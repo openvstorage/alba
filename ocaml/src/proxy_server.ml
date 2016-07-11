@@ -157,9 +157,10 @@ let read_objects_slices
        )
        objects_slices
      >>= fun mf_sources ->
+     let objects_infos = (n_objects, StringSet.elements object_names) in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
-                 !fc_hits, !fc_misses))
+                 !fc_hits, !fc_misses, objects_infos))
     (fun () ->
      Lwt_bytes.unsafe_destroy res;
      Lwt.return ())
@@ -186,7 +187,15 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                            namespace
                            ([%show : (object_name *
                                         (offset * length) list) list ]
-                           objects_slices)
+                              objects_slices)
+  | ReadObjectsSlices2 -> fun (namespace, objects_slices, consistent_read) ->
+                          Printf.sprintf
+                           "(%S,%s )"
+                           namespace
+                           ([%show : (object_name *
+                                        (offset * length) list) list ]
+                              objects_slices)
+
   | NamespaceExists -> fun namespace ->
                        Printf.sprintf "(%S)" namespace
   | ProxyStatistics -> fun _ -> "-"
@@ -337,7 +346,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats (namespace, objects_slices, consistent_read) ->
        with_timing_lwt
          (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
-       >>= fun (delay, (bytes, n_slices, n_objects, mf_sources, fc_hits, fc_misses )) ->
+       >>= fun (delay, (bytes, n_slices, n_objects, mf_sources,
+                        fc_hits, fc_misses,
+                        object_infos)) ->
        let total_length = Bytes.length bytes in
        ProxyStatistics.new_read_objects_slices
          stats namespace
@@ -345,7 +356,24 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          ~fc_hits ~fc_misses
          ~took:delay;
        Lwt.return bytes
-
+    | ReadObjectsSlices2 ->
+       fun stats (namespace, objects_slices, consistent_read) ->
+       with_timing_lwt
+         (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
+       >>= fun (delay, (bytes, n_slices, n_objects,
+                        mf_sources, fc_hits, fc_misses,
+                        object_infos)) ->
+       let total_length = Bytes.length bytes in
+       ProxyStatistics.new_read_objects_slices
+         stats namespace
+         ~total_length ~n_slices ~n_objects ~mf_sources
+         ~fc_hits ~fc_misses
+         ~took:delay;
+       Lwt_log.debug_f "object_infos:%i %s"
+                       (fst object_infos)
+                       ([%show : string list] (snd object_infos))
+       >>= fun () ->
+       Lwt.return (bytes, object_infos)
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
