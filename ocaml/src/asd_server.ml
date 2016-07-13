@@ -1323,6 +1323,7 @@ let run_server
   in
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
+  Lwt_log.warning_f "rora always uses rdma" >>= fun () ->
   Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls_config) >>= fun () ->
   Lwt_log.debug_f "transport:%s" ([%show: Net_fd.transport] transport) >>= fun () ->
   let tls =
@@ -1659,7 +1660,9 @@ let run_server
          in
          let sleeper, awakener = Lwt.wait() in
          let t =
-           Lwt_log.debug_f "starting rora server host:%s port:%i" host port
+           let t_s = Rora_server.transport_s transport in
+           Lwt_log.warning_f "starting rora server host:%s port:%i transport_s:%s"
+                           host port t_s
            >>= fun () ->
            let num_cores = 2 in
            let queue_depth = 8 in

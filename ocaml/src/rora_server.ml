@@ -20,7 +20,7 @@ open Foreign
 open Ctypes
 
 let transport_s = function
-  | Net_fd.TCP  -> "tcp"
+  | Net_fd.TCP  -> "rdma"
   | Net_fd.RDMA -> "rdma"
 
 let _start =

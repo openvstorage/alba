@@ -98,7 +98,7 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     const auto &ic = it->second;
     const auto &osd_info = ic.first;
     const auto &osd_caps = ic.second;
-    std::string transport_name("tcp");
+    std::string transport_name("rdma");
     if (osd_info->use_rdma) {
       transport_name = "rdma";
     }
@@ -110,8 +110,9 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     int backdoor_port = *osd_caps->port;
 
     std::string &ip = osd_info->ips[0];
-    ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
-                           << " port: " << backdoor_port);
+    ALBA_LOG(INFO, "osd:" << osd << " ip:" << ip
+             << " port: " << backdoor_port
+             << " transport: " << transport_name);
     int err =
         ctx_attr_set_transport(ctx_attr, transport_name, ip, backdoor_port);
     ALBA_LOG(DEBUG, "set_transport err:" << err);
