@@ -82,6 +82,7 @@ let with_client albamgr_client_cfg
                 ?partial_osd_read
                 ?cache_on_read
                 ?cache_on_write
+                ~populate_osds_info_cache
                 f
   =
   let client, closer =
@@ -101,6 +102,7 @@ let with_client albamgr_client_cfg
                 ?partial_osd_read
                 ?cache_on_read
                 ?cache_on_write
+                ~populate_osds_info_cache
                 ()
   in
   Lwt.finalize

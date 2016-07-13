@@ -182,6 +182,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                            | Fragment_cache_config.None' -> true
                            | _ -> false)
         ~cache_on_read ~cache_on_write
+        ~populate_osds_info_cache:true
         (fun client ->
            let maintenance_client =
              new Maintenance.client

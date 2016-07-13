@@ -43,10 +43,12 @@ class client
     ~use_fadvise
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
+    ~populate_osds_info_cache
   =
   let () =
-    osd_access # populate_osds_info_cache
-    |> Lwt.ignore_result
+    if populate_osds_info_cache
+    then osd_access # populate_osds_info_cache
+         |> Lwt.ignore_result
   in
   let () = Lwt_log.ign_debug_f "client: tls_config:%s" ([%show : Tls.t option] tls_config) in
   let nsm_host_access =

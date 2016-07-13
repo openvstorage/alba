@@ -36,6 +36,7 @@ let test_with_alba_client ?bad_fragment_callback f =
         ~tls_config
         ~release_resources:true
         ~tcp_keepalive:Tcp_keepalive2.default
+        ~populate_osds_info_cache:true
         f
     end
   in
@@ -1718,6 +1719,7 @@ let test_invalidate_deleted_namespace () =
          ~tls_config
          ~release_resources:true
          ~tcp_keepalive:Tcp_keepalive2.default
+         ~populate_osds_info_cache:true
          (fun alba_client2 ->
 
             (* alba_client1 is used to manipulate namespaces
@@ -1964,6 +1966,7 @@ let test_stale_manifest_download () =
          ~tls_config
          ~release_resources:true
          ~tcp_keepalive:Tcp_keepalive2.default
+         ~populate_osds_info_cache:true
          (fun alba_client2 ->
           let maintenance_client =
             new Maintenance.client (alba_client2 # get_base_client) in
