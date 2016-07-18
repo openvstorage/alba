@@ -45,6 +45,7 @@ module Protocol = struct
 
   type ('request, 'response) query =
     | GetObjectManifestByName : (object_name, Manifest.t option) query
+    | GetObjectManifestsByName : (object_name list, Manifest.t option list) query
     | GetObjectManifestById : (object_id, Manifest.t option) query
 
     | GetGcEpochs : (unit, GcEpochs.t) query
@@ -106,6 +107,7 @@ module Protocol = struct
   let read_query_request : type req res. (req, res) query -> req Llio.deserializer
     = function
       | GetObjectManifestByName -> Llio.string_from
+      | GetObjectManifestsByName -> Llio.list_from Llio.string_from
       | GetObjectManifestById -> Llio.string_from
       | GetGcEpochs -> Llio.unit_from
 
@@ -169,6 +171,7 @@ module Protocol = struct
   let write_query_request : type req res. (req, res) query -> req Llio.serializer
     = function
       | GetObjectManifestByName -> Llio.string_to
+      | GetObjectManifestsByName -> Llio.list_to Llio.string_to
       | GetObjectManifestById -> Llio.string_to
 
       | GetGcEpochs -> Llio.unit_to
@@ -233,6 +236,8 @@ module Protocol = struct
     = function
       | GetObjectManifestByName ->
         Llio.option_to Manifest.output
+      | GetObjectManifestsByName ->
+        Llio.list_to (Llio.option_to Manifest.output)
       | GetObjectManifestById ->
         Llio.option_to Manifest.output
 
@@ -272,6 +277,8 @@ module Protocol = struct
     = function
       | GetObjectManifestByName ->
         Llio.option_from Manifest.input
+      | GetObjectManifestsByName ->
+        Llio.list_from (Llio.option_from Manifest.input)
       | GetObjectManifestById ->
         Llio.option_from Manifest.input
 

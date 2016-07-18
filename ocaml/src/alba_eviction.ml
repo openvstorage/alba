@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Lwt.Infix
 
-let do_eviction
+let do_random_eviction
       (alba_client : Alba_base_client.client)
       ~prefixes =
   Lwt_list.map_p
@@ -108,66 +108,106 @@ let do_eviction
       delete_empty_namespaces ();
     ]
 
-let alba_eviction
-      (alba_client : Alba_base_client.client)
-      ~get_prefix_preset_pairs
-  =
-  let coordinator =
-    Maintenance_coordination.make_maintenance_coordinator
-      (alba_client # mgr_access)
-      ~lease_name:"cache_eviction"
-      ~lease_timeout:20.
-      ~registration_prefix:"cache_eviction"
+let should_evict (alba_client : Alba_base_client.client) coordinator =
+  if coordinator # is_master
+  then
+    begin
+      let cnt_total, cnt_full, _ =
+        Hashtbl.fold
+          (fun osd_id (osd_info, osd_state, _)
+               (cnt_total, cnt_full, acc) ->
+           let open Nsm_model in
+           let used = Int64.to_float osd_info.OsdInfo.used in
+           let total = Int64.to_float osd_info.OsdInfo.total in
+           let fill_ratio = used /. total in
+           (cnt_total + 1,
+            cnt_full + (if fill_ratio > 0.9 then 1 else 0),
+            (osd_id,
+             used, total,
+             fill_ratio)
+            :: acc))
+          (alba_client # osd_access # osds_info_cache)
+          (0, 0, [])
+      in
+      (* more than half of the disks are >90% filled,
+       * so let's do some cleanup *)
+      float cnt_total /. float cnt_full < 2.
+    end
+  else
+    false
+
+let lru_collect_some_garbage alba_client redis_client key =
+  let module R = Redis_lwt.Client in
+  R.zrangebyscore
+    redis_client
+    key
+    0. max_float
+    ~limit:(0, 100)
+  >>= fun items ->
+
+  let items =
+    List.map
+      (fun r ->
+       match r with
+       | `Bulk (Some b) -> b
+       | x -> assert false)
+      items
   in
-  let () = coordinator # init in
+  let items' =
+    List.map
+      (fun b ->
+       let version, namespace_id, name =
+         deserialize
+           (Llio.tuple3_from
+              Llio.int8_from
+              Llio.int32_from
+              Llio.string_from)
+           b
+       in
+       assert (version = 1);
+       namespace_id, name)
+      items
+    |> List.group_by
+         (fun (namespace_id, _) -> namespace_id)
+    |> Hashtbl.to_assoc_list
+  in
 
-  Lwt_extra2.run_forever
-    "alba eviction"
-    (fun () ->
+  Lwt_list.map_p
+    (fun (namespace_id, names) ->
+     let names = List.map snd names in
+     alba_client # nsm_host_access # get_nsm_by_id
+                 ~namespace_id >>= fun client ->
+     client # get_object_manifests_by_name names >>= fun mfs ->
 
-     if coordinator # is_master
-     then
-       begin
+     let size =
+       List.fold_left
+         (fun acc ->
+          function
+          | None -> acc
+          | Some mf ->
+             let obj_disk_size =
+               List.fold_left
+                 (fun acc sizes ->
+                  List.fold_left
+                    (+)
+                    acc
+                    sizes)
+                 0
+                 mf.Nsm_model.Manifest.fragment_packed_sizes
+             in
+             Int64.(add acc (of_int obj_disk_size)))
+         0L
+         mfs
+     in
 
-         (* TODO maybe use some info from the involved presets to decide when
-          * to remove items from the cache ...
-          * decided for now to use a simpler way to make that decision (see below) *)
-         (* Lwt_list.map_p *)
-         (*   (fun preset_name -> *)
-         (*    alba_client # get_base_client # get_preset_info ~preset_name) *)
-         (*   presets *)
-         (* >>= fun presets -> *)
+     client # apply_sequence
+            []
+            (List.map
+               (fun name -> Nsm_model.Update.DeleteObject name)
+               names) >>= fun () ->
+     Lwt.return size
+    )
+    items' >>= fun sizes ->
 
-         let cnt_total, cnt_full, _ =
-           Hashtbl.fold
-             (fun osd_id (osd_info, osd_state, osd_capabilities)
-                  (cnt_total, cnt_full, acc) ->
-              let open Nsm_model in
-              let used = Int64.to_float osd_info.OsdInfo.used in
-              let total = Int64.to_float osd_info.OsdInfo.total in
-              let fill_ratio = used /. total in
-              (cnt_total + 1,
-               cnt_full + (if fill_ratio > 0.9 then 1 else 0),
-               (osd_id,
-                used, total,
-                fill_ratio)
-               :: acc))
-             (alba_client # osd_access # osds_info_cache)
-             (0, 0, [])
-         in
-
-         if float cnt_total /. float cnt_full < 2.
-         then
-           (* more than half of the disks are >90% filled,
-            * so let's do some cleanup *)
-           do_eviction alba_client
-                       ~prefixes:(Hashtbl.fold
-                                    (fun prefix _ acc -> prefix :: acc)
-                                    (get_prefix_preset_pairs ())
-                                    [])
-         else
-           Lwt.return ()
-       end
-     else
-       Lwt.return ())
-    60.
+  R.zrem redis_client key items >>= fun _ ->
+  Lwt.return (List.fold_left Int64.add 0L sizes)

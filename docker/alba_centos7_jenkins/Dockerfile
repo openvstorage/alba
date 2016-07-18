@@ -69,9 +69,9 @@ RUN eval `${opam_env}` && \
         ppx_deriving.3.1 \
         ppx_deriving_yojson \
         core.113.00.00 \
-        redis \
         uri.1.9.1 \
-        result
+        result \
+        redis.0.3.1
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue
@@ -95,6 +95,7 @@ RUN tar xfzv isa-l-2.14.0.tar.gz
 RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
+
 
 RUN yum -y install cmake3 sudo
 

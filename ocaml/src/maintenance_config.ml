@@ -18,6 +18,23 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Prelude
 
+type redis_lru_cache_eviction = {
+    host : string;
+    port : int;
+    key : string;
+   } [@@deriving yojson, show]
+
+let redis_lru_cache_eviction_from_buffer buf =
+  let host = Llio.string_from buf in
+  let port = Llio.int_from buf in
+  let key = Llio.string_from buf in
+  { host; port; key; }
+
+let redis_lru_cache_eviction_to_buffer buf { host; port; key; } =
+  Llio.string_to buf host;
+  Llio.int_to buf port;
+  Llio.string_to buf key
+
 type t = {
     enable_auto_repair : bool;
     auto_repair_timeout_seconds : float;
@@ -26,6 +43,7 @@ type t = {
     enable_rebalance : bool;
 
     cache_eviction_prefix_preset_pairs : (string, string) Hashtbl.t;
+    redis_lru_cache_eviction : redis_lru_cache_eviction option;
   } [@@deriving yojson]
 
 let show t = to_yojson t |> Yojson.Safe.pretty_to_string
@@ -46,11 +64,18 @@ let from_buffer buf =
       (Hashtbl.create 0)
       buf
   in
+  let redis_lru_cache_eviction =
+    maybe_from_buffer
+      (Llio.option_from redis_lru_cache_eviction_from_buffer)
+      None
+      buf
+  in
   { enable_auto_repair;
     auto_repair_timeout_seconds;
     auto_repair_disabled_nodes;
     enable_rebalance;
     cache_eviction_prefix_preset_pairs;
+    redis_lru_cache_eviction;
   }
 
 let to_buffer buf { enable_auto_repair;
@@ -58,6 +83,7 @@ let to_buffer buf { enable_auto_repair;
                     auto_repair_disabled_nodes;
                     enable_rebalance;
                     cache_eviction_prefix_preset_pairs;
+                    redis_lru_cache_eviction;
                   } =
   Llio.int8_to buf 1;
   Llio.bool_to buf enable_auto_repair;
@@ -68,6 +94,10 @@ let to_buffer buf { enable_auto_repair;
     Llio.string_to Llio.string_to
     buf
     cache_eviction_prefix_preset_pairs;
+  Llio.option_to
+    redis_lru_cache_eviction_to_buffer
+    buf
+    redis_lru_cache_eviction
 
 module Update = struct
     type t = {
@@ -80,6 +110,8 @@ module Update = struct
 
         add_cache_eviction_prefix_preset_pairs : (string * string) list;
         remove_cache_eviction_prefix_preset_pairs : string list;
+
+        redis_lru_cache_eviction' : redis_lru_cache_eviction option;
       }
 
     let from_buffer buf =
@@ -97,9 +129,17 @@ module Update = struct
         maybe_from_buffer
           (Llio.pair_from
              (Llio.list_from
-                (Llio.pair_from Llio.string_from Llio.string_from))
+                (Llio.pair_from
+                   Llio.string_from
+                   Llio.string_from))
              (Llio.list_from Llio.string_from))
           ([], [])
+          buf
+      in
+      let redis_lru_cache_eviction' =
+        maybe_from_buffer
+          (Llio.option_from redis_lru_cache_eviction_from_buffer)
+          None
           buf
       in
       { enable_auto_repair';
@@ -109,6 +149,7 @@ module Update = struct
         enable_rebalance';
         add_cache_eviction_prefix_preset_pairs;
         remove_cache_eviction_prefix_preset_pairs;
+        redis_lru_cache_eviction';
       }
 
     let to_buffer buf { enable_auto_repair';
@@ -118,6 +159,7 @@ module Update = struct
                         enable_rebalance';
                         add_cache_eviction_prefix_preset_pairs;
                         remove_cache_eviction_prefix_preset_pairs;
+                        redis_lru_cache_eviction';
                       } =
       Llio.int8_to buf 1;
       Llio.option_to Llio.bool_to buf enable_auto_repair';
@@ -131,13 +173,18 @@ module Update = struct
         add_cache_eviction_prefix_preset_pairs;
       Llio.list_to Llio.string_to
         buf
-        remove_cache_eviction_prefix_preset_pairs
+        remove_cache_eviction_prefix_preset_pairs;
+      Llio.option_to
+        redis_lru_cache_eviction_to_buffer
+        buf
+        redis_lru_cache_eviction'
 
     let apply { enable_auto_repair;
                 auto_repair_timeout_seconds;
                 auto_repair_disabled_nodes;
                 enable_rebalance;
                 cache_eviction_prefix_preset_pairs;
+                redis_lru_cache_eviction;
               }
               { enable_auto_repair';
                 auto_repair_timeout_seconds';
@@ -146,6 +193,7 @@ module Update = struct
                 enable_rebalance';
                 add_cache_eviction_prefix_preset_pairs;
                 remove_cache_eviction_prefix_preset_pairs;
+                redis_lru_cache_eviction';
               }
       =
       { enable_auto_repair = Option.get_some_default
@@ -165,18 +213,23 @@ module Update = struct
                              enable_rebalance
                              enable_rebalance';
         cache_eviction_prefix_preset_pairs =
-          let () =
-            List.iter
-              (fun prefix ->
-               Hashtbl.remove cache_eviction_prefix_preset_pairs prefix)
-              remove_cache_eviction_prefix_preset_pairs
-          in
-          let () =
-            List.iter
-              (fun (prefix, preset) ->
-               Hashtbl.replace cache_eviction_prefix_preset_pairs prefix preset)
-              add_cache_eviction_prefix_preset_pairs
-          in
-          cache_eviction_prefix_preset_pairs;
+          (let () =
+             List.iter
+               (fun prefix ->
+                Hashtbl.remove cache_eviction_prefix_preset_pairs prefix)
+               remove_cache_eviction_prefix_preset_pairs
+           in
+           let () =
+             List.iter
+               (fun (prefix, preset) ->
+                Hashtbl.replace cache_eviction_prefix_preset_pairs prefix preset)
+               add_cache_eviction_prefix_preset_pairs
+           in
+           cache_eviction_prefix_preset_pairs);
+
+        redis_lru_cache_eviction =
+          (match redis_lru_cache_eviction' with
+           | Some x -> Some x
+           | None -> redis_lru_cache_eviction);
       }
   end
