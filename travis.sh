@@ -30,7 +30,8 @@ OPAM_DEPENDS="ocamlfind \
          core.113.00.00 \
          conf-libev \
          uri \
-         result
+         result \
+         redis.0.3.1
 "
 
 export OPAMYES=1
@@ -123,15 +124,6 @@ install () {
     opam install ${OPAM_DEPENDS} || true
     opam depext arakoon.1.9.0
     opam install ${OPAM_DEPENDS}
-
-    date
-
-    opam remove redis
-    git clone http://github.com/domsj/ocaml-redis
-    cd ocaml-redis
-    git checkout e965be3621c809eec563a13e3b64475e63a5ef96
-    make build install
-    cd ..
 
     date
 

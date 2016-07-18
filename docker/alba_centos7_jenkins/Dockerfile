@@ -70,7 +70,8 @@ RUN eval `${opam_env}` && \
         ppx_deriving_yojson \
         core.113.00.00 \
         uri.1.9.1 \
-        result
+        result \
+        redis.0.3.1
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue
@@ -95,11 +96,6 @@ RUN cd isa-l-2.14.0 && ./configure
 RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
-
-# install specific ocaml-redis
-RUN git clone http://github.com/domsj/ocaml-redis
-RUN cd ocaml-redis && git pull && git checkout e965be3621c809eec563a13e3b64475e63a5ef96
-RUN cd ocaml-redis && eval `${opam_env}` && make build install
 
 RUN yum -y install cmake3 sudo
 

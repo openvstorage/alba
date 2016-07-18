@@ -73,7 +73,8 @@ RUN eval `${opam_env}` && \
         ppx_deriving_yojson \
         core.113.00.00 \
         uri.1.9.1 \
-        result
+        result \
+        redis.0.3.1
 
 RUN wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
 RUN tar xfzv isa-l-2.14.0.tar.gz
@@ -87,11 +88,6 @@ RUN cd /usr/src/gtest \
         && cmake . \
         && make \
         && mv libg* /usr/lib/
-
-# install specific ocaml-redis
-RUN git clone http://github.com/domsj/ocaml-redis
-RUN cd ocaml-redis && git pull && git checkout e965be3621c809eec563a13e3b64475e63a5ef96
-RUN cd ocaml-redis && eval `${opam_env}` && make build install
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
