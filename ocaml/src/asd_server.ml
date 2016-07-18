@@ -695,16 +695,19 @@ let execute_query : type req res.
 
 exception ConcurrentModification
 
-let cleanup_files_to_delete ignore_unlink_error io_sched kv dir_info fnrs =
+let cleanup_files_to_delete ignore_unlink_error io_sched prio kv dir_info fnrs =
   if fnrs = []
   then Lwt.return ()
   else begin
     let fnrs = List.sort Int64.compare fnrs in
-    Lwt_list.iter_s
+    Lwt_list.iter_p
       (fun fnr ->
          let path = DirectoryInfo.get_file_path dir_info fnr in
 
          (* TODO bulk sync of (unique) parent filedescriptors *)
+         perform_delete
+           io_sched
+           prio >>= fun () ->
          Lwt_extra2.unlink
            ~may_not_exist:(ignore_unlink_error || not dir_info.DirectoryInfo.write_blobs)
            ~fsync_parent_dir:true
@@ -1054,8 +1057,13 @@ let execute_update : type req res.
 
                    sync_rocksdb io_sched >>= fun () ->
 
-                   Lwt.ignore_result
-                     (cleanup_files_to_delete false io_sched kv dir_info files_to_be_deleted);
+                   cleanup_files_to_delete
+                     false
+                     io_sched
+                     prio
+                     kv
+                     dir_info
+                     files_to_be_deleted >>= fun () ->
                    Lwt.return `Succeeded)
                   (function
                     | Lwt.Canceled -> Lwt.fail Lwt.Canceled
@@ -1525,7 +1533,7 @@ let run_server
          in
          fnr)
   in
-  cleanup_files_to_delete true io_sched db dir_info fnrs_to_delete >>= fun () ->
+  cleanup_files_to_delete true io_sched High db dir_info fnrs_to_delete >>= fun () ->
 
   (* do range query on rocksdb to get biggest fnr currently in use *)
   let next_fnr =
