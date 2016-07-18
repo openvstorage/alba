@@ -771,6 +771,17 @@ let execute_update : type req res.
           if not (AsdMgmt.updates_allowed mgmt upds )
           then Error.failwith Error.Full
         in
+        let upds =
+          let upds' = Hashtbl.create 3 in
+          List.iter
+            (function
+              | (Update.Set (key, _)) as update -> Hashtbl.replace upds' key update)
+            upds;
+          Hashtbl.fold
+            (fun _ update acc -> update :: acc)
+            upds'
+            []
+        in
         let transform_asserts () =
           (* translate asserts that may take some time into 'immediate' asserts *)
           let open Assert in
