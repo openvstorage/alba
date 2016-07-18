@@ -177,7 +177,7 @@ install () {
     git checkout c7d90c46939d86f4d47e1746b69e9d17d8654d98
     mkdir build
     cd build
-    cmake ..
+    cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO ..
     make | tail
     sudo make install
     popd
