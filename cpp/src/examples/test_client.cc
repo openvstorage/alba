@@ -53,10 +53,12 @@ string getRequiredStringArg(po::variables_map map, string arg) {
   return getRequiredArg<string>(map, arg);
 }
 
-void logBoostMethod(alba::logger::AlbaLogLevel /*level */, std::string &msg) {
-  // there should actually be a translation from AlbaLogLevel to some boost
-  // log level here, but I'm too lazy for this test client
-  BOOST_LOG_TRIVIAL(debug) << msg;
+void logBoostMethod(alba::logger::AlbaLogLevel level , std::string &msg) {
+  switch(level){
+  case alba::logger::AlbaLogLevel::DEBUG  : BOOST_LOG_TRIVIAL(debug)   << msg; break;
+  case alba::logger::AlbaLogLevel::INFO   : BOOST_LOG_TRIVIAL(info)    << msg; break;
+  case alba::logger::AlbaLogLevel::WARNING: BOOST_LOG_TRIVIAL(warning) << msg; break;
+  }
 }
 
 std::function<void(alba::logger::AlbaLogLevel, std::string &)> logBoost =
@@ -65,6 +67,11 @@ std::function<void(alba::logger::AlbaLogLevel, std::string &)> logBoost =
 std::function<void(alba::logger::AlbaLogLevel, std::string &)> *nulllog =
     nullptr;
 
+void init_log() {
+    alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel /*level*/){
+                return &logBoost;
+        });
+}
 using namespace alba::proxy_client;
 
 void proxy_get_version(const string &host, const string &port,
@@ -96,13 +103,15 @@ void partial_read_benchmark(
                         << host << ", " << port << ", " << transport
                         << ", rora_config =" << rora_config << ")");
   auto client = make_proxy_client(host, port, timeout, transport, rora_config);
-  string name = "object_000";
+  std::ostringstream sos;
+  sos << "object_000" << std::rand();
+  string name = sos.str();
   const alba::Checksum *checksum = nullptr;
   using namespace alba::proxy_protocol;
   client->write_object_fs(namespace_, name, file_name, allow_overwrite::T,
                           checksum);
 
-  ALBA_LOG(INFO, "uploaded" << file_name);
+  ALBA_LOG(INFO, "uploaded" << file_name << " as " << name);
 
   std::vector<alba::byte> buffer(4096);
   SliceDescriptor sd{&buffer[0], 0, 4096};
@@ -163,21 +172,20 @@ void partial_read_benchmark(
 
   cout << "min_dur:" << min_dur << std::endl;
   cout << "max_dur:" << max_dur << std::endl;
+  int border_index = 0;
+  while(border_index <= last_index){
+      cout << dur_buckets[border_index] << "\t<" << borders[border_index] << std::endl;
+      border_index++;
+  };
   cout << "borders:" << borders << std::endl;
   cout << "buckets:" << dur_buckets << std::endl;
 }
 
-int main(int argc, const char *argv[]) {
-  alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
-    switch (level) {
-    case alba::logger::AlbaLogLevel::WARNING:
-      return &logBoost;
-    default:
-      return nulllog;
-    };
-  });
 
-  ALBA_LOG(WARNING, "cucu")
+int main(int argc, const char *argv[]) {
+  init_log();
+
+  ALBA_LOG(WARNING, "logging initialized")
 
   // gobjfs directly plugs in boost logging.
   namespace logging = boost::log;
@@ -214,7 +222,11 @@ int main(int argc, const char *argv[]) {
           "benchmark-size", po::value<uint32_t>()->default_value(1000),
           "size of benchmark")("use-rora",
                                po::value<bool>()->default_value(true),
-                               "use rora fetcher or not");
+                               "use rora fetcher or not")
+      ("log-level",
+       po::value<string> () ->default_value("info"),
+       "log level to use")
+      ;
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -237,6 +249,14 @@ int main(int argc, const char *argv[]) {
   string port = vm["port"].as<string>();
   string host = vm["host"].as<string>();
 
+  string log_level_s = vm["log-level"].as<string>();
+  ALBA_LOG(WARNING, "log-level = " << log_level_s);
+  if(log_level_s == "debug"){
+      ALBA_LOG(WARNING, "setting log level to " << log_level_s);
+      logging::core::get()->set_filter(logging::trivial::severity >=
+                                       logging::trivial::debug);
+
+  };
   auto timeout = boost::posix_time::seconds(5);
   Transport transport(Transport::tcp);
 
