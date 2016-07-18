@@ -22,16 +22,22 @@ open Lwt.Infix
 
 type 'a input = (unit -> ('a * int) Lwt.t) * 'a Lwt.u
 type output_blobs = (int64 * Asd_protocol.Blob.t) list * unit Lwt.u
+type delete_blobs = unit * unit Lwt.u
 type sync_rocks   = unit Lwt.u
-                         
+
 type post_write = Lwt_unix.file_descr -> int -> string -> unit Lwt.t
 type 'a t = {
     high_prio_reads  : 'a input     Lwt_buffer.t;
     high_prio_writes : output_blobs Lwt_buffer.t;
+    high_prio_deletes: delete_blobs Lwt_buffer.t;
     low_prio_reads   : 'a input     Lwt_buffer.t;
     low_prio_writes  : output_blobs Lwt_buffer.t;
+    low_prio_deletes : delete_blobs Lwt_buffer.t;
+
     rocksdb_sync     : sync_rocks   Lwt_buffer.t;
+
     sync_rocksdb     : unit -> unit;
+
     write_blob       : int64 -> Asd_protocol.Blob.t ->
                        post_write ->
                        unit Lwt.t;
@@ -40,8 +46,10 @@ type 'a t = {
 let make sync_rocksdb write_blob =
   { high_prio_reads  = Lwt_buffer.create ();
     high_prio_writes = Lwt_buffer.create ();
+    high_prio_deletes= Lwt_buffer.create ();
     low_prio_reads   = Lwt_buffer.create ();
     low_prio_writes  = Lwt_buffer.create ();
+    low_prio_deletes = Lwt_buffer.create ();
     rocksdb_sync     = Lwt_buffer.create ();
     sync_rocksdb;
     write_blob;
@@ -69,6 +77,15 @@ let perform_write t prio blobs =
      | Low  -> t.low_prio_writes) >>= fun () ->
   sleep
 
+let perform_delete t prio =
+  let sleep, waker = Lwt.wait () in
+  Lwt_buffer.add
+    ((), waker)
+    (match prio with
+     | High -> t.high_prio_deletes
+     | Low  -> t.low_prio_deletes) >>= fun () ->
+  sleep
+
 let sync_rocksdb t =
   let sleep, waker = Lwt.wait () in
   Lwt_buffer.add
@@ -76,7 +93,7 @@ let sync_rocksdb t =
     t.rocksdb_sync >>= fun () ->
   sleep
 
-let rec _harvest_from_buffer buffer acc cost threshold =
+let rec _harvest_from_buffer buffer acc cost threshold get_item_cost =
   if cost >= threshold || not (Lwt_buffer.has_item buffer)
   then Lwt.return (acc, cost)
   else
@@ -84,7 +101,7 @@ let rec _harvest_from_buffer buffer acc cost threshold =
       Lwt_buffer.take buffer >>= fun (item, waiter) ->
       Lwt.catch
         (fun () ->
-         item () >>= fun (res, cost) ->
+         get_item_cost item >>= fun (res, cost) ->
          Lwt.return (`Ok res, cost))
         (fun exn ->
          Lwt.return (`Exn exn, 1000)) >>= fun (res, cost') ->
@@ -93,6 +110,7 @@ let rec _harvest_from_buffer buffer acc cost threshold =
         ((waiter, res) :: acc)
         (cost + cost')
         threshold
+        get_item_cost
     end
 
 let _notify_waiters res =
@@ -103,7 +121,16 @@ let _notify_waiters res =
     res
 
 let _perform_reads_from_buffer buffer threshold =
-  _harvest_from_buffer buffer [] 0 threshold >>= fun (results, _) ->
+  _harvest_from_buffer buffer [] 0 threshold (fun f -> f ()) >>= fun (results, _) ->
+  _notify_waiters results;
+  Lwt.return_unit
+
+let _perform_deletes_from_buffer buffer count =
+  _harvest_from_buffer
+    buffer
+    [] 0 count
+    (fun () -> Lwt.return ((), 1))
+  >>= fun (results, _) ->
   _notify_waiters results;
   Lwt.return_unit
 
@@ -112,8 +139,10 @@ let run t ~fsync ~fs_fd =
     Lwt.pick
       [ Lwt_buffer.wait_for_item t.high_prio_writes;
         Lwt_buffer.wait_for_item t.high_prio_reads;
+        Lwt_buffer.wait_for_item t.high_prio_deletes;
         Lwt_buffer.wait_for_item t.low_prio_writes;
         Lwt_buffer.wait_for_item t.low_prio_reads;
+        Lwt_buffer.wait_for_item t.low_prio_deletes;
         Lwt_buffer.wait_for_item t.rocksdb_sync;
       ] >>= fun () ->
 
@@ -254,6 +283,9 @@ let run t ~fsync ~fs_fd =
       else
         Lwt.return_unit
     end >>= fun () ->
+
+    _perform_deletes_from_buffer t.high_prio_deletes 10 >>= fun () ->
+    _perform_deletes_from_buffer t.low_prio_deletes 5 >>= fun () ->
 
     (if Lwt_buffer.has_item t.rocksdb_sync
      then
