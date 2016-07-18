@@ -249,11 +249,11 @@ let test_unknown_operation port () =
      Lwt.return ()
     )
 
-let test_capacity port () =
+let test_capacity port1 port2 () =
   let test_name = "test_capacity" in
   let t () =
     with_asd_client
-      test_name port
+      test_name port1
       (fun asd ->
 
        asd # get_disk_usage () >>= fun (used, cap) ->
@@ -283,7 +283,7 @@ let test_capacity port () =
     assert (used > 0L);
     with_asd_client
       ~is_restart:true
-      test_name port
+      test_name port2
       (fun asd ->
        asd # get_disk_usage () >>= fun (used', cap') ->
        Lwt_log.debug_f "%Li, %Li" used' cap' >>= fun () ->
@@ -311,7 +311,7 @@ let suite = "asd_test" >:::[
     "test_unknown_operation" >:: test_unknown_operation 7909;
     "test_no_blobs" >:: test_no_blobs 7910;
     "test_assert" >:: test_assert 7911;
-    "test_partial_get" >:: test_partial_get 7911;
-    "test_capacity" >:: test_capacity 7912;
+    "test_partial_get" >:: test_partial_get 7912;
     "test_multi_update_for_same_key" >:: test_multi_update_for_same_key 7913;
+    "test_capacity" >:: test_capacity 7914 7915;
   ]

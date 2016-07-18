@@ -386,6 +386,7 @@ let osd_bench_cmd =
                       "partial_reads", partial_reads;
                       "get_version", get_version;
                       "exists", exists;
+                      "churn", churn;
                     ]
          in
          value

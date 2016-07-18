@@ -1144,27 +1144,26 @@ module Deployment = struct
     suffix = Str.last_chars long_id (String.length suffix)
 
   let claim_local_osds t n =
-    let do_round() =
+    let rec loop c =
       let long_ids = harvest_available_osds t in
       let locals =
         List.filter
           (is_local_osd t)
           long_ids
       in
-      let claimed = claim_osds t locals in
-      List.length claimed
-    in
-    let rec loop j c =
-      if j = n
-      then ()
+      if n = List.length locals
+      then
+        let _ : string list = claim_osds t locals in
+        ()
       else if c > 20
       then failwith "could not claim enough local osds after 20 attempts"
       else
-        let n_claimed = do_round() in
-        Unix.sleep 1;
-        loop (j+n_claimed) (c+1)
+        begin
+          Unix.sleep 1;
+          loop (c+1)
+        end
     in
-    loop 0 0
+    loop 0
 
   let stop_osds t =
     Array.iter (fun asd -> asd # stop) t.osds
@@ -1229,7 +1228,7 @@ module Deployment = struct
 
 
 
-  let setup t =
+  let setup ?redis_lru t =
     let cfg = t.cfg in
     let _ = _arakoon_cmd_line ["--version"] in
     let _ = _alba_cmd_line ~ignore_tls:true ["version"] in
@@ -1260,6 +1259,19 @@ module Deployment = struct
     let _ = t.abm # wait_for_master () in
     let _ = t.nsm # wait_for_master () in
 
+    begin
+      match redis_lru with
+      | None -> ()
+      | Some (port, key) ->
+         Printf.sprintf "redis-server --port %i &" port |> Shell.cmd;
+         Unix.sleep 1;
+         _alba_cmd_line
+           [ "update-maintenance-config";
+             "--config"; t.abm # config_url |> Url.canonical;
+             "--set-lru-cache-eviction";
+             Printf.sprintf "redis://127.0.0.1:%i/%s" port key; ]
+    end;
+
     t.proxy # persist_config;
     t.proxy # start;
 
@@ -1286,6 +1298,8 @@ module Deployment = struct
     let pkill x = (Printf.sprintf "pkill -e -9 %s" x) |> Shell.cmd ~ignore_rc:true in
     pkill "arakoon";
     pkill "alba";
+    pkill "etcd";
+    pkill "redis-server";
     pkill "'java.*SimulatorRunner.*'";
     "fuser -k -f " ^ cfg.monitoring_file |> Shell.cmd ~ignore_rc:true ;
     t.abm # remove_dirs;
@@ -1549,7 +1563,6 @@ module Test = struct
 
   let ocaml ?(xml=false) ?filter ?dump t =
     begin
-
       let cfg = t.Deployment.cfg in
       if cfg.tls
       then
@@ -1875,6 +1888,7 @@ module Test = struct
           "create-namespace";namespace ;preset;
           "--config"; t.abm # config_url |> Url.canonical;
         ];
+      Unix.sleep 1;
       let cfg = t.cfg in
       let object_file = cfg.alba_base_path ^ "/obj" in
       "truncate -s 1G " ^ object_file |> Shell.cmd;
@@ -2197,7 +2211,12 @@ module Test = struct
     let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:4000 () in
     Deployment.kill t_ssd;
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
-    Deployment.setup t_ssd;
+
+    let key_for_lru_tracking = "key_for_lru_tracking" in
+    Deployment.setup
+      ~redis_lru:(6379, key_for_lru_tracking)
+      t_ssd;
+
     let cfg_hdd = Config.make ~workspace:(workspace ^ "/tmp/alba_hdd") () in
     let the_prefix, the_preset = "my_prefix", "default" in
     let t_hdd =
@@ -2307,7 +2326,7 @@ module Test = struct
            Printf.printf "namespaces = %s\n" (Yojson.Basic.to_string (`List namespaces));
            assert (3 = List.length namespaces);
            assert (Yojson.Basic.to_string (`List namespaces) =
-                     "namespaces = [{\"id\":1,\"name\":\"alba_osd_prefix\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":2,\"name\":\"alba_osd_prefix_000000000\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":0,\"name\":\"demo\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"}]")
+                     "[{\"id\":1,\"name\":\"alba_osd_prefix\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":2,\"name\":\"alba_osd_prefix_000000000\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"},{\"id\":0,\"name\":\"demo\",\"nsm_host_id\":\"nsm\",\"state\":\"active\",\"preset_name\":\"default\"}]")
         | _ -> assert false
     end;
 
@@ -2414,6 +2433,9 @@ let process_cmd_line () =
       "nil",             Test.nil, true;
       "aaa",             Test.aaa, false;
       "alba_osd",        Test.alba_as_osd, false;
+      "big_object",      (fun ?xml ?filter ?dump t ->
+                          let _ : JUnit.suite = Test.big_object t in
+                          0), true;
     ]
   in
   let print_suites () =

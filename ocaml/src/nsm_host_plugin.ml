@@ -254,6 +254,11 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
       | GetObjectManifestByName ->
          fun object_name ->
          NSM.get_object_manifest_by_name db object_name
+      | GetObjectManifestsByName ->
+         fun object_names ->
+         List.map
+           (NSM.get_object_manifest_by_name db)
+           object_names
       | GetObjectManifestById ->
          fun object_id -> begin
              try

@@ -147,6 +147,10 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     ret = aio_suspendv(ctx, iocb_vec, nullptr /* timeout */);
   }
   for (auto &elem : iocb_vec) {
+    auto retcode = aio_return(ctx,elem);
+    if(ret != 0){
+        ALBA_LOG(INFO, "retcode:" << retcode);
+    }
     aio_finish(ctx, elem);
   }
   ALBA_LOG(DEBUG, "osd_access: ret=" << ret);

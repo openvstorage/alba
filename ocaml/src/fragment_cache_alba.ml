@@ -62,6 +62,69 @@ class alba_cache
       ~use_fadvise:true
       ()
   in
+  let lru_track = ref (fun ~namespace ~object_name -> ()) in
+  let () =
+    (let rec get_redis_lru_cache_eviction () =
+       Lwt.catch
+         (fun () ->
+          client # mgr_access # get_maintenance_config >>= fun r ->
+          Lwt.return (`Success r.Maintenance_config.redis_lru_cache_eviction))
+         (fun exn ->
+          Lwt.return `Retry) >>= function
+       | `Success x -> Lwt.return x
+       | `Retry ->
+          Lwt_unix.sleep 10. >>= fun () ->
+          get_redis_lru_cache_eviction ()
+     in
+     get_redis_lru_cache_eviction () >>= function
+     | None -> Lwt.return ()
+     | Some { Maintenance_config.host; port; key; } ->
+        let module R = Redis_lwt.Client in
+        let open Lwt_buffer in
+        let redis_lru_buffer = Lwt_buffer.create_fixed_capacity 1000 in
+        let rec push_items client =
+          Lwt_buffer.harvest redis_lru_buffer >>= fun items ->
+          let items =
+            let t = Unix.gettimeofday () in
+            List.map
+              (fun (namespace_id, name) ->
+               t,
+               serialize
+                 (Llio.tuple3_to
+                    Llio.int8_to
+                    Llio.int32_to
+                    Llio.string_to)
+                 (1, namespace_id, name))
+              items
+          in
+          R.zadd client key items >>= fun _ ->
+          push_items client
+        in
+        let () =
+          Lwt_extra2.run_forever
+            "redis-lru-cache-registration"
+            (fun () ->
+             R.with_connection
+               R.({ host; port; })
+               push_items)
+            1.
+          |> Lwt.ignore_result
+        in
+        let () =
+          lru_track :=
+            fun ~namespace ~object_name ->
+            (* TODO lru_track should take namespace_id as an argument instead *)
+            (client # nsm_host_access # with_namespace_id
+                    ~namespace
+                    Lwt.return >>= fun namespace_id ->
+             Lwt_buffer.add (namespace_id, object_name) redis_lru_buffer)
+            |> Lwt.ignore_result
+        in
+        Lwt.return ()
+    )
+    |> Lwt.ignore_result
+  in
+  let lru_track ~namespace ~object_name = !lru_track ~namespace ~object_name in
   let () =
     (* ignored thread to register that the specified prefix,preset
      * pair is used as a cache by another backend
@@ -82,6 +145,7 @@ class alba_cache
                     | OneOnOne { prefix;
                                  preset; } -> (prefix, preset); ];
                 remove_cache_eviction_prefix_preset_pairs = [];
+                redis_lru_cache_eviction' = None;
               }) >>= fun (_ : Maintenance_config.t) ->
             Lwt.return `Done)
            (fun exn ->
@@ -118,12 +182,14 @@ class alba_cache
          with_namespace
            bid
            (fun namespace ->
+            let object_name = make_object_name ~bid ~name in
             client # upload_object_from_bigstring_slice
                    ~namespace
-                   ~object_name:(make_object_name ~bid ~name)
+                   ~object_name
                    ~object_data:blob
                    ~checksum_o:None
                    ~allow_overwrite:Nsm_model.Unconditionally >>= fun _ ->
+            lru_track ~namespace ~object_name;
             Lwt.return_unit))
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception while adding object to alba fragment cache")
@@ -134,12 +200,18 @@ class alba_cache
          with_namespace
            bid
            (fun namespace ->
+            let object_name = make_object_name ~bid ~name in
             client # download_object_to_bytes
-                   ~object_name:(make_object_name ~bid ~name)
+                   ~object_name
                    ~namespace
                    ~consistent_read:false
                    ~should_cache:true
-            |> Lwt.map (Option.map fst)))
+            |> Lwt.map
+                 (Option.map
+                    (fun x ->
+                     lru_track ~namespace ~object_name;
+                     fst x)
+                 )))
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup" >>= fun () ->
          Lwt.return_none)
@@ -156,18 +228,21 @@ class alba_cache
          with_namespace
            bid
            (fun namespace ->
+            let object_name = make_object_name ~bid ~name in
             client # nsm_host_access # with_namespace_id
                    ~namespace
                    (fun namespace_id ->
                     base_client # download_object_slices'
                                 ~namespace_id
-                                ~object_name:(make_object_name ~bid ~name)
+                                ~object_name
                                 ~object_slices
                                 ~consistent_read:false
                                 ~fragment_statistics_cb:ignore
-                   )) >>= function
-         | None -> Lwt.return_false
-         | Some _ -> Lwt.return_true)
+                   ) >>= function
+            | None -> Lwt.return_false
+            | Some _ ->
+               lru_track ~namespace ~object_name;
+               Lwt.return_true))
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup2" >>= fun () ->
          Lwt.return_false)

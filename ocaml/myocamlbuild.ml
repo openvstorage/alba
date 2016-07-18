@@ -41,7 +41,8 @@ let run_cmd cmd () =
 let gobjfs_home =
   try Sys.getenv "GOBJFS_HOME"
   with Not_found ->
-       (Sys.getenv "ALBA_HOME") ^ "../gobjfs"
+    (try Sys.getenv "ALBA_HOME"
+     with Not_found -> Unix.getcwd ())^ "../gobjfs"
 
 let time () =
   let open Unix in

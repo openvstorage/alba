@@ -751,6 +751,7 @@ let alba_update_maintenance_config
       enable_rebalance'
       add_cache_eviction_prefix_preset_pairs
       remove_cache_eviction_prefix_preset_pairs
+      redis_lru_cache_eviction'
       verbose
   =
   let t () =
@@ -766,6 +767,7 @@ let alba_update_maintenance_config
            enable_rebalance';
            add_cache_eviction_prefix_preset_pairs;
            remove_cache_eviction_prefix_preset_pairs;
+           redis_lru_cache_eviction';
          }) >>= fun maintenance_config ->
        Lwt_io.printlf
          "Maintenance config now is %s"
@@ -806,6 +808,31 @@ let alba_update_maintenance_config_cmd =
                & opt_all string []
                & info ["remove-cache-eviction"]
                       ~doc:"remove a prefix for cache eviction")
+        $ Arg.(
+          let converter : Maintenance_config.redis_lru_cache_eviction Arg.converter =
+            let parser s =
+              try
+                let uri = Uri.of_string s in
+                assert (Uri.scheme uri = Some "redis");
+                `Ok Maintenance_config.(
+                  { host = Uri.host uri |> Option.get_some;
+                    port = Uri.port uri |> Option.get_some;
+                    key = Str.string_after (Uri.path uri) 1;
+                  })
+              with exn ->
+                `Error (Printexc.get_backtrace ())
+            in
+            let printer fmt s =
+              Format.pp_print_string
+                fmt
+                (Maintenance_config.show_redis_lru_cache_eviction s)
+            in
+            parser, printer
+          in
+          value
+               & opt (some converter) None
+               & info ["set-lru-cache-eviction"]
+                      ~doc:"set lru cache eviction parameters (e.g. redis://127.0.0.1:6379/key_for_sorted_set)")
         $ verbose
   ),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"

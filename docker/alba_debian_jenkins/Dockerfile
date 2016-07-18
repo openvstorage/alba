@@ -34,7 +34,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libtool \
         fuse \
         sysstat \
-        ncurses-dev
+        ncurses-dev \
+        redis-server
 
 RUN useradd jenkins -u 1001 -g root
 
@@ -71,9 +72,9 @@ RUN eval `${opam_env}` && \
         ppx_deriving.3.1 \
         ppx_deriving_yojson \
         core.113.00.00 \
-        redis \
         uri.1.9.1 \
-        result
+        result \
+        redis.0.3.1
 
 RUN wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz
 RUN tar xfzv isa-l-2.14.0.tar.gz
@@ -87,7 +88,6 @@ RUN cd /usr/src/gtest \
         && cmake . \
         && make \
         && mv libg* /usr/lib/
-
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
@@ -142,11 +142,11 @@ RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout 193261f52f7b9c90e4e6ba063e720bdbe4ffebe9
+RUN cd gobjfs  && git pull && git checkout c7d90c46939d86f4d47e1746b69e9d17d8654d98
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
-       && cmake .. \
+       && cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO .. \
        && make \
        && make install
 

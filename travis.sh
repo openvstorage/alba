@@ -6,7 +6,7 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
              protobuf-compiler libjerasure-dev \
              build-essential automake autoconf yasm \
              procps python-pip \
-             aspcud"
+             aspcud redis-server"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
@@ -29,9 +29,9 @@ OPAM_DEPENDS="ocamlfind \
          sexplib.113.00.00 \
          core.113.00.00 \
          conf-libev \
-         redis \
          uri \
-         result
+         result \
+         redis.0.3.1
 "
 
 export OPAMYES=1
@@ -174,10 +174,10 @@ install () {
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout 193261f52f7b9c90e4e6ba063e720bdbe4ffebe9
+    git checkout c7d90c46939d86f4d47e1746b69e9d17d8654d98
     mkdir build
     cd build
-    cmake ..
+    cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO ..
     make | tail
     sudo make install
     popd

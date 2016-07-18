@@ -1636,6 +1636,13 @@ let run_server
       ~get_next_fnr
       asd_id nfd
   in
+  let wrap_t t name =
+    Lwt.catch
+      (fun () -> t)
+      (fun exn ->
+       Lwt_log.info_f ~exn "Exception in thread %s" name >>= fun () ->
+       Lwt.fail exn)
+  in
   let maybe_add_plain_server threads =
     match port with
     | None -> threads
@@ -1646,7 +1653,7 @@ let run_server
                  ~tcp_keepalive
                  ~tls:None protocol
        in
-       t :: threads
+       (wrap_t t "plain server") :: threads
   in
   let maybe_add_rora_server threads =
     match rora_port with
@@ -1691,7 +1698,7 @@ let run_server
          let t = Networking2.make_server ?cancel hosts tlsPort
                                          ~transport ~tcp_keepalive ~tls protocol
          in
-         t :: threads
+         (wrap_t t "tls server") :: threads
   in
   let maybe_add_multicast threads =
     match multicast with
@@ -1723,7 +1730,7 @@ let run_server
            mcast_period
            ~disk_usage
        in
-       mcast_t () :: threads
+       (wrap_t (mcast_t ()) "multicast") :: threads
   in
   let reporting_t =
     let section = AsdStatistics.section in
@@ -1739,9 +1746,9 @@ let run_server
   in
   let threads =
     [
-      (Lwt_extra2.make_fuse_thread ());
-      reporting_t;
-      io_sched_t;
+      wrap_t (Lwt_extra2.make_fuse_thread ()) "fuse thread";
+      wrap_t reporting_t "reporting_t";
+      wrap_t io_sched_t "io_sched_t";
     ]
     |> maybe_add_plain_server
     |> maybe_add_rora_server

@@ -730,7 +730,8 @@ let test_automatic_repair () =
                         ~first:"" ~finc:true
                         ~last:None ~max:1 ~reverse:false)
        >>= fun ((cnt, _), _) ->
-       Lwt.return (cnt = 1)
+       Lwt_log.debug_f "found %i objects on osd %li" cnt osd_id >>= fun () ->
+       Lwt.return (cnt > 0)
      in
 
      let port = 8980 in
@@ -774,8 +775,11 @@ let test_automatic_repair () =
           (Int.range 0 5) >>= fun () ->
 
         get_osd_has_objects ~osd_id >>= fun has_objects ->
+        Lwt_log.debug_f "has_objects=%b" has_objects >>= fun () ->
         assert has_objects;
         Lwt.return osd_id) >>= fun osd_id ->
+
+     Lwt_log.debug "cucu0" >>= fun () ->
 
      alba_client # mgr_access # update_maintenance_config
                  Maintenance_config.Update.(
@@ -786,7 +790,10 @@ let test_automatic_repair () =
          enable_rebalance' = None;
          add_cache_eviction_prefix_preset_pairs = [];
          remove_cache_eviction_prefix_preset_pairs = [];
+         redis_lru_cache_eviction' = None;
        }) >>= fun _ ->
+
+     Lwt_log.debug "cucu2" >>= fun () ->
 
      Lwt.async
        (fun () ->
