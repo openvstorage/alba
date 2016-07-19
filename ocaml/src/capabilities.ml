@@ -22,16 +22,23 @@ module OsdCapabilities = struct
   type capability =
     | CMultiGet2
     | CPartialGet
-    | CRoraFetcher of int [@@deriving show]
+    | CRoraFetcher of int
+    | CRoraFetcher2 of int * string (* port * transport *)
+  [@@deriving show]
 
   let capability_to buf c =
     let version = 1 in
-    Llio2.WriteBuffer.int8_to buf version;
+    let module L = Llio2.WriteBuffer in
+    L.int8_to buf version;
     match c with
-    | CMultiGet2     -> Llio2.WriteBuffer.int8_to buf 1
-    | CPartialGet    -> Llio2.WriteBuffer.int8_to buf 2
-    | CRoraFetcher p -> Llio2.WriteBuffer.int8_to buf 3;
-                        Llio2.WriteBuffer.int_to buf p
+    | CMultiGet2     -> L.int8_to buf 1
+    | CPartialGet    -> L.int8_to buf 2
+    | CRoraFetcher p -> L.int8_to buf 3;
+                        L.int_to buf p
+    | CRoraFetcher2 (p, transport) ->
+       L.int8_to buf 4;
+       L.int_to buf p;
+       L.string_to buf transport
 
   let capability_from buf =
     let version = Llio2.ReadBuffer.int8_from buf in
@@ -42,6 +49,9 @@ module OsdCapabilities = struct
     | 2 -> CPartialGet
     | 3 -> let port = Llio2.ReadBuffer.int_from buf in
            CRoraFetcher port
+    | 4 -> let port = Llio2.ReadBuffer.int_from buf in
+           let transport = Llio2.ReadBuffer.string_from buf in
+           CRoraFetcher2 (port, transport)
     | k -> Prelude.raise_bad_tag "asd_capability" k
 
   type t = capability Prelude.counted_list

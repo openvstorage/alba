@@ -66,8 +66,16 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
     case 3: {
       uint32_t port;
       from(m, port);
-      caps.port.emplace(port);
+      caps.rora_port.emplace(port);
     }; break;
+    case 4: {
+      uint32_t port;
+      from(m, port);
+      caps.rora_port.emplace(port);
+      std::string transport;
+      from(m, transport);
+      caps.rora_transport.emplace(transport);
+    }
     default: { throw deserialisation_exception("OsdCapabilities"); };
     }
   }
@@ -83,13 +91,19 @@ std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
 }
 
 std::ostream &operator<<(std::ostream &os, const OsdCapabilities &caps) {
-  os << "OsdCapabilities( port= ";
+  os << "OsdCapabilities( rora_port= ";
 
-  if (boost::none == caps.port) {
+  if (boost::none == caps.rora_port) {
     os << "None";
   } else {
-    int port = *caps.port;
-    os << "Some " << port;
+    os << "Some " << *caps.rora_port;
+  }
+
+  os << ", transport= ";
+  if (boost::none == caps.rora_transport) {
+    os << "None";
+  } else {
+    os << "Some " << *caps.rora_transport;
   }
 
   os << ")";

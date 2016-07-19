@@ -35,7 +35,8 @@ struct OsdInfo {
 };
 
 struct OsdCapabilities {
-  boost::optional<uint32_t> port = boost::none;
+  boost::optional<uint32_t> rora_port = boost::none;
+  boost::optional<std::string> rora_transport = boost::none;
 };
 
 typedef std::pair<std::unique_ptr<OsdInfo>, std::unique_ptr<OsdCapabilities>>

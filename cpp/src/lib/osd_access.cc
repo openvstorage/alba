@@ -99,15 +99,19 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     const auto &osd_info = ic.first;
     const auto &osd_caps = ic.second;
     std::string transport_name("tcp");
-    if (osd_info->use_rdma) {
-      transport_name = "rdma";
+    if (boost::none == osd_caps->rora_transport) {
+      if (osd_info->use_rdma) {
+        transport_name = "rdma";
+      }
+    } else {
+      transport_name = *osd_caps->rora_transport;
     }
-    if (boost::none == osd_caps->port) {
+    if (boost::none == osd_caps->rora_port) {
       ALBA_LOG(DEBUG, "osd " << osd << " has no rora port. returning -1");
       return -1;
     }
 
-    int backdoor_port = *osd_caps->port;
+    int backdoor_port = *osd_caps->rora_port;
 
     std::string &ip = osd_info->ips[0];
     ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
