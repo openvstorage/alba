@@ -685,10 +685,10 @@ let execute_query : type req res.
        let len0 = List.length result0 in
 
        let result =
-         match mgmt.AsdMgmt.rora_port with
+         match mgmt.AsdMgmt.rora with
          | None   -> (len0, result0)
-         | Some p ->
-            let result1 = (CRoraFetcher p):: result0  in
+         | Some (p, transport) ->
+            let result1 = (CRoraFetcher2 (p, transport)):: result0  in
             (len0 + 1, result1)
        in
        return' result
@@ -1642,7 +1642,9 @@ let run_server
   let mgmt = AsdMgmt.make ~latest_disk_usage
                           ~capacity
                           ~limit
-                          ~rora_port
+                          ~rora:(Option.map
+                                   (fun p -> p, Rora_server.transport_s rora_transport)
+                                   rora_port)
   in
 
   let protocol nfd =
