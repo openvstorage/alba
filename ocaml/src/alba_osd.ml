@@ -272,7 +272,9 @@ let rec make_client
     Alba_client.make_client
       mgr_access
       ~osd_access
-      ~tls_config ()
+      ~tls_config
+      ~populate_osds_info_cache:true
+      ()
   in
   let closer () =
     mgr_access # finalize;
