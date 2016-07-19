@@ -281,6 +281,9 @@ module Protocol = struct
   type consistent_read = bool
   type should_cache = bool
 
+  type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
+
+
   type ('i, 'o) request =
     | ListNamespaces : (string RangeQueryArgs.t,
                         Namespace.name Std.counted_list * has_more) request
@@ -308,7 +311,7 @@ module Protocol = struct
                         * file_name
                         * overwrite
                         * Checksum.Checksum.t option,
-                        Nsm_model.Manifest.t * int32 ) request
+                        manifest_with_id) request
     | DeleteObject : (Namespace.name *
                       object_name *
                       may_not_exist,
@@ -325,7 +328,10 @@ module Protocol = struct
     | ReadObjectsSlices2 : (Namespace.name *
                              (object_name * (offset * length) list) list *
                            consistent_read,
-                           (data * (object_name Std.counted_list ))) request
+                            (data
+                             * ((object_name
+                                 * string
+                                 * manifest_with_id) Std.counted_list ))) request
     | InvalidateCache : (Namespace.name, unit) request
     | DropCache : (Namespace.name, unit) request
     | ProxyStatistics : (bool, ProxyStatistics.t) request
@@ -505,7 +511,10 @@ module Protocol = struct
     | ReadObjectsSlices2 ->
        Deser.tuple2
          Deser.string
-         (Deser.counted_list Deser.string)
+         (Deser.counted_list (Deser.tuple3 Deser.string
+                                           Deser.string
+                                           (Deser.tuple2 Manifest_deser.deser Deser.int32)
+         ))
     | InvalidateCache -> Deser.unit
     | DropCache -> Deser.unit
     | ProxyStatistics -> ProxyStatistics.deser

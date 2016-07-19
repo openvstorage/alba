@@ -153,11 +153,31 @@ let read_objects_slices
                     ~fragment_statistics_cb
         >>= function
         | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-        | Some (_mf, mf_src) -> Lwt.return mf_src
+        | Some (mf, namespace_id, mf_source) -> Lwt.return (object_name, mf, namespace_id, mf_source)
        )
        objects_slices
-     >>= fun mf_sources ->
-     let objects_infos = (n_objects, StringSet.elements object_names) in
+     >>= fun n_mf_src_s ->
+
+     let objects_infos =
+       let m, namespace_ids =
+         List.fold_left
+           (fun (object_infos, namespace_ids) (name, mf, namespace_id, mf_source) ->
+             let object_infos'  = StringMap.add name mf object_infos in
+             let namespace_ids' = Int32Set.add namespace_id namespace_ids in
+             (object_infos', namespace_ids')
+           )
+           (StringMap.empty, Int32Set.empty)
+           n_mf_src_s
+       in
+       n_objects,
+       StringMap.bindings m
+       |> function
+         | [] -> []
+         | bindings ->
+            let namespace_id = Int32Set.choose namespace_ids in
+            List.map (fun (n, mf) -> n, "todo", (mf, namespace_id)) bindings
+     in
+     let mf_sources = List.map (fun (_,_,_,src) -> src) n_mf_src_s in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
                  !fc_hits, !fc_misses, objects_infos))
@@ -371,7 +391,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          ~took:delay;
        Lwt_log.debug_f "object_infos:%i %s"
                        (fst object_infos)
-                       ([%show : string list] (snd object_infos))
+                       ([%show : (string * string * manifest_with_id) list]
+                          (snd object_infos))
        >>= fun () ->
        Lwt.return (bytes, object_infos)
     | InvalidateCache ->

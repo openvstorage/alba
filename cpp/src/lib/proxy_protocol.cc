@@ -295,7 +295,21 @@ void read_read_objects_slices2_response(
         m.skip(slice.size);
       }
     }
-    from(m, object_infos);
+
+    // todo: automatically via templates
+    from(m, size);
+    object_infos.resize(size);
+    for (int32_t i = size - 1; i >= 0; --i) {
+      std::string name;
+      from(m, name);
+      std::string future;
+      from(m, future);
+      std::unique_ptr<Manifest> umf(new Manifest());
+      from(m, *umf);
+      auto t =
+          std::make_tuple(std::move(name), std::move(future), std::move(umf));
+      object_infos[i] = std::move(t);
+    }
   }
 }
 

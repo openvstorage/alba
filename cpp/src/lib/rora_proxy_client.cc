@@ -54,6 +54,16 @@ RoraProxy_client::list_namespaces(const std::string &first,
                                     max, reverse_);
 }
 
+void _maybe_add_to_manifest_cache(const std::string &namespace_,
+                                  const std::string &object_name,
+                                  std::unique_ptr<Manifest> mfp) {
+  ALBA_LOG(DEBUG, *mfp);
+  if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
+      encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
+    auto key = std::pair<std::string, std::string>(namespace_, object_name);
+    ManifestCache::getInstance().add(key, std::move(mfp));
+  }
+}
 void RoraProxy_client::write_object_fs(const std::string &namespace_,
                                        const std::string &object_name,
                                        const std::string &input_file,
@@ -63,12 +73,15 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
   std::unique_ptr<Manifest> mfp(new Manifest());
   _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
                               checksum, *mfp);
+  _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
+  /*
   ALBA_LOG(DEBUG, *mfp);
   if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
       encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
     auto key = std::pair<std::string, std::string>(namespace_, object_name);
     ManifestCache::getInstance().add(key, std::move(mfp));
   }
+  */
 }
 
 void RoraProxy_client::read_object_fs(const std::string &namespace_,
@@ -209,7 +222,8 @@ int RoraProxy_client::_short_path_many(
     const std::string &namespace_,
     const std::vector<short_path_entry> &short_path) {
 
-  ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", ...)");
+  ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", n_slices ="
+                                      << short_path.size() << ")");
   int result = 0;
   for (auto &object_slices_mf : short_path) {
     auto object_slices = object_slices_mf.first;
@@ -222,10 +236,19 @@ int RoraProxy_client::_short_path_many(
   return result;
 }
 
-void _process(const std::vector<object_info> &object_infos) {
-  ALBA_LOG(DEBUG, "_process");
+void _process(std::vector<object_info> &object_infos,
+              const std::string &namespace_) {
+
+  ALBA_LOG(DEBUG, "_process : " << object_infos.size());
   for (auto &object_info : object_infos) {
-    ALBA_LOG(DEBUG, "object_info:" << object_info);
+    using alba::stuff::operator<<;
+    ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
+
+    const std::string &object_name = std::get<0>(object_info);
+    // auto& future = std::get<1>(object_info);
+    std::unique_ptr<Manifest> mfp = std::move(std::get<2>(object_info));
+
+    _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
   }
 }
 
@@ -237,7 +260,7 @@ void RoraProxy_client::read_objects_slices(
     std::vector<object_info> object_infos;
     _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
                                     object_infos);
-    _process(object_infos);
+    _process(object_infos, namespace_);
   } else {
     std::vector<ObjectSlices> via_proxy;
     std::vector<short_path_entry> short_path;
@@ -259,9 +282,10 @@ void RoraProxy_client::read_objects_slices(
     };
     // short_path & via_proxy could go in //
     std::vector<object_info> object_infos;
+
     _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
                                     object_infos);
-    _process(object_infos);
+    _process(object_infos, namespace_);
     // short_path.
     int result = _short_path_many(namespace_, short_path);
     ALBA_LOG(DEBUG, "_short_path_many => " << result);
@@ -275,7 +299,7 @@ void RoraProxy_client::read_objects_slices(
       std::vector<object_info> object_infos2;
       _delegate->read_objects_slices2(namespace_, via_proxy2, consistent_read_,
                                       object_infos2);
-      _process(object_infos2);
+      _process(object_infos2, namespace_);
     }
   }
 }

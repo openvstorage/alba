@@ -66,7 +66,8 @@ struct ObjectSlices {
   const std::vector<SliceDescriptor> slices;
 };
 
-typedef std::string object_info;
+typedef std::tuple<std::string, std::string, std::unique_ptr<Manifest>>
+    object_info;
 
 using std::string;
 using boost::optional;

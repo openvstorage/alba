@@ -782,7 +782,7 @@ class client
              ~fragment_statistics_cb
         >>= function
         | None -> Lwt.return_none
-        | Some mf -> Lwt.return (Some (mf,mf_src))
+        | Some mf -> Lwt.return (Some (mf, namespace_id, mf_src))
 
       in
       self # get_object_manifest'

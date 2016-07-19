@@ -377,8 +377,9 @@ TEST(proxy_client, test_partial_read_multislice) {
   sos << "with_manifest" << std::rand();
   string name = sos.str();
   using namespace proxy_protocol;
-  byte *buf = new byte[8192];
-  SliceDescriptor sd{buf, 0, 4096};
+  std::vector<byte> buf(8192);
+
+  SliceDescriptor sd{&buf[0], 0, 4096};
 
   // slice that spans 2 fragments.
   SliceDescriptor sd2{&buf[4096], (1 << 20) - 10, 4096};
@@ -387,7 +388,6 @@ TEST(proxy_client, test_partial_read_multislice) {
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
   _generic_partial_read_test(namespace_, name, objects_slices, false);
-  delete[] buf;
 }
 
 TEST(proxy_client, test_partial_reads) {
@@ -397,7 +397,7 @@ TEST(proxy_client, test_partial_reads) {
   sos << "with_manifest" << std::rand();
   string name = sos.str();
   using namespace proxy_protocol;
-  byte *buf = new byte[32768];
+  std::vector<byte> buf(32768);
   boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
                                   rora_config);
@@ -406,15 +406,15 @@ TEST(proxy_client, test_partial_reads) {
   string file("./ocaml/alba.native");
   client->write_object_fs(namespace_, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
+  client->invalidate_cache(namespace_);
   for (int i = 0; i < 8; i++) {
-    SliceDescriptor sd{buf, 0, 4096};
+    SliceDescriptor sd{&buf[0], 0, 4096};
     std::vector<SliceDescriptor> slices{sd};
     ObjectSlices object_slices{name, slices};
     std::vector<ObjectSlices> objects_slices{object_slices};
     client->read_objects_slices(namespace_, objects_slices,
                                 proxy_client::consistent_read::F);
   }
-  delete[] buf;
 }
 
 TEST(proxy_client, manifest_cache_eviction) {

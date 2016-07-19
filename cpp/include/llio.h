@@ -172,6 +172,13 @@ void from(message &m, std::pair<X, Y> &p) noexcept {
   from(m, p.second);
 }
 
+template <typename X, typename Y, typename Z>
+void from(message &m, std::tuple<X, Y, Z> &t) noexcept {
+  from(m, std::get<0>(t));
+  from(m, std::get<1>(t));
+  from(m, std::get<2>(t));
+}
+
 template <typename X>
 void to(message_builder &mb, const boost::optional<X> &xo) noexcept {
   if (boost::none == xo) {

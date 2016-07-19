@@ -42,9 +42,23 @@ std::ostream &operator<<(std::ostream &os, const std::shared_ptr<X> &xp) {
   return os;
 }
 
+template <typename X>
+std::ostream &operator<<(std::ostream &os, const std::unique_ptr<X> &xp) {
+  const X &x = *xp;
+  os << "!(" << x << ")";
+  return os;
+}
+
 template <typename X, typename Y>
 std::ostream &operator<<(std::ostream &os, const std::pair<X, Y> &p) {
   os << "(" << p.first << ", " << p.second << ")";
+  return os;
+}
+
+template <typename X, typename Y, typename Z>
+std::ostream &operator<<(std::ostream &os, const std::tuple<X, Y, Z> &p) {
+  os << "(" << std::get<0>(p) << ", " << std::get<1>(p) << ", "
+     << std::get<2>(p) << ")";
   return os;
 }
 
