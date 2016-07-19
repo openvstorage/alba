@@ -844,10 +844,9 @@ let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
       then
         begin
           Alba_arakoon.config_from_url cfg_file >>= fun cfg ->
-          let tls = Tls.to_client_context tls_config in
           let open Albamgr_client in
           retrieve_cfg_from_any_node
-            ~tls ~tcp_keepalive:Tcp_keepalive2.default
+            ~tls_config ~tcp_keepalive:Tcp_keepalive2.default
             cfg
           >>= function
           | Retry -> Lwt.fail_with "could not fetch abm client config from any of the nodes"
