@@ -78,7 +78,7 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ~cancel
            ~tcp_keepalive:Tcp_keepalive2.default
            [] ~port:o_port ~rora_port:None
-           ~transport:Net_fd.TCP
+           ~transport:Net_fd.TCP ~rora_transport:Net_fd.TCP
            path
            ~asd_id
            ~node_id:"bla"

@@ -1312,8 +1312,9 @@ let run_server
       ?(write_blobs = true)
       (hosts:string list)
       ~(port:int option)
-      ~(rora_port : int option)
       ~(transport: Net_fd.transport)
+      ~(rora_port : int option)
+      ~(rora_transport : Net_fd.transport)
       (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1343,7 +1344,9 @@ let run_server
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
   Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls_config) >>= fun () ->
-  Lwt_log.debug_f "transport:%s" ([%show: Net_fd.transport] transport) >>= fun () ->
+  Lwt_log.debug_f "transport:%s, rora_transport:%s"
+                  ([%show: Net_fd.transport] transport)
+                  ([%show: Net_fd.transport] rora_transport) >>= fun () ->
   let tls =
     match tls_config with
     | None -> (None: Tls.t option)
@@ -1690,7 +1693,7 @@ let run_server
            let num_cores = 2 in
            let queue_depth = 8 in
            let handle = Rora_server.start
-                          transport
+                          rora_transport
                           host
                           port
                           num_cores

@@ -47,7 +47,8 @@ module Config = struct
     use_fallocate: (bool [@default true]);
 
     rocksdb_block_cache_size : (int option [@default None]);
-    rora_port : ( int option [@default None]);
+    rora_port : (int option [@default None]);
+    rora_transport : (string option [@default None]);
   } [@@deriving yojson, show]
 end
 
