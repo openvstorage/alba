@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
-
+#include "alba_logger.h"
 #include <istream>
 #include <ostream>
 #include <sstream>
@@ -78,7 +78,15 @@ public:
     _buffer = buffer;
     _pos = 0;
   }
-  const char *current() { return &_buffer.data()[_pos]; }
+
+  const char *current() {
+    uint32_t size = _buffer.size();
+    if (_pos >= size) {
+      ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << ">=" << size);
+      throw deserialisation_exception("reading outside of message");
+    }
+    return &_buffer.data()[_pos];
+  }
 
   void skip(int x) { _pos += x; }
 
