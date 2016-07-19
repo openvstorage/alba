@@ -156,22 +156,34 @@ module Protocol = struct
             let conn_info' =
               let ips'  = Option.get_some_default ips ips' in
               let port' = Option.get_some_default port port' in
-              let real_port, use_tls =
+              let real_port, use_tls, use_rdma' =
                 let open Tiny_json in
+                let extract_port_tls r =
+                  try
+                    Json.getf "tlsPort" r |> Json.as_int, true
+                  with
+                  | Json.JSON_InvalidField("tlsPort") -> port', false
+                in
+                let extract_rdma r =
+                  try
+                    Json.getf "useRdma" r |> Json.as_bool
+                  with
+                  | Json.JSON_InvalidField("useRdma") -> false
+                in
                 match other' with
-                | None -> port', tls
+                | None -> port', tls, use_rdma
                 | Some other' ->
                    try
                      let r = Json.parse other' in
-                     let tlsPort = Json.as_int (Json.getf "tlsPort" r)  in
-                     tlsPort, true
+                     let real_port, use_tls = extract_port_tls r in
+                     let use_rdma' = extract_rdma r in
+                     real_port, use_tls,use_rdma'
                    with
-                   | Json.JSON_InvalidField("tlsPort") -> port', false
                    | ex ->
                       let () = Plugin_helper.debug_f "ex:%s" (Printexc.to_string ex) in
-                      port', false
+                      port', false, use_rdma
               in
-              (ips',real_port, use_tls, use_rdma)
+              (ips',real_port, use_tls, use_rdma')
             in
             conn_info'
           in
