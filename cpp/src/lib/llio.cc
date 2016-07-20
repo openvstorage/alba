@@ -33,14 +33,15 @@ template <> void to(message_builder &mb, const bool &b) noexcept {
 }
 
 template <> void from(message &m, uint8_t &i) {
-  i = *(m.current());
+  const char* ib = m.current(1);
+  i = *((uint8_t*)ib);
   m.skip(1);
 }
 
 template <> void from(message &m, bool &b) {
 
   char c;
-  const char *ib = m.current();
+  const char *ib = m.current(1);
   c = *ib;
   switch (c) {
   case '\01': {
@@ -69,13 +70,13 @@ void to_be(message_builder &mb, const uint32_t &i) noexcept {
 
 template <> void from<uint32_t>(message &m, uint32_t &i) {
 
-  const char *ib = m.current();
+  const char *ib = m.current(4);
   i = *((uint32_t *)ib);
   m.skip(4);
 }
 
 template <> void from<int32_t>(message &m, int32_t &i) {
-  const char *ib = m.current();
+  const char *ib = m.current(4);
   i = *((int32_t *)ib);
   m.skip(4);
 }
@@ -86,7 +87,7 @@ template <> void to(message_builder &mb, const uint64_t &i) noexcept {
 }
 
 template <> void from(message &m, uint64_t &i) {
-  const char *ib = m.current();
+  const char *ib = m.current(8);
   i = *((uint64_t *)ib);
   m.skip(8);
 }
@@ -100,7 +101,7 @@ template <> void to(message_builder &mb, const std::string &s) noexcept {
 template <> void from(message &m, std::string &s) {
   uint32_t size;
   from<uint32_t>(m, size);
-  const char *ib = m.current();
+  const char *ib = m.current(size);
   s.replace(0, size, ib, size);
   s.resize(size);
   m.skip(size);
@@ -112,7 +113,7 @@ template <> void to(message_builder &mb, const double &d) noexcept {
 }
 
 template <> void from(message &m, double &d) {
-  const char *db = m.current();
+  const char *db = m.current(8);
   d = *((double *)db);
   m.skip(8);
 }
