@@ -264,7 +264,7 @@ void read_read_objects_slices_response(
 
     for (auto &object_slices : objects_slices) {
       for (auto &slice : object_slices.slices) {
-        memcpy(slice.buf, m.current(), slice.size);
+        memcpy(slice.buf, m.current(slice.size), slice.size);
         m.skip(slice.size);
       }
     }
