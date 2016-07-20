@@ -383,7 +383,11 @@ class osd_access
 
   object(self :# Osd_access_type.t)
 
-    method finalize = Osd_pool.invalidate_all osds_pool
+    val mutable finalizing = false
+
+    method finalize =
+      finalizing <- true;
+      Osd_pool.invalidate_all osds_pool
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -417,12 +421,19 @@ class osd_access
              |> Option.map (fun (osd_id, _) -> Int32.succ osd_id)
              |> Option.get_some_default next_osd_id
            in
-           Lwt.return next_osd_id')
+           Lwt.return (Some next_osd_id'))
           (fun exn ->
-           Lwt_log.info_f ~exn "Exception in populate_osds_info_cache" >>= fun () ->
-           Lwt_extra2.sleep_approx 60. >>= fun () ->
-           Lwt.return next_osd_id) >>= fun next_osd_id' ->
-        inner next_osd_id'
+           if finalizing
+           then Lwt.return None
+           else
+             begin
+               Lwt_log.info_f ~exn "Exception in populate_osds_info_cache" >>= fun () ->
+               Lwt_extra2.sleep_approx 60. >>= fun () ->
+               Lwt.return (Some next_osd_id)
+             end) >>= function
+        | None -> Lwt.return ()
+        | Some next_osd_id' ->
+           inner next_osd_id'
       in
       inner 0l
 
