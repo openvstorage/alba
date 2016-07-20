@@ -6,7 +6,8 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
              protobuf-compiler libjerasure-dev \
              build-essential automake autoconf yasm \
              procps python-pip \
-             aspcud redis-server"
+             aspcud redis-server \
+             libev-dev"
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
@@ -121,9 +122,9 @@ install () {
 
     date
 
-    opam install ${OPAM_DEPENDS} || true
+    opam install ${OPAM_DEPENDS} | tail
     opam depext arakoon.1.9.0
-    opam install ${OPAM_DEPENDS}
+    opam install ${OPAM_DEPENDS} | tail
 
     date
 
