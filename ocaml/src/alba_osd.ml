@@ -228,9 +228,13 @@ class client
            Lwt.return ()
 
     method delete_namespace namespace_id _ =
-      alba_client # delete_namespace
-                  ~namespace:(to_namespace_name namespace_id) >>= fun () ->
-      Lwt.return None
+      let namespace = to_namespace_name namespace_id in
+      alba_client # mgr_access # get_namespace ~namespace >>= function
+      | None -> Lwt.return_none
+      | Some _ ->
+         alba_client # delete_namespace
+                     ~namespace >>= fun () ->
+         Lwt.return_none
 
     method set_full _ = failwith "grmbl this method doesn't belong here."
     method get_version = Lwt.return Alba_version.summary
