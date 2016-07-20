@@ -206,7 +206,7 @@ class osd_access
             !osd_long_id_claim_info;
 
         Lwt_extra2.run_forever
-            "refresh_osd_total_used"
+            "refresh_osd_total_used_and_capabilities"
             (fun () ->
              let osd_info,osd_state,capabilities = Hashtbl.find osds_info_cache osd_id in
              Osd_pool.factory
@@ -217,22 +217,26 @@ class osd_access
                osd_info.OsdInfo.kind
              >>= fun (osd, closer) ->
 
-             Lwt.finalize
-               (fun () ->
-                 osd # get_disk_usage >>= fun ((used,total ) as disk_usage) ->
-                 Lwt.catch
-                   (fun () ->osd # capabilities)
-                   (fun exn -> Lwt.return capabilities)
-                 >>= fun capabilities' ->
+             let rec inner () =
+               osd # get_disk_usage >>= fun ((used,total ) as disk_usage) ->
+               Lwt.catch
+                 (fun () ->osd # capabilities)
+                 (fun exn -> Lwt.return capabilities)
+               >>= fun capabilities' ->
 
-                Osd_state.add_disk_usage osd_state disk_usage;
-                let osd_info' = OsdInfo.{ osd_info with used;total } in
-                let () = Hashtbl.replace osds_info_cache osd_id
-                                         (osd_info', osd_state, capabilities')
-                in
-                Lwt.return ())
-               closer)
-          60.
+               Osd_state.add_disk_usage osd_state disk_usage;
+               let osd_info' = OsdInfo.{ osd_info with used;total } in
+               let () = Hashtbl.replace osds_info_cache osd_id
+                                        (osd_info', osd_state, capabilities')
+               in
+               Lwt_extra2.sleep_approx 60. >>= fun () ->
+               inner ()
+             in
+             Lwt.finalize
+               inner
+               closer
+            )
+            60.
         |> Lwt.ignore_result
       end
   in
