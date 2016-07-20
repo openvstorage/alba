@@ -206,7 +206,7 @@ class osd_access
             !osd_long_id_claim_info;
 
         Lwt_extra2.run_forever
-            "refresh_osd_total_used"
+            "refresh_osd_total_used_and_capabilities"
             (fun () ->
              let osd_info,osd_state,capabilities = Hashtbl.find osds_info_cache osd_id in
              Osd_pool.factory
@@ -217,22 +217,26 @@ class osd_access
                osd_info.OsdInfo.kind
              >>= fun (osd, closer) ->
 
-             Lwt.finalize
-               (fun () ->
-                 osd # get_disk_usage >>= fun ((used,total ) as disk_usage) ->
-                 Lwt.catch
-                   (fun () ->osd # capabilities)
-                   (fun exn -> Lwt.return capabilities)
-                 >>= fun capabilities' ->
+             let rec inner () =
+               osd # get_disk_usage >>= fun ((used,total ) as disk_usage) ->
+               Lwt.catch
+                 (fun () ->osd # capabilities)
+                 (fun exn -> Lwt.return capabilities)
+               >>= fun capabilities' ->
 
-                Osd_state.add_disk_usage osd_state disk_usage;
-                let osd_info' = OsdInfo.{ osd_info with used;total } in
-                let () = Hashtbl.replace osds_info_cache osd_id
-                                         (osd_info', osd_state, capabilities')
-                in
-                Lwt.return ())
-               closer)
-          60.
+               Osd_state.add_disk_usage osd_state disk_usage;
+               let osd_info' = OsdInfo.{ osd_info with used;total } in
+               let () = Hashtbl.replace osds_info_cache osd_id
+                                        (osd_info', osd_state, capabilities')
+               in
+               Lwt_extra2.sleep_approx 60. >>= fun () ->
+               inner ()
+             in
+             Lwt.finalize
+               inner
+               closer
+            )
+            60.
         |> Lwt.ignore_result
       end
   in
@@ -383,7 +387,11 @@ class osd_access
 
   object(self :# Osd_access_type.t)
 
-    method finalize = Osd_pool.invalidate_all osds_pool
+    val mutable finalizing = false
+
+    method finalize =
+      finalizing <- true;
+      Osd_pool.invalidate_all osds_pool
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -417,12 +425,19 @@ class osd_access
              |> Option.map (fun (osd_id, _) -> Int32.succ osd_id)
              |> Option.get_some_default next_osd_id
            in
-           Lwt.return next_osd_id')
+           Lwt.return (Some next_osd_id'))
           (fun exn ->
-           Lwt_log.info_f ~exn "Exception in populate_osds_info_cache" >>= fun () ->
-           Lwt_extra2.sleep_approx 60. >>= fun () ->
-           Lwt.return next_osd_id) >>= fun next_osd_id' ->
-        inner next_osd_id'
+           if finalizing
+           then Lwt.return None
+           else
+             begin
+               Lwt_log.info_f ~exn "Exception in populate_osds_info_cache" >>= fun () ->
+               Lwt_extra2.sleep_approx 60. >>= fun () ->
+               Lwt.return (Some next_osd_id)
+             end) >>= function
+        | None -> Lwt.return ()
+        | Some next_osd_id' ->
+           inner next_osd_id'
       in
       inner 0l
 
