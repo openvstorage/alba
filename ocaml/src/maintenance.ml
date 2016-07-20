@@ -2024,29 +2024,23 @@ class client ?(retry_timeout = 60.)
             let alba_osd_arakoon_cfg = alba_cfg.Nsm_model.OsdInfo.cfg in
             Lwt.catch
               (fun () ->
-               Albamgr_client.with_client'
-                 alba_osd_arakoon_cfg
-                 ~tls_config
-                 ~tcp_keepalive
-                 (fun client ->
-                  Lwt.catch
-                    (fun () -> client # get_client_config)
-                    (fun exn ->
-                     Lwt.catch
-                       (fun () ->
-                        Albamgr_client.retrieve_cfg_from_any_node
-                          ~tls_config
-                          ~tcp_keepalive
-                          alba_osd_arakoon_cfg >>= function
-                        | Albamgr_client.Retry ->
-                           Lwt.fail_with
-                             "Got Retry from Albamgr_client.retrieve_cfg_from_any_node"
-                        | Albamgr_client.Res x -> Lwt.return x)
-                       (fun exn ->
-                        Lwt_log.info_f
-                          ~exn
-                          "Failed to refresh abm_cfg for osd %li" osd_id >>= fun () ->
-                        Lwt.fail exn)))
+               Lwt.catch
+                 (fun () ->
+                  Albamgr_client.with_client'
+                    alba_osd_arakoon_cfg
+                    ~tls_config
+                    ~tcp_keepalive
+                    (fun client ->
+                     client # get_client_config))
+                 (fun exn ->
+                  Albamgr_client.retrieve_cfg_from_any_node
+                    ~tls_config
+                    ~tcp_keepalive
+                    alba_osd_arakoon_cfg >>= function
+                  | Albamgr_client.Retry ->
+                     Lwt.fail_with
+                       "Got Retry from Albamgr_client.retrieve_cfg_from_any_node"
+                  | Albamgr_client.Res x -> Lwt.return x)
                >>= fun alba_osd_arakoon_cfg' ->
                if alba_osd_arakoon_cfg' = alba_osd_arakoon_cfg
                then Lwt.return_none
@@ -2054,7 +2048,11 @@ class client ?(retry_timeout = 60.)
                                       let open Albamgr_protocol.Protocol.Osd.Update in
                                       make ~albamgr_cfg':alba_osd_arakoon_cfg' ()))
               )
-              (fun exn -> Lwt.return_none))
+              (fun exn ->
+               Lwt_log.info_f
+                 ~exn
+                 "Failed to refresh abm_cfg for osd %li" osd_id >>= fun () ->
+               Lwt.return_none))
       >>= fun updates ->
       alba_client # mgr_access # update_osds updates
     in
