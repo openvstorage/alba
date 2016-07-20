@@ -60,6 +60,7 @@ class alba_cache
                                   ~chunk_id ~fragment_id
                                   ~location -> ())
       ~use_fadvise:true
+      ~populate_osds_info_cache:true
       ()
   in
   let lru_track = ref (fun ~namespace ~object_name -> ()) in

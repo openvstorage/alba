@@ -1010,8 +1010,6 @@ module Deployment = struct
 
   let make_default
         ?__retry_timeout
-        ?(cfg = Config.default)
-        ?(base_port=4000)
         ?(cfg = Config.default) ?(base_port=4000)
         ?write_blobs ?fragment_cache () =
     let abm =

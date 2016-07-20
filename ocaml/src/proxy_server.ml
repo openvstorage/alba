@@ -718,6 +718,7 @@ let run_server hosts port ~transport
          ~use_fadvise
          ~partial_osd_read
          ~cache_on_read ~cache_on_write
+         ~populate_osds_info_cache:true
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());

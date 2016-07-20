@@ -253,7 +253,11 @@ TEST(proxy_client, manifest) {
   llio::message m(v);
   from(m, mf);
 
+
   std::cout << mf << std::endl;
+  EXPECT_EQ(mf.name, "with_manifest");
+  EXPECT_EQ(mf.max_disks_per_node, 3);
+  EXPECT_EQ(mf.namespace_id, 5);
   uint32_t tests[] = {
       0, 10, (1 << 20) + 2, (5 << 20) + 2,
   };

@@ -436,6 +436,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                 ?(partial_osd_read = true)
                 ?(cache_on_read = true)
                 ?(cache_on_write = true)
+                ~populate_osds_info_cache
                 ()
   =
   let base_client = new Alba_base_client.client
@@ -450,6 +451,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                         ~use_fadvise
                         ~partial_osd_read
                         ~cache_on_read ~cache_on_write
+                        ~populate_osds_info_cache
   in
   let client = new alba_client base_client in
   let closer () =
@@ -479,6 +481,7 @@ let with_client albamgr_client_cfg
                 ?partial_osd_read
                 ?cache_on_read
                 ?cache_on_write
+                ~populate_osds_info_cache
                 f
   =
   let client, closer =
@@ -495,6 +498,7 @@ let with_client albamgr_client_cfg
               ?partial_osd_read
               ?cache_on_read
               ?cache_on_write
+              ~populate_osds_info_cache
               ()
   in
   Lwt.finalize

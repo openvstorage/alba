@@ -432,7 +432,11 @@ let to_level =
 let with_alba_client cfg_url tls_config f =
   Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
   let cfg_ref = ref cfg in
-  Alba_client2.with_client cfg_ref ~tls_config f
+  Alba_client2.with_client
+    cfg_ref
+    ~tls_config
+    ~populate_osds_info_cache:false
+    f
 
 let with_albamgr_client ~attempts cfg_url tls_config f =
   Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
