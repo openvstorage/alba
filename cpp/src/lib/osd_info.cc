@@ -91,22 +91,9 @@ std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
 }
 
 std::ostream &operator<<(std::ostream &os, const OsdCapabilities &caps) {
-  os << "OsdCapabilities( rora_port= ";
-
-  if (boost::none == caps.rora_port) {
-    os << "None";
-  } else {
-    os << "Some " << *caps.rora_port;
-  }
-
-  os << ", transport= ";
-  if (boost::none == caps.rora_transport) {
-    os << "None";
-  } else {
-    os << "Some " << *caps.rora_transport;
-  }
-
-  os << ")";
+  using alba::stuff::operator<<;
+  os << "OsdCapabilities( rora_port= " << caps.rora_port
+     << ", transport= " << caps.rora_transport << ")";
   return os;
 }
 }
