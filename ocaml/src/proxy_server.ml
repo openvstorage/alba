@@ -578,6 +578,7 @@ let refresh_albamgr_cfg
     ~loop
     albamgr_client_cfg
     (alba_client : Alba_client.alba_client)
+    ~tls_config
     ~tcp_keepalive
     destination =
 
@@ -593,7 +594,7 @@ let refresh_albamgr_cfg
        function
        | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, master)
        | Error (Unknown_node (master, (_, _))) ->
-          retrieve_cfg_from_any_node ~tls:None ~tcp_keepalive !albamgr_client_cfg
+          retrieve_cfg_from_any_node ~tls_config ~tcp_keepalive !albamgr_client_cfg
        | exn ->
           Lwt_log.debug_f ~exn "refresh_albamgr_cfg failed" >>= fun () ->
           Lwt.return Retry
@@ -680,6 +681,7 @@ let run_server hosts port ~transport
                  alba_client
                  albamgr_cfg_url
                  ~tcp_keepalive
+                 ~tls_config
               );
               (
                Networking2.make_server

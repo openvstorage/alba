@@ -87,6 +87,9 @@ class client
     method get_manifest_cache : (string, string) Manifest_cache.ManifestCache.t = manifest_cache
     method get_fragment_cache = fragment_cache
 
+    method tls_config = tls_config
+    method tcp_keepalive = tcp_keepalive
+
     method mgr_access = mgr_access
     method nsm_host_access = nsm_host_access
     method osd_access = osd_access

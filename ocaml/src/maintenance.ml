@@ -80,6 +80,8 @@ class client ?(retry_timeout = 60.)
              ?(load = 1)
              (alba_client : Alba_base_client.client)
   =
+  let tls_config = alba_client # tls_config in
+  let tcp_keepalive = alba_client # tcp_keepalive in
   let coordinator =
     let open Maintenance_coordination in
     make_maintenance_coordinator
@@ -1863,7 +1865,7 @@ class client ?(retry_timeout = 60.)
           if Alba_eviction.should_evict alba_client coordinator
           then do_random_eviction ()
           else Lwt.return ())
-         60.
+         retry_timeout
     | Some { Maintenance_config.host; port; key; } ->
        let t1 =
          Lwt_extra2.run_forever
@@ -1909,7 +1911,7 @@ class client ?(retry_timeout = 60.)
               end
             else
               Lwt.return ())
-           60.
+           retry_timeout
        in
 
        let t2 =
@@ -1999,8 +2001,66 @@ class client ?(retry_timeout = 60.)
               inner delay
             in
             inner 1.)
-           60.
+           retry_timeout
        in
 
-       Lwt.join [ t1; t2; ]
+       Lwt.choose [ t1; t2; ]
+
+  method refresh_alba_osd_cfgs : unit Lwt.t =
+    let t () =
+      Hashtbl.map_filter
+        (fun osd_id (osd_info, _, _) ->
+         let open Nsm_model.OsdInfo in
+         match osd_info.kind with
+         | Asd _
+         | Kinetic _ ->
+            None
+         | Alba cfg
+         | Alba2 cfg ->
+            Some (osd_id, osd_info, cfg))
+        (alba_client # osd_access # osds_info_cache)
+      |> Lwt_list.filter_map_p
+           (fun (osd_id, osd_info, alba_cfg) ->
+            let alba_osd_arakoon_cfg = alba_cfg.Nsm_model.OsdInfo.cfg in
+            Lwt.catch
+              (fun () ->
+               Lwt.catch
+                 (fun () ->
+                  Albamgr_client.with_client'
+                    alba_osd_arakoon_cfg
+                    ~tls_config
+                    ~tcp_keepalive
+                    (fun client ->
+                     client # get_client_config))
+                 (fun exn ->
+                  Albamgr_client.retrieve_cfg_from_any_node
+                    ~tls_config
+                    ~tcp_keepalive
+                    alba_osd_arakoon_cfg >>= function
+                  | Albamgr_client.Retry ->
+                     Lwt.fail_with
+                       "Got Retry from Albamgr_client.retrieve_cfg_from_any_node"
+                  | Albamgr_client.Res x -> Lwt.return x)
+               >>= fun alba_osd_arakoon_cfg' ->
+               if alba_osd_arakoon_cfg' = alba_osd_arakoon_cfg
+               then Lwt.return_none
+               else Lwt.return (Some (Nsm_model.OsdInfo.(get_long_id osd_info.kind),
+                                      let open Albamgr_protocol.Protocol.Osd.Update in
+                                      make ~albamgr_cfg':alba_osd_arakoon_cfg' ()))
+              )
+              (fun exn ->
+               Lwt_log.info_f
+                 ~exn
+                 "Failed to refresh abm_cfg for osd %li" osd_id >>= fun () ->
+               Lwt.return_none))
+      >>= fun updates ->
+      alba_client # mgr_access # update_osds updates
+    in
+    Lwt_extra2.run_forever
+      "refresh_alba_osd_cfg"
+      (fun () ->
+       if coordinator # is_master
+       then t ()
+       else Lwt.return_unit)
+      retry_timeout
 end

@@ -27,7 +27,6 @@ module Pool = struct
     let make ~size cfg tls_config ~tcp_keepalive buffer_pool =
       let factory () =
         let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config !cfg in
-        let tls = Tls.to_client_context tls_config in
         let open Albamgr_client in
         Lwt.catch
           (fun () -> make_client buffer_pool ccfg ~tcp_keepalive)
@@ -37,7 +36,7 @@ module Pool = struct
             | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, _master)
             | Error (Unknown_node (_master, (_, _))) ->
                begin
-                 retrieve_cfg_from_any_node ~tls ~tcp_keepalive !cfg >>= fun cfg' ->
+                 retrieve_cfg_from_any_node ~tls_config ~tcp_keepalive !cfg >>= fun cfg' ->
                  match cfg' with
                  | Res cfg' ->
                     let () = cfg := cfg' in
