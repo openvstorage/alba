@@ -82,7 +82,8 @@ public:
   const char *current(size_t len) {
     uint32_t size = _buffer.size();
     if (_pos + len > size) {
-      ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > " << size);
+      ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
+                                         << size);
       throw deserialisation_exception("reading outside of message");
     }
     return &_buffer.data()[_pos];

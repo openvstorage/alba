@@ -62,8 +62,8 @@ std::unique_ptr<Proxy_client> make_proxy_client(
       _make_proxy_client(ip, port, expiry_time, transport);
 
   if (boost::none == rora_config) {
-      // work around g++ 4.[8|9] bug:
-      return std::unique_ptr<Proxy_client>(inner_client.release());
+    // work around g++ 4.[8|9] bug:
+    return std::unique_ptr<Proxy_client>(inner_client.release());
   } else {
     return std::unique_ptr<Proxy_client>(
         new RoraProxy_client(std::move(inner_client), *rora_config));

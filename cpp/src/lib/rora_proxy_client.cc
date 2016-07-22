@@ -28,6 +28,7 @@ RoraProxy_client::RoraProxy_client(
     std::unique_ptr<GenericProxy_client> delegate,
     const RoraConfig &rora_config)
     : _delegate(std::move(delegate)) {
+  ALBA_LOG(INFO, "RoraProxy_client(...)");
   ManifestCache::set_capacity(rora_config.manifest_cache_size);
 }
 
@@ -60,8 +61,7 @@ void _maybe_add_to_manifest_cache(const std::string &namespace_,
   ALBA_LOG(DEBUG, *mfp);
   if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
       encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
-    auto key = std::pair<std::string, std::string>(namespace_, object_name);
-    ManifestCache::getInstance().add(key, std::move(mfp));
+    ManifestCache::getInstance().add(namespace_, object_name, std::move(mfp));
   }
 }
 void RoraProxy_client::write_object_fs(const std::string &namespace_,
@@ -242,7 +242,7 @@ void _process(std::vector<object_info> &object_infos,
   ALBA_LOG(DEBUG, "_process : " << object_infos.size());
   for (auto &object_info : object_infos) {
     using alba::stuff::operator<<;
-    ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
+    // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
 
     const std::string &object_name = std::get<0>(object_info);
     // auto& future = std::get<1>(object_info);
@@ -266,9 +266,8 @@ void RoraProxy_client::read_objects_slices(
     std::vector<short_path_entry> short_path;
     for (auto &object_slices : slices) {
       auto object_name = object_slices.object_name;
-      auto key = strpair(namespace_, object_name);
       auto &cache = ManifestCache::getInstance();
-      auto mfp = cache.find(key);
+      auto mfp = cache.find(namespace_, object_name);
       if (nullptr != mfp &&
           compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
           encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
