@@ -28,10 +28,12 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <ctime>
 #include <iomanip>
 #include <fstream>
+#include <thread>
 
 #include "stuff.h"
 #include "proxy_client.h"
 #include "alba_logger.h"
+#include "statistics.h"
 
 using std::string;
 using std::cout;
@@ -95,76 +97,37 @@ void proxy_get_version(const string &host, const string &port,
 }
 
 using namespace std::chrono;
+void _bench_one_client(std::unique_ptr<Proxy_client> client,
+                       std::shared_ptr<alba::statistics::Statistics> stats_p,
+                       const string &namespace_, const string &object_name,
+                       const string &file_name, const int n) {
 
-void partial_read_benchmark(
-    const string &host, const string &port,
-    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        timeout,
-    const Transport &transport, const string &namespace_,
-    const string &file_name, const int n,
-    const boost::optional<RoraConfig> &rora_config) {
-
-  ALBA_LOG(WARNING, "partial_read_benchmark("
-                        << host << ", " << port << ", " << transport
-                        << ", rora_config =" << rora_config << ")");
-  auto client = make_proxy_client(host, port, timeout, transport, rora_config);
-  std::ostringstream sos;
-  sos << "object_000" << std::rand();
-  string name = sos.str();
   const alba::Checksum *checksum = nullptr;
+  alba::statistics::Statistics &stats = *stats_p;
   using namespace alba::proxy_protocol;
-  client->write_object_fs(namespace_, name, file_name, allow_overwrite::T,
-                          checksum);
+  client->write_object_fs(namespace_, object_name, file_name,
+                          allow_overwrite::T, checksum);
 
-  ALBA_LOG(INFO, "uploaded" << file_name << " as " << name);
+  ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
 
   std::vector<alba::byte> buffer(4096);
   SliceDescriptor sd{&buffer[0], 0, 4096};
   std::vector<SliceDescriptor> slices{sd};
-  ObjectSlices object_slices{name, slices};
+  ObjectSlices object_slices{object_name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
 
-  high_resolution_clock::time_point t0, t1, t2;
-  double min_dur = 1000000;
-  double max_dur = 0;
-  std::vector<double> borders{100, 125, 150, 175, 200, 225,
-                              250, 300, 350, 400, 800, 100000};
-  int borders_size = borders.size();
-  int last_index = borders_size - 1;
-  std::vector<double> dur_buckets(borders_size);
-  t0 = high_resolution_clock::now();
+  high_resolution_clock::time_point t0 = high_resolution_clock::now();
+  high_resolution_clock::time_point t1;
+
   for (int i = 0; i < n; i++) {
-    t1 = high_resolution_clock::now();
+    stats.new_start();
     client->read_objects_slices(namespace_, objects_slices, consistent_read::F);
-    t2 = high_resolution_clock::now();
-
-    int duration = duration_cast<microseconds>(t2 - t1).count();
-
-    if (duration < min_dur) {
-      min_dur = duration;
-    }
-    if (duration > max_dur) {
-      max_dur = duration;
-    }
-    int border_index = 0;
-    bool set = false;
-
-    while (border_index < last_index) {
-      double border = borders[border_index];
-      if (duration < border) {
-        dur_buckets[border_index] = dur_buckets[border_index] + 1;
-        set = true;
-        break;
-      }
-      border_index++;
-    }
-    if (!set) {
-      dur_buckets[last_index] = dur_buckets[last_index] + 1;
-    }
-    int dur2 = duration_cast<seconds>(t2 - t0).count();
+    stats.new_stop();
+    t1 = high_resolution_clock::now();
+    int dur2 = duration_cast<seconds>(t1 - t0).count();
     int reporting_period = 1;
     if (dur2 > reporting_period) {
-      auto time2 = system_clock::to_time_t(t2);
+      auto time2 = system_clock::to_time_t(t1);
       // struct tm tm;
       char buffer[26];
       ctime_r(&time2, buffer);
@@ -174,17 +137,46 @@ void partial_read_benchmark(
       t0 = t0 + seconds(reporting_period);
     }
   }
+}
 
-  cout << "min_dur:" << min_dur << std::endl;
-  cout << "max_dur:" << max_dur << std::endl;
-  int border_index = 0;
-  while (border_index <= last_index) {
-    cout << dur_buckets[border_index] << "\t<" << borders[border_index]
-         << std::endl;
-    border_index++;
-  };
-  cout << "borders:" << borders << std::endl;
-  cout << "buckets:" << dur_buckets << std::endl;
+void partial_read_benchmark(
+    const string &host, const string &port,
+    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
+        timeout,
+    const Transport &transport, const string &namespace_,
+    const string &file_name, const int n, const int n_clients,
+    const boost::optional<RoraConfig> &rora_config) {
+
+  ALBA_LOG(WARNING, "partial_read_benchmark("
+                        << host << ", " << port << ", " << transport
+                        << ", rora_config =" << rora_config << ")");
+
+  std::vector<std::shared_ptr<alba::statistics::Statistics>> stats_v;
+  std::vector<std::thread> thread_v;
+  int rand = std::rand();
+  for (int client_index = 0; client_index < n_clients; client_index++) {
+    auto client_p =
+        make_proxy_client(host, port, timeout, transport, rora_config);
+    std::ostringstream sos;
+    sos << "object_000" << rand << "_" << client_index;
+    string object_name = sos.str();
+    auto stats_p = std::shared_ptr<alba::statistics::Statistics>(
+        new alba::statistics::Statistics);
+    stats_v.push_back(stats_p);
+    std::thread t(_bench_one_client, std::move(client_p), stats_p, namespace_,
+                  object_name, file_name, n);
+
+    thread_v.push_back(std::move(t));
+  }
+  cout << "launched " << n_clients << " client(s). joining" << std::endl;
+  for (auto &thread : thread_v) {
+    thread.join();
+  }
+  cout << "----------------" << std::endl;
+  for (auto stats_p : stats_v) {
+    stats_p->pretty(cout);
+    cout << "----------------" << std::endl;
+  }
 }
 
 int main(int argc, const char *argv[]) {
@@ -228,8 +220,10 @@ int main(int argc, const char *argv[]) {
           "size of benchmark")("use-rora",
                                po::value<bool>()->default_value(true),
                                "use rora fetcher or not")(
-          "log-level", po::value<string>()->default_value("info"),
-          "log level to use");
+          "n-clients", po::value<uint32_t>()->default_value(1),
+          "number of clients")("log-level",
+                               po::value<string>()->default_value("info"),
+                               "log level to use");
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -386,13 +380,14 @@ int main(int argc, const char *argv[]) {
     string ns = getRequiredStringArg(vm, "namespace");
     string file = getRequiredStringArg(vm, "file");
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
+    uint32_t n_clients = getRequiredArg<uint32_t>(vm, "n-clients");
     bool use_rora = getRequiredArg<bool>(vm, "use-rora");
     boost::optional<RoraConfig> rora_config = boost::none;
     if (use_rora) {
       rora_config = RoraConfig(100);
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
-                           rora_config);
+                           n_clients, rora_config);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "
