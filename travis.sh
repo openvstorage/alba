@@ -175,7 +175,7 @@ install () {
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout c7d90c46939d86f4d47e1746b69e9d17d8654d98
+    git checkout c9c6de30ca44256d20b0daff293f3bfcf447774e
     mkdir build
     cd build
     cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO ..
