@@ -75,9 +75,9 @@ void Statistics::pretty(std::ostream &os) const {
   };
 }
 
-std::ostream &operator<<(std::ostream& os, const Statistics& stats){
-    stats.pretty(os);
-    return os;
+std::ostream &operator<<(std::ostream &os, const Statistics &stats) {
+  stats.pretty(os);
+  return os;
 }
 }
 }
