@@ -74,14 +74,7 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
   _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
                               checksum, *mfp);
   _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
-  /*
-  ALBA_LOG(DEBUG, *mfp);
-  if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
-      encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
-    auto key = std::pair<std::string, std::string>(namespace_, object_name);
-    ManifestCache::getInstance().add(key, std::move(mfp));
-  }
-  */
+
 }
 
 void RoraProxy_client::read_object_fs(const std::string &namespace_,
