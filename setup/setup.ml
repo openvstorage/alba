@@ -610,6 +610,9 @@ class proxy ?fragment_cache ?ip ?transport
     Shell.mkdir proxy_base;
     config_persister p_cfg
 
+  method config_url = cfg_url
+
+
   method log_file = Printf.sprintf "%s/proxy.out" proxy_base
 
   method start_cmd = [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
@@ -662,6 +665,7 @@ class proxy ?fragment_cache ?ip ?transport
 
   method cmd_line cmd = proxy_cmd_line cmd
 
+  method cmd_line_with_capture = proxy_cmd_line_with_capture
 end
 
 type maintenance_cfg = {
@@ -1422,7 +1426,12 @@ module JUnit = struct
 
   let rc suites = List.fold_left (fun acc s ->
                                  let e,f,_ = summary s in e + f + acc
-                                ) 0 suites
+                    ) 0 suites
+
+  let (>>?) a b =
+    match a with
+    | Ok -> b
+    | _  -> a
 end
 
 module Test = struct
@@ -1742,8 +1751,17 @@ module Test = struct
     with x -> JUnit.Err (Printexc.to_string x)
 
   let asd_statistics t =
-    let stats_s = t.Deployment.osds.(1) # get_statistics in
+    let open JUnit in
+    let osd = t.Deployment.osds.(1) in
+    let stats_s = osd # get_statistics in
     _assert_parseable stats_s
+    >>?
+      (begin
+          let () = osd # stop in
+          let stats_s = osd # get_statistics in
+          let () = osd # start in
+          _assert_parseable stats_s
+      end)
 
   let abm_statistics t =
     let cmd =
@@ -1838,6 +1856,23 @@ module Test = struct
     _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
     JUnit.Ok
 
+  let proxy_statistics t =
+    let cmd = ["proxy-statistics";
+               "--to-json";
+              ];
+    in
+    let stats_s = t.Deployment.proxy # cmd_line_with_capture cmd in
+    let parseable = _assert_parseable stats_s in
+    let open JUnit in
+    parseable >>?
+    (begin
+        let () = t.Deployment.proxy # stop in
+        let stats_s = t.Deployment.proxy # cmd_line_with_capture cmd in
+        let () = t.Deployment.proxy # start in
+        _assert_parseable stats_s
+      end)
+
+
   let cli t =
     let suite_name = "run_tests_cli" in
     let tests = ["asd_crud", asd_crud;
@@ -1848,6 +1883,7 @@ module Test = struct
                  "nsm_host_statistics", nsm_host_statistics;
                  "asd_cli_env", asd_cli_env;
                  "create_example_preset", create_example_preset;
+                 "proxy_statistics", proxy_statistics;
                 ]
     in
     let t0 = Unix.gettimeofday() in
