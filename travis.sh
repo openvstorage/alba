@@ -7,7 +7,14 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
              build-essential automake autoconf yasm \
              procps python-pip \
              aspcud redis-server \
-             libev-dev"
+             libev-dev \
+             libxio0 libxio-dev \
+             libunwind8-dev libaio-dev libaio1 libaio1-dbg libaio-dev \
+             libz-dev libbz2-dev \
+             libgoogle-glog-dev libibverbs-dev \
+             libboost1.57-all-dev libboost1.57-all"
+
+
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
@@ -93,15 +100,6 @@ before_install () {
     date
 
     sudo pip install fabric junit-xml
-
-    date
-
-    sudo apt-get --force-yes -y install \
-         libxio0 libxio-dev \
-         libunwind8-dev libaio-dev libaio1 libaio1-dbg libaio-dev \
-         libz-dev libbz2-dev \
-         libgoogle-glog-dev libibverbs-dev \
-         libboost1.57-all-dev libboost1.57-all
 
     date
 

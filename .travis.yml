@@ -12,6 +12,7 @@ before_install: ./travis.sh before_install
 install:        ./travis.sh install
 script:         ./travis.sh script
 
-cache:
-  directories:
-    /usr/local/lib
+# caches rocksdb, but loading cache takes ~180s :(
+#cache:
+#  directories:
+#    /usr/local/lib
