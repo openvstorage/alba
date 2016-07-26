@@ -565,6 +565,22 @@ module Hashtbl = struct
       with Break -> () in
     !res
 
+  let map f t =
+    Hashtbl.fold
+      (fun k v acc ->
+       (f k v) :: acc)
+      t
+      []
+
+  let map_filter f t =
+    Hashtbl.fold
+      (fun k v acc ->
+       match f k v with
+       | None -> acc
+       | Some x -> x :: acc)
+      t
+      []
+
   let from_assoc_list l =
     let h = Hashtbl.create 3 in
     List.iter

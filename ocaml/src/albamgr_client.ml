@@ -650,7 +650,9 @@ type refresh_result =
   | Retry
   | Res of Alba_arakoon.Config.t
 
-let retrieve_cfg_from_any_node ~tls current_config ~tcp_keepalive =
+let retrieve_cfg_from_any_node ~tls_config current_config ~tcp_keepalive =
+  let tls = Tls.to_client_context tls_config in
+
     Lwt_log.debug "retrieve_cfg_from_any_node" >>= fun () ->
 
     let cluster_id, node_hashtbl = current_config in

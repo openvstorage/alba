@@ -138,7 +138,7 @@ RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.9.7
+RUN cd arakoon && git pull && git checkout tags/1.9.8
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/4.02.3 \
@@ -188,7 +188,7 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 # gobjfs shared lib:
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout c7d90c46939d86f4d47e1746b69e9d17d8654d98
+RUN cd gobjfs  && git pull && git checkout c9c6de30ca44256d20b0daff293f3bfcf447774e
 RUN cd gobjfs \
        && mkdir build \
        && cd build \

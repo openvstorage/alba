@@ -138,26 +138,23 @@ let lwt_cmd_line ~to_json ~verbose t =
        install_logger ~log_sinks:`Stderr ~subcomponent:"cli" ~verbose () >>= fun () ->
        t ())
       (fun exn ->
-         begin
-           let exc_type, exc_code, message = exn_to_string_code exn in
-           if to_json
-           then begin
-             Lwt_io.printlf
-               "%s"
-               (Yojson.Safe.to_string
-                  (`Assoc [
-                      ("success", `Bool false);
-                      ("error", `Assoc [
-                          ("message", `String message);
-                          ("exception_type", `String exc_type);
-                          ("exception_code", `Int exc_code);
-                        ])
-                    ]))
-           end else
-             Lwt_log.warning message
-         end >>= fun () ->
-
-         Lwt.fail exn)
+        let exc_type, exc_code, message = exn_to_string_code exn in
+          if to_json
+          then
+            Lwt_io.printlf
+                "%s"
+                (Yojson.Safe.to_string
+                   (`Assoc [
+                       ("success", `Bool false);
+                       ("error", `Assoc [
+                                    ("message", `String message);
+                                    ("exception_type", `String exc_type);
+                                    ("exception_code", `Int exc_code);
+                       ])
+                ]))
+          else
+            Lwt_log.warning message
+      )
   in
   Lwt_main.run (t' ())
 
@@ -266,7 +263,7 @@ let transport =
               ~docv:"TRANSPORT"
               ~doc:"either `tcp` or `rdma`"
   )
-              
+
 let namespace p =
   let doc = "namespace" in
   Arg.(required
@@ -306,7 +303,7 @@ let long_ids =
        & opt (list string) []
        & info ["long-id"] ~docv:"LONG_ID" ~doc
   )
-     
+
 let consistent_read =
   Arg.(value
        & flag

@@ -11,27 +11,28 @@ APT_DEPENDS="libssl-dev libsnappy-dev \
 APT_OCAML_DEPENDS="ocaml ocaml-native-compilers camlp4-extra opam"
 OPAM_DEPENDS="ocamlfind \
          ssl.0.5.2 \
+         bisect.1.3 \
          camlbz2.0.6.0 \
          snappy.0.1.0 \
-         lwt.2.5.1 \
-         camltc.0.9.2 \
-         cstruct.1.7.0 \
-         ctypes.0.4.1 \
+         camltc.0.9.3 \
+         conf-libev \
+         cstruct.2.2.0 \
+         ctypes.0.7.0 \
          ctypes-foreign.0.4.0 \
-         bisect.1.3 \
+         depext \
+         lwt.2.5.2 \
          ocplib-endian.0.8 \
          quickcheck.1.0.2 \
          uuidm.0.9.5 \
-         zarith.1.3 \
-         kinetic-client \
-         tiny_json \
-         cmdliner \
+         zarith.1.4.1 \
+         kinetic-client.0.0.6 \
+         tiny_json.1.1.2 \
+         cmdliner.0.9.8 \
          ppx_deriving.3.3 ppx_deriving_yojson.2.4 \
          sexplib.113.00.00 \
          core.113.00.00 \
-         conf-libev \
-         uri \
-         result \
+         uri.1.9.1 \
+         result.1.2 \
          redis.0.3.1
 "
 
@@ -123,15 +124,13 @@ install () {
     date
 
     opam install ${OPAM_DEPENDS} | tail
-    opam depext arakoon.1.9.0
-    opam install ${OPAM_DEPENDS} | tail
 
     date
 
     echo "Installing some specific arakoon"
     git clone https://github.com/openvstorage/arakoon.git
     cd arakoon
-    git checkout tags/1.9.7
+    git checkout tags/1.9.8
     make
     export PREFIX=/home/travis/.opam/system
     export OCAML_LIBDIR=`ocamlfind printconf destdir`
@@ -175,7 +174,7 @@ install () {
     git clone https://github.com/openvstorage/gobjfs.git
     cd gobjfs
     git pull
-    git checkout c7d90c46939d86f4d47e1746b69e9d17d8654d98
+    git checkout c9c6de30ca44256d20b0daff293f3bfcf447774e
     mkdir build
     cd build
     cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO ..
