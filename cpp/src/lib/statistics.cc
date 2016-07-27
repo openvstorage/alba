@@ -62,6 +62,7 @@ void Statistics::new_stop() {
   _n_samples++;
 }
 
+
 void Statistics::pretty(std::ostream &os) const {
   os << "n_samples: " << _n_samples << std::endl;
   os << "min_dur: " << _min_dur << std::endl;
@@ -75,8 +76,16 @@ void Statistics::pretty(std::ostream &os) const {
   };
 }
 
-std::ostream &operator<<(std::ostream &os, const Statistics &stats) {
-  stats.pretty(os);
+std::ostream &operator<<(std::ostream &os, const Statistics &s) {
+  using alba::stuff::operator<<;
+  os << "Statistics{";
+  os << " _n_samples = " << s._n_samples;
+  os << ", _min_dur = " << s._min_dur;
+  os << ", _max_dur = " << s._max_dur;
+  os << ", _avg = " << s._avg;
+  os << ", _dur_buckets" << s._dur_buckets;
+  os << ", _borders" << s._borders;
+  os << " }";
   return os;
 }
 }

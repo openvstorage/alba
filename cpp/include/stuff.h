@@ -64,12 +64,15 @@ std::ostream &operator<<(std::ostream &os, const std::tuple<X, Y, Z> &p) {
 
 template <typename T>
 std::ostream &operator<<(std::ostream &os, const std::vector<T> &ts) {
-  os << "[";
-  for (auto &t : ts) {
-    os << t;
-    os << "; ";
-  };
-  os << "]";
+  os << "{";
+  for (auto it = begin(ts); it != end(ts); it++){
+      if (it != begin(ts)){
+          os << ", ";
+      }
+      os << *it;
+  }
+  os << "}";
+
   return os;
 }
 }
