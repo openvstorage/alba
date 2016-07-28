@@ -45,6 +45,7 @@ module Config = struct
       alba_rdma : string option; (* ip of the rdma capable nic *)
       alba_rora : bool; (* use rora back door on ASDs *)
       alba_asd_log_level : string;
+      alba_asd_base_paths :string list;
       local_nodeid_prefix : string;
       n_osds : int;
 
@@ -107,6 +108,10 @@ module Config = struct
     and alba_rora = env_or_default "ALBA_RORA" "false" |> get_bool
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
+    and alba_asd_base_paths =
+      env_or_default_generic
+        (fun x -> Str.split (Str.regexp ",") x)  "ALBA_ASD_BASE_PATHS"
+        [alba_base_path ^"/asd"]
     in
     {
       home;
@@ -128,6 +133,7 @@ module Config = struct
       alba_rdma;
       alba_rora;
       alba_asd_log_level;
+      alba_asd_base_paths;
       local_nodeid_prefix;
       n_osds;
 
@@ -971,18 +977,20 @@ module Deployment = struct
         ?(base_port=8000)
         ?write_blobs
         ?transport ~ip ~use_rora
-        n local_nodeid_prefix base_path arakoon_path alba_bin
+        n local_nodeid_prefix base_paths arakoon_path alba_bin
         ~etcd (tls:bool) ~log_level =
-    let rec loop asds j =
+    let rec loop asds base_paths j =
       if j = n
       then List.rev asds |> Array.of_list
       else
         begin
-          let port = base_port + j in
+          let base_path = List.hd base_paths
+          and rest = List.tl base_paths
+          and port = base_port + j in
           let node_id = j lsr 2 in
           let node_id_s = Printf.sprintf "%s_%i" local_nodeid_prefix node_id in
           let asd_id = Printf.sprintf "%04i_%02i_%s" port node_id local_nodeid_prefix in
-          let home = base_path ^ (Printf.sprintf "/asd/%02i" j) in
+          let home = base_path ^ (Printf.sprintf "/%02i" j) in
           let tls_cfg =
             if tls
             then
@@ -1007,10 +1015,11 @@ module Deployment = struct
                         home ~port ~etcd
                         tls_cfg ~log_level
           in
-          loop (asd :: asds) (j+1)
+          let base_paths' = rest @ [base_path] in
+          loop (asd :: asds) base_paths' (j+1)
         end
     in
-    loop [] 0
+    loop [] base_paths 0
 
   let make_default
         ?__retry_timeout
@@ -1053,7 +1062,7 @@ module Deployment = struct
                          ~ip:cfg.ip
                          cfg.n_osds
                          cfg.local_nodeid_prefix
-                         cfg.alba_base_path
+                         cfg.alba_asd_base_paths
                          cfg.arakoon_path
                          cfg.alba_bin
                          ~etcd:cfg.etcd
@@ -2095,7 +2104,7 @@ module Test = struct
           then
             {tx with osds = make_osds tx.cfg.n_osds
                                       tx.cfg.local_nodeid_prefix
-                                      tx.cfg.alba_base_path
+                                      tx.cfg.alba_asd_base_paths
                                       tx.cfg.arakoon_path
                                       ~ip:tx.cfg.ip
                                       ~use_rora:false
