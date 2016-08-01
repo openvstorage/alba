@@ -238,16 +238,19 @@ void _process(std::vector<object_info> &object_infos,
     // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
 
     const std::string &object_name = std::get<0>(object_info);
-    // auto& future = std::get<1>(object_info);
+    auto &future = std::get<1>(object_info);
     std::unique_ptr<Manifest> mfp = std::move(std::get<2>(object_info));
 
-    _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
+    if (future == "") {
+      _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
+    }
   }
 }
 
-void RoraProxy_client::read_objects_slices(
-    const std::string &namespace_, const std::vector<ObjectSlices> &slices,
-    const consistent_read consistent_read_) {
+void
+RoraProxy_client::read_objects_slices(const std::string &namespace_,
+                                      const std::vector<ObjectSlices> &slices,
+                                      const consistent_read consistent_read_) {
 
   if (consistent_read_ == consistent_read::T) {
     std::vector<object_info> object_infos;
@@ -331,8 +334,8 @@ double RoraProxy_client::ping(const double delay) {
   return _delegate->ping(delay);
 }
 
-void RoraProxy_client::osd_info(
-    std::vector<std::pair<osd_t, info_caps>> &result) {
+void
+RoraProxy_client::osd_info(std::vector<std::pair<osd_t, info_caps>> &result) {
   ALBA_LOG(DEBUG, "RoraProxy_client::osd_info");
   _delegate->osd_info(result);
 }

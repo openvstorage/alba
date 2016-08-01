@@ -159,34 +159,28 @@ let read_objects_slices
      >>= fun n_mf_src_s ->
 
      let objects_infos =
-       let m, namespace_ids =
-         List.fold_left
-           (fun (object_infos, namespace_ids) (name, mf, namespace_id, mf_source) ->
-             let object_infos'  = StringMap.add name mf object_infos in
-             let namespace_ids' = Int32Set.add namespace_id namespace_ids in
-             (object_infos', namespace_ids')
-           )
-           (StringMap.empty, Int32Set.empty)
-           n_mf_src_s
-       in
-       n_objects,
-       StringMap.bindings m
-       |> function
-         | [] -> []
-         | bindings ->
-            let namespace_id = Int32Set.choose namespace_ids in
-            List.map (fun (n, mf) -> n, "todo", (mf, namespace_id)) bindings
+       List.map
+         (fun (name, mf, namespace_id, mf_source) -> name, "", (mf, namespace_id))
+         n_mf_src_s
      in
      let mf_sources = List.map (fun (_,_,_,src) -> src) n_mf_src_s in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
-                 !fc_hits, !fc_misses, objects_infos))
+                 !fc_hits, !fc_misses, (n_objects, objects_infos)))
     (fun () ->
      Lwt_bytes.unsafe_destroy res;
      Lwt.return ())
 
 let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   let open Protocol in
+  let render_read_object_slices (namespace, objects_slices, consistent_read) =
+    Printf.sprintf
+      "(%S,%s )"
+      namespace
+      ([%show : (object_name *
+                   (offset * length) list) list ]
+         objects_slices)
+  in
   function
   | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} ->
                        "{ }"
@@ -201,21 +195,8 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | WriteObjectFs2  -> fun (namespace, object_name, _,_,_) ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
 
-  | ReadObjectsSlices -> fun (namespace, objects_slices, consistent_read) ->
-                         Printf.sprintf
-                           "(%S,%s )"
-                           namespace
-                           ([%show : (object_name *
-                                        (offset * length) list) list ]
-                              objects_slices)
-  | ReadObjectsSlices2 -> fun (namespace, objects_slices, consistent_read) ->
-                          Printf.sprintf
-                           "(%S,%s )"
-                           namespace
-                           ([%show : (object_name *
-                                        (offset * length) list) list ]
-                              objects_slices)
-
+  | ReadObjectsSlices  -> render_read_object_slices
+  | ReadObjectsSlices2 -> render_read_object_slices
   | NamespaceExists -> fun namespace ->
                        Printf.sprintf "(%S)" namespace
   | ProxyStatistics -> fun _ -> "-"
