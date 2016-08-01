@@ -33,7 +33,7 @@ _OBJECTS = stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
            io.o proxy_client.o generic_proxy_client.o \
 	   tcp_proxy_client.o rdma_proxy_client.o rora_proxy_client.o \
-	   osd_info.o manifest_cache.o osd_access.o
+	   osd_info.o manifest_cache.o osd_access.o statistics.o
 
 OBJECTS = $(patsubst %,src/lib/%,$(_OBJECTS))
 

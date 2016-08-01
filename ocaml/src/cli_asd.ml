@@ -159,9 +159,9 @@ let asd_start_cmd =
 
 let buffer_pool = Buffer_pool.osd_buffer_pool
 
-let run_with_asd_client' ~conn_info asd_id verbose f =
+let run_with_asd_client' ~conn_info asd_id ~to_json ~verbose f =
   lwt_cmd_line
-    ~to_json:false ~verbose
+    ~to_json ~verbose
     (fun () ->
      Asd_client.with_client
        ~conn_info asd_id
@@ -190,7 +190,7 @@ let run_with_osd_client' conn_info osd_id verbose f =
 let asd_set hosts port transport tls_config asd_id (verbose:bool) key value =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
      let checksum = Checksum.NoChecksum in
      Lwt_log.warning "checksum option will be `NoChecksum`"
@@ -226,7 +226,7 @@ let asd_set_cmd =
 let asd_get_version hosts port transport tls_config asd_id verbose =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
      client # get_version () >>= fun (major,minor,patch, hash) ->
      Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
@@ -248,7 +248,7 @@ let asd_get_version_cmd =
 let asd_multi_get hosts port transport tls_config asd_id (keys:string list) verbose =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
 
      client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys)
@@ -277,7 +277,7 @@ let asd_multi_get_cmd =
 let asd_delete hosts port transport tls_config asd_id key verbose =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client -> client # delete ~prio:Osd.High (Slice.wrap_string key))
 
 let asd_delete_cmd =
@@ -300,7 +300,7 @@ let asd_delete_cmd =
 let asd_disk_usage hosts port transport tls_config asd_id verbose =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
       client # get_disk_usage () >>= fun (used,cap) ->
      Lwt_io.printlf "disk_usage:(%Li,%Li)" used cap
@@ -325,7 +325,7 @@ let asd_range hosts port transport tls_config asd_id first verbose =
   and last = None in
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
      client # range
             ~prio:Osd.High
@@ -571,10 +571,10 @@ let asd_statistics hosts port_o transport asd_id
                Asd_protocol.Protocol.code_to_description)
     )
   in
-  let from_asd hosts port transport tls_config asd_id verbose =
+  let from_asd hosts port transport tls_config asd_id ~to_json verbose =
     begin
       let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
-      run_with_asd_client' ~conn_info asd_id verbose _inner
+      run_with_asd_client' ~conn_info asd_id ~to_json ~verbose _inner
     end
   in
   match port_o, config_o with
@@ -611,7 +611,7 @@ let asd_statistics hosts port_o transport asd_id
        in
        lwt_cmd_line ~to_json ~verbose t
      end
-  | Some port,_ -> from_asd hosts port transport tls_config asd_id verbose
+  | Some port,_ -> from_asd hosts port transport tls_config asd_id ~to_json verbose
 
 let asd_statistics_cmd =
   let port_o =
@@ -670,7 +670,7 @@ let asd_discover_cmd =
 let asd_set_full hosts port tls_config asd_id full verbose =
   let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client -> client # set_full full)
 
 
@@ -697,7 +697,7 @@ let asd_set_full_cmd =
 let asd_capabilities hosts port tls_config asd_id verbose =
   let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
-    ~conn_info asd_id verbose
+    ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
       client # capabilities ()
       >>= fun (count,r) ->

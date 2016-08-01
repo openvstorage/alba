@@ -82,7 +82,8 @@ public:
   const char *current(size_t len) {
     uint32_t size = _buffer.size();
     if (_pos + len > size) {
-      ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > " << size);
+      ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
+                                         << size);
       throw deserialisation_exception("reading outside of message");
     }
     return &_buffer.data()[_pos];
@@ -178,6 +179,13 @@ template <typename X, typename Y>
 void from(message &m, std::pair<X, Y> &p) noexcept {
   from(m, p.first);
   from(m, p.second);
+}
+
+template <typename X, typename Y, typename Z>
+void from(message &m, std::tuple<X, Y, Z> &t) noexcept {
+  from(m, std::get<0>(t));
+  from(m, std::get<1>(t));
+  from(m, std::get<2>(t));
 }
 
 template <typename X>

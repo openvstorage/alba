@@ -32,12 +32,12 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace proxy_client {
 
-std::unique_ptr<Proxy_client> _make_proxy_client(
+std::unique_ptr<GenericProxy_client> _make_proxy_client(
     const std::string &ip, const std::string &port,
     const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
         expiry_time,
     const Transport &transport) {
-  Proxy_client *r = nullptr;
+  GenericProxy_client *r = nullptr;
 
   switch (transport) {
   case Transport::tcp: {
@@ -47,7 +47,7 @@ std::unique_ptr<Proxy_client> _make_proxy_client(
     r = new RDMAProxy_client(ip, port, expiry_time);
   }; break;
   }
-  std::unique_ptr<Proxy_client> result(r);
+  std::unique_ptr<GenericProxy_client> result(r);
   return result;
 }
 
@@ -58,9 +58,12 @@ std::unique_ptr<Proxy_client> make_proxy_client(
     const Transport &transport,
     const boost::optional<RoraConfig> &rora_config) {
 
-  auto inner_client = _make_proxy_client(ip, port, expiry_time, transport);
+  std::unique_ptr<GenericProxy_client> inner_client =
+      _make_proxy_client(ip, port, expiry_time, transport);
+
   if (boost::none == rora_config) {
-    return inner_client;
+    // work around g++ 4.[8|9] bug:
+    return std::unique_ptr<Proxy_client>(inner_client.release());
   } else {
     return std::unique_ptr<Proxy_client>(
         new RoraProxy_client(std::move(inner_client), *rora_config));

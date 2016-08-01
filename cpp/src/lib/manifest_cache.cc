@@ -31,35 +31,87 @@ void ManifestCache::set_capacity(size_t capacity) {
   _manifest_cache_capacity = capacity;
 }
 
-void ManifestCache::add(strpair key, std::shared_ptr<Manifest> mfp) {
+void ManifestCache::add(std::string namespace_, std::string object_name,
+                        std::shared_ptr<Manifest> mfp) {
   ALBA_LOG(DEBUG, "ManifestCache::add");
 
-  std::lock_guard<std::mutex> lock(_cache_mutex);
-  auto it = _cache.find(key);
-  if (it != _cache.end()) {
-    _cache.erase(it);
+  std::shared_ptr<manifest_cache> mcp = nullptr;
+  std::shared_ptr<std::mutex> mp = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(_level1_mutex);
+    auto it1 = _level1.find(namespace_);
+
+    if (it1 == _level1.end()) {
+      ALBA_LOG(INFO, "ManifestCache::add namespace:'"
+                         << namespace_ << "' : new manifest cache");
+      std::shared_ptr<manifest_cache> mc(new manifest_cache);
+      std::shared_ptr<std::mutex> mm(new std::mutex);
+      auto p = std::make_pair(mc, mm);
+      _level1[namespace_] = std::move(p);
+      it1 = _level1.find(namespace_);
+    } else {
+      ALBA_LOG(DEBUG, "ManifestCache::add namespace:'"
+                          << namespace_ << "' : existing manifest cache");
+    }
+    const auto &v = it1->second;
+    mcp = v.first;
+    mp = v.second;
   }
 
-  if (_cache.size() > _manifest_cache_capacity) {
-    it = _cache.begin();
-    const strpair &key = it->first;
-    using namespace alba::stuff;
-    ALBA_LOG(DEBUG, "cache is full(" << _manifest_cache_capacity
-                                     << "), evicting victim: " << key);
+  manifest_cache &manifest_cache = *mcp;
+  std::mutex &m = *mp;
+  {
+    std::lock_guard<std::mutex> lock(m);
+    auto it2 = manifest_cache.find(object_name);
+    if (it2 != manifest_cache.end()) {
+      manifest_cache.erase(it2);
+    }
 
-    _cache.erase(it);
+    if (manifest_cache.size() > _manifest_cache_capacity) {
+      auto it_victim = manifest_cache.begin();
+      auto victim = it_victim->first;
+      using namespace alba::stuff;
+      ALBA_LOG(DEBUG, "cache '" << namespace_ << "' full("
+                                << _manifest_cache_capacity
+                                << "), evicting victim: " << victim);
+      manifest_cache.erase(it_victim);
+    }
+
+    manifest_cache[object_name] = std::move(mfp);
   }
-
-  _cache[key] = std::move(mfp);
 }
 
-std::shared_ptr<Manifest> ManifestCache::find(strpair &key) {
-  std::lock_guard<std::mutex> g(_cache_mutex);
-  auto it = _cache.find(key);
-  if (it == _cache.end()) {
-    return nullptr;
-  } else {
-    return it->second;
+std::shared_ptr<Manifest> ManifestCache::find(const std::string &namespace_,
+                                              const std::string &object_name) {
+  std::pair<std::shared_ptr<manifest_cache>, std::shared_ptr<std::mutex>> vp;
+  {
+    std::lock_guard<std::mutex> g(_level1_mutex);
+    auto it = _level1.find(namespace_);
+    if (it == _level1.end()) {
+      return nullptr;
+    } else {
+      vp = it->second;
+    }
+  }
+  auto &map = *vp.first;
+  auto &mm = *vp.second;
+  {
+    std::lock_guard<std::mutex> g(mm);
+    const auto &map_it = map.find(object_name);
+    if (map_it == map.end()) {
+      return nullptr;
+    } else {
+      return map_it->second;
+    }
+  }
+}
+
+void ManifestCache::invalidate_namespace(const std::string &namespace_) {
+  ALBA_LOG(DEBUG, "ManifestCache::invalidate_namespace(" << namespace_ << ")");
+  std::lock_guard<std::mutex> g(_level1_mutex);
+  auto it = _level1.find(namespace_);
+  if (it != _level1.end()) {
+    _level1.erase(it);
   }
 }
 }

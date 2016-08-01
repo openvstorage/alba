@@ -200,6 +200,25 @@ void GenericProxy_client::read_objects_slices(
   check_status(__PRETTY_FUNCTION__);
 }
 
+void GenericProxy_client::read_objects_slices2(
+    const string &namespace_,
+    const vector<proxy_protocol::ObjectSlices> &slices,
+    const consistent_read consistent_read,
+    vector<proxy_protocol::object_info> &object_infos) {
+  _expires_from_now(_expiry_time);
+
+  message_builder mb;
+  proxy_protocol::write_read_objects_slices2_request(
+      mb, namespace_, slices, BooleanEnumTrue(consistent_read));
+  _output(mb);
+
+  message response = _input();
+  proxy_protocol::read_read_objects_slices2_response(response, _status, slices,
+                                                     object_infos);
+
+  check_status(__PRETTY_FUNCTION__);
+}
+
 void GenericProxy_client::write_object_fs2(
     const string &namespace_, const string &object_name,
     const string &input_file, const allow_overwrite allow_overwrite,

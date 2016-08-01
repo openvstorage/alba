@@ -18,6 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include "proxy_client.h"
+#include "generic_proxy_client.h"
 #include "osd_info.h"
 #include "osd_access.h"
 namespace alba {
@@ -28,7 +29,8 @@ typedef std::pair<ObjectSlices, std::shared_ptr<Manifest>> short_path_entry;
 
 class RoraProxy_client : public Proxy_client {
 public:
-  RoraProxy_client(std::unique_ptr<Proxy_client> delegate, const RoraConfig &);
+  RoraProxy_client(std::unique_ptr<GenericProxy_client> delegate,
+                   const RoraConfig &);
 
   virtual bool namespace_exists(const std::string &name);
 
@@ -89,7 +91,7 @@ public:
   virtual ~RoraProxy_client(){};
 
 private:
-  std::unique_ptr<Proxy_client> _delegate;
+  std::unique_ptr<GenericProxy_client> _delegate;
 
   void
   _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);

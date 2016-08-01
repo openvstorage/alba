@@ -33,8 +33,8 @@ template <> void to(message_builder &mb, const bool &b) noexcept {
 }
 
 template <> void from(message &m, uint8_t &i) {
-  const char* ib = m.current(1);
-  i = *((uint8_t*)ib);
+  const char *ib = m.current(1);
+  i = *((uint8_t *)ib);
   m.skip(1);
 }
 

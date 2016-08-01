@@ -45,6 +45,7 @@ module Config = struct
       alba_rdma : string option; (* ip of the rdma capable nic *)
       alba_rora : bool; (* use rora back door on ASDs *)
       alba_asd_log_level : string;
+      alba_asd_base_paths :string list;
       local_nodeid_prefix : string;
       n_osds : int;
 
@@ -107,6 +108,10 @@ module Config = struct
     and alba_rora = env_or_default "ALBA_RORA" "false" |> get_bool
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
+    and alba_asd_base_paths =
+      env_or_default_generic
+        (fun x -> Str.split (Str.regexp ",") x)  "ALBA_ASD_BASE_PATHS"
+        [alba_base_path ^"/asd"]
     in
     {
       home;
@@ -128,6 +133,7 @@ module Config = struct
       alba_rdma;
       alba_rora;
       alba_asd_log_level;
+      alba_asd_base_paths;
       local_nodeid_prefix;
       n_osds;
 
@@ -610,6 +616,9 @@ class proxy ?fragment_cache ?ip ?transport
     Shell.mkdir proxy_base;
     config_persister p_cfg
 
+  method config_url = cfg_url
+
+
   method log_file = Printf.sprintf "%s/proxy.out" proxy_base
 
   method start_cmd = [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
@@ -662,6 +671,7 @@ class proxy ?fragment_cache ?ip ?transport
 
   method cmd_line cmd = proxy_cmd_line cmd
 
+  method cmd_line_with_capture = proxy_cmd_line_with_capture
 end
 
 type maintenance_cfg = {
@@ -967,18 +977,20 @@ module Deployment = struct
         ?(base_port=8000)
         ?write_blobs
         ?transport ~ip ~use_rora
-        n local_nodeid_prefix base_path arakoon_path alba_bin
+        n local_nodeid_prefix base_paths arakoon_path alba_bin
         ~etcd (tls:bool) ~log_level =
-    let rec loop asds j =
+    let rec loop asds base_paths j =
       if j = n
       then List.rev asds |> Array.of_list
       else
         begin
-          let port = base_port + j in
+          let base_path = List.hd base_paths
+          and rest = List.tl base_paths
+          and port = base_port + j in
           let node_id = j lsr 2 in
           let node_id_s = Printf.sprintf "%s_%i" local_nodeid_prefix node_id in
           let asd_id = Printf.sprintf "%04i_%02i_%s" port node_id local_nodeid_prefix in
-          let home = base_path ^ (Printf.sprintf "/asd/%02i" j) in
+          let home = base_path ^ (Printf.sprintf "/%02i" j) in
           let tls_cfg =
             if tls
             then
@@ -1003,10 +1015,11 @@ module Deployment = struct
                         home ~port ~etcd
                         tls_cfg ~log_level
           in
-          loop (asd :: asds) (j+1)
+          let base_paths' = rest @ [base_path] in
+          loop (asd :: asds) base_paths' (j+1)
         end
     in
-    loop [] 0
+    loop [] base_paths 0
 
   let make_default
         ?__retry_timeout
@@ -1049,7 +1062,7 @@ module Deployment = struct
                          ~ip:cfg.ip
                          cfg.n_osds
                          cfg.local_nodeid_prefix
-                         cfg.alba_base_path
+                         cfg.alba_asd_base_paths
                          cfg.arakoon_path
                          cfg.alba_bin
                          ~etcd:cfg.etcd
@@ -1422,7 +1435,12 @@ module JUnit = struct
 
   let rc suites = List.fold_left (fun acc s ->
                                  let e,f,_ = summary s in e + f + acc
-                                ) 0 suites
+                    ) 0 suites
+
+  let (>>?) a b =
+    match a with
+    | Ok -> b
+    | _  -> a
 end
 
 module Test = struct
@@ -1742,8 +1760,17 @@ module Test = struct
     with x -> JUnit.Err (Printexc.to_string x)
 
   let asd_statistics t =
-    let stats_s = t.Deployment.osds.(1) # get_statistics in
+    let open JUnit in
+    let osd = t.Deployment.osds.(1) in
+    let stats_s = osd # get_statistics in
     _assert_parseable stats_s
+    >>?
+      (begin
+          let () = osd # stop in
+          let stats_s = osd # get_statistics in
+          let () = osd # start in
+          _assert_parseable stats_s
+      end)
 
   let abm_statistics t =
     let cmd =
@@ -1838,6 +1865,23 @@ module Test = struct
     _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
     JUnit.Ok
 
+  let proxy_statistics t =
+    let cmd = ["proxy-statistics";
+               "--to-json";
+              ];
+    in
+    let stats_s = t.Deployment.proxy # cmd_line_with_capture cmd in
+    let parseable = _assert_parseable stats_s in
+    let open JUnit in
+    parseable >>?
+    (begin
+        let () = t.Deployment.proxy # stop in
+        let stats_s = t.Deployment.proxy # cmd_line_with_capture cmd in
+        let () = t.Deployment.proxy # start in
+        _assert_parseable stats_s
+      end)
+
+
   let cli t =
     let suite_name = "run_tests_cli" in
     let tests = ["asd_crud", asd_crud;
@@ -1848,6 +1892,7 @@ module Test = struct
                  "nsm_host_statistics", nsm_host_statistics;
                  "asd_cli_env", asd_cli_env;
                  "create_example_preset", create_example_preset;
+                 "proxy_statistics", proxy_statistics;
                 ]
     in
     let t0 = Unix.gettimeofday() in
@@ -2059,7 +2104,7 @@ module Test = struct
           then
             {tx with osds = make_osds tx.cfg.n_osds
                                       tx.cfg.local_nodeid_prefix
-                                      tx.cfg.alba_base_path
+                                      tx.cfg.alba_asd_base_paths
                                       tx.cfg.arakoon_path
                                       ~ip:tx.cfg.ip
                                       ~use_rora:false

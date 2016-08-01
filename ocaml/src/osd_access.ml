@@ -157,6 +157,17 @@ module Osd_pool = struct
         begin
           Lwt_pool2.finalize (Hashtbl.find t.client_pools osd_id) |> Lwt.ignore_result;
           Hashtbl.remove t.client_pools osd_id
+        end;
+      if Hashtbl.mem t.thread_safe_clients osd_id
+      then
+        begin
+          let osd_closer_t = Hashtbl.find t.thread_safe_clients osd_id in
+          Lwt.ignore_result
+            begin
+              osd_closer_t >>= fun (osd, closer) ->
+              closer ()
+            end;
+          Hashtbl.remove t.thread_safe_clients osd_id
         end
 
     let invalidate_all t =
@@ -297,13 +308,9 @@ class osd_access
      in
      let should_invalidate_pool =
        match exn with
-       | Asd_client.BadLongId _
-       (* TODO need a similar detection + exception for the kinetics *)
-       | _ when Networking2.is_connection_failure_exn exn ->
-          (* don't want this osd to be chosen for now *)
-          true
-       | exn ->
-          false
+       (* TODO fill in exceptions for which we shouldn't invalidate the pool
+        *)
+       | _ -> true
      in
 
      (if should_invalidate_pool
