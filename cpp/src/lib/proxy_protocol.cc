@@ -37,6 +37,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _PING 20
 #define _WRITE_OBJECT_FS2 21
 #define _OSD_INFO 22
+#define _READ_OBJECTS_SLICES2 23
 
 namespace alba {
 namespace proxy_protocol {
@@ -253,6 +254,15 @@ void write_read_objects_slices_request(message_builder &mb,
   to(mb, slices);
   to(mb, consistent_read);
 }
+void write_read_objects_slices2_request(message_builder &mb,
+                                        const string &namespace_,
+                                        const std::vector<ObjectSlices> &slices,
+                                        const bool consistent_read) {
+  write_tag(mb, _READ_OBJECTS_SLICES2);
+  to(mb, namespace_);
+  to(mb, slices);
+  to(mb, consistent_read);
+}
 
 void read_read_objects_slices_response(
     message &m, Status &status,
@@ -267,6 +277,38 @@ void read_read_objects_slices_response(
         memcpy(slice.buf, m.current(slice.size), slice.size);
         m.skip(slice.size);
       }
+    }
+  }
+}
+
+void read_read_objects_slices2_response(
+    message &m, Status &status, const std::vector<ObjectSlices> &objects_slices,
+    std::vector<object_info> &object_infos) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    uint32_t size;
+    from<uint32_t>(m, size);
+
+    for (auto &object_slices : objects_slices) {
+      for (auto &slice : object_slices.slices) {
+        memcpy(slice.buf, m.current(slice.size), slice.size);
+        m.skip(slice.size);
+      }
+    }
+
+    // todo: automatically via templates
+    from(m, size);
+    object_infos.resize(size);
+    for (int32_t i = size - 1; i >= 0; --i) {
+      std::string name;
+      from(m, name);
+      std::string future;
+      from(m, future);
+      std::unique_ptr<Manifest> umf(new Manifest());
+      from(m, *umf);
+      auto t =
+          std::make_tuple(std::move(name), std::move(future), std::move(umf));
+      object_infos[i] = std::move(t);
     }
   }
 }

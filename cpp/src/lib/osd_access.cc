@@ -78,8 +78,8 @@ int OsdAccess::read_osds_slices(
     osd_t osd = item.first;
     auto &osd_slices = item.second;
     rc = _read_osd_slices(osd, osd_slices);
-    if(rc) {
-        break;
+    if (rc) {
+      break;
     }
   }
   return rc;
@@ -147,9 +147,9 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     ret = aio_suspendv(ctx, iocb_vec, nullptr /* timeout */);
   }
   for (auto &elem : iocb_vec) {
-    auto retcode = aio_return(ctx,elem);
-    if(ret != 0){
-        ALBA_LOG(INFO, "retcode:" << retcode);
+    auto retcode = aio_return(ctx, elem);
+    if (ret != 0) {
+      ALBA_LOG(INFO, "retcode:" << retcode);
     }
     aio_finish(ctx, elem);
   }

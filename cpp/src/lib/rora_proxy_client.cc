@@ -24,9 +24,11 @@ but WITHOUT ANY WARRANTY of any kind.
 
 namespace alba {
 namespace proxy_client {
-RoraProxy_client::RoraProxy_client(std::unique_ptr<Proxy_client> delegate,
-                                   const RoraConfig &rora_config)
+RoraProxy_client::RoraProxy_client(
+    std::unique_ptr<GenericProxy_client> delegate,
+    const RoraConfig &rora_config)
     : _delegate(std::move(delegate)) {
+  ALBA_LOG(INFO, "RoraProxy_client(...)");
   ManifestCache::set_capacity(rora_config.manifest_cache_size);
 }
 
@@ -53,6 +55,15 @@ RoraProxy_client::list_namespaces(const std::string &first,
                                     max, reverse_);
 }
 
+void _maybe_add_to_manifest_cache(const std::string &namespace_,
+                                  const std::string &object_name,
+                                  std::unique_ptr<Manifest> mfp) {
+  ALBA_LOG(DEBUG, *mfp);
+  if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
+      encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
+    ManifestCache::getInstance().add(namespace_, object_name, std::move(mfp));
+  }
+}
 void RoraProxy_client::write_object_fs(const std::string &namespace_,
                                        const std::string &object_name,
                                        const std::string &input_file,
@@ -62,12 +73,8 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
   std::unique_ptr<Manifest> mfp(new Manifest());
   _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
                               checksum, *mfp);
-  ALBA_LOG(DEBUG, *mfp);
-  if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
-      encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
-    auto key = std::pair<std::string, std::string>(namespace_, object_name);
-    ManifestCache::getInstance().add(key, std::move(mfp));
-  }
+  _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
+
 }
 
 void RoraProxy_client::read_object_fs(const std::string &namespace_,
@@ -207,8 +214,9 @@ int RoraProxy_client::_short_path_one(const std::string &namespace_,
 int RoraProxy_client::_short_path_many(
     const std::string &namespace_,
     const std::vector<short_path_entry> &short_path) {
-  // for now, we can't do it.
-  ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", ...)");
+
+  ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", n_slices ="
+                                      << short_path.size() << ")");
   int result = 0;
   for (auto &object_slices_mf : short_path) {
     auto object_slices = object_slices_mf.first;
@@ -221,20 +229,41 @@ int RoraProxy_client::_short_path_many(
   return result;
 }
 
-void RoraProxy_client::read_objects_slices(
-    const std::string &namespace_, const std::vector<ObjectSlices> &slices,
-    const consistent_read consistent_read_) {
+void _process(std::vector<object_info> &object_infos,
+              const std::string &namespace_) {
+
+  ALBA_LOG(DEBUG, "_process : " << object_infos.size());
+  for (auto &object_info : object_infos) {
+    using alba::stuff::operator<<;
+    // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
+
+    const std::string &object_name = std::get<0>(object_info);
+    auto &future = std::get<1>(object_info);
+    std::unique_ptr<Manifest> mfp = std::move(std::get<2>(object_info));
+
+    if (future == "") {
+      _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
+    }
+  }
+}
+
+void
+RoraProxy_client::read_objects_slices(const std::string &namespace_,
+                                      const std::vector<ObjectSlices> &slices,
+                                      const consistent_read consistent_read_) {
 
   if (consistent_read_ == consistent_read::T) {
-    _delegate->read_objects_slices(namespace_, slices, consistent_read_);
+    std::vector<object_info> object_infos;
+    _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
+                                    object_infos);
+    _process(object_infos, namespace_);
   } else {
     std::vector<ObjectSlices> via_proxy;
     std::vector<short_path_entry> short_path;
     for (auto &object_slices : slices) {
       auto object_name = object_slices.object_name;
-      auto key = strpair(namespace_, object_name);
       auto &cache = ManifestCache::getInstance();
-      auto mfp = cache.find(key);
+      auto mfp = cache.find(namespace_, object_name);
       if (nullptr != mfp &&
           compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
           encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
@@ -247,8 +276,11 @@ void RoraProxy_client::read_objects_slices(
       }
     };
     // short_path & via_proxy could go in //
+    std::vector<object_info> object_infos;
 
-    _delegate->read_objects_slices(namespace_, via_proxy, consistent_read_);
+    _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
+                                    object_infos);
+    _process(object_infos, namespace_);
     // short_path.
     int result = _short_path_many(namespace_, short_path);
     ALBA_LOG(DEBUG, "_short_path_many => " << result);
@@ -259,8 +291,10 @@ void RoraProxy_client::read_objects_slices(
         auto object_slices = p.first;
         via_proxy2.push_back(object_slices);
       }
-
-      _delegate->read_objects_slices(namespace_, via_proxy2, consistent_read_);
+      std::vector<object_info> object_infos2;
+      _delegate->read_objects_slices2(namespace_, via_proxy2, consistent_read_,
+                                      object_infos2);
+      _process(object_infos2, namespace_);
     }
   }
 }
@@ -283,6 +317,7 @@ std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(
 }
 
 void RoraProxy_client::invalidate_cache(const std::string &namespace_) {
+  ManifestCache::getInstance().invalidate_namespace(namespace_);
   _delegate->invalidate_cache(namespace_);
 }
 
@@ -299,8 +334,8 @@ double RoraProxy_client::ping(const double delay) {
   return _delegate->ping(delay);
 }
 
-void RoraProxy_client::osd_info(
-    std::vector<std::pair<osd_t, info_caps>> &result) {
+void
+RoraProxy_client::osd_info(std::vector<std::pair<osd_t, info_caps>> &result) {
   ALBA_LOG(DEBUG, "RoraProxy_client::osd_info");
   _delegate->osd_info(result);
 }

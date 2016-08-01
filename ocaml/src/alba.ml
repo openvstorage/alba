@@ -22,7 +22,11 @@ open Prelude
 open Cli_common
 
 let () =
-  Lwt_engine.set (new Lwt_rsocket.rselect);
+  let engine =
+    (*new Lwt_engine.select *)
+    new Lwt_rsocket.rselect
+  in
+  Lwt_engine.set engine;
   Lwt.async_exception_hook :=
     (fun exn -> Lwt_log.ign_info_f ~exn "Caught async exception")
 

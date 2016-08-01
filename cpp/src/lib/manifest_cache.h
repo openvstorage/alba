@@ -21,15 +21,14 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <string>
 #include <map>
 #include <mutex>
+#include <memory>
 #include "manifest.h"
 
 namespace alba {
 namespace proxy_client {
 
-typedef std::pair<std::string, std::string> strpair;
-
 using namespace proxy_protocol;
-typedef std::map<strpair, std::shared_ptr<Manifest>> manifest_cache;
+typedef std::map<std::string, std::shared_ptr<Manifest>> manifest_cache;
 class ManifestCache {
 public:
   static ManifestCache &getInstance();
@@ -38,15 +37,20 @@ public:
   ManifestCache(ManifestCache const &) = delete;
   void operator=(ManifestCache const &) = delete;
 
-  void add(strpair key, std::shared_ptr<Manifest> mfp);
+  void add(std::string namespace_, std::string object_name,
+           std::shared_ptr<Manifest> mfp);
 
-  std::shared_ptr<Manifest> find(strpair &key);
+  std::shared_ptr<Manifest> find(const std::string &namespace_,
+                                 const std::string &object_name);
+
+  void invalidate_namespace(const std::string &);
 
 private:
   ManifestCache() {}
 
-  std::mutex _cache_mutex;
-  std::map<strpair, std::shared_ptr<Manifest>> _cache;
+  std::mutex _level1_mutex;
+  std::map<std::string, std::pair<std::shared_ptr<manifest_cache>,
+                                  std::shared_ptr<std::mutex>>> _level1;
 };
 }
 }

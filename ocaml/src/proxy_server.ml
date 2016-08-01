@@ -153,19 +153,34 @@ let read_objects_slices
                     ~fragment_statistics_cb
         >>= function
         | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-        | Some (_mf, mf_src) -> Lwt.return mf_src
+        | Some (mf, namespace_id, mf_source) -> Lwt.return (object_name, mf, namespace_id, mf_source)
        )
        objects_slices
-     >>= fun mf_sources ->
+     >>= fun n_mf_src_s ->
+
+     let objects_infos =
+       List.map
+         (fun (name, mf, namespace_id, mf_source) -> name, "", (mf, namespace_id))
+         n_mf_src_s
+     in
+     let mf_sources = List.map (fun (_,_,_,src) -> src) n_mf_src_s in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
-                 !fc_hits, !fc_misses))
+                 !fc_hits, !fc_misses, (n_objects, objects_infos)))
     (fun () ->
      Lwt_bytes.unsafe_destroy res;
      Lwt.return ())
 
 let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   let open Protocol in
+  let render_read_object_slices (namespace, objects_slices, consistent_read) =
+    Printf.sprintf
+      "(%S,%s )"
+      namespace
+      ([%show : (object_name *
+                   (offset * length) list) list ]
+         objects_slices)
+  in
   function
   | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} ->
                        "{ }"
@@ -180,13 +195,8 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | WriteObjectFs2  -> fun (namespace, object_name, _,_,_) ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
 
-  | ReadObjectsSlices -> fun (namespace, objects_slices, consistent_read) ->
-                         Printf.sprintf
-                           "(%S,%s )"
-                           namespace
-                           ([%show : (object_name *
-                                        (offset * length) list) list ]
-                           objects_slices)
+  | ReadObjectsSlices  -> render_read_object_slices
+  | ReadObjectsSlices2 -> render_read_object_slices
   | NamespaceExists -> fun namespace ->
                        Printf.sprintf "(%S)" namespace
   | ProxyStatistics -> fun _ -> "-"
@@ -337,7 +347,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats (namespace, objects_slices, consistent_read) ->
        with_timing_lwt
          (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
-       >>= fun (delay, (bytes, n_slices, n_objects, mf_sources, fc_hits, fc_misses )) ->
+       >>= fun (delay, (bytes, n_slices, n_objects, mf_sources,
+                        fc_hits, fc_misses,
+                        object_infos)) ->
        let total_length = Bytes.length bytes in
        ProxyStatistics.new_read_objects_slices
          stats namespace
@@ -345,7 +357,25 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          ~fc_hits ~fc_misses
          ~took:delay;
        Lwt.return bytes
-
+    | ReadObjectsSlices2 ->
+       fun stats (namespace, objects_slices, consistent_read) ->
+       with_timing_lwt
+         (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
+       >>= fun (delay, (bytes, n_slices, n_objects,
+                        mf_sources, fc_hits, fc_misses,
+                        object_infos)) ->
+       let total_length = Bytes.length bytes in
+       ProxyStatistics.new_read_objects_slices
+         stats namespace
+         ~total_length ~n_slices ~n_objects ~mf_sources
+         ~fc_hits ~fc_misses
+         ~took:delay;
+       Lwt_log.debug_f "object_infos:%i %s"
+                       (fst object_infos)
+                       ([%show : (string * string * manifest_with_id) list]
+                          (snd object_infos))
+       >>= fun () ->
+       Lwt.return (bytes, object_infos)
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
