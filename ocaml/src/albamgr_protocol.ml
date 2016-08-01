@@ -593,7 +593,7 @@ module Protocol = struct
   end
 
   module Work = struct
-    type id = Int32.t
+    type id = Int64.t
 
     type verify_params = {
         checksum : bool;
@@ -749,20 +749,20 @@ module Protocol = struct
 
     let to_buffer buf { first; finc; last; max; reverse; } =
       let ser_version = 1 in Llio.int8_to buf ser_version;
-      Llio.int32_to buf first;
+      x_int64_to buf first;
       Llio.bool_to buf finc;
-      Llio.option_to (Llio.pair_to Llio.int32_to Llio.bool_to) buf last;
+      Llio.option_to (Llio.pair_to x_int64_to Llio.bool_to) buf last;
       Llio.int_to buf max;
       Llio.bool_to buf reverse
 
     let from_buffer buf =
       let ser_version = Llio.int8_from buf in
       assert (ser_version = 1);
-      let first = Llio.int32_from buf in
+      let first = x_int64_from buf in
       let finc = Llio.bool_from buf in
       let last =
         Llio.option_from
-          (Llio.pair_from Llio.int32_from Llio.bool_from)
+          (Llio.pair_from x_int64_from Llio.bool_from)
           buf in
       let max = Llio.int_from buf in
       let reverse = Llio.bool_from buf in
@@ -1056,7 +1056,7 @@ module Protocol = struct
            (Msg_log.msg_from_buffer t))
     | GetWork ->
       counted_list_more_from
-        (Llio.pair_from Llio.int32_from Work.from_buffer)
+        (Llio.pair_from x_int64_from Work.from_buffer)
     | GetAlbaId -> Llio.string_from
     | ListPresets ->
       counted_list_more_from
@@ -1158,7 +1158,7 @@ module Protocol = struct
            (Msg_log.msg_to_buffer t))
     | GetWork ->
       counted_list_more_to
-        (Llio.pair_to Llio.int32_to Work.to_buffer)
+        (Llio.pair_to x_int64_to Work.to_buffer)
     | GetAlbaId -> Llio.string_to
     | ListPresets ->
       counted_list_more_to
@@ -1255,7 +1255,7 @@ module Protocol = struct
     | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
     | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
     | AddWork -> Llio.counted_list_from Work.from_buffer
-    | MarkWorkCompleted -> Llio.int32_from
+    | MarkWorkCompleted -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
     | DeletePreset -> Llio.string_from
     | SetDefaultPreset -> Llio.string_from
@@ -1317,7 +1317,7 @@ module Protocol = struct
     | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
     | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
-    | MarkWorkCompleted -> Llio.int32_to
+    | MarkWorkCompleted -> x_int64_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
     | DeletePreset -> Llio.string_to
     | SetDefaultPreset -> Llio.string_to

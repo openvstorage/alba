@@ -95,6 +95,13 @@ class client ?(retry_timeout = 60.)
     let remainder = (Int32.to_int item_id) mod coordinator # get_modulo
     in remainder = coordinator # get_remainder
   in
+  let filter64 item_id =
+    (* item_id could be e.g. namespace_id or work item id *)
+    let remainder =
+      Int64.rem item_id (coordinator # get_modulo |> Int64.of_int)
+      |> Int64.to_int
+    in remainder = coordinator # get_remainder
+  in
 
   let osd_access = alba_client # osd_access in
 
@@ -1369,7 +1376,7 @@ class client ?(retry_timeout = 60.)
               msg retry_timeout
             >>= fun () ->
             Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
-            if filter work_id
+            if filter64 work_id
             then inner ()
             else Lwt.fail NotMyTask
           | true ->
@@ -1402,7 +1409,7 @@ class client ?(retry_timeout = 60.)
           >>= fun () ->
           if cnt = 0
           then Lwt.return ()
-          else if filter work_id
+          else if filter64 work_id
           then inner ()
           else Lwt.fail NotMyTask
         in
@@ -1418,7 +1425,7 @@ class client ?(retry_timeout = 60.)
                 client # delete_namespace namespace_id first >>= function
                 | None -> Lwt.return ()
                 | Some next ->
-                   if not (filter work_id)
+                   if not (filter64 work_id)
                    then Lwt.fail NotMyTask
                    else inner next
               in
@@ -1431,7 +1438,7 @@ class client ?(retry_timeout = 60.)
                (fun nsm ->
                   let rec inner () =
                     nsm # cleanup_osd_keys_to_be_deleted osd_id >>= fun cnt ->
-                    if not (filter work_id)
+                    if not (filter64 work_id)
                     then Lwt.fail NotMyTask
                     else if cnt <> 0
                     then inner ()
@@ -1556,7 +1563,7 @@ class client ?(retry_timeout = 60.)
                alba_client # mgr_access # update_progress
                            name p po >>= fun () ->
 
-               if not (filter work_id)
+               if not (filter64 work_id)
                then Lwt.fail NotMyTask
                else if has_more
                then inner po
@@ -1635,23 +1642,23 @@ class client ?(retry_timeout = 60.)
         Lwt.return ()
 
 
-    val mutable next_work_item = 0l
+    val mutable next_work_item = 0L
     val work_threads = Hashtbl.create 3
 
     method add_work_threads work_items =
       let open Albamgr_protocol.Protocol in
       List.iter
         (fun (work_id, work_item) ->
-           next_work_item <- Int32.succ work_id;
+           next_work_item <- Int64.succ work_id;
            let t () =
              let try_do_work () =
                Lwt.catch
                  (fun () ->
-                  (if filter work_id
+                  (if filter64 work_id
                    then
                      begin
                        Lwt_log.debug_f
-                         "Doing work: id=%li, item=%s"
+                         "Doing work: id=%Li, item=%s"
                          work_id
                          (Work.show work_item) >>= fun () ->
 
@@ -1666,7 +1673,7 @@ class client ?(retry_timeout = 60.)
                    | Lwt.Canceled -> Lwt.fail Lwt.Canceled
                    | exn ->
                      Lwt_log.info_f
-                       "Got exception %s while working on item %li"
+                       "Got exception %s while working on item %Li"
                        (Printexc.to_string exn)
                        work_id >>= fun () ->
                      Lwt.return `Retry)
@@ -1684,12 +1691,12 @@ class client ?(retry_timeout = 60.)
                (fun () -> inner 1.0)
                (fun () ->
                   Lwt_log.debug_f
-                    "Finished work item %li"
+                    "Finished work item %Li"
                     work_id >>= fun () ->
                   if not (Hashtbl.mem work_threads work_id)
                   then
                     Lwt_log.warning_f
-                      "No entry in hashtbl for this workthread %li"
+                      "No entry in hashtbl for this workthread %Li"
                       work_id
                   else begin
                     Hashtbl.remove work_threads work_id;
@@ -1720,7 +1727,7 @@ class client ?(retry_timeout = 60.)
 
   method do_work ?(once = false) () : unit Lwt.t =
 
-    coordinator # add_on_position_changed (fun () -> next_work_item <- 0l);
+    coordinator # add_on_position_changed (fun () -> next_work_item <- 0L);
 
     let rec inner () =
       alba_client # mgr_access # get_work
@@ -1745,7 +1752,7 @@ class client ?(retry_timeout = 60.)
           Lwt_log.debug_f
             "Still waiting for %i threads (%s)"
             (Hashtbl.length work_threads)
-            ([%show : int32 list]
+            ([%show : int64 list]
                (Hashtbl.fold
                   (fun id _ acc -> id :: acc)
                   work_threads

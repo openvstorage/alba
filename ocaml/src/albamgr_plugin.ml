@@ -1451,7 +1451,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | AddWork -> fun (_cnt, work) ->
       return_upds (add_work_items work)
     | MarkWorkCompleted -> fun id ->
-      let work_key = Keys.Work.prefix ^ serialize Llio.int32_be_to id in
+      let work_key = Keys.Work.prefix ^ serialize x_int64_be_to id in
       let upds = match db # get work_key with
         | None -> []
         | Some v ->
@@ -1887,15 +1887,15 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       let items =
         EKV.map_range
           db
-          ~first:(serialize Llio.int32_be_to first) ~finc
+          ~first:(serialize x_int64_be_to first) ~finc
           ~last:(Option.map
                    (fun (last, linc) ->
-                      (serialize Llio.int32_be_to last,
+                      (serialize x_int64_be_to last,
                        linc))
                    last)
           ~max ~reverse
           (fun cur key ->
-             let work_id = deserialize Llio.int32_be_from key in
+             let work_id = deserialize x_int64_be_from key in
              let work_t = deserialize Work.from_buffer (KV.cur_get_value cur) in
              (work_id, work_t))
       in

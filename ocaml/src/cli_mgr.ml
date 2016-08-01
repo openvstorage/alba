@@ -543,7 +543,7 @@ let alba_list_work cfg_file tls_config verbose attempts =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-       let first = 0l
+       let first = 0L
        and finc = true
        and last = None
        and max = -1 in
@@ -555,7 +555,7 @@ let alba_list_work cfg_file tls_config verbose attempts =
          Lwt_io.printlf "---------+------" >>= fun () ->
          Lwt_list.iter_s
            (fun (id, item) ->
-            Lwt_io.printlf "%8li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
+            Lwt_io.printlf "%8Li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
            ) r
          >>= fun () ->
          if more
