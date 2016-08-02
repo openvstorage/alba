@@ -145,6 +145,21 @@ module ReadBuffer = struct
                loop (i-1)
       in
       loop len
+
+    let deserialize_length_prefixed a_from buf =
+      let len = int_from buf in
+      let pos0 = buf.pos in
+      let a = a_from buf in
+      let pos1 = buf.pos in
+      let actual_len = pos1 - pos0 in
+      let open Compare in
+      let () =
+        match Int.compare' len actual_len with
+        | LT -> buf.pos <- pos0 + len
+        | EQ -> ()
+        | GT -> assert false
+      in
+      a
   end
 
 module WriteBuffer = struct
@@ -265,13 +280,17 @@ module WriteBuffer = struct
       (* TODO ideally the list should be iterated only once *)
       counted_list_to e_to buf (List.length list, list)
 
-    let serialize_with_length ?(length = 20) a_to a =
-      let buf = make ~length in
+    let serialize_with_length' ?(buf = make ~length:20) a_to a =
+      let pos0 = buf.pos in
       int_to buf 0;
       a_to buf a;
-      let len = buf.pos - 4 in
-      set32_prim' buf.buf 0 (Int32.of_int len);
+      let len = buf.pos - (pos0 + 4) in
+      set32_prim' buf.buf pos0 (Int32.of_int len);
       buf
+
+    let serialize_with_length buf a_to a =
+      let _ : t = serialize_with_length' ~buf a_to a in
+      ()
 
     let hashtbl_to ser_k ser_v buf h =
       let len = Hashtbl.length h in

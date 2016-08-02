@@ -53,10 +53,17 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
     uint8_t version;
     from(m, version);
 
-    if (version != 1) {
+
+    uint32_t length;
+    if (version == 1) {
+      length = 0;
+    } else if (version == 2) {
+      from(m, length);
+    } else {
       throw deserialisation_exception(
           "unexpected version while deserializing OsdCapabilities");
     }
+    uint32_t pos0 = m.get_pos();
 
     uint8_t tag;
     from(m, tag);
@@ -76,7 +83,21 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
       from(m, transport);
       caps.rora_transport.emplace(transport);
     }
-    default: { throw deserialisation_exception("OsdCapabilities"); };
+    default: {
+      if (length == 0) {
+        throw deserialisation_exception("OsdCapabilities");
+      }
+    };
+    }
+
+    if (length != 0) {
+      uint32_t pos1 = m.get_pos();
+      uint32_t actual_length = pos1 - pos0;
+      if (actual_length > length) {
+        throw deserialisation_exception("OsdCapabilities");
+      } else {
+        m.skip(length - actual_length);
+      }
     }
   }
 }

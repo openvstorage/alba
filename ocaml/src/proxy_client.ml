@@ -41,7 +41,7 @@ class proxy_client fd =
   let do_request code serialize_request request response_deserializer =
     let module Llio = Llio2.WriteBuffer in
     let buf =
-      Llio.serialize_with_length
+      Llio.serialize_with_length'
         (Llio.pair_to
            Llio.int_to
            serialize_request)

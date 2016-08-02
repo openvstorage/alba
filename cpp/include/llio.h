@@ -89,6 +89,8 @@ public:
     return &_buffer.data()[_pos];
   }
 
+  uint32_t get_pos() { return _pos; }
+
   void skip(int x) { _pos += x; }
 
 private:

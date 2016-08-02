@@ -426,7 +426,7 @@ let execute_query : type req res.
     let open Protocol in
     let module Llio = Llio2.WriteBuffer in
     let serialize_with_length res =
-      Llio.serialize_with_length
+      Llio.serialize_with_length'
         (Llio.pair_to
            Llio.int_to
            (Protocol.query_response_serializer q))
@@ -686,10 +686,14 @@ let execute_query : type req res.
 
        let result =
          match mgmt.AsdMgmt.rora with
-         | None   -> (len0, result0)
+         | None -> (len0, result0)
          | Some (p, transport) ->
-            let result1 = (CRoraFetcher2 (p, transport)):: result0  in
-            (len0 + 1, result1)
+            let cap =
+              if transport = mgmt.AsdMgmt.transport
+              then CRoraFetcher p
+              else CRoraFetcher2 (p, transport)
+            in
+            (len0 + 1, cap :: result0)
        in
        return' result
 
@@ -1142,7 +1146,7 @@ let asd_protocol
           ?(write_extra=done_writing)
           serializer res =
       let res_s =
-        Llio.serialize_with_length
+        Llio.serialize_with_length'
           (Llio.pair_to
              Llio.int_to
              serializer)
@@ -1152,7 +1156,7 @@ let asd_protocol
     in
     let return_error error =
       let res =
-        Llio.serialize_with_length
+        Llio.serialize_with_length'
           Protocol.Error.serialize
           error
       in
@@ -1642,6 +1646,7 @@ let run_server
   let mgmt = AsdMgmt.make ~latest_disk_usage
                           ~capacity
                           ~limit
+                          ~transport:(Rora_server.transport_s transport)
                           ~rora:(Option.map
                                    (fun p -> p, Rora_server.transport_s rora_transport)
                                    rora_port)
