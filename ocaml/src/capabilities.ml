@@ -22,8 +22,8 @@ module OsdCapabilities = struct
   type capability =
     | CMultiGet2
     | CPartialGet
-    | CRoraFetcher of int
-    | CRoraFetcher2 of int * string (* port * transport *)
+    | CRoraFetcher of int                         (* port *)
+    | CRoraFetcher2 of string list * int * string (* ips * port * transport *)
   [@@deriving show]
 
   let capability_to buf c =
@@ -39,13 +39,14 @@ module OsdCapabilities = struct
     | CRoraFetcher p -> write_version 1;
                         L.int8_to buf 3;
                         L.int_to buf p
-    | CRoraFetcher2 (p, transport) ->
+    | CRoraFetcher2 (ips, port, transport) ->
        write_version 2;
        L.serialize_with_length
          buf
          (fun buf () ->
           L.int8_to buf 4;
-          L.int_to buf p;
+          L.list_to L.string_to buf ips;
+          L.int_to buf port;
           L.string_to buf transport)
          ()
 
@@ -58,9 +59,11 @@ module OsdCapabilities = struct
       | 2 -> `Ok CPartialGet
       | 3 -> let port = L.int_from buf in
              `Ok (CRoraFetcher port)
-      | 4 -> let port = L.int_from buf in
-             let transport = L.string_from buf in
-             `Ok (CRoraFetcher2 (port, transport))
+      | 4 ->
+         let ips = L.list_from L.string_from buf in
+         let port = L.int_from buf in
+         let transport = L.string_from buf in
+         `Ok (CRoraFetcher2 (ips, port, transport))
       | k -> `BadTag k
     in
     let version = L.int8_from buf in

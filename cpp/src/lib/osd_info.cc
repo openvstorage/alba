@@ -53,7 +53,6 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
     uint8_t version;
     from(m, version);
 
-
     uint32_t length;
     if (version == 1) {
       length = 0;
@@ -76,6 +75,9 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
       caps.rora_port.emplace(port);
     }; break;
     case 4: {
+      std::vector<std::string> rora_ips;
+      from(m, rora_ips);
+      caps.rora_ips.emplace(rora_ips);
       uint32_t port;
       from(m, port);
       caps.rora_port.emplace(port);
