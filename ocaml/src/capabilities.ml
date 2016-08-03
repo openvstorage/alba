@@ -81,7 +81,7 @@ module OsdCapabilities = struct
     | k -> raise_bad_tag "OsdCapabilities/version" k
 
 
-  type t = capability Prelude.counted_list
+  type t = capability Prelude.counted_list [@@deriving show]
   let to_buffer   = Llio2.WriteBuffer.counted_list_to  capability_to
   let from_buffer buf =
     let (_, caps) = Llio2.ReadBuffer.counted_list_from capability_from buf in

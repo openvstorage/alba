@@ -655,7 +655,7 @@ end
  * the range have been delivered has_more=false, otherwise
  * has_more=true. *)
 type has_more = bool
-type 'a counted_list = 'a Std.counted_list
+type 'a counted_list = (int * 'a list) [@@deriving show]
 type 'a counted_list_more = 'a counted_list * has_more
 
 let counted_list_more_from a_from =

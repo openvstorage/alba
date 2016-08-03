@@ -290,7 +290,10 @@ TEST(proxy_client, test_osd_info) {
     auto osd = p.first;
     auto &ic = p.second;
     const proxy_protocol::OsdInfo &osd_info = *ic.first;
-    std::cout << "osd:" << osd << " info: " << osd_info << std::endl;
+    std::cout << "osd:" << osd
+              << " info: " << osd_info
+              << " caps: " << *ic.second
+              << std::endl;
   }
 }
 

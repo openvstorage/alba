@@ -97,7 +97,7 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
       uint32_t actual_length = pos1 - pos0;
       if (actual_length > length) {
         throw deserialisation_exception("OsdCapabilities");
-      } else {
+      } else if (actual_length < length) {
         m.skip(length - actual_length);
       }
     }
@@ -116,7 +116,9 @@ std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
 std::ostream &operator<<(std::ostream &os, const OsdCapabilities &caps) {
   using alba::stuff::operator<<;
   os << "OsdCapabilities( rora_port= " << caps.rora_port
-     << ", transport= " << caps.rora_transport << ")";
+     << ", rora_transport= " << caps.rora_transport
+     << ", rora_ips=" << caps.rora_ips
+     << ")";
   return os;
 }
 }
