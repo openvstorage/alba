@@ -437,7 +437,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
     let res_s =
-      Llio.serialize_with_length
+      Llio.serialize_with_length'
         (Llio.pair_to
            Llio.int_to
            Llio.string_to)
@@ -454,7 +454,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          | Protocol.Wrap r ->
            let req = Deser.from_buffer (Protocol.deser_request_i r) buf in
            execute_request r stats req >>= fun res ->
-           Lwt.return (Llio.serialize_with_length
+           Lwt.return (Llio.serialize_with_length'
                          (Llio.pair_to
                             Llio.int_to
                             (snd (Protocol.deser_request_o r)))

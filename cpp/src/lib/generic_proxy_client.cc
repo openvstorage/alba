@@ -187,6 +187,11 @@ void GenericProxy_client::read_objects_slices(
     const string &namespace_,
     const vector<proxy_protocol::ObjectSlices> &slices,
     const consistent_read consistent_read) {
+
+  if (slices.size() == 0) {
+    return;
+  }
+
   _expires_from_now(_expiry_time);
 
   message_builder mb;
@@ -205,6 +210,10 @@ void GenericProxy_client::read_objects_slices2(
     const vector<proxy_protocol::ObjectSlices> &slices,
     const consistent_read consistent_read,
     vector<proxy_protocol::object_info> &object_infos) {
+
+  if (slices.size() == 0) {
+    return;
+  }
   _expires_from_now(_expiry_time);
 
   message_builder mb;

@@ -231,7 +231,6 @@ module AsdMgmt = struct
                capacity : int64 ref;
                limit : int64;
                mutable full : bool; (* override *)
-               rora_port : int option;
              }
     let _next_msg_id =
       Slice.wrap_string Osd_keys.AlbaInstance.next_msg_id
@@ -240,11 +239,9 @@ module AsdMgmt = struct
           ~latest_disk_usage
           ~capacity
           ~limit
-          ~rora_port
       = { latest_disk_usage; capacity;
           limit;
           full=false;
-          rora_port
         }
 
     let updates_allowed t (updates:Update.t list) =

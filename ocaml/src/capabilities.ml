@@ -16,37 +16,83 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
  *)
 
-
+open Prelude
 
 module OsdCapabilities = struct
   type capability =
     | CMultiGet2
     | CPartialGet
-    | CRoraFetcher of int [@@deriving show]
+    | CRoraFetcher of int                         (* port *)
+    | CRoraFetcher2 of string list * int * string (* ips * port * transport *)
+  [@@deriving show]
 
   let capability_to buf c =
-    let version = 1 in
-    Llio2.WriteBuffer.int8_to buf version;
+    let module L = Llio2.WriteBuffer in
+    let write_version version =
+      L.int8_to buf version
+    in
     match c with
-    | CMultiGet2     -> Llio2.WriteBuffer.int8_to buf 1
-    | CPartialGet    -> Llio2.WriteBuffer.int8_to buf 2
-    | CRoraFetcher p -> Llio2.WriteBuffer.int8_to buf 3;
-                        Llio2.WriteBuffer.int_to buf p
+    | CMultiGet2     -> write_version 1;
+                        L.int8_to buf 1
+    | CPartialGet    -> write_version 1;
+                        L.int8_to buf 2
+    | CRoraFetcher p -> write_version 1;
+                        L.int8_to buf 3;
+                        L.int_to buf p
+    | CRoraFetcher2 (ips, port, transport) ->
+       write_version 2;
+       L.serialize_with_length
+         buf
+         (fun buf () ->
+          L.int8_to buf 4;
+          L.list_to L.string_to buf ips;
+          L.int_to buf port;
+          L.string_to buf transport)
+         ()
 
   let capability_from buf =
-    let version = Llio2.ReadBuffer.int8_from buf in
-    assert (version = 1);
-    let tag = Llio2.ReadBuffer.int8_from buf in
-    match tag with
-    | 1 -> CMultiGet2
-    | 2 -> CPartialGet
-    | 3 -> let port = Llio2.ReadBuffer.int_from buf in
-           CRoraFetcher port
-    | k -> Prelude.raise_bad_tag "asd_capability" k
+    let module L = Llio2.ReadBuffer in
+    let inner buf =
+      let tag = L.int8_from buf in
+      match tag with
+      | 1 -> `Ok CMultiGet2
+      | 2 -> `Ok CPartialGet
+      | 3 -> let port = L.int_from buf in
+             `Ok (CRoraFetcher port)
+      | 4 ->
+         let ips = L.list_from L.string_from buf in
+         let port = L.int_from buf in
+         let transport = L.string_from buf in
+         `Ok (CRoraFetcher2 (ips, port, transport))
+      | k -> `BadTag k
+    in
+    let version = L.int8_from buf in
+    match version with
+    | 1 ->
+       begin
+         match inner buf with
+         | `Ok x -> `Ok x
+         | `BadTag k -> raise_bad_tag "asd_capability" k
+       end
+    | 2 ->
+      L.deserialize_length_prefixed
+        inner
+        buf
+    | k -> raise_bad_tag "OsdCapabilities/version" k
 
-  type t = capability Prelude.counted_list
+
+  type t = capability Prelude.counted_list [@@deriving show]
   let to_buffer   = Llio2.WriteBuffer.counted_list_to  capability_to
-  let from_buffer = Llio2.ReadBuffer.counted_list_from capability_from
+  let from_buffer buf =
+    let (_, caps) = Llio2.ReadBuffer.counted_list_from capability_from buf in
+    let caps' =
+      List.map_filter
+        (function
+          | `Ok cap -> Some cap
+          | `BadTag _ -> None)
+        caps
+    in
+    List.length caps', caps'
 
   let deser = from_buffer,to_buffer
   let default = (0,[])

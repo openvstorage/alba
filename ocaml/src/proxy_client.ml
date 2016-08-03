@@ -41,7 +41,7 @@ class proxy_client fd =
   let do_request code serialize_request request response_deserializer =
     let module Llio = Llio2.WriteBuffer in
     let buf =
-      Llio.serialize_with_length
+      Llio.serialize_with_length'
         (Llio.pair_to
            Llio.int_to
            serialize_request)
@@ -146,6 +146,8 @@ class proxy_client fd =
     method osd_view = self # request OsdView ()
 
     method get_client_config = self # request GetClientConfig ()
+
+    method osd_info = self # request OsdInfo ()
   end
 
 let _prologue fd magic version =

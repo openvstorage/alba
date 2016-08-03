@@ -449,6 +449,26 @@ let proxy_osd_view_cmd =
         $ verbose),
   Term.info "proxy-osd-view" ~doc:"this proxy's view on osds"
 
+let proxy_osd_info host port transport verbose =
+  proxy_client_cmd_line
+    host port transport ~to_json:false ~verbose
+    (fun client ->
+     client # osd_info >>= fun (_, r) ->
+     Lwt_io.printl
+       ([%show :
+            (Int32.t
+             * Nsm_model.OsdInfo.t
+             * Capabilities.OsdCapabilities.t)
+              list]
+          r)
+    )
+
+let proxy_osd_info_cmd =
+  Term.(pure proxy_osd_info
+        $ host $ port 10000 $transport
+        $ verbose),
+  Term.info "proxy-osd-info" ~doc:"request osd-info from the proxy"
+
 let proxy_client_cfg host port transport verbose =
   proxy_client_cmd_line
     host port transport ~to_json:false ~verbose
@@ -480,4 +500,5 @@ let cmds = [
   proxy_get_version_cmd;
   proxy_osd_view_cmd;
   proxy_client_cfg_cmd;
+  proxy_osd_info_cmd;
 ]

@@ -71,12 +71,13 @@ void OsdAccess::update(std::vector<std::pair<osd_t, info_caps>> &infos) {
   }
 }
 
-int OsdAccess::read_osds_slices(
-    std::map<osd_t, std::vector<asd_slice>> &per_osd) {
+int
+OsdAccess::read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   int rc = 0;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     auto &osd_slices = item.second;
+    // TODO this could be done in parallel
     rc = _read_osd_slices(osd, osd_slices);
     if (rc) {
       break;
@@ -98,18 +99,30 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     const auto &ic = it->second;
     const auto &osd_info = ic.first;
     const auto &osd_caps = ic.second;
-    std::string transport_name("tcp");
-    if (osd_info->use_rdma) {
-      transport_name = "rdma";
+    std::string transport_name;
+    if (boost::none == osd_caps->rora_transport) {
+      if (osd_info->use_rdma) {
+        transport_name = "rdma";
+      } else {
+        transport_name = "tcp";
+      }
+    } else {
+      transport_name = *osd_caps->rora_transport;
     }
-    if (boost::none == osd_caps->port) {
+    if (boost::none == osd_caps->rora_port) {
       ALBA_LOG(DEBUG, "osd " << osd << " has no rora port. returning -1");
       return -1;
     }
 
-    int backdoor_port = *osd_caps->port;
+    int backdoor_port = *osd_caps->rora_port;
 
-    std::string &ip = osd_info->ips[0];
+    std::string ip;
+    if (osd_caps->rora_ips != boost::none) {
+      // TODO randomize the ip used here
+      ip = (*osd_caps->rora_ips)[0];
+    } else {
+      ip = osd_info->ips[0];
+    }
     ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
                            << " port: " << backdoor_port);
     int err =

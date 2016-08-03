@@ -417,16 +417,17 @@ let execute_query : type req res.
                          DirectoryInfo.t ->
                          AsdMgmt.t ->
                          AsdStatistics.t ->
+                         Capabilities.OsdCapabilities.capability counted_list ->
                          (req, res) Protocol.query ->
                          req ->
                          (Llio2.WriteBuffer.t * (Net_fd.t ->
                                                  unit Lwt.t)) Lwt.t
-  = fun kv io_sched dir_info mgmt stats q ->
+  = fun kv io_sched dir_info mgmt stats capabilities q ->
 
     let open Protocol in
     let module Llio = Llio2.WriteBuffer in
     let serialize_with_length res =
-      Llio.serialize_with_length
+      Llio.serialize_with_length'
         (Llio.pair_to
            Llio.int_to
            (Protocol.query_response_serializer q))
@@ -680,18 +681,7 @@ let execute_query : type req res.
        return' (mgmt.latest_disk_usage, !(mgmt.capacity))
     | Capabilities ->
        fun () ->
-       let open Capabilities.OsdCapabilities in
-       let result0 = [CMultiGet2;CPartialGet] in
-       let len0 = List.length result0 in
-
-       let result =
-         match mgmt.AsdMgmt.rora_port with
-         | None   -> (len0, result0)
-         | Some p ->
-            let result1 = (CRoraFetcher p):: result0  in
-            (len0 + 1, result1)
-       in
-       return' result
+       return' capabilities
 
 exception ConcurrentModification
 
@@ -1126,7 +1116,7 @@ let done_writing (nfd:Net_fd.t) = Lwt.return_unit
 let asd_protocol
       ?cancel
       kv ~release_fnr ~slow io_sched
-      dir_info stats ~mgmt
+      dir_info stats ~mgmt ~capabilities
       ~get_next_fnr asd_id
       nfd
   =
@@ -1142,7 +1132,7 @@ let asd_protocol
           ?(write_extra=done_writing)
           serializer res =
       let res_s =
-        Llio.serialize_with_length
+        Llio.serialize_with_length'
           (Llio.pair_to
              Llio.int_to
              serializer)
@@ -1152,7 +1142,7 @@ let asd_protocol
     in
     let return_error error =
       let res =
-        Llio.serialize_with_length
+        Llio.serialize_with_length'
           Protocol.Error.serialize
           error
       in
@@ -1164,7 +1154,7 @@ let asd_protocol
        begin match command with
              | Protocol.Wrap_query q ->
                 let req = Protocol.query_request_deserializer q buf in
-                execute_query kv io_sched dir_info mgmt stats q req
+                execute_query kv io_sched dir_info mgmt stats capabilities q req
              | Protocol.Wrap_update u ->
                 let req = Protocol.update_request_deserializer u buf in
                 execute_update
@@ -1305,15 +1295,17 @@ class check_garbage_from_advancer check_garbage_from kv =
       end
   end
 
-let _rora_server = ref None
+let _rora_server = ref []
 
 let run_server
       ?cancel
       ?(write_blobs = true)
       (hosts:string list)
       ~(port:int option)
-      ~(rora_port : int option)
       ~(transport: Net_fd.transport)
+      ~rora_ips
+      ~(rora_port : int option)
+      ~(rora_transport : Net_fd.transport)
       (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1343,7 +1335,9 @@ let run_server
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
   Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls_config) >>= fun () ->
-  Lwt_log.debug_f "transport:%s" ([%show: Net_fd.transport] transport) >>= fun () ->
+  Lwt_log.debug_f "transport:%s, rora_transport:%s"
+                  ([%show: Net_fd.transport] transport)
+                  ([%show: Net_fd.transport] rora_transport) >>= fun () ->
   let tls =
     match tls_config with
     | None -> (None: Tls.t option)
@@ -1384,14 +1378,12 @@ let run_server
   let () = Rora_server.register_rocksdb db in
 
   let maybe_shutdown_rora_server () =
-    match !_rora_server with
-    | None -> Lwt.return_unit
-    | Some w ->
-       begin
-         Lwt_log.fatal "closing rora server" >>= fun () ->
-         Lwt.wakeup w ();
-         Lwt.return_unit
-       end
+    Lwt_list.iter_p
+      (fun w ->
+       Lwt_log.fatal "closing rora server" >>= fun () ->
+       Lwt.wakeup w ();
+       Lwt.return_unit)
+      !_rora_server
   in
   let endgame () =
     maybe_shutdown_rora_server() >>= fun () ->
@@ -1639,7 +1631,27 @@ let run_server
   let mgmt = AsdMgmt.make ~latest_disk_usage
                           ~capacity
                           ~limit
-                          ~rora_port
+  in
+
+  let capabilities =
+    let open Capabilities.OsdCapabilities in
+    let result0 = [CMultiGet2;CPartialGet] in
+    let len0 = List.length result0 in
+
+    match rora_port with
+    | None -> (len0, result0)
+    | Some p ->
+       let rora_transport' = Rora_server.transport_s rora_transport in
+       let cap =
+         (* try to send old style capability for backwards compatibility when possible *)
+         if rora_transport = transport
+            && rora_ips = None && List.length hosts = 1
+         then
+           CRoraFetcher p
+         else
+           CRoraFetcher2 (Option.get_some_default hosts rora_ips, p, rora_transport')
+       in
+       (len0 + 1, cap :: result0)
   in
 
   let protocol nfd =
@@ -1652,6 +1664,7 @@ let run_server
       dir_info
       stats
       ~mgmt
+      ~capabilities
       ~get_next_fnr
       asd_id nfd
   in
@@ -1679,18 +1692,14 @@ let run_server
     | None -> threads
     | Some port ->
        begin
-         let host = match List.hd hosts with
-           | None -> "127.0.0.1"
-           | Some h -> h
-         in
-         let sleeper, awakener = Lwt.wait() in
-         let t =
+         let make_t host =
+           let sleeper, awakener = Lwt.wait() in
            Lwt_log.debug_f "starting rora server host:%s port:%i" host port
            >>= fun () ->
            let num_cores = 2 in
            let queue_depth = 8 in
            let handle = Rora_server.start
-                          transport
+                          rora_transport
                           host
                           port
                           num_cores
@@ -1699,12 +1708,17 @@ let run_server
                           (String.length files_path)
                           log_level
            in
-           let () = _rora_server := Some awakener in
+           let () = _rora_server := awakener :: !_rora_server in
            Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->
            sleeper  >>= fun () ->
            let _ = Rora_server.stop handle in
            Lwt.return_unit
-         in t:: threads
+         in
+         List.rev_append
+           (List.map
+              make_t
+              (Option.get_some_default hosts rora_ips))
+           threads
        end
   in
   let maybe_add_tls_server threads =

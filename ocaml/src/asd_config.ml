@@ -27,6 +27,11 @@ module Config = struct
     ips : (string list         [@default []]);
     port :(int option          [@default None]);
     transport : (string        [@default "tcp"]);
+
+    rora_ips : (string list option [@default None]);
+    rora_port : (int option [@default None]);
+    rora_transport : (string option [@default None]);
+
     node_id : string;
     home : string;
     log_level : string;
@@ -47,7 +52,6 @@ module Config = struct
     use_fallocate: (bool [@default true]);
 
     rocksdb_block_cache_size : (int option [@default None]);
-    rora_port : ( int option [@default None]);
   } [@@deriving yojson, show]
 end
 

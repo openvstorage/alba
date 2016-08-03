@@ -24,6 +24,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <iostream>
 #include <vector>
 #include <memory>
+#include <boost/optional.hpp>
 
 namespace alba {
 namespace stuff {
@@ -73,6 +74,16 @@ std::ostream &operator<<(std::ostream &os, const std::vector<T> &ts) {
   }
   os << "}";
 
+  return os;
+}
+
+template <typename T>
+std::ostream &operator<<(std::ostream &os, const boost::optional<T> &ot) {
+  if (boost::none == ot) {
+    os << "None";
+  } else {
+    os << "(Some " << *ot << ")";
+  }
   return os;
 }
 }

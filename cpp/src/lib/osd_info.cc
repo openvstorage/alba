@@ -53,10 +53,16 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
     uint8_t version;
     from(m, version);
 
-    if (version != 1) {
+    uint32_t length;
+    if (version == 1) {
+      length = 0;
+    } else if (version == 2) {
+      from(m, length);
+    } else {
       throw deserialisation_exception(
           "unexpected version while deserializing OsdCapabilities");
     }
+    uint32_t pos0 = m.get_pos();
 
     uint8_t tag;
     from(m, tag);
@@ -66,9 +72,34 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
     case 3: {
       uint32_t port;
       from(m, port);
-      caps.port.emplace(port);
+      caps.rora_port.emplace(port);
     }; break;
-    default: { throw deserialisation_exception("OsdCapabilities"); };
+    case 4: {
+      std::vector<std::string> rora_ips;
+      from(m, rora_ips);
+      caps.rora_ips.emplace(rora_ips);
+      uint32_t port;
+      from(m, port);
+      caps.rora_port.emplace(port);
+      std::string transport;
+      from(m, transport);
+      caps.rora_transport.emplace(transport);
+    }
+    default: {
+      if (length == 0) {
+        throw deserialisation_exception("OsdCapabilities");
+      }
+    };
+    }
+
+    if (length != 0) {
+      uint32_t pos1 = m.get_pos();
+      uint32_t actual_length = pos1 - pos0;
+      if (actual_length > length) {
+        throw deserialisation_exception("OsdCapabilities");
+      } else if (actual_length < length) {
+        m.skip(length - actual_length);
+      }
     }
   }
 }
@@ -83,16 +114,11 @@ std::ostream &operator<<(std::ostream &os, const OsdInfo &info) {
 }
 
 std::ostream &operator<<(std::ostream &os, const OsdCapabilities &caps) {
-  os << "OsdCapabilities( port= ";
-
-  if (boost::none == caps.port) {
-    os << "None";
-  } else {
-    int port = *caps.port;
-    os << "Some " << port;
-  }
-
-  os << ")";
+  using alba::stuff::operator<<;
+  os << "OsdCapabilities( rora_port= " << caps.rora_port
+     << ", rora_transport= " << caps.rora_transport
+     << ", rora_ips=" << caps.rora_ips
+     << ")";
   return os;
 }
 }

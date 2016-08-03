@@ -54,7 +54,7 @@ class client (fd:Net_fd.t) id =
       (fun () ->
        let module Llio = Llio2.WriteBuffer in
        let buf =
-         Llio.serialize_with_length
+         Llio.serialize_with_length'
            (Llio.pair_to
               Llio.int32_to
               serialize_request)

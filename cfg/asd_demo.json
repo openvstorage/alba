@@ -20,7 +20,10 @@
     "port": 10000,
 
     // optional backdoor for the volumedriver to fetch fragments directly
-    //"rora_port": 11000,
+    // "rora_ips" : ["x.y.z.q"], // optional. when not specified the regular ips are used
+    // "rora_port": 11000,
+    // "rora_transport" : "tcp", // optional, either 'tcp' or 'rdma',
+    //                              default is the value of 'transport'
 
     // optional asd_id is optional
     "asd_id" : "a globally unique id for the asd"

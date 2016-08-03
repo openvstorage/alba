@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Prelude
 open Cmdliner
 open Lwt.Infix
 open Cli_common
@@ -33,7 +34,7 @@ let asd_start cfg_url slow log_sinks =
     | `Ok cfg ->
 
        let ips,         port,      rora_port,
-           transport, home,
+           rora_ips, transport, rora_transport, home,
            node_id,     log_level, asd_id,
            fsync,       limit,     capacity,
            multicast, buffer_size,
@@ -44,7 +45,7 @@ let asd_start cfg_url slow log_sinks =
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.rora_port,
-        cfg.transport, cfg.home,
+        cfg.rora_ips, cfg.transport, cfg.rora_transport, cfg.home,
         cfg.node_id, cfg.log_level, cfg.asd_id,
         cfg.__sync_dont_use,
         cfg.limit, cfg.capacity,
@@ -66,13 +67,18 @@ let asd_start cfg_url slow log_sinks =
           Lwt.fail_with msg
         else Lwt.return ()
       ) >>= fun () ->
-      ( match transport with
+
+      let to_transport prop_name = function
         | "rdma" -> Lwt.return Net_fd.RDMA
         | "tcp"  -> Lwt.return Net_fd.TCP
-        | x -> let msg = "transport needs to be `rdma` or `tcp`" in
+        | x -> let msg = Printf.sprintf "%s needs to be `rdma` or `tcp`" prop_name in
                Lwt_log.fatal msg >>= fun () ->
                Lwt.fail_with msg
-      ) >>= fun transport ->
+      in
+      let rora_transport = Option.get_some_default transport rora_transport in
+      to_transport "transport" transport >>= fun transport ->
+      to_transport "rora_transport" rora_transport >>= fun rora_transport ->
+
       verify_log_level log_level;
       Lwt_log.add_rule "*" (to_level log_level);
 
@@ -111,7 +117,8 @@ let asd_start cfg_url slow log_sinks =
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
       Asd_server.run_server ips ~port ~rora_port
-                            ~transport
+                            ~transport ~rora_transport
+                            ~rora_ips
                             home ~asd_id ~node_id ~slow
                             ~fsync
                             ~limit
