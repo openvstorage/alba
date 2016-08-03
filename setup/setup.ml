@@ -824,7 +824,7 @@ let make_asd_config
 
 
 class asd ?write_blobs ?transport ~ip
-          ?rora_ips ~use_rora ~rora_transport
+          ?rora_ips ~use_rora ?rora_transport
           node_id asd_id alba_bin arakoon_path home
           ~(port:int) ~etcd tls ~log_level
   =
@@ -987,7 +987,7 @@ module Deployment = struct
   let make_osds
         ?(base_port=8000)
         ?write_blobs
-        ?(transport = `Tcp) ~ip ~use_rora ?rora_ips ?rora_transport
+        ?(transport = `None) ~ip ~use_rora ?rora_ips ?rora_transport
         n local_nodeid_prefix base_paths arakoon_path alba_bin
         ~etcd (tls:bool) ~log_level =
     let rec loop asds base_paths j =
@@ -1016,19 +1016,20 @@ module Deployment = struct
             else None
           in
           let to_transport = function
-            | `Tcp -> "tcp"
-            | `Rdma -> "rdma"
+            | `Tcp -> Some "tcp"
+            | `Rdma -> Some "rdma"
+            | `None -> None
             | `Mixed f -> f j
           in
           let asd = new asd
                         ?write_blobs
-                        ~transport:(to_transport transport)
+                        ?transport:(to_transport transport)
                         ~ip
                         ~use_rora
                         ?rora_ips
-                        ~rora_transport:(map_option
-                                           to_transport
-                                           rora_transport)
+                        ?rora_transport:(match rora_transport with
+                                         | None -> None
+                                         | Some x -> to_transport x)
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
@@ -2130,7 +2131,7 @@ module Test = struct
                                       tx.cfg.alba_asd_base_paths
                                       tx.cfg.arakoon_path
                                       ~ip:tx.cfg.ip
-                                      ~use_rora:false ~rora_transport:`Tcp
+                                      ~use_rora:false ~rora_transport:`None
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
                                       false
@@ -2484,12 +2485,12 @@ module Test = struct
     let t = Deployment.make_default
               ~asd_transport:(`Mixed (fun i ->
                                       if i / 2 = 0
-                                      then "tcp"
-                                      else "rdma"))
+                                      then Some "tcp"
+                                      else Some "rdma"))
               ~rora_transport:(`Mixed (fun i ->
                                        if i mod 2 = 0
-                                       then "tcp"
-                                       else "rdma"))
+                                       then Some "tcp"
+                                       else Some "rdma"))
               ~cfg () in
     Deployment.setup t;
     (* TODO
