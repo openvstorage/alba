@@ -58,7 +58,7 @@ module Config = struct
       etcd : ((string * int) list * string) option;
     }
 
-  let make ?(n_osds = 12) ?workspace () =
+  let make ?(n_osds = 12) ?workspace ?use_rora () =
     let home = Sys.getenv "HOME" in
     let workspace =
       match workspace with
@@ -105,7 +105,10 @@ module Config = struct
     let get_bool s = Scanf.sscanf s "%b" (fun x -> x) in
     let tls = env_or_default "ALBA_TLS" "false" |> get_bool in
     let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
-    and alba_rora = env_or_default "ALBA_RORA" "false" |> get_bool
+    and alba_rora =
+      get_some_default
+        (env_or_default "ALBA_RORA" "false" |> get_bool)
+        use_rora
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
     and alba_asd_base_paths =
@@ -774,14 +777,16 @@ type asd_cfg = {
     __warranty_void__write_blobs  : (bool option [@default None]);
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
+    rora_ips : string list option;
     rora_port : int option;
+    rora_transport : string option;
   }[@@deriving yojson]
 
 let make_asd_config
       ?write_blobs
       ?(use_fadvise = true)
       ?(use_fallocate = true)
-      ~use_rora
+      ~use_rora ~rora_transport ?rora_ips
       ~(port:int)
       ?transport
       ~(ip:string option)
@@ -810,19 +815,25 @@ let make_asd_config
    __warranty_void__write_blobs   = write_blobs;
    use_fadvise;
    use_fallocate;
+   rora_ips;
    rora_port;
+   rora_transport;
   }
 
 
 
 
-class asd ?write_blobs ?transport ~ip ~use_rora
-          node_id asd_id alba_bin arakoon_path home ~(port:int) ~etcd tls ~log_level
+class asd ?write_blobs ?transport ~ip
+          ?rora_ips ~use_rora ~rora_transport
+          node_id asd_id alba_bin arakoon_path home
+          ~(port:int) ~etcd tls ~log_level
   =
   let use_tls = tls <> None in
   let asd_cfg = make_asd_config
                   ?write_blobs ?transport ~ip
-                  node_id asd_id home ~port tls ~use_rora ~log_level
+                  node_id asd_id home ~port tls
+                  ~use_rora ?rora_ips ~rora_transport
+                  ~log_level
   in
 
   let config_persister, cfg_url =
@@ -976,7 +987,7 @@ module Deployment = struct
   let make_osds
         ?(base_port=8000)
         ?write_blobs
-        ?transport ~ip ~use_rora
+        ?(transport = `Tcp) ~ip ~use_rora ?rora_ips ?rora_transport
         n local_nodeid_prefix base_paths arakoon_path alba_bin
         ~etcd (tls:bool) ~log_level =
     let rec loop asds base_paths j =
@@ -1004,11 +1015,20 @@ module Deployment = struct
               end
             else None
           in
+          let to_transport = function
+            | `Tcp -> "tcp"
+            | `Rdma -> "rdma"
+            | `Mixed f -> f j
+          in
           let asd = new asd
                         ?write_blobs
-                        ?transport
+                        ~transport:(to_transport transport)
                         ~ip
                         ~use_rora
+                        ?rora_ips
+                        ~rora_transport:(map_option
+                                           to_transport
+                                           rora_transport)
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
@@ -1024,6 +1044,7 @@ module Deployment = struct
   let make_default
         ?__retry_timeout
         ?(cfg = Config.default) ?(base_port=4000)
+        ?asd_transport ?rora_transport
         ?write_blobs ?fragment_cache () =
     let abm =
       let id = "abm"
@@ -1058,8 +1079,10 @@ module Deployment = struct
     let maintenance = new maintenance ?__retry_timeout 0 cfg  (abm # config_url) cfg.etcd in
     let osds = make_osds ~base_port:(base_port*2)
                          ?write_blobs
-                         ?transport ~use_rora:cfg.alba_rora
                          ~ip:cfg.ip
+                         ?transport:asd_transport
+                         ~use_rora:cfg.alba_rora
+                         ?rora_transport
                          cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_asd_base_paths
@@ -2107,7 +2130,7 @@ module Test = struct
                                       tx.cfg.alba_asd_base_paths
                                       tx.cfg.arakoon_path
                                       ~ip:tx.cfg.ip
-                                      ~use_rora:false
+                                      ~use_rora:false ~rora_transport:`Tcp
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
                                       false
@@ -2455,6 +2478,25 @@ module Test = struct
     let (rc:int) = JUnit.rc results in
     rc
 
+  let asd_transport_combos ?(xml=false) ?filter ?dump t =
+    Deployment.kill t;
+    let cfg = Config.make ~n_osds:4 ~use_rora:true () in
+    let t = Deployment.make_default
+              ~asd_transport:(`Mixed (fun i ->
+                                      if i / 2 = 0
+                                      then "tcp"
+                                      else "rdma"))
+              ~rora_transport:(`Mixed (fun i ->
+                                       if i mod 2 = 0
+                                       then "tcp"
+                                       else "rdma"))
+              ~cfg () in
+    Deployment.setup t;
+    (* do a read from proxy,
+     * do a read from c++ client (and it should talk with asd directly!!)
+     *)
+    0
+
 end
 
 
@@ -2479,6 +2521,7 @@ let process_cmd_line () =
       "big_object",      (fun ?xml ?filter ?dump t ->
                           let _ : JUnit.suite = Test.big_object t in
                           0), true;
+      "asd_transport_combos", Test.asd_transport_combos, false;
     ]
   in
   let print_suites () =

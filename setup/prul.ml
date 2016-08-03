@@ -22,6 +22,14 @@ let get_some = function
   | Some x -> x
   | None -> failwith "get_some"
 
+let get_some_default default = function
+  | Some x -> x
+  | None   -> default
+
+let map_option f = function
+  | Some x -> Some (f x)
+  | None   -> None
+
 let peers_s peers =
   String.concat "," (List.map (fun (h,p) -> Printf.sprintf "%s:%i" h p) peers)
 
