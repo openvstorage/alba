@@ -2492,8 +2492,11 @@ module Test = struct
                                        else "rdma"))
               ~cfg () in
     Deployment.setup t;
-    (* do a read from proxy,
-     * do a read from c++ client (and it should talk with asd directly!!)
+    (* TODO
+     * add preset_no_compression with policy 4,0,4,4
+     * new namespace
+     * do benchmark
+     * verify partial read stats on proxy (there should be none!)
      *)
     0
 
