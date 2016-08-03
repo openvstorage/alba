@@ -103,6 +103,8 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     if (boost::none == osd_caps->rora_transport) {
       if (osd_info->use_rdma) {
         transport_name = "rdma";
+      } else {
+        transport_name = "tcp";
       }
     } else {
       transport_name = *osd_caps->rora_transport;
