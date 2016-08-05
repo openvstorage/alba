@@ -1104,14 +1104,14 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              in
 
              let cnt' = cnt + 1 in
-             if cnt' > max_disks_per_node
-             then Err.(failwith
-                         ~payload:(Printf.sprintf
-                                     "Attempting to use %i disks of node %s while max %i permitted (%s)"
-                                     cnt' node_id max_disks_per_node
-                                     ([%show : int32 option list]
-                                        (List.map fst chunk_location)))
-                         Too_many_disks_per_node);
+             (* if cnt' > max_disks_per_node *)
+             (* then Err.(failwith *)
+             (*             ~payload:(Printf.sprintf *)
+             (*                         "Attempting to use %i disks of node %s while max %i permitted (%s)" *)
+             (*                         cnt' node_id max_disks_per_node *)
+             (*                         ([%show : int32 option list] *)
+             (*                            (List.map fst chunk_location))) *)
+             (*             Too_many_disks_per_node); *)
 
              Hashtbl.replace osds_per_node node_id cnt';
              (effective_fragment_count + 1,
