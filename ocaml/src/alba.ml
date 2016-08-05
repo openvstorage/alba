@@ -146,7 +146,7 @@ let alba_show_namespace_cmd =
         $ namespace 0
         $ to_json $ verbose
   ),
-  Term.info "show-namespace" ~doc:"show information about a namespace"
+  Term.info "show-namespace" ~doc:"show information (such as total size, size per osd, and buckets) about a namespace"
 
 let alba_show_namespaces cfg_file tls_config first finc last max reverse to_json verbose =
   let last = Option.map (fun x -> x,true) last in
@@ -276,7 +276,7 @@ let alba_show_namespaces_cmd =
         $ first $ finc $ last $ max $ reverse
         $ to_json $ verbose
   ),
-  Term.info "show-namespaces" ~doc:"information about a range of namespaces"
+  Term.info "show-namespaces" ~doc:"show information (such as total size, size per osd, and buckets) about a range of namespaces"
 
 let alba_upload_object
     cfg_file tls_config
@@ -644,7 +644,7 @@ let alba_get_disk_safety_cmd =
         $ include_decommissioning_as_dead
         $ to_json $ verbose
   ),
-  Term.info "get-disk-safety" ~doc:"get the disk safety"
+  Term.info "get-disk-safety" ~doc:"simulate the available disk safety (how many disks can we still lose before any data is lost) for the given namespaces, assuming the specified osds are lost"
 
 let namespace_recovery_agent
       cfg_file tls_config
