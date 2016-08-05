@@ -7,10 +7,16 @@ export ALBA_HOME=$PWD
 echo ${WORKSPACE}
 export DRIVER=./setup/setup.native
 
-eval `${opam_env}`
+export ARAKOON_BIN=$(which arakoon)
 
-make clean
-make
+if [ -t 1 ];
+then TTY="-t";
+else
+    # this path is taken on jenkins, clean previous builds first
+    TTY="";
+    make clean;
+    make;
+fi
 
 if (${ALBA_USE_ETCD:-false} -eq true)
 then
@@ -22,7 +28,7 @@ ulimit -n 1024
 ulimit -c unlimited
 cat /proc/sys/kernel/core_pattern
 
-case "$1" in
+case "${1-bash}" in
     asd_start)
         ${DRIVER} asd_start || true
         ;;
@@ -50,6 +56,21 @@ case "$1" in
         ;;
     everything_else)
         ${DRIVER} everything_else  || true
+        ;;
+    bash)
+        bash
+        ;;
+    clean)
+        make clean
+        ;;
+    build)
+        make
+        ;;
+    package_deb)
+        DEB_BUILD_OPTIONS=nostrip fakeroot debian/rules clean build binary
+        ;;
+    package_rpm)
+        ./jenkins/package_rpm/030-package.sh
         ;;
     *)
         echo "invalid test suite specified..."

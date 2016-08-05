@@ -47,8 +47,8 @@ let alba_create_preset
     let json = Yojson.Safe.from_string txt in
     let preset' =
       match Alba_json.Preset.of_yojson json with
-      | `Error s -> failwith s
-      | `Ok p -> p
+      | Result.Error s -> failwith s
+      | Result.Ok p -> p
     in
     Alba_json.Preset.to_preset
       preset' >>= fun preset ->
@@ -90,8 +90,8 @@ let alba_update_preset
     let open Albamgr_protocol.Protocol in
     let preset_updates =
       match Preset.Update.of_yojson json with
-      | `Error s -> failwith s
-      | `Ok p -> p
+      | Result.Error s -> failwith s
+      | Result.Ok p -> p
     in
     Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'

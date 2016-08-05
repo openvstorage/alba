@@ -243,7 +243,7 @@ let hosts =
 
 let transport =
   let (tr : Net_fd.transport Arg.converter) =
-    let parser x = match String.lowercase x with
+    let parser x = match String.lowercase_ascii x with
       | "tcp"  -> `Ok Net_fd.TCP
       | "rdma" -> `Ok Net_fd.RDMA
       | x      ->

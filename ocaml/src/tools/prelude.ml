@@ -603,12 +603,12 @@ module Hashtbl = struct
     | `Assoc x ->
        List.map (fun (k, v) -> k,
                                match value_of_yojson v with
-                               | `Ok v -> v
-                               | `Error _ -> assert false)
+                               | Result.Ok v -> v
+                               | Result.Error _ -> assert false)
                 x
        |> from_assoc_list
-       |> fun x -> `Ok x
-    | _ -> `Error "nie goe"
+       |> fun x -> Result.Ok x
+    | _ -> Result.Error "nie goe"
 end
 
 module IntSet = Set.Make(struct type t = int let compare = compare end)
@@ -699,9 +699,9 @@ let pp_timestamp : Format.formatter -> timestamp -> unit =
 let timestamp_to_yojson t = `Float t
 let timestamp_of_yojson = function
   | `Float fs ->
-    `Ok fs
+    Result.Ok fs
   | e ->
-    `Error (Yojson.Safe.to_string e)
+    Result.Error (Yojson.Safe.to_string e)
 
 let _BATCH_SIZE = 200
 

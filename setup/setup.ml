@@ -1386,8 +1386,8 @@ module Deployment = struct
     |> Util.member "result"
     |> show_namespace_result_of_yojson
     |> function
-      | `Error x -> failwith x
-      | `Ok x -> x
+      | Result.Error x -> failwith x
+      | Result.Ok x -> x
 end
 
 module JUnit = struct
@@ -1558,7 +1558,7 @@ module Test = struct
     in
     let cmd =
       ["cd";cfg.alba_home; "&&";
-       "LD_LIBRARY_PATH=./cpp/lib";
+       "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
        Printf.sprintf "ALBA_PROXY_IP=%s" host;
        Printf.sprintf "ALBA_PROXY_PORT=%s" port;
        Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
