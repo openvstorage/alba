@@ -1565,7 +1565,7 @@ module Test = struct
        "./cpp/bin/unit_tests.out";
       ]
     in
-    let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml" ] else cmd in
+    let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml" ] else cmd in
     let cmd3 = match filter with
       | None -> cmd2
       | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
