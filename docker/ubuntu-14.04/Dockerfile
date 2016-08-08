@@ -168,6 +168,23 @@ RUN apt-get update && apt-get install -y --force-yes alba arakoon
 RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
+## This only works from inside the OVS lan...
+# http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201606011734.d6c3c04_amd64.ddeb
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian
+ENV voldrv_version=5.7.2-dev.201606011734.d6c3c04_amd64
+RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
+    && dpkg -i volumedriver-base_${voldrv_version}.deb
+
+RUN wget ${voldrv_jenkins}/volumedriver-pitreplication_${voldrv_version}.deb \
+    && dpkg -i volumedriver-pitreplication_${voldrv_version}.deb
+
+RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \
+    && dpkg -i volumedriver-server_${voldrv_version}.deb
+
+RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
+    && dpkg -i volumedriver-test_${voldrv_version}.deb
+
+
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.profile"
