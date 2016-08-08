@@ -4,7 +4,12 @@ RUN useradd jenkins -u 1500 -g root
 
 RUN echo "deb http://archive.ubuntu.com/ubuntu/ trusty-backports main restricted universe multiverse" > /etc/apt/sources.list.d/trusty-backports-universe.list
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN echo "deb http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
+    > /etc/apt/sources.list.d/boost_repo.list
+RUN echo "deb-src http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
+    > /etc/apt/sources.list.d/boost_src_repo.list
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes \
         build-essential m4 apt-utils \
         libffi-dev libssl-dev \
         libbz2-dev \
@@ -36,7 +41,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libgflags-dev \
         sudo \
         libtool \
-        libboost-all-dev \
+        libboost1.57-all-dev libboost1.57-all \
         fuse \
         sysstat \
         ncurses-dev
@@ -117,6 +122,18 @@ RUN git clone https://github.com/domsj/orocksdb.git \
     && ./install_rocksdb.sh \
     && make build install
 
+
+RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
+RUN apt-get update && apt-get -y --allow-unauthenticated install \
+      clang-3.5 \
+      liblttng-ust0 librdmacm1 libtokyocabinet9 \
+      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
+      libhiredis0.10 liblz4-1 libxio-dev libxio0 \
+      omniorb-nameserver \
+      libunwind8-dev libaio1 libaio1-dbg libaio-dev \
+      libz-dev libbz2-dev \
+      libgoogle-glog-dev libibverbs-dev
+
 #for now, install ordma manually
 RUN apt-get update && apt-get -y install librdmacm-dev
 RUN git clone https://github.com/toolslive/ordma.git \
@@ -124,25 +141,6 @@ RUN git clone https://github.com/toolslive/ordma.git \
     && git checkout tags/0.0.2 \
     && eval `${opam_env}` \
     && make install
-
-
-RUN echo "deb http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
-    > /etc/apt/sources.list.d/boost_repo.list
-RUN echo "deb-src http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
-    > /etc/apt/sources.list.d/boost_src_repo.list
-run apt-get update && apt-get -y --force-yes install \
-    libboost1.57-all-dev libboost1.57-all
-
-RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
-RUN apt-get update && apt-get -y --allow-unauthenticated install \
-      clang-3.5 \
-      liblttng-ust0 librdmacm1 libtokyocabinet9 \
-      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
-      libhiredis0.13 liblz4-1 libxio-dev libxio0 \
-      omniorb-nameserver \
-      libunwind8-dev libaio1 libaio1-dbg libaio-dev \
-      libz-dev libbz2-dev \
-      libgoogle-glog-dev libibverbs-dev
 
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
@@ -187,7 +185,11 @@ RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
 
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.profile"
+
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.profile"
+RUN su - -c "echo 'VOLDRV_TEST=volumedriver_test; export VOLDRV_TEST;' >> /home/jenkins/.profile"
+RUN su - -c "echo 'VOLDRV_BACKEND_TEST=backend_test; export VOLDRV_BACKEND_TEST;' >> /home/jenkins/.profile"
+
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 ENTRYPOINT ["/home/jenkins/alba/docker/docker-entrypoint.sh"]
