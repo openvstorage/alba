@@ -10,9 +10,9 @@ then
     sed -i "s/x:1500:/x:${UID}:/" /etc/passwd
 
     chown ${UID} /home/jenkins
-    chown ${UID} /home/jenkins/OPAM
+    chown ${UID} /home/jenkins/OPAM   || true
     chown ${UID} /home/jenkins/.bash* || true
 fi
 
 # finally execute the command the user requested
-exec sudo -i -u jenkins "$@"
+exec sudo arakoon_url=$arakoon_url alba_url=$alba_url -i -u jenkins "$@"

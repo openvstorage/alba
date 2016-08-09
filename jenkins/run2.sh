@@ -14,8 +14,8 @@ then TTY="-t";
 else
     # this path is taken on jenkins, clean previous builds first
     TTY="";
-    make clean;
-    make;
+    make clean || true;
+    make || true;
 fi
 
 if (${ALBA_USE_ETCD:-false} -eq true)
@@ -56,6 +56,12 @@ case "${1-bash}" in
         ;;
     everything_else)
         ${DRIVER} everything_else  || true
+        ;;
+    test_integrate_deb)
+        ./jenkins/run.sh test_integrate_deb
+        ;;
+    test_integrate_rpm)
+        ./jenkins/run.sh test_integrate_rpm
         ;;
     bash)
         bash

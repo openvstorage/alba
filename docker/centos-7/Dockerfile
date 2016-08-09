@@ -13,7 +13,7 @@ RUN yum -y install python-devel
 
 RUN useradd jenkins -u 1001 -g root
 
-RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-7.noarch.rpm
+RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-8.noarch.rpm
 RUN yum -y update
 RUN yum -y install python-pip openssl-devel gmp-devel which zlib-devel ncurses-devel bzip2
 
