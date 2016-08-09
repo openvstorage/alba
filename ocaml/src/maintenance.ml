@@ -242,7 +242,7 @@ class client ?(retry_timeout = 60.)
              List.iter
                (fun (osd_id, osd_info) ->
                 let open Nsm_model.OsdInfo in
-                if not (Automatic_repair.recent_enough past_date osd_info.write
+                if not (Automatic_repair.recent_enough past_date osd_info.read
                         && Automatic_repair.recent_enough past_date osd_info.write)
                    && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
                 then Hashtbl.replace maybe_dead_osds osd_id ()
