@@ -3,16 +3,20 @@ dist: trusty
 language: generic
 
 env:
-  - SUITE=system2
-#  - SUITE=system2 ALBA_TLS=true
+  - SUITE=ocaml
+#  - SUITE=ocaml ALBA_TLS=true
   - SUITE=disk_failures
   - SUITE=recovery
 
-before_install: ./travis.sh before_install
 install:        ./travis.sh install
 script:         ./travis.sh script
 
-# caches rocksdb, but loading cache takes ~180s :(
-#cache:
-#  directories:
-#    /usr/local/lib
+services:
+  - docker
+
+cache:
+  directories:
+    - ~/cache
+  timeout:
+    1000
+before_cache: ./travis.sh before_cache
