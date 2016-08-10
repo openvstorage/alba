@@ -56,7 +56,7 @@ case "${1-bash}" in
         ;;
     recovery)
         find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
-        fab dev.run_tests_recovery
+        fab dev.run_tests_recovery:xml=True
         ;;
     everything_else)
         ${DRIVER} everything_else  || true

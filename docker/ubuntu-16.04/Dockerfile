@@ -157,6 +157,8 @@ RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
 RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
     && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
 
+RUN pip install fabric junit-xml
+
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.profile"

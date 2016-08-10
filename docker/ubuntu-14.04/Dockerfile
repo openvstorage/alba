@@ -185,6 +185,7 @@ RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \
 RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
     && dpkg -i volumedriver-test_${voldrv_version}.deb
 
+RUN pip install fabric junit-xml
 
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.profile"
