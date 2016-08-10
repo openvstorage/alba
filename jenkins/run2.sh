@@ -54,6 +54,10 @@ case "${1-bash}" in
     compat)
         ${DRIVER} compat || true
         ;;
+    recovery)
+        find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
+        fab dev.run_tests_recovery
+        ;;
     everything_else)
         ${DRIVER} everything_else  || true
         ;;
