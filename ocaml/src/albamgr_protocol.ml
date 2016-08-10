@@ -187,16 +187,24 @@ module Protocol = struct
             in
             conn_info'
           in
+          let get_cfg cfg =
+            match albamgr_cfg' with
+            | None -> cfg
+            | Some cfg' ->
+               (* cluster_id shouldn't change! *)
+               assert (fst cfg = fst cfg');
+               cfg'
+          in
           match osd.kind with
           | Asd (conn_info, asd_id)   -> Asd (get_conn_info' conn_info, asd_id)
           | Kinetic (conn_info, k_id) -> Kinetic (get_conn_info' conn_info, k_id)
           | Alba  ({ cfg; _ } as x) -> Alba
                                          { x with
-                                           cfg = Option.get_some_default cfg albamgr_cfg';
+                                           cfg = get_cfg cfg;
                                          }
           | Alba2 ({ cfg; _ } as x) -> Alba2
                                          { x with
-                                           cfg = Option.get_some_default cfg albamgr_cfg';
+                                           cfg = get_cfg cfg;
                                          }
         in
         let max_n = 10 in
