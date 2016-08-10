@@ -1386,8 +1386,8 @@ module Deployment = struct
     |> Util.member "result"
     |> show_namespace_result_of_yojson
     |> function
-      | `Error x -> failwith x
-      | `Ok x -> x
+      | Result.Error x -> failwith x
+      | Result.Ok x -> x
 end
 
 module JUnit = struct
@@ -1558,14 +1558,14 @@ module Test = struct
     in
     let cmd =
       ["cd";cfg.alba_home; "&&";
-       "LD_LIBRARY_PATH=./cpp/lib";
+       "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
        Printf.sprintf "ALBA_PROXY_IP=%s" host;
        Printf.sprintf "ALBA_PROXY_PORT=%s" port;
        Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
        "./cpp/bin/unit_tests.out";
       ]
     in
-    let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml" ] else cmd in
+    let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml" ] else cmd in
     let cmd3 = match filter with
       | None -> cmd2
       | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
@@ -1652,7 +1652,7 @@ module Test = struct
         (*"--loglevel=error"; *)
       ]
     in
-    let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml"] else cmd in
+    let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml"] else cmd in
     let cmd3 = match filter with
       | None -> cmd2
       | Some dump -> cmd2 @ []
@@ -1680,7 +1680,7 @@ module Test = struct
                "--arakoon-binary-path"; cfg.arakoon_bin;
                "--loglevel=error"]
     in
-    let cmd2 = if xml then cmd @ ["--gtest_output=xml:gtestresults.xml"] else cmd in
+    let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml"] else cmd in
     let cmd3 = match filter with
       | None -> cmd2 @ ["--gtest_filter=SimpleVolumeTests/SimpleVolumeTest*"]
       | Some filter -> cmd2 @ ["--gtest_filter=" ^ filter]

@@ -76,8 +76,8 @@ let test_example_config () =
     Lwt_extra2.read_file file >>= fun txt ->
     let json = Yojson.Safe.from_string txt in
     let caches' = match t_list_of_yojson json with
-      | `Error e -> failwith e
-      | `Ok r -> r
+      | Result.Error e -> failwith e
+      | Result.Ok r -> r
     in
     Lwt_log.debug_f "Expected %s, got %s"
                     (show_t_list caches)

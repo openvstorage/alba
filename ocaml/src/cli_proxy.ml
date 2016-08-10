@@ -53,9 +53,9 @@ let retrieve_cfg_from_string txt =
   Lwt_log.ign_info_f "Found the following config: %s" txt ;
   let config = Config.of_yojson (Yojson.Safe.from_string txt) in
   let () = match config with
-   | `Error err ->
+   | Result.Error err ->
       Lwt_log.ign_warning_f "Error while parsing cfg file: %s" err
-   | `Ok cfg ->
+   | Result.Ok cfg ->
       Lwt_log.ign_info_f
         "Interpreted the config as: %s"
         ([%show : Config.t] cfg)
@@ -69,8 +69,8 @@ let retrieve_cfg cfg_url =
 let proxy_start (cfg_url:Url.t) log_sinks =
   let t () =
     retrieve_cfg cfg_url >>= function
-    | `Error err -> failwith err
-    | `Ok cfg ->
+    | Result.Error err -> failwith err
+    | Result.Ok cfg ->
        let url_from_cfg cfg =
          let open Config in
          let abm_cfg_url = Prelude.Option.map Url.make cfg.albamgr_cfg_url in
@@ -152,9 +152,9 @@ let proxy_start (cfg_url:Url.t) log_sinks =
             let handle () =
               Lwt_log.info_f "Received USR1, reloading log level from config file" >>= fun () ->
               retrieve_cfg cfg_url >>= function
-              | `Error err ->
+              | Result.Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
-              | `Ok cfg ->
+              | Result.Ok cfg ->
                  Alba_arakoon.config_from_url albamgr_cfg_url >>= fun abm_cfg' ->
                  let () = abm_cfg_ref := abm_cfg' in
                  let log_level = cfg.Config.log_level in

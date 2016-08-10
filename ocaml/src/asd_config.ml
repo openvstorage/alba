@@ -61,9 +61,9 @@ let retrieve_cfg_from_string cfg_string =
   let config = Config.of_yojson (Yojson.Safe.from_string cfg_string) in
 
   (match config with
-   | `Error err ->
+   | Result.Error err ->
       Lwt_log.ign_warning_f "Error while parsing cfg file: %s" err
-   | `Ok cfg ->
+   | Result.Ok cfg ->
       Lwt_log.ign_info_f
         "Interpreted the config as: %s"
         ([%show : Config.t] cfg))

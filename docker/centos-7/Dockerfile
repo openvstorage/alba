@@ -13,16 +13,7 @@ RUN yum -y install python-devel
 
 RUN useradd jenkins -u 1001 -g root
 
-RUN mkdir /home/alba
-RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
-RUN sh ./opam_installer.sh /usr/local/bin 4.02.3
-
-ENV opam_env='opam config env --root=/home/alba/OPAM'
-RUN opam init --root=/home/alba/OPAM --comp 4.02.3
-
-
-
-RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-7.noarch.rpm
+RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-8.noarch.rpm
 RUN yum -y update
 RUN yum -y install python-pip openssl-devel gmp-devel which zlib-devel ncurses-devel bzip2
 
@@ -43,6 +34,21 @@ RUN mv cudf_remote_proxy /usr/local/bin/
 
 ENV OPAMEXTERNALSOLVER="cudf_remote_proxy %{input}% %{output}% %{criteria}%"
 
+RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
+
+env ocaml_version=4.03.0
+RUN sh ./opam_installer.sh /usr/local/bin ${ocaml_version}
+
+ENV opam_root=/home/jenkins/OPAM
+ENV opam_env="opam config env --root=${opam_root}"
+RUN opam init --root=${opam_root} --comp ${ocaml_version}
+
+RUN git clone git://github.com/janestreet/opam-repository.git /janestreet-opam-repo && \
+    cd /janestreet-opam-repo && \
+    git checkout b98fd1964856f0c0b022a42ec4e6fc6c7bad2e81
+RUN eval `${opam_env}` && \
+    opam repo --root=${opam_root} -k local add janestreet /janestreet-opam-repo
+
 RUN eval `${opam_env}` && \
     opam update && \
     opam install -y \
@@ -52,8 +58,10 @@ RUN eval `${opam_env}` && \
         snappy \
         sexplib \
         bisect \
-        lwt.2.5.1 \
-        camltc \
+        lwt.2.5.2 \
+        camltc.0.9.3 \
+        ocplib-endian.1.0 \
+        quickcheck.1.0.2 \
         cstruct \
         ctypes \
         ctypes-foreign \
@@ -66,12 +74,12 @@ RUN eval `${opam_env}` && \
         depext \
         kinetic-client \
         tiny_json \
-        ppx_deriving.3.1 \
+        ppx_deriving \
         ppx_deriving_yojson \
-        core.113.00.00 \
-        uri.1.9.1 \
-        result \
-        redis.0.3.1
+        core.114.05+21 \
+        redis.0.3.1 \
+        uri.1.9.2 \
+        result
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue
@@ -138,10 +146,10 @@ RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.9.8
+RUN cd arakoon && git pull && git checkout d0487cbaef2a3c7c2bdfbc75e31a57675d73795e
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
-    && export PREFIX=${opam_root}/4.02.3 \
+    && export PREFIX=${opam_root}/${ocaml_version} \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
@@ -154,7 +162,7 @@ RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
 RUN git clone https://github.com/domsj/orocksdb.git \
     && eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout cb393e5c86d2f54ca1787b310764063f68f564e4 \
+    && git checkout 26c45963f1f305825785592efb41b50192a07491 \
     && ./install_rocksdb.sh \
     && cp /usr/local/lib/librocksdb.so* /lib64/ \
     && sudo ldconfig -v \
@@ -200,10 +208,11 @@ ENV LD_LIBRARY_PATH=/usr/lib64:/usr/local/lib
 ENV GOBJFS_HOME=/gobjfs/
 
 RUN yum -y install iproute
-ENV opam_env='opam config env --root=/home/alba/OPAM'
-ENV ARAKOON_BIN=arakoon
 
+RUN pip install fabric junit-xml
 
-CMD eval `${opam_env}` \
-    && echo ${SUITE} \
-    && ./jenkins/run.sh ${SUITE}
+RUN chmod ugoa+rxw -R ${opam_root}
+RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.bash_profile"
+RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.bash_profile"
+
+ENTRYPOINT ["/home/jenkins/alba/docker/docker-entrypoint.sh"]

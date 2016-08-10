@@ -100,9 +100,9 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
     let () = Lwt_log.ign_info_f "Found the following config: %s" txt  in
     let config = Config.of_yojson (Yojson.Safe.from_string txt) in
     let () = match config with
-     | `Error err ->
+     | Result.Error err ->
        Lwt_log.ign_warning_f "Error while parsing cfg file: %s" err
-     | `Ok cfg ->
+     | Result.Ok cfg ->
        Lwt_log.ign_info_f
          "Interpreted the config as: %s"
          ([%show : Config.t] cfg)
@@ -115,8 +115,8 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
 
   let t () =
     retrieve_cfg cfg_url >>= function
-    | `Error err -> Lwt.fail_with err
-    | `Ok cfg ->
+    | Result.Error err -> Lwt.fail_with err
+    | Result.Ok cfg ->
       let open Config in
       let log_level                           = cfg.log_level
       and fragment_cache_cfg                  = cfg.fragment_cache
@@ -150,9 +150,9 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
             let handle () =
               Lwt_log.info_f "Received USR1, reloading log level from config file" >>= fun () ->
               retrieve_cfg cfg_url >>= function
-              | `Error err ->
+              | Result.Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
-              | `Ok cfg ->
+              | Result.Ok cfg ->
                 Alba_arakoon.config_from_url abm_cfg_url >>= fun abm_cfg' ->
                 let () = abm_cfg_ref := abm_cfg' in
                 let () = Lwt_condition.signal abm_cfg_changed () in

@@ -102,9 +102,9 @@ let rec _harvest_from_buffer buffer acc cost threshold get_item_cost =
       Lwt.catch
         (fun () ->
          get_item_cost item >>= fun (res, cost) ->
-         Lwt.return (`Ok res, cost))
+         Lwt.return (Result.Ok res, cost))
         (fun exn ->
-         Lwt.return (`Exn exn, 1000)) >>= fun (res, cost') ->
+         Lwt.return (Result.Error exn, 1000)) >>= fun (res, cost') ->
       _harvest_from_buffer
         buffer
         ((waiter, res) :: acc)
@@ -116,8 +116,8 @@ let rec _harvest_from_buffer buffer acc cost threshold get_item_cost =
 let _notify_waiters res =
   List.iter
     (function
-      | (waker, `Ok res) -> Lwt.wakeup_later waker res
-      | (waker, `Exn exn) -> Lwt.wakeup_later_exn waker exn)
+      | (waker, Result.Ok res) -> Lwt.wakeup_later waker res
+      | (waker, Result.Error exn) -> Lwt.wakeup_later_exn waker exn)
     res
 
 let _perform_reads_from_buffer buffer threshold =

@@ -1,4 +1,4 @@
-# Alba Development Setup
+# Building alba (with docker)
 
 ### Clone the alba repo.
 
@@ -6,45 +6,45 @@
 git clone https://github.com/openvstorage/alba
 ```
 
-### Install the dependencies.
-The exact, up-to-date list of what you need can be found in the dockerfiles we
-use for CI.
+### Build the docker image
 
-*    [ubuntu/debian](./docker/alba_debian_jenkins/Dockerfile)
-*    [centos7](./docker/alba_centos7_jenkins/Dockerfile)
-
-### compile Alba
 ```
+cd alba
+sudo docker build --rm=true --tag=alba_ubuntu_16_04 ./docker/alba_ubuntu_16_04/
+```
+
+### Run the docker image
+```
+sudo docker run -i -t -e UID=${UID} -v ${PWD}:/home/jenkins/alba -w /home/jenkins/alba alba_ubuntu_16_04 bash -l
+```
+
+then in the container
+
+```
+cd alba/
 make
 ```
 
-inspect executable
-
+inspect the executable
 ```
-$> ./ocaml/alba.native version
-```
-
-### setup a local alba
-
-- explain where the setup code can find your arakoon
-
-```
-export ARAKOON_BIN=$(which arakoon)
+./ocaml/alba.native version
 ```
 
-- make a demo environment
+run the (ocaml) unit tests:
 ```
-$> ./setup/setup.native nil
+ARAKOON_BIN=~/OPAM/4.02.3/bin/arakoon ./setup/setup.native ocaml
 ```
 
-- list the namespaces
-
+setup a demo env and play with it
 ```
-$> ./ocaml/alba.native list-namespaces --config cfg/test.ini
+ARAKOON_BIN=~/OPAM/4.02.3/bin/arakoon ./setup/setup.native nil
+pgrep -a alba
+pgrep -a arakoon
+./ocaml/alba.native list-namespaces --config cfg/test.ini
 Found the following namespaces: [("demo",
   { Albamgr_protocol.Protocol.Namespace.id = 0l; nsm_host_id = "ricky";
     state = Albamgr_protocol.Protocol.Namespace.Active;
     preset_name = "default" })]
 ```
 
-Now you have a mini alba installed on your machine. Have fun :)
+Now you have a mini alba installed inside a docker image. Have fun :)

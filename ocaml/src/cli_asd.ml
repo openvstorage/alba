@@ -30,8 +30,8 @@ let asd_start cfg_url slow log_sinks =
 
   let t () =
     Asd_config.retrieve_cfg cfg_url >>= function
-    | `Error err -> Lwt.fail_with err
-    | `Ok cfg ->
+    | Result.Error err -> Lwt.fail_with err
+    | Result.Ok cfg ->
 
        let ips,         port,      rora_port,
            rora_ips, transport, rora_transport, home,
@@ -102,9 +102,9 @@ let asd_start cfg_url slow log_sinks =
                              (Prelude.Url.show cfg_url)
               >>= fun () ->
               Asd_config.retrieve_cfg cfg_url >>= function
-              | `Error err ->
+              | Result.Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
-              | `Ok cfg ->
+              | Result.Ok cfg ->
 
                 capacity := get_capacity cfg.Config.capacity;
 

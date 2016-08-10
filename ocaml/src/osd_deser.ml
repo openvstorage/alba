@@ -30,8 +30,8 @@ module OsdInfo =
       let s = Llio2.ReadBuffer.string_from buf in
       let json = Yojson.Safe.from_string s in
       match of_yojson json with
-      | `Error s -> failwith s
-      | `Ok t -> t
+      | Result.Error s -> failwith s
+      | Result.Ok t -> t
 
     let deser_json = from_buffer, to_buffer
 
