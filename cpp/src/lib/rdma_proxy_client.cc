@@ -102,8 +102,8 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
     }
 
     read = rrecv(_socket, &buf[off], todo, flags);
-    if (read < 0) {
-      throw proxy_exception(read, _build_msg("really_read.rrecv"));
+    if (read <= 0) {
+      throw proxy_exception(read, _build_msg("really_read.rrecv=" + read));
     }
     off += read;
     todo -= read;
