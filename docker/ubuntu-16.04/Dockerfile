@@ -103,7 +103,7 @@ RUN cd /usr/src/gtest \
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout d0487cbaef2a3c7c2bdfbc75e31a57675d73795e
+RUN cd arakoon && git pull && git checkout tags/1.9.9
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
