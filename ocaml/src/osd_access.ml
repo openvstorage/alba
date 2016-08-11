@@ -157,18 +157,20 @@ module Osd_pool = struct
         begin
           Lwt_pool2.finalize (Hashtbl.find t.client_pools osd_id) |> Lwt.ignore_result;
           Hashtbl.remove t.client_pools osd_id
-        end;
-      if Hashtbl.mem t.thread_safe_clients osd_id
-      then
-        begin
-          let osd_closer_t = Hashtbl.find t.thread_safe_clients osd_id in
-          Lwt.ignore_result
-            begin
-              osd_closer_t >>= fun (osd, closer) ->
-              closer ()
-            end;
-          Hashtbl.remove t.thread_safe_clients osd_id
         end
+      (* explicitly not invalidating alba_osd clients, as that
+       * should never be necessary. *)
+      (* if Hashtbl.mem t.thread_safe_clients osd_id *)
+      (* then *)
+      (*   begin *)
+      (*     let osd_closer_t = Hashtbl.find t.thread_safe_clients osd_id in *)
+      (*     Lwt.ignore_result *)
+      (*       begin *)
+      (*         osd_closer_t >>= fun (osd, closer) -> *)
+      (*         closer () *)
+      (*       end; *)
+      (*     Hashtbl.remove t.thread_safe_clients osd_id *)
+      (*   end *)
 
     let invalidate_all t =
       List.iter

@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Prelude
 open Lwt.Infix
 
 let test_with_kvs_client
@@ -80,6 +81,67 @@ let test_multi_update_for_same_key () =
     "test_multi_update_for_same_key"
     Osd_kvs_test.test_multi_update_for_same_key
 
+let test_update_abm_cfg () =
+  Albamgr_test.test_with_albamgr
+    (fun client ->
+     let long_id = get_random_string 32 in
+     client # add_osd Nsm_model.OsdInfo.({
+                                            kind = Alba2 { id = long_id;
+                                                           cfg = "cluster id", Hashtbl.create 3;
+                                                           prefix = "";
+                                                           preset = ""; };
+                                            decommissioned = false;
+                                            node_id = "";
+                                            other = "";
+                                            total = 0L; used = 0L;
+                                            seen = [];
+                                            read = [];
+                                            write = [];
+                                            errors = [];
+                                          }) >>= fun () ->
+     client # get_osd_by_long_id ~long_id >>= fun o_osd_info ->
+
+     client # update_osds
+            [ (long_id,
+               Albamgr_protocol.Protocol.Osd.Update.make
+                 ~albamgr_cfg':("cluster id",
+                                let h = Hashtbl.create 3 in
+                                Hashtbl.add h "fdsa" Alba_arakoon.Config.({ ips = []; port = 3; });
+                                h)
+                                 ()
+              ) ] >>= fun () ->
+
+     client # get_osd_by_long_id ~long_id >>= fun o_osd_info2 ->
+     assert (o_osd_info <> o_osd_info2);
+     let open Nsm_model.OsdInfo in
+     (match (snd (Option.get_some o_osd_info2)).kind with
+      | Alba2 { cfg; _; } ->
+         let cluster_id, node_cfgs = cfg in
+         assert (1 = Hashtbl.length node_cfgs);
+         assert ("cluster id" = cluster_id);
+         Lwt.return ()
+      | _ ->
+         assert false) >>= fun () ->
+
+     (* cluster id isn't allowed to change, so this should throw *)
+     Lwt.catch
+       (fun () ->
+        client # update_osds
+               [ (long_id,
+                  Albamgr_protocol.Protocol.Osd.Update.make
+                    ~albamgr_cfg':("new cluster id??",
+                                   let h = Hashtbl.create 3 in
+                                   Hashtbl.add h "fdsa" Alba_arakoon.Config.({ ips = []; port = 3; });
+                                   h)
+                                    ()
+                 ) ] >>= fun () ->
+        Lwt.return `Didnt_throw)
+       (fun exn ->
+        Lwt.return `Threw) >>= fun res ->
+     assert (res = `Threw);
+     Lwt.return ()
+    )
+
 open OUnit
 
 let suite = "alba_osd_test" >:::[
@@ -92,4 +154,5 @@ let suite = "alba_osd_test" >:::[
     "test_assert" >:: test_assert;
     "test_partial_get" >:: test_partial_get;
     "test_multi_update_for_same_key" >:: test_multi_update_for_same_key;
+    "test_update_abm_cfg" >:: test_update_abm_cfg;
   ]
