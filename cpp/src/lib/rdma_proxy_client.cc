@@ -19,6 +19,7 @@
 #include "rdma_proxy_client.h"
 #include <rdma/rsocket.h>
 #include <boost/lexical_cast.hpp>
+#include <chrono>
 
 namespace alba {
 namespace proxy_client {
@@ -41,64 +42,90 @@ std::string _build_msg(const std::string &prefix) {
 }
 
 void RDMAProxy_client::_really_write(const char *buf, const int len) {
+  if (len <= 0) {
+    return;
+  }
+
   int flags = 0;
   int sent;
   int todo = len;
   int off = 0;
   int nfds = 1;
 
-  while (todo > 0 && _request_time_left > 0) {
-    double t0 = _stamp_ms();
-    ALBA_LOG(DEBUG, "todo=" << todo
-                            << ", request_time_left=" << _request_time_left);
+  auto end = std::chrono::steady_clock::now() +
+             std::chrono::milliseconds(_request_time_left);
+  std::chrono::duration<long int, std::nano> time_remaining;
+
+  do {
+    time_remaining = end - std::chrono::steady_clock::now();
+
+    ALBA_LOG(DEBUG, "todo=" << todo << ", time_remaining.count()="
+                            << time_remaining.count());
+
+    // wait until writeable, with timeout
     struct pollfd pollfd;
     pollfd.fd = _socket;
     pollfd.events = POLLOUT;
     pollfd.revents = 0;
-    int rc = rpoll(&pollfd, nfds, _request_time_left);
+    int rc = rpoll(&pollfd, nfds,
+                   std::chrono::duration_cast<std::chrono::milliseconds>(
+                       time_remaining).count());
     ALBA_LOG(DEBUG, "rc=" << rc);
     if (rc < 0) {
       throw proxy_exception(rc, _build_msg("really_write.rpoll:"));
     }
     if (rc == 0) {
-      throw proxy_exception(rc, "timeout");
+      throw proxy_exception(rc, "really_write.rpoll timeout");
     }
+
     sent = rsend(_socket, &buf[off], todo, flags);
     if (sent < 0) {
       throw proxy_exception(sent, _build_msg("really_write.send"));
     }
     off += sent;
     todo -= sent;
-    double t1 = _stamp_ms();
-    double delta = t1 - t0;
-    _request_time_left = _request_time_left - (int)delta;
-  }
+  } while (todo > 0 && time_remaining.count() > 0);
+
+  time_remaining = end - std::chrono::steady_clock::now();
+  _request_time_left -= std::chrono::duration_cast<std::chrono::milliseconds>(
+                            time_remaining).count();
 }
 
 void RDMAProxy_client::_really_read(char *buf, const int len) {
+  if (len <= 0) {
+    return;
+  }
+
   int flags = 0;
   int read = 0;
   int todo = len;
   int off = 0;
   int nfds = 1;
 
-  while (todo > 0 && _request_time_left > 0) {
-    double t0 = _stamp_ms();
-    ALBA_LOG(DEBUG, "todo=" << todo
-                            << ", _request_time_left=" << _request_time_left);
+  auto end = std::chrono::steady_clock::now() +
+             std::chrono::milliseconds(_request_time_left);
+  std::chrono::duration<long int, std::nano> time_remaining;
+
+  do {
+    time_remaining = end - std::chrono::steady_clock::now();
+
+    ALBA_LOG(DEBUG, "todo=" << todo << ", time_remaining.count()="
+                            << time_remaining.count());
 
     // wait until readable, with timeout.
     struct pollfd pollfd;
     pollfd.fd = _socket;
     pollfd.events = POLLIN;
     pollfd.revents = 0;
-    int rc = rpoll(&pollfd, nfds, _request_time_left);
+    int rc = rpoll(&pollfd, nfds,
+                   std::chrono::duration_cast<std::chrono::milliseconds>(
+                       time_remaining).count());
     ALBA_LOG(DEBUG, "rc=" << rc);
     if (rc < 0) {
       throw proxy_exception(rc, _build_msg("really_read.rpoll"));
     }
     if (rc == 0) {
-      throw proxy_exception(read, "timeout");
+      throw proxy_exception(read, "really_read.rpoll timeout");
     }
 
     read = rrecv(_socket, &buf[off], todo, flags);
@@ -107,10 +134,12 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
     }
     off += read;
     todo -= read;
-    double t1 = _stamp_ms();
-    double delta = t1 - t0;
-    _request_time_left = _request_time_left - (int)delta;
-  }
+
+  } while (todo > 0 && time_remaining.count() > 0);
+
+  time_remaining = end - std::chrono::steady_clock::now();
+  _request_time_left -= std::chrono::duration_cast<std::chrono::milliseconds>(
+                            time_remaining).count();
 }
 
 void RDMAProxy_client::check_status(const char *function_name) {
@@ -194,8 +223,8 @@ void RDMAProxy_client::_output(llio::message_builder &mb) {
 }
 
 message RDMAProxy_client::_input() {
-  message response([&](char *buffer, const int len)
-                       -> void { _really_read(buffer, len); });
+  message response(
+      [&](char *buffer, const int len) -> void { _really_read(buffer, len); });
   return response;
 }
 
