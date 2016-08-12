@@ -38,7 +38,7 @@ string env_or_default(const std::string &name, const std::string &def) {
   return string(env);
 }
 
-auto TIMEOUT = boost::posix_time::seconds(5);
+auto TIMEOUT = std::chrono::seconds(5);
 using alba::proxy_client::Proxy_client;
 using namespace alba;
 

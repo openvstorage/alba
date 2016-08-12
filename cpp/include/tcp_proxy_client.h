@@ -24,14 +24,12 @@ namespace proxy_client {
 class TCPProxy_client : public GenericProxy_client {
 public:
   TCPProxy_client(const std::string &ip, const std::string &port,
-                  const boost::asio::time_traits<
-                      boost::posix_time::ptime>::duration_type &expiry_time);
+                  const std::chrono::steady_clock::duration &timeout);
 
 private:
   void check_status(const char *function_name);
   boost::asio::ip::tcp::iostream _stream;
-  void _expires_from_now(const boost::asio::time_traits<
-      boost::posix_time::ptime>::duration_type &expiry_time);
+  void _expires_from_now(const std::chrono::steady_clock::duration &timeout);
   void _output(llio::message_builder &mb);
   llio::message _input();
 };

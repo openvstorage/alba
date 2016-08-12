@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #pragma once
 
 #include <iosfwd>
-
+#include <chrono>
 #include <vector>
 #include <boost/asio.hpp>
 #include "proxy_protocol.h"
@@ -148,12 +148,11 @@ std::istream &operator>>(std::istream &, Transport &);
 
 /* factory method: gets the correct client for a particular transport
  */
-std::unique_ptr<Proxy_client> make_proxy_client(
-    const std::string &ip, const std::string &port,
-    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        expiry_time,
-    const Transport &transport,
-    const boost::optional<RoraConfig> &rora = boost::none);
+std::unique_ptr<Proxy_client>
+make_proxy_client(const std::string &ip, const std::string &port,
+                  const std::chrono::steady_clock::duration &timeout,
+                  const Transport &transport,
+                  const boost::optional<RoraConfig> &rora = boost::none);
 
 std::ostream &operator<<(std::ostream &, const RoraConfig &);
 }

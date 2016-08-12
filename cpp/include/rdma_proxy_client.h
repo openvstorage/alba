@@ -26,8 +26,7 @@ namespace proxy_client {
 class RDMAProxy_client : public GenericProxy_client {
 public:
   RDMAProxy_client(const std::string &ip, const std::string &port,
-                   const boost::asio::time_traits<
-                       boost::posix_time::ptime>::duration_type &expiry_time);
+                   const std::chrono::steady_clock::duration &timeout);
 
   ~RDMAProxy_client();
 
@@ -40,9 +39,9 @@ private:
   std::function<void(const char *, const int)> _writer;
   std::function<void(char *, const int)> _reader;
 
-  void _expires_from_now(const boost::asio::time_traits<
-      boost::posix_time::ptime>::duration_type &expiry_time);
-  int _request_time_left; /* ms */
+  void _expires_from_now(const std::chrono::steady_clock::duration &timeout);
+  std::chrono::steady_clock::time_point _deadline;
+
   void _output(llio::message_builder &mb);
   llio::message _input();
 };

@@ -19,7 +19,6 @@
 #include "rdma_proxy_client.h"
 #include <rdma/rsocket.h>
 #include <boost/lexical_cast.hpp>
-#include <chrono>
 
 namespace alba {
 namespace proxy_client {
@@ -48,13 +47,10 @@ void RDMAProxy_client::_really_write(const char *buf, const int len) {
   int off = 0;
   int nfds = 1;
 
-  auto end = std::chrono::steady_clock::now() +
-             std::chrono::milliseconds(_request_time_left);
-  std::chrono::duration<long int, std::nano> time_remaining;
+  std::chrono::duration<long int, std::nano> time_remaining =
+      _deadline - std::chrono::steady_clock::now();
 
   do {
-    time_remaining = end - std::chrono::steady_clock::now();
-
     ALBA_LOG(DEBUG, "todo=" << todo << ", time_remaining.count()="
                             << time_remaining.count());
 
@@ -80,11 +76,9 @@ void RDMAProxy_client::_really_write(const char *buf, const int len) {
     }
     off += sent;
     todo -= sent;
-  } while (todo > 0 && time_remaining.count() > 0);
-
-  time_remaining = end - std::chrono::steady_clock::now();
-  _request_time_left -= std::chrono::duration_cast<std::chrono::milliseconds>(
-                            time_remaining).count();
+  } while (todo > 0 &&
+           (time_remaining = _deadline - std::chrono::steady_clock::now())
+                   .count() > 0);
 }
 
 void RDMAProxy_client::_really_read(char *buf, const int len) {
@@ -101,12 +95,10 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
   int off = 0;
   int nfds = 1;
 
-  auto end = std::chrono::steady_clock::now() +
-             std::chrono::milliseconds(_request_time_left);
-  std::chrono::duration<long int, std::nano> time_remaining;
+  std::chrono::duration<long int, std::nano> time_remaining =
+      _deadline - std::chrono::steady_clock::now();
 
   do {
-    time_remaining = end - std::chrono::steady_clock::now();
 
     ALBA_LOG(DEBUG, "todo=" << todo << ", time_remaining.count()="
                             << time_remaining.count());
@@ -134,15 +126,13 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
     off += read;
     todo -= read;
 
-  } while (todo > 0 && time_remaining.count() > 0);
-
-  time_remaining = end - std::chrono::steady_clock::now();
-  _request_time_left -= std::chrono::duration_cast<std::chrono::milliseconds>(
-                            time_remaining).count();
+  } while (todo > 0 &&
+           (time_remaining = _deadline - std::chrono::steady_clock::now())
+                   .count() > 0);
 }
 
 void RDMAProxy_client::check_status(const char *function_name) {
-  _expires_from_now(boost::posix_time::hours(1));
+  _expires_from_now(std::chrono::hours(1));
   if (not _status.is_ok()) {
     ALBA_LOG(DEBUG, function_name
                         << " received rc:" << (uint32_t)_status._return_code)
@@ -152,10 +142,10 @@ void RDMAProxy_client::check_status(const char *function_name) {
 
 RDMAProxy_client::RDMAProxy_client(
     const string &ip, const string &port,
-    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        expiry_time)
-    : GenericProxy_client(expiry_time),
-      _request_time_left(expiry_time.total_milliseconds()) {
+    const std::chrono::steady_clock::duration &timeout)
+    : GenericProxy_client(timeout) {
+
+  _expires_from_now(timeout);
 
   ALBA_LOG(INFO, "RDMAProxy_client(" << ip << ", " << port << ")");
 
@@ -200,7 +190,9 @@ RDMAProxy_client::RDMAProxy_client(
       pollfd.events = POLLOUT;
       pollfd.revents = 0;
       int nfds = 1;
-      int rc = rpoll(&pollfd, nfds, _request_time_left);
+      int rc = rpoll(&pollfd, nfds,
+                     std::chrono::duration_cast<std::chrono::milliseconds>(
+                         timeout).count());
       if (rc < 0) {
         throw proxy_exception(rc, _build_msg("connect.rpoll"));
       }
@@ -214,7 +206,6 @@ RDMAProxy_client::RDMAProxy_client(
 
   _really_write((const char *)(&magic), sizeof(int32_t));
   _really_write((const char *)(&version), sizeof(int32_t));
-  _request_time_left = _expiry_time.total_milliseconds();
 }
 
 void RDMAProxy_client::_output(llio::message_builder &mb) {
@@ -227,11 +218,12 @@ message RDMAProxy_client::_input() {
   return response;
 }
 
-void RDMAProxy_client::_expires_from_now(const boost::asio::time_traits<
-    boost::posix_time::ptime>::duration_type &expiry_time) {
-  _request_time_left = expiry_time.total_milliseconds();
-  ALBA_LOG(DEBUG, "RDMAProxy_client::_expires_from_now(" << _request_time_left
-                                                         << " ms)");
+void RDMAProxy_client::_expires_from_now(
+    const std::chrono::steady_clock::duration &timeout) {
+  _deadline = std::chrono::steady_clock::now() + timeout;
+  ALBA_LOG(DEBUG, "RDMAProxy_client::_expires_from_now("
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             timeout).count() << " ms)");
 }
 
 RDMAProxy_client::~RDMAProxy_client() {

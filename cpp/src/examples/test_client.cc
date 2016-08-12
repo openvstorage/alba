@@ -82,8 +82,7 @@ void init_log() {
 using namespace alba::proxy_client;
 
 void proxy_get_version(const string &host, const string &port,
-                       const boost::asio::time_traits<
-                           boost::posix_time::ptime>::duration_type &timeout,
+                       const std::chrono::steady_clock::duration &timeout,
                        const Transport &transport) {
   auto client = make_proxy_client(host, port, timeout, transport);
   auto version = client->get_proxy_version();
@@ -143,13 +142,12 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
     }
 }
 
-void partial_read_benchmark(
-    const string &host, const string &port,
-    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        timeout,
-    const Transport &transport, const string &namespace_,
-    const string &file_name, const int n, const int n_clients,
-    const boost::optional<RoraConfig> &rora_config) {
+void partial_read_benchmark(const string &host, const string &port,
+                            const std::chrono::steady_clock::duration &timeout,
+                            const Transport &transport,
+                            const string &namespace_, const string &file_name,
+                            const int n, const int n_clients,
+                            const boost::optional<RoraConfig> &rora_config) {
 
   ALBA_LOG(WARNING, "partial_read_benchmark("
                         << host << ", " << port << ", " << transport
@@ -257,7 +255,7 @@ int main(int argc, const char *argv[]) {
     logging::core::get()->set_filter(logging::trivial::severity >=
                                      logging::trivial::debug);
   };
-  auto timeout = boost::posix_time::seconds(5);
+  auto timeout = std::chrono::seconds(5);
   Transport transport(Transport::tcp);
 
   if (vm.count("transport")) {
@@ -361,8 +359,7 @@ int main(int argc, const char *argv[]) {
         "", alba::proxy_client::include_first::T, boost::none,
         alba::proxy_client::include_last::T, -1);
 
-    cout << namespaces << endl
-         << has_more << endl;
+    cout << namespaces << endl << has_more << endl;
 
   } else if ("invalidate-cache" == command) {
     string ns = getRequiredStringArg(vm, "namespace");
