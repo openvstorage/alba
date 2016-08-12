@@ -27,13 +27,6 @@ namespace proxy_client {
 using std::string;
 using llio::message;
 
-double _stamp_ms() {
-  struct timeval tp;
-  gettimeofday(&tp, NULL);
-  double t0 = 1000 * tp.tv_sec + (double)tp.tv_usec / 1e3;
-  return t0;
-}
-
 std::string _build_msg(const std::string &prefix) {
   int _errno = errno;
   std::ostringstream ss;
@@ -42,8 +35,11 @@ std::string _build_msg(const std::string &prefix) {
 }
 
 void RDMAProxy_client::_really_write(const char *buf, const int len) {
-  if (len <= 0) {
+  if (len == 0) {
     return;
+  }
+  if (len < 0) {
+    throw proxy_exception(len, _build_msg("really_write negative length"));
   }
 
   int flags = 0;
@@ -92,8 +88,11 @@ void RDMAProxy_client::_really_write(const char *buf, const int len) {
 }
 
 void RDMAProxy_client::_really_read(char *buf, const int len) {
-  if (len <= 0) {
+  if (len == 0) {
     return;
+  }
+  if (len < 0) {
+    throw proxy_exception(len, _build_msg("really_read negative length"));
   }
 
   int flags = 0;
