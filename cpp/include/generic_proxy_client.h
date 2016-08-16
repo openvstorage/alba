@@ -90,19 +90,16 @@ public:
   virtual void
   osd_info(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result);
 
-  GenericProxy_client(const boost::asio::time_traits<
-      boost::posix_time::ptime>::duration_type &expiry_time);
+  GenericProxy_client(const std::chrono::steady_clock::duration &timeout);
 
   virtual ~GenericProxy_client(){};
 
 protected:
-  virtual void _expires_from_now(const boost::asio::time_traits<
-      boost::posix_time::ptime>::duration_type &expiry_time) = 0;
+  virtual void _expires_from_now(const std::chrono::steady_clock::duration &timeout) = 0;
   virtual void _output(llio::message_builder &mb) = 0;
   virtual llio::message _input() = 0;
   proxy_protocol::Status _status;
-  const boost::asio::time_traits<boost::posix_time::ptime>::duration_type
-      _expiry_time;
+  const std::chrono::steady_clock::duration _timeout;
   virtual void check_status(const char *function_name) = 0;
 };
 }

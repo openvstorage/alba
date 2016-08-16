@@ -30,11 +30,10 @@ using llio::message_builder;
 
 TCPProxy_client::TCPProxy_client(
     const string &ip, const string &port,
-    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        expiry_time)
-    : GenericProxy_client(expiry_time) {
+    const std::chrono::steady_clock::duration &timeout)
+    : GenericProxy_client(timeout) {
   ALBA_LOG(INFO, "TCPProxy_client(" << ip << ", " << port << ")");
-  _stream.expires_from_now(_expiry_time);
+  _expires_from_now(timeout);
   _stream.connect(ip, port);
   int32_t magic{1148837403};
   int32_t version{1};
@@ -44,7 +43,7 @@ TCPProxy_client::TCPProxy_client(
 }
 
 void TCPProxy_client::check_status(const char *function_name) {
-  _expires_from_now(boost::posix_time::max_date_time);
+  _expires_from_now(std::chrono::steady_clock::duration::max());
   if (not _status.is_ok()) {
     ALBA_LOG(DEBUG, function_name
                         << " received rc:" << (uint32_t)_status._return_code)
@@ -52,9 +51,10 @@ void TCPProxy_client::check_status(const char *function_name) {
   }
 }
 
-void TCPProxy_client::_expires_from_now(const boost::asio::time_traits<
-    boost::posix_time::ptime>::duration_type &expiry_time) {
-  _stream.expires_from_now(expiry_time);
+void TCPProxy_client::_expires_from_now(
+    const std::chrono::steady_clock::duration &timeout) {
+  _stream.expires_from_now(boost::posix_time::milliseconds(
+      std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count()));
 }
 
 void TCPProxy_client::_output(message_builder &mb) { mb.output(_stream); }

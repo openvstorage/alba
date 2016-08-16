@@ -32,34 +32,32 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace proxy_client {
 
-std::unique_ptr<GenericProxy_client> _make_proxy_client(
-    const std::string &ip, const std::string &port,
-    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        expiry_time,
-    const Transport &transport) {
+std::unique_ptr<GenericProxy_client>
+_make_proxy_client(const std::string &ip, const std::string &port,
+                   const std::chrono::steady_clock::duration &timeout,
+                   const Transport &transport) {
   GenericProxy_client *r = nullptr;
 
   switch (transport) {
   case Transport::tcp: {
-    r = new TCPProxy_client(ip, port, expiry_time);
+    r = new TCPProxy_client(ip, port, timeout);
   }; break;
   case Transport::rdma: {
-    r = new RDMAProxy_client(ip, port, expiry_time);
+    r = new RDMAProxy_client(ip, port, timeout);
   }; break;
   }
   std::unique_ptr<GenericProxy_client> result(r);
   return result;
 }
 
-std::unique_ptr<Proxy_client> make_proxy_client(
-    const std::string &ip, const std::string &port,
-    const boost::asio::time_traits<boost::posix_time::ptime>::duration_type &
-        expiry_time,
-    const Transport &transport,
-    const boost::optional<RoraConfig> &rora_config) {
+std::unique_ptr<Proxy_client>
+make_proxy_client(const std::string &ip, const std::string &port,
+                  const std::chrono::steady_clock::duration &timeout,
+                  const Transport &transport,
+                  const boost::optional<RoraConfig> &rora_config) {
 
   std::unique_ptr<GenericProxy_client> inner_client =
-      _make_proxy_client(ip, port, expiry_time, transport);
+      _make_proxy_client(ip, port, timeout, transport);
 
   if (boost::none == rora_config) {
     // work around g++ 4.[8|9] bug:

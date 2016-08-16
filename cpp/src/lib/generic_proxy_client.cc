@@ -36,12 +36,11 @@ using boost::optional;
 using llio::message;
 using llio::message_builder;
 
-GenericProxy_client::GenericProxy_client(const boost::asio::time_traits<
-    boost::posix_time::ptime>::duration_type &expiry_time)
-    : _expiry_time(expiry_time) {}
+  GenericProxy_client::GenericProxy_client(const std::chrono::steady_clock::duration & timeout)
+    : _timeout(timeout) {}
 
 bool GenericProxy_client::namespace_exists(const string &name) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_namespace_exists_request(mb, name);
@@ -58,7 +57,7 @@ bool GenericProxy_client::namespace_exists(const string &name) {
 
 void GenericProxy_client::create_namespace(
     const string &name, const boost::optional<string> &preset_name) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_create_namespace_request(mb, name, preset_name);
@@ -71,7 +70,7 @@ void GenericProxy_client::create_namespace(
 }
 
 void GenericProxy_client::delete_namespace(const string &name) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_delete_namespace_request(mb, name);
@@ -87,7 +86,7 @@ tuple<vector<string>, has_more> GenericProxy_client::list_namespaces(
     const string &first, const include_first finc, const optional<string> &last,
     const include_last linc, const int max, const reverse reverse) {
 
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_list_namespaces_request(
@@ -111,7 +110,7 @@ void GenericProxy_client::write_object_fs(const string &namespace_,
                                           const string &input_file,
                                           const allow_overwrite allow_overwrite,
                                           const Checksum *checksum) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_write_object_fs_request(
@@ -131,7 +130,7 @@ void GenericProxy_client::read_object_fs(const string &namespace_,
                                          const consistent_read consistent_read,
                                          const should_cache should_cache) {
 
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_read_object_fs_request(
@@ -148,7 +147,7 @@ void GenericProxy_client::read_object_fs(const string &namespace_,
 void GenericProxy_client::delete_object(const string &namespace_,
                                         const string &object_name,
                                         const may_not_exist may_not_exist) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_delete_object_request(mb, namespace_, object_name,
@@ -165,7 +164,7 @@ tuple<vector<string>, has_more> GenericProxy_client::list_objects(
     const string &namespace_, const string &first, const include_first finc,
     const optional<string> &last, const include_last linc, const int max,
     const reverse reverse) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_list_objects_request(
@@ -192,7 +191,7 @@ void GenericProxy_client::read_objects_slices(
     return;
   }
 
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_read_objects_slices_request(
@@ -214,7 +213,7 @@ void GenericProxy_client::read_objects_slices2(
   if (slices.size() == 0) {
     return;
   }
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_read_objects_slices2_request(
@@ -232,7 +231,7 @@ void GenericProxy_client::write_object_fs2(
     const string &namespace_, const string &object_name,
     const string &input_file, const allow_overwrite allow_overwrite,
     const Checksum *checksum, proxy_protocol::Manifest &mf) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_write_object_fs2_request(
@@ -248,7 +247,7 @@ void GenericProxy_client::write_object_fs2(
 tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
     const string &namespace_, const string &object_name,
     const consistent_read consistent_read, const should_cache should_cache) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
 
   message_builder mb;
   proxy_protocol::write_get_object_info_request(
@@ -266,7 +265,7 @@ tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
 }
 
 void GenericProxy_client::invalidate_cache(const string &namespace_) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_invalidate_cache_request(mb, namespace_);
   _output(mb);
@@ -277,7 +276,7 @@ void GenericProxy_client::invalidate_cache(const string &namespace_) {
 }
 
 void GenericProxy_client::drop_cache(const string &namespace_) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_drop_cache_request(mb, namespace_);
   _output(mb);
@@ -289,7 +288,7 @@ void GenericProxy_client::drop_cache(const string &namespace_) {
 
 std::tuple<int32_t, int32_t, int32_t, std::string>
 GenericProxy_client::get_proxy_version() {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_get_proxy_version_request(mb);
   _output(mb);
@@ -308,7 +307,7 @@ GenericProxy_client::get_proxy_version() {
 }
 
 double GenericProxy_client::ping(double delay) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_ping_request(mb, delay);
   _output(mb);
@@ -321,7 +320,7 @@ double GenericProxy_client::ping(double delay) {
 
 void GenericProxy_client::osd_info(
     std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result) {
-  _expires_from_now(_expiry_time);
+  _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_osd_info_request(mb);
   _output(mb);
