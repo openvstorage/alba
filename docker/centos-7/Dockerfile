@@ -61,7 +61,6 @@ RUN eval `${opam_env}` && \
         lwt.2.5.2 \
         camltc.0.9.3 \
         ocplib-endian.1.0 \
-        quickcheck.1.0.2 \
         cstruct \
         ctypes \
         ctypes-foreign \
@@ -196,7 +195,7 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 # gobjfs shared lib:
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout c9c6de30ca44256d20b0daff293f3bfcf447774e
+RUN cd gobjfs  && git pull && git checkout 3b591baf7518987ce1b6c828865f0089007281e4
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
