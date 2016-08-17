@@ -22,7 +22,7 @@ namespace alba {
 namespace llio {
 
 void check_stream(const std::istream &is) {
-  if (!is) {
+  if (!is.good()) {
     throw input_stream_exception("invalid inputstream");
   }
 }
