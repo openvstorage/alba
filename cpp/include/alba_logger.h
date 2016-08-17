@@ -25,7 +25,7 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace logger {
 
-enum class AlbaLogLevel { DEBUG, INFO, WARNING };
+enum class AlbaLogLevel { DEBUG, INFO, ERROR, WARNING };
 
 std::ostream &operator<<(std::ostream &os, const AlbaLogLevel);
 
