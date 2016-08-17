@@ -63,6 +63,9 @@ void logBoostMethod(alba::logger::AlbaLogLevel level, std::string &msg) {
   case alba::logger::AlbaLogLevel::INFO:
     BOOST_LOG_TRIVIAL(info) << msg;
     break;
+  case alba::logger::AlbaLogLevel::ERROR:
+    BOOST_LOG_TRIVIAL(error) << msg;
+    break;
   case alba::logger::AlbaLogLevel::WARNING:
     BOOST_LOG_TRIVIAL(warning) << msg;
     break;
