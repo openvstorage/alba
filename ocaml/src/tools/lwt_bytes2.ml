@@ -21,7 +21,7 @@ module Lwt_bytes = struct
 
   let show (t:t) =
     let l = Lwt_bytes.length t in
-    if l < 32
+    if l < 60
     then Printf.sprintf "<Lwt_bytes: length=%i %S>" l (to_string t)
     else Printf.sprintf "<Lwt_bytes: length=%i _ >" l
 

@@ -217,6 +217,11 @@ let verbose =
        & flag
        & info ["verbose"] ~doc:"more output on cli")
 
+let unescape =
+  Arg.(value
+       & flag & info ["unescape"] ~doc:"ocaml unescape keys"
+  )
+
 let port default =
   let doc = "tcp $(docv)" in
   Arg.(value

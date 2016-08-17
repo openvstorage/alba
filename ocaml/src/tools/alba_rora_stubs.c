@@ -128,20 +128,21 @@ int alba_rocks_db_transformer(const char* old,
         rocksdb_get(_DB_POINTER, readoptions, public_key, public_key_len, &len, &err);
 
     if(err){
-        fflush(stdout);
+        free(public_key);
         free(err);
         return -1;
     }
     if(returned_value == NULL){
+        free(public_key);
         return -1;
     }
 
     uint32_t fragment_length;
     uint64_t fnr;
-    _get_fnr_flen(returned_value, &fnr, &fragment_length);
-    assert(len < 4096);
     int result = -1;
-    if (returned_value != NULL){
+    int ok = _get_fnr_flen(returned_value, &fnr, &fragment_length);
+    if(ok == 0){
+        assert(len < 4096);
         memcpy(new_name,_ROOT_PATH,_ROOT_PATH_LENGTH);
         size_t pos = 0;
         size_t new_name_pos = _ROOT_PATH_LENGTH;
@@ -162,13 +163,14 @@ int alba_rocks_db_transformer(const char* old,
         }
         sprintf(&new_name[new_name_pos], "%016x", cs[7]);
         /*
-        if(file_exists(new_name)==1){
-            printf("this file EXISTS\n");fflush(stdout);
-        }
+          if(file_exists(new_name)==1){
+          printf("this file EXISTS\n");fflush(stdout);
+          }
         */
-        free(returned_value);
         result = 0;
     }
+
+    free(returned_value);
     free(public_key);
     return result;
 }

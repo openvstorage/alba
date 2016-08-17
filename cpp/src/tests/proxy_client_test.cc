@@ -300,6 +300,7 @@ TEST(proxy_client, test_osd_info) {
 void _generic_partial_read_test(
     std::string &namespace_, std::string &name,
     std::vector<proxy_protocol::ObjectSlices> &objects_slices,
+    std::string &file,
     bool clear_before_read) {
   init_log();
   config cfg;
@@ -313,7 +314,6 @@ void _generic_partial_read_test(
   BOOST_LOG_TRIVIAL(info) << "creating namespace " << actual_namespace;
   client->create_namespace(actual_namespace, preset);
 
-  string file("./ocaml/alba.native");
   client->write_object_fs(actual_namespace, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
   if (clear_before_read) {
@@ -353,7 +353,8 @@ TEST(proxy_client, test_partial_read_trivial) {
   std::vector<SliceDescriptor> slices{sd};
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
-  _generic_partial_read_test(namespace_, name, objects_slices, false);
+  string file("./ocaml/alba.native");
+  _generic_partial_read_test(namespace_, name, objects_slices, file, false);
   std::ifstream for_comparison("./ocaml/alba.native", std::ios::binary);
   std::vector<byte> bytes2(block_size);
   for_comparison.read((char *)&bytes2[0], block_size);
@@ -374,7 +375,25 @@ TEST(proxy_client, test_partial_read_trivial2) {
   std::vector<SliceDescriptor> slices{sd};
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
-  _generic_partial_read_test(namespace_, name, objects_slices, true);
+  string file("./ocaml/alba.native");
+  _generic_partial_read_test(namespace_, name, objects_slices, file, true);
+}
+
+TEST(proxy_client, test_partial_read_trivial3){
+    std::string namespace_("test_partial_read_trivial3");
+    std::ostringstream sos;
+    sos << "with_manifest" << std::rand();
+    string name = sos.str();
+    using namespace proxy_protocol;
+    uint32_t block_size = 4096;
+    std::vector<byte> bytes(block_size);
+    SliceDescriptor sd{&bytes[0], 0, block_size};
+
+    std::vector<SliceDescriptor> slices{sd};
+    ObjectSlices object_slices{name, slices};
+    std::vector<ObjectSlices> objects_slices{object_slices};
+    string file("./ocaml/src/fragment_cache.ml");// ~30K => fragments in rocksdb
+    _generic_partial_read_test(namespace_, name, objects_slices, file, false);
 }
 
 TEST(proxy_client, test_partial_read_multislice) {
@@ -393,7 +412,8 @@ TEST(proxy_client, test_partial_read_multislice) {
   std::vector<SliceDescriptor> slices{sd, sd2};
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
-  _generic_partial_read_test(namespace_, name, objects_slices, false);
+  string file("./ocaml/alba.native");
+  _generic_partial_read_test(namespace_, name, objects_slices, file, false);
 }
 
 TEST(proxy_client, test_partial_reads) {
