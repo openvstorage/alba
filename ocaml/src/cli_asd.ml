@@ -794,7 +794,6 @@ let cmds = [
   asd_multi_get_cmd;
   asd_delete_cmd;
   asd_range_cmd;
-  (*asd_range_entries_cmd; *)
   osd_bench_cmd;
   asd_discover_cmd;
   asd_statistics_cmd;
