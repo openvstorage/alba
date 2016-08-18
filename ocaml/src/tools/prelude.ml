@@ -167,9 +167,7 @@ module List = struct
   let nth_exn = nth
   let nth l n =
     try Some (nth l n)
-    with
-    | Failure "nth"
-    | Invalid_argument "List.nth" -> None
+    with _ -> None
 
   let find_exn = find
   let find f l =

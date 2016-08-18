@@ -452,7 +452,12 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
       (fun () ->
          match Protocol.code_to_command code with
          | Protocol.Wrap r ->
-           let req = Deser.from_buffer (Protocol.deser_request_i r) buf in
+           let req =
+             try Deser.from_buffer (Protocol.deser_request_i r) buf
+             with exn ->
+               Lwt_log.ign_error ~exn "error during deserializing proxy request";
+               raise exn
+           in
            execute_request r stats req >>= fun res ->
            Lwt.return (Llio.serialize_with_length'
                          (Llio.pair_to

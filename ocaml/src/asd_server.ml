@@ -1153,10 +1153,20 @@ let asd_protocol
        let command = Protocol.code_to_command code in
        begin match command with
              | Protocol.Wrap_query q ->
-                let req = Protocol.query_request_deserializer q buf in
+                let req =
+                  try Protocol.query_request_deserializer q buf
+                  with exn ->
+                    Lwt_log.ign_error ~exn "error during deserializing asd query request";
+                    raise exn
+                in
                 execute_query kv io_sched dir_info mgmt stats capabilities q req
              | Protocol.Wrap_update u ->
-                let req = Protocol.update_request_deserializer u buf in
+                let req =
+                  try Protocol.update_request_deserializer u buf
+                  with exn ->
+                    Lwt_log.ign_error ~exn "error during deserializing asd update request";
+                    raise exn
+                in
                 execute_update
                   kv
                   ~release_fnr
