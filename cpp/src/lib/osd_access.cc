@@ -71,8 +71,8 @@ void OsdAccess::update(std::vector<std::pair<osd_t, info_caps>> &infos) {
   }
 }
 
-int
-OsdAccess::read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
+int OsdAccess::read_osds_slices(
+    std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   int rc = 0;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
@@ -162,8 +162,7 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
   for (auto &elem : iocb_vec) {
     auto retcode = aio_return(ctx, elem);
     if (retcode != 0) {
-      ALBA_LOG(ERROR, "aio_return retcode:" << retcode
-                                            << ", osd_id=" << osd);
+      ALBA_LOG(ERROR, "aio_return retcode:" << retcode << ", osd_id=" << osd);
     }
     aio_finish(ctx, elem);
   }

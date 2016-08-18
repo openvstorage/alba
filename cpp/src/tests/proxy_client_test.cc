@@ -290,18 +290,15 @@ TEST(proxy_client, test_osd_info) {
     auto osd = p.first;
     auto &ic = p.second;
     const proxy_protocol::OsdInfo &osd_info = *ic.first;
-    std::cout << "osd:" << osd
-              << " info: " << osd_info
-              << " caps: " << *ic.second
-              << std::endl;
+    std::cout << "osd:" << osd << " info: " << osd_info
+              << " caps: " << *ic.second << std::endl;
   }
 }
 
 void _generic_partial_read_test(
     std::string &namespace_, std::string &name,
     std::vector<proxy_protocol::ObjectSlices> &objects_slices,
-    std::string &file,
-    bool clear_before_read) {
+    std::string &file, bool clear_before_read) {
   init_log();
   config cfg;
   boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
@@ -379,21 +376,21 @@ TEST(proxy_client, test_partial_read_trivial2) {
   _generic_partial_read_test(namespace_, name, objects_slices, file, true);
 }
 
-TEST(proxy_client, test_partial_read_trivial3){
-    std::string namespace_("test_partial_read_trivial3");
-    std::ostringstream sos;
-    sos << "with_manifest" << std::rand();
-    string name = sos.str();
-    using namespace proxy_protocol;
-    uint32_t block_size = 4096;
-    std::vector<byte> bytes(block_size);
-    SliceDescriptor sd{&bytes[0], 0, block_size};
+TEST(proxy_client, test_partial_read_trivial3) {
+  std::string namespace_("test_partial_read_trivial3");
+  std::ostringstream sos;
+  sos << "with_manifest" << std::rand();
+  string name = sos.str();
+  using namespace proxy_protocol;
+  uint32_t block_size = 4096;
+  std::vector<byte> bytes(block_size);
+  SliceDescriptor sd{&bytes[0], 0, block_size};
 
-    std::vector<SliceDescriptor> slices{sd};
-    ObjectSlices object_slices{name, slices};
-    std::vector<ObjectSlices> objects_slices{object_slices};
-    string file("./ocaml/src/fragment_cache.ml");// ~30K => fragments in rocksdb
-    _generic_partial_read_test(namespace_, name, objects_slices, file, false);
+  std::vector<SliceDescriptor> slices{sd};
+  ObjectSlices object_slices{name, slices};
+  std::vector<ObjectSlices> objects_slices{object_slices};
+  string file("./ocaml/src/fragment_cache.ml"); // ~30K => fragments in rocksdb
+  _generic_partial_read_test(namespace_, name, objects_slices, file, false);
 }
 
 TEST(proxy_client, test_partial_read_multislice) {
