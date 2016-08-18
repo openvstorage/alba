@@ -33,11 +33,6 @@ let long_id =
        & opt (some string) None
        & info ["long-id"] ~docv:"LONG_ID")
 
-let unescape =
-  Arg.(value
-       & flag
-       & info ["unescape"] ~docv:"unescape keys")
-
 let osd_multi_get osd_id cfg_file tls_config keys unescape verbose =
   let t () =
     with_alba_client

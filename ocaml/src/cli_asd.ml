@@ -188,8 +188,13 @@ let run_with_osd_client' conn_info osd_id verbose f =
     ~to_json:false ~verbose
     (fun () -> with_osd_client conn_info osd_id f)
 
-let asd_set hosts port transport tls_config asd_id (verbose:bool) key value =
+let _maybe_unescape unescape key =
+  if unescape then Scanf.unescaped key else key
+
+let asd_set hosts port transport tls_config asd_id (verbose:bool) key value unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  let key' = _maybe_unescape unescape key in
+  let value' = _maybe_unescape unescape value in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
@@ -198,8 +203,8 @@ let asd_set hosts port transport tls_config asd_id (verbose:bool) key value =
      >>= fun ()->
      client # apply_sequence ~prio:Osd.High []
              [ Update.set
-                 (Slice.wrap_string key)
-                 (Osd.Blob.Bytes value)
+                 (Slice.wrap_string key')
+                 (Osd.Blob.Bytes value')
                  checksum true
              ]
     )
@@ -218,7 +223,7 @@ let asd_set_cmd =
                         $ tls_config
                         $ lido $ verbose
                         $ key $ value
-
+                        $ unescape
                   ) in
   let info =
     let doc = "perform a set on a remote ASD" in
@@ -246,13 +251,16 @@ let asd_get_version_cmd =
   in
   asd_get_version_t, info
 
-let asd_multi_get hosts port transport tls_config asd_id (keys:string list) verbose =
+
+
+let asd_multi_get hosts port transport tls_config asd_id (keys:string list) verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  let keys' = List.map (_maybe_unescape unescape) keys in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
 
-     client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys)
+     client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys')
      >>= fun values ->
      print_endline ([%show: (Lwt_bytes2.Lwt_bytes.t * Checksum.t) option list] values);
      Lwt.return ())
@@ -267,7 +275,7 @@ let asd_multi_get_cmd =
           $ hosts $ (port 8_000) $ transport
           $ tls_config
           $ lido
-          $ keys $ verbose)
+          $ keys $ verbose $ unescape)
   in
   let info =
     let doc = "perform a multi get on a remote ASD" in
@@ -275,11 +283,12 @@ let asd_multi_get_cmd =
   in asd_multi_get_t, info
 
 
-let asd_delete hosts port transport tls_config asd_id key verbose =
+let asd_delete hosts port transport tls_config asd_id key verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  let key' = _maybe_unescape unescape key in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
-    (fun client -> client # delete ~prio:Osd.High (Slice.wrap_string key))
+    (fun client -> client # delete ~prio:Osd.High (Slice.wrap_string key'))
 
 let asd_delete_cmd =
   let doc = "$(docv)" in
@@ -291,7 +300,7 @@ let asd_delete_cmd =
           $ hosts $ (port 8_000) $ transport
           $ tls_config
           $ lido
-          $ key $ verbose)
+          $ key $ verbose $ unescape)
   in
   let info =
     let doc = "perform a delete on a remote ASD" in
@@ -321,21 +330,22 @@ let asd_disk_usage_cmd =
   in
   asd_disk_usage_t, info
 
-let asd_range hosts port transport tls_config asd_id first verbose =
+let asd_range hosts port transport tls_config asd_id first verbose unescape =
   let finc = true
   and last = None in
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  let first' = _maybe_unescape unescape first in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
      client # range
             ~prio:Osd.High
-            ~first:(Slice.wrap_string first)
+            ~first:(Slice.wrap_string first')
             ~finc ~last ~reverse:false ~max:~-1
      >>= fun ((cnt, keys), has_more) ->
      Lwt_io.printlf
        "range ~first:%S ~finc:%b ~last:None ~reverse:false has_more=%b, cnt=%i, keys=%s"
-       first finc
+       first' finc
        has_more
        cnt
        ([%show : Slice.t list] keys)
@@ -352,13 +362,14 @@ let asd_range_cmd =
     Term.(pure asd_range
           $ hosts $ (port 8_000) $ transport $ tls_config
           $ lido
-          $ first $ verbose)
+          $ first $ verbose $ unescape)
   in
   let info =
     let doc = "range query on a remote ASD" in
     Term.info "asd-range" ~doc
   in
   asd_range_t, info
+
 
 let osd_bench hosts port transport tls_config osd_id
               n_clients n
@@ -793,6 +804,4 @@ let cmds = [
   asd_capabilities_cmd;
   bench_syncfs_cmd;
   bench_fsync_cmd;
-
-  (* Asd_kaboom.kaboom_cmd; *)
 ]

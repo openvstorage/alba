@@ -69,6 +69,8 @@ void ManifestCache::add(std::string namespace_, std::string object_name,
 
     if (manifest_cache.size() > _manifest_cache_capacity) {
       auto it_victim = manifest_cache.begin();
+      int size = manifest_cache.size();
+      std::advance(it_victim, rand() % size); // O(size) :(
       auto victim = it_victim->first;
       using namespace alba::stuff;
       ALBA_LOG(DEBUG, "cache '" << namespace_ << "' full("
