@@ -123,7 +123,7 @@ public:
     output_using([&](const char *buffer, const int len)
                      -> void { os.write(buffer, len); });
     os.flush();
-    if (!os) {
+    if (!os.good()) {
       throw output_stream_exception("invalid outputstream");
     }
   }
