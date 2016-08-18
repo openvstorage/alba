@@ -117,8 +117,7 @@ std::ostream &operator<<(std::ostream &os, const OsdCapabilities &caps) {
   using alba::stuff::operator<<;
   os << "OsdCapabilities( rora_port= " << caps.rora_port
      << ", rora_transport= " << caps.rora_transport
-     << ", rora_ips=" << caps.rora_ips
-     << ")";
+     << ", rora_ips=" << caps.rora_ips << ")";
   return os;
 }
 }

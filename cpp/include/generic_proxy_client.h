@@ -95,7 +95,8 @@ public:
   virtual ~GenericProxy_client(){};
 
 protected:
-  virtual void _expires_from_now(const std::chrono::steady_clock::duration &timeout) = 0;
+  virtual void
+  _expires_from_now(const std::chrono::steady_clock::duration &timeout) = 0;
   virtual void _output(llio::message_builder &mb) = 0;
   virtual llio::message _input() = 0;
   proxy_protocol::Status _status;

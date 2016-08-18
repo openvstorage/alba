@@ -213,8 +213,8 @@ void RDMAProxy_client::_output(llio::message_builder &mb) {
 }
 
 message RDMAProxy_client::_input() {
-  message response(
-      [&](char *buffer, const int len) -> void { _really_read(buffer, len); });
+  message response([&](char *buffer, const int len)
+                       -> void { _really_read(buffer, len); });
   return response;
 }
 

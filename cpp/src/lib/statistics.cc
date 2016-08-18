@@ -62,7 +62,6 @@ void Statistics::new_stop() {
   _n_samples++;
 }
 
-
 void Statistics::pretty(std::ostream &os) const {
   os << "n_samples: " << _n_samples << std::endl;
   os << "min_dur: " << _min_dur << std::endl;

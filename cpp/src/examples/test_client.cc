@@ -104,45 +104,46 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
                        const string &namespace_, const string &object_name,
                        const string &file_name, const int n) {
 
-    try{
-        const alba::Checksum *checksum = nullptr;
-        alba::statistics::Statistics &stats = *stats_p;
-        using namespace alba::proxy_protocol;
-        client->write_object_fs(namespace_, object_name, file_name,
-                                allow_overwrite::T, checksum);
+  try {
+    const alba::Checksum *checksum = nullptr;
+    alba::statistics::Statistics &stats = *stats_p;
+    using namespace alba::proxy_protocol;
+    client->write_object_fs(namespace_, object_name, file_name,
+                            allow_overwrite::T, checksum);
 
-        ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
+    ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
 
-        std::vector<alba::byte> buffer(4096);
-        SliceDescriptor sd{&buffer[0], 0, 4096};
-        std::vector<SliceDescriptor> slices{sd};
-        ObjectSlices object_slices{object_name, slices};
-        std::vector<ObjectSlices> objects_slices{object_slices};
+    std::vector<alba::byte> buffer(4096);
+    SliceDescriptor sd{&buffer[0], 0, 4096};
+    std::vector<SliceDescriptor> slices{sd};
+    ObjectSlices object_slices{object_name, slices};
+    std::vector<ObjectSlices> objects_slices{object_slices};
 
-        high_resolution_clock::time_point t0 = high_resolution_clock::now();
-        high_resolution_clock::time_point t1;
+    high_resolution_clock::time_point t0 = high_resolution_clock::now();
+    high_resolution_clock::time_point t1;
 
-        for (int i = 0; i < n; i++) {
-            stats.new_start();
-            client->read_objects_slices(namespace_, objects_slices, consistent_read::F);
-            stats.new_stop();
-            t1 = high_resolution_clock::now();
-            int dur2 = duration_cast<seconds>(t1 - t0).count();
-            int reporting_period = 1;
-            if (dur2 > reporting_period) {
-                auto time2 = system_clock::to_time_t(t1);
-                // struct tm tm;
-                char buffer[26];
-                ctime_r(&time2, buffer);
-                buffer[24] = '\0'; // Removes the newline that is added
-                // localtime_r(&time2, &tm);
-                cout << buffer << " i:" << i << std::endl;
-                t0 = t0 + seconds(reporting_period);
-            }
-        }
-    } catch(std::exception &e){
-        std::cerr << e.what() << std::endl;
+    for (int i = 0; i < n; i++) {
+      stats.new_start();
+      client->read_objects_slices(namespace_, objects_slices,
+                                  consistent_read::F);
+      stats.new_stop();
+      t1 = high_resolution_clock::now();
+      int dur2 = duration_cast<seconds>(t1 - t0).count();
+      int reporting_period = 1;
+      if (dur2 > reporting_period) {
+        auto time2 = system_clock::to_time_t(t1);
+        // struct tm tm;
+        char buffer[26];
+        ctime_r(&time2, buffer);
+        buffer[24] = '\0'; // Removes the newline that is added
+        // localtime_r(&time2, &tm);
+        cout << buffer << " i:" << i << std::endl;
+        t0 = t0 + seconds(reporting_period);
+      }
     }
+  } catch (std::exception &e) {
+    std::cerr << e.what() << std::endl;
+  }
 }
 
 void partial_read_benchmark(const string &host, const string &port,
@@ -362,7 +363,8 @@ int main(int argc, const char *argv[]) {
         "", alba::proxy_client::include_first::T, boost::none,
         alba::proxy_client::include_last::T, -1);
 
-    cout << namespaces << endl << has_more << endl;
+    cout << namespaces << endl
+         << has_more << endl;
 
   } else if ("invalidate-cache" == command) {
     string ns = getRequiredStringArg(vm, "namespace");

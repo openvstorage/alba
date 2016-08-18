@@ -36,7 +36,8 @@ using boost::optional;
 using llio::message;
 using llio::message_builder;
 
-  GenericProxy_client::GenericProxy_client(const std::chrono::steady_clock::duration & timeout)
+GenericProxy_client::GenericProxy_client(
+    const std::chrono::steady_clock::duration &timeout)
     : _timeout(timeout) {}
 
 bool GenericProxy_client::namespace_exists(const string &name) {

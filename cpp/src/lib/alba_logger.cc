@@ -29,6 +29,9 @@ std::ostream &operator<<(std::ostream &os, const AlbaLogLevel level) {
   case AlbaLogLevel::INFO:
     os << "INFO";
     break;
+  case AlbaLogLevel::ERROR:
+    os << "ERROR";
+    break;
   case AlbaLogLevel::WARNING:
     os << "WARNING";
     break;

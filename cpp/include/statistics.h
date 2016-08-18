@@ -44,7 +44,7 @@ private:
   high_resolution_clock::time_point _t0;
   high_resolution_clock::time_point _t1;
   std::vector<double> _dur_buckets;
-  friend std::ostream & operator<<(std::ostream &os, const Statistics&);
+  friend std::ostream &operator<<(std::ostream &os, const Statistics &);
 };
 std::ostream &operator<<(std::ostream &os, const Statistics &);
 }

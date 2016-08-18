@@ -239,8 +239,7 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   os << "`, " << std::endl
      << "  chunk_sizes = " << mf.chunk_sizes << "," << std::endl
      << "  encoding_scheme = " << mf.encoding_scheme << "," << std::endl
-     << "  compression = " << *mf.compression
-     << "," << std::endl
+     << "  compression = " << *mf.compression << "," << std::endl
      << "  encryptinfo = " << *mf.encrypt_info << "," // dangerous
      << std::endl
      << "  checksum= " << *mf.checksum << "," << std::endl
