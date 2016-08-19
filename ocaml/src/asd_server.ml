@@ -682,6 +682,87 @@ let execute_query : type req res.
     | Capabilities ->
        fun () ->
        return' capabilities
+    | RangeValidate ->
+       fun ({ RangeQueryArgs.first;finc;last;reverse;max;},
+            verify_checksum, show_all, prio) ->
+       let exists_ok (checksum,blob) =
+         match blob with
+           | Value.Direct v  -> Lwt.return None
+           | Value.OnFs(fnr,size) ->
+              let file_name = DirectoryInfo.get_file_path dir_info fnr in
+              Lwt_unix.file_exists file_name >>= fun ok ->
+              Some ("file_exists",ok) |> Lwt.return
+       in
+       let checksum_ok cv =
+         let (checksum, _) = cv in
+         let algo = Checksum.algo_of checksum in
+         Lwt.catch
+           (fun () ->
+             Value.get_blob_from_value dir_info cv >>= fun blob ->
+             let hash = Hashes.make_hash algo in
+             let open Slice in
+             let () = hash # update_substring blob.buf blob.offset blob.length in
+             let checksum2 = hash # final () in
+             let ok = checksum2 = checksum in
+             let open Checksum.Algo in
+             Some (show algo, ok) |> Lwt.return
+           )
+           (fun exn ->
+             let msg = Checksum.Algo.show algo ^ ":" ^ (Printexc.to_string exn) in
+             Some (msg , false) |> Lwt.return
+           )
+       in
+       let checks =
+         if verify_checksum
+         then
+           [exists_ok; checksum_ok]
+         else
+           [exists_ok]
+       in
+       perform_read
+         io_sched
+         prio
+         (fun () ->
+           let max = cap_max ~max () in
+           let (cnt, items), has_more =
+           Rocks_key_value_store.map_range
+             kv
+             ~first:(Keys.key_with_public_prefix first) ~finc
+             ~last:(match last with
+                    | None -> Keys.public_key_next_prefix
+                    | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
+             ~reverse
+             ~max
+             (fun cur key ->
+              Keys.string_chop_prefix key,
+              deserialize Value.from_buffer (Rocks_key_value_store.cur_get_value cur)
+             )
+           in
+           Lwt_list.fold_left_s
+             (fun (cnt, last_key, acc) (key, cv ) ->
+               Lwt_list.fold_left_s
+                 (fun acc check ->
+                   check cv >>= function
+                   | None   -> Lwt.return acc
+                   | Some r -> Lwt.return (r :: acc)
+                 ) [] checks
+               >>= fun check_results ->
+               let acc' =
+                 if show_all
+                    || not (List.fold_left (fun  acc (_,ok) -> acc && ok ) true check_results)
+                 then
+                   (cnt+1, Some key, (key, check_results) :: acc)
+                 else
+                   (cnt, Some key, acc)
+               in
+               Lwt.return acc'
+             ) (0, None, []) items
+           >>= fun (cnt', last, r) ->
+           let r' = List.rev r in
+           let cost = max * 1000 in (* TODO: better estimate *)
+           let cont_key = if has_more then last else None in
+           return ~cost ((cnt',r'), cont_key)
+         )
 
 exception ConcurrentModification
 

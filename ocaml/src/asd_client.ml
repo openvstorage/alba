@@ -305,6 +305,12 @@ class client (fd:Net_fd.t) id =
 
     method capabilities () =
       self # query Capabilities () Lwt.return
+
+    method range_validate ~prio ~first ~finc ~last ~reverse ~max ~verify_checksum ~show_all =
+      self # query
+           RangeValidate
+           (RangeQueryArgs.({first;finc;last;reverse;max}), verify_checksum, show_all, prio)
+           Lwt.return
   end
 
 exception BadLongId of string * string

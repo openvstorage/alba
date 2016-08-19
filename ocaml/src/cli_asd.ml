@@ -370,6 +370,83 @@ let asd_range_cmd =
   in
   asd_range_t, info
 
+let asd_range_validate hosts port transport tls_config asd_id first
+                       verbose unescape verify_checksum follow show_all =
+  let finc = true
+  and last = None in
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  let first' = _maybe_unescape unescape first in
+  run_with_asd_client'
+    ~conn_info asd_id ~to_json:false ~verbose
+    (fun client ->
+      let rec loop first' finc =
+        client # range_validate
+               ~prio:Osd.High
+               ~first:(Slice.wrap_string first')
+               ~finc ~last ~reverse:false ~max:200
+               ~verify_checksum
+               ~show_all
+        >>= fun ((cnt, items), next_key_o) ->
+        Lwt_log.debug_f
+          "range ~first:%S \n\t~finc:%b ~last:None ~reverse:false cnt=%i%!"
+          first' finc
+          cnt
+        >>= fun () ->
+        Lwt_list.iter_s
+          (fun (slice, checks) ->
+            Lwt_io.printlf "%s %s" (Slice.show slice) ([%show: (string * bool) list] checks)
+          )
+          items
+        >>= fun () ->
+        match next_key_o with
+        | None -> Lwt.return_unit
+        | Some key ->
+           let first' = Slice.get_string key in
+           loop first' false
+      in
+      loop first' finc
+    )
+
+let asd_range_validate_cmd =
+  let first =
+    let doc = "start key" in
+    Arg.(value
+         & opt string ""
+         & info ["f";"first"] ~docv:"FIRST" ~doc)
+  in
+  let verify_checksum =
+    let doc = "verify checksums of values in asd (expensive)" in
+      Arg.(value
+       & flag
+       & info ["verify-checksums"] ~doc
+      )
+  in
+  let follow =
+    let doc = "if the server has more items, process these too" in
+      Arg.(value
+       & flag
+       & info ["follow"] ~doc
+      )
+  in
+  let show_all =
+    let doc = "show all items iso items that failed the tests" in
+      Arg.(value
+       & flag
+       & info ["show-all"] ~doc
+      )
+  in
+  let t =
+    Term.(pure asd_range_validate
+          $ hosts $ (port 8_000) $ transport $ tls_config
+          $ lido
+          $ first $ verbose $ unescape
+          $ verify_checksum $ follow $ show_all)
+  in
+  let info =
+    let doc = "validate key range on a remote ASD" in
+    Term.info "asd-range-validate" ~doc
+  in
+  t, info
 
 let osd_bench hosts port transport tls_config osd_id
               n_clients n
@@ -794,6 +871,7 @@ let cmds = [
   asd_multi_get_cmd;
   asd_delete_cmd;
   asd_range_cmd;
+  asd_range_validate_cmd;
   osd_bench_cmd;
   asd_discover_cmd;
   asd_statistics_cmd;
