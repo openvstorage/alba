@@ -161,8 +161,9 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
   }
   for (auto &elem : iocb_vec) {
     auto retcode = aio_return(ctx, elem);
-    if (retcode != 0) {
-      ALBA_LOG(ERROR, "aio_return retcode:" << retcode << ", osd_id=" << osd);
+    if (ret != 0) {
+      ALBA_LOG(ERROR, "aio_return retcode:" << retcode << ", osd_id=" << osd
+                                            << ", ret=" << ret);
     }
     aio_finish(ctx, elem);
   }
