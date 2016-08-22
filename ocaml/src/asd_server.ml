@@ -487,7 +487,7 @@ let _range_validate
           )
       in
       Lwt_list.fold_left_s
-        (fun (cnt, last_key, acc) (key, cv ) ->
+        (fun (cnt, last_key, acc, cost) (key, cv ) ->
           Lwt_list.fold_left_s
             (fun acc check ->
               check cv >>= function
@@ -495,22 +495,34 @@ let _range_validate
               | Some r -> Lwt.return (r :: acc)
             ) [] checks
           >>= fun check_results ->
+          let term =
+            let _checksum, blob = cv in
+            match blob with
+            | Value.Direct v      ->
+               if verify_checksum then 300 else 200
+            | Value.OnFs (_,size) ->
+               if verify_checksum
+               then
+                 let size_cost = (size lsr 17) * 50  (* arbitrary: 50 per 128KB *) in
+                 400 + size_cost
+               else 400
+          in
+          let cost' = cost + term in
           let acc' =
             if show_all
                || not (List.fold_left (fun  acc (_,ok) -> acc && ok ) true check_results)
             then
-              (cnt+1, Some key, (key, check_results) :: acc)
+              (cnt+1, Some key, (key, check_results) :: acc, cost')
             else
-              (cnt, Some key, acc)
+              (cnt, Some key, acc, cost')
           in
           Lwt.return acc'
-        ) (0, None, []) items
-      >>= fun (cnt', last, r) ->
+        ) (0, None, [], 0) items
+      >>= fun (cnt', last, r, total_cost) ->
+      Lwt_log.debug_f "total_cost:%i for cnt':%i" total_cost cnt' >>= fun () ->
       let r' = List.rev r in
-      let factor = if verify_checksum then 1000 else 100 in
-      let cost = cnt * factor in
       let cont_key = if has_more then last else None in
-      return ~cost ((cnt',r'), cont_key)
+      return ~cost:total_cost ((cnt',r'), cont_key)
     )
 
 let execute_query : type req res.
