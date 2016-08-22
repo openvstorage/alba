@@ -759,7 +759,8 @@ let execute_query : type req res.
              ) (0, None, []) items
            >>= fun (cnt', last, r) ->
            let r' = List.rev r in
-           let cost = max * 1000 in (* TODO: better estimate *)
+           let factor = if verify_checksum then 1000 else 100 in
+           let cost = cnt * factor in
            let cont_key = if has_more then last else None in
            return ~cost ((cnt',r'), cont_key)
          )

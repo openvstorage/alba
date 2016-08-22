@@ -352,12 +352,6 @@ let asd_range hosts port transport tls_config asd_id first verbose unescape =
     )
 
 let asd_range_cmd =
-  let first =
-    let doc = "start key" in
-    Arg.(value
-         & opt string ""
-         & info ["f";"first"] ~docv:"FIRST" ~doc)
-  in
   let asd_range_t =
     Term.(pure asd_range
           $ hosts $ (port 8_000) $ transport $ tls_config
@@ -370,26 +364,31 @@ let asd_range_cmd =
   in
   asd_range_t, info
 
-let asd_range_validate hosts port transport tls_config asd_id first
-                       verbose unescape verify_checksum follow show_all =
-  let finc = true
-  and last = None in
+let asd_range_validate hosts port transport tls_config asd_id
+                       first (last:string option)
+                       verbose unescape verify_checksum follow
+                       show_all
+  =
+  let finc = true in
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   let first' = _maybe_unescape unescape first in
+  let last'  =  Option.map (_maybe_unescape unescape) last in
+  let last'' =  Option.map (fun x -> (Slice.wrap_string x), true) last' in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
       let rec loop first' finc =
         client # range_validate
                ~prio:Osd.High
-               ~first:(Slice.wrap_string first')
-               ~finc ~last ~reverse:false ~max:200
+               ~first:(Slice.wrap_string first') ~finc
+               ~last:last'' ~reverse:false ~max:200
                ~verify_checksum
                ~show_all
         >>= fun ((cnt, items), next_key_o) ->
         Lwt_log.debug_f
-          "range ~first:%S \n\t~finc:%b ~last:None ~reverse:false cnt=%i%!"
+          "range ~first:%S \n\t~finc:%b ~last:%s ~reverse:false cnt=%i%!"
           first' finc
+          ([%show: string option] last')
           cnt
         >>= fun () ->
         Lwt_list.iter_s
@@ -399,21 +398,15 @@ let asd_range_validate hosts port transport tls_config asd_id first
           items
         >>= fun () ->
         match next_key_o with
-        | None -> Lwt.return_unit
-        | Some key ->
-           let first' = Slice.get_string key in
-           loop first' false
+        | Some key when follow ->
+             let first' = Slice.get_string key in
+             loop first' false
+        | _ -> Lwt.return_unit
       in
       loop first' finc
     )
 
 let asd_range_validate_cmd =
-  let first =
-    let doc = "start key" in
-    Arg.(value
-         & opt string ""
-         & info ["f";"first"] ~docv:"FIRST" ~doc)
-  in
   let verify_checksum =
     let doc = "verify checksums of values in asd (expensive)" in
       Arg.(value
@@ -439,7 +432,8 @@ let asd_range_validate_cmd =
     Term.(pure asd_range_validate
           $ hosts $ (port 8_000) $ transport $ tls_config
           $ lido
-          $ first $ verbose $ unescape
+          $ first $ last
+          $ verbose $ unescape
           $ verify_checksum $ follow $ show_all)
   in
   let info =
