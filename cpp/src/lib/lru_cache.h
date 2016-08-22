@@ -13,8 +13,7 @@
 // Open vStorage is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY of any kind.
 
-#ifndef LRU_CACHE_TOO_H_
-#define LRU_CACHE_TOO_H_
+#pragma once
 
 #include <boost/bimap.hpp>
 #include <boost/bimap/list_of.hpp>
@@ -27,7 +26,7 @@ nicked from volumedriver's LRUCacheToo, but
 - changed namespace
 - removed VERIFY & logging
 - removed name attribute
-
+- removed include sandwich and replaced with #pragma once
 */
 namespace ovs {
 
@@ -102,5 +101,3 @@ private:
   const size_t capacity_;
 };
 }
-
-#endif // !LRU_CACHE_TOO_
