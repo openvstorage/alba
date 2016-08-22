@@ -44,7 +44,8 @@ void ManifestCache::add(std::string namespace_, std::string object_name,
     if (it1 == _level1.end()) {
       ALBA_LOG(INFO, "ManifestCache::add namespace:'"
                          << namespace_ << "' : new manifest cache");
-      std::shared_ptr<manifest_cache> mc(new manifest_cache);
+      std::shared_ptr<manifest_cache> mc(
+          new manifest_cache(_manifest_cache_capacity));
       std::shared_ptr<std::mutex> mm(new std::mutex);
       auto p = std::make_pair(mc, mm);
       _level1[namespace_] = std::move(p);
@@ -62,24 +63,7 @@ void ManifestCache::add(std::string namespace_, std::string object_name,
   std::mutex &m = *mp;
   {
     std::lock_guard<std::mutex> lock(m);
-    auto it2 = manifest_cache.find(object_name);
-    if (it2 != manifest_cache.end()) {
-      manifest_cache.erase(it2);
-    }
-
-    if (manifest_cache.size() > _manifest_cache_capacity) {
-      auto it_victim = manifest_cache.begin();
-      int size = manifest_cache.size();
-      std::advance(it_victim, rand() % size); // O(size) :(
-      auto victim = it_victim->first;
-      using namespace alba::stuff;
-      ALBA_LOG(DEBUG, "cache '" << namespace_ << "' full("
-                                << _manifest_cache_capacity
-                                << "), evicting victim: " << victim);
-      manifest_cache.erase(it_victim);
-    }
-
-    manifest_cache[object_name] = std::move(mfp);
+    manifest_cache.insert(object_name, std::move(mfp));
   }
 }
 
@@ -99,11 +83,11 @@ std::shared_ptr<Manifest> ManifestCache::find(const std::string &namespace_,
   auto &mm = *vp.second;
   {
     std::lock_guard<std::mutex> g(mm);
-    const auto &map_it = map.find(object_name);
-    if (map_it == map.end()) {
+    const auto &maybe_elem = map.find(object_name);
+    if (boost::none == maybe_elem) {
       return nullptr;
     } else {
-      return map_it->second;
+      return *maybe_elem;
     }
   }
 }

@@ -23,12 +23,12 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <mutex>
 #include <memory>
 #include "manifest.h"
-
+#include "lru_cache.h"
 namespace alba {
 namespace proxy_client {
 
 using namespace proxy_protocol;
-typedef std::map<std::string, std::shared_ptr<Manifest>> manifest_cache;
+typedef ovs::LRUCacheToo<std::string, std::shared_ptr<Manifest>> manifest_cache;
 class ManifestCache {
 public:
   static ManifestCache &getInstance();
