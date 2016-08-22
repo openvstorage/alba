@@ -391,7 +391,7 @@ module Net_fd = struct
          Lwt_extra2._write_all write_from_source offset length
        in
        Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
+         Buffer_pool.osd_buffer_pool
          (Lwt_extra2.copy_using reader writer size)
 
     | Rsocket socket ->
@@ -406,7 +406,7 @@ module Net_fd = struct
          Lwt_extra2._write_all write_from_source offset length
        in
        Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
+         Buffer_pool.osd_buffer_pool
          (Lwt_extra2.copy_using reader writer size)
 end
 
@@ -442,7 +442,7 @@ let _range_validate
              dir_info fnr
              (fun fd ->
                Buffer_pool.with_buffer
-                 Buffer_pool.default_buffer_pool
+                 Buffer_pool.osd_buffer_pool
                  (fun buffer ->
                    let reader = Lwt_bytes.read fd in
                    let writer = hash # update_lwt_bytes_detached
