@@ -269,7 +269,11 @@ module WriteBuffer = struct
 
     let counted_list_to e_to buf (cnt, list) =
       int_to buf cnt;
-      List.iter (e_to buf) (List.rev list)
+      let cnt2 = ref 0 in
+      List.iter
+        (fun e -> e_to buf e; incr cnt2)
+        (List.rev list);
+      assert (cnt = !cnt2)
 
     let counted_list_more_to a_to =
       pair_to
