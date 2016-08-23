@@ -161,7 +161,7 @@ int alba_rocks_db_transformer(const char* old,
             new_name_pos += 2;
             new_name[new_name_pos++] = '/';
         }
-        sprintf(&new_name[new_name_pos], "%016x", cs[7]);
+        sprintf(&new_name[new_name_pos], "%016lx", fnr);
         /*
           if(file_exists(new_name)==1){
           printf("this file EXISTS\n");fflush(stdout);
