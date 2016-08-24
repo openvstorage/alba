@@ -112,11 +112,10 @@ let claim_osd mgr_access osd_access ~long_id =
 
   Lwt.catch
     update_osd
-    (function
-      | exn when Networking2.is_connection_failure_exn exn ->
-         Lwt_unix.sleep 1.0 >>= fun () ->
-         update_osd ()
-      | exn -> Lwt.fail exn)
+    (fun _ ->
+     (* maybe osd wasn't ready yet, try again after a small delay *)
+     Lwt_unix.sleep 1.0 >>= fun () ->
+     update_osd ())
   >>= function
   | `ClaimedBy alba_id' ->
      Lwt_io.printlf "This OSD is already claimed by alba instance %s" alba_id' >>= fun () ->

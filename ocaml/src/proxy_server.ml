@@ -22,49 +22,8 @@ open Proxy_protocol
 open Range_query_args
 open Lwt_bytes2
 
-let ini_hash_to_string tbl =
-  let buf = Buffer.create 20 in
-  Hashtbl.iter
-    (fun k v ->
-       Buffer.add_string buf "[";
-       Buffer.add_string buf k;
-       Buffer.add_string buf "]\n";
-       (Hashtbl.iter
-          (fun k v ->
-             Buffer.add_string buf k;
-             Buffer.add_string buf " = ";
-             Buffer.add_string buf v;
-             Buffer.add_string buf "\n") v);
-       Buffer.add_string buf "\n")
-    tbl;
-  Buffer.contents buf
-
-let albamgr_cfg_to_ini_string (cluster_id, nodes) =
-  let transform_node_cfg { Alba_arakoon.Config.ips; port; } =
-    Hashtbl.from_assoc_list
-      [ ("ip", String.concat ", " ips);
-        ("client_port", string_of_int port); ]
-  in
-
-  let h = Hashtbl.create 3 in
-  let node_names =
-    Hashtbl.fold
-      (fun node_name node_cfg acc ->
-         Hashtbl.add h node_name (transform_node_cfg node_cfg);
-         node_name :: acc)
-      nodes
-      []
-  in
-
-  let global = [ ("cluster", String.concat ", " node_names);
-                 ("cluster_id", cluster_id); ] in
-  Hashtbl.add h "global" (Hashtbl.from_assoc_list global);
-
-  ini_hash_to_string h
-
-
 let write_albamgr_cfg albamgr_cfg =
-  let value = albamgr_cfg_to_ini_string albamgr_cfg in
+  let value = Arakoon_client_config.to_ini albamgr_cfg in
   function
   | Url.File destination ->
      let tmp = destination ^ ".tmp" in
@@ -81,6 +40,12 @@ let write_albamgr_cfg albamgr_cfg =
      Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
   | Url.Etcd (peers, path) ->
      Arakoon_etcd.store_value peers path value
+  | Url.Arakoon { Url.cluster_id; key; ini_location; } ->
+     Arakoon_config_url.(retrieve (File ini_location)) >|= Arakoon_client_config.from_ini
+     >>= fun ccfg ->
+     Client_helper.with_master_client'
+       ccfg
+       (fun client -> client # set key value)
 
 let read_objects_slices
       (alba_client : Alba_client.alba_client)
@@ -629,7 +594,7 @@ let refresh_albamgr_cfg
        function
        | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, master)
        | Error (Unknown_node (master, (_, _))) ->
-          retrieve_cfg_from_any_node ~tls_config ~tcp_keepalive !albamgr_client_cfg
+          retrieve_cfg_from_any_node ~tls_config !albamgr_client_cfg
        | exn ->
           Lwt_log.debug_f ~exn "refresh_albamgr_cfg failed" >>= fun () ->
           Lwt.return Retry

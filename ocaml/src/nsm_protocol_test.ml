@@ -41,7 +41,6 @@ let test_unknown_operation () =
       let tls_config = Albamgr_test.get_tls_config() in
       Alba_test._fetch_abm_client_cfg () >>= fun ccfg ->
       with_client
-        ~tcp_keepalive:Tcp_keepalive2.default
         ccfg
         tls_config
         (fun client ->

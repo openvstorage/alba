@@ -650,30 +650,24 @@ type refresh_result =
   | Retry
   | Res of Alba_arakoon.Config.t
 
-let retrieve_cfg_from_any_node ~tls_config current_config ~tcp_keepalive =
+let retrieve_cfg_from_any_node ~tls_config current_config =
   let tls = Tls.to_client_context tls_config in
 
     Lwt_log.debug "retrieve_cfg_from_any_node" >>= fun () ->
 
-    let cluster_id, node_hashtbl = current_config in
-    let node_names = Hashtbl.fold (fun nn _  acc -> nn :: acc) node_hashtbl [] in
+    let open Alba_arakoon.Config in
 
     let rec loop = function
       | [] -> Lwt.return Retry
-      | node_name :: rest ->
+      | (node_name, node_cfg) :: rest ->
          Lwt.catch
            (fun  () ->
-            let node_cfg  =
-              Hashtbl.find node_hashtbl node_name
-            in
-            let open Alba_arakoon.Config in
-            let cfg = from_node_client_cfg node_cfg in
             Lwt_log.debug_f "retrieving from %s" node_name >>= fun () ->
             Client_helper.with_client'
               ~tls
-              ~tcp_keepalive
-              cfg
-              cluster_id
+              ~tcp_keepalive:Tcp_keepalive.default_tcp_keepalive
+              node_cfg
+              current_config.cluster_id
               (fun node_client ->
                 wrap_around' ~consistency:Arakoon_client.No_guarantees node_client
                  >>= fun mgr_dirty_client ->
@@ -688,25 +682,22 @@ let retrieve_cfg_from_any_node ~tls_config current_config ~tcp_keepalive =
             loop rest
            )
     in
-    loop node_names
+    loop current_config.node_cfgs
 
-let make_client buffer_pool (ccfg:Arakoon_client_config.t) ~tcp_keepalive =
+let make_client tls_config buffer_pool (ccfg:Arakoon_client_config.t) =
   let open Client_helper in
-
-  let tls_config =
-    let open Arakoon_client_config in
-    ccfg.ssl_cfg |> Option.map Tls.of_ssl_cfg
-  in
-  let tls =
-      Tls.to_client_context tls_config
-  in
-  Lwt_log.debug_f "Albamgr_client.make_client :%s " ([%show : Tls.t option] tls_config)
+  let tls = Client_helper.get_tls_from_ssl_cfg (Option.map Tls.to_ssl_cfg tls_config) in
+  Lwt_log.debug_f "Albamgr_client.make_client :%s " (Arakoon_client_config.show ccfg)
   >>= fun () ->
-  find_master' ~tls ~tcp_keepalive ccfg >>= function
+  find_master' ?tls ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->
      let open Arakoon_client_config in
      let transport = Net_fd.TCP in
      let conn_info =
+       let tls_config =
+         let open Arakoon_client_config in
+         ccfg.ssl_cfg |> Option.map Tls.of_ssl_cfg
+       in
        Networking2.make_conn_info ncfg.ips ncfg.port ~transport
                                   tls_config
      in
@@ -741,19 +732,19 @@ let _msg_of_exception = function
   | exn -> Printexc.to_string exn
 
 
-let _with_client ~attempts cfg tls_config ~tcp_keepalive f =
-  let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config cfg in
-  let tls = Tls.to_client_context tls_config in
+let _with_client ~attempts ccfg tls_config f =
   let attempt_it () =
     Lwt.catch
       (fun () ->
-       Lwt_log.debug_f "_with_client: tls_config=%s" ([%show : Tls.t option] tls_config)
+       Lwt_log.debug_f "_with_client: ccfg=%s" ([%show : Alba_arakoon.Config.t] ccfg)
        >>= fun () ->
-       Client_helper.with_master_client'
-         ~tls
-         ~tcp_keepalive
-         ccfg
-         (fun c -> wrap_around ~consistency:Arakoon_client.Consistent c >>= fun wc -> f wc)
+       make_client
+         tls_config
+         Buffer_pool.default_buffer_pool
+         ccfg >>= fun (client, _, closer) ->
+       Lwt.finalize
+         (fun () -> f client)
+         closer
        >>= fun r ->
        Lwt.return (`Success r)
       )

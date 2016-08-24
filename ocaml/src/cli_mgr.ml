@@ -324,7 +324,7 @@ let alba_add_nsm_host alba_cfg_url tls_config nsm_host_cfg_url to_json verbose a
       alba_cfg_url ~attempts tls_config
       (fun client ->
        Alba_arakoon.config_from_url nsm_host_cfg_url >>= fun cfg ->
-       let nsm_host_id = fst cfg in
+       let nsm_host_id = cfg.Alba_arakoon.Config.cluster_id in
          client # add_nsm_host
                 ~nsm_host_id
                 ~nsm_host_info:Nsm_host.({ kind = (Arakoon cfg); lost = false; }))
@@ -353,7 +353,7 @@ let alba_update_nsm_host
       alba_cfg_url ~attempts tls_config
       (fun client ->
        Alba_arakoon.config_from_url nsm_host_cfg_url >>= fun cfg ->
-       let nsm_host_id = fst cfg in
+       let nsm_host_id = cfg.Alba_arakoon.Config.cluster_id in
          client # update_nsm_host
                 ~nsm_host_id
                 ~nsm_host_info:Nsm_host.({ kind = (Arakoon cfg); lost; }))
@@ -846,7 +846,7 @@ let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
           Alba_arakoon.config_from_url cfg_file >>= fun cfg ->
           let open Albamgr_client in
           retrieve_cfg_from_any_node
-            ~tls_config ~tcp_keepalive:Tcp_keepalive2.default
+            ~tls_config
             cfg
           >>= function
           | Retry -> Lwt.fail_with "could not fetch abm client config from any of the nodes"

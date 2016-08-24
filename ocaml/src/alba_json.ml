@@ -195,18 +195,19 @@ module Nsm_host = struct
   type t_list = t list [@@deriving yojson]
 
   let make id info namespaces_count =
-    let (cluster_id, nodes_hashtbl) = match info.Nsm_host.kind with
-      | Nsm_host.Arakoon cfg -> cfg in
-    { id; kind = "arakoon"; cluster_id;
-      nodes =
-        Hashtbl.fold
-          (fun name { Alba_arakoon.Config.ips; port; } acc ->
-             { name; ips; port; } :: acc)
-          nodes_hashtbl
-          [];
-      lost = info.Nsm_host.lost;
-      namespaces_count = Int64.to_int namespaces_count;
-    }
+    match info.Nsm_host.kind with
+    | Nsm_host.Arakoon cfg ->
+       let open Alba_arakoon.Config in
+       { id;
+         kind = "arakoon";
+         cluster_id = cfg.cluster_id;
+         nodes =
+           List.map
+             (fun (name, { ips; port; }) -> { name; ips; port })
+             cfg.node_cfgs;
+         lost = info.Nsm_host.lost;
+         namespaces_count = Int64.to_int namespaces_count;
+       }
 end
 
 module AlbaId = struct

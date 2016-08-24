@@ -26,24 +26,24 @@ module Pool = struct
 
     let make ~size cfg tls_config ~tcp_keepalive buffer_pool =
       let factory () =
-        let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config !cfg in
         let open Albamgr_client in
         Lwt.catch
-          (fun () -> make_client buffer_pool ccfg ~tcp_keepalive)
+          (fun () -> make_client tls_config buffer_pool !cfg)
           (let open Client_helper in
            let open MasterLookupResult in
            function
             | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, _master)
             | Error (Unknown_node (_master, (_, _))) ->
                begin
-                 retrieve_cfg_from_any_node ~tls_config ~tcp_keepalive !cfg >>= fun cfg' ->
+                 retrieve_cfg_from_any_node ~tls_config !cfg >>= fun cfg' ->
                  match cfg' with
                  | Res cfg' ->
                     let () = cfg := cfg' in
+                    (* TODO tls *)
                     make_client
+                      tls_config
                       buffer_pool
-                      (Alba_arakoon.Config.to_arakoon_client_cfg tls_config !cfg)
-                      ~tcp_keepalive
+                      cfg'
                  | Retry -> Lwt.fail_with "retry later"
                end
             | exn -> Lwt.fail exn
@@ -86,7 +86,7 @@ module Pool = struct
         pool_size = size;
       }
 
-    let use_nsm_host t ~nsm_host_id f ~tcp_keepalive =
+    let use_nsm_host t ~nsm_host_id f =
       let pool =
         try Hashtbl.find t.pools nsm_host_id with
         | Not_found ->
@@ -96,15 +96,16 @@ module Pool = struct
               ~check:(fun _ exn ->
                   (* TODO some exns shouldn't invalidate the connection *)
                   false)
-              ~factory:(fun () ->
-                 t.get_nsm_host_config nsm_host_id
-                 >>= fun nsm ->
-                 match nsm.Nsm_host.kind with
-                 | Nsm_host.Arakoon cfg ->
-                    let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg t.tls_config cfg in
-                    Nsm_host_client.make_client
-                      t.buffer_pool ccfg ~tcp_keepalive
-                       )
+              ~factory:(
+                fun () ->
+                t.get_nsm_host_config nsm_host_id
+                >>= fun nsm ->
+                match nsm.Nsm_host.kind with
+                | Nsm_host.Arakoon ccfg ->
+                   Nsm_host_client.make_client
+                     t.tls_config
+                     t.buffer_pool ccfg
+              )
               ~cleanup:(fun (_, closer) -> closer ())
           in
           Hashtbl.add t.pools nsm_host_id p;

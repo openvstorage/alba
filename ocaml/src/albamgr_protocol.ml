@@ -192,7 +192,8 @@ module Protocol = struct
             | None -> cfg
             | Some cfg' ->
                (* cluster_id shouldn't change! *)
-               assert (fst cfg = fst cfg');
+               let open Arakoon_client_config in
+               assert (cfg.cluster_id = cfg'.cluster_id);
                cfg'
           in
           match osd.kind with

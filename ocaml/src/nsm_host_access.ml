@@ -25,7 +25,6 @@ class basic_nsm_host_pooled
     nsm_hosts_pool
     forget
     nsm_host_id
-    ~tcp_keepalive
   =
 
   let with_nsm_host_from_pool ~nsm_host_id f =
@@ -34,7 +33,6 @@ class basic_nsm_host_pooled
         nsm_hosts_pool
         ~nsm_host_id
         f
-        ~tcp_keepalive
     in
     Lwt.catch
       try_f
@@ -100,7 +98,6 @@ class nsm_host_access
     ~tls_config
     nsm_host_connection_pool_size
     buffer_pool
-    ~tcp_keepalive
   =
 
   let nsm_hosts_info_cache = Hashtbl.create 3 in
@@ -131,7 +128,7 @@ class nsm_host_access
 
   let get_basic ~nsm_host_id =
     (* TODO pool met clients bijhouden *)
-    new basic_nsm_host_pooled mgr nsm_hosts_pool forget nsm_host_id ~tcp_keepalive
+    new basic_nsm_host_pooled mgr nsm_hosts_pool forget nsm_host_id
   in
 
   let get ~nsm_host_id =
@@ -358,7 +355,6 @@ class nsm_host_access
           nsm_hosts_pool
           ~nsm_host_id
           f
-          ~tcp_keepalive
 
     method refresh_namespace_osds = refresh_namespace_osds
     method maybe_update_namespace_info = maybe_update_namespace_info

@@ -180,19 +180,17 @@ let wrap_around (client:Arakoon_client.client) =
     >>= fun ()->
     Lwt.fail_with "the nsm host user function could not be found"
 
-let make_client buffer_pool ccfg ~tcp_keepalive =
-  let tls_config =
-    let open Arakoon_client_config in
-    ccfg.ssl_cfg |> Option.map Tls.of_ssl_cfg
-  in
+let make_client tls_config buffer_pool ccfg =
+  let tls = Client_helper.get_tls_from_ssl_cfg (Option.map Tls.to_ssl_cfg tls_config) in
   let open Client_helper in
   Lwt_log.debug_f "Nsm_host_client.make_client" >>= fun () ->
-  let tls = Tls.to_client_context tls_config in
-  find_master' ~tls ccfg ~tcp_keepalive >>= function
+  find_master' ?tls ccfg >>= function
   | MasterLookupResult.Found (m, ncfg) ->
      let open Arakoon_client_config in
      let transport = Net_fd.TCP in
-     let conn_info = Networking2.make_conn_info ncfg.ips ncfg.port ~transport tls_config in
+     let conn_info = Networking2.make_conn_info ncfg.ips ncfg.port
+                                                ~transport
+                                                tls_config in
     Networking2.first_connection'
       buffer_pool
       ~conn_info
@@ -209,19 +207,17 @@ let make_client buffer_pool ccfg ~tcp_keepalive =
   | r -> Lwt.fail (Client_helper.MasterLookupResult.Error r)
 
 
-let with_client cfg tls_config ~tcp_keepalive f =
-  let ccfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config cfg in
-  let tls = Tls.to_client_context tls_config in
+let with_client ccfg tls_config f =
   let open Nsm_model in
   Lwt.catch
     (fun () ->
-       Client_helper.with_master_client'
-         ~tls
-         ~tcp_keepalive
-         ccfg
-         (fun client ->
-            wrap_around client >>= fun wc ->
-            f wc))
+      make_client tls_config
+                  Buffer_pool.default_buffer_pool
+                  ccfg
+      >>= fun (client, closer) ->
+      Lwt.finalize
+        (fun () -> f client)
+        closer)
     (function
       | Err.Nsm_exn (err, _) as exn ->
         Lwt_log.warning_f ~exn "nsm host client failed with %s" (Err.show err)

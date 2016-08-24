@@ -760,16 +760,20 @@ end
 
 module Url = struct
 
-  type t = Arakoon_config_url.url = File of string | Etcd of (((string * int) list) * string)
-  let show = function
-    | File f -> "file://" ^ f
-    | Etcd (peers,path) ->
-       let peers_s =
-         String.concat "," (List.map (fun (h,p) -> Printf.sprintf "%s:%i" h p) peers)
-       in
-       Printf.sprintf "etcd://%s%s" peers_s path
+  type arakoon_cfg = Arakoon_config_url.arakoon_cfg =
+    { cluster_id : string;
+      key : string;
+      ini_location : string }
+      [@@deriving show]
+
+  type t = Arakoon_config_url.url =
+         | File of string
+         | Etcd of (((string * int) list) * string)
+         | Arakoon of arakoon_cfg
+                        [@@deriving show]
+
   let make = Arakoon_config_url.make
-  end
+end
 
 let make_first_last_reverse () =
   let reverse = Random.bool ()

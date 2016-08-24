@@ -29,11 +29,7 @@ let rec wait_asd_connection port asd_id () =
      Asd_client.with_client
        ~conn_info  asd_id
        (fun client -> Lwt.return `Continue))
-    (function
-      | exn when Networking2.is_connection_failure_exn exn ->
-         Lwt.return `Retry
-      | exn ->
-         Lwt.fail exn) >>= function
+    (fun _ -> Lwt.return `Retry) >>= function
   | `Continue ->
      Lwt.return ()
   | `Retry ->

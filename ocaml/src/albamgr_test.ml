@@ -49,7 +49,6 @@ let test_with_albamgr f =
     Albamgr_client.with_client'
        ccfg
        ~tls_config
-       ~tcp_keepalive:Tcp_keepalive2.default
        f
   in
   Lwt_main.run t
@@ -73,7 +72,6 @@ let test_unknown_operation () =
       Alba_arakoon.config_from_url ccfg_url >>= fun ccfg ->
       Albamgr_client._with_client
         ~attempts:1 ccfg
-        ~tcp_keepalive:Tcp_keepalive2.default
         tls_config
         (fun client ->
          client # do_unknown_operation >>= fun () ->

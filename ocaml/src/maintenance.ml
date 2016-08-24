@@ -81,7 +81,6 @@ class client ?(retry_timeout = 60.)
              (alba_client : Alba_base_client.client)
   =
   let tls_config = alba_client # tls_config in
-  let tcp_keepalive = alba_client # tcp_keepalive in
   let coordinator =
     let open Maintenance_coordination in
     make_maintenance_coordinator
@@ -2029,13 +2028,11 @@ class client ?(retry_timeout = 60.)
                   Albamgr_client.with_client'
                     alba_osd_arakoon_cfg
                     ~tls_config
-                    ~tcp_keepalive
                     (fun client ->
                      client # get_client_config))
                  (fun exn ->
                   Albamgr_client.retrieve_cfg_from_any_node
                     ~tls_config
-                    ~tcp_keepalive
                     alba_osd_arakoon_cfg >>= function
                   | Albamgr_client.Retry ->
                      Lwt.fail_with
