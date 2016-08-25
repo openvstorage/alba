@@ -405,6 +405,9 @@ module Protocol = struct
     | GetDiskUsage : (unit, (int64 * int64)) query
     | PartialGet : (key * (int * int) list * priority, bool) query
     | Capabilities : (unit, Capabilities.OsdCapabilities.t) query
+    | RangeValidate: (Slice.t RangeQueryArgs.t * bool * bool * priority,
+                      (key * ((Bytes.t * bool) list)) counted_list * key option) query
+
   [@deriving show]
 
   type ('request, 'response) update =
@@ -427,6 +430,7 @@ module Protocol = struct
                       Wrap_query GetDiskUsage, 10l, "GetDiskUsage";
                       Wrap_query PartialGet,   11l, "PartialGet";
                       Wrap_query Capabilities, 12l, "Capabilities";
+                      Wrap_query RangeValidate,13l, "RangeValidate";
                     ]
 
   let wrap_unknown_operation f =
@@ -486,6 +490,13 @@ module Protocol = struct
                  Llio.int_to))
            priority_to_buffer'
       | Capabilities -> Llio.unit_to
+      | RangeValidate ->
+         Llio.tuple4_to
+           (RangeQueryArgs.to_buffer' `ReverseThenMax Slice.to_buffer')
+           Llio.bool_to
+           Llio.bool_to
+           priority_to_buffer'
+
 
   let query_request_deserializer : type req res. (req, res) query -> req Llio2.deserializer
     =
@@ -523,6 +534,12 @@ module Protocol = struct
                Llio.int_from))
          priority_from_buffer'
     | Capabilities -> Llio.unit_from
+    | RangeValidate ->
+       Llio.tuple4_from
+         (RangeQueryArgs.from_buffer' `ReverseThenMax Slice.from_buffer')
+         Llio.bool_from
+         Llio.bool_from
+         priority_from_buffer'
 
 
   let query_response_serializer : type req res. (req, res) query -> res Llio2.serializer
@@ -559,6 +576,16 @@ module Protocol = struct
            Llio.int64_to
       | PartialGet -> Llio.bool_to
       | Capabilities -> Capabilities.OsdCapabilities.to_buffer
+      | RangeValidate ->
+         Llio.pair_to
+           (Llio.counted_list_to
+                           (Llio.pair_to
+                              Slice.to_buffer'
+                              (Llio.list_to
+                                 (Llio.pair_to Llio.string_to Llio.bool_to))
+                           )
+           )
+           (Llio.option_to Slice.to_buffer')
 
   let query_response_deserializer : type req res. (req, res) query -> res Llio2.deserializer
     =
@@ -594,6 +621,18 @@ module Protocol = struct
            Llio.int64_from
       | PartialGet -> Llio.bool_from
       | Capabilities -> Capabilities.OsdCapabilities.from_buffer
+      | RangeValidate ->
+         Llio.pair_from
+         (Llio.counted_list_from
+            (Llio.pair_from
+               Slice.from_buffer'
+               (Llio.list_from
+                  (Llio.pair_from
+                     Llio.string_from
+                     Llio.bool_from))
+         ))
+         (Llio.option_from Slice.from_buffer')
+
 
 
   let update_request_serializer : type req res. (req, res) update -> req Llio2.serializer

@@ -354,7 +354,9 @@ let allow_overwrite =
          ~doc:"flag to allow overwriting the object if it already exists")
 
 let first =
-  Arg.(value & opt string "" & info["first"] ~doc:"")
+  Arg.(value & opt string ""
+       & info["first"]
+             ~doc:"starting key")
 
 
 let finc =
@@ -362,7 +364,7 @@ let finc =
 
 
 let last =
-  Arg.(value & opt (some string) None & info["last"] ~doc:"")
+  Arg.(value & opt (some string) None & info["last"] ~doc:"last key")
 
 
 let max =

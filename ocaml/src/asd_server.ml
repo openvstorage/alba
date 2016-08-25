@@ -391,7 +391,7 @@ module Net_fd = struct
          Lwt_extra2._write_all write_from_source offset length
        in
        Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
+         Buffer_pool.osd_buffer_pool
          (Lwt_extra2.copy_using reader writer size)
 
     | Rsocket socket ->
@@ -406,9 +406,124 @@ module Net_fd = struct
          Lwt_extra2._write_all write_from_source offset length
        in
        Buffer_pool.with_buffer
-         Buffer_pool.default_buffer_pool
+         Buffer_pool.osd_buffer_pool
          (Lwt_extra2.copy_using reader writer size)
 end
+
+let _range_validate
+      kv io_sched dir_info return
+      ({ RangeQueryArgs.first;finc;last;reverse;max;},
+       verify_checksum, show_all, prio)
+  =
+  let exists_ok (checksum,blob) =
+    match blob with
+    | Value.Direct v  -> Lwt.return None
+    | Value.OnFs(fnr,size) ->
+       let file_name = DirectoryInfo.get_file_path dir_info fnr in
+       Lwt_unix.file_exists file_name >>= fun ok ->
+       Some ("file_exists",ok) |> Lwt.return
+  in
+  let checksum_ok cv =
+    let (checksum, value) = cv in
+    let algo = Checksum.algo_of checksum in
+    Lwt.catch
+      (fun () ->
+        let hash = Hashes.make_hash algo in
+        match value with
+        | Value.Direct blob ->
+           let open Slice in
+           let () = hash # update_substring blob.buf blob.offset blob.length in
+           let checksum2 = hash # final () in
+           let ok = checksum2 = checksum in
+           let open Checksum.Algo in
+           Some (show algo, ok) |> Lwt.return
+        | Value.OnFs (fnr, size) ->
+           DirectoryInfo.with_blob_fd
+             dir_info fnr
+             (fun fd ->
+               Buffer_pool.with_buffer
+                 Buffer_pool.osd_buffer_pool
+                 (fun buffer ->
+                   let reader = Lwt_bytes.read fd in
+                   let writer = hash # update_lwt_bytes_detached
+                   in
+                   Lwt_extra2.copy_using reader writer size buffer)
+             )
+           >>= fun () ->
+           let checksum2 = hash # final () in
+           let ok = checksum2 = checksum in
+           let open Checksum.Algo in
+           Some (show algo, ok) |> Lwt.return
+      )
+      (fun exn ->
+        let msg = Checksum.Algo.show algo ^ ":" ^ (Printexc.to_string exn) in
+        Some (msg , false) |> Lwt.return
+      )
+  in
+  let checks =
+    if verify_checksum
+    then
+      [exists_ok; checksum_ok]
+    else
+      [exists_ok]
+  in
+  perform_read
+    io_sched
+    prio
+    (fun () ->
+      let max = cap_max ~max () in
+      let (cnt, items), has_more =
+        Rocks_key_value_store.map_range
+          kv
+          ~first:(Keys.key_with_public_prefix first) ~finc
+          ~last:(match last with
+                 | None -> Keys.public_key_next_prefix
+                 | Some (last, linc) -> Some (Keys.key_with_public_prefix last, linc))
+          ~reverse
+          ~max
+          (fun cur key ->
+            Keys.string_chop_prefix key,
+            deserialize Value.from_buffer (Rocks_key_value_store.cur_get_value cur)
+          )
+      in
+      Lwt_list.fold_left_s
+        (fun (cnt, last_key, acc, cost) (key, cv ) ->
+          Lwt_list.fold_left_s
+            (fun acc check ->
+              check cv >>= function
+              | None   -> Lwt.return acc
+              | Some r -> Lwt.return (r :: acc)
+            ) [] checks
+          >>= fun check_results ->
+          let term =
+            let _checksum, blob = cv in
+            match blob with
+            | Value.Direct v      ->
+               if verify_checksum then 300 else 200
+            | Value.OnFs (_,size) ->
+               if verify_checksum
+               then
+                 let size_cost = (size lsr 17) * 50  (* arbitrary: 50 per 128KB *) in
+                 400 + size_cost
+               else 400
+          in
+          let cost' = cost + term in
+          let acc' =
+            if show_all
+               || not (List.fold_left (fun  acc (_,ok) -> acc && ok ) true check_results)
+            then
+              (cnt+1, Some key, (key, check_results) :: acc, cost')
+            else
+              (cnt, Some key, acc, cost')
+          in
+          Lwt.return acc'
+        ) (0, None, [], 0) items
+      >>= fun (cnt', last, r, total_cost) ->
+      Lwt_log.debug_f "total_cost:%i for cnt':%i" total_cost cnt' >>= fun () ->
+      let r' = List.rev r in
+      let cont_key = if has_more then last else None in
+      return ~cost:total_cost ((cnt',r'), cont_key)
+    )
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
@@ -682,6 +797,8 @@ let execute_query : type req res.
     | Capabilities ->
        fun () ->
        return' capabilities
+    | RangeValidate ->
+       _range_validate kv io_sched dir_info return
 
 exception ConcurrentModification
 
