@@ -142,6 +142,7 @@ int alba_rocks_db_transformer(const char* old,
     int result = -1;
     int ok = _get_fnr_flen(returned_value, &fnr, &fragment_length);
     if(ok == 0){
+        uint64_t fnr_orig = fnr;
         assert(len < 4096);
         memcpy(new_name,_ROOT_PATH,_ROOT_PATH_LENGTH);
         size_t pos = 0;
@@ -161,7 +162,7 @@ int alba_rocks_db_transformer(const char* old,
             new_name_pos += 2;
             new_name[new_name_pos++] = '/';
         }
-        sprintf(&new_name[new_name_pos], "%016lx", fnr);
+        sprintf(&new_name[new_name_pos], "%016lx", fnr_orig);
         /*
           if(file_exists(new_name)==1){
           printf("this file EXISTS\n");fflush(stdout);
