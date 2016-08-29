@@ -64,6 +64,7 @@ RUN eval `${opam_env}` && \
 RUN eval `${opam_env}` && \
     opam update && \
     opam install -y \
+        oasis.0.4.6 \
         ocamlfind \
         ssl.0.5.2 \
         camlbz2 \
@@ -109,7 +110,7 @@ RUN cd /usr/src/gtest \
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.9.9
+RUN cd arakoon && git pull && git checkout a4e7dffc08cb999e1b1de45eb7f6efe8c978eb81
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
