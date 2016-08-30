@@ -23,8 +23,19 @@ open Cli_common
 
 let () =
   let engine =
-    (*new Lwt_engine.select *)
-    new Lwt_rsocket.rselect
+    try match Sys.getenv "ALBA_LWT_ENGINE" with
+        | "rselect" -> (new Lwt_rsocket.rselect :> Lwt_engine.t)
+        | "select"  -> (new Lwt_engine.select :> Lwt_engine.t)
+        | "libev"   -> (new Lwt_engine.libev :> Lwt_engine.t)
+        | str ->
+           let msg =
+             Printf.sprintf
+               "%s: invalid ALBA_LWT_ENGINE specified, must be 'rselect', 'select' or 'libev'"
+               str
+           in
+           Printf.eprintf "%s" msg;
+           failwith msg
+    with Not_found ->  (new Lwt_rsocket.rselect :> Lwt_engine.t)
   in
   Lwt_engine.set engine;
   Lwt.async_exception_hook :=
