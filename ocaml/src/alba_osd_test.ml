@@ -85,30 +85,39 @@ let test_update_abm_cfg () =
   Albamgr_test.test_with_albamgr
     (fun client ->
      let long_id = get_random_string 32 in
-     client # add_osd Nsm_model.OsdInfo.({
-                                            kind = Alba2 { id = long_id;
-                                                           cfg = "cluster id", Hashtbl.create 3;
-                                                           prefix = "";
-                                                           preset = ""; };
-                                            decommissioned = false;
-                                            node_id = "";
-                                            other = "";
-                                            total = 0L; used = 0L;
-                                            seen = [];
-                                            read = [];
-                                            write = [];
-                                            errors = [];
-                                          }) >>= fun () ->
+     client # add_osd
+            Nsm_model.OsdInfo.(
+       {
+         kind = Alba2 { id = long_id;
+                        cfg = Arakoon_client_config.(
+                          { cluster_id = "cluster id";
+                            node_cfgs = [];
+                            ssl_cfg = None;
+                            tcp_keepalive = Tcp_keepalive.default_tcp_keepalive
+                          });
+                        prefix = "";
+                        preset = ""; };
+         decommissioned = false;
+         node_id = "";
+         other = "";
+         total = 0L; used = 0L;
+         seen = [];
+         read = [];
+         write = [];
+         errors = [];
+       }) >>= fun () ->
      client # get_osd_by_long_id ~long_id >>= fun o_osd_info ->
 
      client # update_osds
             [ (long_id,
                Albamgr_protocol.Protocol.Osd.Update.make
-                 ~albamgr_cfg':("cluster id",
-                                let h = Hashtbl.create 3 in
-                                Hashtbl.add h "fdsa" Alba_arakoon.Config.({ ips = []; port = 3; });
-                                h)
-                                 ()
+                 ~albamgr_cfg':Arakoon_client_config.(
+                 { cluster_id = "cluster id";
+                   node_cfgs = [ "fdsa", { ips = []; port=3; } ];
+                   ssl_cfg = None;
+                   tcp_keepalive = Tcp_keepalive.default_tcp_keepalive;
+                 })
+                                                    ()
               ) ] >>= fun () ->
 
      client # get_osd_by_long_id ~long_id >>= fun o_osd_info2 ->
@@ -116,9 +125,9 @@ let test_update_abm_cfg () =
      let open Nsm_model.OsdInfo in
      (match (snd (Option.get_some o_osd_info2)).kind with
       | Alba2 { cfg; _; } ->
-         let cluster_id, node_cfgs = cfg in
-         assert (1 = Hashtbl.length node_cfgs);
-         assert ("cluster id" = cluster_id);
+         let open Arakoon_client_config in
+         assert (1 = List.length cfg.node_cfgs);
+         assert ("cluster id" = cfg.cluster_id);
          Lwt.return ()
       | _ ->
          assert false) >>= fun () ->
@@ -129,11 +138,13 @@ let test_update_abm_cfg () =
         client # update_osds
                [ (long_id,
                   Albamgr_protocol.Protocol.Osd.Update.make
-                    ~albamgr_cfg':("new cluster id??",
-                                   let h = Hashtbl.create 3 in
-                                   Hashtbl.add h "fdsa" Alba_arakoon.Config.({ ips = []; port = 3; });
-                                   h)
-                                    ()
+                    ~albamgr_cfg':Arakoon_client_config.(
+                    { cluster_id = "new cluster id??";
+                      node_cfgs = [];
+                      ssl_cfg = None;
+                      tcp_keepalive = Tcp_keepalive.default_tcp_keepalive;
+                    })
+                                                       ()
                  ) ] >>= fun () ->
         Lwt.return `Didnt_throw)
        (fun exn ->

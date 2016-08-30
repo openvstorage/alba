@@ -126,7 +126,6 @@ let alba_add_osd
            ~attempts
            alba_osd_cfg
            ~tls_config
-           ~tcp_keepalive:Tcp_keepalive2.default
            (fun mgr -> mgr # get_alba_id) >>= fun long_id ->
          Lwt.return Nsm_model.OsdInfo.(Alba2 { id = long_id;
                                                cfg = alba_osd_cfg;

@@ -39,7 +39,6 @@ class client
     ~bad_fragment_callback
     ~nsm_host_connection_pool_size
     ~tls_config
-    ~tcp_keepalive
     ~use_fadvise
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
@@ -57,7 +56,6 @@ class client
         nsm_host_connection_pool_size
         ~tls_config
         default_buffer_pool
-        ~tcp_keepalive
   in
 
   let with_osd_from_pool ~osd_id f = osd_access # with_osd ~osd_id f in
@@ -88,7 +86,6 @@ class client
     method get_fragment_cache = fragment_cache
 
     method tls_config = tls_config
-    method tcp_keepalive = tcp_keepalive
 
     method mgr_access = mgr_access
     method nsm_host_access = nsm_host_access

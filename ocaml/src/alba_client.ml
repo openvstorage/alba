@@ -447,7 +447,6 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                         ~bad_fragment_callback
                         ~nsm_host_connection_pool_size
                         ~tls_config
-                        ~tcp_keepalive
                         ~use_fadvise
                         ~partial_osd_read
                         ~cache_on_read ~cache_on_write

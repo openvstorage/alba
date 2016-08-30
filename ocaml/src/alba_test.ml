@@ -300,12 +300,8 @@ let test_delete_namespace () =
               begin
                 let open Albamgr_protocol.Protocol in
                 let (Nsm_host.Arakoon cfg) = host.Nsm_host.kind in
-                let tls_config = Albamgr_test.get_tls_config () in
-                let tls = Tls.to_client_context tls_config in
                 Client_helper.with_master_client'
-                  ~tls
-                  ~tcp_keepalive:Tcp_keepalive2.default
-                  (Alba_arakoon.Config.to_arakoon_client_cfg tls_config cfg)
+                  cfg
                   (fun client ->
                    client # prefix_keys prefix (-1)
                    >>= fun keys ->
@@ -1767,8 +1763,7 @@ let test_master_switch () =
   let rec wait_until_master ccfg tls_config () =
     let open Client_helper in
 
-    let tls = Tls.to_client_context tls_config in
-    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default ccfg
+    find_master_loop ccfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
       Lwt.return ()
@@ -1778,8 +1773,7 @@ let test_master_switch () =
   in
   let drop_master ccfg tls_config =
     let open Client_helper in
-    let tls = Tls.to_client_context tls_config in
-    find_master_loop ~tls ~tcp_keepalive:Tcp_keepalive2.default ccfg
+    find_master_loop ccfg
     >>= function
     | MasterLookupResult.Found (master, node_cfg) ->
        begin
@@ -1805,9 +1799,9 @@ let test_master_switch () =
   in
   test_with_alba_client
     (fun alba_client ->
+     (* TODO tls? *)
      let tls_config = Albamgr_test.get_tls_config() in
      _fetch_abm_client_cfg () >>= fun ccfg ->
-     let cfg = Alba_arakoon.Config.to_arakoon_client_cfg tls_config ccfg in
 
      Lwt_log.debug_f "starting %s" test_name >>= fun () ->
      let units =
@@ -1826,7 +1820,7 @@ let test_master_switch () =
      in
 
      use_pool () >>= fun () ->
-     drop_master cfg tls_config >>= fun () ->
+     drop_master ccfg tls_config >>= fun () ->
 
      Lwt_extra2.ignore_errors
        ~logging:true

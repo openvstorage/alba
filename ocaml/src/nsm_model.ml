@@ -277,6 +277,7 @@ module OsdInfo = struct
 
   let _from_buffer2 orig_buf =
     let bufs = Llio.string_from orig_buf in
+    (* TODO this could be optimized to avoid a copy *)
     let buf = Llio.make_buffer bufs 0 in
 
     let kind_v = Llio.int8_from buf in
@@ -323,6 +324,7 @@ module OsdInfo = struct
 
   let _from_buffer3 orig_buf =
     let bufs = Llio.string_from orig_buf in
+    (* TODO this could be optimized to avoid a copy *)
     let buf = Llio.make_buffer bufs 0 in
 
     let kind_v = Llio.int8_from buf in

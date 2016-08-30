@@ -445,4 +445,4 @@ let with_alba_client cfg_url tls_config f =
 let with_albamgr_client ~attempts cfg_url tls_config f =
   Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
   Albamgr_client.with_client' ~attempts
-    cfg ~tls_config ~tcp_keepalive:Tcp_keepalive2.default f
+    cfg ~tls_config f

@@ -302,9 +302,3 @@ let make_server
                       (Printexc.to_string exn)
        >>= fun () ->
        Lwt.fail exn)
-
-let is_connection_failure_exn = function
-  | ConnectTimeout
-  | Unix.Unix_error(Unix.ECONNREFUSED, "connect", "")
-  | Failure "no connection" -> true
-  | _ -> false
