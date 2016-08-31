@@ -609,7 +609,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         let uuid = Uuidm.v4_gen (Random.State.make_self_init ()) () in
         Uuidm.to_string uuid in
       let preset_name = "default" in
-      backend # push_update
+      Lwt.catch
+        (fun () ->
+         backend # push_update
               (Update.Sequence
                  [ Update.Assert (Keys.alba_id, None);
                    Update.Set (Keys.alba_id, alba_id);
@@ -620,8 +622,14 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    Update.Set(Keys.Preset.prefix ^ preset_name,
                               serialize
                                 Protocol.Preset.to_buffer
-                                Protocol.Preset._DEFAULT); ])
-      >>= fun _ ->
+                                Protocol.Preset._DEFAULT); ]) >>= fun _ ->
+         Lwt.return ())
+        (function
+          | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+             Lwt.return ()
+          | exn ->
+             Lwt.fail exn) >>= fun () ->
+
       (* now read it again from the database as another client might have triggered this too *)
       Lwt.return (db # get_exn Keys.alba_id)
     | Some id ->
