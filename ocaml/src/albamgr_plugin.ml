@@ -608,8 +608,28 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       let alba_id =
         let uuid = Uuidm.v4_gen (Random.State.make_self_init ()) () in
         Uuidm.to_string uuid in
-      backend # push_update
-        (Update.TestAndSet (Keys.alba_id, None, Some(alba_id))) >>= fun _ ->
+      let preset_name = "default" in
+      Lwt.catch
+        (fun () ->
+         backend # push_update
+              (Update.Sequence
+                 [ Update.Assert (Keys.alba_id, None);
+                   Update.Set (Keys.alba_id, alba_id);
+
+                   (* install default preset only once *)
+                   Update.Assert(Keys.Preset.default, None);
+                   Update.Set(Keys.Preset.default, preset_name);
+                   Update.Set(Keys.Preset.prefix ^ preset_name,
+                              serialize
+                                Protocol.Preset.to_buffer
+                                Protocol.Preset._DEFAULT); ]) >>= fun _ ->
+         Lwt.return ())
+        (function
+          | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+             Lwt.return ()
+          | exn ->
+             Lwt.fail exn) >>= fun () ->
+
       (* now read it again from the database as another client might have triggered this too *)
       Lwt.return (db # get_exn Keys.alba_id)
     | Some id ->
@@ -636,32 +656,6 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       Lwt.return ()
   end >>= fun () ->
   let get_version () = Option.get_some (get_version ()) in
-
-  begin match db # get Keys.Preset.default with
-    | None ->
-      (* there is no default preset yet, let's (try to) add it now *)
-      let preset_name = "default" in
-      Lwt.catch
-        (fun () ->
-           backend # push_update
-             (Update.Sequence
-                [ Update.Assert(Keys.Preset.default, None);
-                  Update.Set(Keys.Preset.default, preset_name);
-                  Update.Set(Keys.Preset.prefix ^ preset_name,
-                             serialize
-                               Protocol.Preset.to_buffer
-                               Protocol.Preset._DEFAULT);
-                ]) >>= fun _ ->
-           Lwt.return ())
-        (function
-          | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
-            (* default key should be present *)
-            ignore ((db # get_exn Keys.Preset.default) : string);
-            Lwt.return ()
-          | exn -> Lwt.fail exn)
-    | Some _ ->
-      Lwt.return_unit
-  end >>= fun () ->
 
   begin
     match db # get Keys.maintenance_config with
@@ -791,7 +785,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         let prefix = Keys.Preset.prefix
       end) in
     let module EKV = Key_value_store.Read_store_extensions(KV) in
-    let default_preset = db # get_exn Keys.Preset.default in
+    let default_preset = db # get Keys.Preset.default in
     let presets =
       EKV.map_range
         db
@@ -803,7 +797,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
              let (cnt, _), _ = list_preset_namespaces ~preset_name ~max:1 in
              cnt > 0
            in
-           (preset_name, preset, preset_name = default_preset, in_use)) in
+           (preset_name, preset, Some preset_name = default_preset, in_use)) in
     presets
   in
 
@@ -1239,7 +1233,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | CreateNamespace -> fun (name, nsm_host_id, preset_o) ->
 
       let preset_name = match preset_o with
-        | None -> db # get_exn Keys.Preset.default
+        | None ->
+           begin
+             match db # get Keys.Preset.default with
+             | None -> Error.(failwith Invalid_preset)
+             | Some p -> p
+           end
         | Some p -> p
       in
       let namespace_info_key = Keys.Namespace.info name in
@@ -1550,8 +1549,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
     | DeletePreset -> fun preset_name ->
       let current_default = db # get_exn Keys.Preset.default in
-      if current_default = preset_name
-      then Error.failwith Error.Preset_cant_delete_default;
+      let maybe_remove_default =
+        if current_default = preset_name
+        then [ Update.Assert (Keys.Preset.default, Some current_default);
+               Update.Delete (Keys.Preset.default); ]
+        else []
+      in
 
       let (cnt, _), _ = list_preset_namespaces ~preset_name ~max:1 in
       let is_in_use = cnt <> 0 in
@@ -1566,21 +1569,20 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       end;
 
       return_upds
-        [ Update.Assert (Keys.Preset.default, Some current_default);
-          Update.Assert_range
-            (Keys.Preset.namespaces_prefix ~preset_name,
-             Range_assertion.ContainsExactly []);
-          Update.Delete (preset_key); ]
+        (List.concat
+           [ [ Update.Assert_range
+                 (Keys.Preset.namespaces_prefix ~preset_name,
+                  Range_assertion.ContainsExactly []);
+               Update.Delete (preset_key); ];
+             maybe_remove_default ])
     | SetDefaultPreset -> fun preset_name ->
-      let current_default = db # get_exn Keys.Preset.default in
       let preset_key = Keys.Preset.prefix ^ preset_name in
       let preset_v = begin match db # get preset_key with
         | None -> Error.failwith Error.Preset_does_not_exist
         | Some v -> v
       end in
       return_upds
-        [ Update.Assert (Keys.Preset.default, Some current_default);
-          Update.Set (Keys.Preset.default, preset_name);
+        [ Update.Set (Keys.Preset.default, preset_name);
           (* asserting it still exists when we make it the default *)
           Update.Assert (preset_key, Some preset_v); ]
     | AddOsdsToPreset -> fun (preset_name, (_, osd_ids)) ->
