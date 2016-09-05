@@ -72,14 +72,14 @@ module Osd_pool = struct
       | Alba _
       | Alba2 _ -> true
 
-    let factory tls_config tcp_keepalive buffer_pool make_alba_osd_client =
-      function
+    let factory tls_config tcp_keepalive buffer_pool make_alba_osd_client kind =
+      let () =
+        Lwt_log.ign_debug_f
+          "factory: kind:%s"
+          ([%show :Nsm_model.OsdInfo.kind] kind)
+      in
+      match kind with
       | OsdInfo.Asd (conn_info', asd_id) ->
-         let () =
-           Lwt_log.ign_debug_f
-             "factory: conn_info':%s"
-             ([%show :Nsm_model.OsdInfo.conn_info] conn_info')
-         in
          let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
          Asd_client.make_client ~conn_info (Some asd_id)
          >>= fun (asd, closer) ->
@@ -87,7 +87,9 @@ module Osd_pool = struct
          let osd = new Osd'.osd_wrap_key_value_osd key_value_osd in
          Lwt.return (osd, closer)
       | OsdInfo.Kinetic (conn_info', kinetic_id) ->
-         let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
+         let (ips,port,use_tls,use_rdma) = conn_info' in
+         let conn_info_demo = (ips,port,false,false) in
+         let conn_info = Asd_client.conn_info_from ~tls_config conn_info_demo in
          Kinetic_client.make_client buffer_pool ~conn_info kinetic_id >>= fun (client, closer) ->
          let osd = new Osd'.osd_wrap_key_value_osd client in
          Lwt.return (osd, closer)
@@ -577,13 +579,14 @@ class osd_access
                   Osd_state.add_ips_port osd_state ips port;
                   Osd_state.add_json osd_state json;
                   Osd_state.add_seen osd_state;
-                  let conn_info = determine_conn_info ips port tlsPort useRdma in
                   let kind',used',total' =
                     let open OsdInfo in
                     match extras with
                     | None ->
+                       let conn_info = determine_conn_info ips port None false in
                        Kinetic(conn_info, id), osd_info.used, osd_info.total
                     | Some { used; total; _ } ->
+                       let conn_info = determine_conn_info ips port tlsPort useRdma in
                        Asd(conn_info, id), used, total
 
                   in
@@ -599,14 +602,14 @@ class osd_access
                       osds_info_cache osd_id
                       (osd_info', osd_state, osd_capabilities)
                   in
-                  let conn_info'  =
+                  let get_conn_info osd_info =
                     let open OsdInfo in
                     match osd_info.kind with
-                    | Asd (x, _)
-                    | Kinetic (x, _) -> x
-                    | Alba _
-                    | Alba2 _ -> assert false (* Alba osds don't broadcast *)
+                    |Asd (x, _) | Kinetic (x, _) -> x
+                    | Alba _    | Alba2 _ -> assert false (* Alba osds don't broadcast *)
                   in
+                  let conn_info'  = get_conn_info osd_info' in
+                  let conn_info   = get_conn_info osd_info  in
                   let () =
                     if conn_info' <> conn_info
                     then
@@ -624,11 +627,11 @@ class osd_access
          then
            begin
              Lwt_log.debug_f "check_claimed %s => true" id >>= fun () ->
-             let conn_info = determine_conn_info ips port tlsPort useRdma in
-
              let open Nsm_model in
              (match extras with
               | None ->
+                 let tlsPort = None in (* for now: no tls with kinetic *)
+                 let conn_info = determine_conn_info ips port tlsPort useRdma in
                  let kind = OsdInfo.Kinetic (conn_info, id) in
                  Osd_pool.factory
                    tls_config
@@ -643,6 +646,7 @@ class osd_access
                    (id, kind,
                     used, total)
               | Some { node_id; version; total; used; } ->
+                 let conn_info = determine_conn_info ips port tlsPort useRdma in
                  Lwt.return
                    (node_id,
                     OsdInfo.Asd (conn_info, id),

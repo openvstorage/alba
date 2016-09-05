@@ -36,6 +36,7 @@ module Config = struct
       alba_home : string;
       alba_base_path : string;
       alba_bin : string;
+      kinetic_script: string;
       alba_plugin_path : string;
       alba_06_bin : string;
       alba_06_plugin_path :string;
@@ -44,8 +45,8 @@ module Config = struct
       ip: string option;
       alba_rdma : string option; (* ip of the rdma capable nic *)
       alba_rora : bool; (* use rora back door on ASDs *)
-      alba_asd_log_level : string;
-      alba_asd_base_paths :string list;
+      alba_osd_log_level : string;
+      alba_osd_base_paths :string list;
       local_nodeid_prefix : string;
       n_osds : int;
 
@@ -56,6 +57,7 @@ module Config = struct
       failure_tester : string;
       etcd_home:string;
       etcd : ((string * int) list * string) option;
+      use_kinetic: bool;
     }
 
   let make ?(n_osds = 12) ?workspace ?use_rora () =
@@ -74,6 +76,7 @@ module Config = struct
     let alba_base_path = workspace ^ "/tmp/alba" in
 
     let alba_bin    = env_or_default "ALBA_BIN" (alba_home  ^ "/ocaml/alba.native") in
+    let kinetic_script = env_or_default "KINETIC_BIN" (alba_home ^ "/bin/start_kinetic.sh") in
     let alba_plugin_path = env_or_default "ALBA_PLUGIN_HOME" (alba_home ^ "/ocaml") in
     let alba_06_bin = env_or_default "ALBA_06"  "/usr/bin/alba" in
     let alba_06_plugin_path = env_or_default "ALBA_06_PLUGIN_PATH" "/usr/lib/alba" in
@@ -110,11 +113,12 @@ module Config = struct
         (env_or_default "ALBA_RORA" "false" |> get_bool)
         use_rora
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
-    and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
-    and alba_asd_base_paths =
+    and alba_osd_log_level = env_or_default "ALBA_OSD_LOG_LEVEL" "debug"
+    and alba_osd_base_paths =
       env_or_default_generic
-        (fun x -> Str.split (Str.regexp ",") x)  "ALBA_ASD_BASE_PATHS"
-        [alba_base_path ^"/asd"]
+        (fun x -> Str.split (Str.regexp ",") x)  "ALBA_OSD_BASE_PATHS"
+        [alba_base_path ^"/osd"]
+    and use_kinetic = env_or_default "ALBA_KINETIC" "false" |> get_bool
     in
     {
       home;
@@ -127,6 +131,7 @@ module Config = struct
       alba_home;
       alba_base_path;
       alba_bin;
+      kinetic_script;
       alba_plugin_path;
       alba_06_bin;
       alba_06_plugin_path;
@@ -135,8 +140,8 @@ module Config = struct
       ip = alba_ip;
       alba_rdma;
       alba_rora;
-      alba_asd_log_level;
-      alba_asd_base_paths;
+      alba_osd_log_level;
+      alba_osd_base_paths;
       local_nodeid_prefix;
       n_osds;
 
@@ -147,6 +152,7 @@ module Config = struct
       failure_tester;
       etcd_home;
       etcd;
+      use_kinetic;
     }
 
   let default = make ()
@@ -392,6 +398,8 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
              loop (n-1)
           | Some master -> master
       in loop max
+    method get_remote_version : string = failwith "arakoon_remote_version?"
+
 end
 
 type tls_client =
@@ -456,6 +464,7 @@ module Proxy_cfg =
       { ips : string list option [@default None];
         transport : string option [@default None];
         port : int;
+        osd_timeout : float;
         albamgr_cfg_url : Url.t;
         log_level : string;
         manifest_cache_size : int;
@@ -512,6 +521,7 @@ module Proxy_cfg =
           log_level = "debug";
           fragment_cache;
           manifest_cache_size = 100 * 1000;
+          osd_timeout = 8.0;
           tls_client;
           use_fadvise = true;
         }
@@ -675,6 +685,9 @@ class proxy ?fragment_cache ?ip ?transport
   method cmd_line cmd = proxy_cmd_line cmd
 
   method cmd_line_with_capture = proxy_cmd_line_with_capture
+
+  method get_remote_version =
+    ["proxy-get-version"] |> proxy_cmd_line_with_capture
 end
 
 type maintenance_cfg = {
@@ -821,7 +834,39 @@ let make_asd_config
   }
 
 
+class kinetic ~(port:int) ~startup ~home ~log_level =
+object (self : # osd)
+  method persist_config =
+    Printf.sprintf "mkdir -p %s" home |>
+    Shell.cmd ;
+    () (*failwith "persist_config" *)
 
+  method private start_cmd = [startup;
+                              string_of_int port;
+                              home
+                             ]
+
+  method start =
+    let out = Printf.sprintf "%s/%i.out" home port in
+    self # start_cmd |> Shell.detach ~out
+
+  method stop  =
+    Printf.sprintf "fuser -k -n tcp %i" port
+    |> Shell.cmd ~ignore_rc:true
+
+  method get_remote_version =
+    failwith "kinetic::get_remote_version?"
+
+  method get_statistics =
+    failwith "kinetic::get_statistics"
+
+  method long_id =
+    failwith "kinetic::long_id"
+
+  method set k v = failwith "kinetic::set"
+  method get k = failwith "kinetic::get"
+
+end
 
 class asd ?write_blobs ?transport ~ip
           ?rora_ips ~use_rora ?rora_transport
@@ -868,7 +913,7 @@ class asd ?write_blobs ?transport ~ip
        persister, url
 
   in
-  object(self : # component)
+  object(self : # osd)
     method long_id = asd_cfg.asd_id
 
     method config_url = cfg_url
@@ -971,7 +1016,7 @@ module Deployment = struct
       nsm : arakoon;
       proxy : proxy;
       maintenance : maintenance;
-      osds : asd array;
+      osds : osd array;
       etcd: etcd option;
     }
 
@@ -986,28 +1031,36 @@ module Deployment = struct
 
   let make_osds
         ?(base_port=8000)
+        ?(transport = `None)
         ?write_blobs
-        ?(transport = `None) ~ip ~use_rora ?rora_ips ?rora_transport
-        n local_nodeid_prefix base_paths arakoon_path alba_bin
-        ~etcd (tls:bool) ~log_level =
-    let rec loop asds base_paths j =
-      if j = n
-      then List.rev asds |> Array.of_list
+        ?rora_ips
+        ?rora_transport
+        ?(use_kinetic = true)
+        ~ip ~use_rora
+        ~cfg
+        =
+    let rec loop osds base_paths j =
+      if j = cfg.n_osds
+      then List.rev osds |> Array.of_list
       else
         begin
           let base_path = List.hd base_paths
           and rest = List.tl base_paths
           and port = base_port + j in
           let node_id = j lsr 2 in
-          let node_id_s = Printf.sprintf "%s_%i" local_nodeid_prefix node_id in
-          let asd_id = Printf.sprintf "%04i_%02i_%s" port node_id local_nodeid_prefix in
+          let node_id_s = Printf.sprintf "%s_%i" cfg.local_nodeid_prefix node_id in
+          let asd_id =
+            Printf.sprintf
+              "%04i_%02i_%s"
+              port node_id cfg.local_nodeid_prefix
+          in
           let home = base_path ^ (Printf.sprintf "/%02i" j) in
           let tls_cfg =
-            if tls
+            if cfg.tls
             then
               begin
                 let port = port + 500 in
-                let base = Printf.sprintf "%s/%s" arakoon_path asd_id in
+                let base = Printf.sprintf "%s/%s" cfg.arakoon_path asd_id in
                 Some { cert = Printf.sprintf "%s/%s.pem" base asd_id ;
                        key  = Printf.sprintf "%s/%s.key" base asd_id ;
                        port ;
@@ -1021,26 +1074,37 @@ module Deployment = struct
             | `None -> None
             | `Mixed f -> f j
           in
-          let asd = new asd
-                        ?write_blobs
-                        ?transport:(to_transport transport)
-                        ~ip
-                        ~use_rora
-                        ?rora_ips
-                        ?rora_transport:(match rora_transport with
-                                         | None -> None
-                                         | Some x -> to_transport x)
-                        node_id_s asd_id
-                        alba_bin
-                        arakoon_path
-                        home ~port ~etcd
-                        tls_cfg ~log_level
+          let osd =
+            if use_kinetic
+            then
+              let home = Printf.sprintf "%s/%02i/" base_path port in
+              let startup = cfg.alba_home ^ "/bin/start_kinetic.sh" in
+              let k = new kinetic ~port ~startup ~home ~log_level:cfg.alba_osd_log_level in
+              (k :> osd)
+            else
+              let asd =
+                new asd
+                  ?write_blobs
+                  ?transport:(to_transport transport)
+                  ~ip
+                  ~use_rora
+                  ?rora_ips
+                  ?rora_transport:(match rora_transport with
+                                   | None -> None
+                                   | Some x -> to_transport x)
+                  node_id_s asd_id
+                  cfg.alba_bin
+                  cfg.arakoon_path
+                  home ~port ~etcd:cfg.etcd
+                  tls_cfg ~log_level:cfg.alba_osd_log_level
+              in
+              (asd :> osd)
           in
           let base_paths' = rest @ [base_path] in
-          loop (asd :: asds) base_paths' (j+1)
+          loop (osd :: osds) base_paths' (j+1)
         end
     in
-    loop [] base_paths 0
+    loop [] cfg.alba_osd_base_paths 0
 
   let make_default
         ?__retry_timeout
@@ -1084,13 +1148,9 @@ module Deployment = struct
                          ?transport:asd_transport
                          ~use_rora:cfg.alba_rora
                          ?rora_transport
-                         cfg.n_osds
-                         cfg.local_nodeid_prefix
-                         cfg.alba_asd_base_paths
-                         cfg.arakoon_path
-                         cfg.alba_bin
-                         ~etcd:cfg.etcd
-                         cfg.tls ~log_level:cfg.alba_asd_log_level
+                         ?rora_ips:None
+                         ~use_kinetic:cfg.use_kinetic
+                         ~cfg
     in
     { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
 
@@ -1150,7 +1210,14 @@ module Deployment = struct
                 let get_field x = List.assoc x fields in
                 let long_id_field = get_field "long_id" in
                 let long_id = Yojson.Basic.Util.to_string long_id_field in
-                long_id :: acc
+                let kind_field = get_field "kind" in
+                let kind = Yojson.Basic.Util.to_string kind_field in
+                let ips_field = get_field "ips" in
+                let ips = Yojson.Basic.Util.convert_each
+                            Yojson.Basic.Util.to_string
+                            ips_field
+                in
+                (long_id,kind, ips) :: acc
               end
             )
             [] result
@@ -1174,21 +1241,28 @@ module Deployment = struct
   let harvest_osds t =
     _harvest_osds t "list-osds"
 
-  let is_local_osd t long_id =
-    let suffix = t.cfg.local_nodeid_prefix in
-    suffix = Str.last_chars long_id (String.length suffix)
+  let is_local_osd t (long_id,kind,ips) =
+    if "Kinetic3" = kind
+    then
+      let my_ip = local_ip_address () in
+      List.mem my_ip ips
+    else
+      let suffix = t.cfg.local_nodeid_prefix in
+      suffix = Str.last_chars long_id (String.length suffix)
+
 
   let claim_local_osds t n =
     let rec loop c =
-      let long_ids = harvest_available_osds t in
+      let osds = harvest_available_osds t in
       let locals =
         List.filter
           (is_local_osd t)
-          long_ids
+          osds
       in
+      let long_ids = List.map (fun (long_id,_kind, ips) -> long_id) locals in
       if n = List.length locals
       then
-        let _ : string list = claim_osds t locals in
+        let _ : string list = claim_osds t long_ids in
         ()
       else if c > 20
       then failwith "could not claim enough local osds after 20 attempts"
@@ -1765,7 +1839,7 @@ module Test = struct
     in
     JUnit.rc suites
 
-  let asd_version t =
+  let osd_version t =
     try
       let version_s = t.Deployment.osds.(1) # get_remote_version |> String.trim in
       Printf.printf "version_s=%S\n%!" version_s;
@@ -1783,7 +1857,7 @@ module Test = struct
       JUnit.Ok
     with x -> JUnit.Err (Printexc.to_string x)
 
-  let asd_statistics t =
+  let osd_statistics t =
     let open JUnit in
     let osd = t.Deployment.osds.(1) in
     let stats_s = osd # get_statistics in
@@ -1909,8 +1983,8 @@ module Test = struct
   let cli t =
     let suite_name = "run_tests_cli" in
     let tests = ["asd_crud", asd_crud;
-                 "asd_version", asd_version;
-                 "asd_statistics", asd_statistics;
+                 "asd_version", osd_version;
+                 "asd_statistics", osd_statistics;
                  "asd_statistics_via_abm", asd_statistics_via_abm;
                  "abm_statistics", abm_statistics;
                  "nsm_host_statistics", nsm_host_statistics;
@@ -2099,7 +2173,8 @@ module Test = struct
               |> Shell.cmd_with_capture
         in
         let osds = Deployment.parse_harvest r in
-        let long_id = List.find (is_local_osd t) osds in
+        let local_osd = List.find (is_local_osd t) osds in
+        let long_id,_,_ = local_osd in
 
         (* decommission 1 asd *)
         make_cli ["decommission-osd";"--long-id"; long_id;
@@ -2122,20 +2197,21 @@ module Test = struct
       raise exn
     in
     let deploy_and_test old_proxy old_plugins old_asds =
+      let use_kinetic = true in
       let t =
         let maybe_old_asds tx =
           if old_asds
           then
-            {tx with osds = make_osds tx.cfg.n_osds
-                                      tx.cfg.local_nodeid_prefix
-                                      tx.cfg.alba_asd_base_paths
-                                      tx.cfg.arakoon_path
-                                      ~ip:tx.cfg.ip
-                                      ~use_rora:false ~rora_transport:`None
-                                      tx.cfg.alba_06_bin
-                                      ~etcd:tx.cfg.etcd
-                                      false
-                                      ~log_level:tx.cfg.alba_asd_log_level
+            {tx with osds = make_osds
+                              ~base_port:8000
+                              ~write_blobs:true
+                              ~transport:`None
+                              ~ip:tx.cfg.ip
+                              ~use_rora:false
+                              ~rora_transport:`None
+                              ~rora_ips:[]
+                              ~use_kinetic
+                              ~cfg:tx.cfg
             }
           else tx
         in
@@ -2424,8 +2500,10 @@ module Test = struct
       120
       "local backend osd no longer known by the global backend"
       (fun () ->
-       let long_ids = harvest_osds t_global in
-       not (List.mem local_1_alba_id long_ids));
+        let osds = harvest_osds t_global in
+        let long_ids = List.map (fun (long_id,_,_) -> long_id) osds in
+        not (List.mem local_1_alba_id long_ids)
+      );
 
     (* check buckets voor global demo namespace? *)
     let show_namespace_2 = show_namespace t_global "demo" in

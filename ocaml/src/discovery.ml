@@ -83,7 +83,7 @@ type record = {
 
 type t =
   | Good of string * record
-  | Bad of string
+  | Bad of string [@@deriving show]
 
 let parse s addr0 =
   let open Tiny_json in

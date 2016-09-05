@@ -161,4 +161,15 @@ class type component =
     method persist_config : unit
     method start : unit
     method stop  : unit
+
+  end
+
+class type osd =
+  object
+    inherit component
+    method get_remote_version: string
+    method get_statistics : string
+    method long_id : string
+    method set : string -> string -> unit
+    method get : string -> string
   end

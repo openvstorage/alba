@@ -251,8 +251,38 @@ object (self :# Osd.key_value_osd)
       method range_entries prio ~first ~finc ~last ~reverse ~max =
         Lwt.fail_with "TODO"
 
-    method apply_sequence prio asserts updates =
-      (* TODO use prio *)
+      method apply_sequence prio asserts (updates:Osd.Update.t list) =
+        let (kseq:kinetic_update list) = translate asserts updates in
+        let open Kinetic in
+        let do_one = function
+          | KSet(e,f)    ->
+             let forced = build_forced f in
+             let (value:string), tag = Prelude.Option.get_some e.vt in
+             Kinetic.put session conn
+                    e.key (value:string)
+                    ~db_version:e.db_version
+                    ~new_version:e.new_version
+                    ~forced
+                    ~tag:(Some tag)
+                    ~synchronization:(Some WRITEBACK)
+
+          | KDelete(e,f) ->
+             Kinetic.delete_forced session conn e.key
+
+        in
+        Lwt.catch
+          (fun () ->
+            Lwt_list.iter_s do_one kseq >>= fun () ->
+            Lwt.return Ok
+          )
+          (fun exn ->
+            let msg = Printexc.to_string exn in
+            Lwt.return (Exn (Osd.Error.Unknown_error (-1,msg)))
+          )
+
+      method private _apply_sequence_batched prio asserts updates =
+        (* TODO: use this one, but the 'new' simulator doesn't support this yet *)
+        (* TODO: use prio *)
       let kseq = translate asserts updates in
       Lwt_log.debug_f "KINETIC:%s kseq:[%s]"
                       cid
