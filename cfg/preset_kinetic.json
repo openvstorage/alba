@@ -1,0 +1,29 @@
+{
+    // list of policies in order of their preference
+    // [ [ k, m, min_fragment_count, max_disks_per_node ], ... ]
+    "policies" : [[ 5, 4, 8, 3 ], [ 2, 2, 3, 4 ]],
+
+    // max fragment size
+    // kinetic has a hard limit of 1MB.
+    "fragment_size" : 524288,
+
+    // osds to be used for this preset
+    "osds" : ["all"],
+    // "osds" : [ "explicit", [ 0, 3, 5 ]], // list of osd_ids
+
+    // valid values are snappy, bz2 or none
+    "compression" : "snappy",
+
+    // valid values are crc-32c, sha-1 or none
+    "fragment_checksum" : ["crc-32c"],
+
+    "object_checksum" : {
+        "allowed" : [ ["none"], ["sha-1"], ["crc-32c"] ],
+        "default" : ["crc-32c"], // default should be in the list of allowed checksums
+        "verify_upload" : true // indicates wether the proxy should verify the checksum passed in by the voldrv
+    },
+
+    //"fragment_encryption" : ["none"]
+    "fragment_encryption" : [ "aes-cbc-256", "cfg/enc_key" ]
+    // ./alba create-preset my_fsdajsdfpreset --config cfg/test.ini < cfg/preset.json
+}
