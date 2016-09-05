@@ -22,11 +22,14 @@ open Lwt.Infix
 open Rocks_store
 open Lwt_bytes2
 module KV = Rocks_key_value_store
-
+open Nsm_model
 
 class virtual cache = object(self)
 
-    method virtual add : int32 -> string -> Bigstring_slice.t -> unit Lwt.t
+    method virtual add : int32 -> string -> Bigstring_slice.t -> Manifest.t option Lwt.t
+
+    method add' bid oid blob =
+      self # add bid oid blob >>= fun _ -> Lwt.return_unit
 
     method virtual lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
     method virtual lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
@@ -37,7 +40,7 @@ end
 
 class no_cache = object(self)
     inherit cache
-    method add     bid oid blob   = Lwt.return_unit
+    method add     bid oid blob   = Lwt.return_none
     method lookup  bid oid        = Lwt.return_none
     method lookup2 bid oid slices = Lwt.return_false
     method drop    bid ~global    = Lwt.return_unit
@@ -994,7 +997,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         );
       Lwt.return ()
 
-    method add bid oid blob : unit Lwt.t =
+    method add bid oid blob : Manifest.t option Lwt.t =
 
       Lwt_log.debug_f "add %lx %S" bid oid >>= fun () ->
       let _add () =
@@ -1035,6 +1038,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                   ~total_size ~total_count ~access ~fsid boid path blob ~fsid0
 
            end
+           >>= fun () ->
+           Lwt.return_none
           )
           (fun exn ->
            Lwt_log.warning_f ~exn
@@ -1045,6 +1050,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
              (fun () -> Lwt_extra2.unlink ~fsync_parent_dir:false full_path)
              (fun ex -> Lwt_log.warning_f ~section ~exn:ex "%s: cleanup failed" full_path
              )
+           >>= fun () ->
+           Lwt.return_none
           )
       in
       with_timing_lwt
@@ -1052,9 +1059,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
          Lwt_mutex.with_lock _mutex _add
         )
-      >>= fun (t,()) ->
+      >>= fun (t,mo) ->
       Lwt_log.debug_f "add %lx %S took:%f" bid oid t
-
+      >>= fun () ->
+      Lwt.return mo
 
     method drop bid ~global =
       Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->

@@ -189,11 +189,15 @@ class alba_cache
                    ~object_name
                    ~object_data:blob
                    ~checksum_o:None
-                   ~allow_overwrite:Nsm_model.Unconditionally >>= fun _ ->
+                   ~allow_overwrite:Nsm_model.Unconditionally
+            >>= fun _ ->
             lru_track ~namespace ~object_name;
-            Lwt.return_unit))
+            Lwt.return_none))
         (fun exn ->
-         Lwt_log.debug_f ~exn "Exception while adding object to alba fragment cache")
+          Lwt_log.debug_f ~exn "Exception while adding object to alba fragment cache"
+          >>= fun () ->
+          Lwt.return_none
+        )
 
     method lookup bid name =
       Lwt.catch

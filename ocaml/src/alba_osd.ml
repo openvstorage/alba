@@ -140,7 +140,7 @@ class client
                    ~object_id_hint:None
                    ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
                    ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-                 >>= fun (mf, _, gc_epoch) ->
+                 >>= fun (mf, _chunk_fidmos, _, gc_epoch) ->
                  Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch)))
             updates
         in

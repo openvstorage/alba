@@ -82,7 +82,7 @@ let _easiest_upload () =
        ~allow_overwrite:(if allow_overwrite
                          then Unconditionally
                          else NoPrevious)
-     >>= fun (manifest, _,_) ->
+     >>= fun (manifest,_, _,_) ->
      Lwt_io.printlf "manifest=%s" ([%show : Nsm_model.Manifest.t] manifest)
      >>= fun()->
      let open Manifest in

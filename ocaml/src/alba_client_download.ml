@@ -181,8 +181,8 @@ let download_fragment
                         cache_key
                         (Bigstring_slice.wrap_bigstring maybe_decompressed)
        else
-         Lwt.return_unit
-     end >>= fun () ->
+         Lwt.return_none
+     end >>= fun mo ->
 
      let t_fragment = Statistics.(FromOsd {
                                      osd_id;

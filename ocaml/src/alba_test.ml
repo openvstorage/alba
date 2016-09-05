@@ -590,7 +590,8 @@ let test_partial_download () =
          ~object_name
          ~input_file:"bin/kinetic-all-0.8.0.4-SNAPSHOT-jar-with-dependencies.jar"
          ~checksum_o:None
-         ~allow_overwrite:Nsm_model.Unconditionally >>= fun (mf, _,_) ->
+         ~allow_overwrite:Nsm_model.Unconditionally
+       >>= fun (mf,_, _,_) ->
 
        let open Nsm_model in
        let size, checksum =
@@ -703,7 +704,7 @@ let test_partial_download_bad_fragment () =
                  ~object_name
                  ~object_data
                  ~checksum_o:None
-                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf, _, _) ->
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf,_, _, _) ->
 
      (* remove the first fragment's location from the manifest
       * so it can't be used in download-object-slices *)
@@ -1042,7 +1043,7 @@ let test_repair_by_policy () =
          ~object_name
          ~object_data:"dfjsdl cjivo jiovppp"
          ~checksum_o:None
-         ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf, _, _) ->
+         ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf,_, _, _) ->
 
        assert ((1,0,1) = get_k_m_x mf);
 
@@ -1138,7 +1139,7 @@ let test_missing_corrupted_fragment () =
          ~object_name
          ~object_data
          ~checksum_o:None
-         ~allow_overwrite:NoPrevious >>= fun (mf, _, _) ->
+         ~allow_overwrite:NoPrevious >>= fun (mf,_, _, _) ->
 
        let object_id = mf.Manifest.object_id in
 
@@ -1195,7 +1196,7 @@ let test_full_asd () =
                  ~object_data
                  ~checksum_o:None
                  ~allow_overwrite:Nsm_model.NoPrevious
-     >>= fun (mf,stats,_) ->
+     >>= fun (mf,_,stats,_) ->
     (* all asd's are full *)
      let osd_ids =
        List.map
@@ -1347,7 +1348,7 @@ let test_disk_churn () =
            ~object_name
            ~object_data
            ~checksum_o:None
-           ~allow_overwrite:NoPrevious >>= fun (mf, _,_) ->
+           ~allow_overwrite:NoPrevious >>= fun (mf,_, _,_) ->
 
          let used_osds_set = Manifest.osds_used mf.Manifest.fragment_locations in
          let used_osds = DeviceSet.elements used_osds_set in
@@ -1864,7 +1865,7 @@ let test_update_policies () =
                  ~object_name
                  ~object_data:"a"
                  ~checksum_o:None
-                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf1, _,_) ->
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf1,_, _,_) ->
 
      assert_k_m mf1 2 1;
 
@@ -1879,7 +1880,7 @@ let test_update_policies () =
                  ~object_name:"2"
                  ~object_data:"a"
                  ~checksum_o:None
-                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf2, _,_) ->
+                 ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf2,_, _,_) ->
 
      assert_k_m mf2 5 4;
 
@@ -2053,7 +2054,7 @@ let test_retry_download () =
             ~object_data
             ~checksum_o:None
             ~allow_overwrite:Nsm_model.NoPrevious
-     >>= fun (mf, _,_) ->
+     >>= fun (mf,_, _,_) ->
 
      let bad_mf =
        let open Nsm_model.Manifest in
@@ -2127,7 +2128,7 @@ let test_list_objects_by_id () =
                  ~object_data:""
                  ~checksum_o:None
                  ~allow_overwrite:NoPrevious
-     >>= fun (mf, _,_) ->
+     >>= fun (mf,_, _,_) ->
 
      let object_id = mf.Manifest.object_id in
 

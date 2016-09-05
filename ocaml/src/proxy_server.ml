@@ -159,7 +159,8 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | WriteObjectFs2  -> fun (namespace, object_name, _,_,_) ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
-
+  | WriteObjectFs3  -> fun (namespace, object_name, _,_,_) ->
+                       Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | ReadObjectsSlices  -> render_read_object_slices
   | ReadObjectsSlices2 -> render_read_object_slices
   | NamespaceExists -> fun namespace ->
@@ -212,13 +213,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              ~allow_overwrite:(if allow_overwrite
                                then Unconditionally
                                else NoPrevious)
-           >>= fun (mf , upload_stats, namespace_id) ->
+           >>= fun (mf , chunk_fidmos, upload_stats, namespace_id) ->
            let open Alba_statistics.Statistics in
            ProxyStatistics.new_upload stats namespace upload_stats.total;
            Lwt_log.debug_f "write_object_fs %S %S => namespace_id:%li"
                            namespace object_name namespace_id
            >>= fun () ->
-           Lwt.return (mf, namespace_id)
+           Lwt.return (mf, chunk_fidmos, namespace_id)
         )
         (let open Alba_client_errors.Error in
           function
@@ -273,20 +274,18 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
               fg_hm;
             Lwt.return ()
        end
-    | WriteObjectFs -> fun stats (namespace,
-                                  object_name,
-                                  input_file,
-                                  allow_overwrite,
-                                  checksum_o) ->
-                       write_object_fs stats (namespace,
-                                              object_name,
-                                              input_file,
-                                              allow_overwrite,
-                                              checksum_o
-                                             )
-                       >>= fun (_mf, _namespace_id) ->
+    | WriteObjectFs -> fun stats args ->
+                       write_object_fs stats args
+                       >>= fun (_mf, _chunk_fidmos, _namespace_id) ->
                        Lwt.return_unit
-    | WriteObjectFs2 -> write_object_fs
+    | WriteObjectFs2 -> fun stats args  ->
+                        write_object_fs stats args
+                        >>= fun (mf, _chunk_fidmos, namespace_id) ->
+                        Lwt.return (mf, namespace_id)
+    | WriteObjectFs3 -> fun stats args ->
+                        write_object_fs stats args
+                        >>= fun (mf, chunk_fidmos, namespace_id) ->
+                        Lwt.return (mf, namespace_id, [])
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->
