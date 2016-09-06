@@ -11,7 +11,7 @@ RUN yum -y install python-devel
 
 # TODO: What about darcs ?
 
-RUN useradd jenkins -u 1001 -g root
+RUN useradd jenkins -u 1500 -g root
 
 RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-8.noarch.rpm
 RUN yum -y update
