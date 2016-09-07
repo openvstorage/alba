@@ -22,6 +22,7 @@ LIBS_exec += -lsnappy -lgobjfs_client -lxio
 
 tests = src/tests/llio_test.cc
 tests += src/tests/proxy_client_test.cc
+tests += src/tests/proxy_protocol_test.cc
 
 examples = src/examples/test_client.cc
 

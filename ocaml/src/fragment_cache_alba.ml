@@ -190,9 +190,11 @@ class alba_cache
                    ~object_data:blob
                    ~checksum_o:None
                    ~allow_overwrite:Nsm_model.Unconditionally
-            >>= fun _ ->
+            >>= fun (mf,_,_,_) ->
             lru_track ~namespace ~object_name;
-            Lwt.return_none))
+            Lwt.return (Some mf)
+           )
+        )
         (fun exn ->
           Lwt_log.debug_f ~exn "Exception while adding object to alba fragment cache"
           >>= fun () ->

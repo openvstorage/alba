@@ -66,7 +66,7 @@ struct ObjectSlices {
   const std::vector<SliceDescriptor> slices;
 };
 
-typedef std::tuple<std::string, std::string, std::unique_ptr<Manifest>>
+typedef std::tuple<std::string, std::string, std::unique_ptr<ManifestWithNamespaceId>>
     object_info;
 
 using std::string;
@@ -122,8 +122,18 @@ void write_write_object_fs2_request(message_builder &mb,
                                     const bool allow_overwrite,
                                     const Checksum *checksum);
 
+void write_write_object_fs3_request(message_builder &mb,
+                                    const string &namespace_,
+                                    const string &object_name,
+                                    const string &input_file,
+                                    const bool allow_overwrite,
+                                    const Checksum *checksum);
+
 void read_write_object_fs2_response(message &m, Status &status,
-                                    Manifest &manifest);
+                                    ManifestWithNamespaceId &manifest);
+
+void read_write_object_fs3_response(message &m, Status &status,
+                                    ManifestWithNamespaceId &manifest);
 
 void write_delete_object_request(message_builder &mb, const string &namespace_,
                                  const string &object_name,

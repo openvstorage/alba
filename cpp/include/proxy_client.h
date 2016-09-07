@@ -137,7 +137,13 @@ public:
                                 const std::string &object_name,
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
-                                proxy_protocol::Manifest &) = 0;
+                                proxy_protocol::ManifestWithNamespaceId &) = 0;
+
+  virtual void write_object_fs3(const std::string &namespace_,
+                                const std::string &object_name,
+                                const std::string &input_file,
+                                const allow_overwrite, const Checksum *checksum,
+                                proxy_protocol::ManifestWithNamespaceId &) = 0;
 };
 
 enum class Transport { tcp, rdma };

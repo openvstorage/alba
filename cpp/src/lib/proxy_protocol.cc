@@ -18,6 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include "proxy_protocol.h"
 #include <string.h>
+#include <fstream>
 
 #define _LIST_NAMESPACES 1
 #define _NAMESPACE_EXISTS 2
@@ -38,6 +39,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _WRITE_OBJECT_FS2 21
 #define _OSD_INFO 22
 #define _READ_OBJECTS_SLICES2 23
+#define _WRITE_OBJECT_FS3 24
 
 namespace alba {
 namespace proxy_protocol {
@@ -199,16 +201,68 @@ void write_write_object_fs2_request(message_builder &mb,
                                  input_file, allow_overwrite, checksum);
 }
 
+void write_write_object_fs3_request(message_builder &mb,
+                                    const string &namespace_,
+                                    const string &object_name,
+                                    const string &input_file,
+                                    const bool allow_overwrite,
+                                    const Checksum *checksum) {
+
+  _write_write_object_fs_request(mb, _WRITE_OBJECT_FS3, namespace_, object_name,
+                                 input_file, allow_overwrite, checksum);
+}
+
 void read_write_object_fs_response(message &m, Status &status) {
   read_status(m, status);
 }
 
-void read_write_object_fs2_response(message &m, Status &status, Manifest &mf) {
+void read_write_object_fs2_response(message &m, Status &status,
+                                    ManifestWithNamespaceId &mf) {
   read_status(m, status);
   if (status.is_ok()) {
 
     from(m, mf);
   }
+}
+
+void read_write_object_fs3_response(message &m, Status &status, ManifestWithNamespaceId &mf) {
+    read_status(m, status);
+
+    if (status.is_ok()) {
+        uint32_t size = m.size();
+        ALBA_LOG(DEBUG, "message size:" << size);
+        std::ofstream fout("./fs3_response.message");
+        m.dump(fout);
+        fout.close();
+        from(m, mf);//Nsm_model.Manifest.t * int32
+        uint32_t n_chunks;
+        from(m,n_chunks);
+        ALBA_LOG(DEBUG, "n_chunks:" << n_chunks);
+        uint32_t chunk_id;
+        from(m,chunk_id);
+        ALBA_LOG(DEBUG, "chunk_id:" << chunk_id);
+        for(uint32_t chunk_index = 0;chunk_index < n_chunks;++chunk_index){
+            uint32_t n_fragments;
+            from(m, n_fragments);
+            ALBA_LOG(DEBUG, "n_fragments:" << n_fragments);
+            for(uint32_t fragment_index=0;fragment_index < n_fragments;++fragment_index){
+                bool d;
+                from(m,d);
+                ALBA_LOG(DEBUG,"bool d = " << d);
+                if(d){
+                    uint32_t fragment_id;
+                    from(m,fragment_id);
+                    ALBA_LOG(DEBUG, "fragment_id:"<< fragment_id);
+                    Manifest x;
+                    from(m,x);
+                    std::cout << x << std::endl;
+                    //ALBA_LOG(DEBUG, "Manifest:" << x);
+                }
+            }
+        }
+
+        // (Nsm_model.chunk_id * (Nsm_model.fragment_id * Nsm_model.Manifest.t) option list) list
+    }
 }
 
 void write_delete_object_request(message_builder &mb, const string &namespace_,
@@ -304,7 +358,7 @@ void read_read_objects_slices2_response(
       from(m, name);
       std::string future;
       from(m, future);
-      std::unique_ptr<Manifest> umf(new Manifest());
+      std::unique_ptr<ManifestWithNamespaceId> umf(new ManifestWithNamespaceId());
       from(m, *umf);
       auto t =
           std::make_tuple(std::move(name), std::move(future), std::move(umf));

@@ -25,7 +25,7 @@ namespace alba {
 namespace proxy_client {
 typedef std::pair<std::string, std::string> strpair;
 using namespace proxy_protocol;
-typedef std::pair<ObjectSlices, std::shared_ptr<Manifest>> short_path_entry;
+typedef std::pair<ObjectSlices, std::shared_ptr<ManifestWithNamespaceId>> short_path_entry;
 
 class RoraProxy_client : public Proxy_client {
 public:
@@ -73,7 +73,13 @@ public:
                                 const std::string &object_name,
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
-                                Manifest &);
+                                ManifestWithNamespaceId &);
+
+  virtual void write_object_fs3(const std::string &namespace_,
+                                const std::string &object_name,
+                                const std::string &input_file,
+                                const allow_overwrite, const Checksum *checksum,
+                                ManifestWithNamespaceId &);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -99,7 +105,7 @@ private:
                        const std::vector<short_path_entry> &short_path);
   int _short_path_one(const std::string &namespace_,
                       const proxy_protocol::ObjectSlices &object_slices,
-                      std::shared_ptr<proxy_protocol::Manifest> mfp);
+                      std::shared_ptr<proxy_protocol::ManifestWithNamespaceId> mfp);
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,

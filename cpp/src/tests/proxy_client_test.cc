@@ -17,7 +17,6 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "gtest/gtest.h"
-#include <boost/log/trivial.hpp>
 #include <boost/algorithm/string.hpp>
 #include "proxy_client.h"
 #include "alba_logger.h"
@@ -69,28 +68,24 @@ struct config {
   alba::proxy_client::Transport TRANSPORT;
 };
 
-void logBoostMethod(alba::logger::AlbaLogLevel /*level */, string &msg) {
-  // there should actually be a translation from AlbaLogLevel to some boost
-  // log level here, but I'm too lazy for this test client
-  BOOST_LOG_TRIVIAL(debug) << msg;
-}
 
-std::function<void(alba::logger::AlbaLogLevel, string &)> logBoost =
-    std::function<void(alba::logger::AlbaLogLevel, string &)>(logBoostMethod);
 
-std::function<void(alba::logger::AlbaLogLevel, string &)> *nulllog = nullptr;
+// std::function<void(alba::logger::AlbaLogLevel, string &)> logBoost =
+//     std::function<void(alba::logger::AlbaLogLevel, string &)>(logBoostMethod);
 
-void init_log() {
-  alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
-    switch (level) {
-    default:
-      return &logBoost;
-    };
-  });
-}
+// std::function<void(alba::logger::AlbaLogLevel, string &)> *nulllog = nullptr;
+
+// void init_log() {
+//   alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
+//     switch (level) {
+//     default:
+//       return &logBoost;
+//     };
+//   });
+// }
+
 
 TEST(proxy_client, list_objects) {
-  init_log();
 
   ALBA_LOG(WARNING, "starting test:list_objects");
   config cfg;
@@ -121,7 +116,7 @@ TEST(proxy_client, list_objects) {
 }
 
 TEST(proxy_client, list_namespaces) {
-  init_log();
+
   ALBA_LOG(WARNING, "starting test:list_namespaces");
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
@@ -145,7 +140,7 @@ TEST(proxy_client, list_namespaces) {
 }
 
 TEST(proxy_client, get_object_info) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
@@ -167,7 +162,7 @@ TEST(proxy_client, get_object_info) {
 }
 
 TEST(proxy_client, get_proxy_version) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   int32_t major;
@@ -191,7 +186,7 @@ double stamp() {
 }
 
 TEST(proxy_client, test_ping) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   double eps =
@@ -248,7 +243,7 @@ TEST(proxy_client, manifest) {
   auto size = data.size();
   std::cout << "size:" << size << std::endl;
 
-  Manifest mf;
+  ManifestWithNamespaceId mf;
   std::vector<char> v(data.begin(), data.end());
   llio::message m(v);
   from(m, mf);
@@ -279,7 +274,7 @@ TEST(proxy_client, manifest) {
 }
 
 TEST(proxy_client, test_osd_info) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
@@ -299,7 +294,7 @@ void _generic_partial_read_test(
     std::string &namespace_, std::string &name,
     std::vector<proxy_protocol::ObjectSlices> &objects_slices,
     std::string &file, bool clear_before_read) {
-  init_log();
+
   config cfg;
   boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
@@ -308,7 +303,7 @@ void _generic_partial_read_test(
   std::ostringstream nos;
   nos << namespace_ << "_" << std::rand();
   string actual_namespace{nos.str()};
-  BOOST_LOG_TRIVIAL(info) << "creating namespace " << actual_namespace;
+  ALBA_LOG(INFO,"creating namespace " << actual_namespace) ;
   client->create_namespace(actual_namespace, preset);
 
   client->write_object_fs(actual_namespace, name, file,
@@ -323,7 +318,7 @@ void _generic_partial_read_test(
 void _compare_blocks(std::vector<byte> &block1, std::vector<byte> &block2,
                      uint32_t off, uint32_t len) {
   auto ok = true;
-  BOOST_LOG_TRIVIAL(info) << "comparing blocks";
+  ALBA_LOG(INFO, "comparing blocks");
   for (uint32_t i = 0; i < len; i++) {
     uint32_t pos = off + i;
     const byte b1 = block1[pos];
@@ -457,4 +452,27 @@ TEST(proxy_client, manifest_cache_eviction) {
     client->write_object_fs(namespace_, name, file,
                             proxy_client::allow_overwrite::T, nullptr);
   }
+}
+
+TEST(proxy_client, write_object_fs3){
+
+  config cfg;
+  cfg.PORT = "14000";
+  std::string namespace_("demo");
+  //std::string namespace_("write_object_fs3");
+  boost::optional<alba::proxy_client::RoraConfig> rora_config{10};
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
+                                  rora_config);
+  //boost::optional<std::string> preset{"default"};
+  //client->create_namespace(namespace_, preset);
+  string file("./ocaml/alba.native");
+  std::ostringstream sos;
+  sos << "object_" << std::rand();;
+  string name = sos.str();
+  using namespace proxy_protocol;
+  ManifestWithNamespaceId mf;
+  client->write_object_fs3(namespace_, name, file,
+                           proxy_client::allow_overwrite::T, nullptr,
+                           mf);
+  std::cout << "mf:" << mf << std::endl;
 }

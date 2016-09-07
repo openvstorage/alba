@@ -57,7 +57,7 @@ RoraProxy_client::list_namespaces(const std::string &first,
 
 void _maybe_add_to_manifest_cache(const std::string &namespace_,
                                   const std::string &object_name,
-                                  std::unique_ptr<Manifest> mfp) {
+                                  std::unique_ptr<ManifestWithNamespaceId> mfp) {
   ALBA_LOG(DEBUG, *mfp);
   if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
       encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
@@ -70,7 +70,7 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
                                        const allow_overwrite overwrite,
                                        const Checksum *checksum) {
 
-  std::unique_ptr<Manifest> mfp(new Manifest());
+  std::unique_ptr<ManifestWithNamespaceId> mfp(new ManifestWithNamespaceId());
   _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
                               checksum, *mfp);
   _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
@@ -158,19 +158,19 @@ void RoraProxy_client::_maybe_update_osd_infos(
 
 int RoraProxy_client::_short_path_one(const std::string &namespace_,
                                       const ObjectSlices &object_slices,
-                                      std::shared_ptr<Manifest> mfp) {
+                                      std::shared_ptr<ManifestWithNamespaceId> mfp) {
 
   // one object, maybe multiple slices and or fragments involved
   ALBA_LOG(DEBUG, "_short_path_one(" << namespace_ << ", ...)");
   std::map<osd_t, std::vector<asd_slice>> per_osd;
-  const Manifest &manifest = *mfp;
+  const ManifestWithNamespaceId &manifest_w = *mfp;
   for (auto &sd : object_slices.slices) {
     uint32_t bytes_to_read = sd.size;
     uint32_t offset = sd.offset;
     byte *buf = sd.buf;
 
     while (bytes_to_read > 0) {
-      auto maybe_coords = manifest.to_chunk_fragment(offset);
+      auto maybe_coords = manifest_w.to_chunk_fragment(offset);
       if (maybe_coords == boost::none) {
         return -1;
       }
@@ -192,7 +192,8 @@ int RoraProxy_client::_short_path_one(const std::string &namespace_,
         bytes_in_slice = coords.fragment_length - coords.pos_in_fragment;
       }
 
-      std::string key = fragment_key(manifest.namespace_id, manifest.object_id,
+      std::string key = fragment_key(manifest_w.namespace_id,
+                                     manifest_w.object_id,
                                      coords.fragment_version,
                                      coords.chunk_index, coords.fragment_index);
 
@@ -238,7 +239,7 @@ void _process(std::vector<object_info> &object_infos,
 
     const std::string &object_name = std::get<0>(object_info);
     auto &future = std::get<1>(object_info);
-    std::unique_ptr<Manifest> mfp = std::move(std::get<2>(object_info));
+    std::unique_ptr<ManifestWithNamespaceId> mfp = std::move(std::get<2>(object_info));
 
     if (future == "") {
       _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
@@ -302,8 +303,18 @@ void RoraProxy_client::write_object_fs2(const std::string &namespace_,
                                         const std::string &input_file,
                                         const allow_overwrite allow_overwrite_,
                                         const Checksum *checksum,
-                                        Manifest &mf) {
+                                        ManifestWithNamespaceId &mf) {
   return _delegate->write_object_fs2(namespace_, object_name, input_file,
+                                     allow_overwrite_, checksum, mf);
+}
+
+void RoraProxy_client::write_object_fs3(const std::string &namespace_,
+                                        const std::string &object_name,
+                                        const std::string &input_file,
+                                        const allow_overwrite allow_overwrite_,
+                                        const Checksum *checksum,
+                                        ManifestWithNamespaceId &mf) {
+  return _delegate->write_object_fs3(namespace_, object_name, input_file,
                                      allow_overwrite_, checksum, mf);
 }
 

@@ -109,13 +109,19 @@ struct Manifest {
   uint32_t version_id;
   uint32_t max_disks_per_node;
   double timestamp = 1.0;
-  uint32_t namespace_id;
 
   boost::optional<lookup_result_t> to_chunk_fragment(uint32_t offset) const;
 
   Manifest() = default;
   Manifest &operator=(const Manifest &) = delete;
   Manifest(const Manifest &) = delete;
+};
+
+struct ManifestWithNamespaceId : Manifest{
+    uint32_t namespace_id;
+    ManifestWithNamespaceId() = default;
+    ManifestWithNamespaceId &operator=(const ManifestWithNamespaceId &) = delete;
+    ManifestWithNamespaceId(const ManifestWithNamespaceId &) = delete;
 };
 
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);
@@ -125,5 +131,6 @@ std::ostream &operator<<(std::ostream &, const encryption_t &);
 std::ostream &operator<<(std::ostream &, const EncryptInfo &);
 std::ostream &operator<<(std::ostream &, const fragment_location_t &);
 std::ostream &operator<<(std::ostream &, const Manifest &);
+std::ostream &operator<<(std::ostream &, const ManifestWithNamespaceId &);
 }
 }

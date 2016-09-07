@@ -113,22 +113,25 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
     throw deserialisation_exception("unexpected layout tag 2");
   }
 
+  // from(m2, mf.fragment_checksums); // TODO: how to this via the layout based template ?
+  // iso this:
+
   uint32_t n_chunks;
   from(m2, n_chunks);
 
-  // TODO: how to this via the layout based template ?
   for (uint32_t i = 0; i < n_chunks; i++) {
-    std::vector<std::shared_ptr<alba::Checksum>> chunk;
     uint32_t n_fragments;
     from(m2, n_fragments);
-    for (uint32_t f = 0; f < n_fragments; f++) {
+    std::vector<std::shared_ptr<alba::Checksum>> chunk(n_fragments);
+    for (int32_t f = n_fragments-1 ; f >= 0; --f) {
       alba::Checksum *p;
       from(m2, p);
       std::shared_ptr<alba::Checksum> sp(p);
-      chunk.push_back(sp);
+      chunk[f] = sp;
     };
     mf.fragment_checksums.push_back(chunk);
   }
+
 
   uint8_t layout_tag3;
   from(m2, layout_tag3);
@@ -141,9 +144,18 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   from(m2, mf.version_id);
   from(m2, mf.max_disks_per_node);
   from(m2, mf.timestamp);
-  from(m, mf.namespace_id);
 }
+
+
+template <>
+void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid){
+    from(m,(proxy_protocol::Manifest&)mfid);
+    from(m, mfid.namespace_id);
 }
+
+}
+
+
 namespace proxy_protocol {
 
 boost::optional<lookup_result_t>
@@ -229,21 +241,27 @@ std::ostream &operator<<(std::ostream &os, const fragment_location_t &f) {
 
 std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   os << "{"
-     << "name = " << mf.name << "," << std::endl
-     << "  object_id = `";
+     << "name = `";
+  const char* name_bytes = mf.name.data();
+  const int   name_size  = mf.name.size();
+  stuff::dump_buffer(os,name_bytes,name_size);
+  os << "`, " << std::endl;
 
-  const char *bytes = mf.object_id.data();
-  const int bytes_size = mf.object_id.size();
-  stuff::dump_buffer(os, bytes, bytes_size);
+  os << "  object_id = `";
+
+  const char *id_bytes = mf.object_id.data();
+  const int   id_size =  mf.object_id.size();
+  stuff::dump_buffer(os, id_bytes, id_size);
   using alba::stuff::operator<<;
+
   os << "`, " << std::endl
-     << "  chunk_sizes = " << mf.chunk_sizes << "," << std::endl
      << "  encoding_scheme = " << mf.encoding_scheme << "," << std::endl
      << "  compression = " << *mf.compression << "," << std::endl
      << "  encryptinfo = " << *mf.encrypt_info << "," // dangerous
+     << "  chunk_sizes = " << mf.chunk_sizes << "," << std::endl
+     << "  size = " << mf.size << std::endl
      << std::endl
      << "  checksum= " << *mf.checksum << "," << std::endl
-     << "  size = " << mf.size << std::endl
      << "  fragment_locations = " << mf.fragment_locations << "," << std::endl
      << "  fragment_checksums = " << mf.fragment_checksums << "," << std::endl
      << "  fragment_packed_sizes = [" << std::endl;
@@ -255,8 +273,15 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   os << std::endl
      << "  version_id = " << mf.version_id << "," << std::endl
      << "  timestamp = " << mf.timestamp // TODO: decent formatting?
-     << "  namespace_id = " << mf.namespace_id << "} ";
+     << "}";
   return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const ManifestWithNamespaceId &mfid){
+    os << "{"
+       << (Manifest&) mfid
+       << ", namespace_id = " << mfid.namespace_id << "} ";
+    return os;
 }
 }
 }

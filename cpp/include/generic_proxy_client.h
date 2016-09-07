@@ -72,7 +72,13 @@ public:
                                 const std::string &object_name,
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
-                                proxy_protocol::Manifest &);
+                                proxy_protocol::ManifestWithNamespaceId &);
+
+  virtual void write_object_fs3(const std::string &namespace_,
+                                const std::string &object_name,
+                                const std::string &input_file,
+                                const allow_overwrite, const Checksum *checksum,
+                                proxy_protocol::ManifestWithNamespaceId &);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,

@@ -93,6 +93,13 @@ public:
 
   void skip(int x) { _pos += x; }
 
+  size_t size() const noexcept { return _buffer.size(); }
+
+  void dump(std::ostream& os){
+      uint32_t size = _buffer.size();
+      os.write((char*)&size, sizeof(uint32_t));
+      os.write((char*)_buffer.data(),size);
+  }
 private:
   std::vector<char> _buffer;
   uint32_t _pos;
