@@ -28,7 +28,8 @@ namespace alba {
 namespace proxy_client {
 
 using namespace proxy_protocol;
-typedef ovs::LRUCacheToo<std::string, std::shared_ptr<ManifestWithNamespaceId>> manifest_cache;
+typedef std::shared_ptr<RoraMap> manifest_cache_entry;
+typedef ovs::LRUCacheToo<std::string, manifest_cache_entry> manifest_cache;
 class ManifestCache {
 public:
   static ManifestCache &getInstance();
@@ -38,10 +39,10 @@ public:
   void operator=(ManifestCache const &) = delete;
 
   void add(std::string namespace_, std::string object_name,
-           std::shared_ptr<ManifestWithNamespaceId> mfp);
+           manifest_cache_entry rora_map);
 
-  std::shared_ptr<ManifestWithNamespaceId> find(const std::string &namespace_,
-                                                const std::string &object_name);
+  manifest_cache_entry find(const std::string &namespace_,
+                            const std::string &object_name);
 
   void invalidate_namespace(const std::string &);
 

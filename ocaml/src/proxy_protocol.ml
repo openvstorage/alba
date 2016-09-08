@@ -285,8 +285,10 @@ module Protocol = struct
   type manifest_with_extras =
     Nsm_model.Manifest.t
     * int32
-    * (Nsm_model.chunk_id * (Nsm_model.fragment_id * Nsm_model.Manifest.t) option list)
-        list
+    * (Bytes.t
+       * int32
+       * ((Nsm_model.chunk_id * (Nsm_model.fragment_id * Nsm_model.Manifest.t) list)
+           list)) option
         [@@deriving show]
 
   type ('i, 'o) request =
@@ -355,10 +357,14 @@ module Protocol = struct
     | GetClientConfig : (unit, Alba_arakoon.Config.t) request
     | Ping : (float, float) request
     | OsdInfo : (unit,
-                 (Int32.t *
+                 (Albamgr_protocol.Protocol.Osd.id *
                     Nsm_model.OsdInfo.t *
                       Capabilities.OsdCapabilities.t) Std.counted_list )
                   request
+    | OsdInfo2 : (unit,
+                  ((string * (Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
+                               Capabilities.OsdCapabilities.t) counted_list) counted_list)
+                 ) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -383,6 +389,7 @@ module Protocol = struct
                       22, Wrap OsdInfo, "OsdInfo";
                       23, Wrap ReadObjectsSlices2, "ReadObjectsSlices2";
                       24, Wrap WriteObjectFs3, "WriteObjectFs3";
+                      25, Wrap OsdInfo2, "OsdInfo2";
                     ]
 
   module Error = struct
@@ -514,6 +521,7 @@ module Protocol = struct
     | GetClientConfig -> Deser.unit
     | Ping            -> Deser.float
     | OsdInfo         -> Deser.unit
+    | OsdInfo2        -> Deser.unit
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | NamespaceExists -> Deser.bool
@@ -527,15 +535,18 @@ module Protocol = struct
     | WriteObjectFs3 -> Deser.tuple3
                           Manifest_deser.deser
                           Deser.int32
-                          (Deser.list
-                             (Deser.tuple2
-                                Deser.int (* chunk_id *)
+                          (Deser.option
+                             (Deser.tuple3
+                                Deser.string
+                                Deser.int32
                                 (Deser.list
-                                   (Deser.option
-                                      (Deser.tuple2
-                                         Deser.int (* fragment_id *)
-                                         Manifest_deser.deser))))
-                          )
+                                   (Deser.tuple2
+                                      Deser.int (* chunk_id *)
+                                      (Deser.list
+                                         (Deser.tuple2
+                                            Deser.int (* fragment_id *)
+                                            Manifest_deser.deser)))
+                          )))
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string
@@ -573,4 +584,13 @@ module Protocol = struct
                                         Osd_deser.OsdInfo.deser
                                         Capabilities.OsdCapabilities.deser
                           )
+    | OsdInfo2 ->
+       Deser.counted_list
+         (Deser.pair
+            Deser.string
+            (Deser.counted_list (Deser.tuple3
+                                   Deser.int32
+                                   Osd_deser.OsdInfo.deser
+                                   Capabilities.OsdCapabilities.deser
+         )))
 end

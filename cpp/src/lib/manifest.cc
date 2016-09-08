@@ -113,7 +113,8 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
     throw deserialisation_exception("unexpected layout tag 2");
   }
 
-  // from(m2, mf.fragment_checksums); // TODO: how to this via the layout based template ?
+  // from(m2, mf.fragment_checksums); // TODO: how to this via the layout based
+  // template ?
   // iso this:
 
   uint32_t n_chunks;
@@ -123,7 +124,7 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
     uint32_t n_fragments;
     from(m2, n_fragments);
     std::vector<std::shared_ptr<alba::Checksum>> chunk(n_fragments);
-    for (int32_t f = n_fragments-1 ; f >= 0; --f) {
+    for (int32_t f = n_fragments - 1; f >= 0; --f) {
       alba::Checksum *p;
       from(m2, p);
       std::shared_ptr<alba::Checksum> sp(p);
@@ -131,7 +132,6 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
     };
     mf.fragment_checksums.push_back(chunk);
   }
-
 
   uint8_t layout_tag3;
   from(m2, layout_tag3);
@@ -146,30 +146,75 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   from(m2, mf.timestamp);
 }
 
-
 template <>
-void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid){
-    from(m,(proxy_protocol::Manifest&)mfid);
-    from(m, mfid.namespace_id);
+void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid) {
+  from(m, (proxy_protocol::Manifest &)mfid);
+  from(m, mfid.namespace_id);
 }
 
+template <> void from(message &m, proxy_protocol::FCInfo &fc_info) {
+  ALBA_LOG(DEBUG,"from(_, fc_info");
+  from(m, fc_info.alba_id);
+  from(m, fc_info.namespace_id);
+  uint32_t n_chunks;
+  from(m, n_chunks);
+  ALBA_LOG(DEBUG, "n_chunks:" << n_chunks);
+
+  for (uint32_t chunk_index = 0; chunk_index < n_chunks; ++chunk_index) {
+    uint32_t chunk_id;
+    from(m, chunk_id);
+    ALBA_LOG(DEBUG, "chunk_id:" << chunk_id);
+    int32_t n_fragments;
+    from(m, n_fragments);
+    std::map<int32_t, std::shared_ptr<proxy_protocol::Manifest>> chunk;
+    ALBA_LOG(DEBUG, "n_fragments:" << n_fragments);
+    for (int32_t fragment_index = 0; fragment_index < n_fragments;
+         ++fragment_index) {
+      int32_t fragment_id;
+      from(m, fragment_id);
+      ALBA_LOG(DEBUG, "fragment_id:" << fragment_id);
+
+      std::shared_ptr<proxy_protocol::Manifest> mfp(
+          new proxy_protocol::Manifest);
+      from(m, *mfp);
+
+      chunk[fragment_id] = std::move(mfp);
+    }
+    fc_info.info[chunk_id] = std::move(chunk);
+  }
+  ALBA_LOG(DEBUG, "m.pos= " << m.get_pos()
+                            << " left=" << (m.size() - m.get_pos()));
 }
 
+template <> void from(message &m, proxy_protocol::RoraMap &rora_map) {
+  std::shared_ptr<proxy_protocol::ManifestWithNamespaceId> mfid(
+      new proxy_protocol::ManifestWithNamespaceId);
+  from(m, *mfid);
+  rora_map.back = mfid;
+  from(m, rora_map.front);
+}
+}
 
 namespace proxy_protocol {
 
-boost::optional<lookup_result_t>
-Manifest::to_chunk_fragment(uint32_t pos) const {
-  int chunk_index = -1;
-  uint32_t total = 0;
+void Manifest::calculate_chunk_index(uint32_t pos, int32_t &index,
+                                     uint32_t &total) const {
+  index = -1;
+  total = 0;
   auto it = chunk_sizes.begin();
-
   while (total <= pos) {
-    chunk_index++;
+    index++;
     auto chunk_size = *it;
     total += chunk_size;
     it++;
   }
+}
+
+boost::optional<lookup_result_t>
+Manifest::to_chunk_fragment(uint32_t pos) const {
+  int chunk_index;
+  uint32_t total;
+  calculate_chunk_index(pos, chunk_index, total);
 
   auto &chunk_fragment_locations = fragment_locations[chunk_index];
 
@@ -184,7 +229,7 @@ Manifest::to_chunk_fragment(uint32_t pos) const {
   auto maybe_osd = p.first;
   if (maybe_osd) {
     uint32_t pos_in_fragment = pos - (total + fragment_index * fragment_length);
-    lookup_result_t r(chunk_index, fragment_index, pos_in_fragment,
+    lookup_result_t r(object_id, chunk_index, fragment_index, pos_in_fragment,
                       fragment_length, fragment_version, *maybe_osd);
     return r;
   } else {
@@ -239,22 +284,21 @@ std::ostream &operator<<(std::ostream &os, const fragment_location_t &f) {
   return os;
 }
 
+void _dump_string(std::ostream &os, const std::string &s) {
+  const char *bytes = s.data();
+  const int size = s.size();
+  stuff::dump_buffer(os, bytes, size);
+}
 std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
+  using alba::stuff::operator<<;
   os << "{"
      << "name = `";
-  const char* name_bytes = mf.name.data();
-  const int   name_size  = mf.name.size();
-  stuff::dump_buffer(os,name_bytes,name_size);
+  _dump_string(os, mf.name);
   os << "`, " << std::endl;
-
   os << "  object_id = `";
-
-  const char *id_bytes = mf.object_id.data();
-  const int   id_size =  mf.object_id.size();
-  stuff::dump_buffer(os, id_bytes, id_size);
-  using alba::stuff::operator<<;
-
+  _dump_string(os, mf.object_id);
   os << "`, " << std::endl
+
      << "  encoding_scheme = " << mf.encoding_scheme << "," << std::endl
      << "  compression = " << *mf.compression << "," << std::endl
      << "  encryptinfo = " << *mf.encrypt_info << "," // dangerous
@@ -277,11 +321,50 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   return os;
 }
 
-std::ostream &operator<<(std::ostream &os, const ManifestWithNamespaceId &mfid){
-    os << "{"
-       << (Manifest&) mfid
-       << ", namespace_id = " << mfid.namespace_id << "} ";
-    return os;
+std::ostream &operator<<(std::ostream &os,
+                         const ManifestWithNamespaceId &mfid) {
+  os << "{" << (Manifest &)mfid << ", namespace_id = " << mfid.namespace_id
+     << "} ";
+  return os;
 }
+
+std::ostream &operator<<(std::ostream &os, const FCInfo &fc_info) {
+  os << "FCInfo{"
+     << " alba_id = " << fc_info.alba_id
+     << ", namespace_id = " << fc_info.namespace_id << ", info = ... }"
+     << std::endl;
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const RoraMap &rora_map) {
+  using alba::stuff::operator<<;
+  os << "RoraMap{" << std::endl
+     << " front = " << rora_map.front << "," << std::endl
+     << " back  = " << rora_map.back << std::endl
+     << "}" << std::endl;
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const lookup_result_t &r) {
+  os << "lookup_result_t(`";
+  _dump_string(os, r.object_id);
+  os << "`, " << r.chunk_index << ", " << r.fragment_index
+     << ", pos_in_fragment= " << r.pos_in_fragment
+     << ", fragment_length= " << r.fragment_length
+     << ", _osd= " << r._osd
+     << ")";
+  return os;
+}
+
+std::ostream &operator<<(std::ostream& os, const target_t& t){
+    switch(t){
+    case target_t::VIA_PROXY : { os << "VIA_PROXY";}; break;
+    case target_t::RORA_FRONT: { os << "RORA_FRONT";}; break;
+    case target_t::RORA_BACK : { os << "RORA_BACK";}; break;
+    }
+    return os;
+
+}
+
 }
 }

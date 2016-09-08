@@ -454,6 +454,15 @@ class osd_access
 
     method osds_info_cache = osds_info_cache
 
+    method osd_infos =
+      Hashtbl.fold
+        (fun osd_id (osd, _, capabilities) (c,acc) ->
+          let c' = c + 1
+          and acc' = (osd_id, osd, capabilities) :: acc
+          in
+          (c',acc')
+        ) osds_info_cache (0,[])
+
     method get_osd_claim_info = !osd_long_id_claim_info
     method osd_timeout = osd_timeout
 

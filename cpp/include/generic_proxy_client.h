@@ -23,6 +23,7 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace proxy_client {
 
+using namespace proxy_protocol;
 class GenericProxy_client : public Proxy_client {
 public:
   virtual bool namespace_exists(const std::string &name);
@@ -78,7 +79,7 @@ public:
                                 const std::string &object_name,
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
-                                proxy_protocol::ManifestWithNamespaceId &);
+                                RoraMap &rora_map);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -94,7 +95,9 @@ public:
   virtual double ping(const double delay);
 
   virtual void
-  osd_info(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result);
+  osd_info(osd_map_t &result);
+
+  virtual void osd_info2(rora_osd_map_t &result);
 
   GenericProxy_client(const std::chrono::steady_clock::duration &timeout);
 

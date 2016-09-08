@@ -45,32 +45,36 @@ struct osd_access_exception : std::exception {
 };
 
 using namespace proxy_protocol;
+
+
 class OsdAccess {
 public:
   static OsdAccess &getInstance();
 
   OsdAccess(OsdAccess const &) = delete;
   void operator=(OsdAccess const &) = delete;
-  bool osd_is_unknown(osd_t);
+  bool osd_is_unknown(const alba_id_t&, osd_t);
 
-  void update(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &infos);
+  void update(rora_osd_map_t& info_map);
 
-  int read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
+  int read_osds_slices(alba_id_t&, std::map<osd_t, std::vector<asd_slice>> &);
 
 private:
   OsdAccess() {}
-  std::mutex _osd_infos_mutex;
-  std::map<osd_t, info_caps> _osd_infos;
+  std::mutex _alba_map_mutex;
+  rora_osd_map_t _alba_map;
 
   std::mutex _osd_ctxs_mutex;
-  std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>> _osd_ctxs;
+  std::map<alba_id_t, std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>>> _osd_ctxs;
 
-  const std::map<osd_t, info_caps>::iterator _find_osd(osd_t);
+  std::shared_ptr<info_caps>  _find_osd(alba_id_t&, osd_t);
 
-  int _read_osd_slices(osd_t, std::vector<asd_slice> &);
-  std::shared_ptr<gobjfs::xio::client_ctx> _find_ctx(osd_t);
-  void _set_ctx(osd_t, std::shared_ptr<gobjfs::xio::client_ctx>);
-  void _remove_ctx(osd_t);
+  int _read_osd_slices(alba_id_t&, osd_t, std::vector<asd_slice> &);
+  std::shared_ptr<gobjfs::xio::client_ctx> _find_ctx(alba_id_t&, osd_t);
+  void _set_ctx(alba_id_t&, osd_t, std::shared_ptr<gobjfs::xio::client_ctx>);
+  void _remove_ctx(alba_id_t&, osd_t);
 };
+
+std::ostream &operator<<(std::ostream &, const asd_slice &);
 }
 }

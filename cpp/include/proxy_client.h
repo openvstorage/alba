@@ -53,6 +53,8 @@ BOOLEAN_ENUM(reverse)
 BOOLEAN_ENUM(consistent_read)
 BOOLEAN_ENUM(should_cache)
 
+using namespace proxy_protocol;
+
 class Proxy_client {
 public:
   virtual bool namespace_exists(const std::string &name) = 0;
@@ -122,8 +124,7 @@ public:
 
   /* retrieve information about osds
    */
-  virtual void osd_info(
-      std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result) = 0;
+  virtual void osd_info(osd_map_t &result) = 0;
 
   virtual ~Proxy_client(){};
 
@@ -143,7 +144,9 @@ public:
                                 const std::string &object_name,
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
-                                proxy_protocol::ManifestWithNamespaceId &) = 0;
+                                RoraMap &rora_map) = 0;
+
+  virtual void osd_info2(rora_osd_map_t& result) = 0;
 };
 
 enum class Transport { tcp, rdma };

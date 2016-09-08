@@ -40,6 +40,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _OSD_INFO 22
 #define _READ_OBJECTS_SLICES2 23
 #define _WRITE_OBJECT_FS3 24
+#define _OSD_INFO2 25
 
 namespace alba {
 namespace proxy_protocol {
@@ -225,44 +226,19 @@ void read_write_object_fs2_response(message &m, Status &status,
   }
 }
 
-void read_write_object_fs3_response(message &m, Status &status, ManifestWithNamespaceId &mf) {
-    read_status(m, status);
+void read_write_object_fs3_response(message &m, Status &status,
+                                    RoraMap &rora_map) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    uint32_t size = m.size();
+    ALBA_LOG(DEBUG, "message size:" << size);
 
-    if (status.is_ok()) {
-        uint32_t size = m.size();
-        ALBA_LOG(DEBUG, "message size:" << size);
-        std::ofstream fout("./fs3_response.message");
-        m.dump(fout);
-        fout.close();
-        from(m, mf);//Nsm_model.Manifest.t * int32
-        uint32_t n_chunks;
-        from(m,n_chunks);
-        ALBA_LOG(DEBUG, "n_chunks:" << n_chunks);
-        uint32_t chunk_id;
-        from(m,chunk_id);
-        ALBA_LOG(DEBUG, "chunk_id:" << chunk_id);
-        for(uint32_t chunk_index = 0;chunk_index < n_chunks;++chunk_index){
-            uint32_t n_fragments;
-            from(m, n_fragments);
-            ALBA_LOG(DEBUG, "n_fragments:" << n_fragments);
-            for(uint32_t fragment_index=0;fragment_index < n_fragments;++fragment_index){
-                bool d;
-                from(m,d);
-                ALBA_LOG(DEBUG,"bool d = " << d);
-                if(d){
-                    uint32_t fragment_id;
-                    from(m,fragment_id);
-                    ALBA_LOG(DEBUG, "fragment_id:"<< fragment_id);
-                    Manifest x;
-                    from(m,x);
-                    std::cout << x << std::endl;
-                    //ALBA_LOG(DEBUG, "Manifest:" << x);
-                }
-            }
-        }
+    std::ofstream fout("./fs3_response.message");
+    m.dump(fout);
+    fout.close();
 
-        // (Nsm_model.chunk_id * (Nsm_model.fragment_id * Nsm_model.Manifest.t) option list) list
-    }
+    from(m, rora_map);
+  }
 }
 
 void write_delete_object_request(message_builder &mb, const string &namespace_,
@@ -358,7 +334,8 @@ void read_read_objects_slices2_response(
       from(m, name);
       std::string future;
       from(m, future);
-      std::unique_ptr<ManifestWithNamespaceId> umf(new ManifestWithNamespaceId());
+      std::unique_ptr<ManifestWithNamespaceId> umf(
+          new ManifestWithNamespaceId());
       from(m, *umf);
       auto t =
           std::make_tuple(std::move(name), std::move(future), std::move(umf));
@@ -416,32 +393,58 @@ void read_ping_response(message &m, Status &status, double &timestamp) {
 
 void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
 
-void read_osd_info_response(
-    message &m, Status &status,
-    std::vector<std::pair<osd_t, std::pair<std::unique_ptr<OsdInfo>,
-                                           std::unique_ptr<OsdCapabilities>>>> &
-        result) {
+void _read_osd_infos(message &m, osd_map_t &result) {
+  uint32_t n;
+  from(m, n);
+  for (uint32_t i = 0; i < n; i++) {
+    osd_t osd_id;
+    from(m, osd_id);
+    std::string info_s;
+    from(m, info_s);
+    std::vector<char> mv(info_s.begin(), info_s.end());
+    llio::message m2(mv);
+    OsdInfo info;
+    from(m2, info);
+    OsdCapabilities caps;
+    from(m, caps);
+    auto p = std::shared_ptr<info_caps> (new info_caps(std::move(info),std::move(caps)));
+
+    //result[osd_id] = std::move(p);
+  }
+}
+void read_osd_info_response(message &m, Status &status, osd_map_t &result) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    _read_osd_infos(m, result);
+  }
+}
+
+void write_osd_info2_request(message_builder &mb) {
+  ALBA_LOG(DEBUG, "write_osd_info2");
+  write_tag(mb, _OSD_INFO2);
+}
+
+void read_osd_info2_response(message &m, Status &status,
+                             rora_osd_map_t& result) {
+
   read_status(m, status);
   if (status.is_ok()) {
     uint32_t n;
     from(m, n);
+    ALBA_LOG(DEBUG, "n=" << n);
     for (uint32_t i = 0; i < n; i++) {
-      osd_t osd_id;
-      from(m, osd_id);
-      std::string info_s;
-      from(m, info_s);
-      std::vector<char> mv(info_s.begin(), info_s.end());
-      llio::message m2(mv);
-      std::unique_ptr<OsdInfo> info(new OsdInfo);
-      from(m2, *info);
-      std::unique_ptr<OsdCapabilities> caps(new OsdCapabilities);
-      from(m, *caps);
-      result.push_back(std::make_pair(
-          osd_id, std::make_pair(std::move(info), std::move(caps))));
+      alba_id_t alba_id;
+      from(m, alba_id);
+      ALBA_LOG(DEBUG, "alba_id = " << alba_id);
+      osd_map_t infos;
+      _read_osd_infos(m, infos);
+      auto entry = std::make_pair(std::move(alba_id), std::move(infos));
+      result.insert(std::move(entry));
     }
   }
 }
-}
+
+} // namespace
 
 namespace llio {
 template <>

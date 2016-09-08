@@ -36,6 +36,13 @@ class virtual cache = object(self)
 
     method virtual drop  : int32 -> global : bool -> unit Lwt.t
     method virtual close : unit -> unit Lwt.t
+
+    method virtual osd_infos : unit ->
+                      (Albamgr_protocol.Protocol.alba_id *
+                      ((Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
+                          Capabilities.OsdCapabilities.t))
+                        counted_list)
+                        option Lwt.t
 end
 
 class no_cache = object(self)
@@ -45,6 +52,7 @@ class no_cache = object(self)
     method lookup2 bid oid slices = Lwt.return_false
     method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
+    method osd_infos ()           = Lwt.return_none
 end
 
 let ser64 x=
@@ -1100,6 +1108,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       )
 
     method get_root = root
+
+    method osd_infos () = Lwt.return_none
 end
 
 let safe_create root

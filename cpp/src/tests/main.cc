@@ -29,25 +29,26 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace po = boost::program_options;
 
 void logBoostMethod(alba::logger::AlbaLogLevel /*level */, std::string &msg) {
-   // there should actually be a translation from AlbaLogLevel to some boost
-   // log level here, but I'm too lazy for this test client
-   BOOST_LOG_TRIVIAL(debug) << msg;
+  // there should actually be a translation from AlbaLogLevel to some boost
+  // log level here, but I'm too lazy for this test client
+  BOOST_LOG_TRIVIAL(debug) << msg;
 }
 
 std::function<void(alba::logger::AlbaLogLevel, std::string &)> logBoost =
-    std::function<void(alba::logger::AlbaLogLevel, std::string &)>(logBoostMethod);
+    std::function<void(alba::logger::AlbaLogLevel, std::string &)>(
+        logBoostMethod);
 
-std::function<void(alba::logger::AlbaLogLevel, std::string &)> *nulllog = nullptr;
+std::function<void(alba::logger::AlbaLogLevel, std::string &)> *nulllog =
+    nullptr;
 
 void init_log() {
-    alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
-            switch (level) {
-            default:
-                return &logBoost;
-            };
-        });
+  alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
+    switch (level) {
+    default:
+      return &logBoost;
+    };
+  });
 }
-
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

@@ -21,11 +21,16 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "generic_proxy_client.h"
 #include "osd_info.h"
 #include "osd_access.h"
+
 namespace alba {
 namespace proxy_client {
 typedef std::pair<std::string, std::string> strpair;
 using namespace proxy_protocol;
-typedef std::pair<ObjectSlices, std::shared_ptr<ManifestWithNamespaceId>> short_path_entry;
+typedef std::pair<ObjectSlices, std::shared_ptr<ManifestWithNamespaceId>>
+    short_path_back_entry;
+
+typedef std::pair<ObjectSlices, std::shared_ptr<RoraMap>>
+    short_path_front_entry;
 
 class RoraProxy_client : public Proxy_client {
 public:
@@ -79,7 +84,7 @@ public:
                                 const std::string &object_name,
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
-                                ManifestWithNamespaceId &);
+                                RoraMap &rora_map);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -93,22 +98,35 @@ public:
   get_proxy_version();
 
   virtual double ping(const double delay);
-  virtual void osd_info(std::vector<std::pair<osd_t, info_caps>> &result);
+  virtual void osd_info(osd_map_t &);
+  virtual void osd_info2(rora_osd_map_t &);
+
   virtual ~RoraProxy_client(){};
 
 private:
   std::unique_ptr<GenericProxy_client> _delegate;
 
   void
-  _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);
-  int _short_path_many(const std::string &namespace_,
-                       const std::vector<short_path_entry> &short_path);
-  int _short_path_one(const std::string &namespace_,
-                      const proxy_protocol::ObjectSlices &object_slices,
-                      std::shared_ptr<proxy_protocol::ManifestWithNamespaceId> mfp);
+   _maybe_update_osd_infos(alba_id_t& alba_id,
+                           std::map<osd_t, std::vector<asd_slice>> &per_osd);
+
+  int _short_path_front_many(
+      const std::vector<short_path_front_entry> &short_path);
+
+  int _short_path_back_many(
+      const std::vector<short_path_back_entry> &short_path,
+      std::shared_ptr<alba_id_t> &alba_id
+      );
+
+  int _short_path_back_one(
+      const proxy_protocol::ObjectSlices &object_slices,
+      std::shared_ptr<proxy_protocol::ManifestWithNamespaceId> mfp,
+      std::shared_ptr<alba_id_t> alba_id
+      );
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,
                          uint32_t chunk_id, uint32_t fragment_id);
+
 }
 }

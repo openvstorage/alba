@@ -203,6 +203,7 @@ int main(int argc, const char *argv[]) {
       " upload-object, delete-object, list-objects, "
       " show-object, delete-namespace, create-namespace, "
       " list-namespaces, invalidata-cache, proxy-get-version"
+      " proxy-osd_info2"
       " partial-read-benchmark")("port",
                                  po::value<string>()->default_value("10000"),
                                  "the alba proxy port number")(
@@ -382,7 +383,16 @@ int main(int argc, const char *argv[]) {
     string ns = getRequiredStringArg(vm, "namespace");
     bool result = client->namespace_exists(ns);
     cout << "namespace_exists(" << ns << ") => " << result << endl;
-  } else if ("partial-read-benchmark") {
+  } else if ("proxy-osd_info2" == command) {
+    auto client = make_proxy_client(host, port, timeout, transport);
+    rora_osd_map_t result;
+    client->osd_info2(result);
+    for (auto& e : result) {
+      const auto &alba_id = e.first;
+      cout << "alba_id:" << alba_id << std::endl;
+      cout << "   ..." << std::endl;
+    }
+  } else if ("partial-read-benchmark" == command) {
     string ns = getRequiredStringArg(vm, "namespace");
     string file = getRequiredStringArg(vm, "file");
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");

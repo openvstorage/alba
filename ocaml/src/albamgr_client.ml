@@ -422,8 +422,14 @@ object(self)
       and name = "MarkMsgsDelivered" in
       maybe_use_feature flag name args use_feature alternative
 
+    val _alba_id = ref None
     method get_alba_id =
-      client # query GetAlbaId ()
+      match !_alba_id with
+      | None ->
+         client # query GetAlbaId () >>= fun aid ->
+         let () = _alba_id := Some aid in
+         Lwt.return aid
+      | Some aid -> Lwt.return aid
 
     method recover_namespace ~namespace ~nsm_host_id =
       client # update
@@ -701,7 +707,7 @@ let make_client tls_config buffer_pool (ccfg:Arakoon_client_config.t) =
        Networking2.make_conn_info ncfg.ips ncfg.port ~transport
                                   tls_config
      in
-     
+
      Networking2.first_connection'
        buffer_pool
        ~conn_info

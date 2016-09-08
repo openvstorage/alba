@@ -176,6 +176,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | GetClientConfig -> fun () -> "()"
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
   | OsdInfo         -> fun () -> "()"
+  | OsdInfo2        -> fun () -> "()"
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -213,13 +214,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              ~allow_overwrite:(if allow_overwrite
                                then Unconditionally
                                else NoPrevious)
-           >>= fun (mf , chunk_fidmos, upload_stats, namespace_id) ->
+           >>= fun (mf , fc_info, upload_stats, namespace_id) ->
            let open Alba_statistics.Statistics in
            ProxyStatistics.new_upload stats namespace upload_stats.total;
-           Lwt_log.debug_f "write_object_fs %S %S => namespace_id:%li"
-                           namespace object_name namespace_id
-           >>= fun () ->
-           Lwt.return (mf, chunk_fidmos, namespace_id)
+           Lwt.return (mf, namespace_id, fc_info )
         )
         (let open Alba_client_errors.Error in
           function
@@ -276,16 +274,40 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        end
     | WriteObjectFs -> fun stats args ->
                        write_object_fs stats args
-                       >>= fun (_mf, _chunk_fidmos, _namespace_id) ->
+                       >>= fun (_mf, _namespace_id, _fc_info) ->
                        Lwt.return_unit
     | WriteObjectFs2 -> fun stats args  ->
                         write_object_fs stats args
-                        >>= fun (mf, _chunk_fidmos, namespace_id) ->
+                        >>= fun (mf, namespace_id, _fc_info) ->
                         Lwt.return (mf, namespace_id)
     | WriteObjectFs3 -> fun stats args ->
                         write_object_fs stats args
-                        >>= fun (mf, chunk_fidmos, namespace_id) ->
-                        Lwt.return (mf, namespace_id, [])
+                        >>= fun (mf, namespace_id, fc_info) ->
+                        begin
+                          match fc_info with
+                          | None -> Lwt.return ()
+                          | Some (_,_,chunks) ->
+                             Lwt_list.iter_s
+                               (fun (chunk_id, fs) ->
+                                 Lwt_log.debug_f "chunk_id:%i" chunk_id >>= fun () ->
+                                 Lwt_list.iter_s
+                                   (fun (fragment_id,_) ->
+                                     Lwt_log.debug_f "  fragment_id:%i" fragment_id
+                                   ) fs
+                               )
+                               chunks
+                        end
+                        >>= fun ()->
+                        Lwt_log.warning_f "WriteObjectFs3: returning: %s"
+                                          ([% show :
+                                                (string * int32 *
+                                                (Nsm_model.chunk_id *
+                                                   (Nsm_model.fragment_id *
+                                                      Nsm_model.Manifest.t) list)
+                                                  list) option] fc_info)
+                        >>= fun () ->
+                        Lwt.return (mf, namespace_id, fc_info)
+
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->
@@ -385,17 +407,25 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | OsdInfo ->
        fun stats () ->
        begin
-         let cache = alba_client # osd_access # osds_info_cache in
-         let info =
-           Hashtbl.fold
-             (fun osd_id (osd, _, capabilities) (c,acc) ->
-               let c' = c + 1
-               and acc' = (osd_id, osd, capabilities) :: acc
-               in
-               (c',acc')
-             ) cache (0,[])
+         alba_client # osd_access # osd_infos |> Lwt.return
+       end
+    | OsdInfo2 ->
+       fun stats () ->
+       begin
+
+         let my_info = alba_client # osd_access # osd_infos  in
+         alba_client # mgr_access # get_alba_id >>= fun my_alba_id ->
+         let my_entry = (my_alba_id, my_info) in
+
+         alba_client # get_base_client # get_fragment_cache # osd_infos ()
+         >>= fun fc_info_o ->
+         let r =
+           match fc_info_o with
+         | None -> (1,[my_entry])
+         | Some fc_info -> (2,[my_entry; fc_info])
          in
-         Lwt.return info
+         Lwt_log.debug_f "OsdInfo2: %i" (snd r |> List.length) >>= fun () ->
+         Lwt.return r
        end
   in
   let module Llio = Llio2.WriteBuffer in

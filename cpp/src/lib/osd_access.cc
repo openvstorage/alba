@@ -30,55 +30,97 @@ OsdAccess &OsdAccess::getInstance() {
   return instance;
 }
 
-bool OsdAccess::osd_is_unknown(osd_t osd) {
-  std::lock_guard<std::mutex> lock(_osd_infos_mutex);
-  return (_osd_infos.find(osd) == _osd_infos.end());
+bool OsdAccess::osd_is_unknown(const alba_id_t& alba_id, osd_t osd) {
+  std::lock_guard<std::mutex> lock(_alba_map_mutex);
+  auto it = _alba_map . find(alba_id);
+  bool result;
+  if(it == _alba_map.end()){
+      result = true;
+  } else{
+      auto& map = it -> second;
+      result = (map.find(osd) == map.end());
+  }
+  return result;
 }
 
-const std::map<osd_t, info_caps>::iterator OsdAccess::_find_osd(osd_t osd) {
-  std::lock_guard<std::mutex> lock(_osd_infos_mutex);
-  return _osd_infos.find(osd);
-}
-
-std::shared_ptr<gobjfs::xio::client_ctx> OsdAccess::_find_ctx(osd_t osd) {
-  std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
-  auto it = _osd_ctxs.find(osd);
-  if (it == _osd_ctxs.end()) {
-    return nullptr;
-  } else {
-    return it->second;
+std::shared_ptr<info_caps> OsdAccess::_find_osd(alba_id_t& alba_id,
+                                                 osd_t osd) {
+  std::lock_guard<std::mutex> lock(_alba_map_mutex);
+  auto it = _alba_map.find(alba_id);
+  if(it == _alba_map.end()){
+      return nullptr;
+  } else{
+      auto& map = it -> second;
+      const auto& ic = map.find(osd);
+      if (ic == map.end()){
+          return nullptr;
+      } else{
+          return ic -> second;
+      }
   }
 }
 
-void OsdAccess::_set_ctx(osd_t osd,
+ std::shared_ptr<gobjfs::xio::client_ctx> OsdAccess::_find_ctx(alba_id_t& alba_id,
+                                                               osd_t osd) {
+  std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
+
+  auto map_it = _osd_ctxs.find(alba_id);
+  if (map_it == _osd_ctxs.end()) {
+    return nullptr;
+  } else {
+    auto& map = map_it->second;
+    auto it = map.find(osd);
+    if (it == map.end()){
+        return nullptr;
+    } else{
+        return it -> second;
+    }
+  }
+}
+
+void OsdAccess::_set_ctx(alba_id_t &alba_id,
+                         osd_t osd,
                          std::shared_ptr<gobjfs::xio::client_ctx> ctx) {
   std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
-  _osd_ctxs[osd] = std::move(ctx);
+  auto map_it = _osd_ctxs.find(alba_id);
+  if(map_it == _osd_ctxs.end()){
+      std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>> map;
+      _osd_ctxs[alba_id] = std::move(map);
+      map_it = _osd_ctxs.find(alba_id);
+  }
+
+  map_it -> second[osd] =  std::move(ctx);
+
 }
 
-void OsdAccess::_remove_ctx(osd_t osd) {
+void OsdAccess::_remove_ctx(alba_id_t& alba_id, osd_t osd) {
   std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
-  _osd_ctxs.erase(osd);
+  auto map_it = _osd_ctxs.find(alba_id);
+  if(map_it != _osd_ctxs.end()){
+      map_it -> second.erase(osd);
+  }
 }
 
-void OsdAccess::update(std::vector<std::pair<osd_t, info_caps>> &infos) {
+void OsdAccess::update(rora_osd_map_t &info_map) {
   ALBA_LOG(DEBUG, "OsdAccess::update");
-  std::lock_guard<std::mutex> lock(_osd_infos_mutex);
-
-  _osd_infos.clear();
-  for (auto &p : infos) {
-    _osd_infos.emplace(p.first, std::move(p.second));
+  std::lock_guard<std::mutex> lock(_alba_map_mutex);
+  _alba_map.clear();
+  //_alba_map = std::move(info_map);// doesn't work.
+  for(auto& e: info_map){
+      _alba_map.emplace(std::move(e));
   }
 }
 
 int OsdAccess::read_osds_slices(
-    std::map<osd_t, std::vector<asd_slice>> &per_osd) {
+  alba_id_t& alba_id,
+  std::map<osd_t, std::vector<asd_slice>> &per_osd) {
+
   int rc = 0;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     auto &osd_slices = item.second;
     // TODO this could be done in parallel
-    rc = _read_osd_slices(osd, osd_slices);
+    rc = _read_osd_slices(alba_id, osd, osd_slices);
     if (rc) {
       break;
     }
@@ -87,41 +129,47 @@ int OsdAccess::read_osds_slices(
 }
 
 using namespace gobjfs::xio;
-int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
+int OsdAccess::_read_osd_slices(alba_id_t& alba_id, osd_t osd,
+                                std::vector<asd_slice> &slices) {
+
   ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices(" << osd << ")");
 
-  auto ctx = _find_ctx(osd);
+  auto ctx = _find_ctx(alba_id, osd);
 
   if (ctx == nullptr) {
     std::shared_ptr<gobjfs::xio::client_ctx_attr> ctx_attr = ctx_attr_new();
 
-    auto it = _find_osd(osd);
-    const auto &ic = it->second;
-    const auto &osd_info = ic.first;
-    const auto &osd_caps = ic.second;
+    auto maybe_ic = _find_osd(alba_id, osd);
+    if(nullptr== maybe_ic){
+        ALBA_LOG(WARNING,"have context, but no info?");
+        return -1;
+    }
+    const info_caps& ic = *maybe_ic;
+    const auto &osd_info = ic . first;
+    const auto &osd_caps = ic . second;
     std::string transport_name;
-    if (boost::none == osd_caps->rora_transport) {
-      if (osd_info->use_rdma) {
+    if (boost::none == osd_caps.rora_transport) {
+      if (osd_info.use_rdma) {
         transport_name = "rdma";
       } else {
         transport_name = "tcp";
       }
     } else {
-      transport_name = *osd_caps->rora_transport;
+      transport_name = *osd_caps . rora_transport;
     }
-    if (boost::none == osd_caps->rora_port) {
+    if (boost::none == osd_caps . rora_port) {
       ALBA_LOG(DEBUG, "osd " << osd << " has no rora port. returning -1");
       return -1;
     }
 
-    int backdoor_port = *osd_caps->rora_port;
+    int backdoor_port = *osd_caps . rora_port;
 
     std::string ip;
-    if (osd_caps->rora_ips != boost::none) {
+    if (osd_caps . rora_ips != boost::none) {
       // TODO randomize the ip used here
-      ip = (*osd_caps->rora_ips)[0];
+      ip = (*osd_caps . rora_ips)[0];
     } else {
-      ip = osd_info->ips[0];
+      ip = osd_info.ips[0];
     }
     ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
                            << " port: " << backdoor_port);
@@ -138,7 +186,7 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     if (err != 0) {
       throw osd_access_exception(err, "ctx_init");
     }
-    _set_ctx(osd, ctx);
+    _set_ctx(alba_id, osd, ctx);
   }
   size_t n_slices = slices.size();
   std::vector<giocb *> iocb_vec(n_slices);
@@ -170,9 +218,16 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
   ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
   if (ret != 0 && ctx_is_disconnected(ctx)) {
     ALBA_LOG(INFO, "removing bad ctx");
-    _remove_ctx(osd);
+    _remove_ctx(alba_id, osd);
   }
   return ret;
+}
+
+std::ostream &operator<<(std::ostream &os, const asd_slice &s) {
+  os << "asd_slice{ _"
+     << ", " << s.offset << ", " << s.len << ", _"
+     << "}";
+  return os;
 }
 }
 }

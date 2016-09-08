@@ -24,6 +24,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <vector>
 #include <string>
 #include <boost/optional.hpp>
+#include <memory>
 
 namespace alba {
 namespace llio {
@@ -95,11 +96,12 @@ public:
 
   size_t size() const noexcept { return _buffer.size(); }
 
-  void dump(std::ostream& os){
-      uint32_t size = _buffer.size();
-      os.write((char*)&size, sizeof(uint32_t));
-      os.write((char*)_buffer.data(),size);
+  void dump(std::ostream &os) {
+    uint32_t size = _buffer.size();
+    os.write((char *)&size, sizeof(uint32_t));
+    os.write((char *)_buffer.data(), size);
   }
+
 private:
   std::vector<char> _buffer;
   uint32_t _pos;
@@ -216,6 +218,20 @@ template <typename X> void from(message &m, boost::optional<X> &xo) noexcept {
     xo = x;
   } else {
     xo = boost::none;
+  }
+}
+
+template <typename X> void from(message &m, std::shared_ptr<X> &px) noexcept {
+  ALBA_LOG(DEBUG, "from(m, shared_ptr< " << typeid(X).name() <<" )");
+  bool d;
+  from(m, d);
+  ALBA_LOG(DEBUG, "d=" << d);
+  if (d) {
+    std::shared_ptr<X> p{new X};
+    from(m, *p);
+    px = p;
+  } else {
+    px = nullptr;
   }
 }
 }

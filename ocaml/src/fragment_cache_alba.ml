@@ -267,4 +267,19 @@ class alba_cache
         Lwt.return_unit
 
     method close () = closer ()
+
+    method osd_infos () =
+      let cache = client # osd_access # osds_info_cache in
+      let info =
+           Hashtbl.fold
+             (fun osd_id (osd, _, capabilities) (c,acc) ->
+               let c' = c + 1
+               and acc' = (osd_id, osd, capabilities) :: acc
+               in
+               (c',acc')
+             ) cache (0,[])
+      in
+      client # mgr_access # get_alba_id >>= fun alba_id ->
+      let r = Some (alba_id, info) in
+      Lwt.return r
   end

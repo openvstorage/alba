@@ -248,18 +248,18 @@ void GenericProxy_client::write_object_fs2(
 void GenericProxy_client::write_object_fs3(
     const string &namespace_, const string &object_name,
     const string &input_file, const allow_overwrite allow_overwrite,
-    const Checksum *checksum, proxy_protocol::ManifestWithNamespaceId &mf) {
-    _expires_from_now(_timeout);
+    const Checksum *checksum, RoraMap &rora_map) {
+  _expires_from_now(_timeout);
 
-    message_builder mb;
-    proxy_protocol::write_write_object_fs3_request(
-        mb, namespace_, object_name, input_file, BooleanEnumTrue(allow_overwrite),
-        checksum);
-    _output(mb);
+  message_builder mb;
+  proxy_protocol::write_write_object_fs3_request(
+      mb, namespace_, object_name, input_file, BooleanEnumTrue(allow_overwrite),
+      checksum);
+  _output(mb);
 
-    message response = _input();
-    proxy_protocol::read_write_object_fs3_response(response, _status, mf);
-    check_status(__PRETTY_FUNCTION__);
+  message response = _input();
+  proxy_protocol::read_write_object_fs3_response(response, _status, rora_map);
+  check_status(__PRETTY_FUNCTION__);
 }
 
 tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
@@ -337,13 +337,23 @@ double GenericProxy_client::ping(double delay) {
 }
 
 void GenericProxy_client::osd_info(
-    std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result) {
+    osd_map_t &result) {
   _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_osd_info_request(mb);
   _output(mb);
   message response = _input();
   proxy_protocol::read_osd_info_response(response, _status, result);
+}
+
+void GenericProxy_client::osd_info2(rora_osd_map_t &result) {
+  ALBA_LOG(DEBUG, "Generic_proxy_client::osd_info2");
+  _expires_from_now(_timeout);
+  message_builder mb;
+  proxy_protocol::write_osd_info2_request(mb);
+  _output(mb);
+  message response = _input();
+  proxy_protocol::read_osd_info2_response(response, _status, result);
 }
 }
 }
