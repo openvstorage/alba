@@ -2271,6 +2271,24 @@ module Test = struct
   let nil ?(xml=false) ?filter ?dump t =
     0
 
+  let rora ?(xml=false) ?filter ?dump _ =
+    let cfg = Config.make ~use_rora:true () in
+    let t = Deployment.make_default ~cfg () in
+    Deployment.kill t;
+    Deployment.setup t;
+    let preset_name = "preset_rora" in
+    let () = _create_preset t
+                            preset_name
+                            "./cfg/preset_no_compression.json"
+    in
+    let namespace = "rora" in
+    let () = _alba_cmd_line [
+                 "create-namespace"; namespace; preset_name;
+                 "--config"; t.abm # config_url |> Url.canonical;
+               ]
+    in
+    0
+
   let aaa ?xml ?filter ?dump _t =
     (* alba accelerated alba *)
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
@@ -2526,6 +2544,7 @@ let process_cmd_line () =
                           let _ : JUnit.suite = Test.big_object t in
                           0), true;
       "asd_transport_combos", Test.asd_transport_combos, false;
+      "rora",            Test.rora, false;
     ]
   in
   let print_suites () =
