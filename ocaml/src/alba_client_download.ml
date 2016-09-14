@@ -16,9 +16,11 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Prelude
 open Lwt_bytes2
 open Slice
 open Alba_statistics
+open Alba_client_errors
 open Lwt.Infix
 
 let get_object_manifest'
@@ -194,3 +196,200 @@ let download_fragment
                                    }) in
 
      E.return (t_fragment, maybe_decompressed)
+
+(* consumers of this method are responsible for freeing
+ * the returned fragment bigstring
+ *)
+let download_fragment'
+      osd_access
+      ~location
+      ~namespace_id
+      ~object_id ~object_name
+      ~chunk_id ~fragment_id
+      ~replication
+      ~fragment_checksum
+      decompress
+      ~encryption
+      fragment_cache
+      ~cache_on_read
+      bad_fragment_callback
+  =
+  download_fragment
+    osd_access
+    ~location
+    ~namespace_id
+    ~object_id ~object_name
+    ~chunk_id ~fragment_id
+    ~replication
+    ~fragment_checksum
+    decompress
+    ~encryption
+    fragment_cache
+    ~cache_on_read
+  >>= function
+  | Prelude.Error.Ok a -> Lwt.return a
+  | Prelude.Error.Error x ->
+     bad_fragment_callback
+       ~namespace_id ~object_name ~object_id
+       ~chunk_id ~fragment_id ~location;
+     match x with
+     | `AsdError err -> Lwt.fail (Asd_protocol.Protocol.Error.Exn err)
+     | `AsdExn exn -> Lwt.fail exn
+     | `NoneOsd -> Lwt.fail_with "can't download fragment from None osd"
+     | `FragmentMissing -> Lwt.fail_with "missing fragment"
+     | `ChecksumMismatch -> Lwt.fail_with "checksum mismatch"
+
+
+(* consumers of this method are responsible for freeing
+ * the returned fragment bigstrings
+ *)
+let download_chunk
+      ~namespace_id
+      ~object_id ~object_name
+      chunk_locations ~chunk_id
+      decompress
+      ~encryption
+      k m w'
+      osd_access
+      fragment_cache
+      ~cache_on_read
+      bad_fragment_callback
+  =
+
+  let t0_chunk = Unix.gettimeofday () in
+
+  let n = k + m in
+  let fragments = Hashtbl.create n in
+
+  let module CountDownLatch = Lwt_extra2.CountDownLatch in
+  let successes = CountDownLatch.create ~count:k in
+  let failures = CountDownLatch.create ~count:(m+1) in
+  let finito = ref false in
+
+  let threads : unit Lwt.t list =
+    List.mapi
+      (fun fragment_id (location, fragment_checksum) ->
+        let t =
+          Lwt.catch
+            (fun () ->
+              download_fragment'
+                osd_access
+                ~namespace_id
+                ~location
+                ~object_id
+                ~object_name
+                ~chunk_id
+                ~fragment_id
+                ~replication:(k=1)
+                ~fragment_checksum
+                decompress
+                ~encryption
+                fragment_cache
+                ~cache_on_read
+                bad_fragment_callback
+              >>= fun ((t_fragment, fragment_data) as r) ->
+
+              if !finito
+              then
+                Lwt_bytes.unsafe_destroy fragment_data
+              else
+                begin
+                  Hashtbl.add fragments fragment_id r;
+                  CountDownLatch.count_down successes;
+                end;
+              Lwt.return ())
+            (function
+             | Lwt.Canceled -> Lwt.return ()
+             | exn ->
+                Lwt_log.debug_f
+                  ~exn
+                  "Downloading fragment %i failed"
+                  fragment_id >>= fun () ->
+                CountDownLatch.count_down failures;
+                Lwt.return ()) in
+        Lwt.ignore_result t;
+        t)
+      chunk_locations in
+
+  ignore threads;
+
+  Lwt.pick [ CountDownLatch.await successes;
+             CountDownLatch.await failures; ] >>= fun () ->
+
+  finito := true;
+
+  let () =
+    if Hashtbl.length fragments < k
+    then
+      let () =
+        Lwt_log.ign_warning_f
+          "could not receive enough fragments for namespace %li, object %S (%S) chunk %i; got %i while %i needed"
+          namespace_id
+          object_name object_id
+          chunk_id (Hashtbl.length fragments) k
+      in
+      Hashtbl.iter
+        (fun _ (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
+        fragments;
+
+      Error.failwith Error.NotEnoughFragments
+  in
+  let fragment_size =
+    let _, (_, bs) = Hashtbl.choose fragments |> Option.get_some in
+    Lwt_bytes.length bs
+  in
+
+  let rec gather_fragments end_fragment acc_fragments erasures cnt = function
+    | fragment_id when fragment_id = end_fragment -> acc_fragments, erasures, cnt
+    | fragment_id ->
+       let fragment_bigarray, erasures', cnt' =
+         if Hashtbl.mem fragments fragment_id
+         then snd (Hashtbl.find fragments fragment_id), erasures, cnt + 1
+         else Lwt_bytes.create fragment_size, fragment_id :: erasures, cnt in
+       if Lwt_bytes.length fragment_bigarray <> fragment_size
+       then failwith (Printf.sprintf "fragment %i,%i has size %i while %i expected\n%!" chunk_id fragment_id (Lwt_bytes.length fragment_bigarray) fragment_size);
+       gather_fragments
+         end_fragment
+         (fragment_bigarray :: acc_fragments)
+         erasures'
+         cnt'
+         (fragment_id + 1) in
+
+  let t0_gather_decode = Unix.gettimeofday () in
+  let data_fragments_rev, erasures_rev, cnt = gather_fragments k [] [] 0 0 in
+  let coding_fragments_rev, erasures_rev', cnt = gather_fragments n [] erasures_rev cnt k in
+
+  let data_fragments = List.rev data_fragments_rev in
+  let coding_fragments = List.rev coding_fragments_rev in
+
+
+  let erasures = List.rev (-1 :: erasures_rev') in
+
+  Lwt_log.ign_debug_f
+    "erasures = %s"
+    ([%show: int list] erasures);
+
+  Erasure.decode
+    ~k ~m ~w:w'
+    erasures
+    data_fragments
+    coding_fragments
+    fragment_size >>= fun () ->
+
+  let t_now = Unix.gettimeofday () in
+
+  let t_fragments =
+    Hashtbl.fold
+      (fun _ (t_fragment,_) acc ->
+        t_fragment :: acc)
+      fragments
+      []
+  in
+
+  let t_chunk = Statistics.({
+                               gather_decode = t_now -. t0_gather_decode;
+                               total = t_now -. t0_chunk;
+                               fragments = t_fragments;
+                }) in
+
+  Lwt.return (data_fragments, coding_fragments, t_chunk)
