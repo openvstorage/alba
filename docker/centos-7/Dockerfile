@@ -204,9 +204,6 @@ RUN cd gobjfs \
        && make \
        && make install
 
-ENV LD_LIBRARY_PATH=/usr/lib64:/usr/local/lib
-ENV GOBJFS_HOME=/gobjfs/
-
 RUN yum -y install iproute
 
 RUN pip install fabric junit-xml
@@ -214,5 +211,6 @@ RUN pip install fabric junit-xml
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.bash_profile"
+RUN su - -c "echo 'GOBJFS_HOME=/usr/local/lib; export GOBJFS_HOME;' >> /home/jenkins/.bash_profile"
 
 ENTRYPOINT ["/home/jenkins/alba/docker/docker-entrypoint.sh"]
