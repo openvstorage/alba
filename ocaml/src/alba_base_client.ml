@@ -100,6 +100,7 @@ class client
     method get_namespace_osds_info_cache = get_namespace_osds_info_cache
 
     method get_cache_on_read_write = cache_on_read, cache_on_write
+    method get_partial_osd_read = partial_osd_read
 
     method discover_osds ?check_claimed ?check_claimed_delay () : unit Lwt.t =
       Discovery.discovery
@@ -339,27 +340,6 @@ class client
         )
 
 
-    method download_object_slices''
-             ~namespace_id
-             ~manifest
-             ~(object_slices : (Int64.t * int * Lwt_bytes.t * int) list)
-             ~fragment_statistics_cb
-      =
-      Alba_client_download_slices._download_object_slices
-        nsm_host_access
-        get_preset_info
-        ~namespace_id
-        ~manifest
-        ~object_slices
-        ~fragment_statistics_cb
-        osd_access
-        fragment_cache
-        ~cache_on_read
-        (bad_fragment_callback self)
-        ~partial_osd_read >>= fun () ->
-      Lwt.return (Some manifest)
-
-
     method download_object_slices'
              ~namespace_id
              ~object_name
@@ -367,47 +347,20 @@ class client
              ~consistent_read
              ~fragment_statistics_cb
       =
-      let attempt_download_slices manifest (mf_src:Cache.value_source) =
-        self # download_object_slices''
-             ~namespace_id
-             ~manifest
-             ~object_slices
-             ~fragment_statistics_cb
-        >>= function
-        | None -> Lwt.return_none
-        | Some mf -> Lwt.return (Some (mf, namespace_id, mf_src))
-
-      in
-      self # get_object_manifest'
-        ~namespace_id ~object_name
-        ~consistent_read ~should_cache:true
-      >>= fun (mf_src, r) ->
-      match r with
-      | None -> Lwt.return_none
-      | Some manifest ->
-         Lwt.catch
-           (fun () ->attempt_download_slices manifest mf_src)
-           (fun exn ->
-            match exn with
-            | Error.Exn Error.NotEnoughFragments ->
-               begin
-                 let open Cache in
-                 match mf_src with
-                 | Fast ->
-                    begin
-                      self # get_object_manifest' ~namespace_id ~object_name
-                           ~consistent_read:true ~should_cache:true
-                      >>= fun (_,r) ->
-                      (* Option.map_lwt? *)
-                      match r with
-                      | Some manifest -> attempt_download_slices manifest Stale
-                      | None -> Lwt.return None
-                    end
-                 | _ -> Lwt.fail exn
-               end
-             | exn -> Lwt.fail exn
-           )
-
+      Alba_client_download_slices.download_object_slices
+        nsm_host_access
+        get_preset_info
+        manifest_cache
+        ~consistent_read
+        ~namespace_id
+        ~object_name
+        ~object_slices
+        ~fragment_statistics_cb
+        osd_access
+        fragment_cache
+        ~cache_on_read
+        (bad_fragment_callback self)
+        ~partial_osd_read
 
 
     method download_object_generic''

@@ -23,6 +23,9 @@ open Slice
 open Lwt_bytes2
 open Lwt.Infix
 
+exception Unreachable_fragment of { chunk_id : Nsm_model.chunk_id;
+                                    fragment_id : Nsm_model.fragment_id; }
+
 let blit_from_fragment fragment_data fragment_intersections =
   List.iter
     (fun (offset, length,
@@ -56,19 +59,22 @@ let try_get_from_fragments
     let location, fragment_checksum =
       List.nth_exn chunk_locations fragment_id
     in
-    Alba_client_download.download_fragment'
-      osd_access
-      ~namespace_id
-      ~object_id ~object_name
-      ~location
-      ~chunk_id ~fragment_id
-      ~replication
-      ~fragment_checksum
-      decompress
-      ~encryption
-      ~cache_on_read
-      fragment_cache
-      bad_fragment_callback
+    Lwt.catch
+      (fun () ->
+        Alba_client_download.download_fragment'
+          osd_access
+          ~namespace_id
+          ~object_id ~object_name
+          ~location
+          ~chunk_id ~fragment_id
+          ~replication
+          ~fragment_checksum
+          decompress
+          ~encryption
+          ~cache_on_read
+          fragment_cache
+          bad_fragment_callback)
+      (fun exn -> Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
     >>= fun (t_fragment, fragment_data) ->
     Lwt.catch
       (fun () ->
@@ -95,26 +101,33 @@ let try_get_from_fragments
           List.nth_exn chunk_locations fragment_id
         in
         match osd_id_o with
-        | None -> Lwt.return_false
+        | None ->
+           Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; })
         | Some osd_id ->
-           osd_access # with_osd
-                      ~osd_id
-                      (fun osd ->
-                        let osd_key =
-                          Osd_keys.AlbaInstance.fragment
-                            ~object_id ~version_id
-                            ~chunk_id ~fragment_id
-                          |> Slice.wrap_string
-                        in
-                        (osd # namespace_kvs namespace_id) # partial_get
-                                                           (osd_access # get_default_osd_priority)
-                                                           osd_key
-                                                           fragment_intersections) >>=
+           Lwt.catch
+             (fun () ->
+               osd_access
+                 # with_osd
+                 ~osd_id
+                 (fun osd ->
+                   let osd_key =
+                     Osd_keys.AlbaInstance.fragment
+                       ~object_id ~version_id
+                       ~chunk_id ~fragment_id
+                     |> Slice.wrap_string
+                   in
+                   (osd # namespace_kvs namespace_id)
+                     # partial_get
+                     (osd_access # get_default_osd_priority)
+                     osd_key
+                     fragment_intersections))
+             (fun exn -> Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
+           >>=
              let open Osd in
              function
              | Unsupported -> Lwt.return_false
              | Success -> Lwt.return_true
-             | NotFound -> Lwt.fail_with "missing fragment"
+             | NotFound -> Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; })
       end
     else
       Lwt.return_false
@@ -198,7 +211,7 @@ let _download_object_slices
 
   (* length sanity check (this also filters out an empty slices list) *)
   if length = 0L
-  then Lwt.return_unit
+  then Lwt.return []
   else if Int64.(manifest.Manifest.size <:
                    add last_slice.Interval.offset (of_int last_slice.Interval.length))
   then Error.(failwith SliceOutsideObject)
@@ -292,7 +305,7 @@ let _download_object_slices
           manifest.Manifest.chunk_sizes
       in
 
-      Lwt_list.iter_s
+      Lwt_list.map_s
         (fun (chunk_id, chunk_intersections) ->
           let chunk_locations = List.nth_exn fragment_info chunk_id in
 
@@ -309,6 +322,58 @@ let _download_object_slices
               fragment_cache
               ~cache_on_read
               bad_fragment_callback
+          in
+
+          Lwt.catch
+            (fun () ->
+              Lwt_unix.with_timeout
+                (osd_access # osd_timeout)
+                (fun () ->
+                  try_get_from_fragments
+                    osd_access
+                    ~chunk_id
+                    ~replication:(k=1)
+                    chunk_locations
+                    chunk_intersections
+                    ~namespace_id
+                    ~object_name ~object_id
+                    ~cache_on_read
+                    fragment_cache
+                    compression decompress
+                    encryption
+                    fragment_statistics_cb
+                    ~partial_osd_read
+                    bad_fragment_callback >>= fun () ->
+                  Lwt.return `Success)
+            )
+            (fun exn ->
+              let fragment_id_o = match exn with
+                | Unreachable_fragment { fragment_id; } -> Some fragment_id
+                | _ -> None
+              in
+              Lwt.return (`Failed (fetch_chunk, chunk_id, fragment_id_o, chunk_intersections))))
+        intersections
+    end
+
+let handle_failures failures ~do_repair =
+  if failures = []
+  then Lwt.return ()
+  else
+    begin
+      (* TODO maybe do repair
+       * - fragment that had issues (if any)
+       * - all disqualified osds?
+       * - data fragments on None osd
+       * - maybe fill in None for some coding fragments if needed (so the osds become available for data fragments)
+       *
+       * if not possible (policy not satisfiable): rewrite object
+       *)
+
+      Lwt_list.iter_p
+        (fun (fetch_chunk, chunk_id, fragment_id_o, chunk_intersections) ->
+
+          let fetch_chunk () =
+            fetch_chunk ()
             >>= fun (data_fragments, coding_fragments, t_chunk) ->
             List.iter
               Lwt_bytes.unsafe_destroy
@@ -335,31 +400,134 @@ let _download_object_slices
             Lwt.return_unit
           in
 
-          Lwt.catch
-            (fun () ->
-              Lwt_unix.with_timeout
-                (osd_access # osd_timeout)
-                (fun () ->
-                  try_get_from_fragments
-                    osd_access
-                    ~chunk_id
-                    ~replication:(k=1)
-                    chunk_locations
-                    chunk_intersections
-                    ~namespace_id
-                    ~object_name ~object_id
-                    ~cache_on_read
-                    fragment_cache
-                    compression decompress
-                    encryption
-                    fragment_statistics_cb
-                    ~partial_osd_read
-                    bad_fragment_callback)
-            )
-            (fun exn ->
-              Lwt_log.debug_f
-                ~exn
-                "Exception during get_from_fragments, trying get_from_chunk" >>= fun () ->
-              get_from_chunk ()))
-        intersections
+          get_from_chunk ())
+        failures
     end
+
+let download_object_slices_from_fresh_manifest
+      nsm_host_access
+      get_preset_info
+      ~namespace_id
+      ~manifest
+      ~(object_slices : (Int64.t * int * Lwt_bytes.t * int) list)
+      ~fragment_statistics_cb
+      osd_access
+      fragment_cache
+      ~cache_on_read
+      bad_fragment_callback
+      ~partial_osd_read
+      ~do_repair
+  =
+  _download_object_slices
+      nsm_host_access
+      get_preset_info
+      ~namespace_id
+      ~manifest
+      ~object_slices
+      ~fragment_statistics_cb
+      osd_access
+      fragment_cache
+      ~cache_on_read
+      bad_fragment_callback
+      ~partial_osd_read >>= fun results ->
+  let failures =
+    List.fold_left
+      (fun acc ->
+        function
+        | `Success -> acc
+        | `Failed x -> x :: acc)
+      []
+      results
+  in
+  handle_failures failures ~do_repair
+
+
+let download_object_slices
+      nsm_host_access
+      get_preset_info
+      manifest_cache
+      ~consistent_read
+      ~namespace_id
+      ~object_name
+      ~(object_slices : (Int64.t * int * Lwt_bytes.t * int) list)
+      ~fragment_statistics_cb
+      osd_access
+      fragment_cache
+      ~cache_on_read
+      bad_fragment_callback
+      ~partial_osd_read
+  =
+  Alba_client_download.get_object_manifest'
+    nsm_host_access
+    manifest_cache
+    ~namespace_id ~object_name
+    ~consistent_read ~should_cache:true
+  >>= fun (mf_source, manifest_o) ->
+  match manifest_o with
+  | None -> Lwt.return_none
+  | Some manifest ->
+     _download_object_slices
+       nsm_host_access
+       get_preset_info
+       ~namespace_id
+       ~manifest
+       ~object_slices
+       ~fragment_statistics_cb
+       osd_access
+       fragment_cache
+       ~cache_on_read
+       bad_fragment_callback
+       ~partial_osd_read >>= fun results ->
+     let failures =
+       List.fold_left
+         (fun acc ->
+           function
+           | `Success -> acc
+           | `Failed x -> x :: acc)
+         []
+         results
+     in
+     if failures = []
+     then Lwt.return (Some (manifest, namespace_id, mf_source))
+     else
+       begin
+         match mf_source with
+         | Cache.Stale
+         | Cache.Slow ->
+            handle_failures failures ~do_repair:false >>= fun () ->
+            Lwt.return (Some (manifest, namespace_id, mf_source))
+         | Cache.Fast ->
+            Alba_client_download.get_object_manifest'
+              nsm_host_access
+              manifest_cache
+              ~namespace_id
+              ~object_name
+              ~consistent_read:true
+              ~should_cache:true >>= fun (mf_source, manifest_o) ->
+            match manifest_o with
+            | None -> Lwt.return_none
+            | Some manifest' ->
+               if manifest <> manifest'
+               then
+                 begin
+                   download_object_slices_from_fresh_manifest
+                     nsm_host_access
+                     get_preset_info
+                     ~namespace_id
+                     ~manifest:manifest'
+                     ~object_slices
+                     ~fragment_statistics_cb
+                     osd_access
+                     fragment_cache
+                     ~cache_on_read
+                     bad_fragment_callback
+                     ~partial_osd_read
+                     ~do_repair:false >>= fun () ->
+                   Lwt.return (Some (manifest', namespace_id, Cache.Stale))
+                 end
+               else
+                 begin
+                   handle_failures failures ~do_repair:false >>= fun () ->
+                   Lwt.return (Some (manifest', namespace_id, Cache.Fast))
+                 end
+       end
