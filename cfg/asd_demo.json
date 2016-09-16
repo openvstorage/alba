@@ -24,6 +24,8 @@
     // "rora_port": 11000,
     // "rora_transport" : "tcp", // optional, either 'tcp' or 'rdma',
     //                              default is the value of 'transport'
+    // "rora_num_cores" : 2, // optional, default 2
+    // "rora_queue_depth" : 8, // optional, default 8
 
     // optional asd_id is optional
     "asd_id" : "a globally unique id for the asd"

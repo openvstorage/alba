@@ -41,7 +41,8 @@ let asd_start cfg_url slow log_sinks =
            tls_config,tcp_keepalive,
            write_blobs,
            use_fadvise, use_fallocate,
-           rocksdb_block_cache_size
+           rocksdb_block_cache_size,
+           rora_num_cores, rora_queue_depth
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.rora_port,
@@ -53,7 +54,8 @@ let asd_start cfg_url slow log_sinks =
         cfg.tls,   cfg.tcp_keepalive,
         cfg.__warranty_void__write_blobs,
         cfg.use_fadvise, cfg.use_fallocate,
-        cfg.rocksdb_block_cache_size
+        cfg.rocksdb_block_cache_size,
+        cfg.rora_num_cores, cfg.rora_queue_depth
       in
 
       (if not fsync
@@ -119,6 +121,7 @@ let asd_start cfg_url slow log_sinks =
       Asd_server.run_server ips ~port ~rora_port
                             ~transport ~rora_transport
                             ~rora_ips
+                            ~rora_num_cores ~rora_queue_depth
                             home ~asd_id ~node_id ~slow
                             ~fsync
                             ~limit
