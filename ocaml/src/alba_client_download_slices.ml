@@ -74,7 +74,15 @@ let try_get_from_fragments
           ~cache_on_read
           fragment_cache
           bad_fragment_callback)
-      (fun exn -> Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
+      (fun exn ->
+        Lwt_log.debug_f
+          ~exn
+          "Exception while downloading fragment namespace_id=%li object_name,id=(%S,%S) chunk,fragment=(%i,%i) location=%s"
+          namespace_id
+          object_name object_id
+          chunk_id fragment_id
+          ([%show : int32 option * int] location) >>= fun () ->
+        Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
     >>= fun (t_fragment, fragment_data) ->
     Lwt.catch
       (fun () ->
