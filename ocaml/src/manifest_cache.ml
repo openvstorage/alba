@@ -128,7 +128,7 @@ module ManifestCache = struct
              namespace_id object_name
            >>= fun () ->
            slow_path namespace_id object_name >>= fun r ->
-           Lwt.return (Stale, r)
+           Lwt.return (Slow, r)
         | Some deflated ->
            let _hm = _hit t namespace_id in
            let r = Some (inflate deflated) in
@@ -138,14 +138,17 @@ module ManifestCache = struct
         slow_path namespace_id object_name >>= fun r ->
         Lwt.return (Slow, r)
 
-    let invalidate t namespace_id =
+    let _invalidate t namespace_id =
       Hashtbl.remove t.namespace_epoch namespace_id;
       let stat = _find_stat t namespace_id in
       stat.hit <- 0;
-      stat.miss <- 0;
+      stat.miss <- 0
+
+    let invalidate t namespace_id =
+      _invalidate t namespace_id;
       Lwt.return ()
 
     let drop t namespace_id =
       (* the current design is too simple to support this *)
-      ()
+      _invalidate t namespace_id
 end

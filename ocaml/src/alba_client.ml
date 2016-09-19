@@ -38,7 +38,6 @@ class alba_client (base_client : Alba_base_client.client)
 
     method get_object_manifest' = base_client # get_object_manifest'
     method download_object_slices = base_client # download_object_slices
-    method download_object_generic'' = base_client # download_object_generic''
 
     method create_namespace ~namespace ~preset_name ?nsm_host_id () =
       Alba_client_namespace.create_namespace
@@ -343,7 +342,7 @@ class alba_client (base_client : Alba_base_client.client)
         let get_manifest_dh = t_get_manifest, mf_src in
         let attempt_download get_manifest_dh manifest =
           write_object_data manifest.Manifest.size >>= fun write_object_data ->
-          self # download_object_generic''
+          base_client # download_object_generic''
                ~namespace_id
                ~manifest
                ~get_manifest_dh
