@@ -31,6 +31,8 @@ module Config = struct
     rora_ips : (string list option [@default None]);
     rora_port : (int option [@default None]);
     rora_transport : (string option [@default None]);
+    rora_num_cores : (int [@default 2]);
+    rora_queue_depth : (int [@default 8]);
 
     node_id : string;
     home : string;

@@ -1433,6 +1433,8 @@ let run_server
       ~rora_ips
       ~(rora_port : int option)
       ~(rora_transport : Net_fd.transport)
+      ~rora_num_cores
+      ~rora_queue_depth
       (path:string)
       ~asd_id ~node_id
       ~fsync ~slow
@@ -1823,14 +1825,12 @@ let run_server
            let sleeper, awakener = Lwt.wait() in
            Lwt_log.debug_f "starting rora server host:%s port:%i" host port
            >>= fun () ->
-           let num_cores = 2 in
-           let queue_depth = 8 in
            let handle = Rora_server.start
                           rora_transport
                           host
                           port
-                          num_cores
-                          queue_depth
+                          rora_num_cores
+                          rora_queue_depth
                           files_path
                           (String.length files_path)
                           log_level

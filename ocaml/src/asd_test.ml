@@ -76,6 +76,7 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            [] ~port:o_port ~rora_port:None
            ~transport:Net_fd.TCP ~rora_transport:Net_fd.TCP
            ~rora_ips:None
+           ~rora_num_cores:0 ~rora_queue_depth:0
            path
            ~asd_id
            ~node_id:"bla"
