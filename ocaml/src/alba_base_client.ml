@@ -361,6 +361,9 @@ class client
         ~cache_on_read
         (bad_fragment_callback self)
         ~partial_osd_read
+        ~get_ns_preset_info:(self # get_ns_preset_info)
+        ~get_namespace_osds_info_cache
+        ~do_repair:true
 
 
     method download_object_generic''

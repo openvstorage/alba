@@ -65,65 +65,47 @@ let repair_object_generic
   Lwt_list.map_s
     (fun (chunk_id, chunk_location) ->
 
-     alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache' ->
+      alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache' ->
 
-     let _, ok_fragments, fragments_to_be_repaired =
-       List.fold_left
-         (fun (fragment_id, ok_fragments, to_be_repaireds)
-              ((fragment_osd_id_o, fragment_version_id), fragment_checksum) ->
-          let ok_fragments', to_be_repaireds' =
-            if List.mem (chunk_id, fragment_id) problem_fragments ||
-                 (match fragment_osd_id_o with
-                  | None -> false
-                  | Some osd_id -> Int32Set.mem osd_id problem_osds)
-            then
-              ok_fragments,
-              (fragment_id, fragment_checksum) :: to_be_repaireds
-            else
-              fragment_osd_id_o :: ok_fragments,
-              to_be_repaireds in
-          fragment_id + 1, ok_fragments', to_be_repaireds')
-         (0, [], [])
-         chunk_location in
-     if fragments_to_be_repaired = []
-     then Lwt.return (chunk_id, [])
-     else begin
-         alba_client # download_chunk
-                     ~namespace_id
-                     ~object_id
-                     ~object_name
-                     chunk_location
-                     ~chunk_id
-                     ~encryption
-                     decompress
-                     k m w'
-         >>= fun (data_fragments, coding_fragments, t_chunk) ->
-
-         let all_fragments = List.append data_fragments coding_fragments in
-         Lwt.finalize
-           (fun () ->
-            Maintenance_helper.upload_missing_fragments
-              alba_client
-              osds_info_cache'
-              ok_fragments
-              all_fragments
-              fragments_to_be_repaired
-              ~namespace_id
-              manifest
-              ~chunk_id ~version_id ~gc_epoch
-              locations
-              compression encryption
-              fragment_checksum_algo
-              ~is_replication:(k=1))
-           (fun () ->
+      let with_chunk_data f =
+        alba_client # download_chunk
+                    ~namespace_id
+                    ~object_id
+                    ~object_name
+                    chunk_location
+                    ~chunk_id
+                    ~encryption
+                    decompress
+                    k m w'
+        >>= fun (data_fragments, coding_fragments, t_chunk) ->
+        Lwt.finalize
+          (fun () -> f data_fragments coding_fragments)
+          (fun () ->
             List.iter
               Lwt_bytes.unsafe_destroy
-              all_fragments;
+              data_fragments;
+            List.iter
+              Lwt_bytes.unsafe_destroy
+              coding_fragments;
             Lwt.return ())
-         >>= fun updated_locations ->
+      in
 
-         Lwt.return (chunk_id, updated_locations)
-       end)
+      Maintenance_helper.upload_missing_fragments
+        (alba_client # osd_access)
+        osds_info_cache'
+        ~namespace_id
+        manifest
+        ~chunk_id ~version_id ~gc_epoch
+        compression encryption
+        fragment_checksum_algo
+        ~is_replication:(k=1)
+        ~problem_fragments ~problem_osds
+        ~n_chunks:(List.length locations)
+        ~chunk_location
+        ~with_chunk_data
+      >>= fun updated_locations ->
+
+      Lwt.return (chunk_id, updated_locations))
     (List.mapi (fun i lc -> i, lc) fragment_info)
   >>= fun updated_locations ->
 

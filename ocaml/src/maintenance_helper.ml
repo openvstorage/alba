@@ -22,7 +22,7 @@ open Recovery_info
 open Lwt.Infix
 
 let choose_new_devices
-      (alba_client : Alba_base_client.client)
+      (osd_access : Osd_access_type.t)
       osds_info_cache'
       osds_to_keep
       no_fragments_to_be_repaired
@@ -31,7 +31,7 @@ let choose_new_devices
    * osds that will be force chosen *)
   Lwt_list.iter_p
     (fun osd_id ->
-     alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
+     osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
      Hashtbl.replace osds_info_cache' osd_id osd_info;
      Lwt.return ())
     osds_to_keep >>= fun () ->
@@ -44,8 +44,8 @@ let choose_new_devices
   in
   Lwt.return extra_devices
 
-let upload_missing_fragments
-      (alba_client : Alba_base_client.client)
+let _upload_missing_fragments
+      osd_access
       osds_info_cache'
       ok_fragments
       all_fragments
@@ -55,12 +55,13 @@ let upload_missing_fragments
       ~chunk_id
       ~version_id
       ~gc_epoch
-      locations
       compression
       encryption
       fragment_checksum_algo
       ~is_replication
+      ~n_chunks ~chunk_location
   =
+
   let ok_fragments' =
     List.map_filter_rev
       Std.id
@@ -68,7 +69,7 @@ let upload_missing_fragments
   in
 
   choose_new_devices
-    alba_client
+    osd_access
     osds_info_cache'
     ok_fragments'
     (List.length fragments_to_be_repaired)
@@ -108,7 +109,7 @@ let upload_missing_fragments
       extra_devices in
 
   let object_info_o =
-    let is_last_chunk = chunk_id = List.length locations - 1 in
+    let is_last_chunk = chunk_id = n_chunks - 1 in
     if is_last_chunk
     then Some RecoveryInfo.({
                                storage_scheme = manifest.Manifest.storage_scheme;
@@ -146,7 +147,7 @@ let upload_missing_fragments
      then
        begin
          Alba_client_upload.upload_packed_fragment_data
-           (alba_client # osd_access)
+           osd_access
            ~namespace_id
            ~osd_id:chosen_osd_id
            ~object_id ~version_id
@@ -169,3 +170,62 @@ let upload_missing_fragments
          Lwt.fail_with msg
        end)
     to_be_repaireds
+
+let upload_missing_fragments
+      osd_access
+      osds_info_cache'
+      ~namespace_id
+      manifest
+      ~chunk_id
+      ~version_id
+      ~gc_epoch
+      compression
+      encryption
+      fragment_checksum_algo
+      ~is_replication
+      ~problem_fragments ~problem_osds
+      ~n_chunks ~chunk_location
+      ~with_chunk_data
+  =
+
+  let _, ok_fragments, fragments_to_be_repaired =
+    List.fold_left
+      (fun (fragment_id, ok_fragments, to_be_repaireds)
+           ((fragment_osd_id_o, fragment_version_id), fragment_checksum) ->
+        let ok_fragments', to_be_repaireds' =
+          if List.mem (chunk_id, fragment_id) problem_fragments ||
+               (match fragment_osd_id_o with
+                | None -> false
+                | Some osd_id -> Int32Set.mem osd_id problem_osds)
+          then
+            ok_fragments,
+            (fragment_id, fragment_checksum) :: to_be_repaireds
+          else
+            fragment_osd_id_o :: ok_fragments,
+            to_be_repaireds in
+        fragment_id + 1, ok_fragments', to_be_repaireds')
+      (0, [], [])
+      chunk_location in
+
+  if fragments_to_be_repaired = []
+  then Lwt.return []
+  else
+    with_chunk_data
+      (fun data_fragments coding_fragments ->
+        let all_fragments = List.append data_fragments coding_fragments in
+        _upload_missing_fragments
+          osd_access
+          osds_info_cache'
+          ok_fragments
+          all_fragments
+          fragments_to_be_repaired
+          ~namespace_id
+          manifest
+          ~chunk_id
+          ~version_id
+          ~gc_epoch
+          compression
+          encryption
+          fragment_checksum_algo
+          ~is_replication
+          ~n_chunks ~chunk_location)

@@ -173,7 +173,7 @@ let try_get_from_fragments
 
 
 let _download_object_slices
-      nsm_host_access
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
       get_preset_info
       ~namespace_id
       ~manifest
@@ -363,53 +363,120 @@ let _download_object_slices
         intersections
     end
 
-let handle_failures failures ~do_repair =
+let handle_failures
+      manifest
+      osd_access
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
+      ~namespace_id
+      failures
+      ~do_repair
+      ~get_ns_preset_info
+      ~get_namespace_osds_info_cache
+  =
   if failures = []
   then Lwt.return ()
   else
     begin
-      (* TODO maybe do repair
-       * - fragment that had issues (if any)
-       * - all disqualified osds?
-       * - data fragments on None osd
-       * - maybe fill in None for some coding fragments if needed (so the osds become available for data fragments)
-       *
-       * if not possible (policy not satisfiable): rewrite object
-       *)
-
-      Lwt_list.iter_p
+      Lwt_list.map_s
         (fun (fetch_chunk, chunk_id, fragment_id_o, chunk_intersections) ->
 
-          let fetch_chunk () =
-            fetch_chunk ()
-            >>= fun (data_fragments, coding_fragments, t_chunk) ->
+          fetch_chunk () >>= fun (data_fragments, coding_fragments, _) ->
+          let () =
+            List.iter
+              (fun (fragment_id, fragment_slice, fragment_intersections) ->
+                blit_from_fragment
+                  (List.nth_exn data_fragments fragment_id)
+                  fragment_intersections)
+              chunk_intersections
+          in
+          let cleanup () =
             List.iter
               Lwt_bytes.unsafe_destroy
               coding_fragments;
-            Lwt.return data_fragments
+            List.iter
+              Lwt_bytes.unsafe_destroy
+              data_fragments
           in
-
-          let get_from_chunk () =
-            fetch_chunk () >>= fun data_fragments ->
-            let () =
-              finalize
-                (fun () ->
-                  List.iter
-                    (fun (fragment_id, fragment_slice, fragment_intersections) ->
-                      blit_from_fragment
-                        (List.nth_exn data_fragments fragment_id)
-                        fragment_intersections)
-                    chunk_intersections)
-                (fun () ->
-                  List.iter
-                    Lwt_bytes.unsafe_destroy
-                    data_fragments)
-            in
-            Lwt.return_unit
-          in
-
-          get_from_chunk ())
+          let res = (chunk_id, fragment_id_o, data_fragments, coding_fragments, cleanup) in
+          Lwt.return res
+        )
         failures
+      >>= fun to_repair ->
+      let () =
+        if do_repair
+        then
+          Lwt.async
+            (fun () ->
+              Lwt.finalize
+                (fun () ->
+                  get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache ->
+                  get_ns_preset_info ~namespace_id >>= fun preset ->
+                  nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
+
+                  let fragment_checksum_algo =
+                    preset.Albamgr_protocol.Protocol.Preset.fragment_checksum_algo in
+
+                  let open Nsm_model in
+                  let es, compression = match manifest.Manifest.storage_scheme with
+                    | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
+                  let enc = manifest.Manifest.encrypt_info in
+                  let encryption = Encrypt_info_helper.get_encryption preset enc in
+                  let version_id = manifest.Manifest.version_id + 1 in
+                  let is_replication = match es with
+                    | Encoding_scheme.RSVM (k, _, _) -> k = 1
+                  in
+
+                  Lwt_list.map_s
+                    (fun (chunk_id, fragment_id_o, data_fragments, coding_fragments, cleanup) ->
+                      let with_chunk_data f = f data_fragments coding_fragments in
+                      Maintenance_helper.upload_missing_fragments
+                        osd_access
+                        osds_info_cache
+                        ~namespace_id
+                        manifest
+                        ~chunk_id
+                        ~version_id
+                        ~gc_epoch
+                        compression
+                        encryption
+                        fragment_checksum_algo
+                        ~is_replication
+                        ~problem_fragments:(match fragment_id_o with
+                                            | Some id -> [ (chunk_id, id); ]
+                                            | None -> [])
+                        ~problem_osds:Int32Set.empty
+                        ~n_chunks:(List.length manifest.Manifest.fragment_locations)
+                        ~chunk_location:[]
+                        ~with_chunk_data >>= fun updated_locations ->
+                      Lwt.return (chunk_id, updated_locations))
+                    to_repair
+                  >>= fun updated_locations ->
+
+                  nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
+                  nsm # update_manifest
+                      ~object_name:manifest.Manifest.name
+                      ~object_id:manifest.Manifest.object_id
+                      ~gc_epoch
+                      ~version_id
+                      (List.flatten
+                         (List.map
+                            (fun (chunk_id, updated_locations) ->
+                              List.map
+                                (fun (fragment_id, osd_id) -> chunk_id, fragment_id, Some osd_id)
+                                updated_locations)
+                            updated_locations))
+                )
+                (fun () ->
+                  List.iter
+                    (fun (_, _, _, _, cleanup) -> cleanup ())
+                    to_repair;
+                  Lwt.return ()))
+        else
+          List.iter
+            (fun (_, _, _, _, cleanup) -> cleanup ())
+            to_repair
+      in
+      Lwt.return ()
     end
 
 let download_object_slices_from_fresh_manifest
@@ -425,6 +492,8 @@ let download_object_slices_from_fresh_manifest
       bad_fragment_callback
       ~partial_osd_read
       ~do_repair
+      ~get_ns_preset_info
+      ~get_namespace_osds_info_cache
   =
   _download_object_slices
       nsm_host_access
@@ -447,7 +516,15 @@ let download_object_slices_from_fresh_manifest
       []
       results
   in
-  handle_failures failures ~do_repair
+  handle_failures
+    manifest
+    osd_access
+    nsm_host_access
+    ~namespace_id
+    failures
+    ~do_repair
+    ~get_ns_preset_info
+    ~get_namespace_osds_info_cache
 
 
 let download_object_slices
@@ -464,6 +541,9 @@ let download_object_slices
       ~cache_on_read
       bad_fragment_callback
       ~partial_osd_read
+      ~get_ns_preset_info
+      ~get_namespace_osds_info_cache
+      ~do_repair
   =
   Alba_client_download.get_object_manifest'
     nsm_host_access
@@ -502,7 +582,15 @@ let download_object_slices
          match mf_source with
          | Cache.Stale
          | Cache.Slow ->
-            handle_failures failures ~do_repair:false >>= fun () ->
+            handle_failures
+              manifest
+              osd_access
+              nsm_host_access
+              ~namespace_id
+              failures
+              ~get_ns_preset_info
+              ~get_namespace_osds_info_cache
+              ~do_repair >>= fun () ->
             Lwt.return (Some (manifest, namespace_id, mf_source))
          | Cache.Fast ->
             Alba_client_download.get_object_manifest'
@@ -530,12 +618,22 @@ let download_object_slices
                      ~cache_on_read
                      bad_fragment_callback
                      ~partial_osd_read
-                     ~do_repair:false >>= fun () ->
+                     ~get_ns_preset_info
+                     ~get_namespace_osds_info_cache
+                     ~do_repair >>= fun () ->
                    Lwt.return (Some (manifest', namespace_id, Cache.Stale))
                  end
                else
                  begin
-                   handle_failures failures ~do_repair:false >>= fun () ->
+                   handle_failures
+                     manifest
+                     osd_access
+                     nsm_host_access
+                     ~namespace_id
+                     failures
+                     ~get_ns_preset_info
+                     ~get_namespace_osds_info_cache
+                     ~do_repair >>= fun () ->
                    Lwt.return (Some (manifest', namespace_id, Cache.Fast))
                  end
        end
