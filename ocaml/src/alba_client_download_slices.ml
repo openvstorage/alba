@@ -426,8 +426,15 @@ let handle_failures
                     | Encoding_scheme.RSVM (k, _, _) -> k = 1
                   in
 
+                  let fragment_info =
+                    Layout.combine
+                      manifest.Manifest.fragment_locations
+                      manifest.Manifest.fragment_checksums
+                  in
+
                   Lwt_list.map_s
                     (fun (chunk_id, fragment_id_o, data_fragments, coding_fragments, cleanup) ->
+                      Lwt_log.debug_f "repair on read fragment_id=%s" ([%show : int option] fragment_id_o) >>= fun () ->
                       let with_chunk_data f = f data_fragments coding_fragments in
                       Maintenance_helper.upload_missing_fragments
                         osd_access
@@ -446,8 +453,9 @@ let handle_failures
                                             | None -> [])
                         ~problem_osds:Int32Set.empty
                         ~n_chunks:(List.length manifest.Manifest.fragment_locations)
-                        ~chunk_location:[]
+                        ~chunk_location:(List.nth_exn fragment_info chunk_id)
                         ~with_chunk_data >>= fun updated_locations ->
+                      Lwt_log.debug_f "updated_locations=%s" ([%show : (int * int32) list] updated_locations) >>= fun () ->
                       Lwt.return (chunk_id, updated_locations))
                     to_repair
                   >>= fun updated_locations ->

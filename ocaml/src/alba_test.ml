@@ -718,12 +718,34 @@ let test_partial_download_bad_fragment () =
                          ~gc_epoch
                          ~version_id:1) >>= fun () ->
 
+     alba_client # get_object_manifest
+                 ~namespace
+                 ~object_name
+                 ~consistent_read:true
+                 ~should_cache:true
+     >>= fun (hm,r) ->
+     let mf = Option.get_some r in
+
+     assert (mf.Nsm_model.Manifest.fragment_locations |> List.hd_exn |> List.hd_exn |> fst = None);
+
      alba_client # download_object_slices_to_string
             ~namespace
             ~object_name
             ~object_slices:[ 0L, Lwt_bytes.length object_data ]
             ~consistent_read:true
      >>= fun data_o ->
+
+     (* verify that after a short delay the missing fragment has been repaired *)
+     Lwt_unix.sleep 1. >>= fun () ->
+     alba_client # get_object_manifest
+                 ~namespace
+                 ~object_name
+                 ~consistent_read:true
+                 ~should_cache:true
+     >>= fun (hm,r) ->
+     let mf' = Option.get_some r in
+     Lwt_log.debug_f "%s" (Nsm_model.Manifest.show mf') >>= fun () ->
+     assert (mf'.Nsm_model.Manifest.fragment_locations |> List.hd_exn |> List.hd_exn |> fst <> None);
 
      assert (Lwt_bytes.to_string object_data = Option.get_some data_o);
 
