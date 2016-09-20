@@ -714,7 +714,7 @@ let test_partial_download_bad_fragment () =
                   client # update_manifest
                          ~object_name
                          ~object_id:mf.Nsm_model.Manifest.object_id
-                         [ 0, 0, None; ]
+                         [ 0, 0, None; 0, 1, None; ]
                          ~gc_epoch
                          ~version_id:1) >>= fun () ->
 
@@ -726,16 +726,18 @@ let test_partial_download_bad_fragment () =
      >>= fun (hm,r) ->
      let mf = Option.get_some r in
 
-     assert (mf.Nsm_model.Manifest.fragment_locations |> List.hd_exn |> List.hd_exn |> fst = None);
+     assert (Nsm_model.Layout.index mf.Nsm_model.Manifest.fragment_locations 0 0 |> fst = None);
+     assert (Nsm_model.Layout.index mf.Nsm_model.Manifest.fragment_locations 0 1 |> fst = None);
 
      alba_client # download_object_slices_to_string
             ~namespace
             ~object_name
-            ~object_slices:[ 0L, Lwt_bytes.length object_data ]
+            (* read only from the first slice *)
+            ~object_slices:[ 0L, 1; ]
             ~consistent_read:true
-     >>= fun data_o ->
+     >>= fun _ ->
 
-     (* verify that after a short delay the missing fragment has been repaired *)
+     (* verify that after a short delay the missing fragments have been repaired *)
      Lwt_unix.sleep 1. >>= fun () ->
      alba_client # get_object_manifest
                  ~namespace
@@ -745,8 +747,17 @@ let test_partial_download_bad_fragment () =
      >>= fun (hm,r) ->
      let mf' = Option.get_some r in
      Lwt_log.debug_f "%s" (Nsm_model.Manifest.show mf') >>= fun () ->
-     assert (mf'.Nsm_model.Manifest.fragment_locations |> List.hd_exn |> List.hd_exn |> fst <> None);
+     (* both missing fragments should be repaired *)
+     assert (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations 0 0 |> fst <> None);
+     assert (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations 0 1 |> fst <> None);
 
+
+     alba_client # download_object_slices_to_string
+            ~namespace
+            ~object_name
+            ~object_slices:[ 0L, Lwt_bytes.length object_data; ]
+            ~consistent_read:true
+     >>= fun data_o ->
      assert (Lwt_bytes.to_string object_data = Option.get_some data_o);
 
      Lwt.return ())
