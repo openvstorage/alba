@@ -98,7 +98,7 @@ let repair_object_generic
         ~chunk_id ~version_id ~gc_epoch
         compression encryption
         fragment_checksum_algo
-        ~is_replication:(k=1)
+        ~k:1
         ~problem_fragments ~problem_osds
         ~n_chunks:(List.length locations)
         ~chunk_location

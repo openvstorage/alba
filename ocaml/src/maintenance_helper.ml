@@ -182,7 +182,7 @@ let upload_missing_fragments
       compression
       encryption
       fragment_checksum_algo
-      ~is_replication
+      ~k
       ~problem_fragments ~problem_osds
       ~n_chunks ~chunk_location
       ~with_chunk_data
@@ -195,7 +195,7 @@ let upload_missing_fragments
         let ok_fragments', to_be_repaireds' =
           if List.mem (chunk_id, fragment_id) problem_fragments ||
                (match fragment_osd_id_o with
-                | None -> false
+                | None -> (fragment_id < k) (* repair missing data fragments *)
                 | Some osd_id -> Int32Set.mem osd_id problem_osds)
           then
             ok_fragments,
@@ -227,5 +227,5 @@ let upload_missing_fragments
           compression
           encryption
           fragment_checksum_algo
-          ~is_replication
+          ~is_replication:(k=1)
           ~n_chunks ~chunk_location)

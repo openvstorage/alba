@@ -422,9 +422,7 @@ let handle_failures
                   let enc = manifest.Manifest.encrypt_info in
                   let encryption = Encrypt_info_helper.get_encryption preset enc in
                   let version_id = manifest.Manifest.version_id + 1 in
-                  let is_replication = match es with
-                    | Encoding_scheme.RSVM (k, _, _) -> k = 1
-                  in
+                  let Encoding_scheme.RSVM (k, _, _) = es in
 
                   let fragment_info =
                     Layout.combine
@@ -447,7 +445,7 @@ let handle_failures
                         compression
                         encryption
                         fragment_checksum_algo
-                        ~is_replication
+                        ~k
                         ~problem_fragments:(match fragment_id_o with
                                             | Some id -> [ (chunk_id, id); ]
                                             | None -> [])
