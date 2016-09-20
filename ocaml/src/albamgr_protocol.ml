@@ -627,6 +627,7 @@ module Protocol = struct
       | RepairBadFragment of
           Namespace.id * Nsm_model.object_id * Nsm_model.object_name *
           Nsm_model.chunk_id * Nsm_model.fragment_id * Nsm_model.version
+      | RewriteObject of Namespace.id * Nsm_model.object_id
       | WaitUntilRepaired of Osd.id * Namespace.id
       | WaitUntilDecommissioned of Osd.id
       | IterNamespace of action * Namespace.id * string * int
@@ -655,6 +656,10 @@ module Protocol = struct
         Llio.int_to buf chunk_id;
         Llio.int_to buf fragment_id;
         Llio.int_to buf version
+      | RewriteObject (namespace_id, object_id) ->
+        Llio.int8_to buf 13;
+        Llio.int32_to buf namespace_id;
+        Llio.string_to buf object_id
       | WaitUntilRepaired (osd_id, namespace_id) ->
         Llio.int8_to buf 8;
         Llio.int32_to buf osd_id;
@@ -726,6 +731,10 @@ module Protocol = struct
             buf
         in
         IterNamespaceLeaf (action, namespace_id, name, range)
+      | 13 ->
+        let namespace_id = Llio.int32_from buf in
+        let object_id = Llio.string_from buf in
+        RewriteObject (namespace_id, object_id)
       | k -> raise_bad_tag "Work" k
   end
 

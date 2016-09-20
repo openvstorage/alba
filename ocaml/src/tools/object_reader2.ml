@@ -36,6 +36,7 @@ class object_reader
 
   method read cnt target =
     Alba_client_download_slices.download_object_slices_from_fresh_manifest
+      (alba_client # mgr_access)
       (alba_client # nsm_host_access)
       (alba_client # get_preset_info)
       ~namespace_id

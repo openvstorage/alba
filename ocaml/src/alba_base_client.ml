@@ -348,6 +348,7 @@ class client
              ~fragment_statistics_cb
       =
       Alba_client_download_slices.download_object_slices
+        mgr_access
         nsm_host_access
         get_preset_info
         manifest_cache
