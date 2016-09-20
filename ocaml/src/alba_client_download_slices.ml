@@ -41,7 +41,7 @@ let blit_from_fragment fragment_data fragment_intersections =
 let try_get_from_fragments
       (osd_access : Osd_access_type.t)
       ~chunk_id
-      ~replication
+      ~k
       chunk_locations
       chunk_intersections
       ~namespace_id
@@ -67,7 +67,7 @@ let try_get_from_fragments
           ~object_id ~object_name
           ~location
           ~chunk_id ~fragment_id
-          ~replication
+          ~k
           ~fragment_checksum
           decompress
           ~encryption
@@ -340,7 +340,7 @@ let _download_object_slices
                   try_get_from_fragments
                     osd_access
                     ~chunk_id
-                    ~replication:(k=1)
+                    ~k
                     chunk_locations
                     chunk_intersections
                     ~namespace_id

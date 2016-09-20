@@ -113,7 +113,7 @@ let download_fragment
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
-      ~replication
+      ~k
       ~fragment_checksum
       decompress
       ~encryption
@@ -164,7 +164,7 @@ let download_fragment
         Fragment_helper.maybe_decrypt
           encryption
           ~object_id ~chunk_id ~fragment_id
-          ~ignore_fragment_id:replication
+          ~ignore_fragment_id:(k=1)
           fragment_data
         >>= E.return)
      >>== fun (t_decrypt, maybe_decrypted) ->
@@ -176,7 +176,7 @@ let download_fragment
      >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
 
      begin
-       if cache_on_read
+       if cache_on_read && fragment_id < k (* only cache data fragments *)
        then
          fragment_cache # add
                         namespace_id
@@ -206,7 +206,7 @@ let download_fragment'
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
-      ~replication
+      ~k
       ~fragment_checksum
       decompress
       ~encryption
@@ -220,7 +220,7 @@ let download_fragment'
     ~namespace_id
     ~object_id ~object_name
     ~chunk_id ~fragment_id
-    ~replication
+    ~k
     ~fragment_checksum
     decompress
     ~encryption
@@ -280,7 +280,7 @@ let download_chunk
                 ~object_name
                 ~chunk_id
                 ~fragment_id
-                ~replication:(k=1)
+                ~k
                 ~fragment_checksum
                 decompress
                 ~encryption

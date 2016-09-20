@@ -263,32 +263,6 @@ class client
          ~fragment_cache
          ~cache_on_write
 
-    (* consumers of this method are responsible for freeing
-     * the returned fragment bigstring
-     *)
-    method download_fragment
-        ~location
-        ~namespace_id
-        ~object_id ~object_name
-        ~chunk_id ~fragment_id
-        ~replication
-        ~fragment_checksum
-        decompress
-        ~encryption =
-      Alba_client_download.download_fragment'
-        osd_access
-        ~location
-        ~namespace_id
-        ~object_id ~object_name
-        ~chunk_id ~fragment_id
-        ~replication
-        ~fragment_checksum
-        decompress
-        ~encryption
-        fragment_cache
-        ~cache_on_read
-        (bad_fragment_callback self)
-
 
     (* consumers of this method are responsible for freeing
      * the returned fragment bigstrings
