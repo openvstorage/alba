@@ -724,10 +724,19 @@ let test_partial_download_bad_fragment () =
                  ~consistent_read:true
                  ~should_cache:true
      >>= fun (hm,r) ->
-     let mf = Option.get_some r in
 
-     assert (Nsm_model.Layout.index mf.Nsm_model.Manifest.fragment_locations 0 0 |> fst = None);
-     assert (Nsm_model.Layout.index mf.Nsm_model.Manifest.fragment_locations 0 1 |> fst = None);
+     begin
+       let mf = Option.get_some r in
+       let fragment_locations = mf.Nsm_model.Manifest.fragment_locations in
+       assert (Nsm_model.Layout.index fragment_locations 0 0 |> fst = None);
+       assert (Nsm_model.Layout.index fragment_locations 0 1 |> fst = None);
+
+       (* disqualify a osd related to (0,2) fragment *)
+       let osd_id = Nsm_model.Layout.index fragment_locations 0 2 |> fst |> Option.get_some in
+       alba_client # osd_access # get_osd_info ~osd_id >>= fun (_, state, _) ->
+       Osd_state.disqualify state true;
+       Lwt.return ()
+     end >>= fun () ->
 
      alba_client # download_object_slices_to_string
             ~namespace
@@ -745,12 +754,23 @@ let test_partial_download_bad_fragment () =
                  ~consistent_read:true
                  ~should_cache:true
      >>= fun (hm,r) ->
-     let mf' = Option.get_some r in
-     Lwt_log.debug_f "%s" (Nsm_model.Manifest.show mf') >>= fun () ->
-     (* both missing fragments should be repaired *)
-     assert (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations 0 0 |> fst <> None);
-     assert (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations 0 1 |> fst <> None);
-
+     begin
+       let mf' = Option.get_some r in
+       Lwt_log.debug_f "%s" (Nsm_model.Manifest.show mf') >>= fun () ->
+       let assert_ chunk_id fragment_id version =
+         Lwt_log.ign_debug_f "asserting %i,%i,%i" chunk_id fragment_id version;
+         assert (version = (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations chunk_id fragment_id
+                            |> snd));
+         assert (None <> (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations chunk_id fragment_id
+                          |> fst))
+       in
+       (* both missing fragments should be repaired *)
+       assert_ 0 0 2;
+       assert_ 0 1 2;
+       (* fragment on disqualified osd should be repaired too *)
+       assert_ 0 2 2;
+       Lwt.return ()
+     end >>= fun () ->
 
      alba_client # download_object_slices_to_string
             ~namespace

@@ -188,6 +188,17 @@ let upload_missing_fragments
       ~with_chunk_data
   =
 
+  let problem_osds =
+    (* always repair fragments of all disqualified osds too *)
+    Hashtbl.fold
+      (fun osd_id (_, state, _) acc ->
+        if Osd_state.disqualified state
+        then Int32Set.add osd_id acc
+        else acc)
+      (osd_access # osds_info_cache)
+      problem_osds
+  in
+
   let _, ok_fragments, fragments_to_be_repaired =
     List.fold_left
       (fun (fragment_id, ok_fragments, to_be_repaireds)
