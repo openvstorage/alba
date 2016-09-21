@@ -136,6 +136,57 @@ let read_objects_slices
      Lwt_bytes.unsafe_destroy res;
      Lwt.return ())
 
+
+let apply_sequence
+      (alba_client : Alba_client.alba_client)
+      namespace_id
+      asserts
+      updates
+  =
+  let t0 = Unix.gettimeofday () in
+  let upload object_name object_reader checksum_o =
+    Alba_client_upload.upload_object''
+      (alba_client # nsm_host_access)
+      (alba_client # osd_access)
+      (alba_client # get_base_client # get_preset_cache # get)
+      (alba_client # get_base_client # get_namespace_osds_info_cache)
+      ~object_t0:t0
+      ~timestamp:t0
+      ~namespace_id
+      ~object_name
+      ~object_reader
+      ~checksum_o
+      ~object_id_hint:None
+      ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
+      ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
+    >>= fun (mf, _, gc_epoch) ->
+    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch))
+  in
+
+  Lwt_list.map_p
+    (let open Protocol.Update in
+     function
+     | UploadObjectFromFile (object_name, file_name, cs_o) ->
+        Object_reader.with_file_reader
+          ~use_fadvise:true
+          file_name
+          (fun ~object_reader ->
+            upload object_name
+                   object_reader
+                   cs_o)
+     | UploadObject (object_name, blob, cs_o) ->
+        upload object_name
+               (new Object_reader.bigstring_slice_reader blob)
+               cs_o
+     | DeleteObject object_name ->
+        Lwt.return (Nsm_model.Update.DeleteObject object_name)
+    )
+    updates >>= fun updates ->
+
+  alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
+  nsm # apply_sequence asserts updates
+
+
 let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   let open Protocol in
   let render_read_object_slices (namespace, objects_slices, consistent_read) =
@@ -175,6 +226,11 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | GetClientConfig -> fun () -> "()"
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
   | OsdInfo         -> fun () -> "()"
+  | ApplySequence   -> fun (namespace, asserts, updates) ->
+                       Printf.sprintf "(%S,%s,%s)"
+                                      namespace
+                                      ([%show : Assert.t list] asserts)
+                                      ([%show : Update.t list] updates)
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -295,6 +351,16 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Overwrite_not_allowed, _) ->
             Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
           | exn -> Lwt.fail exn)
+    | ApplySequence ->
+       fun stats (namespace, asserts, updates) ->
+       alba_client # nsm_host_access # with_namespace_id
+                   ~namespace
+                   (fun namespace_id ->
+                     apply_sequence
+                       alba_client
+                       namespace_id
+                       asserts
+                       updates)
     | GetObjectInfo ->
        fun stats (namespace, object_name, consistent_read, should_cache) ->
        begin

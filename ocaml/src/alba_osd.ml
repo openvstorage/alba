@@ -116,6 +116,7 @@ class client
 
       method apply_sequence prio asserts updates =
         let prepare_updates namespace_id =
+          let t0 = Unix.gettimeofday () in
           Lwt_list.map_p
             (function
               | Osd.Update.Set (key, None) ->
@@ -126,8 +127,8 @@ class client
                    (alba_client # osd_access)
                    (alba_client # get_base_client # get_preset_cache # get)
                    (alba_client # get_base_client # get_namespace_osds_info_cache)
-                   ~object_t0:0.
-                   ~timestamp:(Unix.gettimeofday ())
+                   ~object_t0:t0
+                   ~timestamp:t0
                    ~namespace_id
                    ~object_name:(Slice.get_string_unsafe key)
                    ~object_reader:(let open Asd_protocol.Blob in

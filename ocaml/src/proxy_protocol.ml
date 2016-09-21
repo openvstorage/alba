@@ -23,6 +23,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Stat
 open Range_query_args2
+open Checksum
 
 module ProxyStatistics = struct
     include Stat
@@ -266,8 +267,9 @@ module Protocol = struct
   module Namespace = Amgrp.Namespace
 
   type object_name = string[@@deriving show]
+  type object_id = string [@@deriving show]
 
-  type file_name = string
+  type file_name = string [@@deriving show]
 
   type encryption_key = string option
   type overwrite = bool
@@ -283,6 +285,103 @@ module Protocol = struct
 
   type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
 
+
+  module Assert =
+    struct
+
+      type t = Nsm_model.Assert.t =
+             | ObjectExists of object_name
+             | ObjectDoesNotExist of object_name
+             | ObjectHasId of object_name * object_id
+             | ObjectHasChecksum of object_name * Checksum.t
+      [@@deriving show]
+
+      let to_buffer buf =
+        let module L = Llio2.WriteBuffer in
+        function
+        | ObjectExists object_name ->
+           L.int8_to buf 1;
+           L.string_to buf object_name
+        | ObjectDoesNotExist object_name ->
+           L.int8_to buf 2;
+           L.string_to buf object_name
+        | ObjectHasId (object_name, object_id) ->
+           L.int8_to buf 3;
+           L.string_to buf object_name;
+           L.string_to buf object_id
+        | ObjectHasChecksum (object_name, cs) ->
+           L.int8_to buf 4;
+           L.string_to buf object_name;
+           Checksum_deser.to_buffer' buf cs
+
+      let from_buffer buf =
+        let module L = Llio2.ReadBuffer in
+        match L.int8_from buf with
+        | 1 ->
+           let object_name = L.string_from buf in
+           ObjectExists object_name
+        | 2 ->
+           let object_name = L.string_from buf in
+           ObjectDoesNotExist object_name
+        | 3 ->
+           let object_name = L.string_from buf in
+           let object_id = L.string_from buf in
+           ObjectHasId (object_name, object_id)
+        | 4 ->
+           let object_name = L.string_from buf in
+           let cs = Checksum_deser.from_buffer' buf in
+           ObjectHasChecksum (object_name, cs)
+        | k ->
+           raise_bad_tag "Proxy_protocol.Assert" k
+
+      let deser = from_buffer, to_buffer
+    end
+  module Update =
+    struct
+      type t =
+        | UploadObjectFromFile of (object_name * file_name * Checksum.t option)
+        | UploadObject of (object_name * Bigstring_slice.t * Checksum.t option)
+        | DeleteObject of object_name
+      [@@deriving show]
+
+      let to_buffer buf =
+        let module L = Llio2.WriteBuffer in
+        function
+        | UploadObjectFromFile (object_name, file_name, cs_o) ->
+           L.int8_to buf 1;
+           L.string_to buf object_name;
+           L.string_to buf file_name;
+           L.option_to Checksum_deser.to_buffer' buf cs_o
+        | UploadObject (object_name, blob, cs_o) ->
+           L.int8_to buf 2;
+           L.string_to buf object_name;
+           L.bigstring_slice_to buf blob;
+           L.option_to Checksum_deser.to_buffer' buf cs_o
+        | DeleteObject object_name ->
+           L.int8_to buf 3;
+           L.string_to buf object_name
+
+      let from_buffer buf =
+        let module L = Llio2.ReadBuffer in
+        match L.int8_from buf with
+        | 1 ->
+           let object_name = L.string_from buf in
+           let file_name = L.string_from buf in
+           let cs_o = L.option_from Checksum_deser.from_buffer' buf in
+           UploadObjectFromFile (object_name, file_name, cs_o)
+        | 2 ->
+           let object_name = L.string_from buf in
+           let blob = L.bigstring_slice_from buf in
+           let cs_o = L.option_from Checksum_deser.from_buffer' buf in
+           UploadObject (object_name, blob, cs_o)
+        | 3 ->
+           let object_name = L.string_from buf in
+           DeleteObject object_name
+        | k ->
+           raise_bad_tag "Proxy_protocol.Update" k
+
+      let deser = from_buffer, to_buffer
+    end
 
   type ('i, 'o) request =
     | ListNamespaces : (string RangeQueryArgs.t,
@@ -304,13 +403,13 @@ module Protocol = struct
                        object_name *
                        file_name *
                        overwrite *
-                       Checksum.Checksum.t option,
+                       Checksum.t option,
                        unit) request
     | WriteObjectFs2 : (Namespace.name
                         * object_name
                         * file_name
                         * overwrite
-                        * Checksum.Checksum.t option,
+                        * Checksum.t option,
                         manifest_with_id) request
     | DeleteObject : (Namespace.name *
                       object_name *
@@ -347,6 +446,7 @@ module Protocol = struct
                     Nsm_model.OsdInfo.t *
                       Capabilities.OsdCapabilities.t) Std.counted_list )
                   request
+    | ApplySequence : (Namespace.name * Assert.t list * Update.t list, unit) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -370,6 +470,7 @@ module Protocol = struct
                       21, Wrap WriteObjectFs2, "WriteObjectFs2";
                       22, Wrap OsdInfo, "OsdInfo";
                       23, Wrap ReadObjectsSlices2, "ReadObjectsSlices2";
+                      24, Wrap ApplySequence, "ApplySequence";
                     ]
 
   module Error = struct
@@ -495,6 +596,11 @@ module Protocol = struct
     | GetClientConfig -> Deser.unit
     | Ping            -> Deser.float
     | OsdInfo         -> Deser.unit
+    | ApplySequence ->
+       Deser.tuple3
+         Deser.string
+         (Deser.list Assert.deser)
+         (Deser.list Update.deser)
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | NamespaceExists -> Deser.bool
@@ -542,4 +648,5 @@ module Protocol = struct
                                         Osd_deser.OsdInfo.deser
                                         Capabilities.OsdCapabilities.deser
                           )
+    | ApplySequence -> Deser.unit
 end
