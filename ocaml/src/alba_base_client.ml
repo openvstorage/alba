@@ -322,6 +322,7 @@ class client
              ~fragment_statistics_cb
       =
       Alba_client_download_slices.download_object_slices
+        mgr_access
         nsm_host_access
         get_preset_info
         manifest_cache
@@ -335,6 +336,9 @@ class client
         ~cache_on_read
         (bad_fragment_callback self)
         ~partial_osd_read
+        ~get_ns_preset_info:(self # get_ns_preset_info)
+        ~get_namespace_osds_info_cache
+        ~do_repair:true
 
 
     method download_object_generic''

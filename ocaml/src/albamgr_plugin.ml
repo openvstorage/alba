@@ -1462,6 +1462,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           | CleanupOsdNamespace _
           | CleanupNamespaceOsd _
           | RepairBadFragment _
+          | RewriteObject _
           | IterNamespaceLeaf _ -> []
           | IterNamespace (action, namespace_id, name, cnt) ->
 

@@ -36,6 +36,7 @@ class object_reader
 
   method read cnt target =
     Alba_client_download_slices.download_object_slices_from_fresh_manifest
+      (alba_client # mgr_access)
       (alba_client # nsm_host_access)
       (alba_client # get_preset_info)
       ~namespace_id
@@ -48,6 +49,8 @@ class object_reader
       (fun ~namespace_id ~object_name ~object_id ~chunk_id ~fragment_id ~location -> ())
       ~partial_osd_read:(alba_client # get_partial_osd_read)
       ~do_repair:false
+      ~get_ns_preset_info:(alba_client # get_ns_preset_info)
+      ~get_namespace_osds_info_cache:(alba_client # get_namespace_osds_info_cache)
     >>= fun () ->
     pos <- pos + cnt;
     Lwt.return ()
