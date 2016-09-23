@@ -124,8 +124,8 @@ class proxy_client fd =
     method delete_object ~namespace ~object_name ~may_not_exist =
       self # request DeleteObject (namespace, object_name, may_not_exist)
 
-    method apply_sequence ~namespace ~asserts ~updates =
-      self # request ApplySequence (namespace, asserts, updates)
+    method apply_sequence ~namespace ~asserts ~updates ~write_barrier =
+      self # request ApplySequence (write_barrier, namespace, asserts, updates)
 
     method multi_exists ~namespace ~object_names =
       self # request MultiExists (namespace, object_names)

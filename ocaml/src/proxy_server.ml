@@ -283,8 +283,9 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | GetClientConfig -> fun () -> "()"
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
   | OsdInfo         -> fun () -> "()"
-  | ApplySequence   -> fun (namespace, asserts, updates) ->
-                       Printf.sprintf "(%S,%s,%s)"
+  | ApplySequence   -> fun (write_barrier, namespace, asserts, updates) ->
+                       Printf.sprintf "(%b,%S,%s,%s)"
+                                      write_barrier
                                       namespace
                                       ([%show : Assert.t list] asserts)
                                       ([%show : Update.t list] updates)
@@ -434,7 +435,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                    ~namespace
                    (fun nsm -> nsm # multi_exists object_names)
     | ApplySequence ->
-       fun stats (namespace, asserts, updates) ->
+       fun stats (_write_barrier, namespace, asserts, updates) ->
        alba_client # nsm_host_access # with_namespace_id
                    ~namespace
                    (fun namespace_id ->

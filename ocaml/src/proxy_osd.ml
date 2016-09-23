@@ -168,6 +168,7 @@ class t
             >>= fun asserts' ->
 
             proxy_client # apply_sequence
+                         ~write_barrier:false
                          ~namespace
                          ~asserts:asserts'
                          ~updates:(List.map

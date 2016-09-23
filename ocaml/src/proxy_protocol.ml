@@ -283,6 +283,8 @@ module Protocol = struct
   type consistent_read = bool [@@deriving show]
   type should_cache = bool [@@deriving show]
 
+  type write_barrier = bool [@@deriving show]
+
   type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
 
 
@@ -446,7 +448,7 @@ module Protocol = struct
                     Nsm_model.OsdInfo.t *
                       Capabilities.OsdCapabilities.t) counted_list )
                   request
-    | ApplySequence : (Namespace.name * Assert.t list * Update.t list,
+    | ApplySequence : (write_barrier * Namespace.name * Assert.t list * Update.t list,
                        manifest_with_id counted_list) request
     | ReadObjects : (Namespace.name
                      * object_name list
@@ -609,7 +611,8 @@ module Protocol = struct
     | Ping            -> Deser.float
     | OsdInfo         -> Deser.unit
     | ApplySequence ->
-       Deser.tuple3
+       Deser.tuple4
+         Deser.bool
          Deser.string
          (Deser.list Assert.deser)
          (Deser.list Update.deser)
