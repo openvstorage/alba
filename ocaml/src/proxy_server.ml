@@ -184,7 +184,64 @@ let apply_sequence
     updates >>= fun updates ->
 
   alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
-  nsm # apply_sequence asserts updates
+  nsm # apply_sequence asserts updates >>= fun () ->
+
+  let cnt, manifests =
+    List.fold_left
+      (fun (cnt, manifests) -> function
+        | Nsm_model.Update.PutObject (mf, _) -> cnt + 1, (mf, namespace_id) :: manifests
+        | Nsm_model.Update.DeleteObject _ -> cnt, manifests)
+      (0, [])
+      updates
+  in
+  Lwt.return (cnt, manifests)
+
+
+let read_objects
+      (alba_client : Alba_client.alba_client)
+      ~namespace_id
+      object_names
+      ~should_cache
+      ~consistent_read
+  =
+  alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
+
+  Alba_client_download.get_object_manifests'
+    (alba_client # nsm_host_access)
+    (alba_client # get_manifest_cache)
+    ~namespace_id ~object_names
+    ~consistent_read ~should_cache
+  >>= fun r ->
+  let t0_object = Unix.gettimeofday () in
+  Lwt_list.map_p
+    (function
+     | (_, None) -> Lwt.return None
+     | (dh, Some manifest) ->
+        let bs = Lwt_bytes.create (Int64.to_int manifest.Nsm_model.Manifest.size) in
+        let offset = ref 0 in
+        let write_object_data source pos len =
+          Lwt_bytes.blit source pos bs !offset len;
+          offset := !offset + len;
+          Lwt.return ()
+        in
+        Lwt.catch
+          (fun () ->
+            alba_client # get_base_client # download_object_generic''
+                        ~namespace_id
+                        ~manifest
+                        ~get_manifest_dh:(0., dh)
+                        ~t0_object
+                        ~write_object_data >>= function
+            | None ->
+               let () = Lwt_bytes.unsafe_destroy bs in
+               Lwt.return None
+            | Some _ ->
+               Lwt.return (Some (manifest, Bigstring_slice.wrap_bigstring bs))
+          )
+          (fun exn ->
+            let () = Lwt_bytes.unsafe_destroy bs in
+            Lwt.fail exn))
+    r
 
 
 let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
@@ -231,6 +288,14 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                                       namespace
                                       ([%show : Assert.t list] asserts)
                                       ([%show : Update.t list] updates)
+  | ReadObjects     -> fun args ->
+                       Printf.sprintf "(%S)" ([%show : Namespace.name
+                                                       * object_name list
+                                                       * consistent_read
+                                                       * should_cache]
+                                                args)
+  | MultiExists     -> fun args ->
+                       Printf.sprintf "(%S)" ([%show : Namespace.name * object_name list] args)
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -351,6 +416,23 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Overwrite_not_allowed, _) ->
             Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
           | exn -> Lwt.fail exn)
+    | ReadObjects ->
+       fun stats (namespace, objs, consistent_read, should_cache) ->
+       alba_client # nsm_host_access # with_namespace_id
+                   ~namespace
+                   (fun namespace_id ->
+                     read_objects
+                       alba_client
+                       ~namespace_id
+                       objs
+                       ~should_cache
+                       ~consistent_read >>= fun values ->
+                     Lwt.return (namespace_id, values))
+    | MultiExists ->
+       fun stats (namespace, object_names) ->
+       alba_client # get_base_client # with_nsm_client
+                   ~namespace
+                   (fun nsm -> nsm # multi_exists object_names)
     | ApplySequence ->
        fun stats (namespace, asserts, updates) ->
        alba_client # nsm_host_access # with_namespace_id
@@ -500,8 +582,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
       (function
         | End_of_file as e ->
           Lwt.fail e
-        | Protocol.Error.Exn err ->
-           let msg = Protocol.Error.show err in
+        | Protocol.Error.Exn (err, payload) ->
+           let msg = match payload with
+             | Some x -> x
+             | None -> Protocol.Error.show err in
            Lwt_log.info_f "Returning %s error to client" msg
            >>= fun () ->
            return_err_response ~msg err

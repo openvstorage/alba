@@ -115,7 +115,7 @@ let exn_to_string_code = function
     let open Albamgr_protocol.Protocol.Error in
     "albamgr_exn", err2int e,
     Printf.sprintf "Albamgr exception: %s" (show e)
-  | Proxy_protocol.Protocol.Error.Exn e ->
+  | Proxy_protocol.Protocol.Error.Exn (e, _) ->
     let open Proxy_protocol.Protocol.Error in
     "proxy_exn", err2int e,
     Printf.sprintf "Proxy exception: %s" (show e)

@@ -24,7 +24,7 @@ open Range_query_args
 
 
 class proxy_client fd =
-  let read_response deserializer =
+  let with_response deserializer f =
     let module Llio = Llio2.NetFdReader in
     Llio.int_from fd >>= fun size ->
     Llio.with_buffer_from
@@ -32,13 +32,13 @@ class proxy_client fd =
       (fun res_buf ->
        match Llio2.ReadBuffer.int_from res_buf with
        | 0 ->
-          Lwt.return (deserializer res_buf)
+          f (deserializer res_buf)
        | err ->
           let err_string = Llio2.ReadBuffer.string_from res_buf in
           Lwt_log.debug_f "Proxy client received error from server: %s" err_string
-          >>= fun () -> Error.failwith (Error.int2err err))
+          >>= fun () -> Error.failwith ~payload:err_string (Error.int2err err))
   in
-  let do_request code serialize_request request response_deserializer =
+  let do_request code serialize_request request response_deserializer f =
     let module Llio = Llio2.WriteBuffer in
     let buf =
       Llio.serialize_with_length'
@@ -53,15 +53,20 @@ class proxy_client fd =
       fd buf.Llio.buf 0 buf.Llio.pos
     >>= fun () ->
 
-    read_response response_deserializer
+    with_response response_deserializer f
   in
   object(self)
-    method private request : type i o. (i, o) request -> i -> o Lwt.t =
-      fun command req ->
+    method private request' : type i o r. (i, o) request -> i -> (o -> r Lwt.t) -> r Lwt.t =
+      fun command req f ->
       do_request
         (command_to_code (Wrap command))
         (deser_request_i command |> snd) req
         (Deser.from_buffer (deser_request_o command))
+        f
+
+    method private request : type i o. (i, o) request -> i -> o Lwt.t =
+      fun command req ->
+      self # request' command req Lwt.return
 
     method do_unknown_operation =
       let code =
@@ -78,10 +83,12 @@ class proxy_client fd =
          do_request
            code
            (fun buf () -> ()) ()
-           (fun buf -> ()) >>= fun () ->
+           (fun buf -> ())
+           Lwt.return
+         >>= fun () ->
          Lwt.fail_with "did not get an exception for unknown operation")
         (function
-          | Error.Exn Error.UnknownOperation -> Lwt.return ()
+          | Error.Exn (Error.UnknownOperation, _) -> Lwt.return ()
           | exn -> Lwt.fail exn)
 
     method write_object_fs
@@ -114,8 +121,28 @@ class proxy_client fd =
     method read_object_slices ~namespace ~object_slices ~consistent_read =
       self # request ReadObjectsSlices (namespace, object_slices, consistent_read)
 
-    method delete_object ~namespace ~object_name ~may_not_exist=
+    method delete_object ~namespace ~object_name ~may_not_exist =
       self # request DeleteObject (namespace, object_name, may_not_exist)
+
+    method apply_sequence ~namespace ~asserts ~updates =
+      self # request ApplySequence (namespace, asserts, updates)
+
+    method multi_exists ~namespace ~object_names =
+      self # request MultiExists (namespace, object_names)
+
+    method read_objects : type o.
+                               namespace : string ->
+                               object_names : string list ->
+                               consistent_read : bool ->
+                               should_cache : bool ->
+                               (int32 * (Nsm_model.Manifest.t * Bigstring_slice.t) option list -> o Lwt.t) ->
+                               o Lwt.t
+      =
+      fun ~namespace ~object_names ~consistent_read ~should_cache f ->
+      self # request'
+           ReadObjects
+           (namespace, object_names, consistent_read, should_cache)
+           f
 
     method invalidate_cache ~namespace =
       self # request InvalidateCache namespace
@@ -138,7 +165,7 @@ class proxy_client fd =
     method create_namespace ~namespace ~preset_name =
       self # request CreateNamespace (namespace, preset_name)
 
-    method list_namespace ~first ~finc ~last
+    method list_namespaces ~first ~finc ~last
                           ~max ~reverse
       = self # request ListNamespaces
              RangeQueryArgs.{ first; finc; last; max; reverse; }

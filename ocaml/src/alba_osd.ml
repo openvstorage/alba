@@ -18,6 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Prelude
 open Slice
+open Alba_based_osd
 open Lwt.Infix
 
 (* TODO what about statistics? *)
@@ -27,13 +28,7 @@ class client
         ~alba_id ~prefix ~preset_name
         ~namespace_name_format
   =
-  let to_namespace_name =
-    match namespace_name_format with
-    | 0 -> fun namespace_id ->
-           prefix ^ (serialize ~buf_size:4 Llio.int32_be_to namespace_id)
-    | 1 -> Printf.sprintf "%s_%09li" prefix
-    | _ -> assert false
-  in
+  let to_namespace_name = to_namespace_name prefix namespace_name_format in
   let get_kvs ~consistent_read namespace =
     object(self :# Osd.key_value_storage)
       method get_option _prio name =

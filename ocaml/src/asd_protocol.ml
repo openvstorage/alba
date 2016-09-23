@@ -62,6 +62,12 @@ module Blob = struct
     | Bytes s -> s
     | Slice s -> Slice.get_string_unsafe s
 
+  let get_bigstring_slice = function
+    | Lwt_bytes x -> Bigstring_slice.wrap_bigstring x
+    | Bigslice x -> x
+    | Bytes s -> Bigstring_slice.of_string s
+    | Slice s -> Slice.to_bigstring s |> Bigstring_slice.wrap_bigstring
+
   let length = function
     | Lwt_bytes s -> Lwt_bytes.length s
     | Bigslice s -> Bigstring_slice.length s

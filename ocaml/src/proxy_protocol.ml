@@ -280,8 +280,8 @@ module Protocol = struct
   type length = int [@@deriving show]
   type data = string
 
-  type consistent_read = bool
-  type should_cache = bool
+  type consistent_read = bool [@@deriving show]
+  type should_cache = bool [@@deriving show]
 
   type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
 
@@ -385,14 +385,14 @@ module Protocol = struct
 
   type ('i, 'o) request =
     | ListNamespaces : (string RangeQueryArgs.t,
-                        Namespace.name Std.counted_list * has_more) request
+                        Namespace.name counted_list * has_more) request
     | NamespaceExists : (Namespace.name, bool) request
     | CreateNamespace : (Namespace.name * preset_name option, unit) request
     | DeleteNamespace : (Namespace.name, unit) request
 
     | ListObjects : (Namespace.name *
                      string RangeQueryArgs.t,
-                     object_name Std.counted_list * has_more) request
+                     object_name counted_list * has_more) request
     | ReadObjectFs : (Namespace.name *
                       object_name *
                       file_name *
@@ -430,23 +430,32 @@ module Protocol = struct
                             (data
                              * ((object_name
                                  * string
-                                 * manifest_with_id) Std.counted_list ))) request
+                                 * manifest_with_id) counted_list ))) request
     | InvalidateCache : (Namespace.name, unit) request
     | DropCache : (Namespace.name, unit) request
     | ProxyStatistics : (bool, ProxyStatistics.t) request
     | GetVersion : (unit, (int * int * int * string)) request
-    | OsdView : (unit, (string * Albamgr_protocol.Protocol.Osd.ClaimInfo.t) Std.counted_list
+    | OsdView : (unit, (string * Albamgr_protocol.Protocol.Osd.ClaimInfo.t) counted_list
                        * (Albamgr_protocol.Protocol.Osd.id
                           * Nsm_model.OsdInfo.t
-                          * Osd_state.t) Std.counted_list) request
+                          * Osd_state.t) counted_list) request
     | GetClientConfig : (unit, Alba_arakoon.Config.t) request
     | Ping : (float, float) request
     | OsdInfo : (unit,
                  (Int32.t *
                     Nsm_model.OsdInfo.t *
-                      Capabilities.OsdCapabilities.t) Std.counted_list )
+                      Capabilities.OsdCapabilities.t) counted_list )
                   request
-    | ApplySequence : (Namespace.name * Assert.t list * Update.t list, unit) request
+    | ApplySequence : (Namespace.name * Assert.t list * Update.t list,
+                       manifest_with_id counted_list) request
+    | ReadObjects : (Namespace.name
+                     * object_name list
+                     * consistent_read
+                     * should_cache,
+                     Namespace.id * (Nsm_model.Manifest.t * Bigstring_slice.t)
+                                      option list)
+                      request
+    | MultiExists : (Namespace.name * object_name list, bool list) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -471,6 +480,8 @@ module Protocol = struct
                       22, Wrap OsdInfo, "OsdInfo";
                       23, Wrap ReadObjectsSlices2, "ReadObjectsSlices2";
                       24, Wrap ApplySequence, "ApplySequence";
+                      25, Wrap ReadObjects, "ReadObjects";
+                      26, Wrap MultiExists, "MultiExists";
                     ]
 
   module Error = struct
@@ -491,11 +502,12 @@ module Protocol = struct
       | FileNotFound            [@value 14]
       | NoSatisfiablePolicy     [@value 15]
       | ProtocolVersionMismatch [@value 17]
+      | AssertFailed            [@value 18]
     [@@deriving show, enum]
 
-    exception Exn of t
+    exception Exn of t * string option
 
-    let failwith err = raise (Exn err)
+    let failwith ?payload err = raise (Exn (err, payload))
 
     let err2int = to_enum
     let int2err x = Option.get_some_default Unknown (of_enum x)
@@ -601,6 +613,16 @@ module Protocol = struct
          Deser.string
          (Deser.list Assert.deser)
          (Deser.list Update.deser)
+    | ReadObjects ->
+       Deser.tuple4
+         Deser.string
+         (Deser.list Deser.string)
+         Deser.bool
+         Deser.bool
+    | MultiExists ->
+       Deser.pair
+         Deser.string
+         (Deser.list Deser.string)
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | NamespaceExists -> Deser.bool
@@ -648,5 +670,16 @@ module Protocol = struct
                                         Osd_deser.OsdInfo.deser
                                         Capabilities.OsdCapabilities.deser
                           )
-    | ApplySequence -> Deser.unit
+    | ApplySequence ->
+       Deser.counted_list (Deser.tuple2 Manifest_deser.deser Deser.int32)
+    | ReadObjects ->
+       Deser.pair
+         Deser.int32
+         (Deser.list
+            (Deser.option
+               (Deser.pair
+                  Manifest_deser.deser
+                  Deser.bigstring_slice)))
+    | MultiExists ->
+       Deser.list Deser.bool
 end
