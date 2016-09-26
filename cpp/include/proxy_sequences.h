@@ -33,7 +33,7 @@ public:
   virtual void to(llio::message_builder &) const = 0;
 };
 
-class AssertObjectExists : Assert {
+class AssertObjectExists : public Assert {
 public:
   AssertObjectExists(std::string name) : _name(name){};
 
@@ -45,7 +45,7 @@ public:
   std::string _name;
 };
 
-class AssertObjectDoesNotExist : Assert {
+class AssertObjectDoesNotExist : public Assert {
 public:
   AssertObjectDoesNotExist(std::string name) : _name(name){};
 
@@ -57,7 +57,7 @@ public:
   std::string _name;
 };
 
-class AssertObjectHasId : Assert {
+class AssertObjectHasId : public Assert {
 public:
   AssertObjectHasId(std::string name, std::string object_id)
       : _name(name), _object_id(object_id){};
@@ -72,7 +72,7 @@ public:
   std::string _object_id;
 };
 
-class AssertObjectHasChecksum : Assert {
+class AssertObjectHasChecksum : public Assert {
 public:
   AssertObjectHasChecksum(std::string name, std::unique_ptr<alba::Checksum> cs)
       : _name(name), _cs(std::move(cs)){};
@@ -93,17 +93,18 @@ public:
   virtual void to(llio::message_builder &) const = 0;
 };
 
-class UpdateUploadObjectFromFile : Update {
+class UpdateUploadObjectFromFile : public Update {
 public:
   UpdateUploadObjectFromFile(std::string name, std::string file_name,
                              alba::Checksum *cs_o)
       : _name(name), _file_name(file_name), _cs_o(cs_o){};
+
   void to(llio::message_builder &mb) const {
     mb.add_type(1);
     llio::to(mb, _name);
     llio::to(mb, _file_name);
     if (_cs_o == nullptr) {
-      alba::llio::to<boost::optional<int>>(mb, boost::none);
+      llio::to<boost::optional<const Checksum *>>(mb, boost::none);
     } else {
       llio::to(mb, boost::optional<const Checksum *>(_cs_o));
     }
@@ -116,9 +117,10 @@ public:
 
 /* TODO upload object from in memory blob */
 
-class UpdateDeleteObject : Update {
+class UpdateDeleteObject : public Update {
 public:
   UpdateDeleteObject(std::string name) : _name(name){};
+
   void to(llio::message_builder &mb) const {
     mb.add_type(3);
     llio::to(mb, _name);
