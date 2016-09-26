@@ -1676,11 +1676,11 @@ class client ?(retry_timeout = 60.)
       alba_client # mgr_access # get_work
                   ~first:next_work_item ~finc:true
                   ~last:None ~max:100 ~reverse:false
-      >>= fun ((cnt, work_items), _) ->
+      >>= fun ((cnt, work_items), has_more) ->
       Lwt_log.debug_f "Adding work, got %i items" cnt >>= fun () ->
       self # add_work_threads work_items;
 
-      if once && cnt > 0
+      if has_more || (once && cnt > 0)
       then inner ()
       else Lwt.return_unit
     in
