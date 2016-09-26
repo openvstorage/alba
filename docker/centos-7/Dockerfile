@@ -77,7 +77,7 @@ RUN eval `${opam_env}` && \
         ppx_deriving \
         ppx_deriving_yojson \
         core.114.05+21 \
-        redis.0.3.1 \
+        redis.0.3.3 \
         uri.1.9.2 \
         result
 
@@ -146,7 +146,7 @@ RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout tags/1.9.10
+RUN cd arakoon && git pull && git checkout 5f2d9f32c3d47e9fc1c02f82d9127c607dfe43b9
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \

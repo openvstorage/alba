@@ -141,7 +141,7 @@ let lru_collect_some_garbage alba_client redis_client key =
   R.zrangebyscore
     redis_client
     key
-    0. max_float
+    R.FloatBound.NegInfinity R.FloatBound.PosInfinity
     ~limit:(0, 100)
   >>= fun items ->
 
