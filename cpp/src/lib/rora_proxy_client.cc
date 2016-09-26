@@ -17,8 +17,8 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "rora_proxy_client.h"
-#include "manifest.h"
 #include "alba_logger.h"
+#include "manifest.h"
 #include "manifest_cache.h"
 #include "osd_access.h"
 
@@ -312,6 +312,13 @@ std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(
     const consistent_read consistent_read_, const should_cache should_cache_) {
   return _delegate->get_object_info(namespace_, object_name, consistent_read_,
                                     should_cache_);
+}
+
+void RoraProxy_client::apply_sequence(
+    const std::string &namespace_, const write_barrier write_barrier,
+    const std::vector<std::shared_ptr<sequences::Assert>> &asserts,
+    const std::vector<std::shared_ptr<sequences::Update>> &updates) {
+  return _delegate->apply_sequence(namespace_, write_barrier, asserts, updates);
 }
 
 void RoraProxy_client::invalidate_cache(const std::string &namespace_) {

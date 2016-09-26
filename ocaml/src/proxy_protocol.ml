@@ -448,7 +448,8 @@ module Protocol = struct
                     Nsm_model.OsdInfo.t *
                       Capabilities.OsdCapabilities.t) counted_list )
                   request
-    | ApplySequence : (write_barrier * Namespace.name * Assert.t list * Update.t list,
+    | ApplySequence : (Namespace.name * write_barrier * Assert.t list * Update.t list,
+                       (* TODO indicate which alba the manifest belongs too *)
                        manifest_with_id counted_list) request
     | ReadObjects : (Namespace.name
                      * object_name list
@@ -612,8 +613,8 @@ module Protocol = struct
     | OsdInfo         -> Deser.unit
     | ApplySequence ->
        Deser.tuple4
-         Deser.bool
          Deser.string
+         Deser.bool
          (Deser.list Assert.deser)
          (Deser.list Update.deser)
     | ReadObjects ->

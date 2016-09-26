@@ -38,6 +38,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _WRITE_OBJECT_FS2 21
 #define _OSD_INFO 22
 #define _READ_OBJECTS_SLICES2 23
+#define _APPLY_SEQUENCE 24
 
 namespace alba {
 namespace proxy_protocol {
@@ -311,6 +312,22 @@ void read_read_objects_slices2_response(
       object_infos[i] = std::move(t);
     }
   }
+}
+
+void write_apply_sequence_request(
+    message_builder &mb, const string &namespace_, const bool write_barrier,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>> asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>> updates) {
+  write_tag(mb, _APPLY_SEQUENCE);
+  to(mb, namespace_);
+  to(mb, write_barrier);
+  to(mb, asserts);
+  to(mb, updates);
+}
+
+void read_apply_sequence_response(message &m, Status &status) {
+  read_status(m, status);
+  // TODO return more...
 }
 
 void write_invalidate_cache_request(message_builder &mb,

@@ -265,6 +265,23 @@ tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
   return tuple<uint64_t, Checksum *>(size, checksum);
 }
 
+void GenericProxy_client::apply_sequence(
+    const string &namespace_, const write_barrier write_barrier,
+    const vector<std::shared_ptr<sequences::Assert>> &asserts,
+    const vector<std::shared_ptr<sequences::Update>> &updates) {
+  _expires_from_now(_timeout);
+
+  message_builder mb;
+  proxy_protocol::write_apply_sequence_request(
+      mb, namespace_, BooleanEnumTrue(write_barrier), asserts, updates);
+  _output(mb);
+
+  message response = _input();
+  proxy_protocol::read_apply_sequence_response(response, _status);
+  check_status(__PRETTY_FUNCTION__);
+  return;
+}
+
 void GenericProxy_client::invalidate_cache(const string &namespace_) {
   _expires_from_now(_timeout);
   message_builder mb;

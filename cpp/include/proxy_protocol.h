@@ -22,6 +22,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "checksum.h"
 #include "manifest.h"
 #include "osd_info.h"
+#include "proxy_sequences.h"
 
 namespace alba {
 namespace proxy_protocol {
@@ -150,6 +151,13 @@ void read_read_objects_slices_response(message &m, Status &status,
 void read_read_objects_slices2_response(message &m, Status &status,
                                         const std::vector<ObjectSlices> &dest,
                                         std::vector<object_info> &object_infos);
+
+void write_apply_sequence_request(
+    message_builder &mb, const string &namespace_, const bool write_barrier,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>> asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>> updates);
+
+void read_apply_sequence_response(message &m, Status &status);
 
 void write_invalidate_cache_request(message_builder &mb,
                                     const string &namespace_);
