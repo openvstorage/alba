@@ -26,7 +26,7 @@ let test_with_kvs_client
     (fun alba_client ->
      alba_client # mgr_access # get_alba_id >>= fun alba_id ->
 
-     let prefix = test_name in
+     let prefix = "alba_osd_test/" ^ test_name in
      alba_client # create_namespace ~namespace:prefix ~preset_name:None () >>= fun _ ->
      let client = new Alba_osd.client
                       alba_client

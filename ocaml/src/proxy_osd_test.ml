@@ -19,9 +19,10 @@ but WITHOUT ANY WARRANTY of any kind.
 open Proxy_osd
 open Lwt.Infix
 
-let test_with_kvs_client prefix f =
+let test_with_kvs_client test_name f =
   Proxy_test.test_with_proxy_client
     (fun proxy_client ->
+      let prefix = "proxy_osd_test/" ^ test_name in
       let proxy_osd = new t
                           proxy_client
                           ~long_id:"long_id"
