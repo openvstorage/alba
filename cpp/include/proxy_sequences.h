@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "boolean_enum.h"
 #include "checksum.h"
 #include "llio.h"
 #include <memory>
@@ -97,7 +98,8 @@ public:
 class UpdateUploadObjectFromFile final : public Update {
 public:
   UpdateUploadObjectFromFile(const std::string &name,
-                             const std::string &file_name, alba::Checksum *cs_o)
+                             const std::string &file_name,
+                             const alba::Checksum *cs_o)
       : _name(name), _file_name(file_name), _cs_o(cs_o){};
 
   void to(llio::message_builder &mb) const override {
@@ -113,7 +115,7 @@ public:
 
   std::string _name;
   std::string _file_name;
-  alba::Checksum *_cs_o;
+  const alba::Checksum *_cs_o;
 };
 
 /* TODO upload object from in memory blob */
@@ -128,6 +130,53 @@ public:
   }
 
   std::string _name;
+};
+
+BOOLEAN_ENUM(ObjectExists);
+
+class Sequence {
+public:
+  Sequence(size_t assert_size_hint = 0, size_t update_size_hint = 0)
+      : _asserts(assert_size_hint), _updates(update_size_hint) {}
+
+  Sequence &add_assert(const std::string &name, ObjectExists should_exist) {
+    if (should_exist == ObjectExists::T) {
+      _asserts.push_back(std::shared_ptr<Assert>(new AssertObjectExists(name)));
+    } else {
+      _asserts.push_back(
+          std::shared_ptr<Assert>(new AssertObjectDoesNotExist(name)));
+    }
+    return *this;
+  }
+
+  Sequence &add_assert_object_id(const std::string &name,
+                                 const std::string &object_id) {
+    _asserts.push_back(
+        std::shared_ptr<Assert>(new AssertObjectHasId(name, object_id)));
+    return *this;
+  }
+
+  Sequence &add_assert_checksum(const std::string &name,
+                                std::unique_ptr<alba::Checksum> cs) {
+    _asserts.push_back(std::shared_ptr<Assert>(
+        new AssertObjectHasChecksum(name, std::move(cs))));
+    return *this;
+  }
+
+  Sequence &add_upload_fs(const std::string &name, const std::string &path,
+                          const alba::Checksum *cs_o) {
+    _updates.push_back(std::shared_ptr<Update>(
+        new UpdateUploadObjectFromFile(name, path, cs_o)));
+    return *this;
+  }
+
+  Sequence &add_delete(const std::string &name) {
+    _updates.push_back(std::shared_ptr<Update>(new UpdateDeleteObject(name)));
+    return *this;
+  }
+
+  std::vector<std::shared_ptr<Assert>> _asserts;
+  std::vector<std::shared_ptr<Update>> _updates;
 };
 }
 }

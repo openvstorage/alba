@@ -324,6 +324,14 @@ void RoraProxy_client::apply_sequence(
   _process(object_infos, namespace_);
 }
 
+void RoraProxy_client::apply_sequence(
+    const std::string &namespace_, const write_barrier write_barrier,
+    const sequences::Sequence &seq,
+    std::vector<proxy_protocol::object_info> &object_infos) {
+  return this->apply_sequence(namespace_, write_barrier, seq._asserts,
+                              seq._updates, object_infos);
+}
+
 void RoraProxy_client::invalidate_cache(const std::string &namespace_) {
   ManifestCache::getInstance().invalidate_namespace(namespace_);
   _delegate->invalidate_cache(namespace_);
