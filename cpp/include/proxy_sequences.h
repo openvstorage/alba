@@ -33,11 +33,11 @@ public:
   virtual void to(llio::message_builder &) const = 0;
 };
 
-class AssertObjectExists : public Assert {
+class AssertObjectExists final : public Assert {
 public:
   AssertObjectExists(const std::string &name) : _name(name){};
 
-  void to(llio::message_builder &mb) const {
+  void to(llio::message_builder &mb) const override {
     mb.add_type(1);
     llio::to(mb, _name);
   }
@@ -45,11 +45,11 @@ public:
   std::string _name;
 };
 
-class AssertObjectDoesNotExist : public Assert {
+class AssertObjectDoesNotExist final : public Assert {
 public:
   AssertObjectDoesNotExist(const std::string &name) : _name(name){};
 
-  void to(llio::message_builder &mb) const {
+  void to(llio::message_builder &mb) const override {
     mb.add_type(2);
     llio::to(mb, _name);
   }
@@ -57,12 +57,12 @@ public:
   std::string _name;
 };
 
-class AssertObjectHasId : public Assert {
+class AssertObjectHasId final : public Assert {
 public:
   AssertObjectHasId(const std::string &name, const std::string &object_id)
       : _name(name), _object_id(object_id){};
 
-  void to(llio::message_builder &mb) const {
+  void to(llio::message_builder &mb) const override {
     mb.add_type(3);
     llio::to(mb, _name);
     llio::to(mb, _object_id);
@@ -72,13 +72,13 @@ public:
   std::string _object_id;
 };
 
-class AssertObjectHasChecksum : public Assert {
+class AssertObjectHasChecksum final : public Assert {
 public:
   AssertObjectHasChecksum(const std::string &name,
                           std::unique_ptr<alba::Checksum> cs)
       : _name(name), _cs(std::move(cs)){};
 
-  void to(llio::message_builder &mb) const {
+  void to(llio::message_builder &mb) const override {
     mb.add_type(4);
     llio::to(mb, _name);
     _cs->to(mb);
@@ -94,13 +94,13 @@ public:
   virtual void to(llio::message_builder &) const = 0;
 };
 
-class UpdateUploadObjectFromFile : public Update {
+class UpdateUploadObjectFromFile final : public Update {
 public:
   UpdateUploadObjectFromFile(const std::string &name,
                              const std::string &file_name, alba::Checksum *cs_o)
       : _name(name), _file_name(file_name), _cs_o(cs_o){};
 
-  void to(llio::message_builder &mb) const {
+  void to(llio::message_builder &mb) const override {
     mb.add_type(1);
     llio::to(mb, _name);
     llio::to(mb, _file_name);
@@ -118,11 +118,11 @@ public:
 
 /* TODO upload object from in memory blob */
 
-class UpdateDeleteObject : public Update {
+class UpdateDeleteObject final : public Update {
 public:
   UpdateDeleteObject(const std::string &name) : _name(name){};
 
-  void to(llio::message_builder &mb) const {
+  void to(llio::message_builder &mb) const override {
     mb.add_type(3);
     llio::to(mb, _name);
   }
