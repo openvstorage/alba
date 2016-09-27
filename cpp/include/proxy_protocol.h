@@ -155,9 +155,9 @@ void read_read_objects_slices2_response(message &m, Status &status,
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
     const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
-        asserts,
+        &asserts,
     const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
-        updates);
+        &updates);
 
 void read_apply_sequence_response(message &m, Status &status,
                                   std::vector<object_info> &);

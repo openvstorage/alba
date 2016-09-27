@@ -35,7 +35,7 @@ public:
 
 class AssertObjectExists : public Assert {
 public:
-  AssertObjectExists(std::string name) : _name(name){};
+  AssertObjectExists(const std::string &name) : _name(name){};
 
   void to(llio::message_builder &mb) const {
     mb.add_type(1);
@@ -47,7 +47,7 @@ public:
 
 class AssertObjectDoesNotExist : public Assert {
 public:
-  AssertObjectDoesNotExist(std::string name) : _name(name){};
+  AssertObjectDoesNotExist(const std::string &name) : _name(name){};
 
   void to(llio::message_builder &mb) const {
     mb.add_type(2);
@@ -59,7 +59,7 @@ public:
 
 class AssertObjectHasId : public Assert {
 public:
-  AssertObjectHasId(std::string name, std::string object_id)
+  AssertObjectHasId(const std::string &name, const std::string &object_id)
       : _name(name), _object_id(object_id){};
 
   void to(llio::message_builder &mb) const {
@@ -74,7 +74,8 @@ public:
 
 class AssertObjectHasChecksum : public Assert {
 public:
-  AssertObjectHasChecksum(std::string name, std::unique_ptr<alba::Checksum> cs)
+  AssertObjectHasChecksum(const std::string &name,
+                          std::unique_ptr<alba::Checksum> cs)
       : _name(name), _cs(std::move(cs)){};
 
   void to(llio::message_builder &mb) const {
@@ -95,8 +96,8 @@ public:
 
 class UpdateUploadObjectFromFile : public Update {
 public:
-  UpdateUploadObjectFromFile(std::string name, std::string file_name,
-                             alba::Checksum *cs_o)
+  UpdateUploadObjectFromFile(const std::string &name,
+                             const std::string &file_name, alba::Checksum *cs_o)
       : _name(name), _file_name(file_name), _cs_o(cs_o){};
 
   void to(llio::message_builder &mb) const {
@@ -119,7 +120,7 @@ public:
 
 class UpdateDeleteObject : public Update {
 public:
-  UpdateDeleteObject(std::string name) : _name(name){};
+  UpdateDeleteObject(const std::string &name) : _name(name){};
 
   void to(llio::message_builder &mb) const {
     mb.add_type(3);
