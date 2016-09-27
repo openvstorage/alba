@@ -31,8 +31,7 @@ void ManifestCache::set_capacity(size_t capacity) {
   _manifest_cache_capacity = capacity;
 }
 
-void ManifestCache::add(std::string namespace_, std::string object_name,
-                        std::shared_ptr<Manifest> mfp) {
+void ManifestCache::add(std::string namespace_, std::shared_ptr<Manifest> mfp) {
   ALBA_LOG(DEBUG, "ManifestCache::add");
 
   std::shared_ptr<manifest_cache> mcp = nullptr;
@@ -63,6 +62,7 @@ void ManifestCache::add(std::string namespace_, std::string object_name,
   std::mutex &m = *mp;
   {
     std::lock_guard<std::mutex> lock(m);
+    std::string object_name(mfp->name);
     manifest_cache.insert(object_name, std::move(mfp));
   }
 }

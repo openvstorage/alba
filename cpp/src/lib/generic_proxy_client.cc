@@ -17,14 +17,14 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "generic_proxy_client.h"
-#include "tcp_proxy_client.h"
-#include "rdma_proxy_client.h"
 #include "alba_logger.h"
+#include "rdma_proxy_client.h"
+#include "tcp_proxy_client.h"
 
 #include <iostream>
 
-#include <errno.h>
 #include <boost/lexical_cast.hpp>
+#include <errno.h>
 
 namespace alba {
 namespace proxy_client {
@@ -268,7 +268,8 @@ tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
 void GenericProxy_client::apply_sequence(
     const string &namespace_, const write_barrier write_barrier,
     const vector<std::shared_ptr<sequences::Assert>> &asserts,
-    const vector<std::shared_ptr<sequences::Update>> &updates) {
+    const vector<std::shared_ptr<sequences::Update>> &updates,
+    std::vector<proxy_protocol::object_info> &object_infos) {
   _expires_from_now(_timeout);
 
   message_builder mb;
@@ -277,7 +278,7 @@ void GenericProxy_client::apply_sequence(
   _output(mb);
 
   message response = _input();
-  proxy_protocol::read_apply_sequence_response(response, _status);
+  proxy_protocol::read_apply_sequence_response(response, _status, object_infos);
   check_status(__PRETTY_FUNCTION__);
   return;
 }

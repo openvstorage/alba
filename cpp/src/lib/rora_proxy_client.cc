@@ -56,14 +56,14 @@ RoraProxy_client::list_namespaces(const std::string &first,
 }
 
 void _maybe_add_to_manifest_cache(const std::string &namespace_,
-                                  const std::string &object_name,
                                   std::unique_ptr<Manifest> mfp) {
   ALBA_LOG(DEBUG, *mfp);
   if (compressor_t::NO_COMPRESSION == mfp->compression->get_compressor() &&
       encryption_t::NO_ENCRYPTION == mfp->encrypt_info->get_encryption()) {
-    ManifestCache::getInstance().add(namespace_, object_name, std::move(mfp));
+    ManifestCache::getInstance().add(namespace_, std::move(mfp));
   }
 }
+
 void RoraProxy_client::write_object_fs(const std::string &namespace_,
                                        const std::string &object_name,
                                        const std::string &input_file,
@@ -73,7 +73,7 @@ void RoraProxy_client::write_object_fs(const std::string &namespace_,
   std::unique_ptr<Manifest> mfp(new Manifest());
   _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
                               checksum, *mfp);
-  _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
+  _maybe_add_to_manifest_cache(namespace_, std::move(mfp));
 }
 
 void RoraProxy_client::read_object_fs(const std::string &namespace_,
@@ -236,12 +236,11 @@ void _process(std::vector<object_info> &object_infos,
     using alba::stuff::operator<<;
     // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
 
-    const std::string &object_name = std::get<0>(object_info);
     auto &future = std::get<1>(object_info);
     std::unique_ptr<Manifest> mfp = std::move(std::get<2>(object_info));
 
     if (future == "") {
-      _maybe_add_to_manifest_cache(namespace_, object_name, std::move(mfp));
+      _maybe_add_to_manifest_cache(namespace_, std::move(mfp));
     }
   }
 }
@@ -317,8 +316,12 @@ std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(
 void RoraProxy_client::apply_sequence(
     const std::string &namespace_, const write_barrier write_barrier,
     const std::vector<std::shared_ptr<sequences::Assert>> &asserts,
-    const std::vector<std::shared_ptr<sequences::Update>> &updates) {
-  return _delegate->apply_sequence(namespace_, write_barrier, asserts, updates);
+    const std::vector<std::shared_ptr<sequences::Update>> &updates,
+    std::vector<proxy_protocol::object_info> &object_infos) {
+  _delegate->apply_sequence(namespace_, write_barrier, asserts, updates,
+                            object_infos);
+
+  _process(object_infos, namespace_);
 }
 
 void RoraProxy_client::invalidate_cache(const std::string &namespace_) {

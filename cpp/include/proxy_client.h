@@ -100,10 +100,11 @@ public:
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache) = 0;
 
-  virtual void apply_sequence(const std::string &namespace_,
-                              const write_barrier,
-                              const std::vector<std::shared_ptr<sequences::Assert>> &,
-                              const std::vector<std::shared_ptr<sequences::Update>> &) = 0;
+  virtual void
+  apply_sequence(const std::string &namespace_, const write_barrier,
+                 const std::vector<std::shared_ptr<sequences::Assert>> &,
+                 const std::vector<std::shared_ptr<sequences::Update>> &,
+                 std::vector<proxy_protocol::object_info> &) = 0;
 
   /* invalidate_cache influences the result of read requests issued with
    * consistent_read::F. after an invalidate cache request these read

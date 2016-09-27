@@ -449,8 +449,7 @@ module Protocol = struct
                       Capabilities.OsdCapabilities.t) counted_list )
                   request
     | ApplySequence : (Namespace.name * write_barrier * Assert.t list * Update.t list,
-                       (* TODO indicate which alba the manifest belongs too *)
-                       manifest_with_id counted_list) request
+                       (object_name * string * manifest_with_id) counted_list) request
     | ReadObjects : (Namespace.name
                      * object_name list
                      * consistent_read
@@ -675,7 +674,10 @@ module Protocol = struct
                                         Capabilities.OsdCapabilities.deser
                           )
     | ApplySequence ->
-       Deser.counted_list (Deser.tuple2 Manifest_deser.deser Deser.int32)
+       Deser.counted_list (Deser.tuple3
+                             Deser.string
+                             Deser.string
+                             (Deser.pair Manifest_deser.deser Deser.int32))
     | ReadObjects ->
        Deser.pair
          Deser.int32

@@ -78,10 +78,11 @@ public:
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache);
 
-  virtual void apply_sequence(const std::string &namespace_,
-                              const write_barrier,
-                              const std::vector<std::shared_ptr<sequences::Assert>> &,
-                              const std::vector<std::shared_ptr<sequences::Update>> &);
+  virtual void
+  apply_sequence(const std::string &namespace_, const write_barrier,
+                 const std::vector<std::shared_ptr<sequences::Assert>> &,
+                 const std::vector<std::shared_ptr<sequences::Update>> &,
+                 std::vector<proxy_protocol::object_info> &);
 
   virtual void invalidate_cache(const std::string &namespace_);
 

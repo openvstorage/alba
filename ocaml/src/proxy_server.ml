@@ -189,7 +189,7 @@ let apply_sequence
   let cnt, manifests =
     List.fold_left
       (fun (cnt, manifests) -> function
-        | Nsm_model.Update.PutObject (mf, _) -> cnt + 1, (mf, namespace_id) :: manifests
+        | Nsm_model.Update.PutObject (mf, _) -> cnt + 1, (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) :: manifests
         | Nsm_model.Update.DeleteObject _ -> cnt, manifests)
       (0, [])
       updates

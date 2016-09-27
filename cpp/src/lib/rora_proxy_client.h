@@ -17,10 +17,10 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
-#include "proxy_client.h"
 #include "generic_proxy_client.h"
-#include "osd_info.h"
 #include "osd_access.h"
+#include "osd_info.h"
+#include "proxy_client.h"
 namespace alba {
 namespace proxy_client {
 typedef std::pair<std::string, std::string> strpair;
@@ -79,10 +79,11 @@ public:
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache);
 
-  virtual void apply_sequence(const std::string &namespace_,
-                              const write_barrier,
-                              const std::vector<std::shared_ptr<sequences::Assert>> &,
-                              const std::vector<std::shared_ptr<sequences::Update>> &);
+  virtual void
+  apply_sequence(const std::string &namespace_, const write_barrier,
+                 const std::vector<std::shared_ptr<sequences::Assert>> &,
+                 const std::vector<std::shared_ptr<sequences::Update>> &,
+                 std::vector<proxy_protocol::object_info> &);
 
   virtual void invalidate_cache(const std::string &namespace_);
 
