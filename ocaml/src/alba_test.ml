@@ -715,17 +715,70 @@ let test_partial_download_bad_fragment () =
                   client # update_manifest
                          ~object_name
                          ~object_id:mf.Nsm_model.Manifest.object_id
-                         [ 0, 0, None; ]
+                         [ 0, 0, None; 0, 1, None; ]
                          ~gc_epoch
                          ~version_id:1) >>= fun () ->
+
+     alba_client # get_object_manifest
+                 ~namespace
+                 ~object_name
+                 ~consistent_read:true
+                 ~should_cache:true
+     >>= fun (hm,r) ->
+
+     begin
+       let mf = Option.get_some r in
+       let fragment_locations = mf.Nsm_model.Manifest.fragment_locations in
+       assert (Nsm_model.Layout.index fragment_locations 0 0 |> fst = None);
+       assert (Nsm_model.Layout.index fragment_locations 0 1 |> fst = None);
+
+       (* disqualify a osd related to (0,2) fragment *)
+       let osd_id = Nsm_model.Layout.index fragment_locations 0 2 |> fst |> Option.get_some in
+       alba_client # osd_access # get_osd_info ~osd_id >>= fun (_, state, _) ->
+       Osd_state.disqualify state true;
+       Lwt.return ()
+     end >>= fun () ->
 
      alba_client # download_object_slices_to_string
             ~namespace
             ~object_name
-            ~object_slices:[ 0L, Lwt_bytes.length object_data ]
+            (* read only from the first slice *)
+            ~object_slices:[ 0L, 1; ]
+            ~consistent_read:true
+     >>= fun _ ->
+
+     (* verify that after a short delay the missing fragments have been repaired *)
+     Lwt_unix.sleep 1. >>= fun () ->
+     alba_client # get_object_manifest
+                 ~namespace
+                 ~object_name
+                 ~consistent_read:true
+                 ~should_cache:true
+     >>= fun (hm,r) ->
+     begin
+       let mf' = Option.get_some r in
+       Lwt_log.debug_f "%s" (Nsm_model.Manifest.show mf') >>= fun () ->
+       let assert_ chunk_id fragment_id version =
+         Lwt_log.ign_debug_f "asserting %i,%i,%i" chunk_id fragment_id version;
+         assert (version = (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations chunk_id fragment_id
+                            |> snd));
+         assert (None <> (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations chunk_id fragment_id
+                          |> fst))
+       in
+       (* both missing fragments should be repaired *)
+       assert_ 0 0 2;
+       assert_ 0 1 2;
+       (* fragment on disqualified osd should be repaired too *)
+       assert_ 0 2 2;
+       Lwt.return ()
+     end >>= fun () ->
+
+     alba_client # download_object_slices_to_string
+            ~namespace
+            ~object_name
+            ~object_slices:[ 0L, Lwt_bytes.length object_data; ]
             ~consistent_read:true
      >>= fun data_o ->
-
      assert (Lwt_bytes.to_string object_data = Option.get_some data_o);
 
      Lwt.return ())

@@ -6,7 +6,7 @@
 | [bz2](http://www.bzip.org/)                                       |   |       |shared    | BSD-like      | \ | \ |
 | [snappy](https://code.google.com/p/snappy/)                       |   |       |shared    | new BSD       | \ | \ |
 | [zlib](http://www.zlib.net/)                                      |   |       |shared    |[zlib](http://www.zlib.net/zlib_license.html) | \ | \ |
-| [lwt](https://github.com/ocsigen/lwt                            |   |       |static    |    LGPL        | \ | \ |
+| [lwt](https://github.com/ocsigen/lwt)                            |   |       |static    |    LGPL        | \ | \ |
 | [oUnit]( http://forge.ocamlcore.org/projects/ounit)              |   |       |static    |    MIT         | \ | \ |
 | [arakoon_client](https://github.com/openvstorage/arakoon)            |   |       |static    |  Apache 2.0    | \ | \ |
 | [ppx_deriving](https://github.com/whitequark/ppx_deriving)       |   |       |static/compile time |    MIT         | \ | \ |

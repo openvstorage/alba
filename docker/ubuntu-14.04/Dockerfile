@@ -89,7 +89,7 @@ RUN eval `${opam_env}` && \
         ppx_deriving \
         ppx_deriving_yojson \
         core.114.05+21 \
-        redis.0.3.1 \
+        redis.0.3.3 \
         uri.1.9.2 \
         result
 
@@ -110,7 +110,7 @@ RUN cd /usr/src/gtest \
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout a4e7dffc08cb999e1b1de45eb7f6efe8c978eb81
+RUN cd arakoon && git pull && git checkout 5f2d9f32c3d47e9fc1c02f82d9127c607dfe43b9
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
@@ -147,7 +147,7 @@ RUN git clone https://github.com/toolslive/ordma.git \
 
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout 3b591baf7518987ce1b6c828865f0089007281e4
+RUN cd gobjfs  && git pull && git checkout f5d20ec3556892512cf316ef11818398898c7576
 RUN cd gobjfs \
        && mkdir build \
        && cd build \

@@ -96,6 +96,8 @@ class client ?(retry_timeout = 60.)
     in remainder = coordinator # get_remainder
   in
 
+  let osd_access = alba_client # osd_access in
+
   let throttle_pool =
       let max_size = load in
       Lwt_pool2.create max_size
@@ -206,7 +208,7 @@ class client ?(retry_timeout = 60.)
 
     val maybe_dead_osds = Hashtbl.create 3
     method should_repair ~osd_id =
-      alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
+      osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
       Lwt.return ((maintenance_config.Maintenance_config.enable_auto_repair
                    && Hashtbl.mem maybe_dead_osds osd_id)
                   || osd_info.Nsm_model.OsdInfo.decommissioned)
@@ -345,7 +347,7 @@ class client ?(retry_timeout = 60.)
 
          (* TODO get unpacked fragment from cache if available? *)
          Alba_client_download.download_packed_fragment
-           (alba_client # osd_access)
+           osd_access
            ~location:(List.nth_exn chunk_location fragment_id |> fst)
            ~namespace_id
            ~object_id ~object_name
@@ -362,7 +364,7 @@ class client ?(retry_timeout = 60.)
                else
                  begin
                    Alba_client_upload.upload_packed_fragment_data
-                     (alba_client # osd_access)
+                     osd_access
                      ~namespace_id ~object_id
                      ~chunk_id ~fragment_id ~version_id:version_id1
                      ~packed_fragment
@@ -1214,7 +1216,7 @@ class client ?(retry_timeout = 60.)
 
           Lwt_list.map_p
             (fun osd_id ->
-             alba_client # osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
+             osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
              Lwt.return (osd_id, osd_info.Nsm_model.OsdInfo.node_id))
             osds_of_first_chunk
           >>= fun osds_with_node_id ->
@@ -1245,7 +1247,7 @@ class client ?(retry_timeout = 60.)
               osds_of_first_chunk
           in
           Maintenance_helper.choose_new_devices
-            alba_client
+            osd_access
             osds_info_cache
             osds_to_keep
             1
@@ -1453,7 +1455,18 @@ class client ?(retry_timeout = 60.)
           namespace_exists ~namespace_id >>= function
           | true  -> repair ()
           | false -> Lwt.return ()
-        end
+         end
+      | RewriteObject (namespace_id, object_id) ->
+         begin
+           alba_client # with_nsm_client'
+                       ~namespace_id
+                       (fun nsm_client ->
+                         nsm_client # get_object_manifest_by_id object_id)
+           >>= function
+           | None -> Lwt.return ()
+           | Some manifest ->
+              _timed_rewrite_object alba_client ~namespace_id ~manifest
+         end
       | IterNamespaceLeaf (action, namespace_id, name, (first, last)) ->
         let rec inner = function
           | None -> Lwt.return ()
@@ -1663,11 +1676,11 @@ class client ?(retry_timeout = 60.)
       alba_client # mgr_access # get_work
                   ~first:next_work_item ~finc:true
                   ~last:None ~max:100 ~reverse:false
-      >>= fun ((cnt, work_items), _) ->
+      >>= fun ((cnt, work_items), has_more) ->
       Lwt_log.debug_f "Adding work, got %i items" cnt >>= fun () ->
       self # add_work_threads work_items;
 
-      if once && cnt > 0
+      if has_more || (once && cnt > 0)
       then inner ()
       else Lwt.return_unit
     in
@@ -1829,7 +1842,7 @@ class client ?(retry_timeout = 60.)
       is_master
       (alba_client # mgr_access)
       (alba_client # nsm_host_access)
-      (alba_client # osd_access)
+      osd_access
 
   method cache_eviction () : unit Lwt.t =
     let get_prefixes () =
@@ -1883,7 +1896,7 @@ class client ?(retry_timeout = 60.)
                         Hashtbl.fold
                           (fun _ (osd_info, _, _) acc ->
                            Int64.add acc osd_info.Nsm_model.OsdInfo.total)
-                          (alba_client # osd_access # osds_info_cache)
+                          (osd_access # osds_info_cache)
                           0L
                       in
                       (* collect 1% of objects *)
@@ -2017,7 +2030,7 @@ class client ?(retry_timeout = 60.)
          | Alba cfg
          | Alba2 cfg ->
             Some (osd_id, osd_info, cfg))
-        (alba_client # osd_access # osds_info_cache)
+        (osd_access # osds_info_cache)
       |> Lwt_list.filter_map_p
            (fun (osd_id, osd_info, alba_cfg) ->
             let alba_osd_arakoon_cfg = alba_cfg.Nsm_model.OsdInfo.cfg in

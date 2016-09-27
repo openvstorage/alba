@@ -11,7 +11,7 @@ RUN yum -y install python-devel
 
 # TODO: What about darcs ?
 
-RUN useradd jenkins -u 1001 -g root
+RUN useradd jenkins -u 1500 -g root
 
 RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-8.noarch.rpm
 RUN yum -y update
@@ -77,7 +77,7 @@ RUN eval `${opam_env}` && \
         ppx_deriving \
         ppx_deriving_yojson \
         core.114.05+21 \
-        redis.0.3.1 \
+        redis.0.3.3 \
         uri.1.9.2 \
         result
 
@@ -146,7 +146,7 @@ RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout a4e7dffc08cb999e1b1de45eb7f6efe8c978eb81
+RUN cd arakoon && git pull && git checkout 5f2d9f32c3d47e9fc1c02f82d9127c607dfe43b9
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
@@ -196,16 +196,13 @@ RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 # gobjfs shared lib:
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout 3b591baf7518987ce1b6c828865f0089007281e4
+RUN cd gobjfs  && git pull && git checkout f5d20ec3556892512cf316ef11818398898c7576
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
        && cmake3 -DCMAKE_BUILD_TYPE=RELWITHDEBINFO .. \
        && make \
        && make install
-
-ENV LD_LIBRARY_PATH=/usr/lib64:/usr/local/lib
-ENV GOBJFS_HOME=/gobjfs/
 
 RUN yum -y install iproute
 
@@ -214,5 +211,6 @@ RUN pip install fabric junit-xml
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.bash_profile"
+RUN su - -c "echo 'GOBJFS_HOME=/usr/local/lib; export GOBJFS_HOME;' >> /home/jenkins/.bash_profile"
 
 ENTRYPOINT ["/home/jenkins/alba/docker/docker-entrypoint.sh"]

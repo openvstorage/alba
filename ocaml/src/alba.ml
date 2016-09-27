@@ -23,7 +23,10 @@ open Cli_common
 
 let () =
   let engine =
-    try match Sys.getenv "ALBA_LWT_ENGINE" with
+    try
+      let s = Sys.getenv "ALBA_LWT_ENGINE" in
+      Lwt_log.ign_warning_f "found env var ALBA_LWT_ENGINE=%s%!" s;
+      match s with
         | "rselect" -> (new Lwt_rsocket.rselect :> Lwt_engine.t)
         | "select"  -> (new Lwt_engine.select :> Lwt_engine.t)
         | "libev"   -> (new Lwt_engine.libev :> Lwt_engine.t)

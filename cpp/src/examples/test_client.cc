@@ -102,17 +102,12 @@ using namespace std::chrono;
 void _bench_one_client(std::unique_ptr<Proxy_client> client,
                        std::shared_ptr<alba::statistics::Statistics> stats_p,
                        const string &namespace_, const string &object_name,
-                       const string &file_name, const int n) {
+                       const int n) {
 
   try {
-    const alba::Checksum *checksum = nullptr;
+
     alba::statistics::Statistics &stats = *stats_p;
     using namespace alba::proxy_protocol;
-    client->write_object_fs(namespace_, object_name, file_name,
-                            allow_overwrite::T, checksum);
-
-    ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
-
     std::vector<alba::byte> buffer(4096);
     SliceDescriptor sd{&buffer[0], 0, 4096};
     std::vector<SliceDescriptor> slices{sd};
@@ -151,7 +146,9 @@ void partial_read_benchmark(const string &host, const string &port,
                             const Transport &transport,
                             const string &namespace_, const string &file_name,
                             const int n, const int n_clients,
-                            const boost::optional<RoraConfig> &rora_config) {
+                            const boost::optional<RoraConfig> &rora_config,
+                            const bool focus
+    ) {
 
   ALBA_LOG(WARNING, "partial_read_benchmark("
                         << host << ", " << port << ", " << transport
@@ -160,17 +157,37 @@ void partial_read_benchmark(const string &host, const string &port,
   std::vector<std::shared_ptr<alba::statistics::Statistics>> stats_v;
   std::vector<std::thread> thread_v;
   int rand = std::rand();
+  std::ostringstream sos;
+  sos << "object_000" << rand << "_";
+  string object_base = sos.str();
+  const alba::Checksum *checksum = nullptr;
+  if(focus){
+      auto client_p =
+          make_proxy_client(host, port, timeout, transport, rora_config);
+      string object_name = object_base;
+      client_p -> write_object_fs(namespace_, object_name, file_name,
+                                  allow_overwrite::T, checksum);
+      ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
+  }
+  ;
   for (int client_index = 0; client_index < n_clients; client_index++) {
     auto client_p =
         make_proxy_client(host, port, timeout, transport, rora_config);
-    std::ostringstream sos;
-    sos << "object_000" << rand << "_" << client_index;
-    string object_name = sos.str();
+    string object_name;
+    if (focus){
+        object_name = object_base;
+    }else {
+        object_name = object_base + std::to_string(client_index);
+        client_p -> write_object_fs(namespace_, object_name, file_name,
+                                    allow_overwrite::T, checksum);
+        ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
+    }
+
     auto stats_p = std::shared_ptr<alba::statistics::Statistics>(
         new alba::statistics::Statistics);
     stats_v.push_back(stats_p);
     std::thread t(_bench_one_client, std::move(client_p), stats_p, namespace_,
-                  object_name, file_name, n);
+                  object_name, n);
 
     thread_v.push_back(std::move(t));
   }
@@ -230,7 +247,10 @@ int main(int argc, const char *argv[]) {
           "n-clients", po::value<uint32_t>()->default_value(1),
           "number of clients")("log-level",
                                po::value<string>()->default_value("info"),
-                               "log level to use");
+                               "log level to use")
+      ("focus", po::value<bool>() -> default_value(false),
+       "if set, all rora partial reads come from the same object, and hit the same ASD"
+          );
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -399,11 +419,12 @@ int main(int argc, const char *argv[]) {
     uint32_t n_clients = getRequiredArg<uint32_t>(vm, "n-clients");
     bool use_rora = getRequiredArg<bool>(vm, "use-rora");
     boost::optional<RoraConfig> rora_config = boost::none;
+    bool focus = getRequiredArg<bool>(vm, "focus");
     if (use_rora) {
       rora_config = RoraConfig(100);
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
-                           n_clients, rora_config);
+                           n_clients, rora_config,focus);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "

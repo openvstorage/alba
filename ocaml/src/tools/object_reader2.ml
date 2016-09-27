@@ -35,12 +35,23 @@ class object_reader
     Lwt.return size
 
   method read cnt target =
-    alba_client # download_object_slices''
-                ~namespace_id
-                ~manifest
-                ~object_slices:[ (Int64.of_int pos, cnt, target, 0); ]
-                ~fragment_statistics_cb:(fun _ -> ())
-    >>= fun _ ->
+    Alba_client_download_slices.download_object_slices_from_fresh_manifest
+      (alba_client # mgr_access)
+      (alba_client # nsm_host_access)
+      (alba_client # get_preset_info)
+      ~namespace_id
+      ~manifest
+      ~object_slices:[ (Int64.of_int pos, cnt, target, 0); ]
+      ~fragment_statistics_cb:(fun _ -> ())
+      (alba_client # osd_access)
+      (alba_client # get_fragment_cache)
+      ~cache_on_read:(alba_client # get_cache_on_read_write |> fst)
+      (fun ~namespace_id ~object_name ~object_id ~chunk_id ~fragment_id ~location -> ())
+      ~partial_osd_read:(alba_client # get_partial_osd_read)
+      ~do_repair:false
+      ~get_ns_preset_info:(alba_client # get_ns_preset_info)
+      ~get_namespace_osds_info_cache:(alba_client # get_namespace_osds_info_cache)
+    >>= fun () ->
     pos <- pos + cnt;
     Lwt.return ()
 end: reader)
