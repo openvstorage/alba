@@ -136,8 +136,12 @@ BOOLEAN_ENUM(ObjectExists);
 
 class Sequence {
 public:
-  Sequence(size_t assert_size_hint = 0, size_t update_size_hint = 0)
-      : _asserts(assert_size_hint), _updates(update_size_hint) {}
+  Sequence(size_t assert_size_hint = 0, size_t update_size_hint = 0) {
+    if (assert_size_hint)
+      _asserts.reserve(assert_size_hint);
+    if (update_size_hint)
+      _updates.reserve(update_size_hint);
+  }
 
   Sequence &add_assert(const std::string &name, ObjectExists should_exist) {
     if (should_exist == ObjectExists::T) {

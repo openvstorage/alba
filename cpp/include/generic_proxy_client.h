@@ -84,10 +84,6 @@ public:
                  const std::vector<std::shared_ptr<sequences::Update>> &,
                  std::vector<proxy_protocol::object_info> &);
 
-  virtual void apply_sequence(const std::string &namespace_,
-                              const write_barrier, const sequences::Sequence &,
-                              std::vector<proxy_protocol::object_info> &);
-
   virtual void invalidate_cache(const std::string &namespace_);
 
   virtual void drop_cache(const std::string &namespace_);

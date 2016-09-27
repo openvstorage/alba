@@ -106,6 +106,11 @@ public:
                  const std::vector<std::shared_ptr<sequences::Update>> &,
                  std::vector<proxy_protocol::object_info> &) = 0;
 
+  void apply_sequence(const std::string &namespace_,
+                      const write_barrier write_barrier,
+                      const sequences::Sequence &seq,
+                      std::vector<proxy_protocol::object_info> &object_infos);
+
   /* invalidate_cache influences the result of read requests issued with
    * consistent_read::F. after an invalidate cache request these read
    * requests will be at least consistent up to the point when the

@@ -283,14 +283,6 @@ void GenericProxy_client::apply_sequence(
   return;
 }
 
-void GenericProxy_client::apply_sequence(
-    const std::string &namespace_, const write_barrier write_barrier,
-    const sequences::Sequence &seq,
-    std::vector<proxy_protocol::object_info> &object_infos) {
-  return this->apply_sequence(namespace_, write_barrier, seq._asserts,
-                              seq._updates, object_infos);
-}
-
 void GenericProxy_client::invalidate_cache(const string &namespace_) {
   _expires_from_now(_timeout);
   message_builder mb;
