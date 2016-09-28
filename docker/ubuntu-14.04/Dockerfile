@@ -165,7 +165,7 @@ RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
 
 # Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
-RUN apt-get update && apt-get install -y --force-yes alba arakoon liburiparser1
+RUN apt-get update && apt-get install -y --force-yes alba arakoon liburiparser1 gdb
 RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
@@ -174,17 +174,26 @@ RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 ENV voldrv_jenkins=http://10.100.129.100:8080/view/volumedriver/view/all/job/volumedriver-no-dedup-conditional-backend-write-release-ubuntu-14.04/21/artifact/volumedriver-core/build/debian
 ENV voldrv_base_pkg_name=volumedriver-no-dedup
 ENV voldrv_version=6.1.0-dev.201609271817.4ea3ae7_amd64
+
 RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
     && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb
-
 RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb \
     && dpkg -i ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb
-
 RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.deb \
     && dpkg -i ${voldrv_base_pkg_name}-server_${voldrv_version}.deb
-
 RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.deb \
     && dpkg -i ${voldrv_base_pkg_name}-test_${voldrv_version}.deb
+
+# packages with debug symbols
+# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base-dbgsym_${voldrv_version}.ddeb \
+#     && dpkg -i ${voldrv_base_pkg_name}-base-dbgsym_${voldrv_version}.ddeb
+# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication-dbgsym_${voldrv_version}.ddeb \
+#     && dpkg -i ${voldrv_base_pkg_name}-pitreplication-dbgsym_${voldrv_version}.ddeb
+# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server-dbgsym_${voldrv_version}.ddeb \
+#     && dpkg -i ${voldrv_base_pkg_name}-server-dbgsym_${voldrv_version}.ddeb
+# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test-dbgsym_${voldrv_version}.ddeb \
+#     && dpkg -i ${voldrv_base_pkg_name}-test-dbgsym_${voldrv_version}.ddeb
+
 
 RUN pip install fabric junit-xml
 
