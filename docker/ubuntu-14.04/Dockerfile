@@ -165,25 +165,26 @@ RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
 
 # Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
-RUN apt-get update && apt-get install -y --force-yes alba arakoon
+RUN apt-get update && apt-get install -y --force-yes alba arakoon liburiparser1
 RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
 ## This only works from inside the OVS lan...
-# http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian/volumedriver-base-dbgsym_5.7.2-dev.201606011734.d6c3c04_amd64.ddeb
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-dev-release-ubuntu-14.04/307/artifact/volumedriver-core/build/debian
-ENV voldrv_version=5.7.2-dev.201606011734.d6c3c04_amd64
-RUN wget ${voldrv_jenkins}/volumedriver-base_${voldrv_version}.deb \
-    && dpkg -i volumedriver-base_${voldrv_version}.deb
+# http://10.100.129.100:8080/view/volumedriver/view/all/job/volumedriver-no-dedup-conditional-backend-write-release-ubuntu-14.04/21/artifact/volumedriver-core/build/debian/libovsvolumedriver-dbgsym_6.1.0-dev.201609271817.4ea3ae7_amd64.ddeb
+ENV voldrv_jenkins=http://10.100.129.100:8080/view/volumedriver/view/all/job/volumedriver-no-dedup-conditional-backend-write-release-ubuntu-14.04/21/artifact/volumedriver-core/build/debian
+ENV voldrv_base_pkg_name=volumedriver-no-dedup
+ENV voldrv_version=6.1.0-dev.201609271817.4ea3ae7_amd64
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-pitreplication_${voldrv_version}.deb \
-    && dpkg -i volumedriver-pitreplication_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-server_${voldrv_version}.deb \
-    && dpkg -i volumedriver-server_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-server_${voldrv_version}.deb
 
-RUN wget ${voldrv_jenkins}/volumedriver-test_${voldrv_version}.deb \
-    && dpkg -i volumedriver-test_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-test_${voldrv_version}.deb
 
 RUN pip install fabric junit-xml
 
