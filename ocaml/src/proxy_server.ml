@@ -597,12 +597,14 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              msg
            >>= fun () ->
            return_err_response ~msg Protocol.Error.Unknown
-        | Nsm_model.Err.Nsm_exn (err, _) ->
+        | Nsm_model.Err.Nsm_exn (err, payload) ->
           begin
             let open Nsm_model.Err in
             match err with
             | Object_not_found ->
               return_err_response Protocol.Error.ObjectDoesNotExist
+            | Assert_failed ->
+              return_err_response ~msg:payload Protocol.Error.AssertFailed
             | Namespace_id_not_found
             | Unknown
             | Invalid_gc_epoch
@@ -616,7 +618,6 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Inactive_osd
             | Too_many_disks_per_node
             | Insufficient_fragments
-            | Assert_failed
             | Unknown_operation ->
                let msg = Nsm_model.Err.show err in
                Lwt_log.info_f
