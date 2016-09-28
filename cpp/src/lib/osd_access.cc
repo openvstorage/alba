@@ -88,7 +88,6 @@ int OsdAccess::read_osds_slices(
 
 using namespace gobjfs::xio;
 int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
-  ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices(" << osd << ")");
 
   auto ctx = _find_ctx(osd);
 
@@ -123,18 +122,14 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     } else {
       ip = osd_info->ips[0];
     }
-    ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
-                           << " port: " << backdoor_port);
     int err =
         ctx_attr_set_transport(ctx_attr, transport_name, ip, backdoor_port);
-    ALBA_LOG(DEBUG, "set_transport err:" << err);
     if (err != 0) {
       throw osd_access_exception(err, "ctx_attr_set_transport");
     }
 
     ctx = ctx_new(ctx_attr);
     err = ctx_init(ctx);
-    ALBA_LOG(DEBUG, "ctx_init err:" << err);
     if (err != 0) {
       throw osd_access_exception(err, "ctx_init");
     }
@@ -167,7 +162,7 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     }
     aio_finish(ctx, elem);
   }
-  ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
+  //ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
   if (ret != 0 && ctx_is_disconnected(ctx)) {
     ALBA_LOG(INFO, "removing bad ctx");
     _remove_ctx(osd);

@@ -102,14 +102,16 @@ using namespace std::chrono;
 void _bench_one_client(std::unique_ptr<Proxy_client> client,
                        std::shared_ptr<alba::statistics::Statistics> stats_p,
                        const string &namespace_, const string &object_name,
-                       const int n) {
+                       const int n,
+                       const uint32_t block_size
+                       ) {
 
   try {
 
     alba::statistics::Statistics &stats = *stats_p;
     using namespace alba::proxy_protocol;
-    std::vector<alba::byte> buffer(4096);
-    SliceDescriptor sd{&buffer[0], 0, 4096};
+    std::vector<alba::byte> buffer(block_size);
+    SliceDescriptor sd{&buffer[0], 0, block_size};
     std::vector<SliceDescriptor> slices{sd};
     ObjectSlices object_slices{object_name, slices};
     std::vector<ObjectSlices> objects_slices{object_slices};
@@ -147,13 +149,15 @@ void partial_read_benchmark(const string &host, const string &port,
                             const string &namespace_, const string &file_name,
                             const int n, const int n_clients,
                             const boost::optional<RoraConfig> &rora_config,
-                            const bool focus
+                            const bool focus,
+                            const uint32_t block_size
     ) {
 
   ALBA_LOG(WARNING, "partial_read_benchmark("
                         << host << ", " << port << ", " << transport
                         << ", rora_config =" << rora_config << ")");
 
+  cout << "block_size=" << block_size;
   std::vector<std::shared_ptr<alba::statistics::Statistics>> stats_v;
   std::vector<std::thread> thread_v;
   int rand = std::rand();
@@ -187,7 +191,7 @@ void partial_read_benchmark(const string &host, const string &port,
         new alba::statistics::Statistics);
     stats_v.push_back(stats_p);
     std::thread t(_bench_one_client, std::move(client_p), stats_p, namespace_,
-                  object_name, n);
+                  object_name, n, block_size);
 
     thread_v.push_back(std::move(t));
   }
@@ -247,6 +251,13 @@ int main(int argc, const char *argv[]) {
           "number of clients")("log-level",
                                po::value<string>()->default_value("info"),
                                "log level to use")
+      ("use-null-io",
+       po::value<bool>() -> default_value(false),
+       "fake results from rora without doing any networking"
+       )
+      ("block-size", po::value<uint32_t>() -> default_value(4096),
+       "block size for partial read"
+       )
       ("focus", po::value<bool>() -> default_value(false),
        "if set, all rora partial reads come from the same object, and hit the same ASD"
           );
@@ -402,19 +413,22 @@ int main(int argc, const char *argv[]) {
     string ns = getRequiredStringArg(vm, "namespace");
     bool result = client->namespace_exists(ns);
     cout << "namespace_exists(" << ns << ") => " << result << endl;
-  } else if ("partial-read-benchmark") {
+  } else if ("partial-read-benchmark" == command) {
     string ns = getRequiredStringArg(vm, "namespace");
     string file = getRequiredStringArg(vm, "file");
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
     uint32_t n_clients = getRequiredArg<uint32_t>(vm, "n-clients");
     bool use_rora = getRequiredArg<bool>(vm, "use-rora");
     boost::optional<RoraConfig> rora_config = boost::none;
+
+    uint32_t block_size = getRequiredArg<uint32_t>(vm, "block-size");
     bool focus = getRequiredArg<bool>(vm, "focus");
     if (use_rora) {
-      rora_config = RoraConfig(100);
+      bool use_null_io = getRequiredArg<bool>(vm, "use-null-io");
+      rora_config = RoraConfig(100, use_null_io);
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
-                           n_clients, rora_config,focus);
+                           n_clients, rora_config,focus, block_size);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "

@@ -100,6 +100,7 @@ private:
   int _short_path_one(const std::string &namespace_,
                       const proxy_protocol::ObjectSlices &object_slices,
                       std::shared_ptr<proxy_protocol::Manifest> mfp);
+  bool _use_null_io;
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,
