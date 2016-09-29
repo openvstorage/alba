@@ -186,13 +186,6 @@ template <> void from(message &m, proxy_protocol::FCInfo &fc_info) {
                             << " left=" << (m.size() - m.get_pos()));
 }
 
-template <> void from(message &m, proxy_protocol::RoraMap &rora_map) {
-  std::shared_ptr<proxy_protocol::ManifestWithNamespaceId> mfid(
-      new proxy_protocol::ManifestWithNamespaceId);
-  from(m, *mfid);
-  rora_map.back = mfid;
-  from(m, rora_map.front);
-}
 }
 
 namespace proxy_protocol {
@@ -333,15 +326,6 @@ std::ostream &operator<<(std::ostream &os, const FCInfo &fc_info) {
      << " alba_id = " << fc_info.alba_id
      << ", namespace_id = " << fc_info.namespace_id << ", info = ... }"
      << std::endl;
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const RoraMap &rora_map) {
-  using alba::stuff::operator<<;
-  os << "RoraMap{" << std::endl
-     << " front = " << rora_map.front << "," << std::endl
-     << " back  = " << rora_map.back << std::endl
-     << "}" << std::endl;
   return os;
 }
 

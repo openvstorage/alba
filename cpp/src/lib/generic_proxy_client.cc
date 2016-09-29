@@ -245,23 +245,6 @@ void GenericProxy_client::write_object_fs2(
   check_status(__PRETTY_FUNCTION__);
 }
 
-void GenericProxy_client::write_object_fs3(
-    const string &namespace_, const string &object_name,
-    const string &input_file, const allow_overwrite allow_overwrite,
-    const Checksum *checksum, RoraMap &rora_map) {
-  _expires_from_now(_timeout);
-
-  message_builder mb;
-  proxy_protocol::write_write_object_fs3_request(
-      mb, namespace_, object_name, input_file, BooleanEnumTrue(allow_overwrite),
-      checksum);
-  _output(mb);
-
-  message response = _input();
-  proxy_protocol::read_write_object_fs3_response(response, _status, rora_map);
-  check_status(__PRETTY_FUNCTION__);
-}
-
 tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
     const string &namespace_, const string &object_name,
     const consistent_read consistent_read, const should_cache should_cache) {

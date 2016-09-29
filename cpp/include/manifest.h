@@ -143,14 +143,6 @@ struct FCInfo {
   FCInfo(const FCInfo &) = delete;
 };
 
-struct RoraMap {
-  std::shared_ptr<FCInfo> front = nullptr;
-  std::shared_ptr<ManifestWithNamespaceId> back;
-  RoraMap() = default;
-  RoraMap &operator=(const RoraMap &) = delete;
-  RoraMap(const RoraMap &) = delete;
-};
-
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);
 std::ostream &operator<<(std::ostream &, const compressor_t &);
 std::ostream &operator<<(std::ostream &, const Compression &);
@@ -160,7 +152,6 @@ std::ostream &operator<<(std::ostream &, const fragment_location_t &);
 std::ostream &operator<<(std::ostream &, const Manifest &);
 std::ostream &operator<<(std::ostream &, const ManifestWithNamespaceId &);
 std::ostream &operator<<(std::ostream &, const FCInfo &);
-std::ostream &operator<<(std::ostream &, const RoraMap &);
 std::ostream &operator<<(std::ostream &, const lookup_result_t &);
 std::ostream &operator<<(std::ostream &, const target_t &);
 }

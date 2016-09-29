@@ -29,7 +29,7 @@ using namespace proxy_protocol;
 typedef std::pair<ObjectSlices, std::shared_ptr<ManifestWithNamespaceId>>
     short_path_back_entry;
 
-typedef std::pair<ObjectSlices, std::shared_ptr<RoraMap>>
+typedef std::pair<ObjectSlices, std::shared_ptr<ManifestWithNamespaceId>>
     short_path_front_entry;
 
 class RoraProxy_client : public Proxy_client {
@@ -79,12 +79,6 @@ public:
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
                                 ManifestWithNamespaceId &);
-
-  virtual void write_object_fs3(const std::string &namespace_,
-                                const std::string &object_name,
-                                const std::string &input_file,
-                                const allow_overwrite, const Checksum *checksum,
-                                RoraMap &rora_map);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,

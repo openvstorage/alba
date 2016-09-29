@@ -34,8 +34,7 @@ _OBJECTS = stuff.o manifest.o alba_logger.o \
            proxy_sequences.o \
            io.o proxy_client.o generic_proxy_client.o \
 	   tcp_proxy_client.o rdma_proxy_client.o rora_proxy_client.o \
-	   osd_info.o manifest_cache.o osd_access.o statistics.o \
-	   partial_read_planner.o
+	   osd_info.o manifest_cache.o osd_access.o statistics.o
 
 OBJECTS = $(patsubst %,src/lib/%,$(_OBJECTS))
 
@@ -55,8 +54,6 @@ all: compile_lib compile_tests
 	$(CXX) \
             src/tests/llio_test.o \
 	    src/tests/proxy_client_test.o \
-	    src/tests/proxy_protocol_test.o \
-	    src/tests/rora_test.o \
 	    src/tests/helper.o \
 	    src/tests/main.o \
 	    $(LIBDIRS) \
@@ -80,13 +77,7 @@ compile_tests:
 	-c src/tests/proxy_client_test.cc -o src/tests/proxy_client_test.o
 
 	$(CMD) -I/usr/include/gtest \
-	-c src/tests/proxy_protocol_test.cc -o src/tests/proxy_protocol_test.o
-
-	$(CMD) -I/usr/include/gtest \
 	-c src/tests/helper.cc -o src/tests/helper.o
-
-	$(CMD) -I/usr/include/gtest -I./src/lib/ \
-	-c src/tests/rora_test.cc -o src/tests/rora_test.o
 
 	$(CMD) -I/usr/include/gtest \
 	-c ./src/tests/main.cc -o src/tests/main.o

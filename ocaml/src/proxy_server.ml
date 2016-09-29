@@ -159,7 +159,7 @@ let apply_sequence
       ~object_id_hint:None
       ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-    >>= fun (mf, _, gc_epoch) ->
+    >>= fun (mf, extra_mfs, _, gc_epoch) ->
     Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch))
   in
 
@@ -266,8 +266,6 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | WriteObjectFs   -> fun (namespace, object_name, _,_,_)  ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | WriteObjectFs2  -> fun (namespace, object_name, _,_,_) ->
-                       Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
-  | WriteObjectFs3  -> fun (namespace, object_name, _,_,_) ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | ReadObjectsSlices  -> render_read_object_slices
   | ReadObjectsSlices2 -> render_read_object_slices
@@ -402,34 +400,6 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                         write_object_fs stats args
                         >>= fun (mf, namespace_id, _fc_info) ->
                         Lwt.return (mf, namespace_id)
-    | WriteObjectFs3 -> fun stats args ->
-                        write_object_fs stats args
-                        >>= fun (mf, namespace_id, fc_info) ->
-                        begin
-                          match fc_info with
-                          | None -> Lwt.return ()
-                          | Some (_,_,chunks) ->
-                             Lwt_list.iter_s
-                               (fun (chunk_id, fs) ->
-                                 Lwt_log.debug_f "chunk_id:%i" chunk_id >>= fun () ->
-                                 Lwt_list.iter_s
-                                   (fun (fragment_id,_) ->
-                                     Lwt_log.debug_f "  fragment_id:%i" fragment_id
-                                   ) fs
-                               )
-                               chunks
-                        end
-                        >>= fun ()->
-                        Lwt_log.warning_f "WriteObjectFs3: returning: %s"
-                                          ([% show :
-                                                (string * int32 *
-                                                (Nsm_model.chunk_id *
-                                                   (Nsm_model.fragment_id *
-                                                      Nsm_model.Manifest.t) list)
-                                                  list) option] fc_info)
-                        >>= fun () ->
-                        Lwt.return (mf, namespace_id, fc_info)
-
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->

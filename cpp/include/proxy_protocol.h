@@ -124,17 +124,8 @@ void write_write_object_fs2_request(message_builder &mb,
                                     const bool allow_overwrite,
                                     const Checksum *checksum);
 
-void write_write_object_fs3_request(message_builder &mb,
-                                    const string &namespace_,
-                                    const string &object_name,
-                                    const string &input_file,
-                                    const bool allow_overwrite,
-                                    const Checksum *checksum);
-
 void read_write_object_fs2_response(message &m, Status &status,
                                     ManifestWithNamespaceId &mf);
-
-void read_write_object_fs3_response(message &m, Status &status, RoraMap &);
 
 void write_delete_object_request(message_builder &mb, const string &namespace_,
                                  const string &object_name,

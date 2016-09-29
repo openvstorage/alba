@@ -74,21 +74,6 @@ struct config {
   alba::proxy_client::Transport TRANSPORT;
 };
 
-// std::function<void(alba::logger::AlbaLogLevel, string &)> logBoost =
-//     std::function<void(alba::logger::AlbaLogLevel, string
-//     &)>(logBoostMethod);
-
-// std::function<void(alba::logger::AlbaLogLevel, string &)> *nulllog = nullptr;
-
-// void init_log() {
-//   alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
-//     switch (level) {
-//     default:
-//       return &logBoost;
-//     };
-//   });
-// }
-
 TEST(proxy_client, list_objects) {
 
   ALBA_LOG(WARNING, "starting test:list_objects");
@@ -494,29 +479,6 @@ TEST(proxy_client, manifest_cache_eviction) {
   }
 }
 
-TEST(proxy_client, write_object_fs3) {
-
-  config cfg;
-  cfg.PORT = "14000";
-  std::string namespace_("demo");
-  // std::string namespace_("write_object_fs3");
-  boost::optional<alba::proxy_client::RoraConfig> rora_config{10};
-  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
-                                  rora_config);
-  // boost::optional<std::string> preset{"default"};
-  // client->create_namespace(namespace_, preset);
-  string file("./ocaml/alba.native");
-  std::ostringstream sos;
-  sos << "object_" << std::rand();
-  ;
-  string name = sos.str();
-  using namespace proxy_protocol;
-  RoraMap rora_map;
-  client->write_object_fs3(namespace_, name, file,
-                           proxy_client::allow_overwrite::T, nullptr, rora_map);
-  std::cout << "rora_map:" << rora_map << std::endl;
-}
-
 TEST(proxy_client, rora_fc_partial_read_trivial) {
   std::string namespace_("rora_fc_partial_read_trivial");
   std::ostringstream sos;
@@ -543,7 +505,6 @@ TEST(proxy_client, rora_fc_partial_read_trivial) {
 }
 
 TEST(proxy_client, apply_sequence) {
-  init_log();
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 

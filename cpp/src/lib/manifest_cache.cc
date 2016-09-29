@@ -31,9 +31,7 @@ void ManifestCache::set_capacity(size_t capacity) {
   _manifest_cache_capacity = capacity;
 }
 
-// void ManifestCache::add(std::string namespace_, std::string object_name,
-//                         manifest_cache_entry mfp) {
-void ManifestCache::add(std::string namespace_, std::shared_ptr<Manifest> mfp) {
+void ManifestCache::add(std::string namespace_, manifest_cache_entry mfp) {
   ALBA_LOG(DEBUG, "ManifestCache::add");
 
   std::shared_ptr<manifest_cache> mcp = nullptr;

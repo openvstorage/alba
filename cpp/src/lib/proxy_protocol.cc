@@ -40,7 +40,6 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _OSD_INFO 22
 #define _READ_OBJECTS_SLICES2 23
 #define _APPLY_SEQUENCE 24
-#define _WRITE_OBJECT_FS3 27
 #define _OSD_INFO2 28
 
 namespace alba {
@@ -203,17 +202,6 @@ void write_write_object_fs2_request(message_builder &mb,
                                  input_file, allow_overwrite, checksum);
 }
 
-void write_write_object_fs3_request(message_builder &mb,
-                                    const string &namespace_,
-                                    const string &object_name,
-                                    const string &input_file,
-                                    const bool allow_overwrite,
-                                    const Checksum *checksum) {
-
-  _write_write_object_fs_request(mb, _WRITE_OBJECT_FS3, namespace_, object_name,
-                                 input_file, allow_overwrite, checksum);
-}
-
 void read_write_object_fs_response(message &m, Status &status) {
   read_status(m, status);
 }
@@ -224,21 +212,6 @@ void read_write_object_fs2_response(message &m, Status &status,
   if (status.is_ok()) {
 
     from(m, mf);
-  }
-}
-
-void read_write_object_fs3_response(message &m, Status &status,
-                                    RoraMap &rora_map) {
-  read_status(m, status);
-  if (status.is_ok()) {
-    uint32_t size = m.size();
-    ALBA_LOG(DEBUG, "message size:" << size);
-
-    std::ofstream fout("./fs3_response.message");
-    m.dump(fout);
-    fout.close();
-
-    from(m, rora_map);
   }
 }
 

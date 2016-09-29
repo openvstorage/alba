@@ -286,14 +286,6 @@ module Protocol = struct
   type write_barrier = bool [@@deriving show]
 
   type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
-  type manifest_with_extras =
-    Nsm_model.Manifest.t
-    * int32
-    * (Bytes.t
-       * int32
-       * ((Nsm_model.chunk_id * (Nsm_model.fragment_id * Nsm_model.Manifest.t) list)
-           list)) option
-        [@@deriving show]
 
   module Assert =
     struct
@@ -420,13 +412,6 @@ module Protocol = struct
                         * overwrite
                         * Checksum.t option,
                         manifest_with_id) request
-    | WriteObjectFs3: (Namespace.name
-                       * object_name
-                       * file_name
-                       * overwrite
-                       * Checksum.Checksum.t option,
-                       manifest_with_extras) request
-
     | DeleteObject : (Namespace.name *
                       object_name *
                       may_not_exist,
@@ -502,7 +487,6 @@ module Protocol = struct
                       24, Wrap ApplySequence, "ApplySequence";
                       25, Wrap ReadObjects, "ReadObjects";
                       26, Wrap MultiExists, "MultiExists";
-                      27, Wrap WriteObjectFs3, "WriteObjectFs3";
                       28, Wrap OsdInfo2, "OsdInfo2";
                     ]
 
@@ -588,13 +572,6 @@ module Protocol = struct
          Deser.string
          Deser.bool
          (Deser.option Checksum_deser.deser')
-    | WriteObjectFs3 ->
-       Deser.tuple5
-         Deser.string
-         Deser.string
-         Deser.string
-         Deser.bool
-         (Deser.option Checksum_deser.deser')
     | DeleteObject ->
       Deser.tuple3
         Deser.string
@@ -663,21 +640,6 @@ module Protocol = struct
     | ReadObjectFs -> Deser.unit
     | WriteObjectFs -> Deser.unit
     | WriteObjectFs2 -> Deser.tuple2 Manifest_deser.deser Deser.int32
-    | WriteObjectFs3 -> Deser.tuple3
-                          Manifest_deser.deser
-                          Deser.int32
-                          (Deser.option
-                             (Deser.tuple3
-                                Deser.string
-                                Deser.int32
-                                (Deser.list
-                                   (Deser.tuple2
-                                      Deser.int (* chunk_id *)
-                                      (Deser.list
-                                         (Deser.tuple2
-                                            Deser.int (* fragment_id *)
-                                            Manifest_deser.deser)))
-                          )))
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string
