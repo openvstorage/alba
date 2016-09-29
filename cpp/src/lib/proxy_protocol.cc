@@ -295,8 +295,10 @@ void _read_object_infos(message &m, std::vector<object_info> &object_infos) {
     std::unique_ptr<Manifest> umf(new Manifest());
     from(m, *umf);
     assert(name == umf->name);
-    auto t =
-        std::make_tuple(std::move(name), std::move(future), std::move(umf));
+    uint32_t namespace_id;
+    from(m, namespace_id);
+    auto t = std::make_tuple(std::move(name), std::move(future), std::move(umf),
+                             namespace_id);
     object_infos[i] = std::move(t);
   }
 }
