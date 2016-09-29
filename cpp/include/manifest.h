@@ -20,10 +20,10 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include "alba_common.h"
 #include "checksum.h"
-#include <iostream>
-#include <memory>
-#include <map>
 #include <boost/optional.hpp>
+#include <iostream>
+#include <map>
+#include <memory>
 
 namespace alba {
 namespace proxy_protocol {
@@ -81,8 +81,7 @@ typedef std::pair<boost::optional<uint32_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
 
-
-enum class target_t { VIA_PROXY, RORA_FRONT, RORA_BACK};
+enum class target_t { VIA_PROXY, RORA_FRONT, RORA_BACK };
 
 struct lookup_result_t {
   std::string object_id;
@@ -94,11 +93,10 @@ struct lookup_result_t {
   osd_t _osd;
   target_t _target;
   lookup_result_t(const std::string &oid, uint32_t ci, uint32_t fi,
-                  uint32_t pif, uint32_t fl, uint32_t fv, osd_t osd
-      )
+                  uint32_t pif, uint32_t fl, uint32_t fv, osd_t osd)
       : object_id(oid), chunk_index(ci), fragment_index(fi),
         pos_in_fragment(pif), fragment_length(fl), fragment_version(fv),
-      _osd(osd){}
+        _osd(osd) {}
 };
 
 struct Manifest {

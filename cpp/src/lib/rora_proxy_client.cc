@@ -17,8 +17,8 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "rora_proxy_client.h"
-#include "manifest.h"
 #include "alba_logger.h"
+#include "manifest.h"
 #include "manifest_cache.h"
 #include "osd_access.h"
 #include "partial_read_planner.h"
@@ -57,7 +57,6 @@ std::tuple<std::vector<string>, has_more> RoraProxy_client::list_namespaces(
 }
 
 void _maybe_add_to_manifest_cache(const string &namespace_,
-                                  const string &object_name,
                                   std::shared_ptr<RoraMap> rora_map) {
   using alba::stuff::operator<<;
   ALBA_LOG(DEBUG, "_maybe_add_to_manifest_cache(..., rora_map = " << rora_map
@@ -66,10 +65,10 @@ void _maybe_add_to_manifest_cache(const string &namespace_,
           rora_map->back->compression->get_compressor() &&
       encryption_t::NO_ENCRYPTION ==
           rora_map->back->encrypt_info->get_encryption()) {
-    ManifestCache::getInstance().add(namespace_, object_name,
-                                     std::move(rora_map));
+    ManifestCache::getInstance().add(namespace_, std::move(rora_map));
   }
 }
+
 void RoraProxy_client::write_object_fs(const string &namespace_,
                                        const string &object_name,
                                        const string &input_file,
@@ -84,6 +83,18 @@ void RoraProxy_client::write_object_fs(const string &namespace_,
 
   _maybe_add_to_manifest_cache(namespace_, object_name, std::move(p));
 }
+
+// void RoraProxy_client::write_object_fs(const std::string &namespace_,
+//                                        const std::string &object_name,
+//                                        const std::string &input_file,
+//                                        const allow_overwrite overwrite,
+//                                        const Checksum *checksum) {
+
+//   std::unique_ptr<Manifest> mfp(new Manifest());
+//   _delegate->write_object_fs2(namespace_, object_name, input_file, overwrite,
+//                               checksum, *mfp);
+//   _maybe_add_to_manifest_cache(namespace_, std::move(mfp));
+// }
 
 void RoraProxy_client::read_object_fs(const string &namespace_,
                                       const string &object_name,
@@ -145,10 +156,10 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
 }
 
 void RoraProxy_client::_maybe_update_osd_infos(
-    alba_id_t& alba_id,
-    std::map<osd_t, std::vector<asd_slice>> &per_osd){
+    alba_id_t &alba_id, std::map<osd_t, std::vector<asd_slice>> &per_osd) {
 
-  ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos(" << alba_id << ",_)");
+  ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos(" << alba_id
+                                                               << ",_)");
   bool ok = true;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
@@ -163,15 +174,13 @@ void RoraProxy_client::_maybe_update_osd_infos(
     rora_osd_map_t to_update;
     this->osd_info2(to_update);
     OsdAccess::getInstance().update(to_update);
-
   }
 }
 
 int RoraProxy_client::_short_path_back_one(
     const ObjectSlices &object_slices,
     std::shared_ptr<ManifestWithNamespaceId> mfp,
-    std::shared_ptr<alba_id_t> alba_id
-    ) {
+    std::shared_ptr<alba_id_t> alba_id) {
 
   // one object, maybe multiple slices and or fragments involved
   std::map<osd_t, std::vector<asd_slice>> per_osd;
@@ -224,8 +233,7 @@ int RoraProxy_client::_short_path_back_one(
 
 int RoraProxy_client::_short_path_back_many(
     const std::vector<short_path_back_entry> &short_path,
-    std::shared_ptr<alba_id_t> &alba_id
-    ) {
+    std::shared_ptr<alba_id_t> &alba_id) {
 
   ALBA_LOG(DEBUG, "_short_path_back_many(n_slices =" << short_path.size()
                                                      << ")");
@@ -273,7 +281,6 @@ void _process(std::vector<object_info> &object_infos,
     using alba::stuff::operator<<;
     // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
 
-    const string &object_name = std::get<0>(object_info);
     auto &future = std::get<1>(object_info);
 
     ALBA_LOG(WARNING, "_process front?");
@@ -281,7 +288,7 @@ void _process(std::vector<object_info> &object_infos,
     if (future == "") {
       std::shared_ptr<RoraMap> rora_map(new RoraMap);
       rora_map->back = std::move(std::get<2>(object_info));
-      _maybe_add_to_manifest_cache(namespace_, object_name, rora_map);
+      _maybe_add_to_manifest_cache(namespace_, std::move(mfp));
     }
   }
 }
@@ -382,7 +389,18 @@ std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(
                                     should_cache_);
 }
 
-void RoraProxy_client::invalidate_cache(const string &namespace_) {
+void RoraProxy_client::apply_sequence(
+    const std::string &namespace_, const write_barrier write_barrier,
+    const std::vector<std::shared_ptr<sequences::Assert>> &asserts,
+    const std::vector<std::shared_ptr<sequences::Update>> &updates,
+    std::vector<proxy_protocol::object_info> &object_infos) {
+  _delegate->apply_sequence(namespace_, write_barrier, asserts, updates,
+                            object_infos);
+
+  _process(object_infos, namespace_);
+}
+
+void RoraProxy_client::invalidate_cache(const std::string &namespace_) {
   ManifestCache::getInstance().invalidate_namespace(namespace_);
   _delegate->invalidate_cache(namespace_);
 }

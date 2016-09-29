@@ -18,12 +18,13 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 
-#include <iosfwd>
-#include <chrono>
-#include <vector>
-#include <boost/asio.hpp>
-#include "proxy_protocol.h"
 #include "boolean_enum.h"
+#include "proxy_protocol.h"
+#include "proxy_sequences.h"
+#include <boost/asio.hpp>
+#include <chrono>
+#include <iosfwd>
+#include <vector>
 
 namespace alba {
 namespace proxy_client {
@@ -52,6 +53,7 @@ BOOLEAN_ENUM(may_not_exist)
 BOOLEAN_ENUM(reverse)
 BOOLEAN_ENUM(consistent_read)
 BOOLEAN_ENUM(should_cache)
+BOOLEAN_ENUM(write_barrier)
 
 using namespace proxy_protocol;
 
@@ -99,6 +101,17 @@ public:
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache) = 0;
+
+  virtual void
+  apply_sequence(const std::string &namespace_, const write_barrier,
+                 const std::vector<std::shared_ptr<sequences::Assert>> &,
+                 const std::vector<std::shared_ptr<sequences::Update>> &,
+                 std::vector<proxy_protocol::object_info> &) = 0;
+
+  void apply_sequence(const std::string &namespace_,
+                      const write_barrier write_barrier,
+                      const sequences::Sequence &seq,
+                      std::vector<proxy_protocol::object_info> &object_infos);
 
   /* invalidate_cache influences the result of read requests issued with
    * consistent_read::F. after an invalidate cache request these read

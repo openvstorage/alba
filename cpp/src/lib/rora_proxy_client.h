@@ -17,10 +17,10 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
-#include "proxy_client.h"
 #include "generic_proxy_client.h"
-#include "osd_info.h"
 #include "osd_access.h"
+#include "osd_info.h"
+#include "proxy_client.h"
 
 namespace alba {
 namespace proxy_client {
@@ -90,6 +90,12 @@ public:
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache);
 
+  virtual void
+  apply_sequence(const std::string &namespace_, const write_barrier,
+                 const std::vector<std::shared_ptr<sequences::Assert>> &,
+                 const std::vector<std::shared_ptr<sequences::Update>> &,
+                 std::vector<proxy_protocol::object_info> &);
+
   virtual void invalidate_cache(const std::string &namespace_);
 
   virtual void drop_cache(const std::string &namespace_);
@@ -107,26 +113,23 @@ private:
   std::unique_ptr<GenericProxy_client> _delegate;
 
   void
-   _maybe_update_osd_infos(alba_id_t& alba_id,
-                           std::map<osd_t, std::vector<asd_slice>> &per_osd);
+  _maybe_update_osd_infos(alba_id_t &alba_id,
+                          std::map<osd_t, std::vector<asd_slice>> &per_osd);
 
   int _short_path_front_many(
       const std::vector<short_path_front_entry> &short_path);
 
   int _short_path_back_many(
       const std::vector<short_path_back_entry> &short_path,
-      std::shared_ptr<alba_id_t> &alba_id
-      );
+      std::shared_ptr<alba_id_t> &alba_id);
 
   int _short_path_back_one(
       const proxy_protocol::ObjectSlices &object_slices,
       std::shared_ptr<proxy_protocol::ManifestWithNamespaceId> mfp,
-      std::shared_ptr<alba_id_t> alba_id
-      );
+      std::shared_ptr<alba_id_t> alba_id);
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,
                          uint32_t chunk_id, uint32_t fragment_id);
-
 }
 }

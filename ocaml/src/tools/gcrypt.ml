@@ -473,9 +473,9 @@ module Digest = struct
       t
       (Slice.wrap_string data)
 
-  let write_ba t ~release_runtime_lock data =
+  let write_bs t ~release_runtime_lock data =
     write_
-      Bytes_descr.Bigarray
+      Bytes_descr.Bigstring_slice
       t
       ~release_runtime_lock
       data

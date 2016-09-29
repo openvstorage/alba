@@ -39,8 +39,9 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _WRITE_OBJECT_FS2 21
 #define _OSD_INFO 22
 #define _READ_OBJECTS_SLICES2 23
-#define _WRITE_OBJECT_FS3 24
-#define _OSD_INFO2 25
+#define _APPLY_SEQUENCE 24
+#define _WRITE_OBJECT_FS3 27
+#define _OSD_INFO2 28
 
 namespace alba {
 namespace proxy_protocol {
@@ -311,6 +312,28 @@ void read_read_objects_slices_response(
   }
 }
 
+void _read_object_infos(message &m, std::vector<object_info> &object_infos) {
+  // todo: automatically via templates
+  uint32_t size;
+  from(m, size);
+  object_infos.resize(size);
+  for (int32_t i = size - 1; i >= 0; --i) {
+    std::string name;
+    from(m, name);
+    std::string future;
+    from(m, future);
+    std::unique_ptr<ManifestWithNamespaceId> umf(
+                                                 new ManifestWithNamespaceId());
+    from(m, *umf);
+    // std::unique_ptr<Manifest> umf(new Manifest());
+    // from(m, *umf);
+    assert(name == umf->name);
+    auto t =
+        std::make_tuple(std::move(name), std::move(future), std::move(umf));
+    object_infos[i] = std::move(t);
+  }
+}
+
 void read_read_objects_slices2_response(
     message &m, Status &status, const std::vector<ObjectSlices> &objects_slices,
     std::vector<object_info> &object_infos) {
@@ -326,21 +349,29 @@ void read_read_objects_slices2_response(
       }
     }
 
-    // todo: automatically via templates
-    from(m, size);
-    object_infos.resize(size);
-    for (int32_t i = size - 1; i >= 0; --i) {
-      std::string name;
-      from(m, name);
-      std::string future;
-      from(m, future);
-      std::unique_ptr<ManifestWithNamespaceId> umf(
-          new ManifestWithNamespaceId());
-      from(m, *umf);
-      auto t =
-          std::make_tuple(std::move(name), std::move(future), std::move(umf));
-      object_infos[i] = std::move(t);
-    }
+    _read_object_infos(m, object_infos);
+  }
+}
+
+void write_apply_sequence_request(
+    message_builder &mb, const string &namespace_, const bool write_barrier,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
+        &asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
+        &updates) {
+  write_tag(mb, _APPLY_SEQUENCE);
+  to(mb, namespace_);
+  to(mb, write_barrier);
+  to(mb, asserts);
+  to(mb, updates);
+}
+
+void read_apply_sequence_response(message &m, Status &status,
+                                  std::vector<object_info> &object_infos) {
+  read_status(m, status);
+
+  if (status.is_ok()) {
+    _read_object_infos(m, object_infos);
   }
 }
 

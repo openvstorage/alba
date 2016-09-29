@@ -703,7 +703,7 @@ module Assert =
       | ObjectExists of object_name
       | ObjectDoesNotExist of object_name
       | ObjectHasId of object_name * object_id
-    (* | ObjectHasChecksum ? *)
+      | ObjectHasChecksum of object_name * Checksum.t
 
     let to_buffer buf = function
       | ObjectExists name ->
@@ -716,6 +716,10 @@ module Assert =
          Llio.int8_to buf 3;
          Llio.string_to buf name;
          Llio.string_to buf id
+      | ObjectHasChecksum (name, cs) ->
+         Llio.int8_to buf 4;
+         Llio.string_to buf name;
+         Checksum.to_buffer buf cs
 
     let from_buffer buf =
       match Llio.int8_from buf with
@@ -729,7 +733,11 @@ module Assert =
          let name = Llio.string_from buf in
          let id = Llio.string_from buf in
          ObjectHasId (name, id)
-      | k -> raise_bad_tag "Nsm_model.Assert" k
+      | 4 ->
+         let name = Llio.string_from buf in
+         let cs = Checksum.from_buffer buf in
+         ObjectHasChecksum (name, cs)
+     | k -> raise_bad_tag "Nsm_model.Assert" k
   end
 
 module Update =
@@ -1491,6 +1499,19 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                  let object_info = deserialize ObjectInfo.from_buffer object_info_s in
                  let object_id' = ObjectInfo.get_object_id object_info in
                  if object_id = object_id'
+                 then [ Update'.Assert (key, vo); ]
+                 else Err.(failwith ~payload:name Assert_failed)
+            end
+         | ObjectHasChecksum (name, cs) ->
+            let key = Keys.names name in
+            begin
+              match KV.get kv key with
+              | None -> Err.(failwith ~payload:name Assert_failed)
+              | (Some object_info_s) as vo ->
+                 let object_info = deserialize ObjectInfo.from_buffer object_info_s in
+                 let object_id = ObjectInfo.get_object_id object_info in
+                 let manifest, _ = get_object_manifest_by_id kv object_id in
+                 if manifest.Manifest.checksum = cs
                  then [ Update'.Assert (key, vo); ]
                  else Err.(failwith ~payload:name Assert_failed)
             end

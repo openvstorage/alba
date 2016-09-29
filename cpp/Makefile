@@ -31,6 +31,7 @@ LIBS_exec = -L/usr/local/lib \
 
 _OBJECTS = stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
+           proxy_sequences.o \
            io.o proxy_client.o generic_proxy_client.o \
 	   tcp_proxy_client.o rdma_proxy_client.o rora_proxy_client.o \
 	   osd_info.o manifest_cache.o osd_access.o statistics.o \

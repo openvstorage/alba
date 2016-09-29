@@ -18,13 +18,13 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include "alba_logger.h"
+#include <boost/optional.hpp>
 #include <istream>
+#include <memory>
 #include <ostream>
 #include <sstream>
-#include <vector>
 #include <string>
-#include <boost/optional.hpp>
-#include <memory>
+#include <vector>
 
 namespace alba {
 namespace llio {
@@ -129,8 +129,9 @@ public:
   }
 
   void output(std::ostream &os) {
-    output_using([&](const char *buffer, const int len)
-                     -> void { os.write(buffer, len); });
+    output_using([&](const char *buffer, const int len) -> void {
+      os.write(buffer, len);
+    });
     os.flush();
     if (!os.good()) {
       throw output_stream_exception("invalid outputstream");
@@ -221,18 +222,14 @@ template <typename X> void from(message &m, boost::optional<X> &xo) noexcept {
   }
 }
 
-template <typename X> void from(message &m, std::shared_ptr<X> &px) noexcept {
-  ALBA_LOG(DEBUG, "from(m, shared_ptr< " << typeid(X).name() <<" )");
-  bool d;
-  from(m, d);
-  ALBA_LOG(DEBUG, "d=" << d);
-  if (d) {
-    std::shared_ptr<X> p{new X};
-    from(m, *p);
-    px = p;
-  } else {
-    px = nullptr;
-  }
+template <typename X>
+void to(message_builder &mb, const std::shared_ptr<X> &x) noexcept {
+  to(mb, *x);
+}
+
+template <typename X>
+void to(message_builder &mb, const std::unique_ptr<X> &x) noexcept {
+  to(mb, *x);
 }
 }
 }

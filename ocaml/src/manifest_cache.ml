@@ -95,48 +95,56 @@ module ManifestCache = struct
       let epoch = get_epoch t namespace_id in
       ACache.remove t.cache (namespace_id, epoch, object_name)
 
-    let lookup t
-               namespace_id object_name
-               lookup_slow
-               ~consistent_read
-               ~should_cache
+    let lookup_multiple t
+                        namespace_id object_names
+                        lookup_slow
+                        ~consistent_read
+                        ~should_cache
       =
-      Lwt_log.debug_f "lookup %li %S ~consistent_read:%b ~should_cache:%b"
-                      namespace_id
-                      object_name
-                      consistent_read should_cache
-      >>= fun () ->
-      let epoch = get_epoch t namespace_id in
-      let slow_path namespace_id object_name =
-        lookup_slow namespace_id object_name >>= function
-        | None    -> Lwt.return None
-        | (Some mf) as mo ->
-           begin
-             if should_cache
-             then add t namespace_id object_name mf;
-
-             Lwt.return mo
-           end
-      in
-      if not consistent_read
+      if consistent_read
       then
-        match ACache.lookup t.cache (namespace_id, epoch, object_name) with
-        | None ->
-           let _hm = _miss t namespace_id in
-           Lwt_log.debug_f
-             "slow_path for namespace_id:%li object_name:%S"
-             namespace_id object_name
-           >>= fun () ->
-           slow_path namespace_id object_name >>= fun r ->
-           Lwt.return (Slow, r)
-        | Some deflated ->
-           let _hm = _hit t namespace_id in
-           let r = Some (inflate deflated) in
-           Lwt.return (Fast,r)
+        begin
+          lookup_slow object_names >>= fun manifests ->
+          let r =
+            List.map2
+              (if should_cache
+               then
+                 fun object_name ->
+                 function
+                 | None -> (Stale, None)
+                 | Some manifest ->
+                    add t namespace_id object_name manifest;
+                    (Stale, Some manifest)
+               else
+                 fun _ manifest -> (Stale, manifest))
+              object_names
+              manifests
+          in
+          Lwt.return r
+        end
       else
-        let _hm = _find_stat t namespace_id in
-        slow_path namespace_id object_name >>= fun r ->
-        Lwt.return (Slow, r)
+        begin
+          let epoch = get_epoch t namespace_id in
+          Lwt_list.map_p
+            (fun object_name ->
+              match ACache.lookup t.cache (namespace_id, epoch, object_name) with
+              | None ->
+                 let () = _miss t namespace_id |> ignore in
+                 begin
+                   lookup_slow [ object_name; ] >>= function
+                   | [ Some manifest; ] ->
+                      add t namespace_id object_name manifest;
+                      Lwt.return (Slow, Some manifest)
+                   | [ None; ] ->
+                      Lwt.return (Slow, None)
+                   | _ -> assert false
+                 end
+              | Some mf_s ->
+                 let () = _hit t namespace_id |> ignore in
+                 let r = Some (inflate mf_s) in
+                 Lwt.return (Fast, r))
+            object_names
+        end
 
     let _invalidate t namespace_id =
       Hashtbl.remove t.namespace_epoch namespace_id;

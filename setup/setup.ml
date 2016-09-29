@@ -25,6 +25,10 @@ module Config = struct
     with Not_found -> y
 
   let env_or_default = env_or_default_generic (fun x -> x)
+  let env_or_default_bool x default =
+    let get_bool s = Scanf.sscanf s "%b" (fun x -> x) in
+    env_or_default_generic get_bool x default
+
   type t = {
       home : string;
       workspace : string;
@@ -102,12 +106,11 @@ module Config = struct
         Some (peers, path)
       with Not_found -> None
     in
-    let get_bool s = Scanf.sscanf s "%b" (fun x -> x) in
-    let tls = env_or_default "ALBA_TLS" "false" |> get_bool in
+    let tls = env_or_default_bool "ALBA_TLS" false in
     let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
     and alba_rora =
       get_some_default
-        (env_or_default "ALBA_RORA" "false" |> get_bool)
+        (env_or_default_bool "ALBA_RORA" false)
         use_rora
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
@@ -1652,6 +1655,11 @@ module Test = struct
         (*"--loglevel=error"; *)
       ]
     in
+    let cmd =
+      if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
+      then "gdb" :: "--args" :: cmd
+      else cmd
+    in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml"] else cmd in
     let cmd3 = match filter with
       | None -> cmd2
@@ -1679,6 +1687,11 @@ module Test = struct
                "--backend-config-file"; backend_cfg_file cfg;
                "--arakoon-binary-path"; cfg.arakoon_bin;
                "--loglevel=error"]
+    in
+    let cmd =
+      if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
+      then "gdb" :: "--args" :: cmd
+      else cmd
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml"] else cmd in
     let cmd3 = match filter with

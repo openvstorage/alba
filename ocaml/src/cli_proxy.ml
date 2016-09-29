@@ -219,7 +219,7 @@ let proxy_list_namespaces host port transport verbose =
          let first, finc = match acc with
            | [] -> "", true
            | hd::_ -> hd, false in
-         client # list_namespace ~first ~finc ~last:None
+         client # list_namespaces ~first ~finc ~last:None
                 ~max:(-1) ~reverse:false
          >>= fun ((cnt', namespaces), has_more) ->
          let acc' = List.rev_append namespaces acc in

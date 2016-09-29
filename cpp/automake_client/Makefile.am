@@ -12,10 +12,12 @@ libalbaproxy_la_SOURCES = \
 	../src/lib/generic_proxy_client.cc \
 	../src/lib/io.cc \
 	../src/lib/llio.cc \
+	../src/lib/statistics.cc \
 	../src/lib/manifest.cc \
 	../src/lib/manifest_cache.cc \
 	../src/lib/osd_access.cc \
 	../src/lib/osd_info.cc \
+	../src/lib/proxy_sequences.cc \
 	../src/lib/proxy_client.cc \
 	../src/lib/proxy_protocol.cc \
 	../src/lib/rdma_proxy_client.cc \
@@ -33,8 +35,10 @@ alba_HEADERS = \
 	../include/generic_proxy_client.h \
 	../include/io.h \
 	../include/llio.h \
+	../include/statistics.h \
 	../include/manifest.h \
 	../include/osd_info.h \
+	../include/proxy_sequences.h \
 	../include/proxy_client.h \
 	../include/proxy_protocol.h \
 	../include/rdma_proxy_client.h \

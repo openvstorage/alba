@@ -17,13 +17,13 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
-#include <utility>
-#include <string>
-#include <map>
-#include <mutex>
-#include <memory>
-#include "manifest.h"
 #include "lru_cache.h"
+#include "manifest.h"
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
 namespace alba {
 namespace proxy_client {
 
@@ -38,8 +38,9 @@ public:
   ManifestCache(ManifestCache const &) = delete;
   void operator=(ManifestCache const &) = delete;
 
-  void add(std::string namespace_, std::string object_name,
-           manifest_cache_entry rora_map);
+  /* void add(std::string namespace_, std::string object_name, */
+  /*          manifest_cache_entry rora_map); */
+  void add(std::string namespace_, std::shared_ptr<Manifest> mfp);
 
   manifest_cache_entry find(const std::string &namespace_,
                             const std::string &object_name);
@@ -51,7 +52,8 @@ private:
 
   std::mutex _level1_mutex;
   std::map<std::string, std::pair<std::shared_ptr<manifest_cache>,
-                                  std::shared_ptr<std::mutex>>> _level1;
+                                  std::shared_ptr<std::mutex>>>
+      _level1;
 };
 }
 }
