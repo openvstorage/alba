@@ -17,8 +17,8 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "proxy_protocol.h"
-#include <string.h>
 #include <fstream>
+#include <string.h>
 
 #define _LIST_NAMESPACES 1
 #define _NAMESPACE_EXISTS 2
@@ -322,11 +322,8 @@ void _read_object_infos(message &m, std::vector<object_info> &object_infos) {
     from(m, name);
     std::string future;
     from(m, future);
-    std::unique_ptr<ManifestWithNamespaceId> umf(
-                                                 new ManifestWithNamespaceId());
+    std::unique_ptr<ManifestWithNamespaceId> umf(new ManifestWithNamespaceId());
     from(m, *umf);
-    // std::unique_ptr<Manifest> umf(new Manifest());
-    // from(m, *umf);
     assert(name == umf->name);
     auto t =
         std::make_tuple(std::move(name), std::move(future), std::move(umf));
@@ -438,9 +435,10 @@ void _read_osd_infos(message &m, osd_map_t &result) {
     from(m2, info);
     OsdCapabilities caps;
     from(m, caps);
-    auto p = std::shared_ptr<info_caps> (new info_caps(std::move(info),std::move(caps)));
+    auto p = std::shared_ptr<info_caps>(
+        new info_caps(std::move(info), std::move(caps)));
 
-    //result[osd_id] = std::move(p);
+    // result[osd_id] = std::move(p);
   }
 }
 void read_osd_info_response(message &m, Status &status, osd_map_t &result) {
@@ -456,7 +454,7 @@ void write_osd_info2_request(message_builder &mb) {
 }
 
 void read_osd_info2_response(message &m, Status &status,
-                             rora_osd_map_t& result) {
+                             rora_osd_map_t &result) {
 
   read_status(m, status);
   if (status.is_ok()) {
