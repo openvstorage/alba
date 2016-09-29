@@ -170,10 +170,10 @@ RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
 ## This only works from inside the OVS lan...
-# http://10.100.129.100:8080/view/volumedriver/view/all/job/volumedriver-no-dedup-conditional-backend-write-release-ubuntu-14.04/21/artifact/volumedriver-core/build/debian/libovsvolumedriver-dbgsym_6.1.0-dev.201609271817.4ea3ae7_amd64.ddeb
-ENV voldrv_jenkins=http://10.100.129.100:8080/view/volumedriver/view/all/job/volumedriver-no-dedup-conditional-backend-write-release-ubuntu-14.04/21/artifact/volumedriver-core/build/debian
+# http://10.100.129.100:8080/job/volumedriver-no-dedup-conditional-backend-write-release-ubuntu-14.04/25/artifact/volumedriver-core/build/debian/libovsvolumedriver-dbgsym_6.1.0-dev.201609282340.e8592c6_amd64.ddeb
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-conditional-backend-write-release-ubuntu-14.04/25/artifact/volumedriver-core/build/debian
 ENV voldrv_base_pkg_name=volumedriver-no-dedup
-ENV voldrv_version=6.1.0-dev.201609271817.4ea3ae7_amd64
+ENV voldrv_version=6.1.0-dev.201609282340.e8592c6_amd64
 
 RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
     && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb
