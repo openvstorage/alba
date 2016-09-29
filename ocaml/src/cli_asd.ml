@@ -36,7 +36,7 @@ let asd_start cfg_url slow log_sinks =
        let ips,         port,      rora_port,
            rora_ips, transport, rora_transport, home,
            node_id,     log_level, asd_id,
-           fsync,       limit,     capacity,
+           fsync_wanted, limit, capacity,
            multicast, buffer_size,
            tls_config,tcp_keepalive,
            write_blobs,
@@ -56,11 +56,20 @@ let asd_start cfg_url slow log_sinks =
         cfg.use_fadvise, cfg.use_fallocate,
         cfg.rocksdb_block_cache_size,
         cfg.rora_num_cores, cfg.rora_queue_depth
-      in
+       in
 
-      (if not fsync
-       then Lwt_log.warning "Fsync has been disabled, data will not be stored durably!!"
-       else Lwt.return ()) >>= fun () ->
+       (match fsync_wanted, rora_port with
+        | false, None ->
+           Lwt_log.warning "Fsync has been disabled, data will not be stored durably!!"
+           >>= fun () ->
+           Lwt.return false
+        | false, Some _ ->
+           Lwt_log.warning "rora configured: overrule configuration and enable fsync!!"
+           >>= fun () ->
+           Lwt.return true
+        | true, _ -> Lwt.return true
+       )
+       >>= fun fsync ->
       (
         if port = None && tls_config = None
         then

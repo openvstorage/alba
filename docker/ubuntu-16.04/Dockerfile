@@ -143,7 +143,7 @@ RUN apt-get update && apt-get -y --allow-unauthenticated install \
       libgoogle-glog-dev libibverbs-dev
 
 RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout f5d20ec3556892512cf316ef11818398898c7576
+RUN cd gobjfs  && git pull && git checkout c729acc4c52f36d811c2ac71da77fb834de14075
 RUN cd gobjfs \
        && mkdir build \
        && cd build \
