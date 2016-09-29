@@ -38,9 +38,11 @@ public:
   ManifestCache(ManifestCache const &) = delete;
   void operator=(ManifestCache const &) = delete;
 
-  void add(std::string namespace_, manifest_cache_entry rora_map);
+  void add(std::string namespace_, std::string alba_id,
+           manifest_cache_entry rora_map);
 
   manifest_cache_entry find(const std::string &namespace_,
+                            const std::string &alba_id,
                             const std::string &object_name);
 
   void invalidate_namespace(const std::string &);

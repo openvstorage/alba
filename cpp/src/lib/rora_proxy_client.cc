@@ -56,12 +56,13 @@ std::tuple<std::vector<string>, has_more> RoraProxy_client::list_namespaces(
 }
 
 void _maybe_add_to_manifest_cache(const string &namespace_,
+                                  const string &alba_id,
                                   std::shared_ptr<ManifestWithNamespaceId> mf) {
   using alba::stuff::operator<<;
   ALBA_LOG(DEBUG, "_maybe_add_to_manifest_cache(..., rora_map = " << mf << ")");
   if (compressor_t::NO_COMPRESSION == mf->compression->get_compressor() &&
       encryption_t::NO_ENCRYPTION == mf->encrypt_info->get_encryption()) {
-    ManifestCache::getInstance().add(namespace_, std::move(mf));
+    ManifestCache::getInstance().add(namespace_, alba_id, std::move(mf));
   }
 }
 
@@ -73,9 +74,10 @@ void RoraProxy_client::write_object_fs(const string &namespace_,
 
   std::unique_ptr<ManifestWithNamespaceId> mf(new ManifestWithNamespaceId());
 
-  write_object_fs2(namespace_, object_name, input_file, overwrite, checksum, *mf);
+  write_object_fs2(namespace_, object_name, input_file, overwrite, checksum,
+                   *mf);
 
-  _maybe_add_to_manifest_cache(namespace_, std::move(mf));
+  _maybe_add_to_manifest_cache(namespace_, "", std::move(mf));
 }
 
 void RoraProxy_client::read_object_fs(const string &namespace_,
@@ -259,19 +261,17 @@ void _process(std::vector<object_info> &object_infos,
               const string &namespace_) {
 
   ALBA_LOG(DEBUG, "_process : " << object_infos.size());
+  auto &cache = ManifestCache::getInstance();
   for (auto &object_info : object_infos) {
     using alba::stuff::operator<<;
     // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
 
-    auto &future = std::get<1>(object_info);
+    // ALBA_LOG(WARNING, "_process front?");
 
-    ALBA_LOG(WARNING, "_process front?");
-
-    if (future == "") {
-      // std::shared_ptr<RoraMap> rora_map(new RoraMap);
-      // rora_map->back = std::move(std::get<2>(object_info));
-      // _maybe_add_to_manifest_cache(namespace_, std::move(mfp));
-    }
+    manifest_cache_entry manifest_cache_entry_ =
+        std::shared_ptr<alba::proxy_protocol::ManifestWithNamespaceId>(
+            std::get<2>(object_info).release());
+    cache.add(namespace_, std::get<1>(object_info), manifest_cache_entry_);
   }
 }
 
@@ -291,7 +291,7 @@ void RoraProxy_client::read_objects_slices(
     for (auto &object_slices : slices) {
       auto object_name = object_slices.object_name;
       auto &cache = ManifestCache::getInstance();
-      auto entry = cache.find(namespace_, object_name);
+      auto entry = cache.find(namespace_, "TODO", object_name);
       if (nullptr != entry) {
         // auto front = entry->front;
         // if (nullptr != front) {
