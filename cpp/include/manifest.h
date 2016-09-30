@@ -19,9 +19,9 @@ but WITHOUT ANY WARRANTY of any kind.
 #pragma once
 #include "alba_common.h"
 #include "checksum.h"
+#include <boost/optional.hpp>
 #include <iostream>
 #include <memory>
-#include <boost/optional.hpp>
 
 namespace alba {
 namespace proxy_protocol {

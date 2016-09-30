@@ -71,6 +71,7 @@ module Checksum = struct
     | k -> Prelude.raise_bad_tag "checksum" k
 
   let deser = input, output
+  let from_buffer, to_buffer = input, output
 
   let algo_of =
     let open Algo in

@@ -23,24 +23,42 @@ open Alba_statistics
 open Alba_client_errors
 open Lwt.Infix
 
+
+let get_object_manifests'
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
+      manifest_cache
+      ~namespace_id ~object_names
+      ~consistent_read ~should_cache =
+  Lwt_log.debug_f
+    "get_object_manifest %li %S ~consistent_read:%b ~should_cache:%b"
+    namespace_id
+    ([%show: string list] object_names)
+    consistent_read
+    should_cache
+  >>= fun () ->
+  let lookup_on_nsm_host object_names =
+    nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
+    client # get_object_manifests_by_name object_names
+  in
+  Manifest_cache.ManifestCache.lookup_multiple
+    manifest_cache
+    namespace_id object_names
+    lookup_on_nsm_host
+    ~consistent_read ~should_cache
+
 let get_object_manifest'
       nsm_host_access
       manifest_cache
       ~namespace_id ~object_name
       ~consistent_read ~should_cache =
-  Lwt_log.debug_f
-    "get_object_manifest %li %S ~consistent_read:%b ~should_cache:%b"
-    namespace_id object_name consistent_read should_cache
-  >>= fun () ->
-  let lookup_on_nsm_host namespace_id object_name =
-    nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
-    client # get_object_manifest_by_name object_name
-  in
-  Manifest_cache.ManifestCache.lookup
+  get_object_manifests'
+    nsm_host_access
     manifest_cache
-    namespace_id object_name
-    lookup_on_nsm_host
-    ~consistent_read ~should_cache
+    ~namespace_id ~object_names:[ object_name; ]
+    ~consistent_read ~should_cache >>= function
+  | [ x ] -> Lwt.return x
+  | _ -> assert false
+
 
 module E = Prelude.Error.Lwt
 let (>>==) = E.bind

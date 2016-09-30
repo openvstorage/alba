@@ -59,12 +59,12 @@ class sha1_hasher =
     method update_string (s:string) = Gcrypt.Digest.write _sha s
     method update_substring s pos len = Gcrypt.Digest.write_slice _sha (Slice.make s pos len)
     method update_lwt_bytes lwt_bytes pos len =
-      Gcrypt.Digest.write_ba _sha ~release_runtime_lock:false (Lwt_bytes.proxy lwt_bytes pos len)
+      Gcrypt.Digest.write_bs _sha ~release_runtime_lock:false (Bigstring_slice.from_bigstring lwt_bytes pos len)
 
     method update_lwt_bytes_detached s pos len =
       Lwt_preemptive.detach
-        (Gcrypt.Digest.write_ba _sha ~release_runtime_lock:true)
-        (Lwt_bytes.proxy s pos len)
+        (Gcrypt.Digest.write_bs _sha ~release_runtime_lock:true)
+        (Bigstring_slice.from_bigstring s pos len)
 
     method final () =
       let open Gcrypt.Digest in

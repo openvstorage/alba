@@ -44,4 +44,5 @@ let suite = "all" >:::[
     Memcmp_test.suite;
     Alba_osd_test.suite;
     Policy_test.suite;
+    Proxy_osd_test.suite;
   ]
