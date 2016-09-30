@@ -99,30 +99,50 @@ void proxy_get_version(const string &host, const string &port,
 }
 
 using namespace std::chrono;
+enum io_pattern_t { FIXED, RANDOM, STRIDE};
+
+
+
 void _bench_one_client(std::unique_ptr<Proxy_client> client,
                        std::shared_ptr<alba::statistics::Statistics> stats_p,
                        const string &namespace_, const string &object_name,
                        const int n,
-                       const uint32_t block_size
+                       const uint32_t block_size,
+                       const uint64_t object_size,
+                       const io_pattern_t io_pattern
                        ) {
 
   try {
-
     alba::statistics::Statistics &stats = *stats_p;
     using namespace alba::proxy_protocol;
-    std::vector<alba::byte> buffer(block_size);
-    SliceDescriptor sd{&buffer[0], 0, block_size};
-    std::vector<SliceDescriptor> slices{sd};
-    ObjectSlices object_slices{object_name, slices};
-    std::vector<ObjectSlices> objects_slices{object_slices};
+    uint64_t range = (object_size / block_size) - 1;
 
     high_resolution_clock::time_point t0 = high_resolution_clock::now();
     high_resolution_clock::time_point t1;
 
     for (int i = 0; i < n; i++) {
+      std::vector<alba::byte> buffer(block_size);
+      uint64_t offset = 0;
+      uint64_t block_index = 0;
+      switch(io_pattern){
+        case STRIDE : {
+            block_index = i % range;
+        } ; break;
+        case RANDOM : {
+            uint64_t rand = std::rand();
+            block_index = rand % range;
+        }; break;
+        default: {}; break;
+      }
+      offset = block_size * block_index;
+      SliceDescriptor sd{&buffer[0], offset, block_size};
+      std::vector<SliceDescriptor> slices{sd};
+      ObjectSlices object_slices{object_name, slices};
+      std::vector<ObjectSlices> objects_slices{object_slices};
       stats.new_start();
       client->read_objects_slices(namespace_, objects_slices,
                                   consistent_read::F);
+
       stats.new_stop();
       t1 = high_resolution_clock::now();
       int dur2 = duration_cast<seconds>(t1 - t0).count();
@@ -150,7 +170,8 @@ void partial_read_benchmark(const string &host, const string &port,
                             const int n, const int n_clients,
                             const boost::optional<RoraConfig> &rora_config,
                             const bool focus,
-                            const uint32_t block_size
+                            const uint32_t block_size,
+                            const io_pattern_t io_pattern
     ) {
 
   ALBA_LOG(WARNING, "partial_read_benchmark("
@@ -165,6 +186,7 @@ void partial_read_benchmark(const string &host, const string &port,
   sos << "object_000" << rand << "_";
   string object_base = sos.str();
   const alba::Checksum *checksum = nullptr;
+  const uint64_t object_size = get_file_size(file_name);
   if(focus){
       auto client_p =
           make_proxy_client(host, port, timeout, transport, rora_config);
@@ -191,7 +213,7 @@ void partial_read_benchmark(const string &host, const string &port,
         new alba::statistics::Statistics);
     stats_v.push_back(stats_p);
     std::thread t(_bench_one_client, std::move(client_p), stats_p, namespace_,
-                  object_name, n, block_size);
+                  object_name, n, block_size, object_size, io_pattern);
 
     thread_v.push_back(std::move(t));
   }
@@ -257,6 +279,10 @@ int main(int argc, const char *argv[]) {
        )
       ("block-size", po::value<uint32_t>() -> default_value(4096),
        "block size for partial read"
+       )
+      ("io-pattern",
+       po::value<string>() -> default_value("fixed"),
+       "pattern for partial read benchmark: fixed | random | stride (default = fixed)"
        )
       ("focus", po::value<bool>() -> default_value(false),
        "if set, all rora partial reads come from the same object, and hit the same ASD"
@@ -414,6 +440,10 @@ int main(int argc, const char *argv[]) {
     bool result = client->namespace_exists(ns);
     cout << "namespace_exists(" << ns << ") => " << result << endl;
   } else if ("partial-read-benchmark" == command) {
+    std::map<std::string, io_pattern_t> string_to_pattern;
+    string_to_pattern["fixed"] = FIXED;
+    string_to_pattern["random"] = RANDOM;
+    string_to_pattern["stride"] = STRIDE;
     string ns = getRequiredStringArg(vm, "namespace");
     string file = getRequiredStringArg(vm, "file");
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
@@ -423,12 +453,20 @@ int main(int argc, const char *argv[]) {
 
     uint32_t block_size = getRequiredArg<uint32_t>(vm, "block-size");
     bool focus = getRequiredArg<bool>(vm, "focus");
+    string io_pattern_s = getRequiredStringArg(vm, "io-pattern");
+    io_pattern_t io_pattern= FIXED;
+    const auto & it = string_to_pattern.find(io_pattern_s);
+    if(it != string_to_pattern.cend()){
+        io_pattern = it -> second;
+    }
+
     if (use_rora) {
       bool use_null_io = getRequiredArg<bool>(vm, "use-null-io");
       rora_config = RoraConfig(100, use_null_io);
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
-                           n_clients, rora_config,focus, block_size);
+                           n_clients, rora_config,focus, block_size,
+                           io_pattern);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "
