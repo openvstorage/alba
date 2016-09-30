@@ -129,24 +129,11 @@ let upload_chunk
                         namespace_id
                         cache_key
                         unpacked_data_fragment
-         >>= fun (mo: Nsm_model.Manifest.t option) ->
-         let fidmo = Prelude.Option.map (fun m -> fragment_id,m) mo in
-         Lwt.return fidmo
         )
         unpacked_data_fragments
-      >>= fun fidmos ->
-      (* clean up *)
-      let (fidms  : (int * Nsm_model.Manifest.t) list) =
-        List.fold_left
-          (fun acc fidmo ->
-            match fidmo with
-            | None -> acc
-            | Some (fragment_id, m) -> (fragment_id,m) :: acc
-          ) [] fidmos |> List.rev
-      in
-      Lwt.return (Some fidms)
+      >|= List.flatten_unordered
     else
-      Lwt.return_none
+      Lwt.return []
   in
 
   Lwt.finalize
@@ -214,11 +201,11 @@ let upload_chunk
        (List.combine fragments_with_id osds)
      >>= fun r ->
      t_add_to_fragment_cache
-     >>= fun (fc_info : ((Nsm_model.fragment_id * Nsm_model.Manifest.t) list) option) ->
-     Lwt.return (r, fc_info)
+     >>= fun mfs ->
+     Lwt.return (r, mfs)
     )
     (fun () ->
-     t_add_to_fragment_cache >>= fun _fc_info ->
+     t_add_to_fragment_cache >>= fun _ ->
      let () =
        if k = 1
        then
@@ -372,7 +359,7 @@ let upload_object''
     let rec inner
               acc_chunk_sizes
               acc_fragments_info
-              acc_fidms
+              acc_mfs
               total_size
               chunk_times
               hash_time
@@ -438,19 +425,14 @@ let upload_object''
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
-      >>= fun (fragment_info, fidmso)  ->
+      >>= fun (fragment_info, mfs)  ->
 
       let t_fragments, fragment_info = List.split fragment_info in
 
       let acc_chunk_sizes' = (chunk_id, chunk_size_with_padding) :: acc_chunk_sizes in
       let acc_fragments_info' = fragment_info :: acc_fragments_info in
-      let acc_fidms' =
-        match fidmso, acc_fidms with
-        | None      , None     -> None
-        | None      , Some acc -> Some acc
-        | Some fidms, None -> Some [(chunk_id, fidms)]
-        | Some fidms, Some acc -> Some ((chunk_id, fidms) :: acc)
-      in
+
+      let acc_mfs' = List.rev_append mfs acc_mfs in
 
       let t_chunk = Statistics.({
                                    read_data = read_data_time;
@@ -464,7 +446,7 @@ let upload_object''
         inner
           acc_chunk_sizes'
           acc_fragments_info'
-          acc_fidms'
+          acc_mfs'
           total_size'
           chunk_times'
           hash_time'
@@ -472,20 +454,20 @@ let upload_object''
       else
         Lwt.return ((List.rev acc_chunk_sizes',
                      List.rev acc_fragments_info',
-                     Option.map List.rev acc_fidms'
+                     acc_mfs'
                     ),
                     total_size',
                     List.rev chunk_times',
                     hash_time')
     in
-    inner [] [] None 0 [] 0. (0:Nsm_model.chunk_id) in
+    inner [] [] [] 0 [] 0. (0:Nsm_model.chunk_id) in
 
   let chunk = Lwt_bytes.create desired_chunk_size in
   Lwt.finalize
     (fun () -> fold_chunks chunk)
     (fun () -> Lwt_bytes.unsafe_destroy chunk;
                Lwt.return ())
-  >>= fun ((chunk_sizes', fragments_info, chunk_fidms), size, chunk_times, hash_time) ->
+  >>= fun ((chunk_sizes', fragments_info, chunk_mfs), size, chunk_times, hash_time) ->
 
   (* all fragments have been stored
          make a manifest and store it in the namespace manager *)
@@ -543,21 +525,7 @@ let upload_object''
                    total = Unix.gettimeofday () -. object_t0;
     })
   in
-  begin
-    match chunk_fidms with
-    | None -> Lwt.return_none
-    | Some fc_chunk_fidms ->
-       fragment_cache # osd_infos () >>= fun maybe ->
-       begin
-         match maybe with
-         | None -> Lwt.return_none (* TODO: got fragments, but no alba_id ? *)
-         | Some (fc_alba_id,_)->
-            let fc_namespace_id = -1l in
-            Some (fc_alba_id, fc_namespace_id, fc_chunk_fidms) |> Lwt.return
-       end
-  end
-  >>= fun fc_info ->
-  Lwt.return (manifest, fc_info, almost_t_object, gc_epoch)
+  Lwt.return (manifest, chunk_mfs, almost_t_object, gc_epoch)
 
 let cleanup_gc_tags
       (osd_access : Osd_access_type.t)

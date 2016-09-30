@@ -26,11 +26,13 @@ open Nsm_model
 
 class virtual cache = object(self)
 
-    method virtual add : int32 -> string -> Bigstring_slice.t -> Manifest.t option Lwt.t
+    (* this method should _never_ throw! *)
+    method virtual add : int32 -> string -> Bigstring_slice.t -> (Manifest.t * int32 * string) list Lwt.t
 
     method add' bid oid blob =
       self # add bid oid blob >>= fun _ -> Lwt.return_unit
 
+    (* TODO lookup should return manifests too. *)
     method virtual lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
     method virtual lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
 
@@ -39,20 +41,20 @@ class virtual cache = object(self)
 
     method virtual osd_infos : unit ->
                       (Albamgr_protocol.Protocol.alba_id *
-                      ((Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
-                          Capabilities.OsdCapabilities.t))
-                        counted_list)
-                        option Lwt.t
+                         ((Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
+                             Capabilities.OsdCapabilities.t))
+                           counted_list)
+                        counted_list Lwt.t
 end
 
 class no_cache = object(self)
     inherit cache
-    method add     bid oid blob   = Lwt.return_none
+    method add     bid oid blob   = Lwt.return []
     method lookup  bid oid        = Lwt.return_none
     method lookup2 bid oid slices = Lwt.return_false
     method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
-    method osd_infos ()           = Lwt.return_none
+    method osd_infos ()           = Lwt.return (0, [])
 end
 
 let ser64 x=
@@ -1005,7 +1007,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         );
       Lwt.return ()
 
-    method add bid oid blob : Manifest.t option Lwt.t =
+    method add bid oid blob =
 
       Lwt_log.debug_f "add %lx %S" bid oid >>= fun () ->
       let _add () =
@@ -1046,8 +1048,6 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                   ~total_size ~total_count ~access ~fsid boid path blob ~fsid0
 
            end
-           >>= fun () ->
-           Lwt.return_none
           )
           (fun exn ->
            Lwt_log.warning_f ~exn
@@ -1058,8 +1058,6 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
              (fun () -> Lwt_extra2.unlink ~fsync_parent_dir:false full_path)
              (fun ex -> Lwt_log.warning_f ~section ~exn:ex "%s: cleanup failed" full_path
              )
-           >>= fun () ->
-           Lwt.return_none
           )
       in
       with_timing_lwt
@@ -1067,10 +1065,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
          Lwt_mutex.with_lock _mutex _add
         )
-      >>= fun (t,mo) ->
+      >>= fun (t, ()) ->
       Lwt_log.debug_f "add %lx %S took:%f" bid oid t
       >>= fun () ->
-      Lwt.return mo
+      Lwt.return []
 
     method drop bid ~global =
       Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->
@@ -1109,7 +1107,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
 
     method get_root = root
 
-    method osd_infos () = Lwt.return_none
+    method osd_infos () = Lwt.return (0, [])
 end
 
 let safe_create root

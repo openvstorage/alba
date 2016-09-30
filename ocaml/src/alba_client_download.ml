@@ -201,8 +201,8 @@ let download_fragment
                         cache_key
                         (Bigstring_slice.wrap_bigstring maybe_decompressed)
        else
-         Lwt.return_none
-     end >>= fun mo ->
+         Lwt.return []
+     end >>= fun mfs ->
 
      let t_fragment = Statistics.(FromOsd {
                                      osd_id;
@@ -213,6 +213,7 @@ let download_fragment
                                      total = Unix.gettimeofday () -. t0_fragment;
                                    }) in
 
+     (* TODO also return 'mfs' *)
      E.return (t_fragment, maybe_decompressed)
 
 (* consumers of this method are responsible for freeing

@@ -537,14 +537,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          let my_entry = (my_alba_id, my_info) in
 
          alba_client # get_base_client # get_fragment_cache # osd_infos ()
-         >>= fun fc_info_o ->
-         let r =
-           match fc_info_o with
-         | None -> (1,[my_entry])
-         | Some fc_info -> (2,[my_entry; fc_info])
-         in
-         Lwt_log.debug_f "OsdInfo2: %i" (snd r |> List.length) >>= fun () ->
-         Lwt.return r
+         >>= fun (cnt, osd_infos) ->
+         Lwt.return (cnt + 1, my_entry :: osd_infos)
        end
   in
   let module Llio = Llio2.WriteBuffer in
