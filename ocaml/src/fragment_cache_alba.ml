@@ -175,22 +175,6 @@ class alba_cache
           client # create_namespace ~namespace ~preset_name:(Some preset) () >>= fun _ ->
           f namespace)
   in
-  let alba_id_t =
-    let rec inner () =
-      Lwt.catch
-        (fun () ->
-          client # mgr_access # get_alba_id
-          >>= fun x -> Lwt.return (Some x))
-        (fun exn ->
-          Lwt_log.info_f ~exn "Exception while getting alba_id in fragment_cache_alba" >>= fun () ->
-          Lwt.return_none) >>= function
-      | Some x -> Lwt.return x
-      | None ->
-         Lwt_unix.sleep 1. >>= fun () ->
-         inner ()
-    in
-    inner ()
-  in
   object(self)
     inherit Fragment_cache.cache
     method add bid name blob =
@@ -208,7 +192,7 @@ class alba_cache
                    ~allow_overwrite:Nsm_model.Unconditionally
             >>= fun (mf, mfs, _, namespace_id) ->
             lru_track ~namespace ~object_name;
-            alba_id_t >>= fun alba_id ->
+            client # get_alba_id >>= fun alba_id ->
             Lwt.return ((mf, namespace_id, alba_id) :: mfs)
            )
         )
@@ -285,20 +269,5 @@ class alba_cache
 
     method close () = closer ()
 
-    method osd_infos () =
-      let cache = client # osd_access # osds_info_cache in
-      let info =
-           Hashtbl.fold
-             (fun osd_id (osd, _, capabilities) (c,acc) ->
-               let c' = c + 1
-               and acc' = (osd_id, osd, capabilities) :: acc
-               in
-               (c',acc')
-             ) cache (0,[])
-      in
-      alba_id_t >>= fun alba_id ->
-      let r = (alba_id, info) in
-      (* TODO append those of nested frag caches *)
-      (* TODO actually the bulk of this method should be done in alba_client! *)
-      Lwt.return (1, [ r ])
+    method osd_infos () = client # osd_infos
   end

@@ -455,6 +455,7 @@ class osd_access
     method osds_info_cache = osds_info_cache
 
     method osd_infos =
+      (* TODO this could (should?) also return osd_infos for nested alba_osds? *)
       Hashtbl.fold
         (fun osd_id (osd, _, capabilities) (c,acc) ->
           let c' = c + 1

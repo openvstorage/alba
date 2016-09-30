@@ -29,7 +29,25 @@ class alba_client (base_client : Alba_base_client.client)
   let nsm_host_access = base_client # nsm_host_access in
   let osd_access = base_client # osd_access in
 
+  let alba_id_t =
+    let rec inner () =
+      Lwt.catch
+        (fun () ->
+          mgr_access # get_alba_id >>= fun x -> Lwt.return (Some x))
+        (fun exn ->
+          Lwt_log.info_f ~exn "Exception in alba_id_t" >>= fun () ->
+          Lwt.return_none) >>= function
+      | Some x -> Lwt.return x
+      | None ->
+         Lwt_unix.sleep 1. >>= fun () ->
+         inner ()
+    in
+    inner ()
+  in
+
   object(self)
+    method get_alba_id = alba_id_t
+
     method get_base_client = base_client
     method get_manifest_cache = base_client # get_manifest_cache
     method mgr_access = mgr_access
@@ -48,6 +66,12 @@ class alba_client (base_client : Alba_base_client.client)
         ~namespace ~preset_name ?nsm_host_id ()
 
     method upload_object_from_file = base_client # upload_object_from_file
+
+    method osd_infos =
+      alba_id_t >>= fun alba_id ->
+      let my_entry = (alba_id, osd_access # osd_infos) in
+      base_client # get_fragment_cache # osd_infos () >>= fun (cnt, osd_infos) ->
+      Lwt.return (cnt + 1, my_entry::osd_infos)
 
     method discover_osds = base_client # discover_osds
 
