@@ -27,9 +27,7 @@ namespace proxy_client {
 RoraProxy_client::RoraProxy_client(
     std::unique_ptr<GenericProxy_client> delegate,
     const RoraConfig &rora_config)
-    : _delegate(std::move(delegate)),
-      _use_null_io(rora_config.use_null_io)
-{
+    : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io) {
   ALBA_LOG(INFO, "RoraProxy_client(...)");
   ManifestCache::set_capacity(rora_config.manifest_cache_size);
 }
@@ -141,7 +139,7 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
 void RoraProxy_client::_maybe_update_osd_infos(
     std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   bool ok = true;
-  auto& access = OsdAccess::getInstance();
+  auto &access = OsdAccess::getInstance();
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     if (access.osd_is_unknown(osd)) {
@@ -156,7 +154,7 @@ void RoraProxy_client::_maybe_update_osd_infos(
   }
 }
 
-int RoraProxy_client::_short_path_one(const std::string &/*namespace_*/,
+int RoraProxy_client::_short_path_one(const std::string & /*namespace_*/,
                                       const ObjectSlices &object_slices,
                                       std::shared_ptr<Manifest> mfp) {
 
@@ -206,10 +204,10 @@ int RoraProxy_client::_short_path_one(const std::string &/*namespace_*/,
   // everything to read is now nicely sorted per osd.
   _maybe_update_osd_infos(per_osd);
   //_dump(per_osd);
-  if(_use_null_io){
-      return 0;
-  } else{
-      return OsdAccess::getInstance().read_osds_slices(per_osd);
+  if (_use_null_io) {
+    return 0;
+  } else {
+    return OsdAccess::getInstance().read_osds_slices(per_osd);
   }
 }
 

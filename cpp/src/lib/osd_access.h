@@ -56,12 +56,12 @@ public:
   void operator=(OsdAccess const &) = delete;
   bool osd_is_unknown(osd_t);
 
-  void update(Proxy_client& client);
+  void update(Proxy_client &client);
 
   int read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 
 private:
-  OsdAccess() :_filling(false){}
+  OsdAccess() : _filling(false) {}
   std::mutex _osd_infos_mutex;
   std::map<osd_t, info_caps> _osd_infos;
 

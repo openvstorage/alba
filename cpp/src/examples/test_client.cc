@@ -99,18 +99,14 @@ void proxy_get_version(const string &host, const string &port,
 }
 
 using namespace std::chrono;
-enum io_pattern_t { FIXED, RANDOM, STRIDE};
-
-
+enum io_pattern_t { FIXED, RANDOM, STRIDE };
 
 void _bench_one_client(std::unique_ptr<Proxy_client> client,
                        std::shared_ptr<alba::statistics::Statistics> stats_p,
                        const string &namespace_, const string &object_name,
-                       const int n,
-                       const uint32_t block_size,
+                       const int n, const uint32_t block_size,
                        const uint64_t object_size,
-                       const io_pattern_t io_pattern
-                       ) {
+                       const io_pattern_t io_pattern) {
 
   try {
     alba::statistics::Statistics &stats = *stats_p;
@@ -124,15 +120,15 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
       std::vector<alba::byte> buffer(block_size);
       uint64_t offset = 0;
       uint64_t block_index = 0;
-      switch(io_pattern){
-        case STRIDE : {
-            block_index = i % range;
-        } ; break;
-        case RANDOM : {
-            uint64_t rand = std::rand();
-            block_index = rand % range;
-        }; break;
-        default: {}; break;
+      switch (io_pattern) {
+      case STRIDE: {
+        block_index = i % range;
+      }; break;
+      case RANDOM: {
+        uint64_t rand = std::rand();
+        block_index = rand % range;
+      }; break;
+      default: {}; break;
       }
       offset = block_size * block_index;
       SliceDescriptor sd{&buffer[0], offset, block_size};
@@ -169,10 +165,8 @@ void partial_read_benchmark(const string &host, const string &port,
                             const string &namespace_, const string &file_name,
                             const int n, const int n_clients,
                             const boost::optional<RoraConfig> &rora_config,
-                            const bool focus,
-                            const uint32_t block_size,
-                            const io_pattern_t io_pattern
-    ) {
+                            const bool focus, const uint32_t block_size,
+                            const io_pattern_t io_pattern) {
 
   ALBA_LOG(WARNING, "partial_read_benchmark("
                         << host << ", " << port << ", " << transport
@@ -187,26 +181,25 @@ void partial_read_benchmark(const string &host, const string &port,
   string object_base = sos.str();
   const alba::Checksum *checksum = nullptr;
   const uint64_t object_size = get_file_size(file_name);
-  if(focus){
-      auto client_p =
-          make_proxy_client(host, port, timeout, transport, rora_config);
-      string object_name = object_base;
-      client_p -> write_object_fs(namespace_, object_name, file_name,
-                                  allow_overwrite::T, checksum);
-      ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
-  }
-  ;
+  if (focus) {
+    auto client_p =
+        make_proxy_client(host, port, timeout, transport, rora_config);
+    string object_name = object_base;
+    client_p->write_object_fs(namespace_, object_name, file_name,
+                              allow_overwrite::T, checksum);
+    ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
+  };
   for (int client_index = 0; client_index < n_clients; client_index++) {
     auto client_p =
         make_proxy_client(host, port, timeout, transport, rora_config);
     string object_name;
-    if (focus){
-        object_name = object_base;
-    }else {
-        object_name = object_base + std::to_string(client_index);
-        client_p -> write_object_fs(namespace_, object_name, file_name,
-                                    allow_overwrite::T, checksum);
-        ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
+    if (focus) {
+      object_name = object_base;
+    } else {
+      object_name = object_base + std::to_string(client_index);
+      client_p->write_object_fs(namespace_, object_name, file_name,
+                                allow_overwrite::T, checksum);
+      ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
     }
 
     auto stats_p = std::shared_ptr<alba::statistics::Statistics>(
@@ -272,21 +265,16 @@ int main(int argc, const char *argv[]) {
           "n-clients", po::value<uint32_t>()->default_value(1),
           "number of clients")("log-level",
                                po::value<string>()->default_value("info"),
-                               "log level to use")
-      ("use-null-io",
-       po::value<bool>() -> default_value(false),
-       "fake results from rora without doing any networking"
-       )
-      ("block-size", po::value<uint32_t>() -> default_value(4096),
-       "block size for partial read"
-       )
-      ("io-pattern",
-       po::value<string>() -> default_value("fixed"),
-       "pattern for partial read benchmark: fixed | random | stride (default = fixed)"
-       )
-      ("focus", po::value<bool>() -> default_value(false),
-       "if set, all rora partial reads come from the same object, and hit the same ASD"
-          );
+                               "log level to use")(
+          "use-null-io", po::value<bool>()->default_value(false),
+          "fake results from rora without doing any networking")(
+          "block-size", po::value<uint32_t>()->default_value(4096),
+          "block size for partial read")(
+          "io-pattern", po::value<string>()->default_value("fixed"),
+          "pattern for partial read benchmark: fixed | random | stride "
+          "(default = fixed)")("focus", po::value<bool>()->default_value(false),
+                               "if set, all rora partial reads come from the "
+                               "same object, and hit the same ASD");
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -454,10 +442,10 @@ int main(int argc, const char *argv[]) {
     uint32_t block_size = getRequiredArg<uint32_t>(vm, "block-size");
     bool focus = getRequiredArg<bool>(vm, "focus");
     string io_pattern_s = getRequiredStringArg(vm, "io-pattern");
-    io_pattern_t io_pattern= FIXED;
-    const auto & it = string_to_pattern.find(io_pattern_s);
-    if(it != string_to_pattern.cend()){
-        io_pattern = it -> second;
+    io_pattern_t io_pattern = FIXED;
+    const auto &it = string_to_pattern.find(io_pattern_s);
+    if (it != string_to_pattern.cend()) {
+      io_pattern = it->second;
     }
 
     if (use_rora) {
@@ -465,7 +453,7 @@ int main(int argc, const char *argv[]) {
       rora_config = RoraConfig(100, use_null_io);
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
-                           n_clients, rora_config,focus, block_size,
+                           n_clients, rora_config, focus, block_size,
                            io_pattern);
   } else {
     cout << "got invalid command name. valid options are: "

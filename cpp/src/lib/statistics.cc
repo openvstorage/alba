@@ -68,11 +68,12 @@ void Statistics::pretty(std::ostream &os) const {
   os << "max_dur: " << _max_dur << std::endl;
   os << "average: " << _avg << std::endl;
 
-  double duration = (duration_cast<milliseconds>(_t1 - _creation).count()) / 1000.0;
+  double duration =
+      (duration_cast<milliseconds>(_t1 - _creation).count()) / 1000.0;
   os << "total_time: " << duration << " s" << std::endl;
 
-  double frequency = ((double) _n_samples) / (duration + .0000001);
-  os << "frequency: " << frequency << "/s" <<std::endl;
+  double frequency = ((double)_n_samples) / (duration + .0000001);
+  os << "frequency: " << frequency << "/s" << std::endl;
 
   uint border_index = 0;
   while (border_index <= _last_index) {
