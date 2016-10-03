@@ -75,7 +75,7 @@ private:
   void _set_ctx(osd_t, std::shared_ptr<gobjfs::xio::client_ctx>);
   void _remove_ctx(osd_t);
 
-  bool _filling;
+  std::atomic<bool> _filling;
   std::mutex _filling_mutex;
   std::condition_variable _filling_cond;
 };
