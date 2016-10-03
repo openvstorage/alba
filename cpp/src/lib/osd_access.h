@@ -22,8 +22,11 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <condition_variable>
 #include "osd_info.h"
 #include <gobjfs_client.h>
+#include "proxy_client.h"
+
 namespace alba {
 namespace proxy_client {
 
@@ -53,12 +56,12 @@ public:
   void operator=(OsdAccess const &) = delete;
   bool osd_is_unknown(osd_t);
 
-  void update(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &infos);
+  void update(Proxy_client& client);
 
   int read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 
 private:
-  OsdAccess() {}
+  OsdAccess() :_filling(false){}
   std::mutex _osd_infos_mutex;
   std::map<osd_t, info_caps> _osd_infos;
 
@@ -71,6 +74,10 @@ private:
   std::shared_ptr<gobjfs::xio::client_ctx> _find_ctx(osd_t);
   void _set_ctx(osd_t, std::shared_ptr<gobjfs::xio::client_ctx>);
   void _remove_ctx(osd_t);
+
+  bool _filling;
+  std::mutex _filling_mutex;
+  std::condition_variable _filling_cond;
 };
 }
 }

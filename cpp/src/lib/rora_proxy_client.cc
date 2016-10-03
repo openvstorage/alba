@@ -141,9 +141,10 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
 void RoraProxy_client::_maybe_update_osd_infos(
     std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   bool ok = true;
+  auto& access = OsdAccess::getInstance();
   for (auto &item : per_osd) {
     osd_t osd = item.first;
-    if (OsdAccess::getInstance().osd_is_unknown(osd)) {
+    if (access.osd_is_unknown(osd)) {
       ok = false;
       break;
     }
@@ -151,9 +152,7 @@ void RoraProxy_client::_maybe_update_osd_infos(
 
   if (!ok) {
     ALBA_LOG(DEBUG, "RoraProxy_client:: refresh from proxy");
-    std::vector<std::pair<osd_t, info_caps>> result;
-    this->osd_info(result);
-    OsdAccess::getInstance().update(result);
+    access.update(*this);
   }
 }
 
