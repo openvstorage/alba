@@ -27,7 +27,7 @@ namespace proxy_client {
 RoraProxy_client::RoraProxy_client(
     std::unique_ptr<GenericProxy_client> delegate,
     const RoraConfig &rora_config)
-    : _delegate(std::move(delegate)) {
+    : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io) {
   ALBA_LOG(INFO, "RoraProxy_client(...)");
   ManifestCache::set_capacity(rora_config.manifest_cache_size);
 }
@@ -138,11 +138,11 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
 
 void RoraProxy_client::_maybe_update_osd_infos(
     std::map<osd_t, std::vector<asd_slice>> &per_osd) {
-  ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos");
   bool ok = true;
+  auto &access = OsdAccess::getInstance();
   for (auto &item : per_osd) {
     osd_t osd = item.first;
-    if (OsdAccess::getInstance().osd_is_unknown(osd)) {
+    if (access.osd_is_unknown(osd)) {
       ok = false;
       break;
     }
@@ -150,18 +150,15 @@ void RoraProxy_client::_maybe_update_osd_infos(
 
   if (!ok) {
     ALBA_LOG(DEBUG, "RoraProxy_client:: refresh from proxy");
-    std::vector<std::pair<osd_t, info_caps>> result;
-    this->osd_info(result);
-    OsdAccess::getInstance().update(result);
+    access.update(*this);
   }
 }
 
-int RoraProxy_client::_short_path_one(const std::string &namespace_,
+int RoraProxy_client::_short_path_one(const std::string & /*namespace_*/,
                                       const ObjectSlices &object_slices,
                                       std::shared_ptr<Manifest> mfp) {
 
   // one object, maybe multiple slices and or fragments involved
-  ALBA_LOG(DEBUG, "_short_path_one(" << namespace_ << ", ...)");
   std::map<osd_t, std::vector<asd_slice>> per_osd;
   const Manifest &manifest = *mfp;
   for (auto &sd : object_slices.slices) {
@@ -207,22 +204,23 @@ int RoraProxy_client::_short_path_one(const std::string &namespace_,
   // everything to read is now nicely sorted per osd.
   _maybe_update_osd_infos(per_osd);
   //_dump(per_osd);
-  return OsdAccess::getInstance().read_osds_slices(per_osd);
+  if (_use_null_io) {
+    return 0;
+  } else {
+    return OsdAccess::getInstance().read_osds_slices(per_osd);
+  }
 }
 
 int RoraProxy_client::_short_path_many(
     const std::string &namespace_,
     const std::vector<short_path_entry> &short_path) {
 
-  ALBA_LOG(DEBUG, "_short_path_many(" << namespace_ << ", n_slices ="
-                                      << short_path.size() << ")");
   int result = 0;
   for (auto &object_slices_mf : short_path) {
     auto object_slices = object_slices_mf.first;
     // in // ?
     int current_result =
         _short_path_one(namespace_, object_slices, object_slices_mf.second);
-    ALBA_LOG(DEBUG, "current_result=" << current_result);
     result |= current_result;
   }
   return result;
@@ -231,7 +229,6 @@ int RoraProxy_client::_short_path_many(
 void _process(std::vector<object_info> &object_infos,
               const std::string &namespace_) {
 
-  ALBA_LOG(DEBUG, "_process : " << object_infos.size());
   for (auto &object_info : object_infos) {
     using alba::stuff::operator<<;
     // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
@@ -280,7 +277,6 @@ void RoraProxy_client::read_objects_slices(
     _process(object_infos, namespace_);
     // short_path.
     int result = _short_path_many(namespace_, short_path);
-    ALBA_LOG(DEBUG, "_short_path_many => " << result);
     if (result) {
       ALBA_LOG(DEBUG, "result=" << result << " => partial read via delegate");
       std::vector<ObjectSlices> via_proxy2;

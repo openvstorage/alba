@@ -43,6 +43,8 @@ private:
   uint _last_index;
   high_resolution_clock::time_point _t0;
   high_resolution_clock::time_point _t1;
+  high_resolution_clock::time_point _creation = high_resolution_clock::now();
+  ;
   std::vector<double> _dur_buckets;
   friend std::ostream &operator<<(std::ostream &os, const Statistics &);
 };

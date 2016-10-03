@@ -61,13 +61,30 @@ void OsdAccess::_remove_ctx(osd_t osd) {
   _osd_ctxs.erase(osd);
 }
 
-void OsdAccess::update(std::vector<std::pair<osd_t, info_caps>> &infos) {
-  ALBA_LOG(DEBUG, "OsdAccess::update");
-  std::lock_guard<std::mutex> lock(_osd_infos_mutex);
-
-  _osd_infos.clear();
-  for (auto &p : infos) {
-    _osd_infos.emplace(p.first, std::move(p.second));
+void OsdAccess::update(Proxy_client &client) {
+  if (!_filling.load()) {
+    ALBA_LOG(INFO, "OsdAccess::update:: filling up");
+    std::lock_guard<std::mutex> f_lock(_filling_mutex);
+    if (!_filling.load()) {
+      _filling.store(true);
+      try {
+        std::lock_guard<std::mutex> lock(_osd_infos_mutex);
+        std::vector<std::pair<osd_t, info_caps>> infos;
+        client.osd_info(infos);
+        _osd_infos.clear();
+        for (auto &p : infos) {
+          _osd_infos.emplace(p.first, std::move(p.second));
+        }
+      } catch (std::exception &e) {
+        ALBA_LOG(INFO,
+                 "OSDAccess::update: exception while filling up: " << e.what());
+      }
+      _filling.store(false);
+      _filling_cond.notify_all();
+    }
+  } else {
+    std::unique_lock<std::mutex> lock(_filling_mutex);
+    _filling_cond.wait(lock, [this] { return (this->_filling.load()); });
   }
 }
 
@@ -88,7 +105,6 @@ int OsdAccess::read_osds_slices(
 
 using namespace gobjfs::xio;
 int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
-  ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices(" << osd << ")");
 
   auto ctx = _find_ctx(osd);
 
@@ -123,18 +139,14 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     } else {
       ip = osd_info->ips[0];
     }
-    ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
-                           << " port: " << backdoor_port);
     int err =
         ctx_attr_set_transport(ctx_attr, transport_name, ip, backdoor_port);
-    ALBA_LOG(DEBUG, "set_transport err:" << err);
     if (err != 0) {
       throw osd_access_exception(err, "ctx_attr_set_transport");
     }
 
     ctx = ctx_new(ctx_attr);
     err = ctx_init(ctx);
-    ALBA_LOG(DEBUG, "ctx_init err:" << err);
     if (err != 0) {
       throw osd_access_exception(err, "ctx_init");
     }
@@ -167,7 +179,7 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     }
     aio_finish(ctx, elem);
   }
-  ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
+  // ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
   if (ret != 0 && ctx_is_disconnected(ctx)) {
     ALBA_LOG(INFO, "removing bad ctx");
     _remove_ctx(osd);

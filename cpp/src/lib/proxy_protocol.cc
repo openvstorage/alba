@@ -322,10 +322,10 @@ void read_read_objects_slices2_response(
 
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
-        &asserts,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
-        &updates) {
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>> &
+        asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>> &
+        updates) {
   write_tag(mb, _APPLY_SEQUENCE);
   to(mb, namespace_);
   to(mb, write_barrier);
@@ -394,8 +394,8 @@ void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
 void read_osd_info_response(
     message &m, Status &status,
     std::vector<std::pair<osd_t, std::pair<std::unique_ptr<OsdInfo>,
-                                           std::unique_ptr<OsdCapabilities>>>>
-        &result) {
+                                           std::unique_ptr<OsdCapabilities>>>> &
+        result) {
   read_status(m, status);
   if (status.is_ok()) {
     uint32_t n;
