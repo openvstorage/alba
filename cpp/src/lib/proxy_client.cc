@@ -17,8 +17,8 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "proxy_client.h"
-#include "tcp_proxy_client.h"
 #include "rdma_proxy_client.h"
+#include "tcp_proxy_client.h"
 
 #include "rora_proxy_client.h"
 
@@ -26,8 +26,8 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include <iostream>
 
-#include <errno.h>
 #include <boost/lexical_cast.hpp>
+#include <errno.h>
 
 namespace alba {
 namespace proxy_client {
@@ -66,6 +66,14 @@ make_proxy_client(const std::string &ip, const std::string &port,
     return std::unique_ptr<Proxy_client>(
         new RoraProxy_client(std::move(inner_client), *rora_config));
   }
+}
+
+void Proxy_client::apply_sequence(
+    const std::string &namespace_, const write_barrier write_barrier,
+    const sequences::Sequence &seq,
+    std::vector<proxy_protocol::object_info> &object_infos) {
+  this->apply_sequence(namespace_, write_barrier, seq._asserts, seq._updates,
+                       object_infos);
 }
 
 std::ostream &operator<<(std::ostream &os, Transport t) {

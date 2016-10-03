@@ -42,9 +42,9 @@ let assert_proxy_error f err =
        f () >>= fun () ->
        Lwt.fail (Failure "Operation succeeded while it should have failed"))
     (function
-      | Error.Exn err' when err' = err ->
+      | Error.Exn (err', _) when err' = err ->
         Lwt.return ()
-      | Error.Exn err' ->
+      | Error.Exn (err', _) ->
         Lwt.fail
           (Failure
              (Printf.sprintf
@@ -193,7 +193,7 @@ let test_protocol_version () =
          closer
       )
       (function
-        | Protocol.Error.Exn Protocol.Error.ProtocolVersionMismatch ->
+        | Protocol.Error.Exn (Protocol.Error.ProtocolVersionMismatch, _) ->
            Lwt_log.debug "ok, this is what we needed"
         | exn ->
            Lwt_log.info_f ~exn "wrong protocol error" >>= fun () ->

@@ -18,12 +18,13 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include "alba_logger.h"
+#include <boost/optional.hpp>
 #include <istream>
+#include <memory>
 #include <ostream>
 #include <sstream>
-#include <vector>
 #include <string>
-#include <boost/optional.hpp>
+#include <vector>
 
 namespace alba {
 namespace llio {
@@ -120,8 +121,9 @@ public:
   }
 
   void output(std::ostream &os) {
-    output_using([&](const char *buffer, const int len)
-                     -> void { os.write(buffer, len); });
+    output_using([&](const char *buffer, const int len) -> void {
+      os.write(buffer, len);
+    });
     os.flush();
     if (!os.good()) {
       throw output_stream_exception("invalid outputstream");
@@ -210,6 +212,16 @@ template <typename X> void from(message &m, boost::optional<X> &xo) noexcept {
   } else {
     xo = boost::none;
   }
+}
+
+template <typename X>
+void to(message_builder &mb, const std::shared_ptr<X> &x) noexcept {
+  to(mb, *x);
+}
+
+template <typename X>
+void to(message_builder &mb, const std::unique_ptr<X> &x) noexcept {
+  to(mb, *x);
 }
 }
 }

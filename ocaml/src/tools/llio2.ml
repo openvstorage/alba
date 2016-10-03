@@ -340,6 +340,8 @@ module Deser =
       WriteBuffer.tuple5_to s1 s2 s3 s4 s5
 
     let option (d, s) = ReadBuffer.option_from d, WriteBuffer.option_to s
+
+    let bigstring_slice = ReadBuffer.bigstring_slice_from, WriteBuffer.bigstring_slice_to
   end
 
 module NetFdReader = struct
