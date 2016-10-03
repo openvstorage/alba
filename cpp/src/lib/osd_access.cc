@@ -65,22 +65,22 @@ void OsdAccess::update(Proxy_client &client) {
   if (!_filling.load()) {
     ALBA_LOG(INFO, "OsdAccess::update:: filling up");
     std::lock_guard<std::mutex> f_lock(_filling_mutex);
-    if(!_filling.load()){
-        _filling.store(true);
-        try {
-            std::lock_guard<std::mutex> lock(_osd_infos_mutex);
-            std::vector<std::pair<osd_t, info_caps>> infos;
-            client.osd_info(infos);
-            _osd_infos.clear();
-            for (auto &p : infos) {
-                _osd_infos.emplace(p.first, std::move(p.second));
-            }
-        } catch (std::exception &e) {
-            ALBA_LOG(INFO,
-                     "OSDAccess::update: exception while filling up: " << e.what());
+    if (!_filling.load()) {
+      _filling.store(true);
+      try {
+        std::lock_guard<std::mutex> lock(_osd_infos_mutex);
+        std::vector<std::pair<osd_t, info_caps>> infos;
+        client.osd_info(infos);
+        _osd_infos.clear();
+        for (auto &p : infos) {
+          _osd_infos.emplace(p.first, std::move(p.second));
         }
-        _filling.store(false);
-        _filling_cond.notify_all();
+      } catch (std::exception &e) {
+        ALBA_LOG(INFO,
+                 "OSDAccess::update: exception while filling up: " << e.what());
+      }
+      _filling.store(false);
+      _filling_cond.notify_all();
     }
   } else {
     std::unique_lock<std::mutex> lock(_filling_mutex);
