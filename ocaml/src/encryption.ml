@@ -34,14 +34,17 @@ module Encryption = struct
 
   type chaining_mode =
     | CBC
+    | CTR
   [@@deriving show]
 
   let chaining_mode_to_buffer buf = function
     | CBC -> Llio.int8_to buf 1
+    | CTR -> Llio.int8_to buf 2
 
   let chaining_mode_from_buffer buf =
     match Llio.int8_from buf with
     | 1 -> CBC
+    | 2 -> CTR
     | k -> raise_bad_tag "Encryption.chaining_mode" k
 
   type algo =

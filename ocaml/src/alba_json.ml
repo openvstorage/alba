@@ -250,7 +250,8 @@ module Preset = struct
 
   type fragment_encryption =
     | NO_ENCRYPTION [@name "none"]
-    | AES_CBC_256   of string [@name "aes-cbc-256"]
+    | AES_CBC_256 of string [@name "aes-cbc-256"]
+    | AES_CTR_256 of string [@name "aes-ctr-256"]
   [@@deriving yojson]
 
   type t = {
@@ -305,6 +306,7 @@ module Preset = struct
         (let open Encryption in
          match preset.fragment_encryption with
          | AlgoWithKey (AES (CBC, L256), key) -> AES_CBC_256 (HexString.show key)
+         | AlgoWithKey (AES (CTR, L256), key) -> AES_CTR_256 (HexString.show key)
          | NoEncryption -> NO_ENCRYPTION);
       in_use;
     }
@@ -326,7 +328,12 @@ module Preset = struct
      | AES_CBC_256 enc_key_file ->
        Lwt_extra2.read_file enc_key_file >>= fun enc_key ->
        Lwt_log.debug_f "Read encryption key with size %i" (Bytes.length enc_key) >>= fun () ->
-       Lwt.return (AlgoWithKey (AES (CBC, L256), enc_key))) >>= fun fragment_encryption ->
+       Lwt.return (AlgoWithKey (AES (CBC, L256), enc_key))
+     | AES_CTR_256 enc_key_file ->
+       Lwt_extra2.read_file enc_key_file >>= fun enc_key ->
+       Lwt_log.debug_f "Read encryption key with size %i" (Bytes.length enc_key) >>= fun () ->
+       Lwt.return (AlgoWithKey (AES (CTR, L256), enc_key)))
+    >>= fun fragment_encryption ->
 
     Lwt.return
       { policies;

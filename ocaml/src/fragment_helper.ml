@@ -85,7 +85,9 @@ let maybe_encrypt
     get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
     Cipher.with_t_lwt
       key Cipher.AES256 Cipher.CBC []
-      (fun cipher -> Cipher.encrypt ~iv cipher bs) >>= fun () ->
+      (fun cipher ->
+        Cipher.set_iv cipher iv;
+        Cipher.encrypt cipher bs) >>= fun () ->
     Lwt.return bs
 
 let maybe_decrypt

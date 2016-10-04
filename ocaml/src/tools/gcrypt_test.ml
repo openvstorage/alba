@@ -30,10 +30,9 @@ let test_encrypt_decrypt () =
       Cipher.with_t_lwt
         key Cipher.AES256 Cipher.CBC []
         (fun cipher ->
-           Cipher.encrypt
-             ~iv:(String.make block_len '\000')
-             cipher
-             padded_data) >>= fun () ->
+          Cipher.set_iv cipher (String.make block_len '\000');
+          Cipher.encrypt cipher padded_data)
+      >>= fun () ->
       Lwt.return padded_data
     in
     get_res () >>= fun res1 ->

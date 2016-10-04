@@ -274,6 +274,17 @@ module Cipher = struct
       let err = inner t (ocaml_string_start iv) (String.length iv) in
       Error.check err
 
+  let set_ctr =
+    (* gcry_error_t gcry_cipher_setctr (gcry_cipher_hd_t h, const void *c, size_t l) *)
+    let inner =
+      foreign
+        "gcry_cipher_setctr"
+        (hd_t @-> ocaml_string @-> int_to_size_t @-> returning Error.t)
+    in
+    fun t ctr ->
+    let err = inner t (ocaml_string_start ctr) (String.length ctr) in
+    Error.check err
+
   let encrypt =
     (* gcry_error_t
          gcry_cipher_encrypt (
@@ -306,8 +317,7 @@ module Cipher = struct
          ptr char @-> int_to_size_t @->
          returning Error.t)
     in
-    fun t ?iv data ->
-      Option.iter (fun iv -> set_iv t iv) iv;
+    fun t data ->
       let len = Lwt_bytes.length data in
       let open Lwt.Infix in
       Lwt_preemptive.detach
