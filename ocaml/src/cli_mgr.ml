@@ -470,7 +470,7 @@ let alba_list_purging_osds
       (fun client ->
          client # list_all_purging_osds >>= fun (cnt, osds) ->
          let open Albamgr_protocol.Protocol in
-         Lwt_list.map_p
+         Lwt_list.map_s
            (fun osd_id ->
               client # get_osd_by_osd_id ~osd_id >>= function
               | None -> Lwt.return None
