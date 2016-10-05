@@ -127,7 +127,7 @@ let alba_show_namespace cfg_file tls_config namespace to_json verbose =
          client # mgr_access # get_namespace ~namespace >>= fun ro ->
           match ro with
           | None -> Lwt.fail Not_found
-          | Some (namespace, r) ->
+          | Some (namespace, (r: Albamgr_protocol.Protocol.Namespace.t)) ->
              client # get_base_client # with_nsm_client ~namespace
                (fun nsm_client ->
                   nsm_client # get_stats >>= fun ({ Nsm_model.NamespaceStats.logical_size;
@@ -143,7 +143,13 @@ let alba_show_namespace cfg_file tls_config namespace to_json verbose =
                                   storage_per_osd = snd storage_size_per_osd;
                                   bucket_count = snd bucket_count; }
                       in
-                      print_result res Statistics.to_yojson
+                      let both = { name = namespace;
+                                   Both.statistics = res;
+                                   namespace = make namespace r;
+
+                                 }
+                      in
+                      print_result both Both.both_to_yojson
                     end
                   else
                     begin

@@ -1372,11 +1372,25 @@ module Deployment = struct
         `String x -> x
       | _ -> assert false
 
-  type show_namespace_result = {
+  type show_namespace_stats = {
       logical : int;
       storage : int;
       storage_per_osd : (int * int) list;
       bucket_count : ((int*int*int*int) * int) list;
+    } [@@deriving yojson]
+
+  type show_namespace_info = {
+      id : int;
+      name : string;
+      nsm_host_id : string;
+      state : string;
+      preset_name : string;
+    } [@@deriving yojson]
+
+  type show_namespace_result = {
+      name:string;
+      statistics : show_namespace_stats;
+      namespace : show_namespace_info;
     } [@@deriving yojson]
 
   let show_namespace t namespace =
@@ -2429,7 +2443,7 @@ module Test = struct
     end;
 
     let show_namespace_1 = show_namespace t_global "demo" in
-    assert (show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]);
+    assert (show_namespace_1.statistics.bucket_count = [ (2,2,4,4), 3; ]);
 
     (* unlink a backend *)
     let local_1_alba_id = get_alba_id t_local1 in
@@ -2460,7 +2474,7 @@ module Test = struct
 
     (* check buckets voor global demo namespace? *)
     let show_namespace_2 = show_namespace t_global "demo" in
-    assert (show_namespace_2.bucket_count = [ (2,2,3,3), 3]);
+    assert (show_namespace_2.statistics.bucket_count = [ (2,2,3,3), 3]);
 
     (* add backend again *)
     add_backend_as_osd t_local1;
@@ -2470,7 +2484,7 @@ module Test = struct
       "all data should be repaired"
       (fun () ->
        let show_namespace_3 = show_namespace t_global "demo" in
-       (show_namespace_3.bucket_count = [ (2,2,4,4), 3]));
+       (show_namespace_3.statistics.bucket_count = [ (2,2,4,4), 3]));
 
     (* upload another object *)
     do_upload "3";
