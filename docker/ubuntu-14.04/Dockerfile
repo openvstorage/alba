@@ -8,8 +8,10 @@ RUN echo "deb http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
     > /etc/apt/sources.list.d/boost_repo.list
 RUN echo "deb-src http://ppa.launchpad.net/afrank/boost/ubuntu trusty main" \
     > /etc/apt/sources.list.d/boost_src_repo.list
+RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    --allow-unauthenticated --force-yes \
         build-essential m4 apt-utils \
         libffi-dev libssl-dev \
         libbz2-dev \
@@ -44,7 +46,32 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --force-
         libboost1.57-all-dev libboost1.57-all \
         fuse \
         sysstat \
-        ncurses-dev
+        ncurses-dev \
+        cmake \
+        libgtest-dev \
+        clang-3.5 \
+        liblttng-ust0 librdmacm1 libtokyocabinet9 \
+        libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
+        libhiredis0.10 liblz4-1 libxio-dev libxio0 \
+        omniorb-nameserver \
+        libunwind8-dev libaio1 libaio1-dbg libaio-dev \
+        libz-dev libbz2-dev \
+        libgoogle-glog-dev libibverbs-dev \
+        librdmacm-dev
+
+# Install etcd:
+RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
+RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
+RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
+    && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
+
+
+# clone orocksdb & install rocksdb shared lib
+RUN git clone https://github.com/domsj/orocksdb.git \
+    && cd orocksdb \
+    && git checkout 26c45963f1f305825785592efb41b50192a07491 \
+    && ./install_rocksdb.sh
+
 
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 
@@ -101,12 +128,10 @@ RUN wget https://01.org/sites/default/files/downloads/intelr-storage-acceleratio
     rm -rf isa-l-2.14.0
 
 # c++
-RUN apt-get update && apt-get -y install libgtest-dev cmake
 RUN cd /usr/src/gtest \
         && cmake . \
         && make \
         && mv libg* /usr/lib/
-
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
@@ -117,28 +142,14 @@ RUN cd arakoon && eval `${opam_env}` \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
-# install specific orocksdb
-RUN git clone https://github.com/domsj/orocksdb.git \
-    && eval `${opam_env}` \
+# install orocksdb
+RUN eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 26c45963f1f305825785592efb41b50192a07491 \
-    && ./install_rocksdb.sh \
     && make build install
 
 
-RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
-RUN apt-get update && apt-get -y --allow-unauthenticated install \
-      clang-3.5 \
-      liblttng-ust0 librdmacm1 libtokyocabinet9 \
-      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
-      libhiredis0.10 liblz4-1 libxio-dev libxio0 \
-      omniorb-nameserver \
-      libunwind8-dev libaio1 libaio1-dbg libaio-dev \
-      libz-dev libbz2-dev \
-      libgoogle-glog-dev libibverbs-dev
-
 #for now, install ordma manually
-RUN apt-get update && apt-get -y install librdmacm-dev
+
 RUN git clone https://github.com/toolslive/ordma.git \
     && cd ordma \
     && git checkout tags/0.0.2 \
@@ -154,14 +165,6 @@ RUN cd gobjfs \
        && cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO .. \
        && make \
        && make install
-
-
-# Install etcd:
-RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
-RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
-RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
-    && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
-
 
 # Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
