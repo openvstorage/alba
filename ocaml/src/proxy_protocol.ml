@@ -283,6 +283,8 @@ module Protocol = struct
   type consistent_read = bool [@@deriving show]
   type should_cache = bool [@@deriving show]
 
+  type alba_id = string [@@deriving show]
+
   type write_barrier = bool [@@deriving show]
 
   type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
@@ -430,7 +432,7 @@ module Protocol = struct
                            consistent_read,
                             (data
                              * ((object_name
-                                 * string
+                                 * alba_id
                                  * manifest_with_id) counted_list ))) request
     | InvalidateCache : (Namespace.name, unit) request
     | DropCache : (Namespace.name, unit) request
@@ -448,11 +450,11 @@ module Protocol = struct
                       Capabilities.OsdCapabilities.t) counted_list )
                   request
     | OsdInfo2 : (unit,
-                  ((string * (Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
+                  ((alba_id * (Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
                                Capabilities.OsdCapabilities.t) counted_list) counted_list)
                  ) request
     | ApplySequence : (Namespace.name * write_barrier * Assert.t list * Update.t list,
-                       (object_name * string * manifest_with_id) counted_list) request
+                       (object_name * alba_id * manifest_with_id) counted_list) request
     | ReadObjects : (Namespace.name
                      * object_name list
                      * consistent_read

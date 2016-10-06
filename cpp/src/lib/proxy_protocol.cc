@@ -411,7 +411,7 @@ void _read_osd_infos(message &m, osd_map_t &result) {
     auto p = std::shared_ptr<info_caps>(
         new info_caps(std::move(info), std::move(caps)));
 
-    // result[osd_id] = std::move(p);
+    result[osd_id] = std::move(p);
   }
 }
 void read_osd_info_response(message &m, Status &status, osd_map_t &result) {
@@ -441,7 +441,7 @@ void read_osd_info2_response(message &m, Status &status,
       osd_map_t infos;
       _read_osd_infos(m, infos);
       auto entry = std::make_pair(std::move(alba_id), std::move(infos));
-      result.insert(std::move(entry));
+      result.push_back(std::move(entry));
     }
   }
 }

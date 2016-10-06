@@ -131,7 +131,7 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
     std::cout << osd << ": [";
     for (auto &asd_slice : asd_slices) {
 
-      void *p = asd_slice.bytes;
+      void *p = asd_slice.target;
       std::cout << "( " << asd_slice.offset << ", " << asd_slice.len << ", "
                 << p << "),";
     }
@@ -147,7 +147,7 @@ void RoraProxy_client::_maybe_update_osd_infos(
   bool ok = true;
   for (auto &item : per_osd) {
     osd_t osd = item.first;
-    if (OsdAccess::getInstance().osd_is_unknown(alba_id, osd)) {
+    if (OsdAccess::getInstance().osd_is_unknown(osd)) {
       ok = false;
       break;
     }
@@ -161,100 +161,151 @@ void RoraProxy_client::_maybe_update_osd_infos(
   }
 }
 
-int RoraProxy_client::_short_path_back_one(
-    const ObjectSlices &object_slices,
-    std::shared_ptr<ManifestWithNamespaceId> mfp,
-    std::shared_ptr<alba_id_t> alba_id) {
+// TODO move all of this back to manifest.h/cc
+struct Location {
+  uint32_t namespace_id;
+  std::string object_id;
+  uint32_t chunk_id;
+  uint32_t fragment_id;
+  uint32_t offset;
+  uint32_t length;
+  boost::optional<fragment_location_t> fragment_location;
+};
 
-  // one object, maybe multiple slices and or fragments involved
-  std::map<osd_t, std::vector<asd_slice>> per_osd;
-  const ManifestWithNamespaceId &manifest_w = *mfp;
-  for (auto &sd : object_slices.slices) {
-    uint32_t bytes_to_read = sd.size;
-    uint32_t offset = sd.offset;
-    byte *buf = sd.buf;
+Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
+  int chunk_index = -1;
+  uint64_t total = 0;
 
-    while (bytes_to_read > 0) {
-      auto maybe_coords = manifest_w.to_chunk_fragment(offset);
-      if (maybe_coords == boost::none) {
-        return -1;
-      }
-
-      auto &coords = *maybe_coords;
-
-      osd_t osd = coords._osd;
-      auto it = per_osd.find(osd);
-      if (it == per_osd.end()) {
-        std::vector<asd_slice> slices;
-        per_osd.insert(make_pair(osd, slices));
-        it = per_osd.find(osd);
-      }
-
-      uint32_t bytes_in_slice;
-      if (coords.pos_in_fragment + bytes_to_read <= coords.fragment_length) {
-        bytes_in_slice = bytes_to_read;
-      } else {
-        bytes_in_slice = coords.fragment_length - coords.pos_in_fragment;
-      }
-
-      string key = fragment_key(manifest_w.namespace_id, manifest_w.object_id,
-                                coords.fragment_version, coords.chunk_index,
-                                coords.fragment_index);
-
-      auto slice = asd_slice{key, coords.pos_in_fragment, bytes_in_slice, buf};
-
-      it->second.push_back(slice);
-      buf += bytes_in_slice;
-      offset += bytes_in_slice;
-      bytes_to_read -= bytes_in_slice;
+  {
+    auto it = mf.chunk_sizes.begin();
+    while (total <= pos) {
+      chunk_index++;
+      auto chunk_size = *it;
+      total += chunk_size;
+      it++;
     }
   }
-  // everything to read is now nicely sorted per osd.
-  _maybe_update_osd_infos(*alba_id, per_osd);
-  //_dump(per_osd);
-  return OsdAccess::getInstance().read_osds_slices(*alba_id, per_osd);
+
+  auto &chunk_fragment_locations = mf.fragment_locations[chunk_index];
+
+  uint32_t chunk_size = mf.chunk_sizes[chunk_index];
+  total -= chunk_size;
+  uint32_t fragment_length = chunk_size / mf.encoding_scheme.k;
+  uint32_t pos_in_chunk = pos - total;
+
+  uint32_t fragment_index = pos_in_chunk / fragment_length;
+  auto p = chunk_fragment_locations[fragment_index];
+
+  Location l;
+  l.namespace_id = mf.namespace_id;
+  l.object_id = mf.object_id;
+  l.chunk_id = chunk_index;
+  l.fragment_id = fragment_index;
+  l.fragment_location = p;
+  l.offset = pos_in_chunk;
+  l.length = std::min(len, fragment_length - pos_in_chunk);
+  return l;
 }
 
-int RoraProxy_client::_short_path_back_many(
-    const std::vector<short_path_back_entry> &short_path,
-    std::shared_ptr<alba_id_t> &alba_id) {
+void _resolve_slice_one_level(std::vector<std::pair<byte *, Location>> &results,
+                              ManifestWithNamespaceId &manifest,
+                              uint64_t offset, uint32_t length, byte *target) {
+  while (length > 0) {
+    Location l = get_location(manifest, offset, length);
+    length -= l.length;
+    offset += l.length;
+    results.push_back(std::move(std::pair<byte *, Location>(target, l)));
+    target += l.length;
+  };
+}
 
-  ALBA_LOG(DEBUG, "_short_path_back_many(n_slices =" << short_path.size()
-                                                     << ")");
-
-  int result = 0;
-  for (auto &object_slices_mf : short_path) {
-    auto object_slices = object_slices_mf.first;
-    // in // ?
-    int current_result =
-        _short_path_back_one(object_slices, object_slices_mf.second, alba_id);
-    ALBA_LOG(DEBUG, "current_result=" << current_result);
-    result |= current_result;
+// TODO return boost optional
+boost::optional<std::vector<std::pair<byte *, Location>>>
+_resolve_one_level(const alba_id_t &alba_id, const std::string &namespace_,
+                   const ObjectSlices obj_slices) {
+  auto &cache = ManifestCache::getInstance();
+  auto mf = cache.find(namespace_, alba_id, obj_slices.object_name);
+  if (mf == nullptr) {
+    return boost::none;
+  } else {
+    boost::optional<std::vector<std::pair<byte *, Location>>> results;
+    for (auto &slice : obj_slices.slices) {
+      _resolve_slice_one_level(*results, *mf, slice.offset, slice.size,
+                               slice.buf);
+    }
+    return results;
   }
-  return result;
 }
 
-int RoraProxy_client::_short_path_front_many(
-    const std::vector<short_path_front_entry> &short_path) {
-  ALBA_LOG(DEBUG, "_short_path_front_many( ... n_slices = " << short_path.size()
-                                                            << ")");
-  // for (auto &entry : short_path) {
-  //   auto object_slices = entry.first;
-  //   const std::shared_ptr<RoraMap> rora_map = entry.second;
-  //   ALBA_LOG(DEBUG, "object_name = " << object_slices.object_name);
+boost::optional<std::vector<std::pair<byte *, Location>>>
+_resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
+                         const uint alba_level_num,
+                         const std::string &namespace_,
+                         const ObjectSlices &obj_slices) {
+  auto &alba_id = alba_levels[alba_level_num];
+  auto locations = _resolve_one_level(alba_id, namespace_, obj_slices);
+  if (locations == boost::none) {
+    return boost::none;
+  } else {
+    if ((alba_level_num + 1) < alba_levels.size()) {
+      std::vector<std::pair<byte *, Location>> locations_final_level;
+      for (auto &buf_l : *locations) {
+        auto l = std::get<1>(buf_l);
+        message_builder mb;
+        to(mb, l.object_id);
+        to(mb, l.chunk_id);
+        to(mb, l.fragment_id);
+        SliceDescriptor slice{std::get<0>(buf_l), l.offset, l.length};
+        std::vector<SliceDescriptor> slices;
+        slices.push_back(slice);
+        ObjectSlices obj_slices{mb.as_string(), slices};
+        auto locations = _resolve_one_many_levels(
+            alba_levels, alba_level_num + 1, namespace_, obj_slices);
+        if (locations == boost::none) {
+          return boost::none;
+        } else {
+          for (auto &l : *locations) {
+            locations_final_level.push_back(l);
+          }
+        }
+      }
+      return locations_final_level;
+    } else {
+      return locations;
+    }
+  }
+}
 
-  //   for (auto &slice : object_slices.slices) {
-  //     // which manifest for the start point of the slice ?
-  //     auto r = proxy_protocol::lookup(*rora_map, slice.offset);
-  //     if (boost::none != r) {
-  //       ALBA_LOG(DEBUG, "HIERE:" << *r);
+int _short_path(const std::vector<std::pair<byte *, Location>> locations) {
 
-  //     } else {
-  //       throw "not implemented...";
-  //     }
-  //   }
-  // }
-  // throw "not implemented";
+  std::map<osd_t, std::vector<asd_slice>> per_osd;
+
+  for (auto &bl : locations) {
+    auto &target = std::get<0>(bl);
+    auto &l = std::get<1>(bl);
+
+    osd_t osd_id = *std::get<0>(*l.fragment_location);
+    uint32_t version_id = std::get<1>(*l.fragment_location);
+
+    asd_slice slice;
+    slice.offset = l.offset;
+    slice.len = l.length;
+    slice.target = target;
+    string key = fragment_key(l.namespace_id, l.object_id, version_id,
+                              l.chunk_id, l.fragment_id);
+    slice.key = key;
+
+    auto it = per_osd.find(osd_id);
+    if (it == per_osd.end()) {
+      std::vector<asd_slice> slices;
+      per_osd.insert(make_pair(osd_id, slices));
+      it = per_osd.find(osd_id);
+    }
+    auto slices = it->second;
+    slices.push_back(slice);
+  }
+  auto &osd_access = OsdAccess::getInstance();
+  return osd_access.read_osds_slices(per_osd);
 }
 
 void _process(std::vector<object_info> &object_infos,
@@ -285,60 +336,40 @@ void RoraProxy_client::read_objects_slices(
                                     object_infos);
     _process(object_infos, namespace_);
   } else {
-    std::vector<short_path_front_entry> short_path_front;
-    std::vector<short_path_back_entry> short_path_back;
+    std::vector<std::pair<byte *, Location>> short_path;
     std::vector<ObjectSlices> via_proxy;
+    auto alba_levels = OsdAccess::getInstance().get_alba_levels();
     for (auto &object_slices : slices) {
-      auto object_name = object_slices.object_name;
-      auto &cache = ManifestCache::getInstance();
-      auto entry = cache.find(namespace_, "TODO", object_name);
-      if (nullptr != entry) {
-        // auto front = entry->front;
-        // if (nullptr != front) {
-        //   auto p = std::make_pair(object_slices, entry);
-        //   short_path_front.push_back(p);
-        // } else {
-        //   auto mfp = entry->back;
-        //   if (compressor_t::NO_COMPRESSION ==
-        //           mfp->compression->get_compressor() &&
-        //       encryption_t::NO_ENCRYPTION ==
-        //           mfp->encrypt_info->get_encryption()) {
-        //     auto p = std::make_pair(object_slices, mfp);
-        //     short_path_back.push_back(p);
-        //   } else {
-        //     via_proxy.push_back(object_slices);
-        //   }
-        // }
-      } else {
+      auto locations =
+          _resolve_one_many_levels(alba_levels, 0, namespace_, object_slices);
+      if (locations == boost::none ||
+          std::any_of(locations->begin(), locations->end(),
+                      [](std::pair<byte *, Location> &l) {
+                        return std::get<1>(l).fragment_location == boost::none;
+                      })) {
         via_proxy.push_back(object_slices);
+      } else {
+        for (auto &l : *locations) {
+          short_path.push_back(l);
+        }
       }
-    };
+    }
+
     // TODO: different paths could go in parallel
-    int result_front = _short_path_front_many(short_path_front);
+    int result_front = _short_path(short_path);
+    ALBA_LOG(DEBUG, "_short_path result => " << result_front);
+
+    if (result_front) {
+      via_proxy.clear();
+      for (auto &s : slices) {
+        via_proxy.push_back(s);
+      }
+    }
 
     std::vector<object_info> object_infos;
-
     _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
                                     object_infos);
-
     _process(object_infos, namespace_);
-
-    // short_path_back.
-    std::shared_ptr<alba_id_t> back_id(nullptr);
-    int result = _short_path_back_many(short_path_back, back_id);
-    ALBA_LOG(DEBUG, "_short_path_many => " << result);
-    if (result) {
-      ALBA_LOG(DEBUG, "result=" << result << " => partial read via delegate");
-      std::vector<ObjectSlices> via_proxy2;
-      for (auto &p : short_path_back) {
-        auto object_slices = p.first;
-        via_proxy2.push_back(object_slices);
-      }
-      std::vector<object_info> object_infos2;
-      _delegate->read_objects_slices2(namespace_, via_proxy2, consistent_read_,
-                                      object_infos2);
-      _process(object_infos2, namespace_);
-    }
   }
 }
 

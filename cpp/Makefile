@@ -77,7 +77,7 @@ compile_tests:
 	-c src/tests/proxy_client_test.cc -o src/tests/proxy_client_test.o
 
 	$(CMD) -I/usr/include/gtest \
-	-c src/tests/helper.cc -o src/tests/helper.o
+	-o src/tests/helper.o
 
 	$(CMD) -I/usr/include/gtest \
 	-c ./src/tests/main.cc -o src/tests/main.o

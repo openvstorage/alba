@@ -24,13 +24,8 @@ but WITHOUT ANY WARRANTY of any kind.
 
 namespace alba {
 namespace proxy_client {
-typedef std::pair<std::string, std::string> strpair;
-using namespace proxy_protocol;
-typedef std::pair<ObjectSlices, std::shared_ptr<ManifestWithNamespaceId>>
-    short_path_back_entry;
 
-typedef std::pair<ObjectSlices, std::shared_ptr<ManifestWithNamespaceId>>
-    short_path_front_entry;
+using namespace proxy_protocol;
 
 class RoraProxy_client : public Proxy_client {
 public:
@@ -109,18 +104,6 @@ private:
   void
   _maybe_update_osd_infos(alba_id_t &alba_id,
                           std::map<osd_t, std::vector<asd_slice>> &per_osd);
-
-  int _short_path_front_many(
-      const std::vector<short_path_front_entry> &short_path);
-
-  int _short_path_back_many(
-      const std::vector<short_path_back_entry> &short_path,
-      std::shared_ptr<alba_id_t> &alba_id);
-
-  int _short_path_back_one(
-      const proxy_protocol::ObjectSlices &object_slices,
-      std::shared_ptr<proxy_protocol::ManifestWithNamespaceId> mfp,
-      std::shared_ptr<alba_id_t> alba_id);
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,

@@ -16,11 +16,11 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#include "proxy_protocol.h"
 #include "llio.h"
+#include "proxy_protocol.h"
 #include "snappy.h"
-#include <boost/optional/optional_io.hpp>
 #include "stuff.h"
+#include <boost/optional/optional_io.hpp>
 
 namespace alba {
 namespace llio {
@@ -153,7 +153,7 @@ void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid) {
 }
 
 template <> void from(message &m, proxy_protocol::FCInfo &fc_info) {
-  ALBA_LOG(DEBUG,"from(_, fc_info");
+  ALBA_LOG(DEBUG, "from(_, fc_info");
   from(m, fc_info.alba_id);
   from(m, fc_info.namespace_id);
   uint32_t n_chunks;
@@ -185,50 +185,9 @@ template <> void from(message &m, proxy_protocol::FCInfo &fc_info) {
   ALBA_LOG(DEBUG, "m.pos= " << m.get_pos()
                             << " left=" << (m.size() - m.get_pos()));
 }
-
 }
 
 namespace proxy_protocol {
-
-void Manifest::calculate_chunk_index(uint32_t pos, int32_t &index,
-                                     uint32_t &total) const {
-  index = -1;
-  total = 0;
-  auto it = chunk_sizes.begin();
-  while (total <= pos) {
-    index++;
-    auto chunk_size = *it;
-    total += chunk_size;
-    it++;
-  }
-}
-
-boost::optional<lookup_result_t>
-Manifest::to_chunk_fragment(uint32_t pos) const {
-  int chunk_index;
-  uint32_t total;
-  calculate_chunk_index(pos, chunk_index, total);
-
-  auto &chunk_fragment_locations = fragment_locations[chunk_index];
-
-  uint32_t chunk_size = chunk_sizes[chunk_index];
-  total -= chunk_size;
-  uint32_t fragment_length = chunk_size / encoding_scheme.k;
-  uint32_t pos_in_chunk = pos - total;
-
-  uint32_t fragment_index = pos_in_chunk / fragment_length;
-  auto p = chunk_fragment_locations[fragment_index];
-  auto fragment_version = p.second;
-  auto maybe_osd = p.first;
-  if (maybe_osd) {
-    uint32_t pos_in_fragment = pos - (total + fragment_index * fragment_length);
-    lookup_result_t r(object_id, chunk_index, fragment_index, pos_in_fragment,
-                      fragment_length, fragment_version, *maybe_osd);
-    return r;
-  } else {
-    return boost::none;
-  }
-}
 
 std::ostream &operator<<(std::ostream &os, const EncodingScheme &scheme) {
   os << "EncodingScheme{k=" << scheme.k << ", m=" << scheme.m
@@ -329,26 +288,25 @@ std::ostream &operator<<(std::ostream &os, const FCInfo &fc_info) {
   return os;
 }
 
-std::ostream &operator<<(std::ostream &os, const lookup_result_t &r) {
-  os << "lookup_result_t(`";
-  _dump_string(os, r.object_id);
-  os << "`, " << r.chunk_index << ", " << r.fragment_index
-     << ", pos_in_fragment= " << r.pos_in_fragment
-     << ", fragment_length= " << r.fragment_length
-     << ", _osd= " << r._osd
-     << ")";
-  return os;
-}
+// std::ostream &operator<<(std::ostream &os, const lookup_result_t &r) {
+//   os << "lookup_result_t(`";
+//   _dump_string(os, r.object_id);
+//   os << "`, " << r.chunk_index << ", " << r.fragment_index
+//      << ", pos_in_fragment= " << r.pos_in_fragment
+//      << ", fragment_length= " << r.fragment_length
+//      << ", _osd= " << r._osd
+//      << ")";
+//   return os;
+// }
 
-std::ostream &operator<<(std::ostream& os, const target_t& t){
-    switch(t){
-    case target_t::VIA_PROXY : { os << "VIA_PROXY";}; break;
-    case target_t::RORA_FRONT: { os << "RORA_FRONT";}; break;
-    case target_t::RORA_BACK : { os << "RORA_BACK";}; break;
-    }
-    return os;
+// std::ostream &operator<<(std::ostream& os, const target_t& t){
+//     switch(t){
+//     case target_t::VIA_PROXY : { os << "VIA_PROXY";}; break;
+//     case target_t::RORA_FRONT: { os << "RORA_FRONT";}; break;
+//     case target_t::RORA_BACK : { os << "RORA_BACK";}; break;
+//     }
+//     return os;
 
-}
-
+// }
 }
 }
