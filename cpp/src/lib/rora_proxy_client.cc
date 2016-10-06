@@ -159,8 +159,6 @@ void RoraProxy_client::_maybe_update_osd_infos(
   }
 }
 
-// TODO move all of this back to manifest.h/cc
-
 Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   int chunk_index = -1;
   uint64_t total = 0;
@@ -247,7 +245,11 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
         SliceDescriptor slice{std::get<0>(buf_l), l.offset, l.length};
         std::vector<SliceDescriptor> slices;
         slices.push_back(slice);
-        ObjectSlices obj_slices{mb.as_string(), slices};
+
+        string r = mb.as_string();
+        string fragment_cache_object_name = r.substr(4, r.size() - 4);
+
+        ObjectSlices obj_slices{fragment_cache_object_name, slices};
         auto locations = _resolve_one_many_levels(
             alba_levels, alba_level_num + 1, namespace_, obj_slices);
         if (locations == boost::none) {

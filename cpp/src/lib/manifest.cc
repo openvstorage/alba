@@ -287,26 +287,5 @@ std::ostream &operator<<(std::ostream &os, const FCInfo &fc_info) {
      << std::endl;
   return os;
 }
-
-// std::ostream &operator<<(std::ostream &os, const lookup_result_t &r) {
-//   os << "lookup_result_t(`";
-//   _dump_string(os, r.object_id);
-//   os << "`, " << r.chunk_index << ", " << r.fragment_index
-//      << ", pos_in_fragment= " << r.pos_in_fragment
-//      << ", fragment_length= " << r.fragment_length
-//      << ", _osd= " << r._osd
-//      << ")";
-//   return os;
-// }
-
-// std::ostream &operator<<(std::ostream& os, const target_t& t){
-//     switch(t){
-//     case target_t::VIA_PROXY : { os << "VIA_PROXY";}; break;
-//     case target_t::RORA_FRONT: { os << "RORA_FRONT";}; break;
-//     case target_t::RORA_BACK : { os << "RORA_BACK";}; break;
-//     }
-//     return os;
-
-// }
 }
 }

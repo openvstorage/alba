@@ -54,7 +54,6 @@ all: compile_lib compile_tests
 	$(CXX) \
             src/tests/llio_test.o \
 	    src/tests/proxy_client_test.o \
-	    src/tests/helper.o \
 	    src/tests/main.o \
 	    $(LIBDIRS) \
             $(LIBS_exec) -lgtest -lrdmacm \
@@ -75,9 +74,6 @@ compile_tests:
 
 	$(CMD) -I/usr/include/gtest \
 	-c src/tests/proxy_client_test.cc -o src/tests/proxy_client_test.o
-
-	$(CMD) -I/usr/include/gtest \
-	-o src/tests/helper.o
 
 	$(CMD) -I/usr/include/gtest \
 	-c ./src/tests/main.cc -o src/tests/main.o
