@@ -337,8 +337,7 @@ double GenericProxy_client::ping(double delay) {
   return result;
 }
 
-void GenericProxy_client::osd_info(
-    osd_map_t &result) {
+void GenericProxy_client::osd_info(osd_map_t &result) {
   _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_osd_info_request(mb);

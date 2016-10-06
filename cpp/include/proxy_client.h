@@ -155,7 +155,7 @@ public:
                                 const allow_overwrite, const Checksum *checksum,
                                 proxy_protocol::ManifestWithNamespaceId &) = 0;
 
-  virtual void osd_info2(rora_osd_map_t& result) = 0;
+  virtual void osd_info2(rora_osd_map_t &result) = 0;
 };
 
 enum class Transport { tcp, rdma };

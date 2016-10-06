@@ -185,6 +185,7 @@ void read_osd_info_response(message &m, Status &status, osd_map_t &result);
 
 void write_osd_info2_request(message_builder &mb);
 
-void read_osd_info2_response(message &m, Status &status, rora_osd_map_t &result);
+void read_osd_info2_response(message &m, Status &status,
+                             rora_osd_map_t &result);
 }
 }

@@ -432,7 +432,7 @@ int main(int argc, const char *argv[]) {
     auto client = make_proxy_client(host, port, timeout, transport);
     rora_osd_map_t result;
     client->osd_info2(result);
-    for (auto& e : result) {
+    for (auto &e : result) {
       const auto &alba_id = e.first;
       cout << "alba_id:" << alba_id << std::endl;
       cout << "   ..." << std::endl;

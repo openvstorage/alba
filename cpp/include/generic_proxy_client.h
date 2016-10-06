@@ -94,8 +94,7 @@ public:
 
   virtual double ping(const double delay);
 
-  virtual void
-  osd_info(osd_map_t &result);
+  virtual void osd_info(osd_map_t &result);
 
   virtual void osd_info2(rora_osd_map_t &result);
 
