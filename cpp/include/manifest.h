@@ -81,6 +81,16 @@ typedef std::pair<boost::optional<uint32_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
 
+struct Location {
+  uint32_t namespace_id;
+  std::string object_id;
+  uint32_t chunk_id;
+  uint32_t fragment_id;
+  uint32_t offset;
+  uint32_t length;
+  boost::optional<fragment_location_t> fragment_location;
+};
+
 struct Manifest {
   std::string name;
   std::string object_id;

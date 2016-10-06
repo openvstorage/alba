@@ -129,9 +129,8 @@ public:
   }
 
   void output(std::ostream &os) {
-    output_using([&](const char *buffer, const int len) -> void {
-      os.write(buffer, len);
-    });
+    output_using([&](const char *buffer, const int len)
+                     -> void { os.write(buffer, len); });
     os.flush();
     if (!os.good()) {
       throw output_stream_exception("invalid outputstream");

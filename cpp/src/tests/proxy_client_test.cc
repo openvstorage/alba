@@ -295,7 +295,7 @@ TEST(proxy_client, test_osd_info2) {
   EXPECT_EQ(alba_ids.size(), 2);
 
   auto &osd_access = alba::proxy_client::OsdAccess::getInstance();
-  osd_access.update(result);
+  osd_access.update(*client);
   for (osd_t osd = 0; osd < n; osd++) {
     bool unknown = osd_access.osd_is_unknown(osd);
     EXPECT_EQ(unknown, false);

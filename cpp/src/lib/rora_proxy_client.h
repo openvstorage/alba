@@ -102,8 +102,11 @@ private:
   std::unique_ptr<GenericProxy_client> _delegate;
 
   void
-  _maybe_update_osd_infos(alba_id_t &alba_id,
-                          std::map<osd_t, std::vector<asd_slice>> &per_osd);
+  _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);
+
+  int _short_path(const std::vector<std::pair<byte *, Location>> &);
+
+  bool _use_null_io;
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,

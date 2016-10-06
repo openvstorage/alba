@@ -29,7 +29,7 @@ using std::string;
 RoraProxy_client::RoraProxy_client(
     std::unique_ptr<GenericProxy_client> delegate,
     const RoraConfig &rora_config)
-    : _delegate(std::move(delegate)) {
+    : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io) {
   ALBA_LOG(INFO, "RoraProxy_client(...)");
   ManifestCache::set_capacity(rora_config.manifest_cache_size);
 }
@@ -140,14 +140,14 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
 }
 
 void RoraProxy_client::_maybe_update_osd_infos(
-    alba_id_t &alba_id, std::map<osd_t, std::vector<asd_slice>> &per_osd) {
+    std::map<osd_t, std::vector<asd_slice>> &per_osd) {
 
-  ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos(" << alba_id
-                                                               << ",_)");
+  ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos(_)");
   bool ok = true;
+  auto &access = OsdAccess::getInstance();
   for (auto &item : per_osd) {
     osd_t osd = item.first;
-    if (OsdAccess::getInstance().osd_is_unknown(osd)) {
+    if (access.osd_is_unknown(osd)) {
       ok = false;
       break;
     }
@@ -155,22 +155,11 @@ void RoraProxy_client::_maybe_update_osd_infos(
 
   if (!ok) {
     ALBA_LOG(DEBUG, "RoraProxy_client:: refresh from proxy");
-    rora_osd_map_t to_update;
-    this->osd_info2(to_update);
-    OsdAccess::getInstance().update(to_update);
+    access.update(*this);
   }
 }
 
 // TODO move all of this back to manifest.h/cc
-struct Location {
-  uint32_t namespace_id;
-  std::string object_id;
-  uint32_t chunk_id;
-  uint32_t fragment_id;
-  uint32_t offset;
-  uint32_t length;
-  boost::optional<fragment_location_t> fragment_location;
-};
 
 Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   int chunk_index = -1;
@@ -276,7 +265,8 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
   }
 }
 
-int _short_path(const std::vector<std::pair<byte *, Location>> locations) {
+int RoraProxy_client::_short_path(
+    const std::vector<std::pair<byte *, Location>> &locations) {
 
   std::map<osd_t, std::vector<asd_slice>> per_osd;
 
@@ -304,8 +294,15 @@ int _short_path(const std::vector<std::pair<byte *, Location>> locations) {
     auto slices = it->second;
     slices.push_back(slice);
   }
-  auto &osd_access = OsdAccess::getInstance();
-  return osd_access.read_osds_slices(per_osd);
+
+  // everything to read is now nicely sorted per osd.
+  _maybe_update_osd_infos(per_osd);
+  //_dump(per_osd);
+  if (_use_null_io) {
+    return 0;
+  } else {
+    return OsdAccess::getInstance().read_osds_slices(per_osd);
+  }
 }
 
 void _process(std::vector<object_info> &object_infos,

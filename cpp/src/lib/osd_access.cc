@@ -73,12 +73,30 @@ void OsdAccess::_remove_ctx(osd_t osd) {
   _osd_ctx.erase(osd);
 }
 
-void OsdAccess::update(rora_osd_map_t &info_map) {
-  ALBA_LOG(DEBUG, "OsdAccess::update");
-  std::lock_guard<std::mutex> lock(_alba_map_mutex);
-  _alba_map.clear();
-  for (auto &e : info_map) {
-    _alba_map.push_back(std::move(e));
+void OsdAccess::update(Proxy_client &client) {
+  if (!_filling.load()) {
+    ALBA_LOG(INFO, "OsdAccess::update:: filling up");
+    std::lock_guard<std::mutex> f_lock(_filling_mutex);
+    if (!_filling.load()) {
+      _filling.store(true);
+      try {
+        std::lock_guard<std::mutex> lock(_alba_map_mutex);
+        rora_osd_map_t infos;
+        client.osd_info2(infos);
+        _alba_map.clear();
+        for (auto &p : infos) {
+          _alba_map.push_back(std::move(p));
+        }
+      } catch (std::exception &e) {
+        ALBA_LOG(INFO,
+                 "OSDAccess::update: exception while filling up: " << e.what());
+      }
+      _filling.store(false);
+      _filling_cond.notify_all();
+    }
+  } else {
+    std::unique_lock<std::mutex> lock(_filling_mutex);
+    _filling_cond.wait(lock, [this] { return (this->_filling.load()); });
   }
 }
 
@@ -142,18 +160,14 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     } else {
       ip = osd_info.ips[0];
     }
-    ALBA_LOG(DEBUG, "osd:" << osd << " ip:" << ip
-                           << " port: " << backdoor_port);
     int err =
         ctx_attr_set_transport(ctx_attr, transport_name, ip, backdoor_port);
-    ALBA_LOG(DEBUG, "set_transport err:" << err);
     if (err != 0) {
       throw osd_access_exception(err, "ctx_attr_set_transport");
     }
 
     ctx = ctx_new(ctx_attr);
     err = ctx_init(ctx);
-    ALBA_LOG(DEBUG, "ctx_init err:" << err);
     if (err != 0) {
       throw osd_access_exception(err, "ctx_init");
     }
@@ -186,7 +200,7 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     }
     aio_finish(ctx, elem);
   }
-  ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
+  // ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
   if (ret != 0 && ctx_is_disconnected(ctx)) {
     ALBA_LOG(INFO, "removing bad ctx");
     _remove_ctx(osd);
