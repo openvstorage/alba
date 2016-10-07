@@ -69,7 +69,7 @@ RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
 # clone orocksdb & install rocksdb shared lib
 RUN git clone https://github.com/domsj/orocksdb.git \
     && cd orocksdb \
-    && git checkout 26c45963f1f305825785592efb41b50192a07491 \
+    && git checkout tags/0.3.0 \
     && ./install_rocksdb.sh
 
 
@@ -148,7 +148,6 @@ RUN eval `${opam_env}` \
 
 
 #for now, install ordma manually
-
 RUN git clone https://github.com/toolslive/ordma.git \
     && cd ordma \
     && git checkout tags/0.0.2 \

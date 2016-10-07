@@ -342,8 +342,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         (fun () ->
          Lwt.catch
            (fun () ->
-            let open Rocks in
-            let () = RocksDb.close db in
+            let () = Rocks.close db in
             let dir = root ^ "/"  in
             rm_tree dir >>= fun () ->
             Lwt.catch
@@ -408,10 +407,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                   let open Rocks in
                   WriteBatch.with_t
                     (fun wb ->
-                     WriteBatch.put wb blob_access_key vaccess1;
-                     WriteBatch.delete wb access_key;
-                     WriteBatch.put wb access_key1 boidv;
-                     WriteOptions.with_t (fun wo -> RocksDb.write db wo wb)
+                     WriteBatch.put_string wb blob_access_key vaccess1;
+                     WriteBatch.delete_string wb access_key;
+                     WriteBatch.put_string wb access_key1 boidv;
+                     Rocks.write db wb
                     );
                 end;
                 Lwt_log.debug_f "lookup %lx oid:%S was a hit!" bid oid
@@ -635,16 +634,13 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       let vboid = boid_value_of boid in
       WriteBatch.with_t
         (fun wb ->
-         WriteBatch.put wb kfsid fsid;
-         WriteBatch.put wb ksize vsize;
-         WriteBatch.put wb kaccess vaccess;
-         WriteBatch.put wb kaccess_rev vboid;
-         WriteBatch.put wb _TOTAL_COUNT total_count';
-         WriteBatch.put wb _TOTAL_SIZE total_size';
-         WriteOptions.with_t
-           (fun wo ->
-            RocksDb.write db wo wb
-           )
+         WriteBatch.put_string wb kfsid fsid;
+         WriteBatch.put_string wb ksize vsize;
+         WriteBatch.put_string wb kaccess vaccess;
+         WriteBatch.put_string wb kaccess_rev vboid;
+         WriteBatch.put_string wb _TOTAL_COUNT total_count';
+         WriteBatch.put_string wb _TOTAL_SIZE total_size';
+         Rocks.write db wb
         );
       Lwt.return ()
 
@@ -684,13 +680,13 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
 
       WriteBatch.with_t
         (fun wb ->
-         WriteBatch.put wb kfsid fsid;
-         WriteBatch.put wb ksize vsize;
-         WriteBatch.put wb kaccess vaccess;
-         WriteBatch.put wb kaccess_rev vboid;
-         WriteBatch.delete wb kaccess_rev0;
-         WriteBatch.put wb _TOTAL_SIZE total_size';
-         WriteOptions.with_t(fun wo -> RocksDb.write db wo wb)
+         WriteBatch.put_string wb kfsid fsid;
+         WriteBatch.put_string wb ksize vsize;
+         WriteBatch.put_string wb kaccess vaccess;
+         WriteBatch.put_string wb kaccess_rev vboid;
+         WriteBatch.delete_string wb kaccess_rev0;
+         WriteBatch.put_string wb _TOTAL_SIZE total_size';
+         Rocks.write db wb
         );
       Lwt.return ()
 
@@ -844,14 +840,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                  let ksize_i   = blob_size_key_of   boid_i in
                  let kaccess_i = blob_access_key_of boid_i in
 
-                 WriteBatch.delete wb kfsid_i;
-                 WriteBatch.delete wb ksize_i;
-                 WriteBatch.delete wb kaccess_i;
-                 WriteBatch.delete wb kaccess_rev_i;
+                 WriteBatch.delete_string wb kfsid_i;
+                 WriteBatch.delete_string wb ksize_i;
+                 WriteBatch.delete_string wb kaccess_i;
+                 WriteBatch.delete_string wb kaccess_rev_i;
                in
                let () = List.iter del_victim victims in
 
-               WriteOptions.with_t (fun wo ->RocksDb.write db wo wb))
+               Rocks.write db wb)
           end
       in
 
@@ -883,9 +879,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       let open Rocks in
       WriteBatch.with_t
         (fun wb ->
-         WriteBatch.put wb _TOTAL_COUNT (ser64 total_count');
-         WriteBatch.put wb _TOTAL_SIZE (ser64 total_size');
-         WriteOptions.with_t (fun wo ->RocksDb.write db wo wb));
+         WriteBatch.put_string wb _TOTAL_COUNT (ser64 total_count');
+         WriteBatch.put_string wb _TOTAL_SIZE (ser64 total_size');
+         Rocks.write db wb);
 
       let rec loop = function
         | [] -> Lwt.return_unit
@@ -945,14 +941,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          let vaccess = access_value_of access in
          let total_count' = ser64 (total_count +: 1L) in
 
-         WriteBatch.put wb kfsid fsid;
-         WriteBatch.put wb ksize vsize;
-         WriteBatch.put wb kaccess vaccess;
-         WriteBatch.put wb kaccess_rev vboid;
+         WriteBatch.put_string wb kfsid fsid;
+         WriteBatch.put_string wb ksize vsize;
+         WriteBatch.put_string wb kaccess vaccess;
+         WriteBatch.put_string wb kaccess_rev vboid;
 
-         WriteBatch.put wb _TOTAL_COUNT total_count';
-         WriteBatch.put wb _TOTAL_SIZE  total_size';
-         WriteOptions.with_t (fun wo ->RocksDb.write db wo wb)
+         WriteBatch.put_string wb _TOTAL_COUNT total_count';
+         WriteBatch.put_string wb _TOTAL_SIZE  total_size';
+         Rocks.write db wb
         );
 
       Lwt_log.debug_f ~section "after batch"
@@ -1001,14 +997,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       let open Rocks in
       WriteBatch.with_t
         (fun wb ->
-         WriteBatch.put wb kfsid fsid;
-         WriteBatch.put wb ksize vsize;
-         WriteBatch.put wb kaccess vaccess;
-         WriteBatch.put wb kaccess_rev vboid;
-         WriteBatch.delete wb kaccess_rev0;
+         WriteBatch.put_string wb kfsid fsid;
+         WriteBatch.put_string wb ksize vsize;
+         WriteBatch.put_string wb kaccess vaccess;
+         WriteBatch.put_string wb kaccess_rev vboid;
+         WriteBatch.delete_string wb kaccess_rev0;
          (* total count remains the same *)
-         WriteBatch.put wb _TOTAL_SIZE total_size';
-         WriteOptions.with_t (fun wo -> RocksDb.write db wo wb)
+         WriteBatch.put_string wb _TOTAL_SIZE total_size';
+         Rocks.write db wb
         );
       Lwt.return ()
 
@@ -1087,7 +1083,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       Lwt_log.warning_f ~section "closing database" >>= fun () ->
       Lwt_mutex.with_lock _mutex
       (fun () ->
-       Rocks.RocksDb.close db;
+       Rocks.close db;
        Lwt_extra2.with_fd
          db_path ~flags:[O_RDONLY] ~perm:0o644
          (fun fd ->

@@ -39,6 +39,13 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         sysstat \
         ncurses-dev
 
+# install specific orocksdb
+RUN git clone https://github.com/domsj/orocksdb.git \
+    && cd orocksdb \
+    && git checkout tags/0.3.0 \
+    && ./install_rocksdb.sh
+
+
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 
 env ocaml_version=4.03.0
@@ -109,13 +116,11 @@ RUN cd arakoon && eval `${opam_env}` \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
-# install specific orocksdb
-RUN git clone https://github.com/domsj/orocksdb.git \
-    && eval `${opam_env}` \
+# install orocksdb
+RUN eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 26c45963f1f305825785592efb41b50192a07491 \
-    && ./install_rocksdb.sh \
     && make build install
+
 
 #for now, install ordma manually
 RUN apt-get update && apt-get -y install librdmacm-dev
