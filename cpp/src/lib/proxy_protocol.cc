@@ -325,10 +325,10 @@ void read_read_objects_slices2_response(
 
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>> &
-        asserts,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>> &
-        updates) {
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
+        &asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
+        &updates) {
   write_tag(mb, _APPLY_SEQUENCE);
   to(mb, namespace_);
   to(mb, write_barrier);
@@ -443,6 +443,21 @@ void read_osd_info2_response(message &m, Status &status,
       result.push_back(std::move(entry));
     }
   }
+}
+
+std::ostream &operator<<(std::ostream &os, const SliceDescriptor &s) {
+  os << "{ offset = " << s.offset << " , size = " << s.size << " }";
+  return os;
+}
+std::ostream &operator<<(std::ostream &os, const ObjectSlices &s) {
+  os << "{ object_name = ";
+  dump_string(os, s.object_name);
+  os << "slices = [ ";
+  for (auto &sd : s.slices) {
+    os << sd << ";";
+  }
+  os << " ] }";
+  return os;
 }
 
 } // namespace

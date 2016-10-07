@@ -130,6 +130,8 @@ struct FCInfo {
   FCInfo(const FCInfo &) = delete;
 };
 
+void dump_string(std::ostream &, const std::string &);
+
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);
 std::ostream &operator<<(std::ostream &, const compressor_t &);
 std::ostream &operator<<(std::ostream &, const Compression &);

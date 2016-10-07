@@ -77,7 +77,9 @@ void RoraProxy_client::write_object_fs(const string &namespace_,
   write_object_fs2(namespace_, object_name, input_file, overwrite, checksum,
                    *mf);
 
-  _maybe_add_to_manifest_cache(namespace_, "", std::move(mf));
+  _maybe_add_to_manifest_cache(
+      namespace_, OsdAccess::getInstance().get_alba_levels(*this)[0],
+      std::move(mf));
 }
 
 void RoraProxy_client::read_object_fs(const string &namespace_,
@@ -212,6 +214,7 @@ _resolve_one_level(const alba_id_t &alba_id, const std::string &namespace_,
   auto &cache = ManifestCache::getInstance();
   auto mf = cache.find(namespace_, alba_id, obj_slices.object_name);
   if (mf == nullptr) {
+    ALBA_LOG(DEBUG, "manifest for " << obj_slices << " not found");
     return boost::none;
   } else {
     std::vector<std::pair<byte *, Location>> results;
@@ -249,6 +252,8 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
         string fragment_cache_object_name = r.substr(4, r.size() - 4);
 
         ObjectSlices obj_slices{fragment_cache_object_name, slices};
+        ALBA_LOG(DEBUG, "_resolve_one_many_levels: obj_slices=" << obj_slices);
+
         auto locations = _resolve_one_many_levels(
             alba_levels, alba_level_num + 1, namespace_, obj_slices);
         if (locations == boost::none) {
@@ -336,11 +341,7 @@ void RoraProxy_client::read_objects_slices(
   } else {
     std::vector<std::pair<byte *, Location>> short_path;
     std::vector<ObjectSlices> via_proxy;
-    auto alba_levels = OsdAccess::getInstance().get_alba_levels();
-    if (alba_levels.size() == 0) {
-      OsdAccess::getInstance().update(*this);
-      alba_levels = OsdAccess::getInstance().get_alba_levels();
-    }
+    auto alba_levels = OsdAccess::getInstance().get_alba_levels(*this);
     for (auto &object_slices : slices) {
       auto locations =
           _resolve_one_many_levels(alba_levels, 0, namespace_, object_slices);

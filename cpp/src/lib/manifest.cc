@@ -236,7 +236,7 @@ std::ostream &operator<<(std::ostream &os, const fragment_location_t &f) {
   return os;
 }
 
-void _dump_string(std::ostream &os, const std::string &s) {
+void dump_string(std::ostream &os, const std::string &s) {
   const char *bytes = s.data();
   const int size = s.size();
   stuff::dump_buffer(os, bytes, size);
@@ -245,10 +245,10 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   using alba::stuff::operator<<;
   os << "{"
      << "name = `";
-  _dump_string(os, mf.name);
+  dump_string(os, mf.name);
   os << "`, " << std::endl;
   os << "  object_id = `";
-  _dump_string(os, mf.object_id);
+  dump_string(os, mf.object_id);
   os << "`, " << std::endl
 
      << "  encoding_scheme = " << mf.encoding_scheme << "," << std::endl

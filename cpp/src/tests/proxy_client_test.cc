@@ -318,8 +318,10 @@ void _generic_partial_read_test(
   ALBA_LOG(INFO, "creating namespace " << actual_namespace);
   client->create_namespace(actual_namespace, preset);
 
-  client->write_object_fs(actual_namespace, name, file,
-                          proxy_client::allow_overwrite::T, nullptr);
+  // doe write die ook manifests van frag cache vult!
+  proxy_protocol::ManifestWithNamespaceId _mf;
+  client->write_object_fs2(actual_namespace, name, file,
+                           proxy_client::allow_overwrite::T, nullptr, _mf);
   if (clear_before_read) {
     client->invalidate_cache(actual_namespace);
   }

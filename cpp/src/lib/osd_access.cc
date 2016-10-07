@@ -86,8 +86,8 @@ void OsdAccess::update(Proxy_client &client) {
         _alba_levels.clear();
         _alba_map.clear();
         for (auto &p : infos) {
+          _alba_levels.push_back(std::string(p.first));
           _alba_map.push_back(std::move(p));
-          _alba_levels.push_back(p.first);
         }
       } catch (std::exception &e) {
         ALBA_LOG(INFO,
@@ -102,7 +102,12 @@ void OsdAccess::update(Proxy_client &client) {
   }
 }
 
-std::vector<alba_id_t> OsdAccess::get_alba_levels() { return _alba_levels; }
+std::vector<alba_id_t> OsdAccess::get_alba_levels(Proxy_client &client) {
+  if (_alba_levels.size() == 0) {
+    this->update(client);
+  }
+  return _alba_levels;
+}
 
 int OsdAccess::read_osds_slices(
     std::map<osd_t, std::vector<asd_slice>> &per_osd) {

@@ -68,8 +68,12 @@ struct ObjectSlices {
   const std::vector<SliceDescriptor> slices;
 };
 
+std::ostream &operator<<(std::ostream &, const SliceDescriptor &);
+std::ostream &operator<<(std::ostream &, const ObjectSlices &);
+
 typedef std::tuple<std::string, std::string,
-                   std::unique_ptr<ManifestWithNamespaceId>> object_info;
+                   std::unique_ptr<ManifestWithNamespaceId>>
+    object_info;
 
 using std::string;
 using boost::optional;
@@ -155,10 +159,10 @@ void read_read_objects_slices2_response(message &m, Status &status,
 
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>> &
-        asserts,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>> &
-        updates);
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
+        &asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
+        &updates);
 
 void read_apply_sequence_response(message &m, Status &status,
                                   std::vector<object_info> &);

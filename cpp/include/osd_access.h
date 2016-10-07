@@ -61,7 +61,7 @@ public:
 
   int read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 
-  std::vector<alba_id_t> get_alba_levels();
+  std::vector<alba_id_t> get_alba_levels(Proxy_client &client);
 
 private:
   OsdAccess() : _filling(false) {}
