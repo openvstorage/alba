@@ -15,4 +15,4 @@ then
 fi
 
 # finally execute the command the user requested
-exec sudo arakoon_url=${arakoon_url-} alba_url=${alba_url-} -i -u jenkins "$@"
+sudo -E -i -u jenkins bash -l -c "cd alba && ./jenkins/run2.sh $@"
