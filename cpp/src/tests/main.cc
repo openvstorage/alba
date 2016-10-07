@@ -59,6 +59,7 @@ int main(int argc, char **argv) {
   po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
 
   init_log();
+  std::srand(std::time(0));
   int res = RUN_ALL_TESTS();
 
   return res;

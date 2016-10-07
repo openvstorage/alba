@@ -269,7 +269,7 @@ TEST(proxy_client, test_osd_info) {
 TEST(proxy_client, test_osd_info2) {
   config cfg;
   using namespace proxy_protocol;
-  auto client = make_proxy_client(cfg.HOST, "14000", TIMEOUT, cfg.TRANSPORT);
+  auto client = make_proxy_client(cfg.HOST, "10000", TIMEOUT, cfg.TRANSPORT);
   rora_osd_map_t result;
   client->osd_info2(result);
   uint n = 12;
@@ -292,6 +292,7 @@ TEST(proxy_client, test_osd_info2) {
     }
     EXPECT_EQ(osds.size(), n);
   }
+  EXPECT_EQ(result.size(), 2);
   EXPECT_EQ(alba_ids.size(), 2);
 
   auto &osd_access = alba::proxy_client::OsdAccess::getInstance();
@@ -368,7 +369,6 @@ TEST(proxy_client, test_partial_read_trivial) {
 }
 
 TEST(proxy_client, test_partial_read_trivial2) {
-  std::srand(std::time(0));
   std::string namespace_("test_partial_read_trivial2");
   std::ostringstream sos;
   sos << "with_manifest" << std::rand();
@@ -489,7 +489,7 @@ TEST(proxy_client, rora_fc_partial_read_trivial) {
   std::vector<ObjectSlices> objects_slices{object_slices};
   string file_name("./ocaml/alba.native");
   config cfg;
-  cfg.PORT = "14000";
+  cfg.PORT = "10000";
   _generic_partial_read_test(cfg, namespace_, name, objects_slices, file_name,
                              false);
   std::ifstream for_comparison(file_name, std::ios::binary);

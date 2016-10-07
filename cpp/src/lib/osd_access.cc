@@ -83,9 +83,11 @@ void OsdAccess::update(Proxy_client &client) {
         std::lock_guard<std::mutex> lock(_alba_map_mutex);
         rora_osd_map_t infos;
         client.osd_info2(infos);
+        _alba_levels.clear();
         _alba_map.clear();
         for (auto &p : infos) {
           _alba_map.push_back(std::move(p));
+          _alba_levels.push_back(p.first);
         }
       } catch (std::exception &e) {
         ALBA_LOG(INFO,

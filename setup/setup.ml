@@ -1593,8 +1593,12 @@ module Test = struct
        Printf.sprintf "ALBA_PROXY_IP=%s" host;
        Printf.sprintf "ALBA_PROXY_PORT=%s" port;
        Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
-       "./cpp/bin/unit_tests.out";
       ]
+    in
+    let cmd =
+      if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
+      then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
+      else cmd @ [ "./cpp/bin/unit_tests.out" ]
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml" ] else cmd in
     let cmd3 = match filter with

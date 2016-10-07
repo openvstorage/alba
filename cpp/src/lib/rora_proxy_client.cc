@@ -206,7 +206,6 @@ void _resolve_slice_one_level(std::vector<std::pair<byte *, Location>> &results,
   };
 }
 
-// TODO return boost optional
 boost::optional<std::vector<std::pair<byte *, Location>>>
 _resolve_one_level(const alba_id_t &alba_id, const std::string &namespace_,
                    const ObjectSlices obj_slices) {
@@ -215,9 +214,9 @@ _resolve_one_level(const alba_id_t &alba_id, const std::string &namespace_,
   if (mf == nullptr) {
     return boost::none;
   } else {
-    boost::optional<std::vector<std::pair<byte *, Location>>> results;
+    std::vector<std::pair<byte *, Location>> results;
     for (auto &slice : obj_slices.slices) {
-      _resolve_slice_one_level(*results, *mf, slice.offset, slice.size,
+      _resolve_slice_one_level(results, *mf, slice.offset, slice.size,
                                slice.buf);
     }
     return results;
@@ -338,6 +337,10 @@ void RoraProxy_client::read_objects_slices(
     std::vector<std::pair<byte *, Location>> short_path;
     std::vector<ObjectSlices> via_proxy;
     auto alba_levels = OsdAccess::getInstance().get_alba_levels();
+    if (alba_levels.size() == 0) {
+      OsdAccess::getInstance().update(*this);
+      alba_levels = OsdAccess::getInstance().get_alba_levels();
+    }
     for (auto &object_slices : slices) {
       auto locations =
           _resolve_one_many_levels(alba_levels, 0, namespace_, object_slices);
