@@ -59,7 +59,6 @@ void _maybe_add_to_manifest_cache(const string &namespace_,
                                   const string &alba_id,
                                   std::shared_ptr<ManifestWithNamespaceId> mf) {
   using alba::stuff::operator<<;
-  ALBA_LOG(DEBUG, "_maybe_add_to_manifest_cache(..., rora_map = " << mf << ")");
   if (compressor_t::NO_COMPRESSION == mf->compression->get_compressor() &&
       encryption_t::NO_ENCRYPTION == mf->encrypt_info->get_encryption()) {
     ManifestCache::getInstance().add(namespace_, alba_id, std::move(mf));
@@ -185,6 +184,9 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   uint32_t fragment_index = pos_in_chunk / fragment_length;
   auto p = chunk_fragment_locations[fragment_index];
 
+  total += fragment_length * fragment_index;
+  uint32_t pos_in_fragment = pos - total;
+
   Location l;
   l.namespace_id = mf.namespace_id;
   l.object_id = mf.object_id;
@@ -192,7 +194,7 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.fragment_id = fragment_index;
   l.fragment_location = p;
   l.offset = pos_in_chunk;
-  l.length = std::min(len, fragment_length - pos_in_chunk);
+  l.length = std::min(len, fragment_length - pos_in_fragment);
   return l;
 }
 
@@ -214,9 +216,12 @@ _resolve_one_level(const alba_id_t &alba_id, const std::string &namespace_,
   auto &cache = ManifestCache::getInstance();
   auto mf = cache.find(namespace_, alba_id, obj_slices.object_name);
   if (mf == nullptr) {
-    ALBA_LOG(DEBUG, "manifest for " << obj_slices << " not found");
+    ALBA_LOG(DEBUG, "manifest for alba_id=" << alba_id << ", obj_slices="
+                                            << obj_slices << " not found");
     return boost::none;
   } else {
+    ALBA_LOG(DEBUG, "manifest for alba_id=" << alba_id << ", obj_slices="
+                                            << obj_slices << " found");
     std::vector<std::pair<byte *, Location>> results;
     for (auto &slice : obj_slices.slices) {
       _resolve_slice_one_level(results, *mf, slice.offset, slice.size,
@@ -313,21 +318,21 @@ int RoraProxy_client::_short_path(
   }
 }
 
-void _process(std::vector<object_info> &object_infos,
-              const string &namespace_) {
+void RoraProxy_client::_process(std::vector<object_info> &object_infos,
+                                const string &namespace_) {
 
   ALBA_LOG(DEBUG, "_process : " << object_infos.size());
-  auto &cache = ManifestCache::getInstance();
   for (auto &object_info : object_infos) {
     using alba::stuff::operator<<;
-    // ALBA_LOG(DEBUG, "_procesing object_info:" << object_info);
-
-    // ALBA_LOG(WARNING, "_process front?");
 
     manifest_cache_entry manifest_cache_entry_ =
         std::shared_ptr<alba::proxy_protocol::ManifestWithNamespaceId>(
             std::get<2>(object_info).release());
-    cache.add(namespace_, std::get<1>(object_info), manifest_cache_entry_);
+    string alba_id = std::get<1>(object_info);
+    if (alba_id == "") {
+      alba_id = OsdAccess::getInstance().get_alba_levels(*this)[0];
+    }
+    _maybe_add_to_manifest_cache(namespace_, alba_id, manifest_cache_entry_);
   }
 }
 
@@ -371,13 +376,12 @@ void RoraProxy_client::read_objects_slices(
       }
     }
 
-    if (via_proxy.size() > 0) {
-      ALBA_LOG(DEBUG, "rora read_objects_slices going via proxy, size=" << via_proxy.size());
-      std::vector<object_info> object_infos;
-      _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
-                                      object_infos);
-      _process(object_infos, namespace_);
-    }
+    ALBA_LOG(DEBUG, "rora read_objects_slices going via proxy, size="
+                        << via_proxy.size());
+    std::vector<object_info> object_infos;
+    _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
+                                    object_infos);
+    _process(object_infos, namespace_);
   }
 }
 

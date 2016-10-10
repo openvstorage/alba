@@ -432,15 +432,16 @@ void read_osd_info2_response(message &m, Status &status,
   if (status.is_ok()) {
     uint32_t n;
     from(m, n);
+    result.resize(n);
     ALBA_LOG(DEBUG, "n=" << n);
-    for (uint32_t i = 0; i < n; i++) {
+    for (int32_t i = n - 1; i >= 0; --i) {
       alba_id_t alba_id;
       from(m, alba_id);
       ALBA_LOG(DEBUG, "alba_id = " << alba_id);
       osd_map_t infos;
       _read_osd_infos(m, infos);
       auto entry = std::make_pair(std::move(alba_id), std::move(infos));
-      result.push_back(std::move(entry));
+      result[i] = std::move(entry);
     }
   }
 }

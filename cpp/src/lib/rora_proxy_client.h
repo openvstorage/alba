@@ -101,6 +101,9 @@ public:
 private:
   std::unique_ptr<GenericProxy_client> _delegate;
 
+  void _process(std::vector<object_info> &object_infos,
+                const string &namespace_);
+
   void
   _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);
 
