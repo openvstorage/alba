@@ -318,10 +318,11 @@ void _generic_partial_read_test(
   ALBA_LOG(INFO, "creating namespace " << actual_namespace);
   client->create_namespace(actual_namespace, preset);
 
-  // doe write die ook manifests van frag cache vult!
-  proxy_protocol::ManifestWithNamespaceId _mf;
-  client->write_object_fs2(actual_namespace, name, file,
-                           proxy_client::allow_overwrite::T, nullptr, _mf);
+  std::vector<proxy_protocol::object_info> object_infos;
+  const auto seq =
+      proxy_client::sequences::Sequence().add_upload_fs(name, file, nullptr);
+  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F, seq,
+                         object_infos);
   if (clear_before_read) {
     client->invalidate_cache(actual_namespace);
   }

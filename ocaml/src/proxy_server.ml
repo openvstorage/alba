@@ -160,7 +160,13 @@ let apply_sequence
       ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
     >>= fun (mf, extra_mfs, _, gc_epoch) ->
-    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch))
+    let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
+                    (List.map
+                       (fun (mf, namespace_id, alba) ->
+                         mf.Nsm_model.Manifest.name, alba, (mf, namespace_id))
+                       extra_mfs)
+    in
+    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch), all_mfs)
   in
 
   Lwt_list.map_p
@@ -179,22 +185,16 @@ let apply_sequence
                (new Object_reader.bigstring_slice_reader blob)
                cs_o
      | DeleteObject object_name ->
-        Lwt.return (Nsm_model.Update.DeleteObject object_name)
+        Lwt.return (Nsm_model.Update.DeleteObject object_name, [])
     )
     updates >>= fun updates ->
+  let updates, manifests = List.split updates in
+  let manifests = List.flatten_unordered manifests in
 
   alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
   nsm # apply_sequence asserts updates >>= fun () ->
 
-  let cnt, manifests =
-    List.fold_left
-      (fun (cnt, manifests) -> function
-        | Nsm_model.Update.PutObject (mf, _) -> cnt + 1, (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) :: manifests
-        | Nsm_model.Update.DeleteObject _ -> cnt, manifests)
-      (0, [])
-      updates
-  in
-  Lwt.return (cnt, manifests)
+  Lwt.return manifests
 
 
 let read_objects
