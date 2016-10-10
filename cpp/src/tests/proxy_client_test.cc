@@ -496,6 +496,7 @@ TEST(proxy_client, rora_fc_partial_read_trivial) {
                              false);
   std::ifstream for_comparison(file_name, std::ios::binary);
   std::vector<byte> bytes2(block_size);
+  for_comparison.seekg(offset);
   for_comparison.read((char *)&bytes2[0], block_size);
   _compare_blocks(bytes, bytes2, 0, block_size);
 }

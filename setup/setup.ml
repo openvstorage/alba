@@ -1578,12 +1578,16 @@ module Test = struct
     (cfg_hdd, t_hdd), (cfg_ssd, t_ssd)
 
   let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
-    let (_, t), _ = setup_aaa () in
-    let cfg = t.Deployment.cfg in
+    let (_, t_hdd), (_, t_ssd) = setup_aaa ~the_preset:"preset_rora" () in
+    let cfg = t_hdd.Deployment.cfg in
     let host, transport = _get_ip_transport cfg
     and port = "10000"
     in
-    let () = _create_preset t
+    let () = _create_preset t_hdd
+                            "preset_rora"
+                            "./cfg/preset_no_compression.json"
+    in
+    let () = _create_preset t_ssd
                             "preset_rora"
                             "./cfg/preset_no_compression.json"
     in

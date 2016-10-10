@@ -274,6 +274,8 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
 int RoraProxy_client::_short_path(
     const std::vector<std::pair<byte *, Location>> &locations) {
 
+  ALBA_LOG(DEBUG, "_short_path locations.size()=" << locations.size());
+
   std::map<osd_t, std::vector<asd_slice>> per_osd;
 
   for (auto &bl : locations) {
@@ -369,10 +371,13 @@ void RoraProxy_client::read_objects_slices(
       }
     }
 
-    std::vector<object_info> object_infos;
-    _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
-                                    object_infos);
-    _process(object_infos, namespace_);
+    if (via_proxy.size() > 0) {
+      ALBA_LOG(DEBUG, "rora read_objects_slices going via proxy, size=" << via_proxy.size());
+      std::vector<object_info> object_infos;
+      _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
+                                      object_infos);
+      _process(object_infos, namespace_);
+    }
   }
 }
 
