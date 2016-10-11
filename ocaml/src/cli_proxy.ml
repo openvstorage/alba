@@ -474,7 +474,9 @@ let proxy_client_cfg host port transport verbose =
     host port transport ~to_json:false ~verbose
     (fun client ->
      client # get_client_config >>= fun cfg ->
-     Lwt_io.printlf "client_cfg:\n%s" (Alba_arakoon.Config.show cfg)
+     let json = Alba_arakoon.Config.to_yojson cfg in
+     let msg = Yojson.(Safe.to_basic json |> Basic.pretty_to_string) in
+     Lwt_io.printlf "client_cfg:\n%s" msg
     )
 
 let proxy_client_cfg_cmd =
