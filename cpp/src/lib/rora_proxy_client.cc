@@ -130,9 +130,11 @@ string fragment_key(const uint32_t namespace_id, const string &object_id,
 }
 
 void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
+  std::cout << "_dump per_osd.size()=" << per_osd.size();
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     auto &asd_slices = item.second;
+    std::cout << "asd_slices.size()=" << asd_slices.size();
     std::cout << osd << ": [";
     for (auto &asd_slice : asd_slices) {
 
@@ -305,10 +307,10 @@ int RoraProxy_client::_short_path(
     auto it = per_osd.find(osd_id);
     if (it == per_osd.end()) {
       std::vector<asd_slice> slices;
-      per_osd.insert(make_pair(osd_id, slices));
+      per_osd[osd_id] = slices;
       it = per_osd.find(osd_id);
     }
-    auto slices = it->second;
+    auto &slices = it->second;
     slices.push_back(slice);
   }
 

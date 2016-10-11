@@ -167,6 +167,11 @@ int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
     } else {
       ip = osd_info.ips[0];
     }
+
+    ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices osd_id="
+                        << osd << ", backdoor_port=" << backdoor_port
+                        << ", ip=" << ip << ", transport=" << transport_name);
+
     int err =
         ctx_attr_set_transport(ctx_attr, transport_name, ip, backdoor_port);
     if (err != 0) {

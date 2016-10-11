@@ -1158,6 +1158,7 @@ module Deployment = struct
             )
             [] result
          )
+         |> List.rev
        end
     | _ -> failwith "unexpected json format"
 
@@ -1553,7 +1554,7 @@ module Test = struct
   let setup_aaa ?(the_prefix="my_prefix") ?(the_preset="default") () =
     (* alba accelerated alba *)
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
-    let cfg_ssd = Config.make ~workspace:(workspace ^ "/tmp/alba_ssd") () in
+    let cfg_ssd = Config.make ~use_rora:true ~workspace:(workspace ^ "/tmp/alba_ssd") () in
     let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:6000 () in
     Deployment.kill t_ssd;
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
