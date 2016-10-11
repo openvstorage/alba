@@ -164,4 +164,4 @@ RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.profile"
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
-ENTRYPOINT ["/home/jenkins/alba/docker/docker-entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "-c", "set -e && /home/jenkins/alba/docker/docker-entrypoint.sh $@"]
