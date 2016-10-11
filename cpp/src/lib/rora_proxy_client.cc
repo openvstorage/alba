@@ -70,15 +70,19 @@ void RoraProxy_client::write_object_fs(const string &namespace_,
                                        const string &input_file,
                                        const allow_overwrite overwrite,
                                        const Checksum *checksum) {
+  std::vector<std::shared_ptr<proxy_client::sequences::Assert>> asserts;
+  if (overwrite == allow_overwrite::F) {
+    asserts.push_back(
+        std::make_shared<proxy_client::sequences::AssertObjectDoesNotExist>(
+            object_name));
+  }
 
-  std::unique_ptr<ManifestWithNamespaceId> mf(new ManifestWithNamespaceId());
+  std::vector<std::shared_ptr<proxy_client::sequences::Update>> updates;
+  updates.push_back(
+      std::make_shared<proxy_client::sequences::UpdateUploadObjectFromFile>(
+          object_name, input_file, checksum));
 
-  write_object_fs2(namespace_, object_name, input_file, overwrite, checksum,
-                   *mf);
-
-  _maybe_add_to_manifest_cache(
-      namespace_, OsdAccess::getInstance().get_alba_levels(*this)[0],
-      std::move(mf));
+  apply_sequence(namespace_, write_barrier::F, asserts, updates);
 }
 
 void RoraProxy_client::read_object_fs(const string &namespace_,
@@ -385,16 +389,6 @@ void RoraProxy_client::read_objects_slices(
   }
 }
 
-void RoraProxy_client::write_object_fs2(const string &namespace_,
-                                        const string &object_name,
-                                        const string &input_file,
-                                        const allow_overwrite allow_overwrite_,
-                                        const Checksum *checksum,
-                                        ManifestWithNamespaceId &mf) {
-  return _delegate->write_object_fs2(namespace_, object_name, input_file,
-                                     allow_overwrite_, checksum, mf);
-}
-
 std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(
     const string &namespace_, const string &object_name,
     const consistent_read consistent_read_, const should_cache should_cache_) {
@@ -405,10 +399,10 @@ std::tuple<uint64_t, Checksum *> RoraProxy_client::get_object_info(
 void RoraProxy_client::apply_sequence(
     const std::string &namespace_, const write_barrier write_barrier,
     const std::vector<std::shared_ptr<sequences::Assert>> &asserts,
-    const std::vector<std::shared_ptr<sequences::Update>> &updates,
-    std::vector<proxy_protocol::object_info> &object_infos) {
-  _delegate->apply_sequence(namespace_, write_barrier, asserts, updates,
-                            object_infos);
+    const std::vector<std::shared_ptr<sequences::Update>> &updates) {
+  std::vector<proxy_protocol::object_info> object_infos;
+  _delegate->apply_sequence_(namespace_, write_barrier, asserts, updates,
+                             object_infos);
 
   _process(object_infos, namespace_);
 }

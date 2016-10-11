@@ -71,7 +71,7 @@ struct ObjectSlices {
 std::ostream &operator<<(std::ostream &, const SliceDescriptor &);
 std::ostream &operator<<(std::ostream &, const ObjectSlices &);
 
-typedef std::tuple<std::string, std::string,
+typedef std::tuple<std::string, alba_id_t,
                    std::unique_ptr<ManifestWithNamespaceId>>
     object_info;
 

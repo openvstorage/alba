@@ -318,11 +318,9 @@ void _generic_partial_read_test(
   ALBA_LOG(INFO, "creating namespace " << actual_namespace);
   client->create_namespace(actual_namespace, preset);
 
-  std::vector<proxy_protocol::object_info> object_infos;
   const auto seq =
       proxy_client::sequences::Sequence().add_upload_fs(name, file, nullptr);
-  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F, seq,
-                         object_infos);
+  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F, seq);
   if (clear_before_read) {
     client->invalidate_cache(actual_namespace);
   }
@@ -514,11 +512,8 @@ TEST(proxy_client, apply_sequence) {
   std::vector<std::shared_ptr<proxy_client::sequences::Assert>> asserts;
   std::vector<std::shared_ptr<proxy_client::sequences::Update>> updates;
 
-  std::vector<proxy_protocol::object_info> object_infos;
-
   // empty apply sequence (could be used just for the write barrier)
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   asserts.push_back(
       std::make_shared<proxy_client::sequences::AssertObjectDoesNotExist>(
@@ -530,36 +525,33 @@ TEST(proxy_client, apply_sequence) {
       std::make_shared<proxy_client::sequences::UpdateDeleteObject>("woosh");
   updates.push_back(u1);
   updates.push_back(u2);
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   asserts.clear();
   asserts.push_back(
       std::make_shared<proxy_client::sequences::AssertObjectDoesNotExist>(
           "myobj"));
   updates.clear();
-  ASSERT_THROW(client->apply_sequence(namespace_, write_barrier, asserts,
-                                      updates, object_infos),
-               alba::proxy_client::proxy_exception);
+  ASSERT_THROW(
+      client->apply_sequence(namespace_, write_barrier, asserts, updates),
+      alba::proxy_client::proxy_exception);
 
   asserts.clear();
   updates.clear();
   updates.push_back(
       std::make_shared<proxy_client::sequences::UpdateDeleteObject>("myobj"));
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   asserts.clear();
   asserts.push_back(
       std::make_shared<proxy_client::sequences::AssertObjectDoesNotExist>(
           "myobj"));
   updates.clear();
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   const auto seq =
       proxy_client::sequences::Sequence()
           .add_assert("non existing", proxy_client::sequences::ObjectExists::F)
           .add_upload_fs("bar", "./ocaml/alba.native", nullptr);
-  client->apply_sequence(namespace_, write_barrier, seq, object_infos);
+  client->apply_sequence(namespace_, write_barrier, seq);
 }

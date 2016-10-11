@@ -69,12 +69,6 @@ public:
                                    const std::vector<ObjectSlices> &,
                                    const consistent_read);
 
-  virtual void write_object_fs2(const std::string &namespace_,
-                                const std::string &object_name,
-                                const std::string &input_file,
-                                const allow_overwrite, const Checksum *checksum,
-                                ManifestWithNamespaceId &);
-
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache);
@@ -82,8 +76,7 @@ public:
   virtual void
   apply_sequence(const std::string &namespace_, const write_barrier,
                  const std::vector<std::shared_ptr<sequences::Assert>> &,
-                 const std::vector<std::shared_ptr<sequences::Update>> &,
-                 std::vector<proxy_protocol::object_info> &);
+                 const std::vector<std::shared_ptr<sequences::Update>> &);
 
   virtual void invalidate_cache(const std::string &namespace_);
 

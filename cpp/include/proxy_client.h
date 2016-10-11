@@ -107,13 +107,11 @@ public:
   virtual void
   apply_sequence(const std::string &namespace_, const write_barrier,
                  const std::vector<std::shared_ptr<sequences::Assert>> &,
-                 const std::vector<std::shared_ptr<sequences::Update>> &,
-                 std::vector<proxy_protocol::object_info> &) = 0;
+                 const std::vector<std::shared_ptr<sequences::Update>> &) = 0;
 
   void apply_sequence(const std::string &namespace_,
                       const write_barrier write_barrier,
-                      const sequences::Sequence &seq,
-                      std::vector<proxy_protocol::object_info> &object_infos);
+                      const sequences::Sequence &seq);
 
   /* invalidate_cache influences the result of read requests issued with
    * consistent_read::F. after an invalidate cache request these read
@@ -142,18 +140,6 @@ public:
   virtual void osd_info(osd_map_t &result) = 0;
 
   virtual ~Proxy_client(){};
-
-  /*
-  TODO:
-  protected:
-
-    friend class proxy_client_test_write_fs2_Test;//?
-  */
-  virtual void write_object_fs2(const std::string &namespace_,
-                                const std::string &object_name,
-                                const std::string &input_file,
-                                const allow_overwrite, const Checksum *checksum,
-                                proxy_protocol::ManifestWithNamespaceId &) = 0;
 
   virtual void osd_info2(rora_osd_map_t &result) = 0;
 };

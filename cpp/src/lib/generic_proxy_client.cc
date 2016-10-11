@@ -268,6 +268,14 @@ tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
 void GenericProxy_client::apply_sequence(
     const string &namespace_, const write_barrier write_barrier,
     const vector<std::shared_ptr<sequences::Assert>> &asserts,
+    const vector<std::shared_ptr<sequences::Update>> &updates) {
+  std::vector<proxy_protocol::object_info> object_infos;
+  apply_sequence_(namespace_, write_barrier, asserts, updates, object_infos);
+}
+
+void GenericProxy_client::apply_sequence_(
+    const string &namespace_, const write_barrier write_barrier,
+    const vector<std::shared_ptr<sequences::Assert>> &asserts,
     const vector<std::shared_ptr<sequences::Update>> &updates,
     std::vector<proxy_protocol::object_info> &object_infos) {
   _expires_from_now(_timeout);
