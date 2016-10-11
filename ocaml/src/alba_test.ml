@@ -2131,7 +2131,7 @@ let test_retry_download () =
      in
      let assert_stale res_o =
        (* assert a retry was needed due to a stale manifest *)
-       let _, stats = Option.get_some res_o in
+       let _, stats, _ = Option.get_some res_o in
        assert
          (let open Alba_statistics.Statistics in
           snd stats.get_manifest_dh = Cache.Stale)

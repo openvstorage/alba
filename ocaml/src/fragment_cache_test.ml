@@ -95,7 +95,7 @@ let test_1 () =
         | None ->
            OUnit.assert_bool "should have been found" false;
            Lwt.return ()
-        | Some retrieved ->
+        | Some (retrieved, _) ->
            OUnit.assert_bool "first byte?" (Lwt_bytes.get retrieved 0 = 'z');
 
            Lwt.return ()
@@ -337,7 +337,7 @@ let _test_lookup2 (cache : cache) =
          offset, length, destination, destoff)
         slices
     in
-    cache # lookup2 bid key slices >>= fun success ->
+    cache # lookup2 bid key slices >>= fun (success, _) ->
     assert success;
     assert (value = destination);
     Lwt.return_unit
@@ -352,7 +352,7 @@ let _test_lookup2 (cache : cache) =
   (* test regular lookup too *)
   cache # lookup bid key >>= function
   | None -> assert false
-  | Some r ->
+  | Some (r, _) ->
      assert (value = r);
      Lwt.return ()
 

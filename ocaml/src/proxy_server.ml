@@ -118,20 +118,27 @@ let read_objects_slices
                     ~fragment_statistics_cb
         >>= function
         | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-        | Some (mf, namespace_id, mf_source) -> Lwt.return (object_name, mf, namespace_id, mf_source)
+        | Some (mf, namespace_id, mf_source, mfs) -> Lwt.return (object_name, mf, namespace_id, mf_source, mfs)
        )
        objects_slices
      >>= fun n_mf_src_s ->
 
      let objects_infos =
        List.map
-         (fun (name, mf, namespace_id, mf_source) -> name, "", (mf, namespace_id))
+         (fun (name, mf, namespace_id, mf_source, mfs) ->
+           (name, "", (mf, namespace_id))
+           :: (List.map
+                 (fun (mf, namespace_id, alba) ->
+                   mf.Nsm_model.Manifest.name, alba, (mf, namespace_id))
+                 mfs)
+         )
          n_mf_src_s
+       |> List.flatten_unordered
      in
-     let mf_sources = List.map (fun (_,_,_,src) -> src) n_mf_src_s in
+     let mf_sources = List.map (fun (_,_,_,src, _) -> src) n_mf_src_s in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
-                 !fc_hits, !fc_misses, (n_objects, objects_infos)))
+                 !fc_hits, !fc_misses, objects_infos))
     (fun () ->
      Lwt_bytes.unsafe_destroy res;
      Lwt.return ())
@@ -381,7 +388,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                      ~consistent_read ~should_cache
          >>= function
          | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-         | Some (mf,download_stats) ->
+         | Some (mf,download_stats, _) ->
             let open Alba_statistics.Statistics in
             let (_mf_duration, mf_hm) = download_stats.get_manifest_dh in
             let fg_hm = summed_fragment_hit_misses download_stats in
@@ -475,10 +482,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          ~total_length ~n_slices ~n_objects ~mf_sources
          ~fc_hits ~fc_misses
          ~took:delay;
-       Lwt_log.debug_f "object_infos:%i %s"
-                       (fst object_infos)
+       Lwt_log.debug_f "object_infos:%s"
                        ([%show : (string * string * manifest_with_id) list]
-                          (snd object_infos))
+                          object_infos)
        >>= fun () ->
        Lwt.return (bytes, object_infos)
     | InvalidateCache ->

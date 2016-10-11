@@ -149,9 +149,10 @@ let download_fragment
   in
 
   fragment_cache # lookup namespace_id cache_key >>= function
-  | Some data ->
+  | Some (data, mfs) ->
      E.return (Statistics.FromCache (Unix.gettimeofday () -. t0_fragment),
-               data)
+               data,
+               mfs)
   | None ->
      E.with_timing
        (fun () ->
@@ -213,8 +214,7 @@ let download_fragment
                                      total = Unix.gettimeofday () -. t0_fragment;
                                    }) in
 
-     (* TODO also return 'mfs' *)
-     E.return (t_fragment, maybe_decompressed)
+     E.return (t_fragment, maybe_decompressed, mfs)
 
 (* consumers of this method are responsible for freeing
  * the returned fragment bigstring
@@ -306,7 +306,8 @@ let download_chunk
                 fragment_cache
                 ~cache_on_read
                 bad_fragment_callback
-              >>= fun ((t_fragment, fragment_data) as r) ->
+              >>= fun (t_fragment, fragment_data, _mfs) ->
+              let r = t_fragment, fragment_data in
 
               if !finito
               then

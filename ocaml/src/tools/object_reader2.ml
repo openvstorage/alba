@@ -51,7 +51,7 @@ class object_reader
       ~do_repair:false
       ~get_ns_preset_info:(alba_client # get_ns_preset_info)
       ~get_namespace_osds_info_cache:(alba_client # get_namespace_osds_info_cache)
-    >>= fun () ->
+    >>= fun _mfs ->
     pos <- pos + cnt;
     Lwt.return ()
 end: reader)

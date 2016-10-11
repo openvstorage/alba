@@ -32,9 +32,10 @@ class virtual cache = object(self)
     method add' bid oid blob =
       self # add bid oid blob >>= fun _ -> Lwt.return_unit
 
-    (* TODO lookup should return manifests too. *)
-    method virtual lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
-    method virtual lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
+    method virtual lookup : int32 -> string -> (Lwt_bytes.t * (Manifest.t * int32 * string) list) option Lwt.t
+    method virtual lookup2 : int32 -> string
+                             -> (int * int * Lwt_bytes.t * int) list
+                             -> (bool * (Manifest.t * int32 * string) list) Lwt.t
 
     method virtual drop  : int32 -> global : bool -> unit Lwt.t
     method virtual close : unit -> unit Lwt.t
@@ -51,7 +52,7 @@ class no_cache = object(self)
     inherit cache
     method add     bid oid blob   = Lwt.return []
     method lookup  bid oid        = Lwt.return_none
-    method lookup2 bid oid slices = Lwt.return_false
+    method lookup2 bid oid slices = Lwt.return (false, [])
     method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
     method osd_infos ()           = Lwt.return (0, [])
@@ -437,7 +438,11 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         )
 
     method lookup bid oid =
-      self # _lookup bid oid read_it
+      self # _lookup bid oid read_it >>= function
+      | Some data ->
+         Lwt.return (Some (data, []))
+      | None ->
+         Lwt.return_none
 
     method lookup2 bid oid slices =
       self # _lookup
@@ -448,8 +453,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                Lwt_unix.lseek fd offset Lwt_unix.SEEK_SET >>= fun _ ->
                Lwt_extra2.read_all_lwt_bytes_exact fd target offset' length)
               slices) >>= function
-      | Some () -> Lwt.return_true
-      | None -> Lwt.return_false
+      | Some () -> Lwt.return (true, [])
+      | None -> Lwt.return (false, [])
 
     method _check () =
       Printf.printf "_check()\n%!";
