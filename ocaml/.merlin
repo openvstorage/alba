@@ -1,6 +1,8 @@
-PRJ alba
+B _build
+B _build/src
 S src
 S src/kinetic
 PKG arakoon_client ctypes ocplib-endian 
 PKG lwt
 PKG kinetic-client
+PKG ppx_deriving ppx_deriving_yojson
