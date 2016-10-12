@@ -63,6 +63,7 @@ public:
     _buffer.resize(size);
     reader(_buffer.data(), size);
     _pos = 0;
+    _size = size;
   }
 
   message(std::istream &is) {
@@ -73,38 +74,51 @@ public:
     is.read(_buffer.data(), size);
     check_stream(is);
     _pos = 0;
+    _size = size;
   }
 
-  message(std::vector<char> &buffer) {
+  message(std::vector<char> &buffer, size_t pos = 0, size_t size = 0) {
     _buffer = buffer;
-    _pos = 0;
+    _pos = pos;
+    _size = size;
   }
 
   const char *current(size_t len) {
-    uint32_t size = _buffer.size();
-    if (_pos + len > size) {
+    if (_pos + len > _size) {
       ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
-                                         << size);
+                                         << _size);
       throw deserialisation_exception("reading outside of message");
     }
     return &_buffer.data()[_pos];
+  }
+
+  message get_nested_message(uint32_t len) {
+    if (_pos + len > _size) {
+      ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
+                                         << _size);
+      throw deserialisation_exception("reading outside of message");
+    }
+    size_t pos = _pos;
+    skip(len);
+    return message(_buffer, pos + len, len);
   }
 
   uint32_t get_pos() { return _pos; }
 
   void skip(int x) { _pos += x; }
 
-  size_t size() const noexcept { return _buffer.size(); }
+  size_t size() const noexcept { return _size; }
 
   void dump(std::ostream &os) {
-    uint32_t size = _buffer.size();
+    uint32_t size = _size;
     os.write((char *)&size, sizeof(uint32_t));
     os.write((char *)_buffer.data(), size);
   }
 
 private:
   std::vector<char> _buffer;
-  uint32_t _pos;
+  size_t _pos;
+  size_t _size;
 };
 
 class message_builder {

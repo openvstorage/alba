@@ -400,10 +400,9 @@ void _read_osd_infos(message &m, osd_map_t &result) {
   for (uint32_t i = 0; i < n; i++) {
     osd_t osd_id;
     from(m, osd_id);
-    std::string info_s;
-    from(m, info_s);
-    std::vector<char> mv(info_s.begin(), info_s.end());
-    llio::message m2(mv);
+    uint32_t info_s_size;
+    from(m, info_s_size);
+    auto m2 = m.get_nested_message(info_s_size);
     OsdInfo info;
     from(m2, info);
     OsdCapabilities caps;
