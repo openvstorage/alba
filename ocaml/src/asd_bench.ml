@@ -26,7 +26,6 @@ open Cli_bench_common
 (* TODO bench_asd_no_network *)
 (* TODO bench 1 big file *)
 
-
 let bench_blobs path scenarios count value_size partial_read_size =
   let t () =
     let module D = Asd_server.DirectoryInfo in
@@ -37,7 +36,7 @@ let bench_blobs path scenarios count value_size partial_read_size =
         ~use_fallocate:true
         path
     in
-    let write_scenario progress =
+    let write_scenario (oc:Lwt_io.output_channel) progress =
       let blob = Lwt_bytes.create_random value_size in
       let blob = Asd_protocol.Blob.Lwt_bytes blob in
       let write fnr =
@@ -48,14 +47,14 @@ let bench_blobs path scenarios count value_size partial_read_size =
           ~sync_parent_dirs:true
       in
       B.measured_loop
-        progress
+        oc progress
         write
         count
     in
-    let partial_read_scenario progress =
+    let partial_read_scenario oc progress =
       let target = Lwt_bytes.create partial_read_size in
       B.measured_loop
-        progress
+        oc progress
         (fun fnr ->
          D.with_blob_fd
            dir_info
@@ -66,14 +65,20 @@ let bench_blobs path scenarios count value_size partial_read_size =
             Lwt_extra2.read_all_lwt_bytes_exact fd target 0 partial_read_size))
         count
     in
+    let oc = Lwt_io.stdout in
+
     Lwt_list.iter_s
       (fun scenario ->
-       let progress = B.make_progress (count/100) in
-       (match snd scenario with
-        | `Writes -> write_scenario
-        | `PartialReads -> partial_read_scenario)
-         progress >>= fun r ->
-       B.report (fst scenario) r)
+        let step = count / 100 in
+        let progress = B.make_progress step in
+        let f =
+          (match snd scenario with
+           | `Writes -> write_scenario
+           | `PartialReads -> partial_read_scenario)
+        in
+        f oc progress
+        >>= fun r ->
+        B.report oc (fst scenario) r)
       scenarios
   in
   lwt_cmd_line ~to_json:false ~verbose:false t

@@ -18,33 +18,33 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Lwt.Infix
 
-let report name (d,speed, latency, min_d, max_d) =
-  Lwt_io.printlf "\n%s" name >>= fun () ->
-  Lwt_io.printlf "\ttook: %fs or (%f /s)" d speed >>= fun () ->
-  Lwt_io.printlf "\tlatency: %fms" (latency *. 1000.0) >>= fun () ->
-  Lwt_io.printlf "\tmin: %fms" (min_d *. 1000.0) >>= fun () ->
-  Lwt_io.printlf "\tmax: %fms" (max_d *. 1000.0)
+let report oc name (d,speed, latency, min_d, max_d) =
+  Lwt_io.fprintlf oc "\n%s" name >>= fun () ->
+  Lwt_io.fprintlf oc "\ttook: %fs or (%f /s)" d speed >>= fun () ->
+  Lwt_io.fprintlf oc "\tlatency: %fms" (latency *. 1000.0) >>= fun () ->
+  Lwt_io.fprintlf oc "\tmin: %fms" (min_d *. 1000.0) >>= fun () ->
+  Lwt_io.fprintlf oc "\tmax: %fms" (max_d *. 1000.0)
 
 let make_progress step =
   let cnt = ref 0 in
   let row = 10 * step in
   let t0 = Unix.gettimeofday () in
-  fun () ->
+  fun oc ->
   incr cnt;
   let i = !cnt in
   if i mod step = 0
   then
-    Lwt_io.printf "%16i" i >>= fun () ->
+    Lwt_io.fprintf oc "%16i%!" i >>= fun () ->
     if (i mod row = 0 )
     then
       let t1 = Unix.gettimeofday() in
       let dt = t1 -. t0 in
       let speed = (float i) /. dt in
-      Lwt_io.printlf " (%8.2fs;%6.2f/s)" dt speed
-    else Lwt.return ()
-  else Lwt.return ()
+      Lwt_io.fprintlf oc " (%8.2fs;%6.2f/s)%!" dt speed
+    else Lwt.return_unit
+  else Lwt.return_unit
 
-let measured_loop progress f n =
+let measured_loop oc progress f n =
   let t0 = Unix.gettimeofday () in
   let rec loop min_d max_d i =
     if i = n
@@ -53,7 +53,7 @@ let measured_loop progress f n =
       let t1 = Unix.gettimeofday() in
       f i >>= fun () ->
       let t2 = Unix.gettimeofday() in
-      progress () >>= fun () ->
+      progress oc >>= fun () ->
       let d = t2 -. t1 in
       let min_d' = min d min_d
       and max_d' = max d max_d
@@ -67,6 +67,14 @@ let measured_loop progress f n =
   let speed = nf /. d in
   let latency = d /. nf in
   Lwt.return (d,speed, latency, min_d, max_d)
+
+
+
+let measure_and_report oc progress do_one n (scenario_name:string) =
+  Lwt_io.fprintl oc scenario_name >>= fun () ->
+  measured_loop oc progress do_one n >>= fun r ->
+  report oc scenario_name r
+
 
 let final_key prefix i =
   Printf.sprintf "%s%s_%016i" Osd_keys.bench_prefix prefix i

@@ -76,21 +76,30 @@ let do_scenarios
     ~populate_osds_info_cache:true
     albamgr_cfg
     (fun alba_client ->
-     let client = new alba_bench_client alba_client in
-     Lwt_list.iter_s
-       (fun scenario ->
-        let progress = make_progress (n/100) in
-        Lwt_list.iter_p
-          (fun i ->
-           scenario
-             client
-             progress
-             (n/n_clients)
-             file_name
-             period
-             (Printf.sprintf "%s_%i" prefix i)
-             slice_size
-             namespace
-          )
-          (Int.range 0 n_clients))
-       scenarios)
+      let client = new alba_bench_client alba_client in
+      Lwt_list.iter_s
+        (fun scenario ->
+          let step = n / 100 in
+          let progress = make_progress step in
+          let n_per_client = n / n_clients in
+          Lwt_list.iter_p
+            (fun i ->
+              let client_fn = Printf.sprintf "./client_%03i.out" i in
+              Lwt_io.with_file
+                ~mode:Lwt_io.output
+                ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_APPEND; Unix.O_NONBLOCK]
+                client_fn
+                (fun oc ->
+                  scenario
+                    ~oc
+                    client
+                    progress
+                    n_per_client
+                    file_name
+                    period
+                    (Printf.sprintf "%s_%i" prefix i)
+                    slice_size
+                    namespace)
+            )
+            (Int.range 0 n_clients))
+        scenarios)

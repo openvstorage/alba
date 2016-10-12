@@ -23,12 +23,14 @@ open Generic_bench
 open Checksum
 open Slice
 
+let oc = Lwt_io.stdout
 
 let maybe_fail = function
   | Osd.Ok -> Lwt.return_unit
   | Osd.Exn e -> Osd.Error.lwt_fail e
 
 let deletes with_client progress n value_size _ period prefix =
+
   let run client =
       let gen = make_key period prefix in
       let do_one i =
@@ -39,8 +41,8 @@ let deletes with_client progress n value_size _ period prefix =
         client # global_kvs # apply_sequence
                Osd.High [] updates >>= maybe_fail
       in
-      measured_loop progress do_one n >>= fun r ->
-      report "deletes" r
+      measured_loop oc progress do_one n >>= fun r ->
+      report oc "deletes" r
   in
   with_client run
 
@@ -59,8 +61,8 @@ let gets with_client progress n value_size _ period prefix =
         in
         Lwt.return ()
       in
-      measured_loop progress do_one n >>= fun r ->
-      report "gets" r
+      measured_loop oc progress do_one n >>= fun r ->
+      report oc "gets" r
   in
   with_client run
 
@@ -79,8 +81,8 @@ let partial_reads with_client progress n _value_size partial_fetch_size period p
       | Osd.NotFound -> failwith "partial read key not found"
       | Osd.Success -> Lwt.return_unit
     in
-    measured_loop progress do_one n >>= fun r ->
-    report "partial_reads" r
+    measured_loop oc progress do_one n >>= fun r ->
+    report oc "partial_reads" r
   in
   with_client run
 
@@ -91,8 +93,8 @@ let get_version with_client progress n _ _ _ _ =
       client # get_version >>= fun _ ->
       Lwt.return ()
     in
-    measured_loop progress do_one n >>= fun r ->
-    report "get_version" r
+    measured_loop oc progress do_one n >>= fun r ->
+    report oc "get_version" r
   in
   with_client run
 
@@ -109,8 +111,8 @@ let churn with_client progress n _ _ _ _ =
           (fun exn -> Lwt.fail exn)
       )
   in
-  measured_loop progress do_one n >>= fun r ->
-  report "churn" r
+  measured_loop oc progress do_one n >>= fun r ->
+  report oc "churn" r
 
 
 let exists with_client progress n _ _ period prefix =
@@ -124,8 +126,8 @@ let exists with_client progress n _ _ period prefix =
       >>= fun _ ->
       Lwt.return_unit
     in
-    measured_loop progress do_one n >>= fun r ->
-    report "exists" r
+    measured_loop oc progress do_one n >>= fun r ->
+    report oc "exists" r
   in
   with_client run
 
@@ -160,8 +162,8 @@ let sets with_client progress n value_size _ period prefix =
       let updates = [set] in
       client # global_kvs # apply_sequence Osd.High [] updates >>= maybe_fail
     in
-    measured_loop progress do_one n >>= fun r ->
-    report "sets" r
+    measured_loop oc progress do_one n >>= fun r ->
+    report oc "sets" r
   in
   with_client run
 
@@ -176,8 +178,8 @@ let range_queries with_client progress n value_size _ period prefix =
       >>= fun keys ->
       Lwt.return ()
     in
-    measured_loop progress do_one n >>= fun r ->
-    report "ranges" r
+    measured_loop oc progress do_one n >>= fun r ->
+    report oc "ranges" r
   in
   with_client run
 
@@ -250,8 +252,8 @@ let upload_fragments with_client progress n value_size _ period prefix =
                                             Osd.High
                                             asserts updates >>= maybe_fail
     in
-    measured_loop progress do_one n >>= fun r ->
-    report "uploads" r
+    measured_loop oc progress do_one n >>= fun r ->
+    report oc "uploads" r
   in
   with_client run
 

@@ -76,11 +76,13 @@ let proxy_bench host port transport
   lwt_cmd_line
     ~to_json:false ~verbose:false
     (fun () ->
-     Proxy_bench.do_scenarios
-       host port transport
-       n_clients n
-       file_names power prefix slice_size namespace_name
-       (map_scenarios scenarios robust))
+      let mapped = map_scenarios scenarios robust in
+      Proxy_bench.do_scenarios
+        host port transport
+        n_clients n
+        file_names power prefix slice_size namespace_name
+        mapped
+    )
 
 let files =
   Arg.(value
@@ -110,14 +112,16 @@ let alba_bench alba_cfg_url tls_config
   lwt_cmd_line
     ~to_json:false ~verbose:false
     (fun () ->
-     let open Lwt.Infix in
-     Alba_arakoon.config_from_url alba_cfg_url >>= fun cfg ->
-     Alba_bench.do_scenarios
-       (ref cfg)
-       ~tls_config
-       n_clients n
-       file_name power prefix slice_size namespace
-       (map_scenarios scenarios robust))
+      let open Lwt.Infix in
+      let mapped = map_scenarios scenarios robust in
+      Alba_arakoon.config_from_url alba_cfg_url >>= fun cfg ->
+      Alba_bench.do_scenarios
+        (ref cfg)
+        ~tls_config
+        n_clients n
+        file_name power prefix slice_size namespace
+        mapped
+    )
 
 let alba_bench_cmd =
   Term.(pure alba_bench
