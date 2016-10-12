@@ -344,7 +344,8 @@ void RoraProxy_client::_process(std::vector<object_info> &object_infos,
 
 void RoraProxy_client::read_objects_slices(
     const string &namespace_, const std::vector<ObjectSlices> &slices,
-    const consistent_read consistent_read_) {
+    const consistent_read consistent_read_,
+    alba::statistics::RoraCounter &cntr) {
 
   if (consistent_read_ == consistent_read::T) {
     std::vector<object_info> object_infos;
@@ -380,6 +381,8 @@ void RoraProxy_client::read_objects_slices(
       for (auto &s : slices) {
         via_proxy.push_back(s);
       }
+    } else {
+      cntr.fast_path += short_path.size();
     }
 
     ALBA_LOG(DEBUG, "rora read_objects_slices going via proxy, size="

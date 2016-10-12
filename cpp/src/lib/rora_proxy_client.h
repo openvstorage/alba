@@ -67,7 +67,8 @@ public:
 
   virtual void read_objects_slices(const std::string &namespace_,
                                    const std::vector<ObjectSlices> &,
-                                   const consistent_read);
+                                   const consistent_read,
+                                   alba::statistics::RoraCounter &);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,

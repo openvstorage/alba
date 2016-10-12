@@ -21,6 +21,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "boolean_enum.h"
 #include "proxy_protocol.h"
 #include "proxy_sequences.h"
+#include "statistics.h"
 #include <boost/asio.hpp>
 #include <chrono>
 #include <iosfwd>
@@ -98,7 +99,8 @@ public:
   virtual void
   read_objects_slices(const std::string &namespace_,
                       const std::vector<proxy_protocol::ObjectSlices> &,
-                      const consistent_read) = 0;
+                      const consistent_read,
+                      alba::statistics::RoraCounter &) = 0;
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,

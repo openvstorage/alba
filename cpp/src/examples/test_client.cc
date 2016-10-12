@@ -136,8 +136,9 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
       ObjectSlices object_slices{object_name, slices};
       std::vector<ObjectSlices> objects_slices{object_slices};
       stats.new_start();
+      alba::statistics::RoraCounter cntr;
       client->read_objects_slices(namespace_, objects_slices,
-                                  consistent_read::F);
+                                  consistent_read::F, cntr);
 
       stats.new_stop();
       t1 = high_resolution_clock::now();
@@ -340,7 +341,8 @@ int main(int argc, const char *argv[]) {
     auto buf = std::unique_ptr<unsigned char>(new unsigned char[length]);
     alba::proxy_protocol::SliceDescriptor slice{buf.get(), offset, length};
     alba::proxy_protocol::ObjectSlices object_slices{name, {slice}};
-    client->read_objects_slices(ns, {object_slices}, _consistent_read);
+    alba::statistics::RoraCounter cntr;
+    client->read_objects_slices(ns, {object_slices}, _consistent_read, cntr);
     std::ofstream fout(file);
     fout.write((char *)buf.get(), length);
   } else if ("upload-object" == command) {
