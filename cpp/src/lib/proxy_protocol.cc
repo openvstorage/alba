@@ -325,10 +325,10 @@ void read_read_objects_slices2_response(
 
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
-        &asserts,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
-        &updates) {
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>> &
+        asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>> &
+        updates) {
   write_tag(mb, _APPLY_SEQUENCE);
   to(mb, namespace_);
   to(mb, write_barrier);

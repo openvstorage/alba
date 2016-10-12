@@ -84,12 +84,13 @@ public:
                  const std::vector<std::shared_ptr<sequences::Assert>> &,
                  const std::vector<std::shared_ptr<sequences::Update>> &);
 
-  // TODO want to make this a protected member but then rora_proxy_client can't use it
+  // TODO want to make this a protected member but then rora_proxy_client can't
+  // use it
   virtual void
-    apply_sequence_(const std::string &namespace_, const write_barrier,
-                   const std::vector<std::shared_ptr<sequences::Assert>> &,
-                   const std::vector<std::shared_ptr<sequences::Update>> &,
-                   std::vector<proxy_protocol::object_info> &);
+  apply_sequence_(const std::string &namespace_, const write_barrier,
+                  const std::vector<std::shared_ptr<sequences::Assert>> &,
+                  const std::vector<std::shared_ptr<sequences::Update>> &,
+                  std::vector<proxy_protocol::object_info> &);
 
   virtual void invalidate_cache(const std::string &namespace_);
 
