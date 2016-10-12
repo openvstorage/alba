@@ -208,10 +208,10 @@ void _resolve_slice_one_level(std::vector<std::pair<byte *, Location>> &results,
                               ManifestWithNamespaceId &manifest,
                               uint64_t offset, uint32_t length, byte *target) {
   while (length > 0) {
-    Location l = get_location(manifest, offset, length);
+    results.emplace_back(target, get_location(manifest, offset, length));
+    auto &l = results.back().second;
     length -= l.length;
     offset += l.length;
-    results.push_back(std::move(std::pair<byte *, Location>(target, l)));
     target += l.length;
   };
 }
@@ -249,6 +249,7 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
   } else {
     if ((alba_level_num + 1) < alba_levels.size()) {
       std::vector<std::pair<byte *, Location>> locations_final_level;
+      locations_final_level.resize(locations->size());
       for (auto &buf_l : *locations) {
         auto l = std::get<1>(buf_l);
         message_builder mb;
@@ -256,8 +257,7 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
         to(mb, l.chunk_id);
         to(mb, l.fragment_id);
         SliceDescriptor slice{std::get<0>(buf_l), l.offset, l.length};
-        std::vector<SliceDescriptor> slices;
-        slices.push_back(slice);
+        std::vector<SliceDescriptor> slices { slice };
 
         string r = mb.as_string();
         string fragment_cache_object_name = r.substr(4, r.size() - 4);
