@@ -44,7 +44,7 @@ struct OsdCapabilities {
 
 typedef std::pair<OsdInfo, OsdCapabilities> info_caps;
 typedef std::map<osd_t, std::shared_ptr<info_caps>> osd_map_t;
-typedef std::vector<std::pair<alba_id_t, osd_map_t>> rora_osd_map_t;
+typedef std::vector<std::pair<alba_id_t, osd_map_t>> osd_maps_t;
 
 std::ostream &operator<<(std::ostream &, const OsdInfo &);
 std::ostream &operator<<(std::ostream &, const OsdCapabilities &);

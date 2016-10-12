@@ -425,8 +425,7 @@ void write_osd_info2_request(message_builder &mb) {
   write_tag(mb, _OSD_INFO2);
 }
 
-void read_osd_info2_response(message &m, Status &status,
-                             rora_osd_map_t &result) {
+void read_osd_info2_response(message &m, Status &status, osd_maps_t &result) {
   read_status(m, status);
   if (status.is_ok()) {
     uint32_t n;

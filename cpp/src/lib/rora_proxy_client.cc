@@ -432,7 +432,7 @@ void RoraProxy_client::osd_info(osd_map_t &result) {
   _delegate->osd_info(result);
 }
 
-void RoraProxy_client::osd_info2(rora_osd_map_t &result) {
+void RoraProxy_client::osd_info2(osd_maps_t &result) {
   ALBA_LOG(DEBUG, "RoraProxy_client::osd_info2");
   _delegate->osd_info2(result);
 }

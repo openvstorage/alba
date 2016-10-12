@@ -87,7 +87,7 @@ public:
 
   virtual double ping(const double delay);
   virtual void osd_info(osd_map_t &);
-  virtual void osd_info2(rora_osd_map_t &);
+  virtual void osd_info2(osd_maps_t &);
 
   virtual ~RoraProxy_client(){};
 

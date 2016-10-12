@@ -103,7 +103,7 @@ public:
 
   virtual void osd_info(osd_map_t &result);
 
-  virtual void osd_info2(rora_osd_map_t &result);
+  virtual void osd_info2(osd_maps_t &result);
 
   GenericProxy_client(const std::chrono::steady_clock::duration &timeout);
 

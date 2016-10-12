@@ -270,7 +270,7 @@ TEST(proxy_client, test_osd_info2) {
   config cfg;
   using namespace proxy_protocol;
   auto client = make_proxy_client(cfg.HOST, "10000", TIMEOUT, cfg.TRANSPORT);
-  rora_osd_map_t result;
+  osd_maps_t result;
   client->osd_info2(result);
   uint n = 12;
   std::set<alba_id_t> alba_ids;

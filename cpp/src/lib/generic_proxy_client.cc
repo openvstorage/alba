@@ -354,7 +354,7 @@ void GenericProxy_client::osd_info(osd_map_t &result) {
   proxy_protocol::read_osd_info_response(response, _status, result);
 }
 
-void GenericProxy_client::osd_info2(rora_osd_map_t &result) {
+void GenericProxy_client::osd_info2(osd_maps_t &result) {
   ALBA_LOG(DEBUG, "Generic_proxy_client::osd_info2");
   _expires_from_now(_timeout);
   message_builder mb;

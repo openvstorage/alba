@@ -430,7 +430,7 @@ int main(int argc, const char *argv[]) {
     cout << "namespace_exists(" << ns << ") => " << result << endl;
   } else if ("proxy-osd_info2" == command) {
     auto client = make_proxy_client(host, port, timeout, transport);
-    rora_osd_map_t result;
+    osd_maps_t result;
     client->osd_info2(result);
     for (auto &e : result) {
       const auto &alba_id = e.first;

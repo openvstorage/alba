@@ -65,8 +65,8 @@ public:
 
 private:
   OsdAccess() : _filling(false) {}
-  std::mutex _alba_map_mutex;
-  rora_osd_map_t _alba_map;
+  std::mutex _osd_maps_mutex;
+  osd_maps_t _osd_maps;
   std::vector<alba_id_t> _alba_levels; // TODO should invalidate some things
                                        // when last alba_level changes
 

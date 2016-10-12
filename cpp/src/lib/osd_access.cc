@@ -31,16 +31,16 @@ OsdAccess &OsdAccess::getInstance() {
 }
 
 bool OsdAccess::osd_is_unknown(osd_t osd) {
-  std::lock_guard<std::mutex> lock(_alba_map_mutex);
-  auto &pair = _alba_map[_alba_map.size() - 1];
+  std::lock_guard<std::mutex> lock(_osd_maps_mutex);
+  auto &pair = _osd_maps[_osd_maps.size() - 1];
   auto &map = pair.second;
   bool result = (map.find(osd) == map.end());
   return result;
 }
 
 std::shared_ptr<info_caps> OsdAccess::_find_osd(osd_t osd) {
-  std::lock_guard<std::mutex> lock(_alba_map_mutex);
-  auto &pair = _alba_map[_alba_map.size() - 1];
+  std::lock_guard<std::mutex> lock(_osd_maps_mutex);
+  auto &pair = _osd_maps[_osd_maps.size() - 1];
   auto &map = pair.second;
   const auto &ic = map.find(osd);
   if (ic == map.end()) {
@@ -80,14 +80,14 @@ void OsdAccess::update(Proxy_client &client) {
     if (!_filling.load()) {
       _filling.store(true);
       try {
-        std::lock_guard<std::mutex> lock(_alba_map_mutex);
-        rora_osd_map_t infos;
+        std::lock_guard<std::mutex> lock(_osd_maps_mutex);
+        osd_maps_t infos;
         client.osd_info2(infos);
         _alba_levels.clear();
-        _alba_map.clear();
+        _osd_maps.clear();
         for (auto &p : infos) {
           _alba_levels.push_back(std::string(p.first));
-          _alba_map.push_back(std::move(p));
+          _osd_maps.push_back(std::move(p));
         }
       } catch (std::exception &e) {
         ALBA_LOG(INFO,
