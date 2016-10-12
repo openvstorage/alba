@@ -469,14 +469,15 @@ let proxy_osd_info_cmd =
         $ verbose),
   Term.info "proxy-osd-info" ~doc:"request osd-info from the proxy"
 
-let proxy_client_cfg host port transport verbose =
+let proxy_client_cfg host port transport verbose to_json =
   proxy_client_cmd_line
-    host port transport ~to_json:false ~verbose
+    host port transport ~to_json ~verbose
     (fun client ->
-     client # get_client_config >>= fun cfg ->
-     let json = Alba_arakoon.Config.to_yojson cfg in
-     let msg = Yojson.(Safe.to_basic json |> Basic.pretty_to_string) in
-     Lwt_io.printlf "client_cfg:\n%s" msg
+     client # get_client_config >>= fun cfg -> Alba_arakoon.Config.(
+     if to_json
+     then print_result (to_yojson cfg) (fun json -> json)
+     else Lwt_io.printlf "client_cfg:\n%s" (show cfg)
+         )
     )
 
 let proxy_client_cfg_cmd =
@@ -484,7 +485,8 @@ let proxy_client_cfg_cmd =
         $ host
         $ port 10000
         $ transport
-        $ verbose),
+        $ verbose
+        $ to_json),
   Term.info "proxy-client-cfg" ~doc:"what the proxy thinks the albamgr client config is"
 
 
