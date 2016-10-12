@@ -4,6 +4,6 @@ B _build/src/tools
 S src
 S src/kinetic
 PKG arakoon_client ctypes ocplib-endian 
-PKG lwt
+PKG lwt cmdliner ordma
 PKG kinetic-client
 PKG ppx_deriving ppx_deriving_yojson ppx_deriving.show
