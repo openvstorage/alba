@@ -42,7 +42,7 @@ string env_or_default(const std::string &name, const std::string &def) {
   return string(env);
 }
 
-auto TIMEOUT = std::chrono::seconds(5);
+auto TIMEOUT = std::chrono::seconds(20);
 using alba::proxy_client::Proxy_client;
 using namespace alba;
 
@@ -194,7 +194,7 @@ TEST(proxy_client, test_ping) {
   std::cout << "part2" << std::endl;
   t0 = stamp();
   try {
-    timestamp = client->ping(10.0);
+    timestamp = client->ping(25.0);
     // expect failure....
     double t1 = stamp();
     std::cout << "we got here after " << t1 - t0 << " s" << std::endl;
@@ -205,7 +205,7 @@ TEST(proxy_client, test_ping) {
     delta = t1 - t0;
     std::cout << "t0:" << t0 << " t1:" << t1 << std::endl;
     std::cout << "delta:" << delta << std::endl;
-    EXPECT_NEAR(delta, 5.0, eps);
+    EXPECT_NEAR(delta, 20.0, eps);
   }
 }
 
@@ -320,6 +320,7 @@ void _generic_partial_read_test(
 
   const auto seq =
       proxy_client::sequences::Sequence().add_upload_fs(name, file, nullptr);
+  ALBA_LOG(INFO, "apply sequence");
   client->apply_sequence(actual_namespace, proxy_client::write_barrier::F, seq);
   if (clear_before_read) {
     client->invalidate_cache(actual_namespace);
