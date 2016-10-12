@@ -403,6 +403,7 @@ void _read_osd_infos(message &m, osd_map_t &result) {
     uint32_t info_s_size;
     from(m, info_s_size);
     auto m2 = m.get_nested_message(info_s_size);
+    m.skip(info_s_size);
     OsdInfo info;
     from(m2, info);
     OsdCapabilities caps;

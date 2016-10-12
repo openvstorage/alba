@@ -257,7 +257,7 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
         to(mb, l.chunk_id);
         to(mb, l.fragment_id);
         SliceDescriptor slice{std::get<0>(buf_l), l.offset, l.length};
-        std::vector<SliceDescriptor> slices { slice };
+        std::vector<SliceDescriptor> slices{slice};
 
         string r = mb.as_string();
         string fragment_cache_object_name = r.substr(4, r.size() - 4);

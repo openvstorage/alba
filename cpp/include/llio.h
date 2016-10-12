@@ -63,6 +63,7 @@ public:
     _buffer.resize(size);
     reader(_buffer.data(), size);
     _pos = 0;
+    _initial_offset = 0;
     _size = size;
   }
 
@@ -74,33 +75,37 @@ public:
     is.read(_buffer.data(), size);
     check_stream(is);
     _pos = 0;
+    _initial_offset = 0;
     _size = size;
   }
 
-  message(std::vector<char> &buffer, size_t pos = 0, size_t size = 0) {
+  message(std::vector<char> &buffer) : message(buffer, 0, buffer.size()) {}
+
+  message(std::vector<char> &buffer, size_t offset, size_t size) {
     _buffer = buffer;
-    _pos = pos;
+    _initial_offset = offset;
+    _pos = offset;
     _size = size;
   }
 
   const char *current(size_t len) {
-    if (_pos + len > _size) {
+    if (_pos + len > _initial_offset + _size) {
       ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
-                                         << _size);
-      throw deserialisation_exception("reading outside of message");
+                                         << _initial_offset << " + " << _size);
+      throw deserialisation_exception(
+          "message.current(): reading outside of message");
     }
     return &_buffer.data()[_pos];
   }
 
   message get_nested_message(uint32_t len) {
-    if (_pos + len > _size) {
+    if (_pos + len > _initial_offset + _size) {
       ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
-                                         << _size);
-      throw deserialisation_exception("reading outside of message");
+                                         << _initial_offset << " + " << _size);
+      throw deserialisation_exception(
+          "message.get_nested_message(): reading outside of message");
     }
-    size_t pos = _pos;
-    skip(len);
-    return message(_buffer, pos + len, len);
+    return message(_buffer, _pos, len);
   }
 
   uint32_t get_pos() { return _pos; }
@@ -110,14 +115,14 @@ public:
   size_t size() const noexcept { return _size; }
 
   void dump(std::ostream &os) {
-    uint32_t size = _size;
-    os.write((char *)&size, sizeof(uint32_t));
-    os.write((char *)_buffer.data(), size);
+    os.write((char *)&_size, sizeof(uint32_t));
+    os.write((char *)&_buffer.data()[_initial_offset], _size);
   }
 
 private:
   std::vector<char> _buffer;
   size_t _pos;
+  size_t _initial_offset;
   size_t _size;
 };
 
