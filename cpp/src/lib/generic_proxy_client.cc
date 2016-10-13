@@ -211,7 +211,8 @@ void GenericProxy_client::read_objects_slices2(
     const string &namespace_,
     const vector<proxy_protocol::ObjectSlices> &slices,
     const consistent_read consistent_read,
-    vector<proxy_protocol::object_info> &object_infos) {
+    vector<proxy_protocol::object_info> &object_infos,
+    alba::statistics::RoraCounter &cntr) {
 
   if (slices.size() == 0) {
     return;
@@ -226,6 +227,7 @@ void GenericProxy_client::read_objects_slices2(
   message response = _input();
   proxy_protocol::read_read_objects_slices2_response(response, _status, slices,
                                                      object_infos);
+  cntr.slow_path += slices.size();
 
   check_status(__PRETTY_FUNCTION__);
 }

@@ -40,7 +40,8 @@ string make_key(const string alba_id, const string object_name) {
 void ManifestCache::add(string namespace_, string alba_id,
                         manifest_cache_entry mfp) {
   ALBA_LOG(DEBUG, "ManifestCache::add namespace=" << namespace_
-                                                  << ", alba_id=" << alba_id);
+                                                  << ", alba_id=" << alba_id
+                                                  << ", mfp=" << *mfp);
 
   std::shared_ptr<manifest_cache> mcp = nullptr;
   std::shared_ptr<std::mutex> mp = nullptr;

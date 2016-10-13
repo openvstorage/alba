@@ -199,7 +199,7 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.chunk_id = chunk_index;
   l.fragment_id = fragment_index;
   l.fragment_location = p;
-  l.offset = pos_in_chunk;
+  l.offset = pos_in_fragment;
   l.length = std::min(len, fragment_length - pos_in_fragment);
   return l;
 }
@@ -209,10 +209,10 @@ void _resolve_slice_one_level(std::vector<std::pair<byte *, Location>> &results,
                               uint64_t offset, uint32_t length, byte *target) {
   while (length > 0) {
     results.emplace_back(target, get_location(manifest, offset, length));
-    auto &l = results.back().second;
-    length -= l.length;
-    offset += l.length;
-    target += l.length;
+    auto len = results.back().second.length;
+    length -= len;
+    offset += len;
+    target += len;
   };
 }
 
@@ -249,7 +249,7 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
   } else {
     if ((alba_level_num + 1) < alba_levels.size()) {
       std::vector<std::pair<byte *, Location>> locations_final_level;
-      locations_final_level.resize(locations->size());
+      locations_final_level.reserve(locations->size());
       for (auto &buf_l : *locations) {
         auto l = std::get<1>(buf_l);
         message_builder mb;
@@ -293,8 +293,8 @@ int RoraProxy_client::_short_path(
     auto &target = std::get<0>(bl);
     auto &l = std::get<1>(bl);
 
-    osd_t osd_id = *std::get<0>(*l.fragment_location);
-    uint32_t version_id = std::get<1>(*l.fragment_location);
+    osd_t osd_id = *l.fragment_location.first;
+    uint32_t version_id = l.fragment_location.second;
 
     asd_slice slice;
     slice.offset = l.offset;
@@ -350,7 +350,7 @@ void RoraProxy_client::read_objects_slices(
   if (consistent_read_ == consistent_read::T) {
     std::vector<object_info> object_infos;
     _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
-                                    object_infos);
+                                    object_infos, cntr);
     _process(object_infos, namespace_);
   } else {
     std::vector<std::pair<byte *, Location>> short_path;
@@ -362,7 +362,8 @@ void RoraProxy_client::read_objects_slices(
       if (locations == boost::none ||
           std::any_of(locations->begin(), locations->end(),
                       [](std::pair<byte *, Location> &l) {
-                        return std::get<1>(l).fragment_location == boost::none;
+                        return std::get<1>(l).fragment_location.first ==
+                               boost::none;
                       })) {
         via_proxy.push_back(object_slices);
       } else {
@@ -389,7 +390,7 @@ void RoraProxy_client::read_objects_slices(
                         << via_proxy.size());
     std::vector<object_info> object_infos;
     _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
-                                    object_infos);
+                                    object_infos, cntr);
     _process(object_infos, namespace_);
   }
 }

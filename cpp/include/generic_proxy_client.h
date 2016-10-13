@@ -67,7 +67,8 @@ public:
   read_objects_slices2(const std::string &namespace_,
                        const std::vector<proxy_protocol::ObjectSlices> &,
                        const consistent_read,
-                       std::vector<proxy_protocol::object_info> &);
+                       std::vector<proxy_protocol::object_info> &,
+                       alba::statistics::RoraCounter &);
 
   virtual void write_object_fs2(const std::string &namespace_,
                                 const std::string &object_name,

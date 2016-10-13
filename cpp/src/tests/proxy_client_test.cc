@@ -229,24 +229,6 @@ TEST(proxy_client, manifest) {
   EXPECT_EQ(mf.name, "with_manifest");
   EXPECT_EQ(mf.max_disks_per_node, 3);
   EXPECT_EQ(mf.namespace_id, 5);
-  // uint32_t tests[] = {
-  //     0, 10, (1 << 20) + 2, (5 << 20) + 2,
-  // };
-  // lookup_result_t expecteds[] = {
-  //     lookup_result_t(mf.object_id, 0, 0, 0 , 1 << 20, 0, 9),
-  //     lookup_result_t(mf.object_id, 0, 0, 10, 1 << 20, 0, 9),
-  //     lookup_result_t(mf.object_id, 0, 1,  2, 1 << 20, 0, 6),
-  //     lookup_result_t(mf.object_id, 1, 0,  2, 1 << 20, 0, 9),
-  // };
-
-  // for (int i = 0; i < 4; i++) {
-  //   auto pos = tests[i];
-  //   auto &expected = expecteds[i];
-  //   auto maybelookup_result = mf.to_chunk_fragment(pos);
-  //   EXPECT_FALSE(maybelookup_result == boost::none);
-  //   auto &lookup_result = *maybelookup_result;
-  //   _compare(expected, lookup_result);
-  // }
 }
 
 TEST(proxy_client, test_osd_info) {
@@ -303,38 +285,8 @@ TEST(proxy_client, test_osd_info2) {
   }
 }
 
-void _generic_partial_read_test(
-    config &cfg, std::string &namespace_, std::string &name,
-    std::vector<proxy_protocol::ObjectSlices> &objects_slices,
-    std::string &file, bool clear_before_read) {
-
-  boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
-  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
-                                  rora_config);
-  boost::optional<std::string> preset{"preset_rora"};
-  std::ostringstream nos;
-  nos << namespace_ << "_" << std::rand();
-  string actual_namespace{nos.str()};
-  ALBA_LOG(INFO, "creating namespace " << actual_namespace);
-  client->create_namespace(actual_namespace, preset);
-
-  const auto seq =
-      proxy_client::sequences::Sequence().add_upload_fs(name, file, nullptr);
-  ALBA_LOG(INFO, "apply sequence");
-  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F, seq);
-  if (clear_before_read) {
-    client->invalidate_cache(actual_namespace);
-  }
-  ALBA_LOG(INFO, "doing partial read");
-  alba::statistics::RoraCounter cntr;
-  client->read_objects_slices(actual_namespace, objects_slices,
-                              proxy_client::consistent_read::F, cntr);
-  assert(cntr.slow_path == 0);
-  assert(cntr.fast_path > 0);
-}
-
-void _compare_blocks(std::vector<byte> &block1, std::vector<byte> &block2,
-                     uint32_t off, uint32_t len) {
+void _compare_blocks(std::vector<byte> &block1, byte *block2, uint32_t off,
+                     uint32_t len) {
   auto ok = true;
   ALBA_LOG(INFO, "comparing blocks");
   for (uint32_t i = 0; i < len; i++) {
@@ -350,6 +302,67 @@ void _compare_blocks(std::vector<byte> &block1, std::vector<byte> &block2,
   }
   EXPECT_TRUE(ok);
 }
+
+void _generic_partial_read_test(
+    config &cfg, std::string &namespace_, std::string &name,
+    std::vector<proxy_protocol::ObjectSlices> &objects_slices,
+    std::string &file, bool clear_before_read) {
+
+  boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
+                                  rora_config);
+  boost::optional<std::string> preset{"preset_rora"};
+  std::ostringstream nos;
+  nos << namespace_ << "_" << std::rand();
+  string actual_namespace{nos.str()};
+  ALBA_LOG(INFO, "creating namespace " << actual_namespace);
+  client->create_namespace(actual_namespace, preset);
+
+  // this upload is to 'warm up' the proxy
+  // more specifically: the first upload will trigger namespace
+  // creation on the fragment cache, and that may cause some fragments
+  // of the first chunk to not be successfully stored there, leading
+  // to test failure here.
+  const auto seq1 = proxy_client::sequences::Sequence().add_upload_fs(
+      name + "_dummy", file, nullptr);
+  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F,
+                         seq1);
+
+  const auto seq2 =
+      proxy_client::sequences::Sequence().add_upload_fs(name, file, nullptr);
+  ALBA_LOG(INFO, "apply sequence");
+  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F,
+                         seq2);
+  if (clear_before_read) {
+    client->invalidate_cache(actual_namespace);
+  }
+  ALBA_LOG(INFO, "doing partial read");
+  alba::statistics::RoraCounter cntr{0, 0};
+  client->read_objects_slices(actual_namespace, objects_slices,
+                              proxy_client::consistent_read::F, cntr);
+
+  // verify partially read data
+  std::ifstream for_comparison(file, std::ios::binary);
+  for (auto &object_slices : objects_slices) {
+    for (auto &slice : object_slices.slices) {
+      std::vector<byte> bytes2(slice.size);
+      for_comparison.seekg(slice.offset);
+      for_comparison.read((char *)&bytes2[0], slice.size);
+      _compare_blocks(bytes2, slice.buf, 0, slice.size);
+    }
+  }
+
+  std::cout << "slow_path=" << cntr.slow_path
+            << ", fast_path=" << cntr.fast_path << std::endl;
+  if (clear_before_read) {
+    EXPECT_TRUE(cntr.slow_path > 0);
+    EXPECT_EQ(cntr.fast_path, 0);
+  } else {
+    EXPECT_EQ(cntr.slow_path, 0);
+    EXPECT_TRUE(cntr.fast_path > 0);
+  }
+}
+
 TEST(proxy_client, test_partial_read_trivial) {
   std::string namespace_("test_partial_read_trivial");
   std::ostringstream sos;
@@ -367,10 +380,6 @@ TEST(proxy_client, test_partial_read_trivial) {
   config cfg;
   _generic_partial_read_test(cfg, namespace_, name, objects_slices, file,
                              false);
-  std::ifstream for_comparison("./ocaml/alba.native", std::ios::binary);
-  std::vector<byte> bytes2(block_size);
-  for_comparison.read((char *)&bytes2[0], block_size);
-  _compare_blocks(bytes, bytes2, 0, block_size);
 }
 
 TEST(proxy_client, test_partial_read_trivial2) {
@@ -449,7 +458,7 @@ TEST(proxy_client, test_partial_reads) {
   client->write_object_fs(namespace_, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
   client->invalidate_cache(namespace_);
-  alba::statistics::RoraCounter cntr;
+  alba::statistics::RoraCounter cntr{0, 0};
   for (int i = 0; i < 8; i++) {
     SliceDescriptor sd{&buf[0], 0, 4096};
     std::vector<SliceDescriptor> slices{sd};
@@ -498,11 +507,6 @@ TEST(proxy_client, rora_fc_partial_read_trivial) {
   cfg.PORT = "10000";
   _generic_partial_read_test(cfg, namespace_, name, objects_slices, file_name,
                              false);
-  std::ifstream for_comparison(file_name, std::ios::binary);
-  std::vector<byte> bytes2(block_size);
-  for_comparison.seekg(offset);
-  for_comparison.read((char *)&bytes2[0], block_size);
-  _compare_blocks(bytes, bytes2, 0, block_size);
 }
 
 TEST(proxy_client, apply_sequence) {

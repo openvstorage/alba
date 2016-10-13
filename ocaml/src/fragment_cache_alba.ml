@@ -197,7 +197,7 @@ class alba_cache
            )
         )
         (fun exn ->
-          Lwt_log.debug_f ~exn "Exception while adding object to alba fragment cache"
+          Lwt_log.info_f ~exn "Exception while adding object to alba fragment cache"
           >>= fun () ->
           Lwt.return []
         )

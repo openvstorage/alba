@@ -88,7 +88,7 @@ struct Location {
   uint32_t fragment_id;
   uint32_t offset;
   uint32_t length;
-  boost::optional<fragment_location_t> fragment_location;
+  fragment_location_t fragment_location;
 };
 
 struct Manifest {

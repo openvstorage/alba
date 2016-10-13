@@ -136,7 +136,7 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
       ObjectSlices object_slices{object_name, slices};
       std::vector<ObjectSlices> objects_slices{object_slices};
       stats.new_start();
-      alba::statistics::RoraCounter cntr;
+      alba::statistics::RoraCounter cntr{0, 0};
       client->read_objects_slices(namespace_, objects_slices,
                                   consistent_read::F, cntr);
 
@@ -341,7 +341,7 @@ int main(int argc, const char *argv[]) {
     auto buf = std::unique_ptr<unsigned char>(new unsigned char[length]);
     alba::proxy_protocol::SliceDescriptor slice{buf.get(), offset, length};
     alba::proxy_protocol::ObjectSlices object_slices{name, {slice}};
-    alba::statistics::RoraCounter cntr;
+    alba::statistics::RoraCounter cntr{0, 0};
     client->read_objects_slices(ns, {object_slices}, _consistent_read, cntr);
     std::ofstream fout(file);
     fout.write((char *)buf.get(), length);
