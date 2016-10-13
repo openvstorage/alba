@@ -1420,7 +1420,7 @@ let test_disk_churn () =
 
          Lwt_list.iter_s
            (fun osd_id ->
-              maintenance_client # decommission_device
+              maintenance_client # decommission_device'
                 ~deterministic:true
                 ~namespace_id
                 ~osd_id () >>= fun () ->
@@ -1497,7 +1497,7 @@ let test_disk_churn () =
                   alba_client # decommission_osd
                               ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            >>= fun () ->
-           maintenance_client # decommission_device
+           maintenance_client # decommission_device'
                               ~deterministic:true
                               ~namespace_id
                               ~osd_id () >>= fun () ->
@@ -1543,7 +1543,7 @@ let test_disk_churn () =
                   alba_client # decommission_osd
                               ~long_id:Nsm_model.OsdInfo.(get_long_id osd_info.kind))
            >>= fun () ->
-           maintenance_client # decommission_device
+           maintenance_client # decommission_device'
                               ~deterministic:true
                               ~namespace_id
                               ~osd_id () >>= fun () ->

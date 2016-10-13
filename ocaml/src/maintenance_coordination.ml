@@ -23,6 +23,21 @@ type state =
   | Master
   | Follower
 
+let throttled_log
+      cntr
+      msg =
+  if !cntr = 5
+  then
+    begin
+      cntr := 0;
+      Lwt_log.info msg
+    end
+  else
+    begin
+      incr cntr;
+      Lwt_log.debug msg
+    end
+
 class coordinator
         (client : Albamgr_client.client)
         ~name
@@ -51,6 +66,9 @@ class coordinator
     Lwt.ignore_result
       begin
 
+        let throttle_log_1 = ref 0 in
+        let throttle_log_2 = ref 0 in
+
         let rec become_master_loop () =
           Lwt.catch
             (fun () ->
@@ -58,7 +76,10 @@ class coordinator
              | Master ->
                 client # try_get_lease lease_name last_seen_master_counter >>= fun () ->
                 last_seen_master_counter <- last_seen_master_counter + 1;
-                Lwt.return ()
+                throttled_log
+                  throttle_log_1
+                  (Printf.sprintf "maintenance_coordination: I (%s) am still the maintenance master (%i)"
+                                  name last_seen_master_counter)
              | Follower ->
                 client # check_lease lease_name >>= fun counter ->
 
@@ -68,17 +89,20 @@ class coordinator
                     client # try_get_lease lease_name counter >>= fun () ->
                     last_seen_master_counter <- counter + 1;
                     state <- Master;
-                    Lwt_log.info_f "%s is now the maintenance master" name
+                    Lwt_log.info_f "maintenance_coordination: I (%s) am now the maintenance master" name
                   end
                 else
                   begin
                     last_seen_master_counter <- counter;
-                    Lwt.return_unit
+                    throttled_log
+                      throttle_log_2
+                      (Printf.sprintf "maintenance_coordination: Another process is the maintenance master (%i)"
+                                      counter)
                   end)
             (fun exn ->
              state <- Follower;
              Lwt_log.info_f ~exn
-                            "exception in maintenance coordination loop for %s"
+                            "maintenance_coordination: exception in become_master_loop for %s"
                             name)
           >>= fun () ->
           Lwt_unix.sleep
@@ -105,7 +129,7 @@ class coordinator
              registration_counter <- registration_counter + 1;
              Lwt.return ())
             (fun exn ->
-             Lwt_log.info_f ~exn "exception in maintenance registration loop for %s" name)
+             Lwt_log.info_f ~exn "maintenance_coordination: exception in registration loop for %s" name)
           >>= fun () ->
           Lwt_unix.sleep (lease_timeout /. 2.) >>= fun () ->
           if stop
@@ -122,10 +146,15 @@ class coordinator
              let modulo' = cnt in
              let remainder' = (List.find_index (fun (name', _) -> name' = name) participants)
                               |> Option.get_some in
+             Lwt_log.debug_f "maintenance_coordination: maintenance participant %i of %i" remainder' modulo' >>= fun () ->
              if modulo' <> modulo
                 || remainder' <> remainder
              then
                begin
+                 Lwt_log.ign_info_f
+                   "maintenance_coordination: position changed: from %i of %i to %i of %i"
+                   remainder modulo
+                   remainder' modulo';
                  modulo <- modulo';
                  remainder <- remainder';
                  self # trigger_on_position_changed
@@ -140,19 +169,22 @@ class coordinator
                            (fun (name, _) -> name = participant)
                            previous_participants with
                    | None -> Lwt.return_unit
-                   | Some (_, cnt') ->
+                   | Some (name, cnt') ->
                       if cnt = cnt'
-                      then client # remove_participant
+                      then
+                        Lwt_log.info_f "maintenance_coordination: removing dead participant %s" name >>= fun () ->
+                        client # remove_participant
                                   ~prefix:registration_prefix
                                   ~name:participant
                                   ~counter:cnt
-                      else Lwt.return_unit)
+                      else
+                        Lwt.return_unit)
                   participants
               else
                 Lwt.return_unit) >>= fun () ->
              Lwt.return participants)
             (fun exn ->
-             Lwt_log.info_f ~exn "exception in maintenance check position loop for %s" name
+             Lwt_log.info_f ~exn "maintenance_coordination: exception in check position loop for %s" name
              >>= fun () ->
              Lwt.return previous_participants)
           >>= fun participants ->
