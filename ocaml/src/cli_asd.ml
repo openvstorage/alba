@@ -264,6 +264,35 @@ let asd_get_version_cmd =
   asd_get_version_t, info
 
 
+let asd_multi_delete hosts port transport tls_config asd_id (keys:string list) verbose unescape =
+  let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
+  let keys' = List.map (_maybe_unescape unescape) keys in
+  run_with_asd_client'
+    ~conn_info asd_id ~to_json:false ~verbose
+    (fun client ->
+      let updates =
+        List.map (fun key' -> Update.delete (Slice.wrap_string key')) keys'
+      in
+      let asserts = [] in
+      client # apply_sequence ~prio:Osd.High asserts updates >>= fun () ->
+      Lwt.return_unit)
+
+let asd_multi_delete_cmd =
+  let doc = "$(docv)" in
+  let keys = Arg.(non_empty &
+                 pos_all string [] &
+                 info [] ~docv:"KEYS" ~doc) in
+  let asd_multi_delete_t =
+    Term.(pure asd_multi_delete
+          $ hosts $ (port 8_000) $ transport
+          $ tls_config
+          $ lido
+          $ keys $ verbose $ unescape)
+  in
+  let info =
+    let doc = "delete multiple key value pairs from a remote ASD" in
+    Term.info "asd-multi-delete" ~doc
+  in asd_multi_delete_t, info
 
 let asd_multi_get hosts port transport tls_config asd_id (keys:string list) verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
@@ -875,6 +904,7 @@ let cmds = [
   asd_start_cmd;
   asd_set_cmd;
   asd_multi_get_cmd;
+  asd_multi_delete_cmd;
   asd_delete_cmd;
   asd_range_cmd;
   asd_range_validate_cmd;
