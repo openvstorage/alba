@@ -45,6 +45,13 @@ let prefix default =
        & info ["prefix"] ~docv:"prefix" ~doc
   )
 
+let process_prefix default =
+  let doc = "$(docv) to keep multiple bench processes out of each other's way" in
+  Arg.(value
+       & opt string default
+       & info ["process-prefix"] ~docv:"process-prefix" ~doc
+  )
+
 let value_size default =
   let doc = "do sets of $(docv) bytes" in
   Arg.(

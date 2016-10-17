@@ -68,7 +68,8 @@ end
 let do_scenarios
       albamgr_cfg
       n_clients n
-      file_name power prefix slice_size namespace
+      file_name power prefix process_prefix
+      slice_size namespace
       scenarios =
   let period = period_of_power power in
   Alba_client2.with_client
@@ -77,19 +78,31 @@ let do_scenarios
     albamgr_cfg
     (fun alba_client ->
       let client = new alba_bench_client alba_client in
-      Lwt_list.iter_s
-        (fun scenario ->
-          let step = n / 100 in
-          let progress = make_progress step in
-          let n_per_client = n / n_clients in
-          Lwt_list.iter_p
-            (fun i ->
-              let client_fn = Printf.sprintf "./client_%03i.out" i in
-              Lwt_io.with_file
-                ~mode:Lwt_io.output
-                ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_APPEND; Unix.O_NONBLOCK]
-                client_fn
-                (fun oc ->
+      Lwt_list.map_p
+        (fun i ->
+          let client_fn =
+            Printf.sprintf
+              "./%s.client_%03i.out"
+              process_prefix
+              i
+          in
+          Lwt_io.open_file ~mode:Lwt_io.output
+                           ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_APPEND; Unix.O_NONBLOCK]
+                           client_fn >>= fun oc ->
+          Lwt.return (i,oc)
+        )
+        (Int.range 0 n_clients)
+      >>= fun i_files ->
+
+      Lwt.finalize
+        (fun () ->
+          Lwt_list.iter_s
+            (fun scenario ->
+              let step = max (n / 100) 1 in
+              let n_per_client = n / n_clients in
+              Lwt_list.iter_p
+                (fun (i,oc) ->
+                  let progress = make_progress step in
                   scenario
                     ~oc
                     client
@@ -100,6 +113,15 @@ let do_scenarios
                     (Printf.sprintf "%s_%i" prefix i)
                     slice_size
                     namespace)
-            )
-            (Int.range 0 n_clients))
-        scenarios)
+                i_files)
+            scenarios)
+        (fun () ->
+          Lwt_list.iter_p
+            (fun (i,oc) ->
+              Lwt.catch
+                (fun () -> Lwt_io.close oc)
+                (fun _ -> Lwt.return_unit)
+            ) (i_files)
+
+        )
+    )

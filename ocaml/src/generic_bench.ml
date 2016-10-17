@@ -18,8 +18,9 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Lwt.Infix
 
-let report oc name (d,speed, latency, min_d, max_d) =
-  Lwt_io.fprintlf oc "\n%s" name >>= fun () ->
+let report oc name (n, d,speed, latency, min_d, max_d) =
+  Lwt_io.fprintlf oc "\n'%s' summary:" name >>= fun () ->
+  Lwt_io.fprintlf oc "\tn: %i" n >>= fun () ->
   Lwt_io.fprintlf oc "\ttook: %fs or (%f /s)" d speed >>= fun () ->
   Lwt_io.fprintlf oc "\tlatency: %fms" (latency *. 1000.0) >>= fun () ->
   Lwt_io.fprintlf oc "\tmin: %fms" (min_d *. 1000.0) >>= fun () ->
@@ -66,12 +67,12 @@ let measured_loop oc progress f n =
   let nf = float n in
   let speed = nf /. d in
   let latency = d /. nf in
-  Lwt.return (d,speed, latency, min_d, max_d)
+  Lwt.return (n, d,speed, latency, min_d, max_d)
 
 
 
 let measure_and_report oc progress do_one n (scenario_name:string) =
-  Lwt_io.fprintl oc scenario_name >>= fun () ->
+  Lwt_io.fprintlf oc "'%s' progress:" scenario_name >>= fun () ->
   measured_loop oc progress do_one n >>= fun r ->
   report oc scenario_name r
 

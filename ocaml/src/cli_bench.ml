@@ -106,7 +106,8 @@ let proxy_bench_cmd =
 
 let alba_bench alba_cfg_url tls_config
                n_clients n file_name power
-               prefix slice_size namespace
+               prefix process_prefix
+               slice_size namespace
                scenarios robust
   =
   lwt_cmd_line
@@ -119,7 +120,9 @@ let alba_bench alba_cfg_url tls_config
         (ref cfg)
         ~tls_config
         n_clients n
-        file_name power prefix slice_size namespace
+        file_name power
+        prefix process_prefix
+        slice_size namespace
         mapped
     )
 
@@ -132,6 +135,7 @@ let alba_bench_cmd =
         $ files
         $ power 4
         $ prefix ""
+        $ process_prefix "0"
         $ slice_size 4096
         $ namespace 0
         $ scenarios
