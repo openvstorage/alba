@@ -973,7 +973,7 @@ module Deployment = struct
       abm : arakoon;
       nsm : arakoon;
       proxy : proxy;
-      maintenance : maintenance;
+      maintenance_processes : maintenance list;
       osds : asd array;
       etcd: etcd option;
     }
@@ -1080,7 +1080,10 @@ module Deployment = struct
                     (base_port * 2 + 2000)
                     ?fragment_cache ?transport ?ip
     in
-    let maintenance = new maintenance ?__retry_timeout 0 cfg  (abm # config_url) cfg.etcd in
+    let make_maintenance id = new maintenance ?__retry_timeout id cfg  (abm # config_url) cfg.etcd in
+    let maintenance_processes = [ make_maintenance 0;
+                                  make_maintenance 1;
+                                  make_maintenance 2; ] in
     let osds = make_osds ~base_port:(base_port*2)
                          ?write_blobs
                          ~ip:cfg.ip
@@ -1095,7 +1098,7 @@ module Deployment = struct
                          ~etcd:cfg.etcd
                          cfg.tls ~log_level:cfg.alba_asd_log_level
     in
-    { cfg; abm;nsm; proxy ; maintenance; osds ; etcd }
+    { cfg; abm;nsm; proxy ; maintenance_processes; osds ; etcd }
 
   let to_arakoon_189 t =
     let new_binary = t.cfg.arakoon_189_bin in
@@ -1313,8 +1316,11 @@ module Deployment = struct
     t.proxy # persist_config;
     t.proxy # start;
 
-    t.maintenance # write_config_file;
-    t.maintenance # start;
+    List.iter
+      (fun maintenance ->
+        maintenance # write_config_file;
+        maintenance # start)
+      t.maintenance_processes;
 
     nsm_host_register t;
 
@@ -2037,7 +2043,8 @@ module Test = struct
       three_nodes # start_node "abm_0";
 
 
-      let maintenance_cfg = t'.maintenance # abm_config_url in
+      let maintenance = List.hd t'.maintenance_processes in
+      let maintenance_cfg = maintenance # abm_config_url in
 
       (* update maintenance *)
       let maybe_copy cfg_url =
@@ -2049,7 +2056,7 @@ module Test = struct
         | _ -> ()
       in
       maybe_copy (three_nodes # config_url);
-      t'.maintenance # signal "USR1";
+      maintenance # signal "USR1";
       wait_for 120;
       let c = n_nodes_in_config () in
       assert (c = 3);
@@ -2205,8 +2212,11 @@ module Test = struct
       t.proxy # persist_config;
       t.proxy # start;
 
-      t.maintenance # write_config_file;
-      t.maintenance # start;
+      List.iter
+        (fun maintenance ->
+          maintenance # write_config_file;
+          maintenance # start)
+        t.maintenance_processes;
 
       Deployment.nsm_host_register t;
       Deployment.setup_osds t;
