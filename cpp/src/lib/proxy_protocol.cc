@@ -17,6 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "proxy_protocol.h"
+#include <fstream>
 #include <string.h>
 
 #define _LIST_NAMESPACES 1
@@ -39,6 +40,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _OSD_INFO 22
 #define _READ_OBJECTS_SLICES2 23
 #define _APPLY_SEQUENCE 24
+#define _OSD_INFO2 28
 
 namespace alba {
 namespace proxy_protocol {
@@ -204,7 +206,8 @@ void read_write_object_fs_response(message &m, Status &status) {
   read_status(m, status);
 }
 
-void read_write_object_fs2_response(message &m, Status &status, Manifest &mf) {
+void read_write_object_fs2_response(message &m, Status &status,
+                                    ManifestWithNamespaceId &mf) {
   read_status(m, status);
   if (status.is_ok()) {
 
@@ -292,7 +295,7 @@ void _read_object_infos(message &m, std::vector<object_info> &object_infos) {
     from(m, name);
     std::string future;
     from(m, future);
-    std::unique_ptr<Manifest> umf(new Manifest());
+    std::unique_ptr<ManifestWithNamespaceId> umf(new ManifestWithNamespaceId());
     from(m, *umf);
     assert(name == umf->name);
     auto t =
@@ -391,32 +394,73 @@ void read_ping_response(message &m, Status &status, double &timestamp) {
 
 void write_osd_info_request(message_builder &mb) { write_tag(mb, _OSD_INFO); }
 
-void read_osd_info_response(
-    message &m, Status &status,
-    std::vector<std::pair<osd_t, std::pair<std::unique_ptr<OsdInfo>,
-                                           std::unique_ptr<OsdCapabilities>>>> &
-        result) {
+void _read_osd_infos(message &m, osd_map_t &result) {
+  uint32_t n;
+  from(m, n);
+  for (uint32_t i = 0; i < n; i++) {
+    osd_t osd_id;
+    from(m, osd_id);
+    uint32_t info_s_size;
+    from(m, info_s_size);
+    auto m2 = m.get_nested_message(info_s_size);
+    m.skip(info_s_size);
+    OsdInfo info;
+    from(m2, info);
+    OsdCapabilities caps;
+    from(m, caps);
+    auto p = std::shared_ptr<info_caps>(
+        new info_caps(std::move(info), std::move(caps)));
+
+    result[osd_id] = std::move(p);
+  }
+}
+void read_osd_info_response(message &m, Status &status, osd_map_t &result) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    _read_osd_infos(m, result);
+  }
+}
+
+void write_osd_info2_request(message_builder &mb) {
+  ALBA_LOG(DEBUG, "write_osd_info2");
+  write_tag(mb, _OSD_INFO2);
+}
+
+void read_osd_info2_response(message &m, Status &status, osd_maps_t &result) {
   read_status(m, status);
   if (status.is_ok()) {
     uint32_t n;
     from(m, n);
-    for (uint32_t i = 0; i < n; i++) {
-      osd_t osd_id;
-      from(m, osd_id);
-      std::string info_s;
-      from(m, info_s);
-      std::vector<char> mv(info_s.begin(), info_s.end());
-      llio::message m2(mv);
-      std::unique_ptr<OsdInfo> info(new OsdInfo);
-      from(m2, *info);
-      std::unique_ptr<OsdCapabilities> caps(new OsdCapabilities);
-      from(m, *caps);
-      result.push_back(std::make_pair(
-          osd_id, std::make_pair(std::move(info), std::move(caps))));
+    result.resize(n);
+    ALBA_LOG(DEBUG, "n=" << n);
+    for (int32_t i = n - 1; i >= 0; --i) {
+      alba_id_t alba_id;
+      from(m, alba_id);
+      ALBA_LOG(DEBUG, "alba_id = " << alba_id);
+      osd_map_t infos;
+      _read_osd_infos(m, infos);
+      auto entry = std::make_pair(std::move(alba_id), std::move(infos));
+      result[i] = std::move(entry);
     }
   }
 }
+
+std::ostream &operator<<(std::ostream &os, const SliceDescriptor &s) {
+  os << "{ offset = " << s.offset << " , size = " << s.size << " }";
+  return os;
 }
+std::ostream &operator<<(std::ostream &os, const ObjectSlices &s) {
+  os << "{ object_name = ";
+  dump_string(os, s.object_name);
+  os << "slices = [ ";
+  for (auto &sd : s.slices) {
+    os << sd << ";";
+  }
+  os << " ] }";
+  return os;
+}
+
+} // namespace
 
 namespace llio {
 template <>

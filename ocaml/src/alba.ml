@@ -352,7 +352,7 @@ let alba_download_object
     >>= function
     | None ->
       Lwt_io.printlf "no object with name %s could be found" object_name
-    | Some (manifest,_) ->
+    | Some (manifest, _, _) ->
       Lwt_io.printlf "object %s with size %Li downloaded to file %s"
                      object_name manifest.Nsm_model.Manifest.size output_file
   in

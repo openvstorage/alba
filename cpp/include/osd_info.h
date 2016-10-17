@@ -17,10 +17,12 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
-#include <string>
-#include <vector>
 #include "alba_common.h"
 #include <boost/optional.hpp>
+#include <map>
+#include <string>
+#include <vector>
+#include <memory>
 
 namespace alba {
 namespace proxy_protocol {
@@ -40,8 +42,9 @@ struct OsdCapabilities {
   boost::optional<std::vector<std::string>> rora_ips = boost::none;
 };
 
-typedef std::pair<std::unique_ptr<OsdInfo>, std::unique_ptr<OsdCapabilities>>
-    info_caps;
+typedef std::pair<OsdInfo, OsdCapabilities> info_caps;
+typedef std::map<osd_t, std::shared_ptr<info_caps>> osd_map_t;
+typedef std::vector<std::pair<alba_id_t, osd_map_t>> osd_maps_t;
 
 std::ostream &operator<<(std::ostream &, const OsdInfo &);
 std::ostream &operator<<(std::ostream &, const OsdCapabilities &);

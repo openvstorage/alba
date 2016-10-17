@@ -54,6 +54,7 @@ let try_get_from_fragments
       ~partial_osd_read
       bad_fragment_callback
   =
+  let mfs = ref [] in
 
   let fetch_fragment fragment_id =
     let location, fragment_checksum =
@@ -83,7 +84,8 @@ let try_get_from_fragments
           chunk_id fragment_id
           ([%show : int32 option * int] location) >>= fun () ->
         Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
-    >>= fun (t_fragment, fragment_data) ->
+    >>= fun (t_fragment, fragment_data, mfs') ->
+    mfs := List.rev_append mfs' !mfs;
     Lwt.catch
       (fun () ->
         let () = fragment_statistics_cb t_fragment in
@@ -150,10 +152,11 @@ let try_get_from_fragments
                           ~object_id ~chunk_id ~fragment_id)
                        fragment_intersections
         >>= function
-        | true ->
+        | (true, mfs') ->
            (* read fragment pieces from the fragment cache *)
+           mfs := List.rev_append mfs' !mfs;
            Lwt.return_unit
-        | false ->
+        | (false, _) ->
            try_partial_osd_read fragment_id fragment_intersections
            >>= function
            | true -> Lwt.return_unit
@@ -169,7 +172,8 @@ let try_get_from_fragments
               Lwt.return_unit)
       chunk_intersections
   in
-  get_from_fragments ()
+  get_from_fragments () >>= fun () ->
+  Lwt.return !mfs
 
 
 let _download_object_slices
@@ -219,13 +223,12 @@ let _download_object_slices
 
   (* length sanity check (this also filters out an empty slices list) *)
   if length = 0L
-  then Lwt.return []
+  then Lwt.return ([], [])
   else if Int64.(manifest.Manifest.size <:
                    add last_slice.Interval.offset (of_int last_slice.Interval.length))
   then Error.(failwith SliceOutsideObject)
   else
     begin
-
       let object_id = manifest.Manifest.object_id in
       let es, compression = match manifest.Manifest.storage_scheme with
         | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
@@ -351,8 +354,8 @@ let _download_object_slices
                     encryption
                     fragment_statistics_cb
                     ~partial_osd_read
-                    bad_fragment_callback >>= fun () ->
-                  Lwt.return `Success)
+                    bad_fragment_callback >>= fun mfs ->
+                  Lwt.return (`Success mfs))
             )
             (fun exn ->
               let fragment_id_o = match exn with
@@ -360,7 +363,15 @@ let _download_object_slices
                 | _ -> None
               in
               Lwt.return (`Failed (fetch_chunk, chunk_id, fragment_id_o, chunk_intersections))))
-        intersections
+        intersections >>= fun r ->
+      List.fold_left
+        (fun (failures, mfs) ->
+          function
+          | `Success mfs' -> failures, List.rev_append mfs' mfs
+          | `Failed x -> x :: failures, mfs)
+        ([], [])
+        r
+      |> Lwt.return
     end
 
 let _repair_after_read
@@ -445,7 +456,7 @@ let _repair_after_read
 
 
 let handle_failures
-      manifest
+      manifest mfs
       mgr_access
       (nsm_host_access : Nsm_host_access.nsm_host_access)
       osd_access
@@ -456,7 +467,7 @@ let handle_failures
       ~get_namespace_osds_info_cache
   =
   if failures = []
-  then Lwt.return ()
+  then Lwt.return mfs
   else
     begin
       Lwt_list.map_s
@@ -511,7 +522,7 @@ let handle_failures
             (fun (_, _, _, _, cleanup) -> cleanup ())
             to_repair
       in
-      Lwt.return ()
+      Lwt.return mfs
     end
 
 let download_object_slices_from_fresh_manifest
@@ -542,18 +553,9 @@ let download_object_slices_from_fresh_manifest
       fragment_cache
       ~cache_on_read
       bad_fragment_callback
-      ~partial_osd_read >>= fun results ->
-  let failures =
-    List.fold_left
-      (fun acc ->
-        function
-        | `Success -> acc
-        | `Failed x -> x :: acc)
-      []
-      results
-  in
+      ~partial_osd_read >>= fun (failures, mfs) ->
   handle_failures
-    manifest
+    manifest mfs
     mgr_access
     nsm_host_access
     osd_access
@@ -603,25 +605,16 @@ let download_object_slices
        fragment_cache
        ~cache_on_read
        bad_fragment_callback
-       ~partial_osd_read >>= fun results ->
-     let failures =
-       List.fold_left
-         (fun acc ->
-           function
-           | `Success -> acc
-           | `Failed x -> x :: acc)
-         []
-         results
-     in
+       ~partial_osd_read >>= fun (failures, mfs) ->
      if failures = []
-     then Lwt.return (Some (manifest, namespace_id, mf_source))
+     then Lwt.return (Some (manifest, namespace_id, mf_source, mfs))
      else
        begin
          match mf_source with
          | Cache.Stale
          | Cache.Slow ->
             handle_failures
-              manifest
+              manifest mfs
               mgr_access
               nsm_host_access
               osd_access
@@ -629,8 +622,8 @@ let download_object_slices
               failures
               ~get_ns_preset_info
               ~get_namespace_osds_info_cache
-              ~do_repair >>= fun () ->
-            Lwt.return (Some (manifest, namespace_id, mf_source))
+              ~do_repair >>= fun mfs ->
+            Lwt.return (Some (manifest, namespace_id, mf_source, mfs))
          | Cache.Fast ->
             Alba_client_download.get_object_manifest'
               nsm_host_access
@@ -660,13 +653,13 @@ let download_object_slices
                      ~partial_osd_read
                      ~get_ns_preset_info
                      ~get_namespace_osds_info_cache
-                     ~do_repair >>= fun () ->
-                   Lwt.return (Some (manifest', namespace_id, Cache.Stale))
+                     ~do_repair >>= fun mfs ->
+                   Lwt.return (Some (manifest', namespace_id, Cache.Stale, mfs))
                  end
                else
                  begin
                    handle_failures
-                     manifest
+                     manifest mfs
                      mgr_access
                      nsm_host_access
                      osd_access
@@ -674,7 +667,7 @@ let download_object_slices
                      failures
                      ~get_ns_preset_info
                      ~get_namespace_osds_info_cache
-                     ~do_repair >>= fun () ->
-                   Lwt.return (Some (manifest', namespace_id, Cache.Fast))
+                     ~do_repair >>= fun mfs ->
+                   Lwt.return (Some (manifest', namespace_id, Cache.Fast, mfs))
                  end
        end

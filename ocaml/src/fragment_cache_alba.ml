@@ -189,11 +189,18 @@ class alba_cache
                    ~object_name
                    ~object_data:blob
                    ~checksum_o:None
-                   ~allow_overwrite:Nsm_model.Unconditionally >>= fun _ ->
+                   ~allow_overwrite:Nsm_model.Unconditionally
+            >>= fun (mf, mfs, _, namespace_id) ->
             lru_track ~namespace ~object_name;
-            Lwt.return_unit))
+            client # get_alba_id >>= fun alba_id ->
+            Lwt.return ((mf, namespace_id, alba_id) :: mfs)
+           )
+        )
         (fun exn ->
-         Lwt_log.debug_f ~exn "Exception while adding object to alba fragment cache")
+          Lwt_log.info_f ~exn "Exception while adding object to alba fragment cache"
+          >>= fun () ->
+          Lwt.return []
+        )
 
     method lookup bid name =
       Lwt.catch
@@ -207,12 +214,13 @@ class alba_cache
                    ~namespace
                    ~consistent_read:false
                    ~should_cache:true
-            |> Lwt.map
-                 (Option.map
-                    (fun x ->
-                     lru_track ~namespace ~object_name;
-                     fst x)
-                 )))
+            >>= function
+            | None -> Lwt.return_none
+            | Some (data, mf, namespace_id) ->
+               lru_track ~namespace ~object_name;
+               client # get_alba_id >>= fun alba_id ->
+               Lwt.return (Some (data, [ mf, namespace_id, alba_id ])))
+        )
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup" >>= fun () ->
          Lwt.return_none)
@@ -240,13 +248,14 @@ class alba_cache
                                 ~consistent_read:false
                                 ~fragment_statistics_cb:ignore
                    ) >>= function
-            | None -> Lwt.return_false
-            | Some _ ->
+            | None -> Lwt.return (false, [])
+            | Some (mf, namespace_id, _, mfs) ->
                lru_track ~namespace ~object_name;
-               Lwt.return_true))
+               let mfs = (mf, namespace_id, "") :: mfs in
+               Lwt.return (true, mfs)))
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup2" >>= fun () ->
-         Lwt.return_false)
+         Lwt.return (false, []))
 
     method drop bid ~global =
       if global
@@ -261,4 +270,6 @@ class alba_cache
         Lwt.return_unit
 
     method close () = closer ()
+
+    method osd_infos () = client # osd_infos
   end

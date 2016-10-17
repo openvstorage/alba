@@ -68,12 +68,10 @@ make_proxy_client(const std::string &ip, const std::string &port,
   }
 }
 
-void Proxy_client::apply_sequence(
-    const std::string &namespace_, const write_barrier write_barrier,
-    const sequences::Sequence &seq,
-    std::vector<proxy_protocol::object_info> &object_infos) {
-  this->apply_sequence(namespace_, write_barrier, seq._asserts, seq._updates,
-                       object_infos);
+void Proxy_client::apply_sequence(const std::string &namespace_,
+                                  const write_barrier write_barrier,
+                                  const sequences::Sequence &seq) {
+  this->apply_sequence(namespace_, write_barrier, seq._asserts, seq._updates);
 }
 
 std::ostream &operator<<(std::ostream &os, Transport t) {

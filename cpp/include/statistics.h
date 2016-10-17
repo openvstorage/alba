@@ -17,14 +17,19 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
-#include <vector>
 #include <chrono>
 #include <iostream>
+#include <vector>
 
 namespace alba {
 namespace statistics {
 
 using namespace std::chrono;
+
+struct RoraCounter {
+  uint64_t fast_path;
+  uint64_t slow_path;
+};
 
 struct Statistics {
   Statistics();

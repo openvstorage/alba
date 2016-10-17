@@ -21,11 +21,11 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "osd_access.h"
 #include "osd_info.h"
 #include "proxy_client.h"
+
 namespace alba {
 namespace proxy_client {
-typedef std::pair<std::string, std::string> strpair;
+
 using namespace proxy_protocol;
-typedef std::pair<ObjectSlices, std::shared_ptr<Manifest>> short_path_entry;
 
 class RoraProxy_client : public Proxy_client {
 public:
@@ -67,13 +67,8 @@ public:
 
   virtual void read_objects_slices(const std::string &namespace_,
                                    const std::vector<ObjectSlices> &,
-                                   const consistent_read);
-
-  virtual void write_object_fs2(const std::string &namespace_,
-                                const std::string &object_name,
-                                const std::string &input_file,
-                                const allow_overwrite, const Checksum *checksum,
-                                Manifest &);
+                                   const consistent_read,
+                                   alba::statistics::RoraCounter &);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -82,8 +77,7 @@ public:
   virtual void
   apply_sequence(const std::string &namespace_, const write_barrier,
                  const std::vector<std::shared_ptr<sequences::Assert>> &,
-                 const std::vector<std::shared_ptr<sequences::Update>> &,
-                 std::vector<proxy_protocol::object_info> &);
+                 const std::vector<std::shared_ptr<sequences::Update>> &);
 
   virtual void invalidate_cache(const std::string &namespace_);
 
@@ -93,19 +87,22 @@ public:
   get_proxy_version();
 
   virtual double ping(const double delay);
-  virtual void osd_info(std::vector<std::pair<osd_t, info_caps>> &result);
+  virtual void osd_info(osd_map_t &);
+  virtual void osd_info2(osd_maps_t &);
+
   virtual ~RoraProxy_client(){};
 
 private:
   std::unique_ptr<GenericProxy_client> _delegate;
 
+  void _process(std::vector<object_info> &object_infos,
+                const string &namespace_);
+
   void
   _maybe_update_osd_infos(std::map<osd_t, std::vector<asd_slice>> &per_osd);
-  int _short_path_many(const std::string &namespace_,
-                       const std::vector<short_path_entry> &short_path);
-  int _short_path_one(const std::string &namespace_,
-                      const proxy_protocol::ObjectSlices &object_slices,
-                      std::shared_ptr<proxy_protocol::Manifest> mfp);
+
+  int _short_path(const std::vector<std::pair<byte *, Location>> &);
+
   bool _use_null_io;
 };
 

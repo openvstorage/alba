@@ -59,18 +59,6 @@ void dump_buffer(std::ostream &os, const char *row, int size) {
     unsigned int ic = (unsigned int)c;
     os << std::setw(2) << std::setfill('0') << std::hex << ic << ' ';
   };
-  for (int j = 0; j < size; j++) {
-    unsigned char c = (unsigned char)row[j];
-    unsigned char c2 = c;
-    bool is_valid = (c2 >= '0') && (c2 <= '9');
-    is_valid |= (c2 >= 'A' && c2 <= 'Z');
-    is_valid = is_valid || (c2 >= 'a' && c2 <= 'z');
-    is_valid |= c2 == ' ';
-    if (!is_valid) {
-      c2 = '.';
-    };
-    os << c2;
-  };
   os.flags(flags);
 }
 

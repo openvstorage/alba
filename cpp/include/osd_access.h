@@ -18,14 +18,14 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include "alba_common.h"
+#include "osd_info.h"
+#include "proxy_client.h"
+#include <condition_variable>
+#include <gobjfs_client.h>
 #include <map>
-#include <vector>
 #include <memory>
 #include <mutex>
-#include <condition_variable>
-#include "osd_info.h"
-#include <gobjfs_client.h>
-#include "proxy_client.h"
+#include <vector>
 
 namespace alba {
 namespace proxy_client {
@@ -34,7 +34,7 @@ struct asd_slice {
   std::string key;
   uint32_t offset;
   uint32_t len;
-  byte *bytes;
+  byte *target;
 };
 
 struct osd_access_exception : std::exception {
@@ -48,6 +48,7 @@ struct osd_access_exception : std::exception {
 };
 
 using namespace proxy_protocol;
+
 class OsdAccess {
 public:
   static OsdAccess &getInstance();
@@ -60,15 +61,19 @@ public:
 
   int read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 
+  std::vector<alba_id_t> get_alba_levels(Proxy_client &client);
+
 private:
   OsdAccess() : _filling(false) {}
-  std::mutex _osd_infos_mutex;
-  std::map<osd_t, info_caps> _osd_infos;
+  std::mutex _osd_maps_mutex;
+  osd_maps_t _osd_maps;
+  std::vector<alba_id_t> _alba_levels; // TODO should invalidate some things
+                                       // when last alba_level changes
 
   std::mutex _osd_ctxs_mutex;
-  std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>> _osd_ctxs;
+  std::map<osd_t, std::shared_ptr<gobjfs::xio::client_ctx>> _osd_ctx;
 
-  const std::map<osd_t, info_caps>::iterator _find_osd(osd_t);
+  std::shared_ptr<info_caps> _find_osd(osd_t);
 
   int _read_osd_slices(osd_t, std::vector<asd_slice> &);
   std::shared_ptr<gobjfs::xio::client_ctx> _find_ctx(osd_t);
@@ -79,5 +84,7 @@ private:
   std::mutex _filling_mutex;
   std::condition_variable _filling_cond;
 };
+
+std::ostream &operator<<(std::ostream &, const asd_slice &);
 }
 }

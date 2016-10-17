@@ -63,6 +63,8 @@ public:
     _buffer.resize(size);
     reader(_buffer.data(), size);
     _pos = 0;
+    _initial_offset = 0;
+    _size = size;
   }
 
   message(std::istream &is) {
@@ -73,30 +75,55 @@ public:
     is.read(_buffer.data(), size);
     check_stream(is);
     _pos = 0;
+    _initial_offset = 0;
+    _size = size;
   }
 
-  message(std::vector<char> &buffer) {
+  message(std::vector<char> &buffer) : message(buffer, 0, buffer.size()) {}
+
+  message(std::vector<char> &buffer, size_t offset, size_t size) {
     _buffer = buffer;
-    _pos = 0;
+    _initial_offset = offset;
+    _pos = offset;
+    _size = size;
   }
 
   const char *current(size_t len) {
-    uint32_t size = _buffer.size();
-    if (_pos + len > size) {
+    if (_pos + len > _initial_offset + _size) {
       ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
-                                         << size);
-      throw deserialisation_exception("reading outside of message");
+                                         << _initial_offset << " + " << _size);
+      throw deserialisation_exception(
+          "message.current(): reading outside of message");
     }
     return &_buffer.data()[_pos];
+  }
+
+  message get_nested_message(uint32_t len) {
+    if (_pos + len > _initial_offset + _size) {
+      ALBA_LOG(WARNING, "WARNING: _pos:" << _pos << " + " << len << " > "
+                                         << _initial_offset << " + " << _size);
+      throw deserialisation_exception(
+          "message.get_nested_message(): reading outside of message");
+    }
+    return message(_buffer, _pos, len);
   }
 
   uint32_t get_pos() { return _pos; }
 
   void skip(int x) { _pos += x; }
 
+  size_t size() const noexcept { return _size; }
+
+  void dump(std::ostream &os) {
+    os.write((char *)&_size, sizeof(uint32_t));
+    os.write((char *)&_buffer.data()[_initial_offset], _size);
+  }
+
 private:
   std::vector<char> _buffer;
-  uint32_t _pos;
+  size_t _pos;
+  size_t _initial_offset;
+  size_t _size;
 };
 
 class message_builder {

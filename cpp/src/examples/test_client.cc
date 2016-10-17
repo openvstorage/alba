@@ -136,8 +136,9 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
       ObjectSlices object_slices{object_name, slices};
       std::vector<ObjectSlices> objects_slices{object_slices};
       stats.new_start();
+      alba::statistics::RoraCounter cntr{0, 0};
       client->read_objects_slices(namespace_, objects_slices,
-                                  consistent_read::F);
+                                  consistent_read::F, cntr);
 
       stats.new_stop();
       t1 = high_resolution_clock::now();
@@ -239,6 +240,7 @@ int main(int argc, const char *argv[]) {
       " upload-object, delete-object, list-objects, "
       " show-object, delete-namespace, create-namespace, "
       " list-namespaces, invalidata-cache, proxy-get-version"
+      " proxy-osd_info2"
       " partial-read-benchmark")("port",
                                  po::value<string>()->default_value("10000"),
                                  "the alba proxy port number")(
@@ -339,7 +341,8 @@ int main(int argc, const char *argv[]) {
     auto buf = std::unique_ptr<unsigned char>(new unsigned char[length]);
     alba::proxy_protocol::SliceDescriptor slice{buf.get(), offset, length};
     alba::proxy_protocol::ObjectSlices object_slices{name, {slice}};
-    client->read_objects_slices(ns, {object_slices}, _consistent_read);
+    alba::statistics::RoraCounter cntr{0, 0};
+    client->read_objects_slices(ns, {object_slices}, _consistent_read, cntr);
     std::ofstream fout(file);
     fout.write((char *)buf.get(), length);
   } else if ("upload-object" == command) {
@@ -427,6 +430,15 @@ int main(int argc, const char *argv[]) {
     string ns = getRequiredStringArg(vm, "namespace");
     bool result = client->namespace_exists(ns);
     cout << "namespace_exists(" << ns << ") => " << result << endl;
+  } else if ("proxy-osd_info2" == command) {
+    auto client = make_proxy_client(host, port, timeout, transport);
+    osd_maps_t result;
+    client->osd_info2(result);
+    for (auto &e : result) {
+      const auto &alba_id = e.first;
+      cout << "alba_id:" << alba_id << std::endl;
+      cout << "   ..." << std::endl;
+    }
   } else if ("partial-read-benchmark" == command) {
     std::map<std::string, io_pattern_t> string_to_pattern;
     string_to_pattern["fixed"] = FIXED;

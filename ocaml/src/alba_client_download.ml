@@ -149,9 +149,10 @@ let download_fragment
   in
 
   fragment_cache # lookup namespace_id cache_key >>= function
-  | Some data ->
+  | Some (data, mfs) ->
      E.return (Statistics.FromCache (Unix.gettimeofday () -. t0_fragment),
-               data)
+               data,
+               mfs)
   | None ->
      E.with_timing
        (fun () ->
@@ -201,8 +202,8 @@ let download_fragment
                         cache_key
                         (Bigstring_slice.wrap_bigstring maybe_decompressed)
        else
-         Lwt.return_unit
-     end >>= fun () ->
+         Lwt.return []
+     end >>= fun mfs ->
 
      let t_fragment = Statistics.(FromOsd {
                                      osd_id;
@@ -213,7 +214,7 @@ let download_fragment
                                      total = Unix.gettimeofday () -. t0_fragment;
                                    }) in
 
-     E.return (t_fragment, maybe_decompressed)
+     E.return (t_fragment, maybe_decompressed, mfs)
 
 (* consumers of this method are responsible for freeing
  * the returned fragment bigstring
@@ -305,7 +306,8 @@ let download_chunk
                 fragment_cache
                 ~cache_on_read
                 bad_fragment_callback
-              >>= fun ((t_fragment, fragment_data) as r) ->
+              >>= fun (t_fragment, fragment_data, _mfs) ->
+              let r = t_fragment, fragment_data in
 
               if !finito
               then

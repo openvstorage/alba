@@ -17,10 +17,12 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
+
 #include "alba_common.h"
 #include "checksum.h"
 #include <boost/optional.hpp>
 #include <iostream>
+#include <map>
 #include <memory>
 
 namespace alba {
@@ -79,18 +81,14 @@ typedef std::pair<boost::optional<uint32_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
 
-struct lookup_result_t {
-  uint32_t chunk_index;
-  uint32_t fragment_index;
-  uint32_t pos_in_fragment;
-  uint32_t fragment_length;
-  uint32_t fragment_version;
-  osd_t _osd;
-
-  lookup_result_t(uint32_t ci, uint32_t fi, uint32_t pif, uint32_t fl,
-                  uint32_t fv, osd_t osd)
-      : chunk_index(ci), fragment_index(fi), pos_in_fragment(pif),
-        fragment_length(fl), fragment_version(fv), _osd(osd) {}
+struct Location {
+  uint32_t namespace_id;
+  std::string object_id;
+  uint32_t chunk_id;
+  uint32_t fragment_id;
+  uint32_t offset;
+  uint32_t length;
+  fragment_location_t fragment_location;
 };
 
 struct Manifest {
@@ -109,14 +107,30 @@ struct Manifest {
   uint32_t version_id;
   uint32_t max_disks_per_node;
   double timestamp = 1.0;
-  uint32_t namespace_id;
-
-  boost::optional<lookup_result_t> to_chunk_fragment(uint32_t offset) const;
 
   Manifest() = default;
   Manifest &operator=(const Manifest &) = delete;
   Manifest(const Manifest &) = delete;
 };
+
+struct ManifestWithNamespaceId : Manifest {
+  uint32_t namespace_id;
+  ManifestWithNamespaceId() = default;
+  ManifestWithNamespaceId &operator=(const ManifestWithNamespaceId &) = delete;
+  ManifestWithNamespaceId(const ManifestWithNamespaceId &) = delete;
+};
+
+struct FCInfo {
+  alba_id_t alba_id;
+  int32_t namespace_id;
+  std::map<int32_t, std::map<int32_t, std::shared_ptr<Manifest>>> info;
+
+  FCInfo() = default;
+  FCInfo &operator=(const FCInfo &) = delete;
+  FCInfo(const FCInfo &) = delete;
+};
+
+void dump_string(std::ostream &, const std::string &);
 
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);
 std::ostream &operator<<(std::ostream &, const compressor_t &);
@@ -125,5 +139,7 @@ std::ostream &operator<<(std::ostream &, const encryption_t &);
 std::ostream &operator<<(std::ostream &, const EncryptInfo &);
 std::ostream &operator<<(std::ostream &, const fragment_location_t &);
 std::ostream &operator<<(std::ostream &, const Manifest &);
+std::ostream &operator<<(std::ostream &, const ManifestWithNamespaceId &);
+std::ostream &operator<<(std::ostream &, const FCInfo &);
 }
 }

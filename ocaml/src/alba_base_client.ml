@@ -466,7 +466,7 @@ class client
           Lwt.fail_with msg
         end
       else
-        let r = Some (manifest, t_object) in
+        let r = Some (manifest, t_object, namespace_id) in
         Lwt.return r
 
     method deliver_nsm_host_messages ~nsm_host_id =

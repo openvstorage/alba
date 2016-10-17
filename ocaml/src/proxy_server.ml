@@ -118,20 +118,27 @@ let read_objects_slices
                     ~fragment_statistics_cb
         >>= function
         | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-        | Some (mf, namespace_id, mf_source) -> Lwt.return (object_name, mf, namespace_id, mf_source)
+        | Some (mf, namespace_id, mf_source, mfs) -> Lwt.return (object_name, mf, namespace_id, mf_source, mfs)
        )
        objects_slices
      >>= fun n_mf_src_s ->
 
      let objects_infos =
        List.map
-         (fun (name, mf, namespace_id, mf_source) -> name, "", (mf, namespace_id))
+         (fun (name, mf, namespace_id, mf_source, mfs) ->
+           (name, "", (mf, namespace_id))
+           :: (List.map
+                 (fun (mf, namespace_id, alba) ->
+                   mf.Nsm_model.Manifest.name, alba, (mf, namespace_id))
+                 mfs)
+         )
          n_mf_src_s
+       |> List.flatten_unordered
      in
-     let mf_sources = List.map (fun (_,_,_,src) -> src) n_mf_src_s in
+     let mf_sources = List.map (fun (_,_,_,src, _) -> src) n_mf_src_s in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
-                 !fc_hits, !fc_misses, (n_objects, objects_infos)))
+                 !fc_hits, !fc_misses, objects_infos))
     (fun () ->
      Lwt_bytes.unsafe_destroy res;
      Lwt.return ())
@@ -159,8 +166,14 @@ let apply_sequence
       ~object_id_hint:None
       ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-    >>= fun (mf, _, gc_epoch) ->
-    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch))
+    >>= fun (mf, extra_mfs, _, gc_epoch) ->
+    let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
+                    (List.map
+                       (fun (mf, namespace_id, alba) ->
+                         mf.Nsm_model.Manifest.name, alba, (mf, namespace_id))
+                       extra_mfs)
+    in
+    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch), all_mfs)
   in
 
   Lwt_list.map_p
@@ -179,22 +192,16 @@ let apply_sequence
                (new Object_reader.bigstring_slice_reader blob)
                cs_o
      | DeleteObject object_name ->
-        Lwt.return (Nsm_model.Update.DeleteObject object_name)
+        Lwt.return (Nsm_model.Update.DeleteObject object_name, [])
     )
     updates >>= fun updates ->
+  let updates, manifests = List.split updates in
+  let manifests = List.flatten_unordered manifests in
 
   alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
   nsm # apply_sequence asserts updates >>= fun () ->
 
-  let cnt, manifests =
-    List.fold_left
-      (fun (cnt, manifests) -> function
-        | Nsm_model.Update.PutObject (mf, _) -> cnt + 1, (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) :: manifests
-        | Nsm_model.Update.DeleteObject _ -> cnt, manifests)
-      (0, [])
-      updates
-  in
-  Lwt.return (cnt, manifests)
+  Lwt.return manifests
 
 
 let read_objects
@@ -267,7 +274,6 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | WriteObjectFs2  -> fun (namespace, object_name, _,_,_) ->
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
-
   | ReadObjectsSlices  -> render_read_object_slices
   | ReadObjectsSlices2 -> render_read_object_slices
   | NamespaceExists -> fun namespace ->
@@ -283,6 +289,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | GetClientConfig -> fun () -> "()"
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
   | OsdInfo         -> fun () -> "()"
+  | OsdInfo2        -> fun () -> "()"
   | ApplySequence   -> fun (namespace, write_barrier, asserts, updates) ->
                        Printf.sprintf "(%S,%b,%s,%s)"
                                       namespace
@@ -334,13 +341,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              ~allow_overwrite:(if allow_overwrite
                                then Unconditionally
                                else NoPrevious)
-           >>= fun (mf , upload_stats, namespace_id) ->
+           >>= fun (mf , fc_info, upload_stats, namespace_id) ->
            let open Alba_statistics.Statistics in
            ProxyStatistics.new_upload stats namespace upload_stats.total;
-           Lwt_log.debug_f "write_object_fs %S %S => namespace_id:%li"
-                           namespace object_name namespace_id
-           >>= fun () ->
-           Lwt.return (mf, namespace_id)
+           Lwt.return (mf, namespace_id, fc_info )
         )
         (let open Alba_client_errors.Error in
           function
@@ -384,7 +388,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                      ~consistent_read ~should_cache
          >>= function
          | None -> Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
-         | Some (mf,download_stats) ->
+         | Some (mf,download_stats, _) ->
             let open Alba_statistics.Statistics in
             let (_mf_duration, mf_hm) = download_stats.get_manifest_dh in
             let fg_hm = summed_fragment_hit_misses download_stats in
@@ -395,20 +399,14 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
               fg_hm;
             Lwt.return ()
        end
-    | WriteObjectFs -> fun stats (namespace,
-                                  object_name,
-                                  input_file,
-                                  allow_overwrite,
-                                  checksum_o) ->
-                       write_object_fs stats (namespace,
-                                              object_name,
-                                              input_file,
-                                              allow_overwrite,
-                                              checksum_o
-                                             )
-                       >>= fun (_mf, _namespace_id) ->
+    | WriteObjectFs -> fun stats args ->
+                       write_object_fs stats args
+                       >>= fun (_mf, _namespace_id, _fc_info) ->
                        Lwt.return_unit
-    | WriteObjectFs2 -> write_object_fs
+    | WriteObjectFs2 -> fun stats args  ->
+                        write_object_fs stats args
+                        >>= fun (mf, namespace_id, _fc_info) ->
+                        Lwt.return (mf, namespace_id)
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->
@@ -484,10 +482,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          ~total_length ~n_slices ~n_objects ~mf_sources
          ~fc_hits ~fc_misses
          ~took:delay;
-       Lwt_log.debug_f "object_infos:%i %s"
-                       (fst object_infos)
+       Lwt_log.debug_f "object_infos:%s"
                        ([%show : (string * string * manifest_with_id) list]
-                          (snd object_infos))
+                          object_infos)
        >>= fun () ->
        Lwt.return (bytes, object_infos)
     | InvalidateCache ->
@@ -535,18 +532,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | OsdInfo ->
        fun stats () ->
        begin
-         let cache = alba_client # osd_access # osds_info_cache in
-         let info =
-           Hashtbl.fold
-             (fun osd_id (osd, _, capabilities) (c,acc) ->
-               let c' = c + 1
-               and acc' = (osd_id, osd, capabilities) :: acc
-               in
-               (c',acc')
-             ) cache (0,[])
-         in
-         Lwt.return info
+         alba_client # osd_access # osd_infos |> Lwt.return
        end
+    | OsdInfo2 ->
+       fun stats () -> alba_client # osd_infos
   in
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =

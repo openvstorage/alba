@@ -21,6 +21,8 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace proxy_client {
 
+using std::string;
+
 ManifestCache &ManifestCache::getInstance() {
   static ManifestCache instance;
   return instance;
@@ -31,8 +33,15 @@ void ManifestCache::set_capacity(size_t capacity) {
   _manifest_cache_capacity = capacity;
 }
 
-void ManifestCache::add(std::string namespace_, std::shared_ptr<Manifest> mfp) {
-  ALBA_LOG(DEBUG, "ManifestCache::add");
+string make_key(const string alba_id, const string object_name) {
+  return alba_id + object_name;
+}
+
+void ManifestCache::add(string namespace_, string alba_id,
+                        manifest_cache_entry mfp) {
+  ALBA_LOG(DEBUG, "ManifestCache::add namespace=" << namespace_
+                                                  << ", alba_id=" << alba_id
+                                                  << ", mfp=" << *mfp);
 
   std::shared_ptr<manifest_cache> mcp = nullptr;
   std::shared_ptr<std::mutex> mp = nullptr;
@@ -62,13 +71,13 @@ void ManifestCache::add(std::string namespace_, std::shared_ptr<Manifest> mfp) {
   std::mutex &m = *mp;
   {
     std::lock_guard<std::mutex> lock(m);
-    std::string object_name(mfp->name);
-    manifest_cache.insert(object_name, std::move(mfp));
+    manifest_cache.insert(make_key(alba_id, mfp->name), std::move(mfp));
   }
 }
 
-std::shared_ptr<Manifest> ManifestCache::find(const std::string &namespace_,
-                                              const std::string &object_name) {
+manifest_cache_entry ManifestCache::find(const string &namespace_,
+                                         const string &alba_id,
+                                         const string &object_name) {
   std::pair<std::shared_ptr<manifest_cache>, std::shared_ptr<std::mutex>> vp;
   {
     std::lock_guard<std::mutex> g(_level1_mutex);
@@ -83,7 +92,7 @@ std::shared_ptr<Manifest> ManifestCache::find(const std::string &namespace_,
   auto &mm = *vp.second;
   {
     std::lock_guard<std::mutex> g(mm);
-    const auto &maybe_elem = map.find(object_name);
+    const auto &maybe_elem = map.find(make_key(alba_id, object_name));
     if (boost::none == maybe_elem) {
       return nullptr;
     } else {
@@ -92,7 +101,7 @@ std::shared_ptr<Manifest> ManifestCache::find(const std::string &namespace_,
   }
 }
 
-void ManifestCache::invalidate_namespace(const std::string &namespace_) {
+void ManifestCache::invalidate_namespace(const string &namespace_) {
   ALBA_LOG(DEBUG, "ManifestCache::invalidate_namespace(" << namespace_ << ")");
   std::lock_guard<std::mutex> g(_level1_mutex);
   auto it = _level1.find(namespace_);

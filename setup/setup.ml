@@ -1161,6 +1161,7 @@ module Deployment = struct
             )
             [] result
          )
+         |> List.rev
        end
     | _ -> failwith "unexpected json format"
 
@@ -1556,12 +1557,44 @@ module Test = struct
         " < "; file;
       ]
 
-  let cpp ?(xml=false) ?filter ?dump (t:Deployment.t) =
-    let cfg = t.Deployment.cfg in
+  let setup_aaa ?(the_prefix="my_prefix") ?(the_preset="default") () =
+    (* alba accelerated alba *)
+    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
+    let cfg_ssd = Config.make ~use_rora:true ~workspace:(workspace ^ "/tmp/alba_ssd") () in
+    let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:6000 () in
+    Deployment.kill t_ssd;
+    Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
+
+    let key_for_lru_tracking = "key_for_lru_tracking" in
+    Deployment.setup
+      ~redis_lru:(6379, key_for_lru_tracking)
+      t_ssd;
+
+    let cfg_hdd = Config.make ~workspace:(workspace ^ "/tmp/alba_hdd") () in
+    let t_hdd =
+      Deployment.make_default
+        ~fragment_cache:Proxy_cfg.(Alba { albamgr_cfg_url = Url.canonical (t_ssd.abm # config_url);
+                                          bucket_strategy = OneOnOne { prefix = the_prefix;
+                                                                       preset = the_preset; };
+                                          manifest_cache_size = 1_000_000;
+                                          cache_on_read_ = true; cache_on_write_ = true;
+      })
+        ~cfg:cfg_hdd ~base_port:4000 ()
+    in
+    Deployment.setup t_hdd;
+    (cfg_hdd, t_hdd), (cfg_ssd, t_ssd)
+
+  let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
+    let (_, t_hdd), (_, t_ssd) = setup_aaa ~the_preset:"preset_rora" () in
+    let cfg = t_hdd.Deployment.cfg in
     let host, transport = _get_ip_transport cfg
     and port = "10000"
     in
-    let () = _create_preset t
+    let () = _create_preset t_hdd
+                            "preset_rora"
+                            "./cfg/preset_no_compression.json"
+    in
+    let () = _create_preset t_ssd
                             "preset_rora"
                             "./cfg/preset_no_compression.json"
     in
@@ -1571,8 +1604,12 @@ module Test = struct
        Printf.sprintf "ALBA_PROXY_IP=%s" host;
        Printf.sprintf "ALBA_PROXY_PORT=%s" port;
        Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
-       "./cpp/bin/unit_tests.out";
       ]
+    in
+    let cmd =
+      if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
+      then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
+      else cmd @ [ "./cpp/bin/unit_tests.out" ]
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml" ] else cmd in
     let cmd3 = match filter with
@@ -2313,31 +2350,9 @@ module Test = struct
     0
 
   let aaa ?xml ?filter ?dump _t =
-    (* alba accelerated alba *)
-    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
-    let cfg_ssd = Config.make ~workspace:(workspace ^ "/tmp/alba_ssd") () in
-    let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:4000 () in
-    Deployment.kill t_ssd;
-    Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
-
-    let key_for_lru_tracking = "key_for_lru_tracking" in
-    Deployment.setup
-      ~redis_lru:(6379, key_for_lru_tracking)
-      t_ssd;
-
-    let cfg_hdd = Config.make ~workspace:(workspace ^ "/tmp/alba_hdd") () in
-    let the_prefix, the_preset = "my_prefix", "default" in
-    let t_hdd =
-      Deployment.make_default
-        ~fragment_cache:Proxy_cfg.(Alba { albamgr_cfg_url = Url.canonical (t_ssd.abm # config_url);
-                                          bucket_strategy = OneOnOne { prefix = the_prefix;
-                                                                       preset = the_preset; };
-                                          manifest_cache_size = 1_000_000;
-                                          cache_on_read_ = true; cache_on_write_ = true;
-                                        })
-        ~cfg:cfg_hdd ~base_port:6000 ()
-    in
-    Deployment.setup t_hdd;
+    let the_prefix = "my_prefix" in
+    let the_preset = "default" in
+    let (cfg_hdd, t_hdd), (cfg_ssd, t_ssd) = setup_aaa ~the_prefix ~the_preset () in
 
     let objname = "fdsij" in
     (* uploading is enough to trigger caching *)
@@ -2551,7 +2566,7 @@ let process_cmd_line () =
   Printf.printf "cmd_len:%i\n%!" cmd_len;
   let suites =
     [ "ocaml",           Test.ocaml, true;
-      "cpp",             Test.cpp, true;
+      "cpp",             Test.cpp, false;
       "voldrv_backend",  Test.voldrv_backend, true;
       "voldrv_tests",    Test.voldrv_tests, true;
       "disk_failures",   Test.disk_failures, true;

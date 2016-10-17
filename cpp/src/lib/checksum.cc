@@ -29,7 +29,13 @@ void Sha1::print(std::ostream &os) const {
 }
 
 void Crc32c::print(std::ostream &os) const {
-  os << "Crc32c(`" << _digest << "`)";
+  os << "Crc32c 0x";
+  uint32_t d = _digest;
+  using namespace alba::stuff;
+  dump_hex(os, d >> 24);
+  dump_hex(os, (d >> 16) & 0xff);
+  dump_hex(os, (d >> 8) & 0xff);
+  dump_hex(os, (d)&0xff);
 }
 
 bool verify(const Checksum &c0, const Checksum &c1) {

@@ -117,7 +117,7 @@ let upload_chunk
   let t_add_to_fragment_cache =
     if cache_on_write
     then
-      Lwt_list.iteri_p
+      Lwt_list.mapi_p
         (fun fragment_id unpacked_data_fragment ->
          let cache_key =
            Fragment_cache_keys.make_key
@@ -128,10 +128,12 @@ let upload_chunk
          fragment_cache # add
                         namespace_id
                         cache_key
-                        unpacked_data_fragment)
+                        unpacked_data_fragment
+        )
         unpacked_data_fragments
+      >|= List.flatten_unordered
     else
-      Lwt.return_unit
+      Lwt.return []
   in
 
   Lwt.finalize
@@ -194,12 +196,16 @@ let upload_chunk
 
         let res = osd_id_o, checksum in
 
-        Lwt.return (t_fragment, res))
-       (List.combine fragments_with_id osds) >>= fun r ->
-     t_add_to_fragment_cache >>= fun () ->
-     Lwt.return r)
+        Lwt.return (t_fragment, res)
+       )
+       (List.combine fragments_with_id osds)
+     >>= fun r ->
+     t_add_to_fragment_cache
+     >>= fun mfs ->
+     Lwt.return (r, mfs)
+    )
     (fun () ->
-     t_add_to_fragment_cache >>= fun () ->
+     t_add_to_fragment_cache >>= fun _ ->
      let () =
        if k = 1
        then
@@ -350,7 +356,15 @@ let upload_object''
 
   let fold_chunks chunk =
 
-    let rec inner acc_chunk_sizes acc_fragments_info total_size chunk_times hash_time chunk_id =
+    let rec inner
+              acc_chunk_sizes
+              acc_fragments_info
+              acc_mfs
+              total_size
+              chunk_times
+              hash_time
+              chunk_id
+      =
       let t0_chunk = Unix.gettimeofday () in
       let chunk_size' = min desired_chunk_size (object_length - total_size) in
       Lwt_log.debug_f "chunk_size' = %i" chunk_size' >>= fun () ->
@@ -411,12 +425,14 @@ let upload_object''
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
-      >>= fun fragment_info ->
+      >>= fun (fragment_info, mfs)  ->
 
       let t_fragments, fragment_info = List.split fragment_info in
 
       let acc_chunk_sizes' = (chunk_id, chunk_size_with_padding) :: acc_chunk_sizes in
       let acc_fragments_info' = fragment_info :: acc_fragments_info in
+
+      let acc_mfs' = List.rev_append mfs acc_mfs in
 
       let t_chunk = Statistics.({
                                    read_data = read_data_time;
@@ -430,25 +446,28 @@ let upload_object''
         inner
           acc_chunk_sizes'
           acc_fragments_info'
+          acc_mfs'
           total_size'
           chunk_times'
           hash_time'
           (chunk_id + 1)
       else
         Lwt.return ((List.rev acc_chunk_sizes',
-                     List.rev acc_fragments_info'),
+                     List.rev acc_fragments_info',
+                     acc_mfs'
+                    ),
                     total_size',
                     List.rev chunk_times',
                     hash_time')
     in
-    inner [] [] 0 [] 0. 0 in
+    inner [] [] [] 0 [] 0. (0:Nsm_model.chunk_id) in
 
   let chunk = Lwt_bytes.create desired_chunk_size in
   Lwt.finalize
     (fun () -> fold_chunks chunk)
     (fun () -> Lwt_bytes.unsafe_destroy chunk;
                Lwt.return ())
-  >>= fun ((chunk_sizes', fragments_info), size, chunk_times, hash_time) ->
+  >>= fun ((chunk_sizes', fragments_info, chunk_mfs), size, chunk_times, hash_time) ->
 
   (* all fragments have been stored
          make a manifest and store it in the namespace manager *)
@@ -504,8 +523,9 @@ let upload_object''
                    chunks = chunk_times;
                    store_manifest = t_store_manifest;
                    total = Unix.gettimeofday () -. object_t0;
-                 }) in
-  Lwt.return (manifest, almost_t_object, gc_epoch)
+    })
+  in
+  Lwt.return (manifest, chunk_mfs, almost_t_object, gc_epoch)
 
 let cleanup_gc_tags
       (osd_access : Osd_access_type.t)
@@ -553,7 +573,8 @@ let store_manifest
       manifest_cache
       ~namespace_id
       ~allow_overwrite
-      (manifest, almost_t_object, gc_epoch) =
+      (manifest, chunk_fidmos, almost_t_object, gc_epoch)
+  =
   let object_name = manifest.Nsm_model.Manifest.name in
   let store_manifest () =
     nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
@@ -588,7 +609,7 @@ let store_manifest
     manifest_cache
     namespace_id object_name manifest;
 
-  Lwt.return (manifest, t_object, namespace_id)
+  Lwt.return (manifest, chunk_fidmos, t_object, namespace_id)
 
 let upload_object'
       nsm_host_access osd_access

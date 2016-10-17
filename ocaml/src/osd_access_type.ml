@@ -38,6 +38,12 @@ class type t =
              (Albamgr_protocol.Protocol.Osd.id,
               Nsm_model.OsdInfo.t * Osd_state.t * Capabilities.OsdCapabilities.t)
                Hashtbl.t
+
+    method osd_infos :
+             ((Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
+                 Capabilities.OsdCapabilities.t))
+               counted_list
+
     method osds_to_osds_info_cache :
              Albamgr_protocol.Protocol.Osd.id list ->
              (Albamgr_protocol.Protocol.Osd.id,
