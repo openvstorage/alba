@@ -300,9 +300,9 @@ class osd_access
        f)
     (fun exn ->
      get_osd_info ~osd_id >>= fun (_, state,_) ->
-
+     let open Asd_protocol.Protocol.Error in
      let add_to_errors =
-       let open Asd_protocol.Protocol.Error in
+
        match exn with
        | End_of_file
        | Exn Assert_failed _ -> false
@@ -310,8 +310,9 @@ class osd_access
      in
      let should_invalidate_pool =
        match exn with
-       (* TODO fill in exceptions for which we shouldn't invalidate the pool
-        *)
+       | Exn Assert_failed _ -> false
+       | Exn Unknown_operation -> false
+       | Exn Full -> false
        | _ -> true
      in
 
