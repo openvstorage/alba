@@ -18,8 +18,10 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include <cinttypes>
+#include <string>
 
 namespace alba {
 typedef uint32_t osd_t;
 typedef unsigned char byte;
+typedef std::string alba_id_t;
 }

@@ -20,9 +20,13 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "alba_logger.h"
 #include "manifest.h"
 #include "gtest/gtest.h"
+#include "gtest/gtest.h"
+#include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/log/trivial.hpp>
 
+#include "osd_access.h"
+#include "osd_info.h"
 #include <fstream>
 #include <iostream>
 
@@ -38,7 +42,7 @@ string env_or_default(const std::string &name, const std::string &def) {
   return string(env);
 }
 
-auto TIMEOUT = std::chrono::seconds(5);
+auto TIMEOUT = std::chrono::seconds(20);
 using alba::proxy_client::Proxy_client;
 using namespace alba;
 
@@ -69,28 +73,7 @@ struct config {
   alba::proxy_client::Transport TRANSPORT;
 };
 
-void logBoostMethod(alba::logger::AlbaLogLevel /*level */, string &msg) {
-  // there should actually be a translation from AlbaLogLevel to some boost
-  // log level here, but I'm too lazy for this test client
-  BOOST_LOG_TRIVIAL(debug) << msg;
-}
-
-std::function<void(alba::logger::AlbaLogLevel, string &)> logBoost =
-    std::function<void(alba::logger::AlbaLogLevel, string &)>(logBoostMethod);
-
-std::function<void(alba::logger::AlbaLogLevel, string &)> *nulllog = nullptr;
-
-void init_log() {
-  alba::logger::setLogFunction([&](alba::logger::AlbaLogLevel level) {
-    switch (level) {
-    default:
-      return &logBoost;
-    };
-  });
-}
-
 TEST(proxy_client, list_objects) {
-  init_log();
 
   ALBA_LOG(WARNING, "starting test:list_objects");
   config cfg;
@@ -121,7 +104,7 @@ TEST(proxy_client, list_objects) {
 }
 
 TEST(proxy_client, list_namespaces) {
-  init_log();
+
   ALBA_LOG(WARNING, "starting test:list_namespaces");
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
@@ -145,7 +128,7 @@ TEST(proxy_client, list_namespaces) {
 }
 
 TEST(proxy_client, get_object_info) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
@@ -167,7 +150,7 @@ TEST(proxy_client, get_object_info) {
 }
 
 TEST(proxy_client, get_proxy_version) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   int32_t major;
@@ -191,7 +174,7 @@ double stamp() {
 }
 
 TEST(proxy_client, test_ping) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
   double eps =
@@ -211,7 +194,7 @@ TEST(proxy_client, test_ping) {
   std::cout << "part2" << std::endl;
   t0 = stamp();
   try {
-    timestamp = client->ping(10.0);
+    timestamp = client->ping(25.0);
     // expect failure....
     double t1 = stamp();
     std::cout << "we got here after " << t1 - t0 << " s" << std::endl;
@@ -222,19 +205,8 @@ TEST(proxy_client, test_ping) {
     delta = t1 - t0;
     std::cout << "t0:" << t0 << " t1:" << t1 << std::endl;
     std::cout << "delta:" << delta << std::endl;
-    EXPECT_NEAR(delta, 5.0, eps);
+    EXPECT_NEAR(delta, 20.0, eps);
   }
-}
-
-void _compare(proxy_protocol::lookup_result_t &exp,
-              proxy_protocol::lookup_result_t &act) {
-
-  EXPECT_EQ(exp.chunk_index, act.chunk_index);
-  EXPECT_EQ(exp.fragment_index, act.fragment_index);
-  EXPECT_EQ(exp.pos_in_fragment, act.pos_in_fragment);
-  EXPECT_EQ(exp.fragment_length, act.fragment_length);
-  EXPECT_EQ(exp.fragment_version, act.fragment_version);
-  EXPECT_EQ(exp._osd, act._osd);
 }
 
 TEST(proxy_client, manifest) {
@@ -248,7 +220,7 @@ TEST(proxy_client, manifest) {
   auto size = data.size();
   std::cout << "size:" << size << std::endl;
 
-  Manifest mf;
+  ManifestWithNamespaceId mf;
   std::vector<char> v(data.begin(), data.end());
   llio::message m(v);
   from(m, mf);
@@ -257,73 +229,66 @@ TEST(proxy_client, manifest) {
   EXPECT_EQ(mf.name, "with_manifest");
   EXPECT_EQ(mf.max_disks_per_node, 3);
   EXPECT_EQ(mf.namespace_id, 5);
-  uint32_t tests[] = {
-      0, 10, (1 << 20) + 2, (5 << 20) + 2,
-  };
-
-  lookup_result_t expecteds[] = {
-      lookup_result_t(0, 0, 0, 1 << 20, 0, 9),
-      lookup_result_t(0, 0, 10, 1 << 20, 0, 9),
-      lookup_result_t(0, 1, 2, 1 << 20, 0, 6),
-      lookup_result_t(1, 0, 2, 1 << 20, 0, 9),
-  };
-
-  for (int i = 0; i < 4; i++) {
-    auto pos = tests[i];
-    auto &expected = expecteds[i];
-    auto maybelookup_result = mf.to_chunk_fragment(pos);
-    EXPECT_FALSE(maybelookup_result == boost::none);
-    auto &lookup_result = *maybelookup_result;
-    _compare(expected, lookup_result);
-  }
 }
 
 TEST(proxy_client, test_osd_info) {
-  init_log();
+
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
-  std::vector<std::pair<osd_t, proxy_protocol::info_caps>> result;
+  proxy_protocol::osd_map_t result;
 
   client->osd_info(result);
   for (auto &p : result) {
     auto osd = p.first;
-    auto &ic = p.second;
-    const proxy_protocol::OsdInfo &osd_info = *ic.first;
-    std::cout << "osd:" << osd << " info: " << osd_info
-              << " caps: " << *ic.second << std::endl;
+    auto &ic = *p.second;
+    const proxy_protocol::OsdInfo &osd_info = ic.first;
+    std::cout << "osd: " << osd << " info: " << osd_info
+              << " caps: " << ic.second << std::endl;
   }
 }
 
-void _generic_partial_read_test(
-    std::string &namespace_, std::string &name,
-    std::vector<proxy_protocol::ObjectSlices> &objects_slices,
-    std::string &file, bool clear_before_read) {
-  init_log();
+TEST(proxy_client, test_osd_info2) {
   config cfg;
-  boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
-  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
-                                  rora_config);
-  boost::optional<std::string> preset{"preset_rora"};
-  std::ostringstream nos;
-  nos << namespace_ << "_" << std::rand();
-  string actual_namespace{nos.str()};
-  BOOST_LOG_TRIVIAL(info) << "creating namespace " << actual_namespace;
-  client->create_namespace(actual_namespace, preset);
+  using namespace proxy_protocol;
+  auto client = make_proxy_client(cfg.HOST, "10000", TIMEOUT, cfg.TRANSPORT);
+  osd_maps_t result;
+  client->osd_info2(result);
+  uint n = 12;
+  std::set<alba_id_t> alba_ids;
+  for (auto &e : result) {
+    const alba_id_t &alba_id = e.first;
+    std::cout << "alba_id=" << alba_id << std::endl;
+    const auto &infos = e.second;
+    alba_ids.insert(alba_id);
+    std::map<int, int> osds;
+    for (auto &osd_map : infos) {
+      auto osd = osd_map.first;
 
-  client->write_object_fs(actual_namespace, name, file,
-                          proxy_client::allow_overwrite::T, nullptr);
-  if (clear_before_read) {
-    client->invalidate_cache(actual_namespace);
+      EXPECT_EQ(osds.find(osd), osds.end());
+      osds[osd] = 1;
+      auto &pair = *osd_map.second;
+      auto &osd_info = pair.first;
+      using stuff::operator<<;
+      std::cout << "osd=" << osd << ", osd_info=" << osd_info << std::endl;
+    }
+    EXPECT_EQ(osds.size(), n);
   }
-  client->read_objects_slices(actual_namespace, objects_slices,
-                              proxy_client::consistent_read::F);
+  EXPECT_EQ(result.size(), 2);
+  EXPECT_EQ(alba_ids.size(), 2);
+
+  auto &osd_access = alba::proxy_client::OsdAccess::getInstance();
+  osd_access.update(*client);
+  for (osd_t osd = 0; osd < n; osd++) {
+    bool unknown = osd_access.osd_is_unknown(osd);
+    EXPECT_EQ(unknown, false);
+  }
 }
 
-void _compare_blocks(std::vector<byte> &block1, std::vector<byte> &block2,
-                     uint32_t off, uint32_t len) {
+void _compare_blocks(std::vector<byte> &block1, byte *block2, uint32_t off,
+                     uint32_t len) {
   auto ok = true;
-  BOOST_LOG_TRIVIAL(info) << "comparing blocks";
+  ALBA_LOG(INFO, "comparing blocks");
   for (uint32_t i = 0; i < len; i++) {
     uint32_t pos = off + i;
     const byte b1 = block1[pos];
@@ -337,6 +302,67 @@ void _compare_blocks(std::vector<byte> &block1, std::vector<byte> &block2,
   }
   EXPECT_TRUE(ok);
 }
+
+void _generic_partial_read_test(
+    config &cfg, std::string &namespace_, std::string &name,
+    std::vector<proxy_protocol::ObjectSlices> &objects_slices,
+    std::string &file, bool clear_before_read) {
+
+  boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
+                                  rora_config);
+  boost::optional<std::string> preset{"preset_rora"};
+  std::ostringstream nos;
+  nos << namespace_ << "_" << std::rand();
+  string actual_namespace{nos.str()};
+  ALBA_LOG(INFO, "creating namespace " << actual_namespace);
+  client->create_namespace(actual_namespace, preset);
+
+  // this upload is to 'warm up' the proxy
+  // more specifically: the first upload will trigger namespace
+  // creation on the fragment cache, and that may cause some fragments
+  // of the first chunk to not be successfully stored there, leading
+  // to test failure here.
+  const auto seq1 = proxy_client::sequences::Sequence().add_upload_fs(
+      name + "_dummy", file, nullptr);
+  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F,
+                         seq1);
+
+  const auto seq2 =
+      proxy_client::sequences::Sequence().add_upload_fs(name, file, nullptr);
+  ALBA_LOG(INFO, "apply sequence");
+  client->apply_sequence(actual_namespace, proxy_client::write_barrier::F,
+                         seq2);
+  if (clear_before_read) {
+    client->invalidate_cache(actual_namespace);
+  }
+  ALBA_LOG(INFO, "doing partial read");
+  alba::statistics::RoraCounter cntr{0, 0};
+  client->read_objects_slices(actual_namespace, objects_slices,
+                              proxy_client::consistent_read::F, cntr);
+
+  // verify partially read data
+  std::ifstream for_comparison(file, std::ios::binary);
+  for (auto &object_slices : objects_slices) {
+    for (auto &slice : object_slices.slices) {
+      std::vector<byte> bytes2(slice.size);
+      for_comparison.seekg(slice.offset);
+      for_comparison.read((char *)&bytes2[0], slice.size);
+      _compare_blocks(bytes2, slice.buf, 0, slice.size);
+    }
+  }
+
+  std::cout << "slow_path=" << cntr.slow_path
+            << ", fast_path=" << cntr.fast_path << std::endl;
+  if (clear_before_read) {
+    EXPECT_TRUE(cntr.slow_path > 0);
+    EXPECT_EQ(cntr.fast_path, 0);
+  } else {
+    EXPECT_EQ(cntr.slow_path, 0);
+    EXPECT_TRUE(cntr.fast_path > 0);
+  }
+}
+
 TEST(proxy_client, test_partial_read_trivial) {
   std::string namespace_("test_partial_read_trivial");
   std::ostringstream sos;
@@ -351,15 +377,12 @@ TEST(proxy_client, test_partial_read_trivial) {
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
   string file("./ocaml/alba.native");
-  _generic_partial_read_test(namespace_, name, objects_slices, file, false);
-  std::ifstream for_comparison("./ocaml/alba.native", std::ios::binary);
-  std::vector<byte> bytes2(block_size);
-  for_comparison.read((char *)&bytes2[0], block_size);
-  _compare_blocks(bytes, bytes2, 0, block_size);
+  config cfg;
+  _generic_partial_read_test(cfg, namespace_, name, objects_slices, file,
+                             false);
 }
 
 TEST(proxy_client, test_partial_read_trivial2) {
-  std::srand(std::time(0));
   std::string namespace_("test_partial_read_trivial2");
   std::ostringstream sos;
   sos << "with_manifest" << std::rand();
@@ -373,7 +396,8 @@ TEST(proxy_client, test_partial_read_trivial2) {
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
   string file("./ocaml/alba.native");
-  _generic_partial_read_test(namespace_, name, objects_slices, file, true);
+  config cfg;
+  _generic_partial_read_test(cfg, namespace_, name, objects_slices, file, true);
 }
 
 TEST(proxy_client, test_partial_read_trivial3) {
@@ -390,7 +414,9 @@ TEST(proxy_client, test_partial_read_trivial3) {
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
   string file("./ocaml/src/fragment_cache.ml"); // ~30K => fragments in rocksdb
-  _generic_partial_read_test(namespace_, name, objects_slices, file, false);
+  config cfg;
+  _generic_partial_read_test(cfg, namespace_, name, objects_slices, file,
+                             false);
 }
 
 TEST(proxy_client, test_partial_read_multislice) {
@@ -410,7 +436,9 @@ TEST(proxy_client, test_partial_read_multislice) {
   ObjectSlices object_slices{name, slices};
   std::vector<ObjectSlices> objects_slices{object_slices};
   string file("./ocaml/alba.native");
-  _generic_partial_read_test(namespace_, name, objects_slices, file, false);
+  config cfg;
+  _generic_partial_read_test(cfg, namespace_, name, objects_slices, file,
+                             false);
 }
 
 TEST(proxy_client, test_partial_reads) {
@@ -430,13 +458,14 @@ TEST(proxy_client, test_partial_reads) {
   client->write_object_fs(namespace_, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
   client->invalidate_cache(namespace_);
+  alba::statistics::RoraCounter cntr{0, 0};
   for (int i = 0; i < 8; i++) {
     SliceDescriptor sd{&buf[0], 0, 4096};
     std::vector<SliceDescriptor> slices{sd};
     ObjectSlices object_slices{name, slices};
     std::vector<ObjectSlices> objects_slices{object_slices};
     client->read_objects_slices(namespace_, objects_slices,
-                                proxy_client::consistent_read::F);
+                                proxy_client::consistent_read::F, cntr);
   }
 }
 
@@ -459,8 +488,28 @@ TEST(proxy_client, manifest_cache_eviction) {
   }
 }
 
+TEST(proxy_client, rora_fc_partial_read_trivial) {
+  std::string namespace_("rora_fc_partial_read_trivial");
+  std::ostringstream sos;
+  sos << "with_manifest" << std::rand();
+  string name = sos.str();
+  using namespace proxy_protocol;
+  uint32_t block_size = 4096;
+  std::vector<byte> bytes(block_size);
+  uint32_t offset = 5 << 20; // chunk 1;
+  SliceDescriptor sd{&bytes[0], offset, block_size};
+
+  std::vector<SliceDescriptor> slices{sd};
+  ObjectSlices object_slices{name, slices};
+  std::vector<ObjectSlices> objects_slices{object_slices};
+  string file_name("./ocaml/alba.native");
+  config cfg;
+  cfg.PORT = "10000";
+  _generic_partial_read_test(cfg, namespace_, name, objects_slices, file_name,
+                             false);
+}
+
 TEST(proxy_client, apply_sequence) {
-  init_log();
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
@@ -472,11 +521,8 @@ TEST(proxy_client, apply_sequence) {
   std::vector<std::shared_ptr<proxy_client::sequences::Assert>> asserts;
   std::vector<std::shared_ptr<proxy_client::sequences::Update>> updates;
 
-  std::vector<proxy_protocol::object_info> object_infos;
-
   // empty apply sequence (could be used just for the write barrier)
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   asserts.push_back(
       std::make_shared<proxy_client::sequences::AssertObjectDoesNotExist>(
@@ -488,36 +534,33 @@ TEST(proxy_client, apply_sequence) {
       std::make_shared<proxy_client::sequences::UpdateDeleteObject>("woosh");
   updates.push_back(u1);
   updates.push_back(u2);
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   asserts.clear();
   asserts.push_back(
       std::make_shared<proxy_client::sequences::AssertObjectDoesNotExist>(
           "myobj"));
   updates.clear();
-  ASSERT_THROW(client->apply_sequence(namespace_, write_barrier, asserts,
-                                      updates, object_infos),
-               alba::proxy_client::proxy_exception);
+  ASSERT_THROW(
+      client->apply_sequence(namespace_, write_barrier, asserts, updates),
+      alba::proxy_client::proxy_exception);
 
   asserts.clear();
   updates.clear();
   updates.push_back(
       std::make_shared<proxy_client::sequences::UpdateDeleteObject>("myobj"));
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   asserts.clear();
   asserts.push_back(
       std::make_shared<proxy_client::sequences::AssertObjectDoesNotExist>(
           "myobj"));
   updates.clear();
-  client->apply_sequence(namespace_, write_barrier, asserts, updates,
-                         object_infos);
+  client->apply_sequence(namespace_, write_barrier, asserts, updates);
 
   const auto seq =
       proxy_client::sequences::Sequence()
           .add_assert("non existing", proxy_client::sequences::ObjectExists::F)
           .add_upload_fs("bar", "./ocaml/alba.native", nullptr);
-  client->apply_sequence(namespace_, write_barrier, seq, object_infos);
+  client->apply_sequence(namespace_, write_barrier, seq);
 }

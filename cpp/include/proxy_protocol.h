@@ -68,8 +68,11 @@ struct ObjectSlices {
   const std::vector<SliceDescriptor> slices;
 };
 
-typedef std::tuple<std::string, std::string, std::unique_ptr<Manifest>>
-    object_info;
+std::ostream &operator<<(std::ostream &, const SliceDescriptor &);
+std::ostream &operator<<(std::ostream &, const ObjectSlices &);
+
+typedef std::tuple<std::string, alba_id_t,
+                   std::unique_ptr<ManifestWithNamespaceId>> object_info;
 
 using std::string;
 using boost::optional;
@@ -125,7 +128,7 @@ void write_write_object_fs2_request(message_builder &mb,
                                     const Checksum *checksum);
 
 void read_write_object_fs2_response(message &m, Status &status,
-                                    Manifest &manifest);
+                                    ManifestWithNamespaceId &mf);
 
 void write_delete_object_request(message_builder &mb, const string &namespace_,
                                  const string &object_name,
@@ -181,7 +184,10 @@ void read_ping_response(message &m, Status &status, double &timestamp);
 
 void write_osd_info_request(message_builder &mb);
 
-void read_osd_info_response(message &m, Status &status,
-                            std::vector<std::pair<osd_t, info_caps>> &result);
+void read_osd_info_response(message &m, Status &status, osd_map_t &result);
+
+void write_osd_info2_request(message_builder &mb);
+
+void read_osd_info2_response(message &m, Status &status, osd_maps_t &result);
 }
 }

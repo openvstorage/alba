@@ -300,9 +300,9 @@ class osd_access
        f)
     (fun exn ->
      get_osd_info ~osd_id >>= fun (_, state,_) ->
-
+     let open Asd_protocol.Protocol.Error in
      let add_to_errors =
-       let open Asd_protocol.Protocol.Error in
+
        match exn with
        | End_of_file
        | Exn Assert_failed _ -> false
@@ -310,8 +310,13 @@ class osd_access
      in
      let should_invalidate_pool =
        match exn with
-       (* TODO fill in exceptions for which we shouldn't invalidate the pool
-        *)
+       | Exn Assert_failed _ -> false
+       | Exn Unknown_operation -> false
+       | Exn Full -> true
+          (* when it's full, we need to disqualify this OSD,
+             and the 'set' in the requalification loop will eventually requalify it,
+             fe, when rebalancing creates space on that OSD again
+           *)
        | _ -> true
      in
 
@@ -453,6 +458,16 @@ class osd_access
     method get_default_osd_priority = default_osd_priority
 
     method osds_info_cache = osds_info_cache
+
+    method osd_infos =
+      (* TODO this could (should?) also return osd_infos for nested alba_osds? *)
+      Hashtbl.fold
+        (fun osd_id (osd, _, capabilities) (c,acc) ->
+          let c' = c + 1
+          and acc' = (osd_id, osd, capabilities) :: acc
+          in
+          (c',acc')
+        ) osds_info_cache (0,[])
 
     method get_osd_claim_info = !osd_long_id_claim_info
     method osd_timeout = osd_timeout

@@ -23,6 +23,7 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace proxy_client {
 
+using namespace proxy_protocol;
 class GenericProxy_client : public Proxy_client {
 public:
   virtual bool namespace_exists(const std::string &name);
@@ -61,18 +62,19 @@ public:
   virtual void
   read_objects_slices(const std::string &namespace_,
                       const std::vector<proxy_protocol::ObjectSlices> &,
-                      const consistent_read);
+                      const consistent_read, alba::statistics::RoraCounter &);
   virtual void
   read_objects_slices2(const std::string &namespace_,
                        const std::vector<proxy_protocol::ObjectSlices> &,
                        const consistent_read,
-                       std::vector<proxy_protocol::object_info> &);
+                       std::vector<proxy_protocol::object_info> &,
+                       alba::statistics::RoraCounter &);
 
   virtual void write_object_fs2(const std::string &namespace_,
                                 const std::string &object_name,
                                 const std::string &input_file,
                                 const allow_overwrite, const Checksum *checksum,
-                                proxy_protocol::Manifest &);
+                                proxy_protocol::ManifestWithNamespaceId &);
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -81,8 +83,15 @@ public:
   virtual void
   apply_sequence(const std::string &namespace_, const write_barrier,
                  const std::vector<std::shared_ptr<sequences::Assert>> &,
-                 const std::vector<std::shared_ptr<sequences::Update>> &,
-                 std::vector<proxy_protocol::object_info> &);
+                 const std::vector<std::shared_ptr<sequences::Update>> &);
+
+  // TODO want to make this a protected member but then rora_proxy_client can't
+  // use it
+  virtual void
+  apply_sequence_(const std::string &namespace_, const write_barrier,
+                  const std::vector<std::shared_ptr<sequences::Assert>> &,
+                  const std::vector<std::shared_ptr<sequences::Update>> &,
+                  std::vector<proxy_protocol::object_info> &);
 
   virtual void invalidate_cache(const std::string &namespace_);
 
@@ -93,8 +102,9 @@ public:
 
   virtual double ping(const double delay);
 
-  virtual void
-  osd_info(std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result);
+  virtual void osd_info(osd_map_t &result);
+
+  virtual void osd_info2(osd_maps_t &result);
 
   GenericProxy_client(const std::chrono::steady_clock::duration &timeout);
 

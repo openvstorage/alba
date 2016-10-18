@@ -38,7 +38,7 @@ class client
                     ~object_name
                     ~consistent_read
                     ~should_cache:true
-        |> Lwt.map (Option.map fst)
+        |> Lwt.map (Option.map (fun (d, _, _) -> d))
 
       method get_exn prio name =
         self # get_option prio name >>= function
@@ -91,7 +91,7 @@ class client
                        ~should_cache:true
            >>= function
            | None -> Lwt.fail_with "object missing in range entries"
-           | Some (v, mf) ->
+           | Some (v, mf, _) ->
               Lwt.return (name, v, mf.Nsm_model.Manifest.checksum))
           names >>= fun r ->
         Lwt.return ((cnt, r), has_more)
@@ -136,7 +136,7 @@ class client
                    ~object_id_hint:None
                    ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
                    ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-                 >>= fun (mf, _, gc_epoch) ->
+                 >>= fun (mf, _chunk_fidmos, _, gc_epoch) ->
                  Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch)))
             updates
         in
@@ -156,7 +156,7 @@ class client
                              ~consistent_read:true
                              ~should_cache:true >>= function
                  | None -> Lwt.fail Nsm_model.Err.(Nsm_exn (Assert_failed, object_name))
-                 | Some (v, mf) ->
+                 | Some (v, mf, _) ->
                     if Osd.Blob.equal blob (Osd.Blob.Lwt_bytes v)
                     then Lwt.return (Nsm_model.Assert.ObjectHasId
                                        (object_name,

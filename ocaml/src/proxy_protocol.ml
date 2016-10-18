@@ -283,10 +283,11 @@ module Protocol = struct
   type consistent_read = bool [@@deriving show]
   type should_cache = bool [@@deriving show]
 
+  type alba_id = string [@@deriving show]
+
   type write_barrier = bool [@@deriving show]
 
   type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
-
 
   module Assert =
     struct
@@ -431,8 +432,8 @@ module Protocol = struct
                            consistent_read,
                             (data
                              * ((object_name
-                                 * string
-                                 * manifest_with_id) counted_list ))) request
+                                 * alba_id
+                                 * manifest_with_id) list))) request
     | InvalidateCache : (Namespace.name, unit) request
     | DropCache : (Namespace.name, unit) request
     | ProxyStatistics : (bool, ProxyStatistics.t) request
@@ -444,12 +445,16 @@ module Protocol = struct
     | GetClientConfig : (unit, Alba_arakoon.Config.t) request
     | Ping : (float, float) request
     | OsdInfo : (unit,
-                 (Int32.t *
+                 (Albamgr_protocol.Protocol.Osd.id *
                     Nsm_model.OsdInfo.t *
                       Capabilities.OsdCapabilities.t) counted_list )
                   request
+    | OsdInfo2 : (unit,
+                  ((alba_id * (Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
+                               Capabilities.OsdCapabilities.t) counted_list) counted_list)
+                 ) request
     | ApplySequence : (Namespace.name * write_barrier * Assert.t list * Update.t list,
-                       (object_name * string * manifest_with_id) counted_list) request
+                       (object_name * alba_id * manifest_with_id) list) request
     | ReadObjects : (Namespace.name
                      * object_name list
                      * consistent_read
@@ -484,6 +489,7 @@ module Protocol = struct
                       24, Wrap ApplySequence, "ApplySequence";
                       25, Wrap ReadObjects, "ReadObjects";
                       26, Wrap MultiExists, "MultiExists";
+                      28, Wrap OsdInfo2, "OsdInfo2";
                     ]
 
   module Error = struct
@@ -568,7 +574,6 @@ module Protocol = struct
          Deser.string
          Deser.bool
          (Deser.option Checksum_deser.deser')
-
     | DeleteObject ->
       Deser.tuple3
         Deser.string
@@ -610,6 +615,7 @@ module Protocol = struct
     | GetClientConfig -> Deser.unit
     | Ping            -> Deser.float
     | OsdInfo         -> Deser.unit
+    | OsdInfo2        -> Deser.unit
     | ApplySequence ->
        Deser.tuple4
          Deser.string
@@ -642,9 +648,9 @@ module Protocol = struct
     | ReadObjectsSlices2 ->
        Deser.tuple2
          Deser.string
-         (Deser.counted_list (Deser.tuple3 Deser.string
-                                           Deser.string
-                                           (Deser.tuple2 Manifest_deser.deser Deser.int32)
+         (Deser.list (Deser.tuple3 Deser.string
+                                   Deser.string
+                                   (Deser.tuple2 Manifest_deser.deser Deser.int32)
          ))
     | InvalidateCache -> Deser.unit
     | DropCache -> Deser.unit
@@ -673,8 +679,17 @@ module Protocol = struct
                                         Osd_deser.OsdInfo.deser
                                         Capabilities.OsdCapabilities.deser
                           )
+    | OsdInfo2 ->
+       Deser.counted_list
+         (Deser.pair
+            Deser.string
+            (Deser.counted_list (Deser.tuple3
+                                   Deser.int32
+                                   Osd_deser.OsdInfo.deser
+                                   Capabilities.OsdCapabilities.deser
+         )))
     | ApplySequence ->
-       Deser.counted_list (Deser.tuple3
+       Deser.list (Deser.tuple3
                              Deser.string
                              Deser.string
                              (Deser.pair Manifest_deser.deser Deser.int32))

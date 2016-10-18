@@ -182,7 +182,7 @@ class t
                                                               Some cs)
                                      )
                                      updates)
-            >>= fun (_, _) ->
+            >>= fun _ ->
             Lwt.return Osd.Ok)
           (function
            | Proxy_protocol.Protocol.Error.Exn (Proxy_protocol.Protocol.Error.AssertFailed, key) ->

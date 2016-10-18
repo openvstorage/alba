@@ -17,8 +17,8 @@
   but WITHOUT ANY WARRANTY of any kind.
 */
 #include "rdma_proxy_client.h"
-#include <rdma/rsocket.h>
 #include <boost/lexical_cast.hpp>
+#include <rdma/rsocket.h>
 
 namespace alba {
 namespace proxy_client {
@@ -121,7 +121,8 @@ void RDMAProxy_client::_really_read(char *buf, const int len) {
 
     read = rrecv(_socket, &buf[off], todo, flags);
     if (read <= 0) {
-        throw proxy_exception(read, _build_msg("really_read.rrecv= " + std::to_string(read)));
+      throw proxy_exception(
+          read, _build_msg("really_read.rrecv= " + std::to_string(read)));
     }
     off += read;
     todo -= read;

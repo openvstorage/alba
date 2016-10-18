@@ -16,11 +16,11 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#include "proxy_protocol.h"
 #include "llio.h"
+#include "proxy_protocol.h"
 #include "snappy.h"
-#include <boost/optional/optional_io.hpp>
 #include "stuff.h"
+#include <boost/optional/optional_io.hpp>
 
 namespace alba {
 namespace llio {
@@ -113,19 +113,22 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
     throw deserialisation_exception("unexpected layout tag 2");
   }
 
+  // from(m2, mf.fragment_checksums); // TODO: how to this via the layout based
+  // template ?
+  // iso this:
+
   uint32_t n_chunks;
   from(m2, n_chunks);
 
-  // TODO: how to this via the layout based template ?
   for (uint32_t i = 0; i < n_chunks; i++) {
-    std::vector<std::shared_ptr<alba::Checksum>> chunk;
     uint32_t n_fragments;
     from(m2, n_fragments);
-    for (uint32_t f = 0; f < n_fragments; f++) {
+    std::vector<std::shared_ptr<alba::Checksum>> chunk(n_fragments);
+    for (int32_t f = n_fragments - 1; f >= 0; --f) {
       alba::Checksum *p;
       from(m2, p);
       std::shared_ptr<alba::Checksum> sp(p);
-      chunk.push_back(sp);
+      chunk[f] = sp;
     };
     mf.fragment_checksums.push_back(chunk);
   }
@@ -141,44 +144,50 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   from(m2, mf.version_id);
   from(m2, mf.max_disks_per_node);
   from(m2, mf.timestamp);
-  from(m, mf.namespace_id);
+}
+
+template <>
+void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid) {
+  from(m, (proxy_protocol::Manifest &)mfid);
+  from(m, mfid.namespace_id);
+}
+
+template <> void from(message &m, proxy_protocol::FCInfo &fc_info) {
+  ALBA_LOG(DEBUG, "from(_, fc_info");
+  from(m, fc_info.alba_id);
+  from(m, fc_info.namespace_id);
+  uint32_t n_chunks;
+  from(m, n_chunks);
+  ALBA_LOG(DEBUG, "n_chunks:" << n_chunks);
+
+  for (uint32_t chunk_index = 0; chunk_index < n_chunks; ++chunk_index) {
+    uint32_t chunk_id;
+    from(m, chunk_id);
+    ALBA_LOG(DEBUG, "chunk_id:" << chunk_id);
+    int32_t n_fragments;
+    from(m, n_fragments);
+    std::map<int32_t, std::shared_ptr<proxy_protocol::Manifest>> chunk;
+    ALBA_LOG(DEBUG, "n_fragments:" << n_fragments);
+    for (int32_t fragment_index = 0; fragment_index < n_fragments;
+         ++fragment_index) {
+      int32_t fragment_id;
+      from(m, fragment_id);
+      ALBA_LOG(DEBUG, "fragment_id:" << fragment_id);
+
+      std::shared_ptr<proxy_protocol::Manifest> mfp(
+          new proxy_protocol::Manifest);
+      from(m, *mfp);
+
+      chunk[fragment_id] = std::move(mfp);
+    }
+    fc_info.info[chunk_id] = std::move(chunk);
+  }
+  ALBA_LOG(DEBUG, "m.pos= " << m.get_pos()
+                            << " left=" << (m.size() - m.get_pos()));
 }
 }
+
 namespace proxy_protocol {
-
-boost::optional<lookup_result_t>
-Manifest::to_chunk_fragment(uint32_t pos) const {
-  int chunk_index = -1;
-  uint32_t total = 0;
-  auto it = chunk_sizes.begin();
-
-  while (total <= pos) {
-    chunk_index++;
-    auto chunk_size = *it;
-    total += chunk_size;
-    it++;
-  }
-
-  auto &chunk_fragment_locations = fragment_locations[chunk_index];
-
-  uint32_t chunk_size = chunk_sizes[chunk_index];
-  total -= chunk_size;
-  uint32_t fragment_length = chunk_size / encoding_scheme.k;
-  uint32_t pos_in_chunk = pos - total;
-
-  uint32_t fragment_index = pos_in_chunk / fragment_length;
-  auto p = chunk_fragment_locations[fragment_index];
-  auto fragment_version = p.second;
-  auto maybe_osd = p.first;
-  if (maybe_osd) {
-    uint32_t pos_in_fragment = pos - (total + fragment_index * fragment_length);
-    lookup_result_t r(chunk_index, fragment_index, pos_in_fragment,
-                      fragment_length, fragment_version, *maybe_osd);
-    return r;
-  } else {
-    return boost::none;
-  }
-}
 
 std::ostream &operator<<(std::ostream &os, const EncodingScheme &scheme) {
   os << "EncodingScheme{k=" << scheme.k << ", m=" << scheme.m
@@ -227,23 +236,28 @@ std::ostream &operator<<(std::ostream &os, const fragment_location_t &f) {
   return os;
 }
 
+void dump_string(std::ostream &os, const std::string &s) {
+  const char *bytes = s.data();
+  const int size = s.size();
+  stuff::dump_buffer(os, bytes, size);
+}
 std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
-  os << "{"
-     << "name = " << mf.name << "," << std::endl
-     << "  object_id = `";
-
-  const char *bytes = mf.object_id.data();
-  const int bytes_size = mf.object_id.size();
-  stuff::dump_buffer(os, bytes, bytes_size);
   using alba::stuff::operator<<;
+  os << "{"
+     << "name = `";
+  dump_string(os, mf.name);
+  os << "`, " << std::endl;
+  os << "  object_id = `";
+  dump_string(os, mf.object_id);
   os << "`, " << std::endl
-     << "  chunk_sizes = " << mf.chunk_sizes << "," << std::endl
+
      << "  encoding_scheme = " << mf.encoding_scheme << "," << std::endl
      << "  compression = " << *mf.compression << "," << std::endl
      << "  encryptinfo = " << *mf.encrypt_info << "," // dangerous
+     << "  chunk_sizes = " << mf.chunk_sizes << "," << std::endl
+     << "  size = " << mf.size << std::endl
      << std::endl
      << "  checksum= " << *mf.checksum << "," << std::endl
-     << "  size = " << mf.size << std::endl
      << "  fragment_locations = " << mf.fragment_locations << "," << std::endl
      << "  fragment_checksums = " << mf.fragment_checksums << "," << std::endl
      << "  fragment_packed_sizes = [" << std::endl;
@@ -255,7 +269,22 @@ std::ostream &operator<<(std::ostream &os, const Manifest &mf) {
   os << std::endl
      << "  version_id = " << mf.version_id << "," << std::endl
      << "  timestamp = " << mf.timestamp // TODO: decent formatting?
-     << "  namespace_id = " << mf.namespace_id << "} ";
+     << "}";
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os,
+                         const ManifestWithNamespaceId &mfid) {
+  os << "{" << (Manifest &)mfid << ", namespace_id = " << mfid.namespace_id
+     << "} ";
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const FCInfo &fc_info) {
+  os << "FCInfo{"
+     << " alba_id = " << fc_info.alba_id
+     << ", namespace_id = " << fc_info.namespace_id << ", info = ... }"
+     << std::endl;
   return os;
 }
 }

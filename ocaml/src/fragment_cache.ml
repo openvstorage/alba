@@ -22,26 +22,40 @@ open Lwt.Infix
 open Rocks_store
 open Lwt_bytes2
 module KV = Rocks_key_value_store
-
+open Nsm_model
 
 class virtual cache = object(self)
 
-    method virtual add : int32 -> string -> Bigstring_slice.t -> unit Lwt.t
+    (* this method should _never_ throw! *)
+    method virtual add : int32 -> string -> Bigstring_slice.t -> (Manifest.t * int32 * string) list Lwt.t
 
-    method virtual lookup : int32 -> string -> Lwt_bytes.t option Lwt.t
-    method virtual lookup2 : int32 -> string -> (int * int * Lwt_bytes.t * int) list -> bool Lwt.t
+    method add' bid oid blob =
+      self # add bid oid blob >>= fun _ -> Lwt.return_unit
+
+    method virtual lookup : int32 -> string -> (Lwt_bytes.t * (Manifest.t * int32 * string) list) option Lwt.t
+    method virtual lookup2 : int32 -> string
+                             -> (int * int * Lwt_bytes.t * int) list
+                             -> (bool * (Manifest.t * int32 * string) list) Lwt.t
 
     method virtual drop  : int32 -> global : bool -> unit Lwt.t
     method virtual close : unit -> unit Lwt.t
+
+    method virtual osd_infos : unit ->
+                      (Albamgr_protocol.Protocol.alba_id *
+                         ((Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
+                             Capabilities.OsdCapabilities.t))
+                           counted_list)
+                        counted_list Lwt.t
 end
 
 class no_cache = object(self)
     inherit cache
-    method add     bid oid blob   = Lwt.return_unit
+    method add     bid oid blob   = Lwt.return []
     method lookup  bid oid        = Lwt.return_none
-    method lookup2 bid oid slices = Lwt.return_false
+    method lookup2 bid oid slices = Lwt.return (false, [])
     method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
+    method osd_infos ()           = Lwt.return (0, [])
 end
 
 let ser64 x=
@@ -424,7 +438,11 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         )
 
     method lookup bid oid =
-      self # _lookup bid oid read_it
+      self # _lookup bid oid read_it >>= function
+      | Some data ->
+         Lwt.return (Some (data, []))
+      | None ->
+         Lwt.return_none
 
     method lookup2 bid oid slices =
       self # _lookup
@@ -435,8 +453,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                Lwt_unix.lseek fd offset Lwt_unix.SEEK_SET >>= fun _ ->
                Lwt_extra2.read_all_lwt_bytes_exact fd target offset' length)
               slices) >>= function
-      | Some () -> Lwt.return_true
-      | None -> Lwt.return_false
+      | Some () -> Lwt.return (true, [])
+      | None -> Lwt.return (false, [])
 
     method _check () =
       Printf.printf "_check()\n%!";
@@ -994,7 +1012,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         );
       Lwt.return ()
 
-    method add bid oid blob : unit Lwt.t =
+    method add bid oid blob =
 
       Lwt_log.debug_f "add %lx %S" bid oid >>= fun () ->
       let _add () =
@@ -1052,9 +1070,10 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
          Lwt_mutex.with_lock _mutex _add
         )
-      >>= fun (t,()) ->
+      >>= fun (t, ()) ->
       Lwt_log.debug_f "add %lx %S took:%f" bid oid t
-
+      >>= fun () ->
+      Lwt.return []
 
     method drop bid ~global =
       Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->
@@ -1092,6 +1111,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       )
 
     method get_root = root
+
+    method osd_infos () = Lwt.return (0, [])
 end
 
 let safe_create root

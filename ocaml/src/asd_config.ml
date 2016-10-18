@@ -54,6 +54,7 @@ module Config = struct
     use_fallocate: (bool [@default true]);
 
     rocksdb_block_cache_size : (int option [@default None]);
+    lwt_unix_pool_size : (int [@default 100]);
   } [@@deriving yojson, show]
 end
 

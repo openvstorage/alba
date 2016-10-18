@@ -53,7 +53,7 @@ let test_safety () =
          ~object_name
          ~object_data:"y"
          ~checksum_o:None
-         ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf, _,_) ->
+         ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf,_, _,_) ->
        let object_id = mf.Manifest.object_id in
 
        let assert_some_res res policy' cnt' applicable_dead_osds' remaining_safety' =

@@ -67,7 +67,6 @@ RUN eval `${opam_env}` && \
         lwt.2.5.2 \
         camltc.0.9.3 \
         ocplib-endian.1.0 \
-        cstruct \
         ctypes \
         ctypes-foreign \
         uuidm \

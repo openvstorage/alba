@@ -406,9 +406,24 @@ class client ?(retry_timeout = 60.)
 
 
     method decommission_device
-        ?(deterministic=false)
-        ~namespace_id
-        ~osd_id ()
+             ?(deterministic = false)
+             ?(should_repair = ref true)
+             ~namespace_id
+             ~osd_id ()
+      =
+      if filter namespace_id
+      then self # decommission_device'
+                ~deterministic
+                ~should_repair
+                ~namespace_id
+                ~osd_id ()
+      else Lwt.return ()
+
+    method decommission_device'
+             ?(deterministic = false)
+             ?(should_repair = ref true)
+             ~namespace_id
+             ~osd_id ()
       =
       Lwt_log.debug_f
         "Decommissioning osd %li namespace_id:%li"
@@ -501,22 +516,57 @@ class client ?(retry_timeout = 60.)
         )
         manifests >>= fun () ->
 
-      self # should_repair ~osd_id >>= fun should_repair ->
-      if has_more && should_repair
+      if has_more && !should_repair
       then self # decommission_device ~deterministic ~namespace_id ~osd_id ()
       else Lwt.return ()
 
     method repair_osd ~osd_id =
-      alba_client # mgr_access # list_all_osd_namespaces ~osd_id >>= fun (_, namespaces) ->
+      let threads = Hashtbl.create 3 in
+      let should_repair = ref true in
+      let rec inner () =
+        Lwt.catch
+          (fun () ->
+            alba_client # mgr_access # list_all_osd_namespaces ~osd_id >>= fun (_, namespaces) ->
 
-      Lwt_list.iter_p
-        (fun namespace_id ->
-           Lwt_extra2.ignore_errors
-             (fun () ->
-                self # decommission_device
-                  ~namespace_id
-                  ~osd_id ()))
-        namespaces
+            List.iter
+              (fun namespace_id ->
+                if not (Hashtbl.mem threads namespace_id)
+                then
+                  begin
+                    let t =
+                      Lwt_extra2.ignore_errors
+                        (fun () ->
+                          self # decommission_device
+                               ~should_repair
+                               ~namespace_id
+                               ~osd_id ()) >>= fun () ->
+                      Hashtbl.remove threads namespace_id;
+                      Lwt.return ()
+                    in
+                    Hashtbl.add threads namespace_id t;
+                    Lwt.async (fun () -> t)
+                  end)
+              namespaces;
+
+            Lwt.return ())
+          (fun exn ->
+            Lwt_log.info_f ~exn "Exception in repair_osd %li" osd_id) >>= fun () ->
+        Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
+        self # should_repair ~osd_id >>= fun should_repair' ->
+        if should_repair'
+        then inner ()
+        else
+          begin
+            (* wait for all threads to finish first
+             * (so we never get into a situation where the same maintenance
+             * process has multiple repair threads fighting each other)
+             *)
+            should_repair := false;
+            let ts = Hashtbl.fold (fun _ t acc -> t :: acc) threads [] in
+            Lwt.join ts
+          end
+      in
+      inner ()
 
     method repair_osds : unit Lwt.t =
       let threads = Hashtbl.create 3 in

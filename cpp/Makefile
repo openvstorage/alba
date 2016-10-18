@@ -74,10 +74,13 @@ compile_tests:
 
 	$(CMD) -I/usr/include/gtest \
 	-c src/tests/proxy_client_test.cc -o src/tests/proxy_client_test.o
+
 	$(CMD) -I/usr/include/gtest \
 	-c ./src/tests/main.cc -o src/tests/main.o
 
 	$(CMD) -c src/examples/test_client.cc -o src/examples/test_client.o
+
+
 
 clean:
 	find -name "*.o" | xargs rm -f

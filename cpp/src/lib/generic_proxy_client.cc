@@ -186,7 +186,8 @@ tuple<vector<string>, has_more> GenericProxy_client::list_objects(
 void GenericProxy_client::read_objects_slices(
     const string &namespace_,
     const vector<proxy_protocol::ObjectSlices> &slices,
-    const consistent_read consistent_read) {
+    const consistent_read consistent_read,
+    alba::statistics::RoraCounter &cntr) {
 
   if (slices.size() == 0) {
     return;
@@ -201,6 +202,7 @@ void GenericProxy_client::read_objects_slices(
 
   message response = _input();
   proxy_protocol::read_read_objects_slices_response(response, _status, slices);
+  cntr.slow_path += slices.size();
 
   check_status(__PRETTY_FUNCTION__);
 }
@@ -209,7 +211,8 @@ void GenericProxy_client::read_objects_slices2(
     const string &namespace_,
     const vector<proxy_protocol::ObjectSlices> &slices,
     const consistent_read consistent_read,
-    vector<proxy_protocol::object_info> &object_infos) {
+    vector<proxy_protocol::object_info> &object_infos,
+    alba::statistics::RoraCounter &cntr) {
 
   if (slices.size() == 0) {
     return;
@@ -224,6 +227,7 @@ void GenericProxy_client::read_objects_slices2(
   message response = _input();
   proxy_protocol::read_read_objects_slices2_response(response, _status, slices,
                                                      object_infos);
+  cntr.slow_path += slices.size();
 
   check_status(__PRETTY_FUNCTION__);
 }
@@ -231,7 +235,7 @@ void GenericProxy_client::read_objects_slices2(
 void GenericProxy_client::write_object_fs2(
     const string &namespace_, const string &object_name,
     const string &input_file, const allow_overwrite allow_overwrite,
-    const Checksum *checksum, proxy_protocol::Manifest &mf) {
+    const Checksum *checksum, proxy_protocol::ManifestWithNamespaceId &mf) {
   _expires_from_now(_timeout);
 
   message_builder mb;
@@ -266,6 +270,14 @@ tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
 }
 
 void GenericProxy_client::apply_sequence(
+    const string &namespace_, const write_barrier write_barrier,
+    const vector<std::shared_ptr<sequences::Assert>> &asserts,
+    const vector<std::shared_ptr<sequences::Update>> &updates) {
+  std::vector<proxy_protocol::object_info> object_infos;
+  apply_sequence_(namespace_, write_barrier, asserts, updates, object_infos);
+}
+
+void GenericProxy_client::apply_sequence_(
     const string &namespace_, const write_barrier write_barrier,
     const vector<std::shared_ptr<sequences::Assert>> &asserts,
     const vector<std::shared_ptr<sequences::Update>> &updates,
@@ -337,14 +349,23 @@ double GenericProxy_client::ping(double delay) {
   return result;
 }
 
-void GenericProxy_client::osd_info(
-    std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result) {
+void GenericProxy_client::osd_info(osd_map_t &result) {
   _expires_from_now(_timeout);
   message_builder mb;
   proxy_protocol::write_osd_info_request(mb);
   _output(mb);
   message response = _input();
   proxy_protocol::read_osd_info_response(response, _status, result);
+}
+
+void GenericProxy_client::osd_info2(osd_maps_t &result) {
+  ALBA_LOG(DEBUG, "Generic_proxy_client::osd_info2");
+  _expires_from_now(_timeout);
+  message_builder mb;
+  proxy_protocol::write_osd_info2_request(mb);
+  _output(mb);
+  message response = _input();
+  proxy_protocol::read_osd_info2_response(response, _status, result);
 }
 }
 }

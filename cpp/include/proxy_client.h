@@ -21,6 +21,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "boolean_enum.h"
 #include "proxy_protocol.h"
 #include "proxy_sequences.h"
+#include "statistics.h"
 #include <boost/asio.hpp>
 #include <chrono>
 #include <iosfwd>
@@ -56,6 +57,8 @@ BOOLEAN_ENUM(reverse)
 BOOLEAN_ENUM(consistent_read)
 BOOLEAN_ENUM(should_cache)
 BOOLEAN_ENUM(write_barrier)
+
+using namespace proxy_protocol;
 
 class Proxy_client {
 public:
@@ -96,7 +99,8 @@ public:
   virtual void
   read_objects_slices(const std::string &namespace_,
                       const std::vector<proxy_protocol::ObjectSlices> &,
-                      const consistent_read) = 0;
+                      const consistent_read,
+                      alba::statistics::RoraCounter &) = 0;
 
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
@@ -105,13 +109,11 @@ public:
   virtual void
   apply_sequence(const std::string &namespace_, const write_barrier,
                  const std::vector<std::shared_ptr<sequences::Assert>> &,
-                 const std::vector<std::shared_ptr<sequences::Update>> &,
-                 std::vector<proxy_protocol::object_info> &) = 0;
+                 const std::vector<std::shared_ptr<sequences::Update>> &) = 0;
 
   void apply_sequence(const std::string &namespace_,
                       const write_barrier write_barrier,
-                      const sequences::Sequence &seq,
-                      std::vector<proxy_protocol::object_info> &object_infos);
+                      const sequences::Sequence &seq);
 
   /* invalidate_cache influences the result of read requests issued with
    * consistent_read::F. after an invalidate cache request these read
@@ -137,22 +139,11 @@ public:
 
   /* retrieve information about osds
    */
-  virtual void osd_info(
-      std::vector<std::pair<osd_t, proxy_protocol::info_caps>> &result) = 0;
+  virtual void osd_info(osd_map_t &result) = 0;
 
   virtual ~Proxy_client(){};
 
-  /*
-  TODO:
-  protected:
-
-    friend class proxy_client_test_write_fs2_Test;//?
-  */
-  virtual void write_object_fs2(const std::string &namespace_,
-                                const std::string &object_name,
-                                const std::string &input_file,
-                                const allow_overwrite, const Checksum *checksum,
-                                proxy_protocol::Manifest &) = 0;
+  virtual void osd_info2(osd_maps_t &result) = 0;
 };
 
 enum class Transport { tcp, rdma };

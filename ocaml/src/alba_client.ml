@@ -29,7 +29,25 @@ class alba_client (base_client : Alba_base_client.client)
   let nsm_host_access = base_client # nsm_host_access in
   let osd_access = base_client # osd_access in
 
+  let alba_id_t =
+    let rec inner () =
+      Lwt.catch
+        (fun () ->
+          mgr_access # get_alba_id >>= fun x -> Lwt.return (Some x))
+        (fun exn ->
+          Lwt_log.info_f ~exn "Exception in alba_id_t" >>= fun () ->
+          Lwt.return_none) >>= function
+      | Some x -> Lwt.return x
+      | None ->
+         Lwt_unix.sleep 1. >>= fun () ->
+         inner ()
+    in
+    inner ()
+  in
+
   object(self)
+    method get_alba_id = alba_id_t
+
     method get_base_client = base_client
     method get_manifest_cache = base_client # get_manifest_cache
     method mgr_access = mgr_access
@@ -48,6 +66,12 @@ class alba_client (base_client : Alba_base_client.client)
         ~namespace ~preset_name ?nsm_host_id ()
 
     method upload_object_from_file = base_client # upload_object_from_file
+
+    method osd_infos =
+      alba_id_t >>= fun alba_id ->
+      let my_entry = (alba_id, osd_access # osd_infos) in
+      base_client # get_fragment_cache # osd_infos () >>= fun (cnt, osd_infos) ->
+      Lwt.return (cnt + 1, my_entry::osd_infos)
 
     method discover_osds = base_client # discover_osds
 
@@ -118,8 +142,9 @@ class alba_client (base_client : Alba_base_client.client)
                 int ->
                 int ->
                 unit Lwt.t) Lwt.t)
-         : (Nsm_model.Manifest.t *
-            Statistics.object_download)option Lwt.t
+         : (Nsm_model.Manifest.t
+            * Statistics.object_download
+            * int32) option Lwt.t
 
     =
     self # nsm_host_access # with_namespace_id
@@ -213,7 +238,7 @@ class alba_client (base_client : Alba_base_client.client)
            ~object_name
            ~consistent_read
            ~should_cache
-         : (Lwt_bytes.t * Nsm_model.Manifest.t) option Lwt.t =
+         : (Lwt_bytes.t * Nsm_model.Manifest.t * int32) option Lwt.t =
     let res = ref None in
     let write_object_data total_size =
       let bs = Lwt_bytes.create (Int64.to_int total_size) in
@@ -240,8 +265,8 @@ class alba_client (base_client : Alba_base_client.client)
             ~consistent_read
             ~should_cache
        >>= function
-       | Some (mf, _) ->
-          Lwt.return (Some (Option.get_some !res, mf))
+       | Some (mf, _, namespace_id) ->
+          Lwt.return (Some (Option.get_some !res, mf, namespace_id))
        | None ->
           let () = destroy_res () in
           Lwt.return_none)
@@ -319,8 +344,9 @@ class alba_client (base_client : Alba_base_client.client)
              ~(write_object_data :
                  Int64.t ->
                (Lwt_bytes.t -> int -> int -> unit Lwt.t) Lwt.t)
-           : (Nsm_model.Manifest.t *
-              Statistics.object_download) option Lwt.t
+         : (Nsm_model.Manifest.t
+            * Statistics.object_download
+            * int32) option Lwt.t
 
       =
       let t0_object = Unix.gettimeofday () in

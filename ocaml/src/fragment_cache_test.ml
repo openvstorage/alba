@@ -77,17 +77,17 @@ let test_1 () =
   let _inner (cache :Fragment_cache.blob_cache) =
     let blob = Bigstring_slice.create_random 4096 in
     let bid = 0l and oid = "0000" in
-    cache # add bid oid blob  (* _add_new_grow *)
+    cache # add' bid oid blob  (* _add_new_grow *)
     >>= fun () ->
 
     Bigstring_slice.set blob 0 'x';
-    cache # add bid oid blob  (* _replace_grow *)
+    cache # add' bid oid blob  (* _replace_grow *)
     >>= fun () ->
     Bigstring_slice.set blob 0 'y';     (* _replace_grow *)
-    cache # add bid oid blob
+    cache # add' bid oid blob
     >>= fun () ->
     Bigstring_slice.set blob 0 'z';     (* _replace_grow *)
-    cache # add bid oid blob >>= fun () ->
+    cache # add' bid oid blob >>= fun () ->
     (* lookup *)
     cache # lookup bid oid >>=
       begin
@@ -95,7 +95,7 @@ let test_1 () =
         | None ->
            OUnit.assert_bool "should have been found" false;
            Lwt.return ()
-        | Some retrieved ->
+        | Some (retrieved, _) ->
            OUnit.assert_bool "first byte?" (Lwt_bytes.get retrieved 0 = 'z');
 
            Lwt.return ()
@@ -107,10 +107,10 @@ let test_1 () =
 let test_2 () =
   let _inner (cache: Fragment_cache.blob_cache) =
     let blob = Bigstring_slice.create_random 4096 in
-    cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "Y" blob >>= fun () -> (* _add_new_full *)
-    cache # add 0l "Z" blob >>= fun () -> (* _add_new_full *)
-    cache # add 0l "T" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0l "X" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0l "Y" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0l "Z" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0l "T" blob >>= fun () -> (* _add_new_full *)
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 1L (cache # get_count ()) ;
@@ -125,11 +125,11 @@ let test_3 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
     let blob = Bigstring_slice.create_random blob_size in
-    cache # add 0l "X" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "Y" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "Z" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "T" blob >>= fun () -> (* _add_new_grow *)
-    cache # add 0l "A" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0l "X" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0l "Y" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0l "Z" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0l "T" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0l "A" blob >>= fun () -> (* _add_new_full *)
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 4L (cache # get_count ());
@@ -166,17 +166,17 @@ let test_4 () =
     let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
       if n = 1000
-      then Lwt.return ()
+      then Lwt.return_unit
       else
         let oid = make_oid n in
-        cache # add 0l oid blob >>= fun () ->
+        cache # add' 0l oid blob >>= fun () ->
         begin
           if n > 100
           then
             let oid' = make_oid (n - 100) in
-            cache # add 0l oid' blob
+            cache # add' 0l oid' blob
           else
-            Lwt.return ()
+            Lwt.return_unit
         end
         >>= fun () ->
         loop (n+1)
@@ -196,8 +196,8 @@ let test_5 () =
     let rec fill = function
       | [] -> Lwt.return ()
       | oid :: oids ->
-         cache # add bid0 oid blob >>= fun () ->
-         cache # add bid1 oid blob >>= fun () ->
+         cache # add' bid0 oid blob >>= fun () ->
+         cache # add' bid1 oid blob >>= fun () ->
          fill oids
     in
     fill ["0000"; "0001";"0002";"0003"] >>= fun () ->
@@ -232,11 +232,11 @@ let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
     let bid_to_drop1 = Int32.of_int 21 in
     let blob = Bigstring_slice.of_string "blob" in
-    cache # add bid_to_drop1 "oid" blob >>= fun () ->
+    cache # add' bid_to_drop1 "oid" blob >>= fun () ->
     cache # drop ~global:true bid_to_drop1 >>= fun () ->
     let bid_to_drop2 = Int32.of_int 20 in
-    cache # add bid_to_drop2 "oid1" blob >>= fun () ->
-    cache # add bid_to_drop2 "oid2" blob >>= fun () ->
+    cache # add' bid_to_drop2 "oid1" blob >>= fun () ->
+    cache # add' bid_to_drop2 "oid2" blob >>= fun () ->
     cache # drop ~global:true bid_to_drop2 >>= fun () ->
     cache # drop ~global:true 22l >>= fun () ->
     cache # drop ~global:true 23l >>= fun () ->
@@ -244,14 +244,14 @@ let test_long () =
     let fill n =
       let rec loop i =
         if i = 0
-        then Lwt.return ()
+        then Lwt.return_unit
         else
           begin
             let bid = Random.int32 10l in
             let oid = Random.int 100  |> Printf.sprintf "%04x" in
             Lwt_io.printlf "i:%i" i >>= fun () ->
             let blob = make_blob() in
-            cache # add bid oid blob >>= fun () ->
+            cache # add' bid oid blob >>= fun () ->
             let count = cache # get_count () in
             Lwt_log.debug_f "after add in fill, count=%Li" count >>= fun () ->
             loop (i-1)
@@ -299,8 +299,8 @@ let test_remove_local_cache () =
     >>= fun cache ->
     let bid = 0l in
     let value = Bigstring_slice.of_string "value" in
-    cache # add bid "key" value >>= fun () ->
-    cache # add bid "key2" value >>= fun () ->
+    cache # add' bid "key" value >>= fun () ->
+    cache # add' bid "key2" value >>= fun () ->
     let some_file = Printf.sprintf "%s/jfsdlafsdjk" root in
     let _ = Sys.command (Printf.sprintf "touch %s" some_file) in
     let _ = Sys.command (Printf.sprintf "find %s" root) in
@@ -327,7 +327,7 @@ let _test_lookup2 (cache : cache) =
   let key = "key" in
   let size = 1_000_000 in
   let value = Lwt_bytes.create_random size in
-  cache # add bid key (Bigstring_slice.wrap_bigstring value) >>= fun () ->
+  cache # add' bid key (Bigstring_slice.wrap_bigstring value) >>= fun () ->
 
   let inner slices =
     let destination = Lwt_bytes.create size in
@@ -337,10 +337,10 @@ let _test_lookup2 (cache : cache) =
          offset, length, destination, destoff)
         slices
     in
-    cache # lookup2 bid key slices >>= fun success ->
+    cache # lookup2 bid key slices >>= fun (success, _) ->
     assert success;
     assert (value = destination);
-    Lwt.return ()
+    Lwt.return_unit
   in
 
   inner [ 0, size, 0 ] >>= fun () ->
@@ -352,7 +352,7 @@ let _test_lookup2 (cache : cache) =
   (* test regular lookup too *)
   cache # lookup bid key >>= function
   | None -> assert false
-  | Some r ->
+  | Some (r, _) ->
      assert (value = r);
      Lwt.return ()
 
