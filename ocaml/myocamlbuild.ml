@@ -16,7 +16,6 @@ let dependencies =
       "ppx_deriving_yojson";
       "ctypes";
       "ctypes.foreign";
-      "cstruct";
       "sexplib";
       "rocks";
       "cmdliner";
