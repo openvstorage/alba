@@ -146,9 +146,10 @@ let read_objects_slices
 
 let apply_sequence
       (alba_client : Alba_client.alba_client)
-      namespace_id
+      namespace namespace_id
       asserts
       updates
+      stats
   =
   let t0 = Unix.gettimeofday () in
   let upload object_name object_reader checksum_o =
@@ -166,14 +167,14 @@ let apply_sequence
       ~object_id_hint:None
       ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-    >>= fun (mf, extra_mfs, _, gc_epoch) ->
+    >>= fun (mf, extra_mfs, _upload_stats, gc_epoch) ->
     let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
                     (List.map
                        (fun (mf, namespace_id, alba) ->
                          mf.Nsm_model.Manifest.name, alba, (mf, namespace_id))
                        extra_mfs)
     in
-    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch), all_mfs)
+    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch), all_mfs, `Upload)
   in
 
   Lwt_list.map_p
@@ -192,15 +193,23 @@ let apply_sequence
                (new Object_reader.bigstring_slice_reader blob)
                cs_o
      | DeleteObject object_name ->
-        Lwt.return (Nsm_model.Update.DeleteObject object_name, [])
+        Lwt.return (Nsm_model.Update.DeleteObject object_name, [], `Delete)
     )
     updates >>= fun updates ->
-  let updates, manifests = List.split updates in
+  let updates, manifests, upload_statss = List.split3 updates in
   let manifests = List.flatten_unordered manifests in
 
   alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
   nsm # apply_sequence asserts updates >>= fun () ->
-
+  let () =
+    let t1 = Unix.gettimeofday () in
+    let delta = t1 -. t0 in
+    List.iter
+      (function
+       | `Upload -> ProxyStatistics.new_upload stats namespace delta
+       | `Delete -> ProxyStatistics.new_delete stats namespace delta
+      ) upload_statss
+  in
   Lwt.return manifests
 
 
@@ -410,7 +419,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | DeleteObject -> fun stats (namespace, object_name, may_not_exist) ->
       Lwt.catch
         (fun () ->
-           alba_client # delete_object ~namespace ~object_name ~may_not_exist)
+          with_timing_lwt
+           (fun () ->
+             alba_client # delete_object ~namespace ~object_name ~may_not_exist)
+          >>= fun (delta, ()) ->
+          let () = ProxyStatistics.new_delete stats namespace delta in
+          Lwt.return_unit
+        )
         (function
           | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Overwrite_not_allowed, _) ->
             Protocol.Error.failwith Protocol.Error.ObjectDoesNotExist
@@ -439,9 +454,12 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                    (fun namespace_id ->
                      apply_sequence
                        alba_client
+                       namespace
                        namespace_id
                        asserts
-                       updates)
+                       updates
+                       stats
+                   )
     | GetObjectInfo ->
        fun stats (namespace, object_name, consistent_read, should_cache) ->
        begin

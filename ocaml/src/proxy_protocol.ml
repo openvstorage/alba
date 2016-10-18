@@ -50,6 +50,7 @@ module ProxyStatistics = struct
     type ns_t = {
         mutable upload: stat;
         mutable download: stat;
+        mutable delete : stat;
         mutable manifest_cached: int;
         mutable manifest_from_nsm  : int;
         mutable manifest_stale : int;
@@ -65,6 +66,7 @@ module ProxyStatistics = struct
     let ns_make () =
       { upload = Stat.make();
         download = Stat.make();
+        delete = Stat.make();
         manifest_cached = 0;
         manifest_from_nsm  = 0;
         manifest_stale = 0;
@@ -90,7 +92,10 @@ module ProxyStatistics = struct
       Stat_deser.to_buffer' buf t.partial_read_size;
       Stat_deser.to_buffer' buf t.partial_read_count;
       Stat_deser.to_buffer' buf t.partial_read_time;
-      Stat_deser.to_buffer' buf t.partial_read_objects
+      Stat_deser.to_buffer' buf t.partial_read_objects;
+
+      Stat_deser.to_buffer' buf t.delete
+
 
     let ns_from buf =
       let module Llio = Llio2.ReadBuffer in
@@ -123,8 +128,13 @@ module ProxyStatistics = struct
               s,c,t,n
         end
       in
+      let delete =
+        if Llio.buffer_done buf
+        then Stat.make ()
+        else Stat_deser.from_buffer' buf
+      in
 
-      { upload ; download;
+      { upload ; download; delete;
         manifest_cached;
         manifest_from_nsm;
         manifest_stale;
@@ -212,6 +222,10 @@ module ProxyStatistics = struct
    let new_upload t ns delta =
      let ns_stats = find t ns in
      ns_stats.upload <- _update ns_stats.upload delta
+
+   let new_delete t ns delta =
+     let ns_stats = find t ns in
+     ns_stats.delete <- _update ns_stats.delete delta
 
    let incr_manifest_src ns_stats =
      let open Cache in

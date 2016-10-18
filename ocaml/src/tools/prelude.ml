@@ -296,6 +296,14 @@ module List = struct
            end
     in
     (_inner max_n [] x y) |> List.rev
+
+  let split3 xs =
+    let x0s_r, x1s_r, x2s_r =
+      List.fold_left
+        (fun (x0s,x1s,x2s) (x0,x1,x2) -> (x0::x0s, x1::x1s, x2::x2s))
+        ([], [], []) xs
+    in List.rev x0s_r, List.rev x1s_r, List.rev x2s_r
+
 end
 
 module Option = struct
