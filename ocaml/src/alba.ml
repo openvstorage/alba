@@ -604,24 +604,40 @@ let alba_get_disk_safety
              let open Alba_json.DiskSafety in
              print_result
                (List.map
-                  (fun (namespace, safety_o) ->
-                     { namespace;
-                       safety = Option.map (fun (_, _, _, s) -> s) safety_o;
-                     })
+                  (fun (namespace, bucket_safety) ->
+                    let open Disk_safety in
+                    let safety, safety_count =
+                      List.minima
+                        ~compare:(fun s1 s2 -> compare s1.remaining_safety s2.remaining_safety)
+                        bucket_safety
+                      |> function
+                        | [] -> None, None
+                        | { remaining_safety; count } :: tl ->
+                           Some remaining_safety,
+                           Some (List.fold_left
+                                   (fun safety_count { count; _ } -> Int64.add safety_count count)
+                                   count
+                                   tl)
+                    in
+                    { namespace;
+                      safety;
+                      safety_count;
+                      bucket_safety;
+                  })
                   res)
                t_list_to_yojson
            end
          else
            begin
              Lwt_list.iter_s
-               (fun (namespace, safety_o) ->
-                  match safety_o with
+               (fun (namespace, safety) ->
+                  match List.hd safety with
                   | None ->
                     Lwt_log.info_f "No objects in namespace %s, so infinite safety ;)" namespace
-                  | Some (policy, cnt, applicable_dead_osds, safety) ->
+                  | Some { Disk_safety.bucket; count; applicable_dead_osds; remaining_safety; } ->
                     Lwt_log.info_f
-                      "%Li objects in namespace %s with policy %s have safety %i remaining"
-                      cnt namespace (Policy.show_policy policy) safety)
+                      "%Li objects in namespace %s with bucket %s have safety %i remaining"
+                      count namespace (Policy.show_policy bucket) remaining_safety)
                res
            end
       )

@@ -219,19 +219,23 @@ module List = struct
     | 0 -> l
     | n -> drop (List.tl l) (n - 1)
 
-  let min ?(compare=compare) l =
-    let rec inner min = function
-      | [] -> Some min
-      | item::tl ->
-        inner
-          (if compare min item > 0
-           then item
-           else min)
-          tl
-    in
+  let minima ?(compare=compare) l =
     match l with
-    | [] -> None
-    | hd::tl -> inner hd tl
+    | [] -> []
+    | hd :: tl ->
+       List.fold_left
+         (fun (min, min_acc) item ->
+           let res = compare min item in
+           if res < 0
+           then item, [ item; ]
+           else if res = 0
+           then min, (item :: min_acc)
+           else min, min_acc)
+         (hd, [ hd; ])
+         tl
+       |> snd
+
+  let min ?compare l = minima ?compare l |> hd
 
   let max ?(compare=compare) l =
     min ~compare:(fun a b -> compare b a) l

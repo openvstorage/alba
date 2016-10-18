@@ -44,7 +44,7 @@ let test_safety () =
 
        Disk_safety.get_disk_safety client [ ns; ] [] >>= fun res ->
 
-       assert (None = snd (List.hd_exn res));
+       assert (snd (List.hd_exn res) |> List.hd = None);
 
        let object_name = test_name in
 
@@ -56,12 +56,12 @@ let test_safety () =
          ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf,_, _,_) ->
        let object_id = mf.Manifest.object_id in
 
-       let assert_some_res res policy' cnt' applicable_dead_osds' remaining_safety' =
-         let policy, cnt, applicable_dead_osds, remaining_safety =
-           Option.get_some (snd (List.hd_exn res))
+       let assert_some_res res bucket' cnt' applicable_dead_osds' remaining_safety' =
+         let { Disk_safety.bucket; count; applicable_dead_osds; remaining_safety } =
+           Option.get_some (snd (List.hd_exn res) |> List.hd)
          in
-         OUnit.assert_equal ~msg:"policy" policy policy' ~printer:Policy.show_policy;
-         OUnit.assert_equal ~msg:"cnt" cnt  cnt';
+         OUnit.assert_equal ~msg:"policy" bucket bucket' ~printer:Policy.show_policy;
+         OUnit.assert_equal ~msg:"cnt" count  cnt';
          OUnit.assert_equal ~msg:"applicable_dead_osds" applicable_dead_osds applicable_dead_osds';
          OUnit.assert_equal ~msg:"remaining_safety" remaining_safety remaining_safety';
        in

@@ -19,6 +19,13 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Lwt.Infix
 
+type bucket_safety = {
+    bucket : (int * int * int * int);
+    count  : int64;
+    applicable_dead_osds : int;
+    remaining_safety : int;
+  } [@@deriving show, yojson]
+
 let get_namespace_safety
       (alba_client : Alba_client.alba_client)
       ns_info dead_ns_osds =
@@ -41,20 +48,21 @@ let get_namespace_safety
       (fun (policy, cnt) -> Int64.(cnt >: 0L))
       (snd bucket_count) |>
     List.map
-      (fun (policy, cnt) ->
-         let k, m, fragment_count, max_disks_per_node = policy in
+      (fun (bucket, count) ->
+         let k, m, fragment_count, max_disks_per_node = bucket in
          let applicable_dead_osds =
            Policy.get_applicable_osd_count
              max_disks_per_node
              osds_with_node_id
          in
-         (policy, cnt, applicable_dead_osds, (fragment_count-k) - applicable_dead_osds)
+         { bucket;
+           count;
+           applicable_dead_osds;
+           remaining_safety = (fragment_count-k) - applicable_dead_osds;
+         }
       ) |>
-    List.min
-      ~compare:
-        (fun
-          (_, _, _, remaining_parity1) (_, _, _, remaining_parity2) ->
-          compare remaining_parity1 remaining_parity2)
+    List.sort
+      (fun s1 s2 -> compare s1.remaining_safety s2.remaining_safety)
   in
 
   Lwt.return res
