@@ -312,7 +312,11 @@ class osd_access
        match exn with
        | Exn Assert_failed _ -> false
        | Exn Unknown_operation -> false
-       | Exn Full -> false
+       | Exn Full -> true
+          (* when it's full, we need to disqualify this OSD,
+             and the 'set' in the requalification loop will eventually requalify it,
+             fe, when rebalancing creates space on that OSD again
+           *)
        | _ -> true
      in
 
