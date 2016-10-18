@@ -134,7 +134,7 @@ let do_scenarios
   let period = period_of_power power in
   Lwt_list.iter_s
     (fun scenario ->
-      let step = n / 100 in
+      let step = max (n / 100) 1 in
       let progress = make_progress step  in
       Lwt_list.iter_p
         (fun i ->
