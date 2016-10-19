@@ -347,6 +347,8 @@ module DiskSafety = struct
   type t = {
     namespace : string;
     safety : int option;
+    safety_count : int64 option;
+    bucket_safety : Disk_safety.bucket_safety list
   }
   [@@deriving yojson]
 
