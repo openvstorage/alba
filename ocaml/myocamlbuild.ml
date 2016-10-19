@@ -69,23 +69,27 @@ let list_dependencies () =
   String.concat "\n" lines
 
 
-let major_minor_patch () =
-  let tag_version = run_cmd "git describe --tags --exact-match --dirty"
-  and branch_version = run_cmd "git describe --all" in
-  let (major, minor, patch) =
-    try
-      Scanf.sscanf (tag_version ()) "%i.%i.%i" (fun ma mi p -> (ma,mi,p))
-    with _ ->
-      let bv = branch_version () in
-      try
-        Scanf.sscanf bv "heads/%i.%i" (fun ma mi -> (ma,mi,-1))
-      with _ ->
-        (* This one matches what's on Jenkins slaves *)
-        try
-          Scanf.sscanf bv "remotes/origin/%i.%i" (fun ma mi -> (ma, mi, -1))
-        with _ -> (-1,-1,-1)
+let major_minor_patch_modifier () =
+  let tag_version = run_cmd "git describe --tags --dirty" in
+  let tv =
+    try tag_version ()
+    with _ -> ""
   in
-  Printf.sprintf "(%d, %d, %d)" major minor patch
+  let (major, minor, patch, modif) =
+    try
+      Scanf.sscanf tv "%i.%i.%i-%s" (fun ma mi p dev -> (ma,mi,p, Some dev))
+    with _ ->
+      try
+        Scanf.sscanf tv ".%i.%i.%i" (fun ma mi p -> (ma,mi,p,None))
+      with _ ->
+        (-1,-1,-1,None)
+  in
+  let modif_s =
+    match modif with
+    | None -> "None"
+    | Some s -> Printf.sprintf "Some %S" s
+  in
+  Printf.sprintf "(%d, %d, %d, %s)" major minor patch modif_s
 
 let make_version _ _ =
   let stringify v = Printf.sprintf "%S" v
@@ -95,7 +99,8 @@ let make_version _ _ =
                ; "git_repo",run_cmd "git config --get remote.origin.url", stringify
                ; "machine", run_cmd "uname -mnrpio", stringify
                ; "compiler_version", run_cmd "ocamlopt -version", stringify
-               ; "(major, minor, patch)", major_minor_patch, id
+               ; "model_name", run_cmd "cat /proc/cpuinfo | grep 'model name' | head -n 1 | cut -d ':' -f 2 | xargs", stringify
+               ; "(major, minor, patch, modifier)", major_minor_patch_modifier, id
                ; "dependencies", list_dependencies, stringify
                ]
   in
@@ -159,8 +164,6 @@ let _ = dispatch &
                (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
                S [A "-ppx"; A "ppx_lwt -log";];
 
-             flag ["link";"ocaml";"use_rocks"]
-                  (S[A"-cclib";A"-lrocksdb"]);
              flag ["link";"ocaml";"use_gcrypt"]
                   (S[A"-cclib";A"-lgcrypt"]);
              flag ["link";"ocaml";"use_Jerasure"]

@@ -28,6 +28,13 @@ ulimit -n 1024
 ulimit -c unlimited
 cat /proc/sys/kernel/core_pattern
 
+function package_debian {
+    DEB_BUILD_OPTIONS=nostrip fakeroot debian/rules clean build binary
+    created_package=`ls -t alba_*_amd64.deb | head -n1`
+    new_package=alba_`git describe --tags --dirty | xargs`_amd64.deb
+    mv ${created_package} ${new_package}
+}
+
 case "${1-bash}" in
     asd_start)
         ${DRIVER} asd_start || true
@@ -77,7 +84,7 @@ case "${1-bash}" in
         make
         ;;
     package_deb)
-        DEB_BUILD_OPTIONS=nostrip fakeroot debian/rules clean build binary
+        package_debian
         ;;
     package_rpm)
         ./jenkins/package_rpm/030-package.sh

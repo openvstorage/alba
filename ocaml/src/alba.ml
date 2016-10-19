@@ -763,7 +763,11 @@ let () =
   let () = Sys.set_signal Sys.sigpipe Sys.Signal_ignore in
   let print_version terse =
     let open Alba_version in
-    Printf.printf "%i.%i.%i\n" major minor patch;
+    let () =
+      match modifier with
+      | None   -> Printf.printf "%i.%i.%i\n" major minor patch
+      | Some s -> Printf.printf "%i.%i.%i-%s\n" major minor patch s
+    in
     if not terse
     then
       begin
@@ -771,6 +775,7 @@ let () =
         Printf.printf "git_repo: %S\n" git_repo;
         Printf.printf "compile_time: %S\n" compile_time;
         Printf.printf "machine: %S\n" machine;
+        Printf.printf "model_name: %S\n" model_name;
         Printf.printf "compiler_version: %S\n" compiler_version;
         Printf.printf "dependencies:\n%s\n" dependencies
       end
