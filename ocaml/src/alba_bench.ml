@@ -68,7 +68,7 @@ end
 let do_scenarios
       albamgr_cfg
       n_clients n
-      file_name power prefix process_prefix
+      file_name power prefix client_file_prefix
       slice_size namespace
       scenarios =
   let period = period_of_power power in
@@ -83,7 +83,7 @@ let do_scenarios
           let client_fn =
             Printf.sprintf
               "./%s.client_%03i.out"
-              process_prefix
+              client_file_prefix
               i
           in
           Lwt_io.open_file ~mode:Lwt_io.output

@@ -45,11 +45,14 @@ let prefix default =
        & info ["prefix"] ~docv:"prefix" ~doc
   )
 
-let process_prefix default =
-  let doc = "$(docv) to keep multiple bench processes out of each other's way" in
+let client_file_prefix default =
+  let doc =
+    "prepend the client output files with $(docv)"
+    ^  " to keep multiple processes out of each other's way"
+  in
   Arg.(value
        & opt string default
-       & info ["process-prefix"] ~docv:"process-prefix" ~doc
+       & info ["client-file-prefix"] ~docv:"CLIENT_FILE_PREFIX" ~doc
   )
 
 let value_size default =
