@@ -8,6 +8,10 @@ all: build
 clean:
 	cd ocaml && ocamlbuild -clean
 	cd setup && ocamlbuild -clean
+	rm -f ./ocaml/alba.native \
+              ./setup/setup.native \
+              ./ocaml/disk_failure_tests.native
+
 
 build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin \
 	build-disk-failure-tests setup
