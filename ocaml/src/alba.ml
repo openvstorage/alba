@@ -538,16 +538,15 @@ let alba_delete_namespace_cmd =
 let alba_get_disk_safety
       cfg_file
       tls_config
-      long_ids namespaces
+      long_ids node_ids namespaces
       include_decommissioning_as_dead
+      include_errored_as_dead
       to_json verbose
   =
   let t () =
     with_alba_client
       cfg_file tls_config
       (fun client ->
-         let open Albamgr_protocol.Protocol in
-
          (if namespaces = []
           then begin
             client # mgr_access # list_all_namespaces >>= fun (_, namespaces) ->
@@ -562,34 +561,43 @@ let alba_get_disk_safety
               namespaces
           end) >>= fun namespaces ->
 
+         client # mgr_access # get_maintenance_config >>= fun maintenance_config ->
+         let t_should_have_activity = Unix.gettimeofday () -. maintenance_config.Maintenance_config.auto_repair_timeout_seconds in
 
-         (* TODO the albamgr should support getting this with 1 call *)
-         Lwt_list.map_p
+         client # mgr_access # list_all_claimed_osds >>= fun (_, all_osds) ->
+         let osds =
+           List.filter
+             (fun (osd_id, osd_info) ->
+               let open Nsm_model.OsdInfo in
+               (include_decommissioning_as_dead && osd_info.decommissioned)
+               || (include_errored_as_dead &&
+                     (match osd_info.read, osd_info.write, osd_info.errors with
+                      | t_read :: _, t_write :: _, (t_error, _) :: _ ->
+                         (* errors are more recent than reads/writes *)
+                         (Pervasives.max t_error t_should_have_activity) > (min t_read t_write)
+                      | t_read :: _, t_write :: _, [] ->
+                        t_should_have_activity > (min t_read t_write)
+                      | _, [], _
+                      | [], _, _ -> true
+                     )
+                  )
+               || List.mem (get_long_id osd_info.kind) long_ids
+               || List.mem osd_info.node_id node_ids)
+             all_osds
+         in
+
+         let actual_long_ids =
+           List.map
+             (fun (_, osd_info) -> Nsm_model.OsdInfo.(get_long_id osd_info.kind))
+             osds
+         in
+         List.iter
            (fun long_id ->
-              client # mgr_access # get_osd_by_long_id ~long_id >>= function
-              | None -> Lwt.fail_with (Printf.sprintf "unknown osd %s" long_id)
-              | Some (claim_info, _) ->
-                begin
-                  let open Osd.ClaimInfo in
-                  match claim_info with
-                  | ThisAlba osd_id -> Lwt.return osd_id
-                  | _ ->
-                    Lwt.fail_with
-                      (Printf.sprintf
-                         "osd %s is not claimed by this alba instance"
-                         long_id)
-                end)
-           long_ids >>= fun osds ->
+             if not (List.mem long_id actual_long_ids)
+             then failwith (Printf.sprintf "unknown osd %s" long_id))
+           long_ids;
 
-         (if include_decommissioning_as_dead
-          then
-            client # mgr_access # list_all_decommissioning_osds >>= fun (_, osds') ->
-            Lwt.return
-              (List.rev_append
-                 osds
-                 (List.map fst osds'))
-          else
-            Lwt.return osds) >>= fun osds ->
+         let osds = List.map fst osds in
 
          (client # mgr_access # list_all_purging_osds >>= fun (_, osds') ->
           Lwt.return (List.rev_append
@@ -651,6 +659,11 @@ let alba_get_disk_safety_cmd =
          & opt_all string []
          & info ["long-id"] ~docv:"LONG_ID" ~doc)
   in
+  let node_ids =
+    Arg.(value
+         & opt_all string []
+         & info [ "node-id" ] ~docv:"NODE_ID" ~doc:"$(docv) of the dead/unreachable nodes")
+  in
   let namespaces =
     Arg.(value
          & opt_all string []
@@ -666,12 +679,21 @@ let alba_get_disk_safety_cmd =
            ["include-decommissioning-as-dead"]
            ~doc:"assume all previously decommissioned disks are no longer available")
   in
+  let include_errored_as_dead =
+    Arg.(value
+         & flag
+         & info
+             [ "include-errored-as-dead" ]
+             ~doc:"include osds with errors as no longer available")
+  in
   Term.(pure alba_get_disk_safety
         $ alba_cfg_url
         $ tls_config
         $ long_ids
+        $ node_ids
         $ namespaces
         $ include_decommissioning_as_dead
+        $ include_errored_as_dead
         $ to_json $ verbose
   ),
   Term.info "get-disk-safety" ~doc:"simulate the available disk safety (how many disks can we still lose before any data is lost) for the given namespaces, assuming the specified osds are lost"
