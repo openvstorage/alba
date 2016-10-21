@@ -348,16 +348,15 @@ let wo_no_wal =
   r
 
 let get_value_option kv key =
-  let open Rocks in
   let vo_raw =
     Slice.with_prefix_byte_unsafe
       key
       Keys.public_prefix_byte
       (fun key' ->
          let open Slice in
-         RocksDb.get_slice
-           kv ro
-           key'.buf key'.offset key'.length)
+         Rocks.get_string
+           kv ~opts:ro
+           key'.buf ~pos:key'.offset ~len:key'.length)
   in
   Option.map (fun v -> deserialize Value.from_buffer v) vo_raw
 
@@ -826,9 +825,9 @@ let cleanup_files_to_delete ignore_unlink_error io_sched prio kv dir_info fnrs =
          (* file is deleted, now we can notify this
             back to the index in rocksdb (this needs no syncing / WAL) *)
          let key = Keys.to_be_deleted fnr in
-         Rocks.RocksDb.delete
+         Rocks.delete_string
            kv
-           wo_no_wal
+           ~opts:wo_no_wal
            key)
       fnrs;
 
@@ -836,8 +835,8 @@ let cleanup_files_to_delete ignore_unlink_error io_sched prio kv dir_info fnrs =
   end
 
 let maybe_delete_file kv dir_info fnr =
-  match (Rocks.RocksDb.get
-           kv ro
+  match (Rocks.get_string
+           kv ~opts:ro
            (Keys.file_to_key_mapping fnr)) with
   | Some _ ->
     (* file is used by a key value pair, don't delete it *)
@@ -845,9 +844,9 @@ let maybe_delete_file kv dir_info fnr =
   | None ->
     let file_path = DirectoryInfo.get_file_path dir_info fnr in
     Lwt_extra2.unlink ~fsync_parent_dir:true file_path >>= fun () ->
-    Rocks.RocksDb.delete
+    Rocks.delete_string
       kv
-      wo_no_wal
+      ~opts:wo_no_wal
       (Keys.to_be_deleted fnr);
     Lwt.return ()
 
@@ -1087,13 +1086,13 @@ let execute_update : type req res.
                     | Some (_, Value.OnFs (fnr, file_size)) ->
                        (* there's currently a file associated with this key
                            that file should eventually be deleted... *)
-                       WriteBatch.put
+                       WriteBatch.put_string
                          wb
                          (Keys.to_be_deleted fnr)
                          "";
 
                        (* remove file to key mapping *)
-                       WriteBatch.delete
+                       WriteBatch.delete_string
                          wb
                          (Keys.file_to_key_mapping fnr);
 
@@ -1112,10 +1111,10 @@ let execute_update : type req res.
                             let () =
                               let file_map_key = Keys.file_to_key_mapping fnr in
                               let open Slice in
-                              WriteBatch.put_slice
+                              WriteBatch.put_string
                                 wb
-                                file_map_key 0 (String.length file_map_key)
-                                key.buf key.offset key.length
+                                file_map_key
+                                key.buf ~value_pos:key.offset ~value_len:key.length
                             in
                             size
                        in
@@ -1124,10 +1123,10 @@ let execute_update : type req res.
                          key
                          Keys.public_prefix_byte
                          (fun key' ->
-                          WriteBatch.put_slice
+                          WriteBatch.put_string
                             wb
-                            key'.buf key'.offset key'.length
-                            value' 0 (String.length value'));
+                            key'.buf ~key_pos:key'.offset ~key_len:key'.length
+                            value');
                        size
                     | `Delete ->
                        let open Slice in
@@ -1135,9 +1134,9 @@ let execute_update : type req res.
                          key
                          Keys.public_prefix_byte
                          (fun key' ->
-                          WriteBatch.delete_slice
+                          WriteBatch.delete_string
                             wb
-                            key'.buf key'.offset key'.length);
+                            key'.buf ~pos:key'.offset ~len:key'.length);
                        0
                   in
                   files_to_delete, size_delta)
@@ -1149,13 +1148,13 @@ let execute_update : type req res.
                mgmt.latest_disk_usage <- Int64.add
                                            mgmt.latest_disk_usage
                                            (Int64.of_int size_delta);
-               WriteBatch.put
+               WriteBatch.put_string
                  wb
                  Keys.disk_usage
                  (serialize Llio.int64_to mgmt.latest_disk_usage);
              in
 
-             RocksDb.write kv wo_no_sync wb;
+             Rocks.write kv ~opts:wo_no_sync wb;
 
              files_to_delete)
         in
@@ -1414,9 +1413,9 @@ class check_garbage_from_advancer check_garbage_from kv =
             end
         in
         inner ();
-        Rocks.RocksDb.put
+        Rocks.put_string
           kv
-          wo_no_wal
+          ~opts:wo_no_wal
           Keys.check_garbage_from
           (serialize Llio.int64_to check_garbage_from)
       end
@@ -1518,7 +1517,7 @@ let run_server
     maybe_shutdown_rora_server() >>= fun () ->
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->
-    let () = let open Rocks in RocksDb.close db in
+    let () = Rocks.close db in
     Lwt_log.fatal_f "endgame: closed  %s" db_path
   in
 
@@ -1528,7 +1527,7 @@ let run_server
   Lwt_log.debug_f "starting asd: %S" asd_id >>= fun () ->
 
   let check_garbage_from =
-    match Rocks.RocksDb.get db ro Keys.check_garbage_from with
+    match Rocks.get_string db ~opts:ro Keys.check_garbage_from with
     | None -> 0L
     | Some v -> deserialize Llio.int64_from v
   in
@@ -1565,7 +1564,7 @@ let run_server
         *)
        if fsync
        then
-         Rocks.RocksDb.write db wo_sync wb
+         Rocks.write db ~opts:wo_sync wb
       )
       (if write_blobs
        then
@@ -1690,9 +1689,9 @@ let run_server
   in
 
   (* store next_fnr in rocksdb *)
-  Rocks.RocksDb.put
+  Rocks.put_string
     db
-    wo_sync
+    ~opts:wo_sync
     Keys.check_garbage_from
     (serialize Llio.int64_to next_fnr);
 
@@ -1701,7 +1700,7 @@ let run_server
   Rocks.FlushOptions.with_t
     (fun fo ->
        Rocks.FlushOptions.set_wait fo false;
-       Rocks.RocksDb.flush db fo);
+       Rocks.flush db ~opts:fo);
 
   let get_next_fnr =
     let counter = ref (Int64.pred next_fnr) in
@@ -1726,9 +1725,9 @@ let run_server
 
   let stats = AsdStatistics.make () in
   let latest_disk_usage =
-    match Rocks.RocksDb.get
+    match Rocks.get_string
             db
-            ro
+            ~opts:ro
             Keys.disk_usage with
     | Some v -> deserialize Llio.int64_from v
     | None ->
@@ -1749,9 +1748,9 @@ let run_server
            0L
        in
        let () =
-         Rocks.RocksDb.put
+         Rocks.put_string
            db
-           wo_sync
+           ~opts:wo_sync
            Keys.disk_usage
            (serialize Llio.int64_to disk_usage)
        in

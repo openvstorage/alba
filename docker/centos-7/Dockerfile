@@ -14,8 +14,17 @@ RUN yum -y install python-devel
 RUN useradd jenkins -u 1500 -g root
 
 RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-8.noarch.rpm
-RUN yum -y update
-RUN yum -y install python-pip openssl-devel gmp-devel which zlib-devel ncurses-devel bzip2
+RUN yum -y update && \
+    yum -y install python-pip openssl-devel gmp-devel which zlib-devel \
+                   ncurses-devel bzip2 cmake3 sudo
+
+# make sudo work:
+#
+# Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
+#         You have to run "ssh -t hostname sudo <cmd>".
+#
+# Defaults    requiretty          # is line 56
+RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
 
 
 # protobuf
@@ -25,6 +34,18 @@ RUN wget https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.
     && ./configure && make && make install
 
 #RUN rpm -ivh http://cbs.centos.org/kojifiles/packages/protobuf/2.5.0/10.el7.centos/src/protobuf-2.5.0-10.el7.centos.src.rpm
+
+# workarounds for limited rocksdb builder in orocksdb
+RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
+
+# install specific orocksdb
+RUN git clone https://github.com/domsj/orocksdb.git \
+    && cd orocksdb \
+    && git checkout tags/0.3.0 \
+    && ./install_rocksdb.sh \
+    && cp /usr/local/lib/librocksdb.so* /lib64/ \
+    && sudo ldconfig -v
+
 
 RUN pip install fabric junit-xml
 
@@ -104,16 +125,6 @@ RUN cd isa-l-2.14.0 && make
 RUN cd isa-l-2.14.0 && make install
 
 
-RUN yum -y install cmake3 sudo
-
-# make sudo work:
-#
-# Disable "ssh hostname sudo <cmd>", because it will show the password in clear.
-#         You have to run "ssh -t hostname sudo <cmd>".
-#
-# Defaults    requiretty          # is line 56
-RUN awk 'NR == 56 {next} {print}' /etc/sudoers >/tmp/__sudoers && mv /tmp/__sudoers /etc/sudoers
-
 RUN echo '%_install_langs C' >> /etc/rpm/macros && \
     yum -y install epel-release && \
     echo -e '[ovs]\nname=ovs\nbaseurl=http://yum.openvstorage.org/CentOS/7/x86_64/dists/unstable\nenabled=1\ngpgcheck=0' > /etc/yum.repos.d/ovs.repo && \
@@ -152,19 +163,11 @@ RUN cd arakoon && eval `${opam_env}` \
     && export OCAML_LIBDIR=`ocamlfind printconf destdir` \
     && make install
 
-# workarounds for limited rocksdb builder in orocksdb
-RUN ln -s /usr/bin/g++ /usr/bin/g++-4.8
-
-
 
 # install specific orocksdb
-RUN git clone https://github.com/domsj/orocksdb.git \
-    && eval `${opam_env}` \
+RUN eval `${opam_env}` \
     && cd orocksdb \
-    && git checkout 26c45963f1f305825785592efb41b50192a07491 \
-    && ./install_rocksdb.sh \
-    && cp /usr/local/lib/librocksdb.so* /lib64/ \
-    && sudo ldconfig -v \
+    && git checkout tags/0.3.0 \
     && make build install
 
 #for now, install ordma manually

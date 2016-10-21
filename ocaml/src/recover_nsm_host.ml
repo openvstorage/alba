@@ -190,7 +190,7 @@ let reap_osd
                     RecoveryInfo.from_buffer
                     (Lwt_bytes.to_string v) in
 
-                WriteBatch.put
+                WriteBatch.put_string
                   wb
                   (Keys.fragment_key ~object_id ~chunk_id ~fragment_id ~version_id)
                   (serialize
@@ -200,12 +200,12 @@ let reap_osd
                     (recovery_info, osd_id)))
              keys;
 
-           WriteBatch.put
+           WriteBatch.put_string
              wb
              osd_status_key
              (Slice.get_string_unsafe last_key);
 
-           RocksDb.write kv wo wb;
+           Rocks.write kv ~opts:wo wb;
         );
 
       if has_more
@@ -230,8 +230,8 @@ let gather_and_push_objects
     kv =
 
   let open Rocks in
-  let ro = ReadOptions.create_gc () in
-  let it = Iterator.create kv ro in
+  let ro = ReadOptions.create () in
+  let it = Iterator.create kv ~opts:ro in
 
   let buf : fragment_info list Lwt_buffer.t = Lwt_buffer.create () in
 
@@ -385,7 +385,7 @@ let gather_and_push_objects
     inner ()
   end;
 
-  Iterator.seek it (String.make 1 Keys.fragments_prefix);
+  Iterator.seek_string it (String.make 1 Keys.fragments_prefix);
 
   (* gather fragments by object id and push the
      result on a buffer (which is processed by a
@@ -394,7 +394,7 @@ let gather_and_push_objects
   let rec inner acc =
     if Iterator.is_valid it
     then begin
-      let k = Iterator.get_key it in
+      let k = Iterator.get_key_string it in
       if k.[0] = Keys.fragments_prefix
       then begin
         let _, object_id, chunk_id, fragment_id, version_id =
@@ -404,7 +404,7 @@ let gather_and_push_objects
             (Llio.pair_from
                RecoveryInfo.from_buffer
                Llio.int32_from)
-            (Iterator.get_value it) in
+            (Iterator.get_value_string it) in
         RecoveryInfo.t_to_t'
           recovery_info'
           encryption
