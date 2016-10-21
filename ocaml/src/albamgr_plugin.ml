@@ -1549,10 +1549,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           Update.Set (preset_key, serialize Preset.to_buffer preset); ]
 
     | DeletePreset -> fun preset_name ->
-      let current_default = db # get_exn Keys.Preset.default in
+      let current_default = db # get Keys.Preset.default in
       let maybe_remove_default =
-        if current_default = preset_name
-        then [ Update.Assert (Keys.Preset.default, Some current_default);
+        if current_default = Some preset_name
+        then [ Update.Assert (Keys.Preset.default, current_default);
                Update.Delete (Keys.Preset.default); ]
         else []
       in
