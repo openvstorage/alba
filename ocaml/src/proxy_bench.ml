@@ -20,8 +20,10 @@ open Prelude
 open Lwt.Infix
 open Generic_bench
 
-
-let do_writes ~robust client progress n input_files period prefix _ namespace =
+let do_writes
+      ~robust ~oc
+      client progress n input_files period prefix _ namespace
+  =
   let gen = make_key period prefix in
   let no_files = List.length input_files in
   if no_files = 0
@@ -61,11 +63,11 @@ let do_writes ~robust client progress n input_files period prefix _ namespace =
        then inner 1.
        else Lwt.fail exn)
   in
-  Lwt_io.printlf "writes (robust=%b):" robust >>= fun () ->
-  measured_loop progress do_one n >>= fun r ->
-  report "writes" r
+  measure_and_report oc progress do_one n "writes"
+
 
 let do_reads
+      ~oc
       client
       progress n _ period prefix
       (_:int) namespace =
@@ -80,11 +82,10 @@ let do_reads
            ~consistent_read:false
            ~should_cache:true
   in
-  Lwt_io.printlf "reads:" >>= fun () ->
-  measured_loop progress do_one n >>= fun r ->
-  report "reads" r
+  measure_and_report oc progress do_one n "reads"
 
 let do_partial_reads
+      ~oc
       client
       progress n _ period prefix
       (slice_size:int) namespace =
@@ -99,11 +100,10 @@ let do_partial_reads
     >>= fun _data ->
     Lwt.return ()
   in
-  Lwt_io.printlf "partial reads:" >>= fun () ->
-  measured_loop progress do_one n >>=fun r ->
-  report "partial reads" r
+  measure_and_report oc progress do_one n "partial reads"
 
 let do_deletes
+      ~oc
       client
       progress n _ period prefix
       (_:int) namespace =
@@ -112,11 +112,10 @@ let do_deletes
     let object_name = gen ()  in
     client # delete_object ~namespace ~object_name ~may_not_exist:false
   in
-  Lwt_io.printlf "deletes:" >>= fun () ->
-  measured_loop progress do_one n >>= fun r ->
-  report "deletes" r
+  measure_and_report oc progress do_one n "deletes"
 
 let do_get_version
+      ~oc
       client
       progress n
       _ _ _ _ _ =
@@ -124,9 +123,7 @@ let do_get_version
     client # get_version >>= fun _ ->
     Lwt.return_unit
   in
-  Lwt_io.printlf "get_version:" >>= fun () ->
-  measured_loop progress do_one n >>= fun r ->
-  report "get_version" r
+  measure_and_report oc progress do_one n "get_version"
 
 
 let do_scenarios
@@ -137,21 +134,25 @@ let do_scenarios
   let period = period_of_power power in
   Lwt_list.iter_s
     (fun scenario ->
-     let progress = make_progress (n/100) in
-     Lwt_list.iter_p
-       (fun i ->
-        Proxy_client.with_client
-          host port transport
-          (fun client ->
-           scenario
-             client
-             progress
-             (n/n_clients)
-             file_names
-             period
-             (Printf.sprintf "%s_%i" prefix i)
-             slice_size
-             namespace
-          ))
-       (Int.range 0 n_clients))
+      let step = max (n / 100) 1 in
+      let progress = make_progress step  in
+      Lwt_list.iter_p
+        (fun i ->
+          Proxy_client.with_client
+            host port transport
+            (fun client ->
+              let oc = Lwt_io.stdout in
+              let per_client = n / n_clients in
+              scenario
+                ~oc
+                client
+                progress
+                per_client
+                file_names
+                period
+                (Printf.sprintf "%s_%i" prefix i)
+                slice_size
+                namespace
+        ))
+        (Int.range 0 n_clients))
     scenarios
