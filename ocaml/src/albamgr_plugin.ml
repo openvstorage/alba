@@ -1533,6 +1533,17 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       return_upds
         (Update.Replace (work_key, None) ::
          upds)
+    | BumpNextWorkItemId ->
+       fun new_next_id ->
+       let vo = db # get Keys.Work.next_id in
+       let next_id = match vo with
+         | None -> 0L
+         | Some v -> deserialize x_int64_be_from v
+       in
+       if Int64.(new_next_id <: next_id)
+       then Error.(failwith Unknown)
+       else return_upds [ Update.Assert (Keys.Work.next_id, vo);
+                          Update.Set (Keys.Work.next_id, serialize x_int64_be_to new_next_id); ]
     | CreatePreset -> fun (preset_name, preset) ->
 
       if not (Preset.is_valid preset)

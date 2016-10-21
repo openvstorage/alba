@@ -798,10 +798,6 @@ let make_first_last_reverse () =
   first, last, reverse
 
 
-(* TODO
- - set high workid before running test suite
- *)
-
 let x_int64_to buf i =
   if i < (Int64.of_int32 Int32.max_int)
   then Llio.int32_to buf (Int64.to_int32 i)

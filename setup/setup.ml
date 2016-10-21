@@ -1301,6 +1301,11 @@ module Deployment = struct
     let _ = t.abm # wait_for_master () in
     let _ = t.nsm # wait_for_master () in
 
+    _alba_cmd_line
+      [ "dev-bump-next-work-item-id";
+        "--config"; t.abm # config_url |> Url.canonical;
+        Int32.(to_string (add max_int (-100l))); ];
+
     begin
       match redis_lru with
       | None -> ()

@@ -923,6 +923,7 @@ module Protocol = struct
     | MarkMsgsDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
     | AddWork : (Work.t Std.counted_list, unit) update
     | MarkWorkCompleted : (Work.id, unit) update
+    | BumpNextWorkItemId : (Work.id, unit) update
     | CreatePreset : (Preset.name * Preset.t, unit) update
     | DeletePreset : (Preset.name, unit) update
     | SetDefaultPreset : (Preset.name, unit) update
@@ -1256,6 +1257,7 @@ module Protocol = struct
     | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | AddWork -> Llio.counted_list_from Work.from_buffer
     | MarkWorkCompleted -> x_int64_from
+    | BumpNextWorkItemId -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
     | DeletePreset -> Llio.string_from
     | SetDefaultPreset -> Llio.string_from
@@ -1318,6 +1320,7 @@ module Protocol = struct
     | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
     | MarkWorkCompleted -> x_int64_to
+    | BumpNextWorkItemId -> x_int64_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
     | DeletePreset -> Llio.string_to
     | SetDefaultPreset -> Llio.string_to
@@ -1369,6 +1372,7 @@ module Protocol = struct
     | MarkMsgsDelivered _ ->Llio.unit_from
     | AddWork ->            Llio.unit_from
     | MarkWorkCompleted ->  Llio.unit_from
+    | BumpNextWorkItemId -> Llio.unit_from
     | CreatePreset ->       Llio.unit_from
     | DeletePreset ->       Llio.unit_from
     | SetDefaultPreset ->   Llio.unit_from
@@ -1401,6 +1405,7 @@ module Protocol = struct
     | MarkMsgsDelivered _ ->Llio.unit_to
     | AddWork ->            Llio.unit_to
     | MarkWorkCompleted ->  Llio.unit_to
+    | BumpNextWorkItemId -> Llio.unit_to
     | CreatePreset ->       Llio.unit_to
     | DeletePreset ->       Llio.unit_to
     | SetDefaultPreset ->   Llio.unit_to
@@ -1499,6 +1504,8 @@ module Protocol = struct
                       Wrap_u AddOsd3, 83l, "AddOsd3";
 
                       Wrap_u UpdateOsds2, 84l, "UpdateOsds2";
+
+                      Wrap_u BumpNextWorkItemId, 85l, "BumpNextWorkItemId";
                     ]
 
 

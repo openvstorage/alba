@@ -20,7 +20,7 @@ open Prelude
 
 let user_function
       (user_db : Registry.user_db) (value_o : string option)
-      (int_from, int_to, int_0, int_succ)
+      (int_be_from, int_be_to, int_0, int_succ)
   =
   match value_o with
   | None -> None
@@ -32,20 +32,20 @@ let user_function
 
     let next_id = match user_db # get next_id_key with
       | None -> int_0
-      | Some v -> deserialize int_from v
+      | Some v -> deserialize int_be_from v
     in
     let new_next_id =
       List.fold_left
         (fun next_id msg ->
            user_db # put
-             (log_prefix ^ (serialize int_to next_id))
+             (log_prefix ^ (serialize int_be_to next_id))
              (Some msg);
            int_succ next_id)
         next_id
         msgs in
     user_db # put
       next_id_key
-      (Some (serialize int_to new_next_id));
+      (Some (serialize int_be_to new_next_id));
     None
 
 let user_function_32 user_db value_o =
