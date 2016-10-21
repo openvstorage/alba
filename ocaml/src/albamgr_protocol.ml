@@ -404,7 +404,7 @@ module Protocol = struct
   end
 
   module Msg_log = struct
-    type id = int32
+    type id = int64
 
     type ('dest, 'msg) t =
       | Nsm_host : (Nsm_host.id, Nsm_host_protocol.Protocol.Message.t) t
@@ -1052,7 +1052,7 @@ module Protocol = struct
     | GetNextMsgs t ->
       counted_list_more_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            (Msg_log.msg_from_buffer t))
     | GetWork ->
       counted_list_more_from
@@ -1154,7 +1154,7 @@ module Protocol = struct
     | GetNextMsgs t ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (Msg_log.msg_to_buffer t))
     | GetWork ->
       counted_list_more_to
@@ -1252,8 +1252,8 @@ module Protocol = struct
       Llio.pair_from
         Llio.string_from
         Llio.string_from
-    | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
-    | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
+    | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
+    | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | AddWork -> Llio.counted_list_from Work.from_buffer
     | MarkWorkCompleted -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
@@ -1314,8 +1314,8 @@ module Protocol = struct
       Llio.pair_to
         Llio.string_to
         Llio.string_to
-    | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
-    | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
+    | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
+    | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
     | MarkWorkCompleted -> x_int64_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer

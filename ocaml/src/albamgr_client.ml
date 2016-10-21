@@ -413,7 +413,7 @@ object(self)
           then Lwt.return ()
           else
             self # mark_msg_delivered t dest from_msg_id >>= fun () ->
-            inner (Int32.succ from_msg_id)
+            inner (Int64.succ from_msg_id)
         in
         inner from_msg_id
       in

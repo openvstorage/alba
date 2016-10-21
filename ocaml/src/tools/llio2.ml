@@ -81,6 +81,12 @@ module ReadBuffer = struct
       advance_pos buf 8;
       r
 
+    let x_int64_from buf =
+      let i = int32_from buf in
+      if i < Int32.max_int
+      then Int64.of_int32 i
+      else int64_from buf
+
     let float_from buf =
       int64_from buf |> Int64.float_of_bits
 

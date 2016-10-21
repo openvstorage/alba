@@ -155,8 +155,8 @@ module Protocol = struct
 
   type ('i, 'o) update =
     | CleanupForNamespace : (namespace_id, int) update
-    | DeliverMsg : (Message.t * int32, unit) update
-    | DeliverMsgs : ((int32 *Message.t) list, unit) update
+    | DeliverMsg : (Message.t * int64, unit) update
+    | DeliverMsgs : ((int64 *Message.t) list, unit) update
     | NsmUpdate :
         ('i_, 'o_) Nsm_protocol.Protocol.update ->
         (namespace_id * 'i_, 'o_) update
@@ -239,10 +239,10 @@ module Protocol = struct
 
   let read_update_i : type i o. (i, o) update -> i deserializer = function
     | CleanupForNamespace -> Llio.int32_from
-    | DeliverMsg -> Llio.pair_from Message.from_buffer Llio.int32_from
+    | DeliverMsg -> Llio.pair_from Message.from_buffer x_int64_from
     | DeliverMsgs -> Llio.list_from
                        (Llio.pair_from
-                          Llio.int32_from
+                          x_int64_from
                           Message.from_buffer)
     | NsmUpdate u ->
       Llio.pair_from
@@ -250,10 +250,10 @@ module Protocol = struct
         (Nsm_protocol.Protocol.read_update_request u)
   let write_update_i : type i o. (i, o) update -> i serializer = function
     | CleanupForNamespace -> Llio.int32_to
-    | DeliverMsg -> Llio.pair_to Message.to_buffer Llio.int32_to
+    | DeliverMsg -> Llio.pair_to Message.to_buffer x_int64_to
     | DeliverMsgs -> Llio.list_to
                        (Llio.pair_to
-                          Llio.int32_to
+                          x_int64_to
                           Message.to_buffer)
     | NsmUpdate u ->
       Llio.pair_to

@@ -67,10 +67,6 @@ let make_payload ~next_id_key ~log_prefix ~msgs =
        (Llio.list_to Llio.string_to))
     (next_id_key, log_prefix, msgs)
 
-let make_update_32 ~next_id_key ~log_prefix ~msgs =
-  let payload = make_payload ~next_id_key ~log_prefix ~msgs in
-  Update.Update.UserFunction (name_log_32, Some payload)
-
 let make_update_x64 ~next_id_key ~log_prefix ~msgs =
   let payload = make_payload ~next_id_key ~log_prefix ~msgs in
   Update.Update.UserFunction (name_log_x64, Some payload)
@@ -80,7 +76,7 @@ let register =
   (fun () ->
      if not !registered
      then begin
+       registered := true;
        Registry.Registry.register name_log_32 user_function_32;
-       Registry.Registry.register name_log_x64 user_function_x64;
-       registered := true
+       Registry.Registry.register name_log_x64 user_function_x64
      end)

@@ -77,7 +77,7 @@ let list_nsm_host_messages cfg_url tls_config attempts (destinations: string lis
        Lwt_list.iter_s
          (fun (destination, msg_id,msg) ->
           Lwt_io.printlf
-            "%20s |%7li | %s"
+            "%20s |%7Li | %s"
             destination msg_id ([%show: Nsm_host_protocol.Protocol.Message.t] msg)>>= fun () ->
           Lwt.return ()
          ) xs
@@ -115,7 +115,7 @@ let list_osd_messages cfg_file tls_config attempts (destinations:int32 list) ver
        Lwt_list.iter_s
          (fun (destination, msg_id,msg) ->
           Lwt_io.printlf
-            "%11li |%7li | %s"
+            "%11li |%7Li | %s"
             destination msg_id ([%show: Protocol.Osd.Message.t] msg)>>= fun () ->
           Lwt.return ()
          ) xs

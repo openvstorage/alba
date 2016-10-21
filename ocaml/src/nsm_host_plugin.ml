@@ -67,8 +67,8 @@ let transform_updates namespace_id =
 let get_next_msg_id db =
   let expected_id_s = db # get Keys.next_msg in
   let expected_id = match expected_id_s with
-    | None -> 0l
-    | Some s -> deserialize Llio.int32_from s in
+    | None -> 0L
+    | Some s -> deserialize x_int64_from s in
   expected_id_s, expected_id
 
 let handle_msg db =
@@ -128,8 +128,8 @@ let deliver_msgs (db : user_db) msgs =
          db # put
             Keys.next_msg
             (Some (serialize
-                     Llio.int32_to
-                     (Int32.succ msg_id)))
+                     x_int64_to
+                     (Int64.succ msg_id)))
        end)
     msgs
 
@@ -161,7 +161,7 @@ let get_updates_res : type i o. read_user_db ->
         let upds = handle_msg db msg in
         let bump_next_msg =
           [ Update.Assert (Keys.next_msg, expected_id_s);
-            Update.Set (Keys.next_msg, (serialize Llio.int32_to (Int32.succ expected_id))); ]
+            Update.Set (Keys.next_msg, (serialize x_int64_to (Int64.succ expected_id))); ]
         in
         Lwt.return ((), List.append bump_next_msg upds)
       end
@@ -174,7 +174,7 @@ let get_updates_res : type i o. read_user_db ->
              Some (serialize
                      (Llio.list_to
                         (Llio.pair_to
-                           Llio.int32_to
+                           x_int64_to
                            Message.to_buffer))
                      msgs)); ])
   | NsmUpdate tag -> fun (namespace_id, req) ->
@@ -525,7 +525,7 @@ let () = Registry.register
                let msgs = deserialize
                             (Llio.list_from
                                (Llio.pair_from
-                                  Llio.int32_from
+                                  x_int64_from
                                   Message.from_buffer))
                             req_s
                in

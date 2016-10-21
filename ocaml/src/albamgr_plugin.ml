@@ -119,14 +119,14 @@ module Keys = struct
       (prefix_prefix t) ^ "msgs/" ^ suffix
 
     let extract_id_from_key key prefix =
-      Llio.int32_be_from (Llio.make_buffer
-                            (Key.get_raw key)
-                            (1 + String.length prefix))
+      x_int64_be_from (Llio.make_buffer
+                         (Key.get_raw key)
+                         (1 + String.length prefix))
 
     let extract_id key prefix =
-      Llio.int32_be_from (Llio.make_buffer
-                            key
-                            (String.length prefix))
+      x_int64_be_from (Llio.make_buffer
+                         key
+                         (String.length prefix))
 
     let next_msg_key : type dest msg. (dest, msg) t -> dest -> string = fun t dest ->
       let suffix = serialize (dest_to_buffer t) dest in
@@ -284,7 +284,7 @@ let add_msgs : type dest msg.
                     dest -> msg list ->
                     Update.t list =
   fun t dest msgs ->
-  [ Log_plugin.make_update_32
+  [ Log_plugin.make_update_x64
       ~next_id_key:(Keys.Msg_log.next_msg_key t dest)
       ~log_prefix:(Keys.Msg_log.prefix t dest )
       ~msgs:(List.map
@@ -1432,7 +1432,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       end
     | MarkMsgDelivered t ->
       fun (dest, msg_id) ->
-        Lwt_log.debug_f "MarkMsgDelivered(...,msg_id:%li)" msg_id >>= fun () ->
+        Lwt_log.debug_f "MarkMsgDelivered(...,msg_id:%Li)" msg_id >>= fun () ->
         return_upds (mark_msg_delivered db t dest msg_id)
     | MarkMsgsDelivered t ->
        fun (dest, msg_id) ->
@@ -1444,7 +1444,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    (Llio.tuple3_to
                       Msg_log.to_buffer
                       (Msg_log.dest_to_buffer t)
-                      Llio.int32_to)
+                      x_int64_to)
                    (Msg_log.Wrap t,
                     dest,
                     msg_id))) ]
