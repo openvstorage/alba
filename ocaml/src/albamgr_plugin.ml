@@ -272,7 +272,7 @@ let get_namespace_osds
      (osd_id, state))
 
 let add_work_items work_items =
-  [ Log_plugin.make_update
+  [ Log_plugin.make_update_x64
       ~next_id_key:Keys.Work.next_id
       ~log_prefix:Keys.Work.prefix
       ~msgs:(List.map
@@ -284,7 +284,7 @@ let add_msgs : type dest msg.
                     dest -> msg list ->
                     Update.t list =
   fun t dest msgs ->
-  [ Log_plugin.make_update
+  [ Log_plugin.make_update_32
       ~next_id_key:(Keys.Msg_log.next_msg_key t dest)
       ~log_prefix:(Keys.Msg_log.prefix t dest )
       ~msgs:(List.map
