@@ -65,6 +65,7 @@ build-mgr-plugin: build-alba
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/prelude.cmx \
         _build/src/range_query_args.cmx \
+        _build/src/fragment_size_helper.cmx \
         _build/src/tools/deser.cmx \
 	_build/src/tools/cache.cmx \
 	_build/src/consistency.cmx \

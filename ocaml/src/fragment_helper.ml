@@ -199,9 +199,6 @@ let chunk_to_data_fragments ~chunk ~chunk_size ~k =
     inner [] k in
   data_fragments
 
-(* this should be at least sizeof(long) according to the jerasure documentation *)
-let fragment_multiple = 16
-
 (* The lifetime of the returned data fragments is
    determined by the lifetime of the passed in chunk.
    The returned coding fragments are freshly created
@@ -217,7 +214,7 @@ let chunk_to_fragments_ec
     "chunk_to_fragments: chunk_size = %i ; fragment_size=%i"
     chunk_size fragment_size >>= fun () ->
 
-  assert (chunk_size mod (fragment_multiple * k) = 0);
+  assert (chunk_size mod (Fragment_size_helper.fragment_multiple * k) = 0);
 
   let data_fragments =
     chunk_to_data_fragments
