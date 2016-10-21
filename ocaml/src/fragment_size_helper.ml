@@ -23,9 +23,10 @@ let round_down_to_multiple x y =
   (x / y) * y
 
 let round_up_to_multiple x y =
-  if x = 0
+  let r = x mod y in
+  if r = 0
   then x
-  else (((x - 1) / y) + 1) * y
+  else x - r + y
 
 let determine_chunk_size ~object_length ~max_fragment_size ~k =
   if k = 1
