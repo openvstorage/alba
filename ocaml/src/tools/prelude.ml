@@ -799,11 +799,7 @@ let make_first_last_reverse () =
 
 
 (* TODO
- - test around the edge
  - set high workid before running test suite
- - ordering property van _be
- - in out = id
- - better name
  *)
 
 let x_int64_to buf i =
