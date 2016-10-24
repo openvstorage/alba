@@ -15,4 +15,6 @@ then
 fi
 
 # finally execute the command the user requested
-sudo -E -i -u jenkins bash -l -c "cd alba && ./jenkins/run2.sh $@"
+
+command="cd alba && arakoon_url=${arakoon_url:=no-arakoon-url} alba_url=${alba_url:=no-alba-url} ./jenkins/run2.sh $@"
+sudo -E -i -u jenkins bash -l -c "${command}"
