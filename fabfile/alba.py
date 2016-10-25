@@ -802,7 +802,7 @@ def deb_integration_test(arakoon_url,
     #with show('debug'):
     #    smoke_test(sudo=True)
 
-    demo_kill()
+    #demo_kill()
 
     local("sudo dpkg -r arakoon")
     local("sudo dpkg -r alba")
