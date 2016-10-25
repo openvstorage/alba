@@ -32,7 +32,10 @@ function package_debian {
     DEB_BUILD_OPTIONS=nostrip fakeroot debian/rules clean build binary
     created_package=`ls -t alba_*_amd64.deb | head -n1`
     new_package=alba_`git describe --tags --dirty | xargs`_amd64.deb
-    mv ${created_package} ${new_package}
+    if [ $created_package == $new_package ]
+    then echo "point release"
+    else mv ${created_package} ${new_package}
+    fi
 }
 
 case "${1-bash}" in
