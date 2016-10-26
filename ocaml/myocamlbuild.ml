@@ -80,7 +80,7 @@ let major_minor_patch_modifier () =
       Scanf.sscanf tv "%i.%i.%i-%s" (fun ma mi p dev -> (ma,mi,p, Some dev))
     with _ ->
       try
-        Scanf.sscanf tv ".%i.%i.%i" (fun ma mi p -> (ma,mi,p,None))
+        Scanf.sscanf tv "%i.%i.%i" (fun ma mi p -> (ma,mi,p,None))
       with _ ->
         (-1,-1,-1,None)
   in
