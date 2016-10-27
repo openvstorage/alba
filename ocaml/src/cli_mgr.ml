@@ -578,6 +578,34 @@ let alba_list_work_cmd =
     "list-work"
     ~doc:"list outstanding work items"
 
+let alba_mark_work_items_completed cfg_file tls_config work_ids verbose =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts:1 tls_config
+      (fun client ->
+        Lwt_list.iter_s
+          (fun work_id ->
+            Lwt.catch
+              (fun () -> client # mark_work_completed ~work_id)
+              (fun exn -> Lwt_log.info_f ~exn "Exception while marking item %li as completed" work_id))
+          work_ids)
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let alba_mark_work_items_completed_cmd =
+  Term.(pure alba_mark_work_items_completed
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(required
+               & pos 0 (some (list int32)) None
+               & info []
+                      ~docv:"WORK_IDS"
+                      ~doc:"list of work ids")
+        $ verbose),
+  Term.info
+    "dev-mark-work-items-completed"
+    ~doc:"for dev/testing purposes only: mark work items as completed"
+
 let alba_add_iter_namespace_item
       cfg_file tls_config namespace name factor action
       ~to_json ~verbose =
@@ -912,6 +940,7 @@ let cmds = [
 
     alba_list_participants_cmd;
     alba_list_work_cmd;
+    alba_mark_work_items_completed_cmd;
 
     alba_rewrite_namespace_cmd;
     alba_verify_namespace_cmd;
