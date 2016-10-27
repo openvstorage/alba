@@ -697,6 +697,8 @@ let test_partial_download_bad_fragment () =
      let namespace = test_name in
      alba_client # create_namespace ~namespace ~preset_name:None () >>= fun namespace_id ->
 
+     _wait_for_osds alba_client namespace_id >>= fun () ->
+
      let object_name = test_name in
      let object_data = Lwt_bytes.create 2_000_000 in
      alba_client # upload_object_from_bytes
