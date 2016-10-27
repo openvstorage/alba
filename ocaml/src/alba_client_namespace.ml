@@ -104,7 +104,7 @@ let create_namespace
         | None -> Lwt.return ()
       end; ] >>= fun () ->
 
-  Lwt_log.info_f "Alba_client: create_namespace %S:%li ok"
+  Lwt_log.info_f "Alba_client: create_namespace %S:%Li ok"
                   namespace namespace_id
   >>= fun () ->
   Lwt.return namespace_id

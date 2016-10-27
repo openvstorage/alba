@@ -80,7 +80,7 @@ class alba_client (base_client : Alba_base_client.client)
                           (Osd.osd -> 'a Lwt.t) -> 'a Lwt.t =
       base_client # with_osd
     method with_nsm_client' :
-      'a. namespace_id : int32 ->
+      'a. namespace_id : int64 ->
                          (Nsm_client.client -> 'a Lwt.t) -> 'a Lwt.t =
       base_client # with_nsm_client'
 
@@ -144,7 +144,7 @@ class alba_client (base_client : Alba_base_client.client)
                 unit Lwt.t) Lwt.t)
          : (Nsm_model.Manifest.t
             * Statistics.object_download
-            * int32) option Lwt.t
+            * int64) option Lwt.t
 
     =
     self # nsm_host_access # with_namespace_id
@@ -238,7 +238,7 @@ class alba_client (base_client : Alba_base_client.client)
            ~object_name
            ~consistent_read
            ~should_cache
-         : (Lwt_bytes.t * Nsm_model.Manifest.t * int32) option Lwt.t =
+         : (Lwt_bytes.t * Nsm_model.Manifest.t * int64) option Lwt.t =
     let res = ref None in
     let write_object_data total_size =
       let bs = Lwt_bytes.create (Int64.to_int total_size) in
@@ -346,7 +346,7 @@ class alba_client (base_client : Alba_base_client.client)
                (Lwt_bytes.t -> int -> int -> unit Lwt.t) Lwt.t)
          : (Nsm_model.Manifest.t
             * Statistics.object_download
-            * int32) option Lwt.t
+            * int64) option Lwt.t
 
       =
       let t0_object = Unix.gettimeofday () in

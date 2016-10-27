@@ -130,7 +130,7 @@ module Namespace = struct
     type t = {
         logical : int64;
         storage : int64;
-        storage_per_osd : (int32 * int64) list;
+        storage_per_osd : (int64 * int64) list;
         bucket_count : (Policy.policy * int64) list;
     }
     [@@deriving yojson]
@@ -230,7 +230,7 @@ module Preset = struct
 
   type osds = Albamgr_protocol.Protocol.Preset.osds =
     | All      [@name "all"]
-    | Explicit of int32 list [@name "explicit"]
+    | Explicit of int64 list [@name "explicit"]
   [@@deriving yojson]
 
   type checksum_algo =

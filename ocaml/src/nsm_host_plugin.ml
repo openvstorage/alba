@@ -31,11 +31,11 @@ module Keys = struct
 
   let namespace_info_prefix = "/nsms/"
   let namespace_info namespace_id =
-    namespace_info_prefix ^ (serialize Llio.int32_to namespace_id)
+    namespace_info_prefix ^ (serialize x_int64_to namespace_id)
 
   let namespace_content_prefix = "/nsm/"
   let namespace_content namespace_id =
-    namespace_content_prefix ^ (serialize Llio.int32_to namespace_id)
+    namespace_content_prefix ^ (serialize x_int64_to namespace_id)
 end
 
 let deliver_msgs_user_function_name = "nsm_host_user_function"
@@ -334,7 +334,7 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
         ~last:None
         ~max:(-1) ~reverse:false
         (fun cur key ->
-           let namespace_id = deserialize Llio.int32_from key in
+           let namespace_id = deserialize x_int64_from key in
            let state = deserialize namespace_state_from_buf (KV.cur_get_value cur) in
            (namespace_id, state))
     in

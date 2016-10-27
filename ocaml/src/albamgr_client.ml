@@ -190,7 +190,7 @@ object(self)
 
     method list_all_namespace_osds ~namespace_id =
       list_all_x
-        ~first:0l
+        ~first:0L
         fst
         (self # list_namespace_osds
            ~namespace_id
@@ -295,7 +295,7 @@ object(self)
 
     method list_all_claimed_osds =
       list_all_x
-        ~first:0l
+        ~first:0L
         fst
         (self # list_osds_by_osd_id
            ~last:None
@@ -459,7 +459,7 @@ object(self)
 
     method list_all_osd_namespaces ~osd_id =
       list_all_x
-        ~first:0l
+        ~first:0L
         Std.id
         (self # list_osd_namespaces
            ~osd_id
@@ -486,7 +486,7 @@ object(self)
 
     method list_all_decommissioning_osds =
       list_all_x
-        ~first:0l
+        ~first:0L
         fst
         (self # list_decommissioning_osds
            ~last:None
@@ -505,7 +505,7 @@ object(self)
 
     method list_all_purging_osds =
       list_all_x
-        ~first:0l
+        ~first:0L
         Std.id
         (self # list_purging_osds
               ~last:None

@@ -92,11 +92,6 @@ class client ?(retry_timeout = 60.)
   let () = coordinator # init in
   let filter item_id =
     (* item_id could be e.g. namespace_id or work item id *)
-    let remainder = (Int32.to_int item_id) mod coordinator # get_modulo
-    in remainder = coordinator # get_remainder
-  in
-  let filter64 item_id =
-    (* item_id could be e.g. namespace_id or work item id *)
     let remainder =
       Int64.rem item_id (coordinator # get_modulo |> Int64.of_int)
       |> Int64.to_int
@@ -147,7 +142,7 @@ class client ?(retry_timeout = 60.)
       )
     >>= fun (delta,()) ->
     MStats.new_delta MStats.REPAIR_GENERIC_TIME delta;
-    MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int32Set.cardinal problem_osds |> float);
+    MStats.new_delta MStats.REPAIR_GENERIC_COUNT (Int64Set.cardinal problem_osds |> float);
     Lwt.return_unit
   in
   let _throttled_rewrite_object alba_client ~namespace_id ~manifest =
@@ -264,7 +259,7 @@ class client ?(retry_timeout = 60.)
         retry_timeout
 
     method rebalance_object
-             ~(namespace_id:int32)
+             ~(namespace_id:int64)
              ~manifest
              ~(source_osd:Nsm_model.osd_id)
              ~(target_osd:Nsm_model.osd_id)
@@ -280,9 +275,9 @@ class client ?(retry_timeout = 60.)
         then
           let msg =
             Printf.sprintf
-              "bad move: source:%li => target:%li touched:%s"
+              "bad move: source:%Li => target:%Li touched:%s"
               source_osd target_osd
-              ([%show : int32 list] (DeviceSet.elements osds_touched))
+              ([%show : int64 list] (DeviceSet.elements osds_touched))
           in
           failwith msg
       in
@@ -291,7 +286,7 @@ class client ?(retry_timeout = 60.)
       let object_name = manifest.name in
 
       Lwt_log.debug_f
-        "rebalance_object %S ~source_osd:%li ~target_osd:%li"
+        "rebalance_object %S ~source_osd:%Li ~target_osd:%Li"
         object_name source_osd target_osd
       >>= fun () ->
 
@@ -433,7 +428,7 @@ class client ?(retry_timeout = 60.)
              ~osd_id ()
       =
       Lwt_log.debug_f
-        "Decommissioning osd %li namespace_id:%li"
+        "Decommissioning osd %Li namespace_id:%Li"
         osd_id namespace_id
       >>= fun () ->
       let first, last, reverse =
@@ -450,7 +445,7 @@ class client ?(retry_timeout = 60.)
              ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
       Lwt_log.debug_f
-        "Decommissioning osd:%li namespace_id:%li first:%S ~reverse:%b cnt:%i, has_more:%b"
+        "Decommissioning osd:%Li namespace_id:%Li first:%S ~reverse:%b cnt:%i, has_more:%b"
         osd_id namespace_id first reverse cnt has_more
       >>= fun () ->
       Lwt_list.iter_s
@@ -495,7 +490,7 @@ class client ?(retry_timeout = 60.)
                  let open Nsm_model.Manifest in
                  Lwt_log.info_f
                    ~exn
-                   "Exn while purging osd %li (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+                   "Exn while purging osd %Li (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
                    osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
                  Lwt_extra2.ignore_errors
                    ~logging:true
@@ -508,13 +503,13 @@ class client ?(retry_timeout = 60.)
                 ~namespace_id
                 ~manifest
                 ~problem_fragments:[]
-                ~problem_osds:(Int32Set.of_list [ osd_id ])
+                ~problem_osds:(Int64Set.of_list [ osd_id ])
              )
              (fun exn ->
               let open Nsm_model.Manifest in
               Lwt_log.info_f
                 ~exn
-                "Exn while repairing osd %li (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+                "Exn while repairing osd %Li (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
                 osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
               Lwt_extra2.ignore_errors
                 ~logging:true
@@ -557,7 +552,7 @@ class client ?(retry_timeout = 60.)
 
             Lwt.return ())
           (fun exn ->
-            Lwt_log.info_f ~exn "Exception in repair_osd %li" osd_id) >>= fun () ->
+            Lwt_log.info_f ~exn "Exception in repair_osd %Li" osd_id) >>= fun () ->
         Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
         self # should_repair ~osd_id >>= fun should_repair' ->
         if should_repair'
@@ -633,7 +628,7 @@ class client ?(retry_timeout = 60.)
         in
 
         Lwt_log.debug_f
-          "Cleaning obsolete keys for osd_id=%li %S"
+          "Cleaning obsolete keys for osd_id=%Li %S"
           osd_id
           ([%show : string list] keys_to_be_deleted) >>= fun () ->
         Prelude.with_timing_lwt
@@ -778,7 +773,7 @@ class client ?(retry_timeout = 60.)
                      (Osd.Blob.Bytes ""); ] in
 
                Lwt_log.debug_f
-                 "Cleaning up garbage fragment ns_id=%li, gc_epoch=%Li, object_id=%S, %i,%i,%i"
+                 "Cleaning up garbage fragment ns_id=%Li, gc_epoch=%Li, object_id=%S, %i,%i,%i"
                  namespace_id gc_epoch object_id chunk_id fragment_id version_id >>= fun () ->
 
                alba_client # with_osd
@@ -943,7 +938,7 @@ class client ?(retry_timeout = 60.)
           )
           problem_fragments
         |> List.map_filter_rev Std.id
-        |> Int32Set.of_list
+        |> Int64Set.of_list
       in
       if (current_k,current_m) = (best_k,best_m)
       then
@@ -960,7 +955,7 @@ class client ?(retry_timeout = 60.)
              let open Nsm_model.Manifest in
              Lwt_log.info_f
                ~exn
-               "Exn while repairing object (~namespace_id:%li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+               "Exn while repairing object (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
                namespace_id manifest.name manifest.object_id >>= fun () ->
              Lwt_extra2.ignore_errors
                ~logging:true
@@ -995,7 +990,7 @@ class client ?(retry_timeout = 60.)
       >>= fun cache ->
       let fill_rates = Rebalancing_helper.calculate_fill_rates cache in
       let too_low, ok, too_high = categorize fill_rates in
-      let fr2s = [%show: int * ((int32 * float) list)] in
+      let fr2s = [%show: int * ((int64 * float) list)] in
       Lwt_log.debug_f "too_low:%s ok:%s too_high:%s"
                       (fr2s too_low)
                       (fr2s ok)
@@ -1101,7 +1096,7 @@ class client ?(retry_timeout = 60.)
       in
 
       Lwt_log.debug_f
-        "Current best policy for namespace %li = %s, %i"
+        "Current best policy for namespace %Li = %s, %i"
         namespace_id
         (Policy.show_policy best_policy) best_actual_fragment_count
       >>= fun () ->
@@ -1117,7 +1112,7 @@ class client ?(retry_timeout = 60.)
       let (_, bucket_count) = stats.Nsm_model.NamespaceStats.bucket_count in
 
       Lwt_log.debug_f
-        "Found buckets %s for namespace_id:%li"
+        "Found buckets %s for namespace_id:%Li"
         ([%show : (Policy.policy * int64) list] bucket_count)
         namespace_id >>= fun () ->
 
@@ -1204,7 +1199,7 @@ class client ?(retry_timeout = 60.)
             ~max:200 >>= fun ((cnt, objs), _) ->
 
         Lwt_log.debug_f
-          "repair by policy for namespace_id:%li, handling bucket (%i,%i,%i,%i), got %i items"
+          "repair by policy for namespace_id:%Li, handling bucket (%i,%i,%i,%i), got %i items"
           namespace_id
           k m fragment_count max_disks_per_node
           cnt >>= fun () ->
@@ -1296,7 +1291,7 @@ class client ?(retry_timeout = 60.)
                then cnt', List.hd_exn osds
                else cnt, osd_id)
               osds_per_node
-              (0, 0l)
+              (0, 0L)
           in
           let osds_to_keep =
             List.filter
@@ -1347,7 +1342,7 @@ class client ?(retry_timeout = 60.)
 
       (match List.hd buckets with
        | None ->
-          Lwt_log.debug_f "No buckets to repair by policy for namespace_id:%li" namespace_id >>= fun () ->
+          Lwt_log.debug_f "No buckets to repair by policy for namespace_id:%Li" namespace_id >>= fun () ->
           Lwt.return_false
        | Some x -> handle_bucket x)
       >>= fun repaired_some ->
@@ -1376,7 +1371,7 @@ class client ?(retry_timeout = 60.)
               msg retry_timeout
             >>= fun () ->
             Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
-            if filter64 work_id
+            if filter work_id
             then inner ()
             else Lwt.fail NotMyTask
           | true ->
@@ -1404,12 +1399,12 @@ class client ?(retry_timeout = 60.)
         let rec inner () =
           nsm_client # cleanup_for_namespace ~namespace_id >>= fun cnt ->
           Lwt_log.debug_f
-            "cleaned %i keys for namespace_id=%li\n"
+            "cleaned %i keys for namespace_id=%Li\n"
             cnt namespace_id
           >>= fun () ->
           if cnt = 0
           then Lwt.return ()
-          else if filter64 work_id
+          else if filter work_id
           then inner ()
           else Lwt.fail NotMyTask
         in
@@ -1425,7 +1420,7 @@ class client ?(retry_timeout = 60.)
                 client # delete_namespace namespace_id first >>= function
                 | None -> Lwt.return ()
                 | Some next ->
-                   if not (filter64 work_id)
+                   if not (filter work_id)
                    then Lwt.fail NotMyTask
                    else inner next
               in
@@ -1438,7 +1433,7 @@ class client ?(retry_timeout = 60.)
                (fun nsm ->
                   let rec inner () =
                     nsm # cleanup_osd_keys_to_be_deleted osd_id >>= fun cnt ->
-                    if not (filter64 work_id)
+                    if not (filter work_id)
                     then Lwt.fail NotMyTask
                     else if cnt <> 0
                     then inner ()
@@ -1453,7 +1448,7 @@ class client ?(retry_timeout = 60.)
            | exn -> Lwt.fail exn)
       | WaitUntilRepaired (osd_id, namespace_id) ->
         wait_until
-          (Printf.sprintf "WaitUntilRepaired osd_id=%li, namespace_id=%li" osd_id namespace_id)
+          (Printf.sprintf "WaitUntilRepaired osd_id=%Li, namespace_id=%Li" osd_id namespace_id)
           (fun () ->
              Lwt.catch
                (fun () ->
@@ -1473,11 +1468,11 @@ class client ?(retry_timeout = 60.)
                 | exn -> Lwt.fail exn))
       | WaitUntilDecommissioned osd_id ->
         wait_until
-          (Printf.sprintf "WaitUntilDecommissioned osd_id=%li" osd_id)
+          (Printf.sprintf "WaitUntilDecommissioned osd_id=%Li" osd_id)
           (fun () ->
              alba_client # mgr_access # list_osd_namespaces
                ~osd_id
-               ~first:0l ~finc:true ~last:None ~reverse:false ~max:1
+               ~first:0L ~finc:true ~last:None ~reverse:false ~max:1
              >>= fun ((cnt, _), _) ->
              Lwt.return (cnt = 0))
       | RepairBadFragment (namespace_id, object_id, object_name,
@@ -1496,7 +1491,7 @@ class client ?(retry_timeout = 60.)
                if manifest.Nsm_model.Manifest.object_id = object_id
                then begin
                    Lwt_log.warning_f
-                     "Repairing object due to bad (missing/corrupted) fragment (%li, %S, %S, %i, %i)"
+                     "Repairing object due to bad (missing/corrupted) fragment (%Li, %S, %S, %i, %i)"
                      namespace_id object_id object_name chunk_id fragment_id
                    >>= fun () ->
                    (* this is inefficient but in general it should never happen *)
@@ -1563,7 +1558,7 @@ class client ?(retry_timeout = 60.)
                alba_client # mgr_access # update_progress
                            name p po >>= fun () ->
 
-               if not (filter64 work_id)
+               if not (filter work_id)
                then Lwt.fail NotMyTask
                else if has_more
                then inner po
@@ -1654,7 +1649,7 @@ class client ?(retry_timeout = 60.)
              let try_do_work () =
                Lwt.catch
                  (fun () ->
-                  (if filter64 work_id
+                  (if filter work_id
                    then
                      begin
                        Lwt_log.debug_f
@@ -1830,7 +1825,7 @@ class client ?(retry_timeout = 60.)
                | exn ->
                  Lwt_log.debug_f
                    ~exn
-                   "Exception during %s maintenance for %S %li"
+                   "Exception during %s maintenance for %S %Li"
                    msg namespace namespace_id >>= fun () ->
                  Lwt.return `Continue)
            >>= function
@@ -1863,7 +1858,7 @@ class client ?(retry_timeout = 60.)
 
 
   method maintenance_for_all_namespaces : unit Lwt.t =
-    let next_id = ref 0l in
+    let next_id = ref 0L in
 
     let rec inner () =
       Lwt.catch
@@ -1875,7 +1870,7 @@ class client ?(retry_timeout = 60.)
 
            List.iter
              (fun (namespace_id, namespace, namespace_info) ->
-                next_id := Int32.succ namespace_id;
+                next_id := Int64.succ namespace_id;
                 Lwt.async
                   (fun () ->
                    self # maintenance_for_namespace
@@ -2039,7 +2034,7 @@ class client ?(retry_timeout = 60.)
                                     serialize
                                       (Llio.tuple3_to
                                          Llio.int8_to
-                                         Llio.int32_to
+                                         x_int64_to
                                          Llio.string_to)
                                       (1, namespace_id, mf.name))
                                    mfs
@@ -2118,7 +2113,7 @@ class client ?(retry_timeout = 60.)
               (fun exn ->
                Lwt_log.info_f
                  ~exn
-                 "Failed to refresh abm_cfg for osd %li" osd_id >>= fun () ->
+                 "Failed to refresh abm_cfg for osd %Li" osd_id >>= fun () ->
                Lwt.return_none))
       >>= fun updates ->
       alba_client # mgr_access # update_osds updates

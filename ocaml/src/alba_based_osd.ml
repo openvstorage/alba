@@ -20,6 +20,6 @@ open Prelude
 
 let to_namespace_name prefix = function
   | 0 -> fun namespace_id ->
-         prefix ^ (serialize ~buf_size:4 Llio.int32_be_to namespace_id)
-  | 1 -> Printf.sprintf "%s_%09li" prefix
+         prefix ^ (serialize ~buf_size:4 x_int64_be_to namespace_id)
+  | 1 -> Printf.sprintf "%s_%09Li" prefix
   | _ -> assert false

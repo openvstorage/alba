@@ -50,7 +50,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
   in
   let do_one msg_id msg =
     Lwt_log.debug_f
-      "Delivering msg %Li to %li: %s"
+      "Delivering msg %Li to %Li: %s"
       msg_id
       osd_id
       ([%show : Albamgr_protocol.Protocol.Osd.Message.t] msg) >>= fun () ->
@@ -180,7 +180,7 @@ let deliver_all_messages is_master mgr_access nsm_host_access osd_access =
          mgr_access nsm_host_access osd_access
          ~osd_id)
       Std.id
-      Int32.to_string
+      Int64.to_string
       is_master
   in
   Lwt.choose [ deliver_nsm_messages;

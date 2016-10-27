@@ -160,7 +160,7 @@ let verify_and_maybe_repair_object
             alba_client
             ~namespace_id
             ~manifest
-            ~problem_osds:Int32Set.empty
+            ~problem_osds:Int64Set.empty
             ~problem_fragments)
          (fun exn ->
           Repair.rewrite_object

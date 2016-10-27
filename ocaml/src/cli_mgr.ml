@@ -58,7 +58,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-       let first = 0l
+       let first = 0L
        and finc = true
        and last = None
        and max = -1 in
@@ -69,7 +69,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
          let r' =
            `List [`Assoc (List.map
                      (fun (id,name,_info) ->
-                      (Int32.to_string id),`String name)
+                      (Int64.to_string id),`String name)
                      r
                   );
                   `Bool more
@@ -80,7 +80,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
          begin
            Lwt_list.iter_s
              (fun (id, name, _info ) ->
-              Lwt_io.printlf "%8li:%S" id name
+              Lwt_io.printlf "%8Li:%S" id name
              ) r
            >>= fun () ->
            if more
@@ -161,7 +161,7 @@ let alba_list_osds cfg_file tls_config node_id to_json verbose attempts =
            Lwt_list.iter_s
              (fun (d_id,d_info) ->
                 Lwt_io.printlf
-                  "%li : %s" d_id
+                  "%Li : %s" d_id
                   (Nsm_model.OsdInfo.show d_info)
              )
              devices'

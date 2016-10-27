@@ -71,41 +71,51 @@ module Keys = struct
 
     let osd_id_to_long_id_prefix = "/alba/osd/byosd_id/"
     let osd_id_to_long_id_next_prefix = Key_value_store.next_prefix osd_id_to_long_id_prefix
-    let osd_id_to_long_id ~osd_id = "/alba/osd/byosd_id/" ^ (serialize Llio.int32_be_to osd_id)
+    let osd_id_to_long_id ~osd_id = "/alba/osd/byosd_id/" ^ (serialize x_int64_be_to osd_id)
     let osd_id_to_long_id_extract_osd_id =
       let prefix_len = String.length osd_id_to_long_id_prefix in
-      fun key -> Llio.int32_be_from (Llio.make_buffer key prefix_len)
+      fun key -> x_int64_be_from (Llio.make_buffer key prefix_len)
 
     let next_id = "/alba/osd/next_id"
 
     let msg_log_prefix = "/alba/osds/msg_log/"
 
+    let namespaces_prefix_prefix = "/alba/osds/ns/"
     let namespaces_prefix ~osd_id =
-      "/alba/osds/ns/" ^ (serialize Llio.int32_be_to osd_id)
+      namespaces_prefix_prefix ^ (serialize x_int64_be_to osd_id)
     let namespaces_next_prefix ~osd_id =
       Key_value_store.next_prefix (namespaces_prefix ~osd_id)
 
     let namespaces ~osd_id ~namespace_id =
-      (namespaces_prefix ~osd_id) ^ (serialize Llio.int32_be_to namespace_id)
-    let namespaces_extract_namespace_id =
-      let prefix_len = String.length (namespaces_prefix ~osd_id:0l) in
-      deserialize ~offset:prefix_len Llio.int32_be_from
+      (namespaces_prefix ~osd_id) ^ (serialize x_int64_be_to namespace_id)
+    let namespaces_extract_namespace_id key =
+      let osd_id =
+        deserialize
+          ~offset:(String.length namespaces_prefix_prefix)
+          x_int64_be_from
+          key
+      in
+      let prefix_len = String.length (namespaces_prefix ~osd_id) in
+      deserialize
+        ~offset:prefix_len
+        x_int64_be_from
+        key
 
     let decommissioning_prefix = "/alba/osds/repairing/"
     let decommissioning_next_prefix = Key_value_store.next_prefix decommissioning_prefix
     let decommissioning ~osd_id =
-      decommissioning_prefix ^ (serialize Llio.int32_be_to osd_id)
+      decommissioning_prefix ^ (serialize x_int64_be_to osd_id)
     let decommissioning_extract_osd_id =
       let prefix_len = String.length decommissioning_prefix in
-      deserialize ~offset:prefix_len Llio.int32_be_from
+      deserialize ~offset:prefix_len x_int64_be_from
 
     let purging_prefix = "/alba/osds/purging/"
     let purging_next_prefix = Key_value_store.next_prefix purging_prefix
     let purging ~osd_id =
-      purging_prefix ^ (serialize Llio.int32_be_to osd_id)
+      purging_prefix ^ (serialize x_int64_be_to osd_id)
     let purging_extract_osd_id =
       let prefix_len = String.length purging_prefix in
-      deserialize ~offset:prefix_len Llio.int32_be_from
+      deserialize ~offset:prefix_len x_int64_be_from
   end
 
   module Msg_log = struct
@@ -146,25 +156,35 @@ module Keys = struct
     let name_prefix = "/alba/ns/by_id/"
 
     let name namespace_id =
-      name_prefix ^ (serialize Llio.int32_be_to namespace_id)
+      name_prefix ^ (serialize x_int64_be_to namespace_id)
 
     let name_extract_id key =
       let prefix_len = String.length name_prefix in
       let b = Llio.make_buffer key prefix_len in
-      Llio.int32_be_from b
+      x_int64_be_from b
 
     let name_next_prefix = Key_value_store.next_prefix name_prefix
 
+    let osds_prefix_prefix = "/alba/ns/osds/"
     let osds_prefix ~namespace_id =
-      "/alba/ns/osds/" ^ (serialize Llio.int32_be_to namespace_id)
+      osds_prefix_prefix ^ (serialize x_int64_be_to namespace_id)
     let osds_next_prefix ~namespace_id =
       Key_value_store.next_prefix (osds_prefix ~namespace_id)
 
     let osds ~namespace_id ~osd_id =
-      (osds_prefix ~namespace_id) ^ (serialize Llio.int32_be_to osd_id)
-    let osds_extract_osd_id =
-      let prefix_len = String.length (osds_prefix ~namespace_id:0l) in
-      fun key -> Llio.int32_be_from (Llio.make_buffer key prefix_len)
+      (osds_prefix ~namespace_id) ^ (serialize x_int64_be_to osd_id)
+    let osds_extract_osd_id key =
+      let namespace_id =
+        deserialize
+          ~offset:(String.length osds_prefix_prefix)
+          x_int64_be_from
+          key
+      in
+      let prefix_len = String.length (osds_prefix ~namespace_id) in
+      deserialize
+        ~offset:prefix_len
+        x_int64_be_from
+        key
 
   end
 
@@ -180,10 +200,10 @@ module Keys = struct
     let namespaces_prefix ~preset_name =
       "/alba/preset/namespaces" ^ (serialize Llio.string_to preset_name)
     let namespaces ~preset_name ~namespace_id =
-      (namespaces_prefix ~preset_name) ^ (serialize Llio.int32_be_to namespace_id)
+      (namespaces_prefix ~preset_name) ^ (serialize x_int64_be_to namespace_id)
     let namespaces_extract_namespace_id ~preset_name =
       let prefix_len = String.length (namespaces_prefix ~preset_name) in
-      fun key -> Llio.int32_be_from (Llio.make_buffer key prefix_len)
+      fun key -> x_int64_be_from (Llio.make_buffer key prefix_len)
   end
 end
 
@@ -327,7 +347,7 @@ let list_all_osds db =
   let res, _has_more =
     list_osds_by_osd_id
       db
-      ~first:0l ~finc:true ~last:None
+      ~first:0L ~finc:true ~last:None
       ~max:(-1) ~reverse:false in
   res
 
@@ -453,7 +473,7 @@ let upds_for_delivered_msg
            get_namespace_osds
              db
              ~namespace_id
-             ~first:0l ~finc:true ~last:None
+             ~first:0L ~finc:true ~last:None
              ~reverse:false ~max:(-1)
          in
          add_msgs
@@ -1138,8 +1158,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       let next_id_so = db # get next_id_key in
       let osd_id =
         Option.get_some_default
-          0l
-          (Option.map (deserialize Llio.int32_from) next_id_so)
+          0L
+          (Option.map (deserialize x_int64_from) next_id_so)
       in
 
       let (_, all_presets), _ =
@@ -1199,7 +1219,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                             (Osd.to_buffer_with_claim_info ~version:3)
                             (Osd.ClaimInfo.ThisAlba osd_id, osd_info));
               Update.Assert (next_id_key, next_id_so);
-              Update.Set (next_id_key, serialize Llio.int32_to (Int32.succ osd_id));
+              Update.Set (next_id_key, serialize x_int64_to (Int64.succ osd_id));
               Update.Assert (osd_id_to_long_id_key, None);
               Update.Set (osd_id_to_long_id_key, long_id); ];
             assert_namespaces_in_presets;
@@ -1248,8 +1268,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | None ->
           let next_id_s = db # get Keys.Namespace.next_id in
           let namespace_id = match next_id_s with
-            | None -> 0l
-            | Some s -> deserialize Llio.int32_from s in
+            | None -> 0L
+            | Some s -> deserialize x_int64_from s in
 
           let add_nsm_host_msg =
             add_msg
@@ -1260,7 +1280,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           let bump_next_namespace_id =
             [ Update.Assert (Keys.Namespace.next_id, next_id_s);
               Update.Set (Keys.Namespace.next_id,
-                          serialize Llio.int32_to (Int32.succ namespace_id)); ]
+                          serialize x_int64_to (Int64.succ namespace_id)); ]
           in
           let ns_info = Namespace.{ id = namespace_id;
                                     nsm_host_id;
@@ -1949,7 +1969,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        in
        Plugin_helper.debug_f
          "ListNamespacesById: %s"
-         ([%show: (int * (int32 * string * Namespace.t) list) * bool] r);
+         ([%show: (int * (int64 * string * Namespace.t) list) * bool] r);
        r
     | GetVersion ->
       fun () -> Alba_version.summary

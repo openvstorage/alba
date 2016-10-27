@@ -228,6 +228,15 @@ module WriteBuffer = struct
       with_ buf 8
             (fun () -> set64_prim' buf.buf buf.pos i)
 
+    let x_int64_to buf i =
+      if i < (Int64.of_int32 Int32.max_int)
+      then int32_to buf (Int64.to_int32 i)
+      else
+        begin
+          int32_to buf Int32.max_int;
+          int64_to buf i
+        end
+
     let float_to buf f =
       int64_to buf (Int64.bits_of_float f)
 
@@ -324,6 +333,7 @@ module Deser =
     let int = ReadBuffer.int_from, WriteBuffer.int_to
     let int32 = ReadBuffer.int32_from, WriteBuffer.int32_to
     let int64 = ReadBuffer.int64_from, WriteBuffer.int64_to
+    let x_int64 = ReadBuffer.x_int64_from, WriteBuffer.x_int64_to
     let string = ReadBuffer.string_from, WriteBuffer.string_to
     let float = ReadBuffer.float_from, WriteBuffer.float_to
 

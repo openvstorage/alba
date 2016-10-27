@@ -622,12 +622,10 @@ module Hashtbl = struct
 end
 
 module IntSet = Set.Make(struct type t = int let compare = compare end)
-module Int32Set = Set.Make(Int32)
 module Int64Set = Set.Make(Int64)
 module StringSet = Set.Make(String)
 
 module IntMap = Map.Make(struct type t = int let compare = compare end)
-module Int32Map = Map.Make(Int32)
 module StringMap = Map.Make(String)
 
 let finalize f final =

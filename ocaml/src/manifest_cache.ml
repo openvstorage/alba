@@ -40,10 +40,10 @@ module ManifestCache = struct
     type epoch = int
 
     type ('a,'b) t = {
-        cache : (int32 * epoch * string, 'b) ACache.t;
-        namespace_epoch : (int32, epoch) Hashtbl.t;
+        cache : (int64 * epoch * string, 'b) ACache.t;
+        namespace_epoch : (int64, epoch) Hashtbl.t;
         mutable next_epoch : epoch;
-        stats : (int32, cache_stat) Hashtbl.t;
+        stats : (int64, cache_stat) Hashtbl.t;
       }
 
 
@@ -51,7 +51,7 @@ module ManifestCache = struct
 
     let make (max_size:int)
       =
-      { cache = ACache.make ~weight:String.length ~max_size (0l, 0, "");
+      { cache = ACache.make ~weight:String.length ~max_size (0L, 0, "");
         namespace_epoch = Hashtbl.create 3;
         next_epoch = 0;
         stats = Hashtbl.create 7;
@@ -83,7 +83,7 @@ module ManifestCache = struct
         epoch
 
     let add t namespace_id object_name a =
-      Lwt_log.ign_debug_f "add %li %S to manifest cache" namespace_id object_name;
+      Lwt_log.ign_debug_f "add %Li %S to manifest cache" namespace_id object_name;
 
       let epoch = get_epoch t namespace_id in
       let b = deflate a in

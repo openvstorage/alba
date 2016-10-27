@@ -22,7 +22,7 @@ module Protocol = struct
 
   type osd_id = Nsm_model.osd_id [@@deriving show, yojson]
 
-  type namespace_id = int32 [@@deriving show, yojson]
+  type namespace_id = int64 [@@deriving show, yojson]
   type namespace_name = string [@@deriving show, yojson]
 
   module Namespace_message = struct
@@ -34,7 +34,7 @@ module Protocol = struct
     let to_buffer buf = function
       | LinkOsd (osd_id, osd_info) ->
         Llio.int8_to buf 1;
-        Llio.int32_to buf osd_id;
+        x_int64_to buf osd_id;
         (* switch for old abms *)
         let to_buffer =
           let open Nsm_model.OsdInfo in
@@ -55,16 +55,16 @@ module Protocol = struct
         to_buffer buf osd_info
       | UnlinkOsd osd_id ->
         Llio.int8_to buf 2;
-        Llio.int32_to buf osd_id
+        x_int64_to buf osd_id
 
     let from_buffer buf =
       match Llio.int8_from buf with
       | 1 ->
-        let osd_id = Llio.int32_from buf in
+        let osd_id = x_int64_from buf in
         let osd_info = Nsm_model.OsdInfo.from_buffer buf in
         LinkOsd (osd_id, osd_info)
       | 2 ->
-        let osd_id = Llio.int32_from buf in
+        let osd_id = x_int64_from buf in
         UnlinkOsd osd_id
       | k -> raise_bad_tag "Nsm_host_protocol.Namespace_message" k
   end
@@ -84,17 +84,17 @@ module Protocol = struct
              | CreateNamespace (name, id) ->
                Llio.int8_to buf 1;
                Llio.string_to buf name;
-               Llio.int32_to buf id
+               x_int64_to buf id
              | DeleteNamespace id ->
                Llio.int8_to buf 2;
-               Llio.int32_to buf id
+               x_int64_to buf id
              | RecoverNamespace (name, id) ->
                Llio.int8_to buf 3;
                Llio.string_to buf name;
-               Llio.int32_to buf id
+               x_int64_to buf id
              | NamespaceMsg (namespace_id, msg) ->
                Llio.int8_to buf 4;
-               Llio.int32_to buf namespace_id;
+               x_int64_to buf namespace_id;
                Namespace_message.to_buffer buf msg)
           msg in
       Llio.string_to buf s
@@ -106,17 +106,17 @@ module Protocol = struct
            match Llio.int8_from buf with
            | 1 ->
              let name = Llio.string_from buf in
-             let id = Llio.int32_from buf in
+             let id = x_int64_from buf in
              CreateNamespace (name, id)
            | 2 ->
-             let id = Llio.int32_from buf in
+             let id = x_int64_from buf in
              DeleteNamespace id
            | 3 ->
              let name = Llio.string_from buf in
-             let id = Llio.int32_from buf in
+             let id = x_int64_from buf in
              RecoverNamespace (name, id)
            | 4 ->
-             let id = Llio.int32_from buf in
+             let id = x_int64_from buf in
              let msg = Namespace_message.from_buffer buf in
              NamespaceMsg (id, msg)
            | k -> raise_bad_tag "Nsm_host_msg" k)
@@ -238,7 +238,7 @@ module Protocol = struct
     end
 
   let read_update_i : type i o. (i, o) update -> i deserializer = function
-    | CleanupForNamespace -> Llio.int32_from
+    | CleanupForNamespace -> x_int64_from
     | DeliverMsg -> Llio.pair_from Message.from_buffer x_int64_from
     | DeliverMsgs -> Llio.list_from
                        (Llio.pair_from
@@ -246,10 +246,10 @@ module Protocol = struct
                           Message.from_buffer)
     | NsmUpdate u ->
       Llio.pair_from
-        Llio.int32_from
+        x_int64_from
         (Nsm_protocol.Protocol.read_update_request u)
   let write_update_i : type i o. (i, o) update -> i serializer = function
-    | CleanupForNamespace -> Llio.int32_to
+    | CleanupForNamespace -> x_int64_to
     | DeliverMsg -> Llio.pair_to Message.to_buffer x_int64_to
     | DeliverMsgs -> Llio.list_to
                        (Llio.pair_to
@@ -257,7 +257,7 @@ module Protocol = struct
                           Message.to_buffer)
     | NsmUpdate u ->
       Llio.pair_to
-        Llio.int32_to
+        x_int64_to
         (Nsm_protocol.Protocol.write_update_request u)
 
 
@@ -279,12 +279,12 @@ module Protocol = struct
     | NSMHStatistics -> Llio.bool_from
     | NsmQuery q ->
       Llio.pair_from
-        Llio.int32_from
+        x_int64_from
         (Nsm_protocol.Protocol.read_query_request q)
     | NsmsQuery q ->
        Llio.list_from
          (Llio.pair_from
-            Llio.int32_from
+            x_int64_from
             (Nsm_protocol.Protocol.read_query_request q))
 
 
@@ -294,17 +294,17 @@ module Protocol = struct
     | NSMHStatistics -> Llio.bool_to
     | NsmQuery q ->
       Llio.pair_to
-        Llio.int32_to
+        x_int64_to
         (Nsm_protocol.Protocol.write_query_request q)
     | NsmsQuery q ->
        Llio.list_to
          (Llio.pair_to
-            Llio.int32_to
+            x_int64_to
             (Nsm_protocol.Protocol.write_query_request q))
 
 
   let read_query_o : type i o. (i, o) query -> o deserializer = function
-    | ListNsms -> Llio.counted_list_from (Llio.pair_from Llio.int32_from namespace_state_from_buf)
+    | ListNsms -> Llio.counted_list_from (Llio.pair_from x_int64_from namespace_state_from_buf)
     | GetVersion -> Llio.tuple4_from
                       Llio.int_from
                       Llio.int_from
@@ -318,7 +318,7 @@ module Protocol = struct
                           (fun buf -> Nsm_model.Err.int2err (Llio.int8_from buf))
                        )
   let write_query_o : type i o. (i, o) query -> o serializer = function
-    | ListNsms -> Llio.counted_list_to (Llio.pair_to Llio.int32_to namespace_state_to_buf)
+    | ListNsms -> Llio.counted_list_to (Llio.pair_to x_int64_to namespace_state_to_buf)
     | GetVersion -> Llio.tuple4_to
                       Llio.int_to
                       Llio.int_to
