@@ -1999,63 +1999,69 @@ class client ?(retry_timeout = 60.)
                      namespaces
                  in
                  let length = List.length namespaces in
-                 let (namespace, ns_info) = List.nth_exn namespaces (Random.int length) in
-                 let namespace_id = ns_info.Albamgr_protocol.Protocol.Namespace.id in
-                 alba_client # nsm_host_access # get_nsm_by_id ~namespace_id
-                 >>= fun nsm_client ->
-                 let first, last, reverse = make_first_last_reverse () in
-                 nsm_client # list_objects_by_id
-                        ~first ~finc:true ~last
-                        ~reverse ~max:200 >>= fun ((_, mfs), _) ->
-                 if mfs = []
+                 if length > 0
                  then
                    begin
-                     (* maybe the namespace was empty ...
-                      * if so detect it and throw it away
-                      *)
+                     let (namespace, ns_info) = List.nth_exn namespaces (Random.int length) in
+                     let namespace_id = ns_info.Albamgr_protocol.Protocol.Namespace.id in
+                     alba_client # nsm_host_access # get_nsm_by_id ~namespace_id
+                     >>= fun nsm_client ->
+                     let first, last, reverse = make_first_last_reverse () in
                      nsm_client # list_objects_by_id
-                                ~first:"" ~finc:true ~last:None
-                                ~reverse:false ~max:1 >>= fun ((_, mfs), _) ->
+                                ~first ~finc:true ~last
+                                ~reverse ~max:200 >>= fun ((_, mfs), _) ->
                      if mfs = []
                      then
                        begin
-                         alba_client # delete_namespace ~namespace >>= fun () ->
-                         Lwt.return 0.
+                         (* maybe the namespace was empty ...
+                          * if so detect it and throw it away
+                          *)
+                         nsm_client # list_objects_by_id
+                                    ~first:"" ~finc:true ~last:None
+                                    ~reverse:false ~max:1 >>= fun ((_, mfs), _) ->
+                         if mfs = []
+                         then
+                           begin
+                             alba_client # delete_namespace ~namespace >>= fun () ->
+                             Lwt.return 0.
+                           end
+                         else
+                           Lwt.return (delay *. 1.5)
                        end
                      else
-                       Lwt.return (delay *. 1.5)
+                       begin
+                         let items = List.map
+                                       (fun mf ->
+                                         let open Nsm_model.Manifest in
+                                         mf.timestamp,
+                                         serialize
+                                           (Llio.tuple3_to
+                                              Llio.int8_to
+                                              x_int64_to
+                                              Llio.string_to)
+                                           (1, namespace_id, mf.name))
+                                       mfs
+                         in
+                         let module R = Redis_lwt.Client in
+                         R.with_connection
+                           R.({ host; port; })
+                           (fun client ->
+                             Redis_lwt.Client.zadd
+                               client
+                               key
+                               ~x:`NX
+                               items)
+                         >>= fun count ->
+                         if count = 0
+                         then
+                           Lwt.return (delay *. 1.5)
+                         else
+                           (* found garbage, scan again for more... *)
+                           Lwt.return 0.
+                       end
                    end
                  else
-                   begin
-                     let items = List.map
-                                   (fun mf ->
-                                    let open Nsm_model.Manifest in
-                                    mf.timestamp,
-                                    serialize
-                                      (Llio.tuple3_to
-                                         Llio.int8_to
-                                         x_int64_to
-                                         Llio.string_to)
-                                      (1, namespace_id, mf.name))
-                                   mfs
-                     in
-                     let module R = Redis_lwt.Client in
-                     R.with_connection
-                       R.({ host; port; })
-                       (fun client ->
-                        Redis_lwt.Client.zadd
-                          client
-                          key
-                          ~x:`NX
-                          items)
-                     >>= fun count ->
-                     if count = 0
-                     then
-                       Lwt.return (delay *. 1.5)
-                     else
-                       (* found garbage, scan again for more... *)
-                       Lwt.return 0.
-                   end
+                   Lwt.return (delay *. 1.5)
                 )
                 (fun exn ->
                  Lwt_log.info_f ~exn "Exception during redis-lru-eviction-garbage-collect" >>= fun () ->

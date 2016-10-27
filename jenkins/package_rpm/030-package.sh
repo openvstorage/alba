@@ -18,4 +18,7 @@ created_package=`ls -t ${RPMS}/alba-*.centos.x86_64.rpm | head -n1`
 new_package=${RPMS}/alba-`git describe --tags --dirty | xargs`-1.el7.centos7.x86_64.rpm
 echo $created_package
 echo $new_package
-mv ${created_package} ${new_package}
+if [$created_package == $new_package]
+then echo "point release"
+else mv ${created_package} ${new_package}
+fi

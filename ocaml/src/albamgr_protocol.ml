@@ -502,7 +502,11 @@ module Protocol = struct
           )
           t.policies
       in
-      default_in_allowed_list && enc_key_length && policies_ok
+      let fragment_size_ok = t.fragment_size >= Fragment_size_helper.fragment_multiple in
+      default_in_allowed_list
+      && enc_key_length
+      && policies_ok
+      && fragment_size_ok
 
     type name = string [@@deriving show]
 

@@ -27,7 +27,7 @@ open Alba_client_errors
 open Lwt.Infix
 module Osd_sec = Osd
 
-let fragment_multiple = Fragment_helper.fragment_multiple
+let fragment_multiple = Fragment_size_helper.fragment_multiple
 
 let upload_packed_fragment_data
       (osd_access : Osd_access_type.t)
@@ -347,12 +347,7 @@ let upload_object''
 
   object_reader # length >>= fun object_length ->
 
-  let desired_chunk_size =
-    let x = fragment_multiple * k in
-    if max_fragment_size > (object_length / k)
-    then ((object_length / x) + 1) * x
-    else (max_fragment_size / fragment_multiple) * x
-  in
+  let desired_chunk_size = Fragment_size_helper.determine_chunk_size ~object_length ~max_fragment_size ~k in
 
   let fold_chunks chunk =
 
@@ -367,13 +362,22 @@ let upload_object''
       =
       let t0_chunk = Unix.gettimeofday () in
       let chunk_size' = min desired_chunk_size (object_length - total_size) in
-      Lwt_log.debug_f "chunk_size' = %i" chunk_size' >>= fun () ->
+      let total_size' = total_size + chunk_size' in
+      let has_more = total_size' < object_length in
+
+      Lwt_log.debug_f
+        "chunk_size' = %i, total_size'=%i, has_more=%b, chunk_id=%i, object_length=%i, desired_chunk_size=%i"
+        chunk_size'
+        total_size'
+        has_more
+        chunk_id
+        object_length
+        desired_chunk_size
+      >>= fun () ->
       with_timing_lwt
         (fun () -> object_reader # read chunk_size' chunk)
       >>= fun (read_data_time, ()) ->
 
-      let total_size' = total_size + chunk_size' in
-      let has_more = total_size' < object_length in
 
       with_timing_lwt
         (fun () ->

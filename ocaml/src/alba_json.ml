@@ -266,6 +266,22 @@ module Preset = struct
     in_use : (bool [@default true]);
   } [@@deriving yojson]
 
+  let to_yojson t =
+    let j = to_yojson t in
+    let extras =
+      if t.in_use
+      then [ ("in_use", `Bool true) ]
+      else []
+    in
+    let extras =
+      if t.is_default
+      then extras
+      else ("is_default", `Bool false) :: extras
+    in
+    match j with
+    | `Assoc l -> `Assoc (List.rev_append extras l)
+    | _ -> assert false
+
   type t_list = t list [@@deriving yojson]
 
   let make (name, preset, is_default, in_use) =
