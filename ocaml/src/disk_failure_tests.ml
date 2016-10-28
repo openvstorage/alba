@@ -28,7 +28,6 @@ let tls_config = ref None
 let _easiest_upload () =
   let tls_config = !tls_config
   and namespace = "demo"
-  and namespace_id = 0L
   and input_file = "./ocaml/alba.native"
   and object_name = Printf.sprintf "easy_test_%i" 1
   and allow_overwrite = false in
@@ -65,7 +64,7 @@ let _easiest_upload () =
     ~tls_config
     ~populate_osds_info_cache:true
     (fun alba_client ->
-
+     alba_client # create_namespace ~namespace:"disk_failure_test" ~preset_name:None () >>= fun namespace_id ->
      Alba_test._wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
      alba_client # mgr_access # list_all_claimed_osds >>= fun (n, osds) ->
      Lwt_io.printlf "there are n=%i claimed osds" n >>= fun()->

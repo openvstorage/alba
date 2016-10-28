@@ -279,9 +279,11 @@ TEST(proxy_client, test_osd_info2) {
 
   auto &osd_access = alba::proxy_client::OsdAccess::getInstance();
   osd_access.update(*client);
-  osd_t osd;
-  for (osd.i = 0; osd.i < n; osd.i++) {
-    bool unknown = osd_access.osd_is_unknown(osd);
+
+  osd_map_t &m = std::get<1>(result[1]);
+  for (auto it = m.begin(); it != m.end(); it++) {
+    auto osd_id = it->first;
+    bool unknown = osd_access.osd_is_unknown(osd_id);
     EXPECT_EQ(unknown, false);
   }
 }
