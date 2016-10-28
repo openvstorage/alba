@@ -17,11 +17,22 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
+#include "llio.h"
 #include <cinttypes>
 #include <string>
 
 namespace alba {
-typedef uint32_t osd_t;
+
+struct x_uint64_t {
+  uint64_t i;
+};
+
+std::ostream &operator<<(std::ostream &, const x_uint64_t &);
+void to_be(alba::llio::message_builder &mb, const x_uint64_t &t);
+bool operator<(const x_uint64_t &lhs, const x_uint64_t &rhs);
+
+typedef x_uint64_t osd_t;
+typedef x_uint64_t namespace_t;
 typedef unsigned char byte;
 typedef std::string alba_id_t;
 }

@@ -151,40 +151,6 @@ void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid) {
   from(m, (proxy_protocol::Manifest &)mfid);
   from(m, mfid.namespace_id);
 }
-
-template <> void from(message &m, proxy_protocol::FCInfo &fc_info) {
-  ALBA_LOG(DEBUG, "from(_, fc_info");
-  from(m, fc_info.alba_id);
-  from(m, fc_info.namespace_id);
-  uint32_t n_chunks;
-  from(m, n_chunks);
-  ALBA_LOG(DEBUG, "n_chunks:" << n_chunks);
-
-  for (uint32_t chunk_index = 0; chunk_index < n_chunks; ++chunk_index) {
-    uint32_t chunk_id;
-    from(m, chunk_id);
-    ALBA_LOG(DEBUG, "chunk_id:" << chunk_id);
-    int32_t n_fragments;
-    from(m, n_fragments);
-    std::map<int32_t, std::shared_ptr<proxy_protocol::Manifest>> chunk;
-    ALBA_LOG(DEBUG, "n_fragments:" << n_fragments);
-    for (int32_t fragment_index = 0; fragment_index < n_fragments;
-         ++fragment_index) {
-      int32_t fragment_id;
-      from(m, fragment_id);
-      ALBA_LOG(DEBUG, "fragment_id:" << fragment_id);
-
-      std::shared_ptr<proxy_protocol::Manifest> mfp(
-          new proxy_protocol::Manifest);
-      from(m, *mfp);
-
-      chunk[fragment_id] = std::move(mfp);
-    }
-    fc_info.info[chunk_id] = std::move(chunk);
-  }
-  ALBA_LOG(DEBUG, "m.pos= " << m.get_pos()
-                            << " left=" << (m.size() - m.get_pos()));
-}
 }
 
 namespace proxy_protocol {
@@ -277,14 +243,6 @@ std::ostream &operator<<(std::ostream &os,
                          const ManifestWithNamespaceId &mfid) {
   os << "{" << (Manifest &)mfid << ", namespace_id = " << mfid.namespace_id
      << "} ";
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const FCInfo &fc_info) {
-  os << "FCInfo{"
-     << " alba_id = " << fc_info.alba_id
-     << ", namespace_id = " << fc_info.namespace_id << ", info = ... }"
-     << std::endl;
   return os;
 }
 }

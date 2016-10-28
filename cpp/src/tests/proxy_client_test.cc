@@ -228,7 +228,7 @@ TEST(proxy_client, manifest) {
   std::cout << mf << std::endl;
   EXPECT_EQ(mf.name, "with_manifest");
   EXPECT_EQ(mf.max_disks_per_node, 3);
-  EXPECT_EQ(mf.namespace_id, 5);
+  EXPECT_EQ(mf.namespace_id.i, 5);
 }
 
 TEST(proxy_client, test_osd_info) {
@@ -261,7 +261,7 @@ TEST(proxy_client, test_osd_info2) {
     std::cout << "alba_id=" << alba_id << std::endl;
     const auto &infos = e.second;
     alba_ids.insert(alba_id);
-    std::map<int, int> osds;
+    std::map<osd_t, int> osds;
     for (auto &osd_map : infos) {
       auto osd = osd_map.first;
 
@@ -279,7 +279,8 @@ TEST(proxy_client, test_osd_info2) {
 
   auto &osd_access = alba::proxy_client::OsdAccess::getInstance();
   osd_access.update(*client);
-  for (osd_t osd = 0; osd < n; osd++) {
+  osd_t osd;
+  for (osd.i = 0; osd.i < n; osd.i++) {
     bool unknown = osd_access.osd_is_unknown(osd);
     EXPECT_EQ(unknown, false);
   }
