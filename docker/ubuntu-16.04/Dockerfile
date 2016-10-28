@@ -37,7 +37,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libboost-all-dev \
         fuse \
         sysstat \
-        ncurses-dev
+        ncurses-dev \
+        liburiparser1 \
+        libzmq5 \
+        librabbitmq4
 
 # install specific orocksdb
 RUN git clone https://github.com/domsj/orocksdb.git \
@@ -161,11 +164,32 @@ RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
 RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
     && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
 
+## This only works from inside the OVS lan...
+
+RUN apt-get install -y
+
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-dev-release-ubuntu-16.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian/
+
+ENV voldrv_base_pkg_name=volumedriver-no-dedup
+ENV voldrv_version=6.2.3-dev.201610271200.c480e07_amd64
+
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-server_${voldrv_version}.deb
+RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.deb \
+    && dpkg -i ${voldrv_base_pkg_name}-test_${voldrv_version}.deb
+
+
 RUN pip install fabric junit-xml
 
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.profile"
+RUN su - -c "echo 'VOLDRV_TEST=volumedriver_test; export VOLDRV_TEST;' >> /home/jenkins/.profile"
+RUN su - -c "echo 'VOLDRV_BACKEND_TEST=backend_test; export VOLDRV_BACKEND_TEST;' >> /home/jenkins/.profile"
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 ENTRYPOINT ["/bin/bash", "-c", "set -e && /home/jenkins/alba/docker/docker-entrypoint.sh $@"]
