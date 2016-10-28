@@ -380,9 +380,6 @@ object(self)
     method mark_work_completed ~work_id =
       client # update MarkWorkCompleted work_id
 
-    method bump_next_work_item_id id =
-      client # update BumpNextWorkItemId id
-
     method store_client_config ccfg =
       client # update StoreClientConfig ccfg
 
@@ -565,6 +562,16 @@ object(self)
       client # update
         UpdateMaintenanceConfig
         u
+
+    method bump_next_work_item_id id =
+      client # update BumpNextWorkItemId id
+
+    method bump_next_osd_id id =
+      client # update BumpNextOsdId id
+
+    method bump_next_namespace_id id =
+      client # update BumpNextNamespaceId id
+
   end
 
 class single_connection_client (ic, oc) =

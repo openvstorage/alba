@@ -1304,7 +1304,17 @@ module Deployment = struct
     _alba_cmd_line
       [ "dev-bump-next-work-item-id";
         "--config"; t.abm # config_url |> Url.canonical;
-        Int32.(to_string (add max_int (-100l))); ];
+        Int32.(to_string (sub max_int (Random.int32 1000l))); ];
+
+    _alba_cmd_line
+      [ "dev-bump-next-osd-id";
+        "--config"; t.abm # config_url |> Url.canonical;
+        Int32.(to_string (sub max_int (Random.int32 12l))); ];
+
+    _alba_cmd_line
+      [ "dev-bump-next-namespace-id";
+        "--config"; t.abm # config_url |> Url.canonical;
+        Int32.(to_string (sub max_int (Random.int32 100l))); ];
 
     begin
       match redis_lru with

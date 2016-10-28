@@ -1089,6 +1089,17 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         Update.Delete (Keys.Osd.osd_id_to_long_id ~osd_id);
         Update.DeletePrefix (Keys.Msg_log.prefix Msg_log.Osd osd_id); ]
     in
+    let _bump_int64_next_id int64_from int64_to  next_id_key new_next_id =
+       let vo = db # get next_id_key in
+       let next_id = match vo with
+         | None -> 0L
+         | Some v -> deserialize int64_from v
+       in
+       if Int64.(new_next_id <: next_id)
+       then Error.(failwith Unknown)
+       else return_upds [ Update.Assert (next_id_key, vo);
+                          Update.Set (next_id_key, serialize int64_to new_next_id); ]
+    in
     function
     | AddNsmHost -> fun (id, nsm_host) ->
       let nsm_host_info_key = Keys.Nsm_host.info id in
@@ -1553,17 +1564,6 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       return_upds
         (Update.Replace (work_key, None) ::
          upds)
-    | BumpNextWorkItemId ->
-       fun new_next_id ->
-       let vo = db # get Keys.Work.next_id in
-       let next_id = match vo with
-         | None -> 0L
-         | Some v -> deserialize x_int64_be_from v
-       in
-       if Int64.(new_next_id <: next_id)
-       then Error.(failwith Unknown)
-       else return_upds [ Update.Assert (Keys.Work.next_id, vo);
-                          Update.Set (Keys.Work.next_id, serialize x_int64_be_to new_next_id); ]
     | CreatePreset -> fun (preset_name, preset) ->
 
       if not (Preset.is_valid preset)
@@ -1797,6 +1797,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             end
        in
        Lwt.return ((), updates)
+    | BumpNextWorkItemId  -> _bump_int64_next_id x_int64_be_from x_int64_be_to Keys.Work.next_id
+    | BumpNextOsdId       -> _bump_int64_next_id x_int64_from    x_int64_to    Keys.Osd.next_id
+    | BumpNextNamespaceId -> _bump_int64_next_id x_int64_from    x_int64_to    Keys.Namespace.next_id
   in
 
   let handle_query : type i o. (i, o) query -> i -> o =

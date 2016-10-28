@@ -927,7 +927,6 @@ module Protocol = struct
     | MarkMsgsDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
     | AddWork : (Work.t Std.counted_list, unit) update
     | MarkWorkCompleted : (Work.id, unit) update
-    | BumpNextWorkItemId : (Work.id, unit) update
     | CreatePreset : (Preset.name * Preset.t, unit) update
     | DeletePreset : (Preset.name, unit) update
     | SetDefaultPreset : (Preset.name, unit) update
@@ -940,6 +939,9 @@ module Protocol = struct
     | UpdateProgress : (string * Progress.Update.t, unit) update
     | UpdateMaintenanceConfig : (Maintenance_config.Update.t, Maintenance_config.t) update
     | PurgeOsd : (OsdInfo.long_id, unit) update
+    | BumpNextWorkItemId : (Work.id, unit) update
+    | BumpNextOsdId : (Osd.id, unit) update
+    | BumpNextNamespaceId : (Namespace.id, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -1261,7 +1263,6 @@ module Protocol = struct
     | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | AddWork -> Llio.counted_list_from Work.from_buffer
     | MarkWorkCompleted -> x_int64_from
-    | BumpNextWorkItemId -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
     | DeletePreset -> Llio.string_from
     | SetDefaultPreset -> Llio.string_from
@@ -1292,6 +1293,9 @@ module Protocol = struct
     | UpdateProgress -> Llio.pair_from Llio.string_from Progress.Update.from_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.from_buffer
     | PurgeOsd -> Llio.string_from
+    | BumpNextWorkItemId -> x_int64_from
+    | BumpNextOsdId -> x_int64_from
+    | BumpNextNamespaceId -> x_int64_from
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -1324,7 +1328,6 @@ module Protocol = struct
     | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
     | MarkWorkCompleted -> x_int64_to
-    | BumpNextWorkItemId -> x_int64_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
     | DeletePreset -> Llio.string_to
     | SetDefaultPreset -> Llio.string_to
@@ -1355,6 +1358,9 @@ module Protocol = struct
     | UpdateProgress -> Llio.pair_to Llio.string_to Progress.Update.to_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.to_buffer
     | PurgeOsd -> Llio.string_to
+    | BumpNextWorkItemId -> x_int64_to
+    | BumpNextOsdId -> x_int64_to
+    | BumpNextNamespaceId -> x_int64_to
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -1376,7 +1382,6 @@ module Protocol = struct
     | MarkMsgsDelivered _ ->Llio.unit_from
     | AddWork ->            Llio.unit_from
     | MarkWorkCompleted ->  Llio.unit_from
-    | BumpNextWorkItemId -> Llio.unit_from
     | CreatePreset ->       Llio.unit_from
     | DeletePreset ->       Llio.unit_from
     | SetDefaultPreset ->   Llio.unit_from
@@ -1389,6 +1394,9 @@ module Protocol = struct
     | UpdateProgress     -> Llio.unit_from
     | UpdateMaintenanceConfig -> Maintenance_config.from_buffer
     | PurgeOsd                -> Llio.unit_from
+    | BumpNextWorkItemId -> Llio.unit_from
+    | BumpNextOsdId -> Llio.unit_from
+    | BumpNextNamespaceId -> Llio.unit_from
 
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
@@ -1409,7 +1417,6 @@ module Protocol = struct
     | MarkMsgsDelivered _ ->Llio.unit_to
     | AddWork ->            Llio.unit_to
     | MarkWorkCompleted ->  Llio.unit_to
-    | BumpNextWorkItemId -> Llio.unit_to
     | CreatePreset ->       Llio.unit_to
     | DeletePreset ->       Llio.unit_to
     | SetDefaultPreset ->   Llio.unit_to
@@ -1422,6 +1429,9 @@ module Protocol = struct
     | UpdateProgress     -> Llio.unit_to
     | UpdateMaintenanceConfig -> Maintenance_config.to_buffer
     | PurgeOsd                -> Llio.unit_to
+    | BumpNextWorkItemId -> Llio.unit_to
+    | BumpNextOsdId -> Llio.unit_to
+    | BumpNextNamespaceId -> Llio.unit_to
 
 
   type request =
@@ -1510,6 +1520,8 @@ module Protocol = struct
                       Wrap_u UpdateOsds2, 84l, "UpdateOsds2";
 
                       Wrap_u BumpNextWorkItemId, 85l, "BumpNextWorkItemId";
+                      Wrap_u BumpNextOsdId, 86l, "BumpNextOsdId";
+                      Wrap_u BumpNextNamespaceId, 87l, "BumpNextNamespaceId";
                     ]
 
 
