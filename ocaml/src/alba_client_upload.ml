@@ -136,6 +136,7 @@ let upload_chunk
       Lwt.return []
   in
 
+  let __shared_packed_fragments = ref (k+m) in
   Lwt.finalize
     (fun () ->
      let packed_fragment_sizes =
@@ -158,46 +159,64 @@ let upload_chunk
        packed_fragment_sizes
        fragment_checksums
      >>= fun recovery_info_slice ->
-
-
-     Lwt_list.map_p
-       (fun ((fragment_id,
+     let upload_fragment_and_finalize
+       ((fragment_id,
               fragment,
               (packed_fragment,
                t_compress_encrypt,
                t_hash,
                checksum)),
-             osd_id_o) ->
-        with_timing_lwt
-          (fun () ->
-           match osd_id_o with
-           | None -> Lwt.return ()
-           | Some osd_id ->
-              upload_packed_fragment_data
-                osd_access
-                ~namespace_id
-                ~osd_id
-                ~object_id ~version_id
-                ~chunk_id ~fragment_id
-                ~packed_fragment ~checksum
-                ~gc_epoch
-                ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
-        >>= fun (t_store, x) ->
+        osd_id_o)
+       =
+       Lwt.finalize
+        (fun () ->
+          with_timing_lwt
+            (fun () ->
+              match osd_id_o with
+              | None -> Lwt.return ()
+              | Some osd_id ->
+                 upload_packed_fragment_data
+                   osd_access
+                   ~namespace_id
+                   ~osd_id
+                   ~object_id ~version_id
+                   ~chunk_id ~fragment_id
+                   ~packed_fragment ~checksum
+                   ~gc_epoch
+                   ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
+          >>= fun (t_store, x) ->
 
-        let t_fragment = Statistics.({
-                                        size_orig = Bigstring_slice.length fragment;
-                                        size_final = Lwt_bytes.length packed_fragment;
-                                        compress_encrypt = t_compress_encrypt;
-                                        hash = t_hash;
-                                        osd_id_o;
-                                        store_osd = t_store;
-                                        total = (Unix.gettimeofday () -. t0)
-                                      }) in
+          let t_fragment =
+            let open Statistics in
+            {
+              size_orig = Bigstring_slice.length fragment;
+              size_final = Lwt_bytes.length packed_fragment;
+              compress_encrypt = t_compress_encrypt;
+              hash = t_hash;
+              osd_id_o;
+              store_osd = t_store;
+              total = (Unix.gettimeofday () -. t0)
+            }
+          in
 
-        let res = osd_id_o, checksum in
+          let res = osd_id_o, checksum in
 
-        Lwt.return (t_fragment, res)
-       )
+          Lwt.return (t_fragment, res)
+        )
+        (fun () ->
+          if k <> 1
+          then Lwt_bytes.unsafe_destroy packed_fragment
+          else
+            begin
+              decr __shared_packed_fragments;
+              if !__shared_packed_fragments = 0
+              then Lwt_bytes.unsafe_destroy packed_fragment
+            end;
+          Lwt.return_unit
+        )
+     in
+     Lwt_list.map_p
+       upload_fragment_and_finalize
        (List.combine fragments_with_id osds)
      >>= fun r ->
      t_add_to_fragment_cache
@@ -205,20 +224,9 @@ let upload_chunk
      Lwt.return (r, mfs)
     )
     (fun () ->
-     t_add_to_fragment_cache >>= fun _ ->
-     let () =
-       if k = 1
-       then
-         Lwt_bytes.unsafe_destroy
-           (List.hd_exn fragments_with_id
-            |> fun (_, _, (f, _, _, _)) -> f)
-       else
-         List.iter
-           (fun (_, _, (f, _, _, _)) ->
-            Lwt_bytes.unsafe_destroy f)
-           fragments_with_id
-     in
-     Lwt.return_unit)
+      t_add_to_fragment_cache >>= fun _ ->
+      Lwt.return_unit
+    )
 
 let upload_object''
       (nsm_host_access : Nsm_host_access.nsm_host_access)
