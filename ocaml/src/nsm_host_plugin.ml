@@ -179,7 +179,7 @@ let get_updates_res : type i o. read_user_db ->
                      msgs)); ])
   | NsmUpdate tag -> fun (namespace_id, req) ->
     if not (db # exists (Keys.namespace_info namespace_id))
-    then Err.failwith Err.Namespace_id_not_found;
+    then Err.(failwith ~payload:(Int32.to_string namespace_id) Namespace_id_not_found);
 
     let module KV = WrapReadUserDb(
       struct
@@ -316,7 +316,7 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
            ~reverse
     in
     if not (db # exists (Keys.namespace_info namespace_id))
-    then Err.failwith Err.Namespace_id_not_found
+    then Err.(failwith ~payload:(Int32.to_string namespace_id) Namespace_id_not_found)
     else exec_query tag req
   in
   match tag with
