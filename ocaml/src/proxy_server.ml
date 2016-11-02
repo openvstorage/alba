@@ -167,7 +167,7 @@ let apply_sequence
       ~object_id_hint:None
       ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-    >>= fun (mf, extra_mfs, _upload_stats, gc_epoch) ->
+    >>= fun (mf, extra_mfs, _upload_stats, gc_epoch, fragment_state_layout) ->
     let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
                     (List.map
                        (fun (mf, namespace_id, alba) ->
