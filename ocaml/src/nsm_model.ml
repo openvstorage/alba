@@ -32,6 +32,9 @@ module OsdInfo = struct
   type ip = string [@@deriving show, yojson]
   type port = int [@@deriving show, yojson]
 
+  type host = string [@@deriving show, yojson]
+  type endpoint = host * port [@@deriving show, yojson]
+
   type node_id = string [@@deriving show, yojson]
 
   type asd_id = string [@@deriving show, yojson]
@@ -49,18 +52,28 @@ module OsdInfo = struct
       preset : string;
     } [@@deriving show, yojson]
 
+  (* TODO allow tls, rdma *)
+  type alba_proxy_cfg = {
+      endpoints : endpoint list;
+      id : alba_id;
+      prefix : string;
+      preset : string;
+    } [@@deriving show, yojson]
+
   type kind =
     | Asd     of conn_info * asd_id
     | Kinetic of conn_info * kinetic_id
     | Alba    of alba_cfg
     | Alba2   of alba_cfg
+    | AlbaProxy of alba_proxy_cfg
                    [@@deriving show, yojson]
 
   let get_long_id = function
     | Asd (_, asd_id)         -> asd_id
     | Kinetic (_, kinetic_id) -> kinetic_id
     | Alba  { id; }
-    | Alba2 { id; }           -> id
+    | Alba2 { id; }
+    | AlbaProxy { id; }     -> id
 
   type t = {
     kind : kind;
@@ -111,6 +124,14 @@ module OsdInfo = struct
     | Alba2 { cfg; id; prefix; preset; } ->
        Llio.int8_to buf 4;
        Alba_arakoon.Config.to_buffer buf cfg;
+       Llio.string_to buf id;
+       Llio.string_to buf prefix;
+       Llio.string_to buf preset
+    | AlbaProxy { endpoints; id; prefix; preset; } ->
+       Llio.int8_to buf 5;
+       Llio.list_to
+         (Llio.pair_to Llio.string_to Llio.int_to)
+         buf endpoints;
        Llio.string_to buf id;
        Llio.string_to buf prefix;
        Llio.string_to buf preset
@@ -256,6 +277,12 @@ module OsdInfo = struct
         let prefix = Llio.string_from buf in
         let preset = Llio.string_from buf in
         Alba2 { cfg; id; prefix; preset; }
+      | 5 ->
+         let endpoints = Llio.list_from (Llio.pair_from Llio.string_from Llio.int_from) buf in
+         let id = Llio.string_from buf in
+         let prefix = Llio.string_from buf in
+         let preset = Llio.string_from buf in
+         AlbaProxy { endpoints; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in

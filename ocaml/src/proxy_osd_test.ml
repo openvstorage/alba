@@ -20,17 +20,28 @@ open Proxy_osd
 open Lwt.Infix
 
 let test_with_kvs_client test_name f =
-  Proxy_test.test_with_proxy_client
-    (fun proxy_client ->
-      let prefix = "proxy_osd_test/" ^ test_name in
-      let proxy_osd = new t
-                          proxy_client
-                          ~long_id:"long_id"
-                          ~prefix ~preset_name:None
-                          ~namespace_name_format:1
-      in
-      proxy_client # create_namespace ~namespace:prefix ~preset_name:None >>= fun () ->
-      f (proxy_osd # global_kvs))
+  let t () =
+    let ip, port, transport =
+      let open Proxy_test in
+      _IP, _PORT, _TRANSPORT
+    in
+    let pp = new Proxy_osd.simple_proxy_pool ~ip ~port ~transport ~size:1 in
+    Lwt.finalize
+      (fun () ->
+        let prefix = "proxy_osd_test/" ^ test_name in
+        let proxy_osd = new t
+                            (pp :> Proxy_osd.proxy_pool)
+                            ~long_id:"long_id"
+                            ~prefix ~preset:"default"
+                            ~namespace_name_format:1
+        in
+        pp # with_client
+           ~namespace:""
+           (fun c -> c # create_namespace ~namespace:prefix ~preset_name:None) >>= fun () ->
+        f (proxy_osd # global_kvs))
+      (fun () -> pp # finalize)
+  in
+  Lwt_main.run (t ())
 
 let test_set_get_delete () =
   test_with_kvs_client

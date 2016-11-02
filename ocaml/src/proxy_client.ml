@@ -183,13 +183,20 @@ let _prologue fd magic version =
   Llio.int32_to buf version;
   Net_fd.write_all' fd (Buffer.contents buf)
 
-let with_client ip port transport f =
+let make_client ip port transport =
   Networking2.connect_with
     ~tls_config:None
     ip port transport
   >>= fun (nfd, closer) ->
+  Lwt.catch
+    (fun () -> _prologue nfd Protocol.magic Protocol.version >>= fun () ->
+               Lwt.return (new proxy_client nfd, closer))
+    (fun exn ->
+      closer () >>= fun () ->
+      Lwt.fail exn)
+
+let with_client ip port transport f =
+  make_client ip port transport >>= fun (client, closer) ->
   Lwt.finalize
-    (fun () ->
-     _prologue nfd Protocol.magic Protocol.version >>= fun () ->
-     f (new proxy_client nfd))
+    (fun () -> f client)
     closer

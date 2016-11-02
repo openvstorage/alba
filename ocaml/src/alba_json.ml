@@ -38,6 +38,9 @@ module Osd = struct
     prefix : string option;
     preset : string option;
 
+    (* for proxy osd *)
+    endpoints : (string * int) list option;
+
     decommissioned : bool;
     node_id : OsdInfo.node_id;
     long_id : OsdInfo.long_id;
@@ -67,7 +70,8 @@ module Osd = struct
     in
     let kind, long_id,
         (ips, port, use_tls, use_rdma),
-        (albamgr_cfg, prefix, preset)
+        (albamgr_cfg, prefix, preset),
+        endpoints
       =
       let get_ips_port_tls_rdma (ips, port, use_tls, use_rdma) =
         Some ips, Some port, Some use_tls, Some use_rdma
@@ -77,25 +81,35 @@ module Osd = struct
       | OsdInfo.Asd (conn_info, asd_id) ->
          "AsdV1", asd_id,
          get_ips_port_tls_rdma conn_info,
-         no_alba_osd
+         no_alba_osd,
+         None
       | OsdInfo.Kinetic (conn_info, kin_id) ->
          "Kinetic3", kin_id,
          get_ips_port_tls_rdma conn_info,
-         no_alba_osd
+         no_alba_osd,
+         None
       | OsdInfo.Alba { OsdInfo.id; cfg; prefix; preset } ->
          "Alba", id,
          (None, None, None, None),
-         (Some cfg, Some prefix, Some preset)
+         (Some cfg, Some prefix, Some preset),
+         None
       | OsdInfo.Alba2 { OsdInfo.id; cfg; prefix; preset } ->
          "Alba2", id,
          (None, None, None, None),
-         (Some cfg, Some prefix, Some preset)
+         (Some cfg, Some prefix, Some preset),
+         None
+      | OsdInfo.AlbaProxy { OsdInfo.endpoints; id; prefix; preset; } ->
+         "AlbaProxy", id,
+         (None, None, None, None),
+         (None, Some prefix, Some preset),
+         Some endpoints
     in
     { id; alba_id;
       kind;
       ips; port;
       use_tls; use_rdma;
       albamgr_cfg; prefix; preset;
+      endpoints;
       node_id; long_id;
       decommissioned;
       total; used;

@@ -207,6 +207,7 @@ module Protocol = struct
                                          { x with
                                            cfg = get_cfg cfg;
                                          }
+          | AlbaProxy _ as x -> x
         in
         let max_n = 10 in
         { node_id = osd.node_id;

@@ -142,6 +142,7 @@ let alba_add_osd
       Buffer_pool.osd_buffer_pool
       (Alba_osd.make_client ~albamgr_connection_pool_size:10)
       kind
+      ~pool_size:1
     >>= fun (osd_client, closer) ->
     Lwt_log.info_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
     osd_client # get_disk_usage >>= fun (used, total) ->
