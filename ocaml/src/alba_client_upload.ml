@@ -39,6 +39,10 @@ let upload_packed_fragment_data
       ~osd_id
   =
   let open Osd_keys in
+  Lwt_log.debug_f
+    "upload_packed_fragment_data (%i,%i) to osd:%li"
+    chunk_id fragment_id osd_id
+  >>= fun () ->
   let set_data =
     Osd.Update.set
       (AlbaInstance.fragment
@@ -95,7 +99,7 @@ let upload_chunk
       ~namespace_id
       ~object_id ~object_name
       ~chunk ~chunk_id ~chunk_size
-      ~k ~m ~w'
+      ~k ~m ~w' ~min_fragment_count
       ~compression ~encryption
       ~fragment_checksum_algo
       ~version_id ~gc_epoch
@@ -137,6 +141,8 @@ let upload_chunk
   in
 
   let __shared_packed_fragments = ref (k+m) in
+  let get_checksum (_, _, (_, _, _, checksum)) = checksum in
+
   Lwt.finalize
     (fun () ->
      let packed_fragment_sizes =
@@ -145,11 +151,7 @@ let upload_chunk
           Lwt_bytes.length packed_fragment)
          fragments_with_id
      in
-     let fragment_checksums =
-       List.map
-         (fun (_, _, (_, _, _, checksum)) -> checksum)
-         fragments_with_id
-     in
+     let fragment_checksums = List.map get_checksum fragments_with_id in
      RecoveryInfo.make
        object_name
        object_id
@@ -200,7 +202,8 @@ let upload_chunk
           in
 
           let res = osd_id_o, checksum in
-
+          Lwt_log.debug_f "fragment_uploaded (%i,%i)" chunk_id fragment_id
+          >>= fun ()->
           Lwt.return (t_fragment, res)
         )
         (fun () ->
@@ -215,13 +218,19 @@ let upload_chunk
           Lwt.return_unit
         )
      in
-     Lwt_list.map_p
+     Lwt_extra2.first_n
+       ~count:min_fragment_count
+       ~slack:0.5
        upload_fragment_and_finalize
        (List.combine fragments_with_id osds)
-     >>= fun r ->
-     t_add_to_fragment_cache
-     >>= fun mfs ->
-     Lwt.return (r, mfs)
+     >>= fun (success, make_results)  ->
+     if not success
+     then Lwt.fail_with (Printf.sprintf "chunk %i failed" chunk_id)
+     else
+       begin
+         t_add_to_fragment_cache >>= fun mfs ->
+         Lwt.return (make_results, mfs, fragment_checksums)
+       end
     )
     (fun () ->
       t_add_to_fragment_cache >>= fun _ ->
@@ -427,7 +436,7 @@ let upload_object''
            ~object_id ~object_name
            ~chunk:chunk' ~chunk_size:chunk_size_with_padding
            ~chunk_id
-           ~k ~m ~w'
+           ~k ~m ~w' ~min_fragment_count
            ~compression ~encryption ~fragment_checksum_algo
            ~version_id ~gc_epoch
            ~object_info_o
@@ -437,8 +446,49 @@ let upload_object''
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
-      >>= fun (fragment_info, mfs)  ->
-
+      >>= fun (make_fragment_states, mfs, fragment_checksums)  ->
+      let fragment_states = make_fragment_states () in
+      let fragment_info =
+        let open Lwt_extra2 in
+        List.map2i
+          (fun i state fragment_checksum ->
+            match state with
+            | Success ((stats,res) as x) ->
+               Lwt_log.ign_debug_f "i=%i =>%s " i
+                                   (Statistics.show_fragment_upload stats); x
+            | Failed exn ->
+               Lwt_log.ign_warning_f "fragment upload failed:%s"
+                                     (Printexc.to_string exn);
+               let stats =
+                 Statistics.({
+                                size_orig = 0;
+                                size_final = 0;
+                                compress_encrypt = 0.0;
+                                hash = 0.0;
+                                osd_id_o = None;
+                                store_osd = 0.0;
+                                total = 0.0;
+                 })
+               in
+               let res = (None, fragment_checksum) in
+               (stats, res)
+            | Ongoing (t,p)  ->
+               (* for now, assume these (will) have failed *)
+               let stats =
+                 Statistics.({
+                                size_orig = 0;
+                                size_final = 0;
+                                compress_encrypt = 0.0;
+                                hash = 0.0;
+                                osd_id_o = None;
+                                store_osd = 0.0;
+                                total = 0.0;
+                 })
+               in
+               let res = (None, fragment_checksum) in
+               (stats, res)
+          ) fragment_states fragment_checksums
+      in
       let t_fragments, fragment_info = List.split fragment_info in
 
       let acc_chunk_sizes' = (chunk_id, chunk_size_with_padding) :: acc_chunk_sizes in

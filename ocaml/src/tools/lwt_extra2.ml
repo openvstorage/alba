@@ -298,3 +298,83 @@ let copy_between_fds fd_in fd_out size buffer =
   copy_using reader writer size buffer
 
 
+type 'a state =
+  | Success of 'a
+  | Failed of exn
+  | Ongoing of (unit Lwt.t *  (unit -> ('a,exn) result ))
+
+let first_n ~count ~slack f items =
+  let t0 = Unix.gettimeofday() in
+  let success = CountDownLatch.create ~count in
+  let n_items = List.length items in
+  let too_many_failures = CountDownLatch.create ~count:(n_items - count + 1) in
+  let results = Hashtbl.create n_items in
+  let running = Hashtbl.create n_items in
+  let () =
+    List.iteri
+      (fun index item ->
+        let t = (* no exception *)
+          Lwt.catch
+            (fun () ->
+              f item >>= fun r ->
+              Hashtbl.add results index (Success r);
+              Hashtbl.remove running index;
+              CountDownLatch.count_down success;
+              Lwt.return_unit
+            )
+            (fun exn ->
+              CountDownLatch.count_down too_many_failures;
+              Hashtbl.add results index (Failed exn);
+              Hashtbl.remove running index;
+              Lwt.return_unit
+            )
+          >>= fun () ->
+          let open CountDownLatch in
+          Lwt_log.debug_f
+            "%i finished (needed=%i, distance to failure=%i)%!"
+            index
+            success.needed
+            too_many_failures.needed
+        in
+        let () = Hashtbl.add running index t in
+        Lwt.ignore_result t;
+      )
+      items
+  in
+
+  Lwt.pick [CountDownLatch.await success;
+            CountDownLatch.await too_many_failures;
+           ]
+  >>= fun () ->
+  let t1 = Unix.gettimeofday() in
+  let so_far = t1 -. t0 in
+  let limit = so_far *. slack in
+  Lwt_log.debug_f "waiting for another %f%!" limit >>= fun () ->
+  Lwt_unix.sleep limit >>= fun () ->
+  Lwt_log.debug_f "limit reached%!" >>= fun () ->
+  let make_results () =
+    let rec loop acc i =
+      if i = n_items
+      then List.rev acc
+      else
+        begin
+          let r =
+            try Hashtbl.find results i
+            with _ ->
+              let t = Hashtbl.find running i in
+              let pickup_result () =
+                let sf = Hashtbl.find results i in
+                match sf with
+                | Success x ->  Ok x
+                | Failed e  ->  Error e
+                | _         ->  Error (Failure "ongoing?!")
+              in
+              Ongoing (t, pickup_result)
+
+          in
+          loop (r :: acc) (i+1)
+        end
+    in
+    loop [] 0
+  in
+  Lwt.return (CountDownLatch.finished success, make_results)
