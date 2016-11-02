@@ -1,5 +1,12 @@
 FROM ubuntu:16.04
 
+ARG INSTALL_VOLDRV_PACKAGES=false
+
+RUN echo ${INSTALL_VOLDRV_PACKAGES}
+
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT in CI'
+
+RUN env | sort
 RUN useradd jenkins -u 1500 -g root
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -164,23 +171,29 @@ RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz
 RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
     && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
 
-## This only works from inside the OVS lan...
 
-RUN apt-get install -y
+## ONLY for JENKINS
+
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT in CI'
+
 
 ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-dev-release-ubuntu-16.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian/
 
 ENV voldrv_base_pkg_name=volumedriver-no-dedup
 ENV voldrv_version=6.2.3-dev.201610271200.c480e07_amd64
-
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-server_${voldrv_version}.deb
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-test_${voldrv_version}.deb
+ENV wget_mods='--timeout=10 --tries=2'
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${wget_mods} ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${wget_mods} ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${wget_mods} ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-server_${voldrv_version}.deb )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${wet_mods} ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-test_${voldrv_version}.deb )
 
 
 RUN pip install fabric junit-xml

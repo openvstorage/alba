@@ -3,7 +3,11 @@
 IMAGE=$1
 shift
 
-docker build --rm=true --tag=alba_$IMAGE ./docker/$IMAGE
+docker build --rm=true \
+       --tag=alba_$IMAGE \
+       --build-arg INSTALL_VOLDRV_PACKAGES=${INSTALL_VOLDRV_PACKAGES:-false} \
+       ./docker/$IMAGE \
+
 
 if [ -t 1 ];
 then TTY="-t";
