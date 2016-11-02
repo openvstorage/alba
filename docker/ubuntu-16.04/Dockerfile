@@ -1,12 +1,5 @@
 FROM ubuntu:16.04
 
-ARG INSTALL_VOLDRV_PACKAGES=false
-
-RUN echo ${INSTALL_VOLDRV_PACKAGES}
-
-RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT in CI'
-
-RUN env | sort
 RUN useradd jenkins -u 1500 -g root
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -172,15 +165,18 @@ RUN cp ./etcd-v2.2.4-linux-amd64/etcd /usr/bin \
     && cp ./etcd-v2.2.4-linux-amd64/etcdctl /usr/bin
 
 
-## ONLY for JENKINS
+## installing voldrv packages only works from within the OVS LAN
 
-RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT in CI'
+ARG INSTALL_VOLDRV_PACKAGES=false
 
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT going to install the voldrv packages/testers'
 
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-dev-release-ubuntu-16.04/lastSuccessfulBuild/artifact/volumedriver-core/build/debian/
+# http://10.100.129.100:8080/job/volumedriver-no-dedup-dev-release-ubuntu-16.04/26/artifact/volumedriver-core/build/debian/volumedriver-no-dedup-base-dbgsym_6.2.3-dev.201610192127.788e1ba_amd64.ddeb
+
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-dev-release-ubuntu-16.04/26/artifact/volumedriver-core/build/debian
 
 ENV voldrv_base_pkg_name=volumedriver-no-dedup
-ENV voldrv_version=6.2.3-dev.201610271200.c480e07_amd64
+ENV voldrv_version=6.2.3-dev.201610192127.788e1ba_amd64
 ENV wget_mods='--timeout=10 --tries=2'
 RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
     || (wget ${wget_mods} ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
