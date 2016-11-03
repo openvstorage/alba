@@ -206,9 +206,7 @@ RUN cd gobjfs \
        && make \
        && make install
 
-RUN yum -y install iproute
-
-RUN pip install fabric junit-xml
+RUN yum -y install iproute psmisc
 
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.bash_profile"
