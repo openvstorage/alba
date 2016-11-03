@@ -37,8 +37,16 @@ let test_with_alba_client ?bad_fragment_callback f =
         ~release_resources:true
         ~tcp_keepalive:Tcp_keepalive2.default
         ~populate_osds_info_cache:true
-        ~upload_slack:0.2
-        f
+        ~upload_slack:0.001
+        (fun client ->
+          Lwt.catch
+          (fun () -> f client)
+          (fun exn ->
+            (* get a stack trace *)
+            Lwt_log.info ~exn "test exits" >>= fun () ->
+            Lwt.fail exn)
+        )
+
     end
   in
   Lwt_main.run t

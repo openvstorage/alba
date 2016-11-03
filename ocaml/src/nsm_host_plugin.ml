@@ -457,8 +457,8 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                     (assert_version_update :: upds)) >>= fun _ ->
                Lwt.return (`Succes res))
                (function
-                 | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
-                   Plugin_helper.info_f "NSM: Assert failed %s" msg;
+                 | Protocol_common.XException (rc, key) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+                   Plugin_helper.info_f "NSM: Assert failed %S" key;
                    (* TODO if the optimistic concurrency fails too many times then
                       automatically turn it into a user function? *)
                    Lwt.return `Retry

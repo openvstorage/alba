@@ -303,7 +303,7 @@ type 'a state =
   | Failed of exn
   | Ongoing of (unit Lwt.t *  (unit -> ('a,exn) result ))
 
-let first_n ~count ~slack f items =
+let first_n ~count ~slack f items ~test =
   let t0 = Unix.gettimeofday() in
   let success = CountDownLatch.create ~count in
   let n_items = List.length items in
@@ -319,7 +319,9 @@ let first_n ~count ~slack f items =
               f item >>= fun r ->
               Hashtbl.add results index (Success r);
               Hashtbl.remove running index;
-              CountDownLatch.count_down success;
+              if test r
+              then CountDownLatch.count_down success
+              else CountDownLatch.count_down too_many_failures;
               Lwt.return_unit
             )
             (fun exn ->

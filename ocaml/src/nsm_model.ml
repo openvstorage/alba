@@ -1144,7 +1144,13 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     (* TODO should actually compare with whatever is specified in the policy *)
     if min_fragment_count < k
-    then Err.(failwith Insufficient_fragments);
+    then
+      begin
+        let payload =
+          Printf.sprintf "min_fragment_count:%i < k:%i" min_fragment_count k
+        in
+        Err.(failwith Insufficient_fragments ~payload);
+      end;
 
     (min_fragment_count, max_disks_per_node)
 
@@ -1651,9 +1657,14 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let manifest_old, manifest_old_s = get_object_manifest_by_id kv object_id in
 
     assert (object_name = manifest_old.Manifest.name);
+    let expected = manifest_old.Manifest.version_id + 1 in
+    if expected <> version_id
+    then Err.failwith
+           Err.InvalidVersionId
+           ~payload:(Printf.sprintf "InvalidVersionId:(expected:%i, got:%i)"
+                    expected version_id);
 
-    if (manifest_old.Manifest.version_id + 1) <> version_id
-    then Err.failwith Err.InvalidVersionId;
+
 
     let old_manifest_locations = manifest_old.Manifest.fragment_locations in
 

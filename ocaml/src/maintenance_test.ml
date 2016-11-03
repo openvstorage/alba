@@ -34,6 +34,69 @@ let with_nice_error_log f =
       | x     -> Lwt.fail x
     )
 
+let wait_for_lazy_write alba_client namespace_id manifest =
+  let open Nsm_model.Manifest in
+  let has_holes =
+    List.flatten manifest.fragment_locations |>
+      List.fold_left
+        (fun acc (osd_id_o,_) ->
+          acc || (osd_id_o = None)
+        ) false
+  in
+  begin
+    if has_holes
+    then
+      Lwt_log.debug "lazy_write_out interference" >>= fun ()->
+      Lwt_unix.sleep 1.0 >>= fun () ->
+      alba_client # get_object_manifest'
+                  ~namespace_id ~object_name:manifest.name
+                  ~consistent_read:true ~should_cache:false
+      >>= fun (_,mfo) ->
+      Lwt.return (Option.get_some mfo)
+    else
+      Lwt.return manifest
+  end
+
+let maybe_delete_fragment
+      alba_client namespace_id mf ~update_manifest
+      chunk_id fragment_id =
+
+  let open Nsm_model in
+  let object_id = mf.Manifest.object_id in
+
+  let delete_using_manifest mf =
+    Alba_test.maybe_delete_fragment
+      ~update_manifest
+      alba_client namespace_id mf chunk_id fragment_id
+  in
+  let fetch_manifest () =
+    alba_client # with_nsm_client' ~namespace_id
+                (fun nsm_client ->
+                  nsm_client # get_object_manifest_by_id
+                             object_id
+                  >>= fun mf'o ->
+                  let mf' = Option.get_some mf'o in
+                  Lwt.return mf'
+                )
+  in
+  Lwt.catch
+  (fun () ->
+    delete_using_manifest mf >>= fun () ->
+    fetch_manifest ()
+  )
+  (function
+   | Err.Nsm_exn(Err.InvalidVersionId,_) ->
+      begin
+        Lwt_log.debug "interference from lazy_write out"
+        >>= fun () ->
+        fetch_manifest() >>= fun mf ->
+        delete_using_manifest mf >>= fun () ->
+        fetch_manifest()
+      end
+   | exn -> Lwt.fail exn
+  )
+
+
 let test_rebalance_one () =
   let test_name = "test_rebalance_one" in
   let namespace = test_name in
@@ -58,12 +121,21 @@ let test_rebalance_one () =
        ~checksum_o:None
        ~allow_overwrite:NoPrevious
      >>= fun (manifest,_, stats,_) ->
-     Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest) >>= fun () ->
+     Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest)
+     >>= fun () ->
      let base_client = alba_client # get_base_client in
      base_client # get_namespace_osds_info_cache ~namespace_id >>= fun cache ->
 
-     let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
-     let set2s set= DeviceSet.elements set |> [%show : int32 list] in
+     let object_osds =
+       Manifest.osds_used manifest.Manifest.fragment_locations
+     in
+     wait_for_lazy_write alba_client namespace_id manifest >>= fun manifest ->
+
+     let set2s set=
+       Printf.sprintf
+         "(%i,%s)" (DeviceSet.cardinal set)
+         (DeviceSet.elements set |> [%show : int32 list])
+     in
      Lwt_log.debug_f "object_osds: %s" (set2s object_osds ) >>= fun () ->
      let get_targets () =
        alba_client
@@ -310,9 +382,9 @@ let test_repair_orange () =
          ~allow_overwrite:NoPrevious
          ~checksum_o:(Alba_test.get_checksum_o object_data) >>= fun (mf,_, _,_) ->
 
-       Alba_test.maybe_delete_fragment
+       maybe_delete_fragment
          ~update_manifest:true
-         alba_client namespace_id mf 0 0 >>= fun () ->
+         alba_client namespace_id mf 0 0 >>= fun mf_2 ->
 
        alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
        nsm # list_objects_by_policy' ~k:5 ~m:4 ~max:10 >>= fun ((cnt, _), _) ->
@@ -330,9 +402,16 @@ let test_repair_orange () =
          ~should_cache:false >>= fun (_, mf_o) ->
        let mf' = Option.get_some mf_o in
 
-       let osd_id_o, version = Layout.index mf'.Manifest.fragment_locations 0 0 in
-       assert (version = 2);
+       let get_version mf x y =
+         Layout.index mf.Manifest.fragment_locations 0 0
+       in
+       let osd_id_o, version = get_version mf' 0 0 in
+       let _, version2 = get_version mf_2 0 0 in
        assert (osd_id_o <> None);
+       OUnit.assert_equal ~msg:"fragment_version"
+                          ~printer:string_of_int
+                          (version2 + 1) version;
+
 
        Lwt.return ())
 
@@ -377,6 +456,8 @@ let test_repair_orange2 () =
          ~update_manifest:true
          alba_client namespace_id mf 0 0 >>= fun () ->
 
+       Lwt_log.debug "fragment 0 0 deleted" >>= fun () ->
+
        with_maintenance_client
          alba_client
          (fun mc ->
@@ -394,8 +475,9 @@ let test_repair_orange2 () =
        let open Nsm_model in
        (* missing data fragment is regenerated *)
        let osd_id_o, version = Layout.index mf'.Manifest.fragment_locations 0 0 in
-       assert (version = 2);
-       assert (osd_id_o <> None);
+       OUnit.assert_bool "osd_id was None?" (osd_id_o <> None);
+       OUnit.assert_equal ~msg:"version mismatch" ~printer:string_of_int
+       2 version;
 
        Lwt.return ())
 
@@ -415,7 +497,7 @@ let test_rebalance_node_spread () =
      let preset =
        Albamgr_protocol.Protocol.Preset.(
          { _DEFAULT with
-           policies = [ (5,4,8,4); ];
+           policies = [ (5,4,9,4); ];
          }) in
      alba_client # mgr_access # create_preset
                  preset_name
@@ -441,7 +523,10 @@ let test_rebalance_node_spread () =
      in
 
      get_buckets () >>= fun r ->
-     assert (r = [ (5,4,9,3), 1L; ]);
+     OUnit.assert_equal ~msg:"wrong bucket"
+                        ~printer:[%show : ((int * int * int * int)* int64) list ]
+                        [ (5,4,9,3), 1L; ]
+                        r;
 
      (* move a fragment to create a sub awesome node spread *)
      let is_osd_used mf osd_id =
@@ -533,7 +618,19 @@ let test_rewrite_namespace () =
      in
 
      get_objs () >>= fun manifests' ->
-     assert (manifests' = manifests);
+     (* Lazy writes can cause minor differences between this and
+        the original list:
+        assert (manifests' = manifests);
+      *)
+     List.iter2
+       (fun m1 m2 ->
+         OUnit.assert_equal
+           ~msg:"object_ids differ"
+           ~printer:(fun x -> x) m1.Manifest.object_id m2.Manifest.object_id;
+
+       )
+       manifests manifests';
+
 
      let open Albamgr_protocol.Protocol in
      let name = "name" in
@@ -607,6 +704,9 @@ let test_verify_namespace () =
                  ~checksum_o:None
                  ~allow_overwrite:NoPrevious >>= fun (mf,_, _,_) ->
 
+     wait_for_lazy_write alba_client namespace_id mf
+     >>= fun mf ->
+
      let object_id = mf.Manifest.object_id in
 
      (* remove a fragment *)
@@ -660,23 +760,27 @@ let test_verify_namespace () =
                  ~namespace_id
                  (fun client ->
                   client # get_object_manifest_by_name object_name)
-     >>= fun mfo ->
-     let mf = Option.get_some mfo in
-     assert (mf.Manifest.version_id = 1);
+     >>= fun mf2o ->
+     let mf2 = Option.get_some mf2o in
+     let open Manifest in
+     OUnit.assert_equal
+     ~msg:"version_id" ~printer:string_of_int (mf.version_id +1) mf2.version_id;
 
      (* missing fragment *)
-     assert (mf.Manifest.fragment_locations
-             |> List.hd_exn
-             |> List.hd_exn
-             |> snd
-             = 1);
+     let new_version_missing = mf2.fragment_locations
+                               |> List.hd_exn
+                               |> List.hd_exn
+                               |> snd
+     in
+     OUnit.assert_bool "Manifest.version_id of formerly missing"
+       (1 <= new_version_missing);
 
      (* checksum mismatch fragment *)
-     assert (mf.Manifest.fragment_locations
+     assert (mf2.fragment_locations
              |> List.hd_exn
              |> fun l -> List.nth_exn l 1
              |> snd
-             = 1);
+             >= 1);
 
      alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
      assert (cnt = cnt');
@@ -706,11 +810,18 @@ let test_verify_namespace () =
          (0, 0, 0, 0)
          progresses
      in
-     assert (objects_verified = 1);
-     assert (fragments_detected_missing = 1);
-     assert (fragments_osd_unavailable = 0);
-     assert (fragments_checksum_mismatch = 1);
-
+     OUnit.assert_equal ~msg:"objects_verified"
+                        ~printer:string_of_int
+                        1 objects_verified;
+     OUnit.assert_equal ~msg:"fragments_detected_missing"
+                        ~printer:string_of_int
+                        1 fragments_detected_missing;
+     OUnit.assert_equal ~msg:"fragments_osd_unavailable"
+                        ~printer:string_of_int
+                        0 fragments_osd_unavailable;
+     OUnit.assert_equal ~msg:"fragments_checksum_mismatch"
+                        ~printer:string_of_int
+                        1 fragments_checksum_mismatch;
      Lwt.return ())
 
 let test_automatic_repair () =

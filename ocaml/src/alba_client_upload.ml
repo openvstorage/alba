@@ -187,7 +187,7 @@ let upload_chunk
                    ~packed_fragment ~checksum
                    ~gc_epoch
                    ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
-          >>= fun (t_store, x) ->
+          >>= fun (t_store, ()) ->
 
           let t_fragment =
             let open Statistics in
@@ -203,7 +203,8 @@ let upload_chunk
           in
 
           let res = osd_id_o, checksum in
-          Lwt_log.debug_f "fragment_uploaded (%i,%i)" chunk_id fragment_id
+          Lwt_log.debug_f "fragment_uploaded (%i,%i) to %s"
+                          chunk_id fragment_id ([%show : int32 option] osd_id_o)
           >>= fun ()->
           Lwt.return (t_fragment, res)
         )
@@ -219,9 +220,11 @@ let upload_chunk
           Lwt.return_unit
         )
      in
+     let test = function | (_,(Some _,_)) -> true | _ -> false in
      Lwt_extra2.first_n
        ~count:min_fragment_count
        ~slack:upload_slack
+       ~test
        upload_fragment_and_finalize
        (List.combine fragments_with_id osds)
      >>= fun (success, make_results)  ->
@@ -749,9 +752,10 @@ let store_manifest
                    ~gc_epoch
                    ~version_id:(manifest.version_id + 1)
             >>= fun () ->
-            Lwt_log.debug_f "epilogue:updates object:%S with updates:%s"
-                            object_name
-                            ([%show : (int * int * int32 option) list] updates)
+            Lwt_log.debug_f
+              "epilogue:successfully updated object:%S with updates:%s"
+              object_name
+              ([%show : (int * int * int32 option) list] updates)
           end
       end)
 

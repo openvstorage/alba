@@ -82,9 +82,10 @@ let download_packed_fragment
   >>== fun osd_id ->
 
   Lwt_log.debug_f
-    "download_packed_fragment: object (%S, %S) chunk %i, fragment %i"
+    "download_packed_fragment: object (%S, %S) chunk %i, fragment %i from osd_id:%li"
     object_id object_name
     chunk_id fragment_id
+    osd_id
   >>= fun () ->
 
   let osd_key =

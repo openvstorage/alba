@@ -154,9 +154,10 @@ let repair_object_generic_and_update_manifest
                       ~gc_epoch ~version_id)
   >>= fun () ->
   Lwt_log.debug_f
-    "updated_manifest ~namespace_id:%li ~object_id:%S ~updated_object_locations:%s"
+    "updated_manifest ~namespace_id:%li ~object_id:%S ~updated_object_locations:%s ~version_id:%i"
     namespace_id object_id
     ([%show : (int *int * int32) list] updated_object_locations)
+    version_id
   >>= fun () ->
   Lwt.return ()
 
