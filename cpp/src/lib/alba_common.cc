@@ -23,10 +23,11 @@
 namespace alba {
 
 namespace llio {
+
 template <> void from(message &m, x_uint64_t &t) {
   uint32_t i32;
   from(m, i32);
-  if (i32 < 2147483647) {
+  if (i32 < max_int32) {
     t.i = i32;
   } else {
     from(m, t.i);
@@ -35,10 +36,10 @@ template <> void from(message &m, x_uint64_t &t) {
 }
 
 void to_be(alba::llio::message_builder &mb, const x_uint64_t &t) {
-  if (t.i < 2147483647) {
+  if (t.i < max_int32) {
     alba::llio::to_be(mb, t.i);
   } else {
-    alba::llio::to_be(mb, (uint32_t)2147483647);
+    alba::llio::to_be(mb, (uint32_t)max_int32);
     alba::llio::to_be(mb, t.i);
   }
 }

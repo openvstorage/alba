@@ -23,6 +23,8 @@ but WITHOUT ANY WARRANTY of any kind.
 
 namespace alba {
 
+static const uint32_t max_int32 = 2147483647;
+
 struct x_uint64_t {
   uint64_t i;
 };
