@@ -1559,7 +1559,7 @@ module Test = struct
   let wrapper cmd f t =
     let t = Deployment.make_default () in
     Deployment.kill t;
-    let bump_ids = List.mem cmd [ "asd_start"; "disk_failures"; "stress"; ] in
+    let bump_ids = List.mem cmd [ "asd_start"; "disk_failures"; "stress"; "voldrv_backend"; "voldrv_tests"; ] in
     Deployment.setup ~bump_ids t;
     let r = f t in
     let () = Deployment.smoke_test t in
