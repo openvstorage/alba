@@ -32,6 +32,7 @@ let make_client albamgr_client_cfg
                 ?partial_osd_read
                 ?cache_on_read
                 ?cache_on_write
+                ~upload_slack
                 ()
   =
   let albamgr_pool =
@@ -64,6 +65,7 @@ let make_client albamgr_client_cfg
     ?partial_osd_read
     ?cache_on_read
     ?cache_on_write
+    ~upload_slack
     ()
 
 let with_client albamgr_client_cfg
@@ -83,6 +85,7 @@ let with_client albamgr_client_cfg
                 ?cache_on_read
                 ?cache_on_write
                 ~populate_osds_info_cache
+                ~upload_slack
                 f
   =
   let client, closer =
@@ -103,6 +106,7 @@ let with_client albamgr_client_cfg
                 ?cache_on_read
                 ?cache_on_write
                 ~populate_osds_info_cache
+                ~upload_slack
                 ()
   in
   Lwt.finalize

@@ -107,6 +107,7 @@ let upload_chunk
       ~osds
       ~(fragment_cache : Fragment_cache.cache)
       ~cache_on_write
+      ~upload_slack
   =
 
   let t0 = Unix.gettimeofday () in
@@ -220,7 +221,7 @@ let upload_chunk
      in
      Lwt_extra2.first_n
        ~count:min_fragment_count
-       ~slack:0.01
+       ~slack:upload_slack
        upload_fragment_and_finalize
        (List.combine fragments_with_id osds)
      >>= fun (success, make_results)  ->
@@ -250,6 +251,7 @@ let upload_object''
       ~(object_id_hint: string option)
       ~fragment_cache
       ~cache_on_write
+      ~upload_slack
   =
 
   (* TODO
@@ -443,7 +445,9 @@ let upload_object''
            ~object_info_o
            ~osds:target_osds
            ~fragment_cache
-           ~cache_on_write)
+           ~cache_on_write
+           ~upload_slack
+        )
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
@@ -770,6 +774,7 @@ let upload_object'
       ~object_id_hint
       ~fragment_cache
       ~cache_on_write
+      ~upload_slack
   =
 
   let object_t0 = Unix.gettimeofday () in
@@ -787,6 +792,7 @@ let upload_object'
       ~object_id_hint
       ~fragment_cache
       ~cache_on_write
+      ~upload_slack
     >>=
       store_manifest
         nsm_host_access

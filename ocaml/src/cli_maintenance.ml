@@ -183,6 +183,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                            | _ -> false)
         ~cache_on_read ~cache_on_write
         ~populate_osds_info_cache:true
+        ~upload_slack:1.0
         (fun client ->
            let maintenance_client =
              new Maintenance.client

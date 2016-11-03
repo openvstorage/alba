@@ -440,6 +440,7 @@ let with_alba_client cfg_url tls_config f =
     cfg_ref
     ~tls_config
     ~populate_osds_info_cache:false
+    ~upload_slack:0.2
     f
 
 let with_albamgr_client ~attempts cfg_url tls_config f =

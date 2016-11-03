@@ -41,6 +41,7 @@ class client
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
     ~populate_osds_info_cache
+    ~upload_slack
   =
   let () =
     if populate_osds_info_cache
@@ -262,6 +263,7 @@ class client
          ~object_id_hint
          ~fragment_cache
          ~cache_on_write
+         ~upload_slack
 
 
     (* consumers of this method are responsible for freeing

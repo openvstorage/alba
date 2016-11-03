@@ -167,6 +167,7 @@ let apply_sequence
       ~object_id_hint:None
       ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
+      ~upload_slack:0.2
     >>= fun (mf, extra_mfs, _upload_stats, gc_epoch, fragment_state_layout) ->
     let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
                     (List.map
@@ -793,6 +794,7 @@ let run_server hosts port ~transport
                ~use_fadvise
                ~partial_osd_read
                ~cache_on_read ~cache_on_write
+               ~upload_slack
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -830,6 +832,7 @@ let run_server hosts port ~transport
          ~partial_osd_read
          ~cache_on_read ~cache_on_write
          ~populate_osds_info_cache:true
+         ~upload_slack
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());

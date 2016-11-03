@@ -64,6 +64,7 @@ let _easiest_upload () =
     (ref cfg)
     ~tls_config
     ~populate_osds_info_cache:true
+    ~upload_slack:0.2
     (fun alba_client ->
 
      Alba_test._wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
