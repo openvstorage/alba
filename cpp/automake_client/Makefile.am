@@ -7,6 +7,7 @@ libalbaproxy_la_CPPFLAGS = -I$(abs_top_srcdir)/../include
 #libalbaproxy_la_LDFLAGS = -static
 
 libalbaproxy_la_SOURCES = \
+        ../src/lib/alba_common.cc \
 	../src/lib/alba_logger.cc \
 	../src/lib/checksum.cc \
 	../src/lib/generic_proxy_client.cc \

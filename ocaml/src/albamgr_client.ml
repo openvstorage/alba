@@ -190,7 +190,7 @@ object(self)
 
     method list_all_namespace_osds ~namespace_id =
       list_all_x
-        ~first:0l
+        ~first:0L
         fst
         (self # list_namespace_osds
            ~namespace_id
@@ -295,7 +295,7 @@ object(self)
 
     method list_all_claimed_osds =
       list_all_x
-        ~first:0l
+        ~first:0L
         fst
         (self # list_osds_by_osd_id
            ~last:None
@@ -413,7 +413,7 @@ object(self)
           then Lwt.return ()
           else
             self # mark_msg_delivered t dest from_msg_id >>= fun () ->
-            inner (Int32.succ from_msg_id)
+            inner (Int64.succ from_msg_id)
         in
         inner from_msg_id
       in
@@ -456,7 +456,7 @@ object(self)
 
     method list_all_osd_namespaces ~osd_id =
       list_all_x
-        ~first:0l
+        ~first:0L
         Std.id
         (self # list_osd_namespaces
            ~osd_id
@@ -483,7 +483,7 @@ object(self)
 
     method list_all_decommissioning_osds =
       list_all_x
-        ~first:0l
+        ~first:0L
         fst
         (self # list_decommissioning_osds
            ~last:None
@@ -502,7 +502,7 @@ object(self)
 
     method list_all_purging_osds =
       list_all_x
-        ~first:0l
+        ~first:0L
         Std.id
         (self # list_purging_osds
               ~last:None
@@ -562,6 +562,16 @@ object(self)
       client # update
         UpdateMaintenanceConfig
         u
+
+    method bump_next_work_item_id id =
+      client # update BumpNextWorkItemId id
+
+    method bump_next_osd_id id =
+      client # update BumpNextOsdId id
+
+    method bump_next_namespace_id id =
+      client # update BumpNextNamespaceId id
+
   end
 
 class single_connection_client (ic, oc) =

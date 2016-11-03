@@ -95,7 +95,7 @@ class type key_value_osd =
     method capabilities : Capabilities.OsdCapabilities.t Lwt.t
   end
 
-type namespace_id = int32
+type namespace_id = int64
 type object_id = string
 type chunk_id = int
 type fragment_id = int

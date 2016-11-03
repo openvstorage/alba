@@ -28,7 +28,6 @@ let tls_config = ref None
 let _easiest_upload () =
   let tls_config = !tls_config
   and namespace = "demo"
-  and namespace_id = 0l
   and input_file = "./ocaml/alba.native"
   and object_name = Printf.sprintf "easy_test_%i" 1
   and allow_overwrite = false in
@@ -39,9 +38,9 @@ let _easiest_upload () =
          begin
            let ips,port,_,_ = conn_info in
            let ip = List.hd_exn ips in
-           Lwt_io.printlf "going to kill ASD: %li (%s,%i)"  sid ip port
+           Lwt_io.printlf "going to kill ASD: %Li (%s,%i)"  sid ip port
            >>=fun()->
-           let cmd = Printf.sprintf "pkill -f 'alba.native.*%02li.*'" sid in
+           let cmd = Printf.sprintf "pkill -f 'alba.native.*%02Li.*'" sid in
            Printf.printf "cmd=%S\n%!" cmd;
            let rc = Sys.command cmd in
            Lwt_io.printlf "rc=%i" rc
@@ -50,7 +49,7 @@ let _easiest_upload () =
          begin
            let ips,port,_,_ = conn_info in
            let ip = List.hd_exn ips in
-           Lwt_io.printlf "going to kill Kinetic: %li (%s,%i)" sid ip port
+           Lwt_io.printlf "going to kill Kinetic: %Li (%s,%i)" sid ip port
            >>= fun () ->
            let cmd = Printf.sprintf "pkill -f 'java.*-port %i.*'" port in
            let rc = Sys.command cmd in
@@ -65,7 +64,7 @@ let _easiest_upload () =
     ~tls_config
     ~populate_osds_info_cache:true
     (fun alba_client ->
-
+     alba_client # create_namespace ~namespace:"disk_failure_test" ~preset_name:None () >>= fun namespace_id ->
      Alba_test._wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
      alba_client # mgr_access # list_all_claimed_osds >>= fun (n, osds) ->
      Lwt_io.printlf "there are n=%i claimed osds" n >>= fun()->
@@ -88,7 +87,7 @@ let _easiest_upload () =
      let open Manifest in
      let chunks = manifest.fragment_locations in
      let osd_id_o, version_id = List.hd_exn (List.hd_exn chunks) in
-     Lwt_io.printlf "osd_id:%li" (Option.get_some osd_id_o))
+     Lwt_io.printlf "osd_id:%Li" (Option.get_some osd_id_o))
 
 
 let easiest_upload ctx =

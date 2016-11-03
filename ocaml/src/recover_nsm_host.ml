@@ -83,14 +83,14 @@ type fragment_info = {
     fragment_id : int;
     version_id : int;
     recovery_info : RecoveryInfo.t';
-    osd_id : int32;
+    osd_id : int64;
   }
 
 module Keys = struct
   let ns_info = "ns_info"
   let total_workers = "total_workers"
   let worker_id = "worker_id"
-  let osd_status ~osd_id = "osd_status" ^ (serialize Llio.int32_to osd_id)
+  let osd_status ~osd_id = "osd_status" ^ (serialize x_int64_to osd_id)
   let fragments_prefix = 'f'
 
   let fragment_key ~object_id ~chunk_id ~fragment_id ~version_id=
@@ -137,7 +137,7 @@ let reap_osd
     | i ->
       let b = i * (1 lsl 32) / total_workers in
       let buf = Buffer.create 32 in
-      Llio.int32_be_to buf (Int32.of_int b);
+      x_int64_be_to buf (Int64.of_int b);
       Buffer.add_bytes buf (Bytes.make 28 '\000');
       let bs = Buffer.contents buf in
 
@@ -164,7 +164,7 @@ let reap_osd
                   ~last:(Some (Slice.wrap_string end_object_id, false))
                   ~reverse:false ~max:1000))
         (fun exn ->
-           Lwt_log.info_f ~exn "Exception while getting keys from osd %li" osd_id >>= fun () ->
+           Lwt_log.info_f ~exn "Exception while getting keys from osd %Li" osd_id >>= fun () ->
            Lwt_unix.sleep delay >>= fun () ->
            get_recovery_info (delay *. 1.5))
     in
@@ -196,7 +196,7 @@ let reap_osd
                   (serialize
                      (Llio.pair_to
                        RecoveryInfo.to_buffer
-                       Llio.int32_to)
+                       x_int64_to)
                     (recovery_info, osd_id)))
              keys;
 
@@ -403,7 +403,7 @@ let gather_and_push_objects
           deserialize
             (Llio.pair_from
                RecoveryInfo.from_buffer
-               Llio.int32_from)
+               x_int64_from)
             (Iterator.get_value_string it) in
         RecoveryInfo.t_to_t'
           recovery_info'

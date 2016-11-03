@@ -108,7 +108,7 @@ std::tuple<std::vector<string>, has_more> RoraProxy_client::list_objects(
                                  include_last_, max, reverse_);
 }
 
-string fragment_key(const uint32_t namespace_id, const string &object_id,
+string fragment_key(const namespace_t namespace_id, const string &object_id,
                     uint32_t version_id, uint32_t chunk_id,
                     uint32_t fragment_id) {
   llio::message_builder mb;
@@ -118,7 +118,7 @@ string fragment_key(const uint32_t namespace_id, const string &object_id,
   to(mb, zero);
   char namespace_char = 'n';
   mb.add_raw(&namespace_char, 1);
-  llio::to_be(mb, namespace_id);
+  alba::to_be(mb, namespace_id);
   char prefix = 'o';
   mb.add_raw(&prefix, 1);
   to(mb, object_id);

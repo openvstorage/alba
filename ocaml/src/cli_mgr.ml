@@ -58,7 +58,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-       let first = 0l
+       let first = 0L
        and finc = true
        and last = None
        and max = -1 in
@@ -69,7 +69,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
          let r' =
            `List [`Assoc (List.map
                      (fun (id,name,_info) ->
-                      (Int32.to_string id),`String name)
+                      (Int64.to_string id),`String name)
                      r
                   );
                   `Bool more
@@ -80,7 +80,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
          begin
            Lwt_list.iter_s
              (fun (id, name, _info ) ->
-              Lwt_io.printlf "%8li:%S" id name
+              Lwt_io.printlf "%8Li:%S" id name
              ) r
            >>= fun () ->
            if more
@@ -161,7 +161,7 @@ let alba_list_osds cfg_file tls_config node_id to_json verbose attempts =
            Lwt_list.iter_s
              (fun (d_id,d_info) ->
                 Lwt_io.printlf
-                  "%li : %s" d_id
+                  "%Li : %s" d_id
                   (Nsm_model.OsdInfo.show d_info)
              )
              devices'
@@ -543,7 +543,7 @@ let alba_list_work cfg_file tls_config verbose attempts =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-       let first = 0l
+       let first = 0L
        and finc = true
        and last = None
        and max = -1 in
@@ -555,7 +555,7 @@ let alba_list_work cfg_file tls_config verbose attempts =
          Lwt_io.printlf "---------+------" >>= fun () ->
          Lwt_list.iter_s
            (fun (id, item) ->
-            Lwt_io.printlf "%8li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
+            Lwt_io.printlf "%8Li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
            ) r
          >>= fun () ->
          if more
@@ -587,7 +587,7 @@ let alba_mark_work_items_completed cfg_file tls_config work_ids verbose =
           (fun work_id ->
             Lwt.catch
               (fun () -> client # mark_work_completed ~work_id)
-              (fun exn -> Lwt_log.info_f ~exn "Exception while marking item %li as completed" work_id))
+              (fun exn -> Lwt_log.info_f ~exn "Exception while marking item %Li as completed" work_id))
           work_ids)
   in
   lwt_cmd_line ~to_json:false ~verbose t
@@ -597,7 +597,7 @@ let alba_mark_work_items_completed_cmd =
         $ alba_cfg_url
         $ tls_config
         $ Arg.(required
-               & pos 0 (some (list int32)) None
+               & pos 0 (some (list int64)) None
                & info []
                       ~docv:"WORK_IDS"
                       ~doc:"list of work ids")
@@ -605,6 +605,71 @@ let alba_mark_work_items_completed_cmd =
   Term.info
     "dev-mark-work-items-completed"
     ~doc:"for dev/testing purposes only: mark work items as completed"
+
+
+let alba_bump_next_work_item_id cfg_file tls_config id verbose attempts =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts tls_config
+      (fun client -> client # bump_next_work_item_id id)
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let alba_bump_next_work_item_id_cmd =
+  Term.(pure alba_bump_next_work_item_id
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(required
+               & pos 0 (some int64) None
+               & info [] ~docv:"WORK_ID" ~doc:"work_id")
+        $ verbose
+        $ attempts 1),
+  Term.info
+    "dev-bump-next-work-item-id"
+    ~doc:"dev/testing purposes only"
+
+let alba_bump_next_osd_id cfg_file tls_config id verbose attempts =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts tls_config
+      (fun client -> client # bump_next_osd_id id)
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let alba_bump_next_osd_id_cmd =
+  Term.(pure alba_bump_next_osd_id
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(required
+               & pos 0 (some int64) None
+               & info [] ~docv:"OSD_ID" ~doc:"osd_id")
+        $ verbose
+        $ attempts 1),
+  Term.info
+    "dev-bump-next-osd-id"
+    ~doc:"dev/testing purposes only"
+
+let alba_bump_next_namespace_id cfg_file tls_config id verbose attempts =
+  let t () =
+    with_albamgr_client
+      cfg_file ~attempts tls_config
+      (fun client -> client # bump_next_namespace_id id)
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let alba_bump_next_namespace_id_cmd =
+  Term.(pure alba_bump_next_namespace_id
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(required
+               & pos 0 (some int64) None
+               & info [] ~docv:"NAMESPACE_ID" ~doc:"namespace_id")
+        $ verbose
+        $ attempts 1),
+  Term.info
+    "dev-bump-next-namespace-id"
+    ~doc:"dev/testing purposes only"
+
 
 let alba_add_iter_namespace_item
       cfg_file tls_config namespace name factor action
@@ -952,4 +1017,8 @@ let cmds = [
 
     alba_get_abm_client_config_cmd;
     alba_update_abm_client_config_cmd;
-]
+
+    alba_bump_next_work_item_id_cmd;
+    alba_bump_next_osd_id_cmd;
+    alba_bump_next_namespace_id_cmd;
+  ]

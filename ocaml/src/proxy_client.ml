@@ -135,7 +135,7 @@ class proxy_client fd =
                                object_names : string list ->
                                consistent_read : bool ->
                                should_cache : bool ->
-                               (int32 * (Nsm_model.Manifest.t * Bigstring_slice.t) option list -> o Lwt.t) ->
+                               (int64 * (Nsm_model.Manifest.t * Bigstring_slice.t) option list -> o Lwt.t) ->
                                o Lwt.t
       =
       fun ~namespace ~object_names ~consistent_read ~should_cache f ->

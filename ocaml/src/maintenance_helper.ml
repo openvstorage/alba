@@ -85,11 +85,11 @@ let _upload_missing_fragments
       osds_info_cache' []
   in
   let extra_device_ids = List.map fst extra_devices in
-  let show = [%show: int32 list] in
+  let show = [%show: int64 list] in
   Lwt_log.debug_f
     "extra_devices: live_ones:%s ok=%s extra:%s"
     (show live_ones)
-    ([%show : int32 option list] ok_fragments)
+    ([%show : int64 option list] ok_fragments)
     (show extra_device_ids)
   >>= fun () ->
 
@@ -193,7 +193,7 @@ let upload_missing_fragments
     Hashtbl.fold
       (fun osd_id (_, state, _) acc ->
         if Osd_state.disqualified state
-        then Int32Set.add osd_id acc
+        then Int64Set.add osd_id acc
         else acc)
       (osd_access # osds_info_cache)
       problem_osds
@@ -207,7 +207,7 @@ let upload_missing_fragments
           if List.mem (chunk_id, fragment_id) problem_fragments ||
                (match fragment_osd_id_o with
                 | None -> (fragment_id < k) (* repair missing data fragments *)
-                | Some osd_id -> Int32Set.mem osd_id problem_osds)
+                | Some osd_id -> Int64Set.mem osd_id problem_osds)
           then
             ok_fragments,
             (fragment_id, fragment_checksum) :: to_be_repaireds

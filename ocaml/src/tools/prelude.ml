@@ -622,12 +622,10 @@ module Hashtbl = struct
 end
 
 module IntSet = Set.Make(struct type t = int let compare = compare end)
-module Int32Set = Set.Make(Int32)
 module Int64Set = Set.Make(Int64)
 module StringSet = Set.Make(String)
 
 module IntMap = Map.Make(struct type t = int let compare = compare end)
-module Int32Map = Map.Make(Int32)
 module StringMap = Map.Make(String)
 
 let finalize f final =
@@ -796,3 +794,34 @@ let make_first_last_reverse () =
     else border, None
   in
   first, last, reverse
+
+
+let x_int64_to buf i =
+  if i < (Int64.of_int32 Int32.max_int)
+  then Llio.int32_to buf (Int64.to_int32 i)
+  else
+    begin
+      Llio.int32_to buf Int32.max_int;
+      Llio.int64_to buf i
+    end
+
+let x_int64_from buf =
+  let i = Llio.int32_from buf in
+  if i < Int32.max_int
+  then Int64.of_int32 i
+  else Llio.int64_from buf
+
+let x_int64_be_to buf i =
+  if i < (Int64.of_int32 Int32.max_int)
+  then Llio.int32_be_to buf (Int64.to_int32 i)
+  else
+    begin
+      Llio.int32_be_to buf Int32.max_int;
+      Llio.int64_be_to buf i
+    end
+
+let x_int64_be_from buf =
+  let i = Llio.int32_be_from buf in
+  if i < Int32.max_int
+  then Int64.of_int32 i
+  else Llio.int64_be_from buf

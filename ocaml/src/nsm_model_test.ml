@@ -22,7 +22,7 @@ open Mem_key_value_store
 
 
 module KV = Mem_key_value_store
-module NSMA = NamespaceManager(struct let namespace_id = 3l end)(KV)
+module NSMA = NamespaceManager(struct let namespace_id = 3L end)(KV)
 
 let assert_failswith err f =
   try
