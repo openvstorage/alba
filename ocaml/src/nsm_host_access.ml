@@ -215,7 +215,9 @@ class nsm_host_access
     let get_namespace_id_info () =
       mgr # get_namespace ~namespace
       >>= function
-      | None -> Alba_client_errors.Error.(lwt_failwith NamespaceDoesNotExist)
+      | None ->
+         Lwt_log.info_f "Nsm_host_access.with_namespace_id: namespace %S was not found" namespace >>= fun () ->
+         Alba_client_errors.Error.(lwt_failwith NamespaceDoesNotExist)
       | Some (_,ns_info) ->
         let namespace_id = ns_info.Albamgr_protocol.Protocol.Namespace.id in
         Lwt.return (namespace_id, ns_info)

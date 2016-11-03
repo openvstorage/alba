@@ -360,7 +360,7 @@ class alba_client (base_client : Alba_base_client.client)
       | (t_get_manifest, (mf_src, Some manifest)) ->
         let open Nsm_model in
         Lwt_log.debug_f
-          "download_object: found %s, mf_src=%s manifest = %s"
+          "download_object: found %S, mf_src=%s manifest = %s"
           object_name
           (Cache.show_value_source mf_src)
           (Manifest.show manifest) >>= fun () ->

@@ -314,10 +314,10 @@ let upload_object''
   let version_id = 0 in
 
   Lwt_log.debug_f
-    "Choosing %i devices from %i candidates for a %i,%i,%i policy"
+    "Choosing %i devices from %i candidates for a (%i,%i,%i,%i) policy"
     actual_fragment_count
     (Hashtbl.length osds_info_cache')
-    k m max_disks_per_node
+    k m min_fragment_count max_disks_per_node
   >>= fun () ->
 
   let target_devices =
