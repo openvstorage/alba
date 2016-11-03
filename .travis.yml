@@ -3,10 +3,10 @@ dist: trusty
 language: generic
 
 env:
-  - SUITE=ocaml
+  - SUITE=ocaml IMAGE=ubuntu-14.04
 #  - SUITE=ocaml ALBA_TLS=true
-  - SUITE=disk_failures
-  - SUITE=recovery
+  - SUITE=disk_failures IMAGE=ubuntu-16.04
+  - SUITE=recovery IMAGE=centos-7
 
 install:        ./travis.sh install
 script:         ./travis.sh script
