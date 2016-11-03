@@ -206,7 +206,7 @@ RUN cd gobjfs \
        && make \
        && make install
 
-RUN yum -y install iproute
+RUN yum -y install iproute psmisc
 
 RUN pip install fabric junit-xml
 
