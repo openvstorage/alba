@@ -215,4 +215,6 @@ RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'GOBJFS_HOME=/usr/local/lib; export GOBJFS_HOME;' >> /home/jenkins/.bash_profile"
 
+ARG INSTALL_VOLDRV_PACKAGES=false
+
 ENTRYPOINT ["/bin/bash", "-c", "set -e && /home/jenkins/alba/docker/docker-entrypoint.sh $@"]
