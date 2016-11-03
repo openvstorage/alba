@@ -301,7 +301,7 @@ module Protocol = struct
 
   type write_barrier = bool [@@deriving show]
 
-  type manifest_with_id = Nsm_model.Manifest.t * int32 [@@deriving show]
+  type manifest_with_id = Nsm_model.Manifest.t * int64 [@@deriving show]
 
   module Assert =
     struct
@@ -655,7 +655,7 @@ module Protocol = struct
     | ListObjects -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | ReadObjectFs -> Deser.unit
     | WriteObjectFs -> Deser.unit
-    | WriteObjectFs2 -> Deser.tuple2 Manifest_deser.deser Deser.int32
+    | WriteObjectFs2 -> Deser.tuple2 Manifest_deser.deser Deser.x_int64
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string
@@ -664,7 +664,7 @@ module Protocol = struct
          Deser.string
          (Deser.list (Deser.tuple3 Deser.string
                                    Deser.string
-                                   (Deser.tuple2 Manifest_deser.deser Deser.int32)
+                                   (Deser.tuple2 Manifest_deser.deser Deser.x_int64)
          ))
     | InvalidateCache -> Deser.unit
     | DropCache -> Deser.unit
@@ -682,14 +682,14 @@ module Protocol = struct
          deser_claim
          (Deser.counted_list
             (Deser.tuple3
-               Deser.int32
+               Deser.x_int64
                Osd_deser.OsdInfo.deser_json
                Osd_state.deser_state))
     | GetClientConfig ->
        Alba_arakoon_deser.Config.from_buffer, Alba_arakoon_deser.Config.to_buffer
     | Ping -> Deser.float
     | OsdInfo ->
-       Deser.counted_list (Deser.tuple3 Deser.int32
+       Deser.counted_list (Deser.tuple3 Deser.x_int64
                                         Osd_deser.OsdInfo.deser
                                         Capabilities.OsdCapabilities.deser
                           )
@@ -698,7 +698,7 @@ module Protocol = struct
          (Deser.pair
             Deser.string
             (Deser.counted_list (Deser.tuple3
-                                   Deser.int32
+                                   Deser.x_int64
                                    Osd_deser.OsdInfo.deser
                                    Capabilities.OsdCapabilities.deser
          )))
@@ -706,10 +706,10 @@ module Protocol = struct
        Deser.list (Deser.tuple3
                              Deser.string
                              Deser.string
-                             (Deser.pair Manifest_deser.deser Deser.int32))
+                             (Deser.pair Manifest_deser.deser Deser.x_int64))
     | ReadObjects ->
        Deser.pair
-         Deser.int32
+         Deser.x_int64
          (Deser.list
             (Deser.option
                (Deser.pair

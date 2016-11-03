@@ -170,32 +170,45 @@ RUN apt-get update && apt-get install -y --force-yes alba arakoon liburiparser1 
 RUN ln -s /usr/bin/alba /usr/bin/alba.0.6
 
 
-## This only works from inside the OVS lan...
-# http://10.100.129.100:8080/job/volumedriver-no-dedup-alba-rora-reads-from-fragment-cache-release-ubuntu-14.04/1/artifact/volumedriver-core/build/debian/volumedriver-no-dedup-pitreplication_6.2.0-dev.201610132002.41572cb_amd64.deb
+## installing voldrv packages only works from within the OVS LAN
 
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-alba-rora-reads-from-fragment-cache-release-ubuntu-14.04/1/artifact/volumedriver-core/build/debian/
+ARG INSTALL_VOLDRV_PACKAGES=false
+
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT going to install the voldrv packages/testers'
+
+# http://10.100.129.100:8080/job/volumedriver-no-dedup-dev-release-ubuntu-14.04/188/artifact/volumedriver-core/build/debian/volumedriver-no-dedup-base-dbgsym_6.2.3-dev.201610301422.bf3af45_amd64.ddeb
+
+ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-dev-release-ubuntu-14.04/188/artifact/volumedriver-core/build/debian
 
 ENV voldrv_base_pkg_name=volumedriver-no-dedup
-ENV voldrv_version=6.2.0-dev.201610132002.41572cb_amd64
+ENV voldrv_version=6.2.3-dev.201610301422.bf3af45_amd64
 
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-server_${voldrv_version}.deb
-RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.deb \
-    && dpkg -i ${voldrv_base_pkg_name}-test_${voldrv_version}.deb
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-base_${voldrv_version}.deb )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.deb )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-server_${voldrv_version}.deb )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.deb \
+        && dpkg -i ${voldrv_base_pkg_name}-test_${voldrv_version}.deb )
 
 # packages with debug symbols
-# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base-dbgsym_${voldrv_version}.ddeb \
-#     && dpkg -i ${voldrv_base_pkg_name}-base-dbgsym_${voldrv_version}.ddeb
-# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication-dbgsym_${voldrv_version}.ddeb \
-#     && dpkg -i ${voldrv_base_pkg_name}-pitreplication-dbgsym_${voldrv_version}.ddeb
-# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server-dbgsym_${voldrv_version}.ddeb \
-#     && dpkg -i ${voldrv_base_pkg_name}-server-dbgsym_${voldrv_version}.ddeb
-# RUN wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test-dbgsym_${voldrv_version}.ddeb \
-#     && dpkg -i ${voldrv_base_pkg_name}-test-dbgsym_${voldrv_version}.ddeb
+# RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+#     || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base-dbgsym_${voldrv_version}.ddeb \
+#         && dpkg -i ${voldrv_base_pkg_name}-base-dbgsym_${voldrv_version}.ddeb )
+# RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+#     || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication-dbgsym_${voldrv_version}.ddeb \
+#         && dpkg -i ${voldrv_base_pkg_name}-pitreplication-dbgsym_${voldrv_version}.ddeb )
+# RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+#     || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server-dbgsym_${voldrv_version}.ddeb \
+#         && dpkg -i ${voldrv_base_pkg_name}-server-dbgsym_${voldrv_version}.ddeb )
+# RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+#     || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test-dbgsym_${voldrv_version}.ddeb \
+#         && dpkg -i ${voldrv_base_pkg_name}-test-dbgsym_${voldrv_version}.ddeb )
 
 
 RUN pip install fabric junit-xml

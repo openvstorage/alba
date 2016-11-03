@@ -114,7 +114,7 @@ let _render_namespace name namespace stats =
   Lwt_io.printlf "storage: %Li" storage_size >>= fun () ->
   Lwt_io.printlf
     "storage_per_osd: %s"
-    ([%show : (int32 * int64) list] (snd storage_size_per_osd)) >>= fun () ->
+    ([%show : (int64 * int64) list] (snd storage_size_per_osd)) >>= fun () ->
   Lwt_io.printlf
     "bucket_count: %s"
     ([%show : (Policy.policy * int64) list] (snd bucket_count))
@@ -499,7 +499,7 @@ let alba_create_namespace cfg_file tls_config namespace preset_name verbose =
       cfg_file tls_config
       (fun client ->
          client # create_namespace ~preset_name ~namespace () >>= fun namespace_id ->
-         Lwt_io.printlf "Create namespace successful, got id %li" namespace_id
+         Lwt_io.printlf "Create namespace successful, got id %Li" namespace_id
       )
   in
   lwt_cmd_line ~to_json:false ~verbose t
@@ -731,7 +731,7 @@ let namespace_recovery_agent_cmd =
                pos 3 (some int) None &
                info [] ~docv:"REMAINDER" ~doc:"number of the worker")
         $ Arg.(value
-               & opt_all int32 []
+               & opt_all int64 []
                & info ["osd-id"]
                       ~docv:"OSD_ID"
                       ~doc:"osd to wait for")

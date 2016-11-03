@@ -114,7 +114,7 @@ module Osd_pool = struct
            (new Proxy_osd.t (pp :> Proxy_osd.proxy_pool) ~long_id:id ~prefix ~preset ~namespace_name_format:1,
             fun () -> pp # finalize)
 
-    let use_osd t ~(osd_id:int32) f =
+    let use_osd t ~(osd_id:int64) f =
       let get_pool kind =
         try Hashtbl.find t.client_pools osd_id |> Lwt.return
         with Not_found ->
@@ -269,7 +269,7 @@ class osd_access
     with Not_found ->
       mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
       let osd_info = match osd_o with
-        | None -> failwith (Printf.sprintf "could not find osd with id %li" osd_id)
+        | None -> failwith (Printf.sprintf "could not find osd with id %Li" osd_id)
         | Some info -> info
       in
       add_osd_info ~osd_id  osd_info Capabilities.OsdCapabilities.default;
@@ -352,7 +352,7 @@ class osd_access
           end
         else Lwt.return ())
        >>= fun () ->
-       Lwt_log.debug_f ~exn "Exception in with_osd_from_pool osd_id=%li" osd_id >>= fun () ->
+       Lwt_log.debug_f ~exn "Exception in with_osd_from_pool osd_id=%Li" osd_id >>= fun () ->
        Lwt.fail exn)
   and disqualify ~osd_id ~exn =
     let rec inner delay =
@@ -385,7 +385,7 @@ class osd_access
       | `Continue exn ->
          Lwt_log.info_f
            ~exn
-           "Could not yet requalify osd %li, trying again in %f seconds"
+           "Could not yet requalify osd %Li, trying again in %f seconds"
            osd_id delay >>= fun () ->
          Lwt_extra2.sleep_approx delay >>= fun () ->
          inner (min (delay *. 1.5) 60.)
@@ -397,12 +397,12 @@ class osd_access
     then Lwt.return ()
     else begin
         Osd_state.disqualify state true;
-        Lwt_log.info_f ~exn "Disqualifying osd %li" osd_id >>= fun () ->
+        Lwt_log.info_f ~exn "Disqualifying osd %Li" osd_id >>= fun () ->
         (* start loop to get it requalified... *)
         Lwt.async
           (fun () ->
            inner 1. >>= fun () ->
-           Lwt_log.info_f "Requalified osd %li" osd_id >>= fun () ->
+           Lwt_log.info_f "Requalified osd %Li" osd_id >>= fun () ->
            Osd_state.disqualify state false;
            Osd_state.add_write state;
            Lwt.return ());
@@ -447,7 +447,7 @@ class osd_access
 
            let next_osd_id' =
              List.last osds
-             |> Option.map (fun (osd_id, _) -> Int32.succ osd_id)
+             |> Option.map (fun (osd_id, _) -> Int64.succ osd_id)
              |> Option.get_some_default next_osd_id
            in
            Lwt.return (Some next_osd_id'))
@@ -464,7 +464,7 @@ class osd_access
         | Some next_osd_id' ->
            inner next_osd_id'
       in
-      inner 0l
+      inner 0L
 
     method get_default_osd_priority = default_osd_priority
 
@@ -641,7 +641,7 @@ class osd_access
                     then
                       begin
                         Lwt_log.ign_info_f
-                          "Asd (%li) now has new connection info -> invalidating connection pool"
+                          "Osd (%Li) now has new connection info -> invalidating connection pool"
                           osd_id;
                         Osd_pool.invalidate osds_pool ~osd_id
                       end

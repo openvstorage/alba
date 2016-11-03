@@ -115,7 +115,7 @@ module Protocol = struct
       | ListObjectsById -> RangeQueryArgs.from_buffer Llio.string_from
       | ListObjectsByOsd ->
         Llio.pair_from
-          Llio.int32_from
+          x_int64_from
           (RangeQueryArgs.from_buffer Llio.string_from)
       | ListObjectsByPolicy ->
         RangeQueryArgs.from_buffer
@@ -127,10 +127,10 @@ module Protocol = struct
 
       | ListDeviceKeysToBeDeleted ->
         Llio.pair_from
-          Llio.int32_from
+          x_int64_from
           (RangeQueryArgs.from_buffer Llio.string_from)
       | GetStats -> Llio.unit_from
-      | ListActiveOsds -> RangeQueryArgs.from_buffer Llio.int32_from
+      | ListActiveOsds -> RangeQueryArgs.from_buffer x_int64_from
 
   let read_update_request : type req res. (req, res) update -> req Llio.deserializer
     = function
@@ -146,7 +146,7 @@ module Protocol = struct
           overwrite_from
           Llio.string_from
       | MarkKeysDeleted ->
-        Llio.list_from (Llio.pair_from Llio.int32_from (Llio.list_from Llio.string_from))
+        Llio.list_from (Llio.pair_from x_int64_from (Llio.list_from Llio.string_from))
       | UpdateObject -> fun buf ->
         let name = Llio.string_from buf in
         let object_id = Llio.string_from buf in
@@ -155,14 +155,14 @@ module Protocol = struct
             (fun buf ->
                let chunk_id = Llio.int_from buf in
                let fragment_id = Llio.int_from buf in
-               let device_id = Llio.option_from Llio.int32_from buf in
-               chunk_id, fragment_id, device_id)
+               let osd_id = Llio.option_from x_int64_from buf in
+               chunk_id, fragment_id, osd_id)
             buf in
         let gc_epoch = Llio.int64_from buf in
         let version_id = Llio.int_from buf in
         (name, object_id, updates, gc_epoch, version_id)
       | CleanupOsdKeysToBeDeleted ->
-        Llio.int32_from
+        x_int64_from
       | ApplySequence ->
          Llio.pair_from
            (Llio.list_from Assert.from_buffer)
@@ -180,7 +180,7 @@ module Protocol = struct
       | ListObjectsById -> RangeQueryArgs.to_buffer Llio.string_to
       | ListObjectsByOsd ->
         Llio.pair_to
-          Llio.int32_to
+          x_int64_to
           (RangeQueryArgs.to_buffer Llio.string_to)
       | ListObjectsByPolicy ->
         RangeQueryArgs.to_buffer
@@ -192,11 +192,11 @@ module Protocol = struct
 
       | ListDeviceKeysToBeDeleted ->
         Llio.pair_to
-          Llio.int32_to
+          x_int64_to
           (RangeQueryArgs.to_buffer Llio.string_to)
 
       | GetStats -> Llio.unit_to
-      | ListActiveOsds -> RangeQueryArgs.to_buffer Llio.int32_to
+      | ListActiveOsds -> RangeQueryArgs.to_buffer x_int64_to
 
   let write_update_request : type req res. (req, res) update -> req Llio.serializer
     = function
@@ -212,7 +212,7 @@ module Protocol = struct
           overwrite_to
           Llio.string_to
       | MarkKeysDeleted ->
-        Llio.list_to (Llio.pair_to Llio.int32_to (Llio.list_to Llio.string_to))
+        Llio.list_to (Llio.pair_to x_int64_to (Llio.list_to Llio.string_to))
       | UpdateObject -> fun buf (name, object_id, updates, gc_epoch, version_id) ->
         Llio.string_to buf name;
         Llio.string_to buf object_id;
@@ -220,13 +220,13 @@ module Protocol = struct
           (fun buf (chunk_id, fragment_id, device_id) ->
              Llio.int_to buf chunk_id;
              Llio.int_to buf fragment_id;
-             Llio.option_to Llio.int32_to buf device_id)
+             Llio.option_to x_int64_to buf device_id)
           buf
           updates;
         Llio.int64_to buf gc_epoch;
         Llio.int_to buf version_id
       | CleanupOsdKeysToBeDeleted ->
-        Llio.int32_to
+        x_int64_to
       | ApplySequence ->
          Llio.pair_to
            (Llio.list_to Assert.to_buffer)
@@ -260,7 +260,7 @@ module Protocol = struct
 
       | GetStats -> NamespaceStats.to_buffer
 
-      | ListActiveOsds -> counted_list_more_to Llio.int32_to
+      | ListActiveOsds -> counted_list_more_to x_int64_to
 
   let write_update_response : type req res. (req, res) update -> res Llio.serializer
     = function
@@ -301,7 +301,7 @@ module Protocol = struct
 
       | GetStats -> NamespaceStats.from_buffer
 
-      | ListActiveOsds -> counted_list_more_from Llio.int32_from
+      | ListActiveOsds -> counted_list_more_from x_int64_from
 
   let read_update_response : type req res. (req, res) update -> res Llio.deserializer
     = function

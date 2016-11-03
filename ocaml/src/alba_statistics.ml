@@ -23,7 +23,7 @@ module Statistics = struct
   type duration = float [@@deriving show]
 
   type fragment_upload = {
-    osd_id_o : int32 option;
+    osd_id_o : int64 option;
     size_orig : int;
     size_final : int;
     compress_encrypt : duration;
@@ -48,7 +48,7 @@ module Statistics = struct
 
 
   type fragment_download = {
-    osd_id : int32;
+    osd_id : int64;
     retrieve : duration;
     verify : duration;
     decrypt : duration;

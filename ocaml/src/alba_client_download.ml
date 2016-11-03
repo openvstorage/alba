@@ -30,7 +30,7 @@ let get_object_manifests'
       ~namespace_id ~object_names
       ~consistent_read ~should_cache =
   Lwt_log.debug_f
-    "get_object_manifest %li %S ~consistent_read:%b ~should_cache:%b"
+    "get_object_manifest %Li %S ~consistent_read:%b ~should_cache:%b"
     namespace_id
     ([%show: string list] object_names)
     consistent_read
@@ -111,7 +111,7 @@ let download_packed_fragment
   | None ->
      let msg =
        Printf.sprintf
-         "Detected missing fragment namespace_id=%li object_name=%S object_id=%S osd_id=%li (chunk,fragment,version)=(%i,%i,%i)"
+         "Detected missing fragment namespace_id=%Li object_name=%S object_id=%S osd_id=%Li (chunk,fragment,version)=(%i,%i,%i)"
          namespace_id object_name object_id osd_id
          chunk_id fragment_id version_id
      in
@@ -343,7 +343,7 @@ let download_chunk
     then
       let () =
         Lwt_log.ign_warning_f
-          "could not receive enough fragments for namespace %li, object %S (%S) chunk %i; got %i while %i needed"
+          "could not receive enough fragments for namespace %Li, object %S (%S) chunk %i; got %i while %i needed"
           namespace_id
           object_name object_id
           chunk_id (Hashtbl.length fragments) k

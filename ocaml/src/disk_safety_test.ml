@@ -69,7 +69,7 @@ let test_safety () =
        Disk_safety.get_disk_safety client [ ns; ] [] >>= fun res ->
        assert_some_res res (5,3,8,3) 1L 0 3;
 
-       Disk_safety.get_disk_safety client [ ns; ] [ 0l; ] >>= fun res ->
+       Disk_safety.get_disk_safety client [ ns; ] [ 0L; ] >>= fun res ->
        assert_some_res res (5,3,8,3) 1L 1 2;
 
        (* get all osds belonging to node 2 *)

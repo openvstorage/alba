@@ -183,7 +183,7 @@ class nsm_host_access
               | exn ->
                 Lwt_log.debug_f
                   ~exn
-                  "Error in refresh namespace osds thread for namespace %li, ignoring"
+                  "Error in refresh namespace osds thread for namespace %Li, ignoring"
                   namespace_id >>= fun () ->
                 Lwt.return `Continue) >>= function
           | `Stop ->
@@ -265,7 +265,7 @@ class nsm_host_access
               begin
                 let nsm_host_id = namespace_info'.Namespace.nsm_host_id in
                 Lwt_log.info_f
-                  "Detected namespace %s:%li in 'Creating' state, let's do some nsm_host message delivery towards %s"
+                  "Detected namespace %s:%Li in 'Creating' state, let's do some nsm_host message delivery towards %s"
                   namespace namespace_id'
                   nsm_host_id >>= fun () ->
                 Alba_client_message_delivery_base.deliver_messages
@@ -339,7 +339,7 @@ class nsm_host_access
     method get_gc_epoch = get_gc_epoch
 
     method with_namespace_id :
-      type a. namespace : string -> (int32 -> a Lwt.t) -> a Lwt.t =
+      type a. namespace : string -> (int64 -> a Lwt.t) -> a Lwt.t =
       with_namespace_id
     method with_nsm_client :
       type a. namespace : string -> (Nsm_client.client -> a Lwt.t) -> a Lwt.t =

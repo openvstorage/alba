@@ -18,6 +18,8 @@ done
 wait $PID
 RESULT=$?
 
+head -n256 output
+echo ...
 tail -n256 output
 
 exit $RESULT

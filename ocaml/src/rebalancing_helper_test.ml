@@ -40,8 +40,8 @@ let used =
 let test_check_move () =
   let open Nsm_model in
   let make_kind osd_id =
-    let conn_info = ["127.0.0.1"],8000 + (Int32.to_int osd_id), false, false
-    and asd_id = "asd id choose test " ^ (Int32.to_string osd_id) in
+    let conn_info = ["127.0.0.1"],8000 + (Int64.to_int osd_id), false, false
+    and asd_id = "asd id choose test " ^ (Int64.to_string osd_id) in
     OsdInfo.Asd (conn_info, asd_id)
   in
   let open Rebalancing_helper in
@@ -59,7 +59,7 @@ let test_check_move () =
   let () = Array.iteri
              (fun osd_id used ->
                let node_id = osd_id / 4 |> string_of_int in
-               let osd_id = Int32.of_int osd_id in
+               let osd_id = Int64.of_int osd_id in
                let osd = make_osd osd_id used node_id in
                Hashtbl.add cache osd_id osd)
              used
@@ -78,22 +78,22 @@ let test_check_move () =
       chunk_sizes = [39552];
       size = 39552L;
       checksum = Checksum.NoChecksum;
-      fragment_locations = [[  (Some 0l, 0);
-                               (Some 1l, 0);
-                               (Some 2l, 0);
+      fragment_locations = [[  (Some 0L, 0);
+                               (Some 1L, 0);
+                               (Some 2L, 0);
                                (* we can move from {0,1,2} to 3 *)
 
-                               (Some 4l, 0);
-                               (Some 5l, 0);
-                               (Some 6l, 0);
-                               (Some 7l, 0);
+                               (Some 4L, 0);
+                               (Some 5L, 0);
+                               (Some 6L, 0);
+                               (Some 7L, 0);
 
-                               (Some 8l, 0);
-                               (Some 9l, 0);
-                               (Some 10l, 0);
-                               (Some 11l, 0);
+                               (Some 8L, 0);
+                               (Some 9L, 0);
+                               (Some 10L, 0);
+                               (Some 11L, 0);
 
-                               (Some 12l, 0);
+                               (Some 12L, 0);
                                ]];
       fragment_checksums = [[Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum;
                              Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum;
@@ -112,7 +112,7 @@ let test_check_move () =
   match r with
     | None -> OUnit.assert_equal true false ~msg:"there should be a solution"
     | Some (m,src,tgt,_score) ->
-       Printf.printf "src:%li -> tgt:%li\n" src tgt
+       Printf.printf "src:%Li -> tgt:%Li\n" src tgt
   
 
 let suite =

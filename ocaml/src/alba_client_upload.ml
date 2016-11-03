@@ -66,7 +66,7 @@ let upload_packed_fragment_data
       "" Checksum.NoChecksum true
   in
   let do_upload () =
-    let msg = Printf.sprintf "do_upload ~osd_id:%li" osd_id in
+    let msg = Printf.sprintf "do_upload ~osd_id:%Li" osd_id in
     Lwt_extra2.with_timeout ~msg (osd_access # osd_timeout)
       (fun () ->
        osd_access # with_osd

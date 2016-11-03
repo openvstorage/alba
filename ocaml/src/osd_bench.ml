@@ -189,7 +189,7 @@ let upload_fragments with_client progress n value_size _ period prefix =
     let open Osd_keys in
     let value = _make_value value_size in
     let value_blob = Blob.Bytes value in
-    let namespace_id = 0xffff_ffffl in
+    let namespace_id = 0xffff_ffff_ffff_ffffL in
     let namespace_status_key = AlbaInstance.namespace_status ~namespace_id in
     let active_value = Osd.Osd_namespace_state.(serialize
                                                   to_buffer

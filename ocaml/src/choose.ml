@@ -142,7 +142,7 @@ module Inner = struct
            found_here || contains_osd_id tl
       in
       let take_osd_id
-          (bags : Int32.t node list) =
+          (bags : Int64.t node list) =
         let rec inner acc = function
           | [] -> failwith "can't happen 2"
           | xs::tl ->
@@ -231,7 +231,7 @@ let build_initial_state info =
   state0
 
 let choose_extra_devices n info chosen =
-  let _state2s = [%show : int32 Inner.node_bag list] in
+  let _state2s = [%show : int64 Inner.node_bag list] in
   let state0 = build_initial_state info in
   assert (Hashtbl.length info >= n);
 

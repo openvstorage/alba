@@ -175,7 +175,7 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
 
     method list_all_active_osds =
       list_all_x
-        ~first:0l
+        ~first:0L
         Std.id
         (self # list_active_osds ~last:None ~max:(-1) ~reverse:false)
 

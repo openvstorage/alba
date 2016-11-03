@@ -160,7 +160,7 @@ let lru_collect_some_garbage alba_client redis_client key =
          deserialize
            (Llio.tuple3_from
               Llio.int8_from
-              Llio.int32_from
+              x_int64_from
               Llio.string_from)
            b
        in

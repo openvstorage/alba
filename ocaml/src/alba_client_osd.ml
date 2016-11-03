@@ -140,7 +140,7 @@ let claim_osd mgr_access osd_access ~long_id =
                 Lwt.fail_with "Osd is already claimed, but strangely enough not by this instance ... consider this a bug")
          | exn -> Lwt.fail exn)
      >>= fun osd_id ->
-     Lwt_log.debug_f "Claimed osd %s with id=%li" long_id osd_id >>= fun () ->
+     Lwt_log.debug_f "Claimed osd %s with id=%Li" long_id osd_id >>= fun () ->
      (* the statement below is for the side effect of filling the cache *)
      osd_access # get_osd_info ~osd_id >>= fun _ ->
      Lwt.return osd_id

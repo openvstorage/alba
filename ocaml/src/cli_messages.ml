@@ -41,7 +41,7 @@ let transform_osd (client:Albamgr_client.client) = function
      client # list_all_claimed_osds >>= fun (c,osd_infos ) ->
      let r =
        List.map
-         (fun ((x : int32),_ ) -> x)
+         (fun ((x : int64),_ ) -> x)
          osd_infos
      in
      Lwt.return r
@@ -77,7 +77,7 @@ let list_nsm_host_messages cfg_url tls_config attempts (destinations: string lis
        Lwt_list.iter_s
          (fun (destination, msg_id,msg) ->
           Lwt_io.printlf
-            "%20s |%7li | %s"
+            "%20s |%7Li | %s"
             destination msg_id ([%show: Nsm_host_protocol.Protocol.Message.t] msg)>>= fun () ->
           Lwt.return ()
          ) xs
@@ -100,7 +100,7 @@ let list_nsm_host_messages_cmd =
         $ nsm_hosts),
   Term.(info "list-nsm-host-messages" ~doc:"list messages from mgr to nsm hosts")
 
-let list_osd_messages cfg_file tls_config attempts (destinations:int32 list) verbose =
+let list_osd_messages cfg_file tls_config attempts (destinations:int64 list) verbose =
 
   let t () =
     with_albamgr_client
@@ -115,7 +115,7 @@ let list_osd_messages cfg_file tls_config attempts (destinations:int32 list) ver
        Lwt_list.iter_s
          (fun (destination, msg_id,msg) ->
           Lwt_io.printlf
-            "%11li |%7li | %s"
+            "%11Li |%7Li | %s"
             destination msg_id ([%show: Protocol.Osd.Message.t] msg)>>= fun () ->
           Lwt.return ()
          ) xs
@@ -128,14 +128,16 @@ let list_osd_messages_cmd =
     let doc = "a comma seperated list of the names of the osd-ids, empty means \"`em all\""
     in
     Arg.(value
-         & opt (list ~sep:',' int32) []
+         & opt (list ~sep:',' int64) []
          & info ["osd-ids"] ~docv:"OSD-IDS" ~doc
     )
   in
   Term.(pure list_osd_messages
         $ alba_cfg_url
         $ tls_config
-        $ attempts 1 $ destinations $ verbose),
+        $ attempts 1
+        $ destinations
+        $ verbose),
   Term.(info "list-osd-messages" ~doc:"list messages from mgr to osds")
 
 let cmds =[

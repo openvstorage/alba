@@ -76,7 +76,7 @@ module Protocol = struct
 
     let to_buffer buf t =
       let ser_version = 1 in Llio.int8_to buf ser_version;
-      Llio.int32_to buf t.id;
+      x_int64_to buf t.id;
       Llio.string_to buf t.nsm_host_id;
       Llio.int8_to
         buf
@@ -90,7 +90,7 @@ module Protocol = struct
     let from_buffer buf =
       let ser_version = Llio.int8_from buf in
       assert (ser_version = 1);
-      let id = Llio.int32_from buf in
+      let id = x_int64_from buf in
       let nsm_host_id = Llio.string_from buf in
       let state =
         match Llio.int8_from buf with
@@ -337,7 +337,7 @@ module Protocol = struct
       let to_buffer buf = function
         | ThisAlba osd_id ->
           Llio.int8_to buf 1;
-          Llio.int32_to buf osd_id
+          x_int64_to buf osd_id
         | AnotherAlba alba ->
           Llio.int8_to buf 2;
           Llio.string_to buf alba
@@ -346,7 +346,7 @@ module Protocol = struct
 
       let from_buffer buf =
         match Llio.int8_from buf with
-        | 1 -> ThisAlba (Llio.int32_from buf)
+        | 1 -> ThisAlba (x_int64_from buf)
         | 2 -> AnotherAlba (Llio.string_from buf)
         | 3 -> Available
         | k -> raise_bad_tag "Osd.ClaimInfo" k
@@ -369,7 +369,7 @@ module Protocol = struct
         match Llio.int8_from buf with
         | 1 ->
           let name = Llio.string_from buf in
-          let id = Llio.int32_from buf in
+          let id = x_int64_from buf in
           AddNamespace (name, id)
         | k -> raise_bad_tag "Osd.Message" k
 
@@ -377,7 +377,7 @@ module Protocol = struct
         | AddNamespace (name, id) ->
           Llio.int8_to buf 1;
           Llio.string_to buf name;
-          Llio.int32_to buf id
+          x_int64_to buf id
     end
 
     module NamespaceLink = struct
@@ -405,7 +405,7 @@ module Protocol = struct
   end
 
   module Msg_log = struct
-    type id = int32
+    type id = int64
 
     type ('dest, 'msg) t =
       | Nsm_host : (Nsm_host.id, Nsm_host_protocol.Protocol.Message.t) t
@@ -424,10 +424,10 @@ module Protocol = struct
 
     let dest_from_buffer : type dest msg. (dest, msg) t -> dest Llio.deserializer = function
       | Nsm_host -> Llio.string_from
-      | Osd -> Llio.int32_from
+      | Osd -> x_int64_from
     let dest_to_buffer : type dest msg. (dest, msg) t -> dest Llio.serializer = function
       | Nsm_host -> Llio.string_to
-      | Osd -> Llio.int32_to
+      | Osd -> x_int64_to
 
     let msg_from_buffer : type dest msg. (dest, msg) t -> msg Llio.deserializer = function
       | Nsm_host -> Nsm_host_protocol.Protocol.Message.from_buffer
@@ -447,12 +447,12 @@ module Protocol = struct
       | All -> Llio.int8_to buf 1
       | Explicit osd_ids ->
         Llio.int8_to buf 2;
-        Llio.list_to Llio.int32_to buf osd_ids
+        Llio.list_to x_int64_to buf osd_ids
 
     let osds_from_buffer buf =
       match Llio.int8_from buf with
       | 1 -> All
-      | 2 -> Explicit (Llio.list_from Llio.int32_from buf)
+      | 2 -> Explicit (Llio.list_from x_int64_from buf)
       | k -> raise_bad_tag "Preset.osds" k
 
     type checksum_algo = Checksum.Checksum.algo [@@deriving show]
@@ -598,7 +598,7 @@ module Protocol = struct
   end
 
   module Work = struct
-    type id = Int32.t
+    type id = Int64.t
 
     type verify_params = {
         checksum : bool;
@@ -643,19 +643,19 @@ module Protocol = struct
       | CleanupNsmHostNamespace (nsm_host_id, namespace_id) ->
         Llio.int8_to buf 1;
         Llio.string_to buf nsm_host_id;
-        Llio.int32_to buf namespace_id
+        x_int64_to buf namespace_id
       | CleanupOsdNamespace (osd_id, namespace_id) ->
         Llio.int8_to buf 2;
-        Llio.int32_to buf osd_id;
-        Llio.int32_to buf namespace_id
+        x_int64_to buf osd_id;
+        x_int64_to buf namespace_id
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Llio.int8_to buf 3;
-        Llio.int32_to buf namespace_id;
-        Llio.int32_to buf osd_id
+        x_int64_to buf namespace_id;
+        x_int64_to buf osd_id
       | RepairBadFragment (namespace_id, object_id, object_name,
                            chunk_id, fragment_id, version) ->
         Llio.int8_to buf 6;
-        Llio.int32_to buf namespace_id;
+        x_int64_to buf namespace_id;
         Llio.string_to buf object_id;
         Llio.string_to buf object_name;
         Llio.int_to buf chunk_id;
@@ -663,25 +663,25 @@ module Protocol = struct
         Llio.int_to buf version
       | RewriteObject (namespace_id, object_id) ->
         Llio.int8_to buf 13;
-        Llio.int32_to buf namespace_id;
+        x_int64_to buf namespace_id;
         Llio.string_to buf object_id
       | WaitUntilRepaired (osd_id, namespace_id) ->
         Llio.int8_to buf 8;
-        Llio.int32_to buf osd_id;
-        Llio.int32_to buf namespace_id
+        x_int64_to buf osd_id;
+        x_int64_to buf namespace_id
       | WaitUntilDecommissioned osd_id ->
         Llio.int8_to buf 10;
-        Llio.int32_to buf osd_id
+        x_int64_to buf osd_id
       | IterNamespace (action, namespace_id, name, cnt) ->
         Llio.int8_to buf 11;
         action_to_buffer buf action;
-        Llio.int32_to buf namespace_id;
+        x_int64_to buf namespace_id;
         Llio.string_to buf name;
         Llio.int_to buf cnt
       | IterNamespaceLeaf (action, namespace_id, name, range) ->
         Llio.int8_to buf 12;
         action_to_buffer buf action;
-        Llio.int32_to buf namespace_id;
+        x_int64_to buf namespace_id;
         Llio.string_to buf name;
         Llio.pair_to
           Llio.string_to
@@ -693,18 +693,18 @@ module Protocol = struct
       match Llio.int8_from buf with
       | 1 ->
         let nsm_host_id = Llio.string_from buf in
-        let namespace_id = Llio.int32_from buf in
+        let namespace_id = x_int64_from buf in
         CleanupNsmHostNamespace (nsm_host_id, namespace_id)
       | 2 ->
-        let osd_id = Llio.int32_from buf in
-        let namespace_id = Llio.int32_from buf in
+        let osd_id = x_int64_from buf in
+        let namespace_id = x_int64_from buf in
         CleanupOsdNamespace (osd_id, namespace_id)
       | 3 ->
-        let namespace_id = Llio.int32_from buf in
-        let osd_id = Llio.int32_from buf in
+        let namespace_id = x_int64_from buf in
+        let osd_id = x_int64_from buf in
         CleanupNamespaceOsd (namespace_id, osd_id)
       | 6 ->
-        let namespace_id = Llio.int32_from buf in
+        let namespace_id = x_int64_from buf in
         let object_id = Llio.string_from buf in
         let object_name = Llio.string_from buf in
         let chunk_id = Llio.int_from buf in
@@ -713,21 +713,21 @@ module Protocol = struct
         RepairBadFragment (namespace_id, object_id, object_name,
                            chunk_id, fragment_id, version)
       | 8 ->
-        let osd_id = Llio.int32_from buf in
-        let namespace_id = Llio.int32_from buf in
+        let osd_id = x_int64_from buf in
+        let namespace_id = x_int64_from buf in
         WaitUntilRepaired (osd_id, namespace_id)
       | 10 ->
-        let osd_id = Llio.int32_from buf in
+        let osd_id = x_int64_from buf in
         WaitUntilDecommissioned osd_id
       | 11 ->
         let action = action_from_buffer buf in
-        let namespace_id = Llio.int32_from buf in
+        let namespace_id = x_int64_from buf in
         let name = Llio.string_from buf in
         let cnt = Llio.int_from buf in
         IterNamespace (action, namespace_id, name, cnt)
       | 12 ->
         let action = action_from_buffer buf in
-        let namespace_id = Llio.int32_from buf in
+        let namespace_id = x_int64_from buf in
         let name = Llio.string_from buf in
         let range =
           Llio.pair_from
@@ -737,7 +737,7 @@ module Protocol = struct
         in
         IterNamespaceLeaf (action, namespace_id, name, range)
       | 13 ->
-        let namespace_id = Llio.int32_from buf in
+        let namespace_id = x_int64_from buf in
         let object_id = Llio.string_from buf in
         RewriteObject (namespace_id, object_id)
       | k -> raise_bad_tag "Work" k
@@ -754,20 +754,20 @@ module Protocol = struct
 
     let to_buffer buf { first; finc; last; max; reverse; } =
       let ser_version = 1 in Llio.int8_to buf ser_version;
-      Llio.int32_to buf first;
+      x_int64_to buf first;
       Llio.bool_to buf finc;
-      Llio.option_to (Llio.pair_to Llio.int32_to Llio.bool_to) buf last;
+      Llio.option_to (Llio.pair_to x_int64_to Llio.bool_to) buf last;
       Llio.int_to buf max;
       Llio.bool_to buf reverse
 
     let from_buffer buf =
       let ser_version = Llio.int8_from buf in
       assert (ser_version = 1);
-      let first = Llio.int32_from buf in
+      let first = x_int64_from buf in
       let finc = Llio.bool_from buf in
       let last =
         Llio.option_from
-          (Llio.pair_from Llio.int32_from Llio.bool_from)
+          (Llio.pair_from x_int64_from Llio.bool_from)
           buf in
       let max = Llio.int_from buf in
       let reverse = Llio.bool_from buf in
@@ -940,81 +940,84 @@ module Protocol = struct
     | UpdateProgress : (string * Progress.Update.t, unit) update
     | UpdateMaintenanceConfig : (Maintenance_config.Update.t, Maintenance_config.t) update
     | PurgeOsd : (OsdInfo.long_id, unit) update
+    | BumpNextWorkItemId : (Work.id, unit) update
+    | BumpNextOsdId : (Osd.id, unit) update
+    | BumpNextNamespaceId : (Namespace.id, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
     | ListNsmHosts -> RangeQueryArgs.from_buffer Llio.string_from
     | ListAvailableOsds -> Llio.unit_from
-    | ListOsdsByOsdId   -> RangeQueryArgs.from_buffer Llio.int32_from
-    | ListOsdsByOsdId2  -> RangeQueryArgs.from_buffer Llio.int32_from
-    | ListOsdsByOsdId3  -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListOsdsByOsdId   -> RangeQueryArgs.from_buffer x_int64_from
+    | ListOsdsByOsdId2  -> RangeQueryArgs.from_buffer x_int64_from
+    | ListOsdsByOsdId3  -> RangeQueryArgs.from_buffer x_int64_from
     | ListOsdsByLongId  -> RangeQueryArgs.from_buffer Llio.string_from
     | ListOsdsByLongId2 -> RangeQueryArgs.from_buffer Llio.string_from
     | ListOsdsByLongId3 -> RangeQueryArgs.from_buffer Llio.string_from
     | ListNamespaces -> RangeQueryArgs.from_buffer Llio.string_from
     | ListNamespaceOsds ->
       Llio.pair_from
-        Llio.int32_from
-        (RangeQueryArgs.from_buffer Llio.int32_from)
+        x_int64_from
+        (RangeQueryArgs.from_buffer x_int64_from)
     | GetNextMsgs t -> Msg_log.dest_from_buffer t
     | GetWork -> GetWorkParams.from_buffer
     | GetAlbaId -> Llio.unit_from
     | ListPresets -> RangeQueryArgs.from_buffer Llio.string_from
     | GetClientConfig -> Llio.unit_from
-    | ListNamespacesById -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListNamespacesById -> RangeQueryArgs.from_buffer x_int64_from
     | GetVersion -> Llio.unit_from
     | CheckClaimOsd -> Llio.string_from
-    | ListDecommissioningOsds  -> RangeQueryArgs.from_buffer Llio.int32_from
-    | ListDecommissioningOsds2 -> RangeQueryArgs.from_buffer Llio.int32_from
-    | ListDecommissioningOsds3 -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListDecommissioningOsds  -> RangeQueryArgs.from_buffer x_int64_from
+    | ListDecommissioningOsds2 -> RangeQueryArgs.from_buffer x_int64_from
+    | ListDecommissioningOsds3 -> RangeQueryArgs.from_buffer x_int64_from
     | ListOsdNamespaces ->
       Llio.pair_from
-        Llio.int32_from
-        (RangeQueryArgs.from_buffer Llio.int32_from)
+        x_int64_from
+        (RangeQueryArgs.from_buffer x_int64_from)
     | Statistics -> Llio.bool_from
     | CheckLease -> Llio.string_from
     | GetParticipants -> Llio.string_from
     | GetProgress -> Llio.string_from
     | GetProgressForPrefix -> Llio.string_from
     | GetMaintenanceConfig -> Llio.unit_from
-    | ListPurgingOsds -> RangeQueryArgs.from_buffer Llio.int32_from
+    | ListPurgingOsds -> RangeQueryArgs.from_buffer x_int64_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
     | ListAvailableOsds -> Llio.unit_to
-    | ListOsdsByOsdId   -> RangeQueryArgs.to_buffer Llio.int32_to
-    | ListOsdsByOsdId2  -> RangeQueryArgs.to_buffer Llio.int32_to
-    | ListOsdsByOsdId3  -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListOsdsByOsdId   -> RangeQueryArgs.to_buffer x_int64_to
+    | ListOsdsByOsdId2  -> RangeQueryArgs.to_buffer x_int64_to
+    | ListOsdsByOsdId3  -> RangeQueryArgs.to_buffer x_int64_to
     | ListOsdsByLongId  -> RangeQueryArgs.to_buffer Llio.string_to
     | ListOsdsByLongId2 -> RangeQueryArgs.to_buffer Llio.string_to
     | ListOsdsByLongId3 -> RangeQueryArgs.to_buffer Llio.string_to
     | ListNamespaces -> RangeQueryArgs.to_buffer Llio.string_to
     | ListNamespaceOsds ->
       Llio.pair_to
-        Llio.int32_to
-        (RangeQueryArgs.to_buffer Llio.int32_to)
+        x_int64_to
+        (RangeQueryArgs.to_buffer x_int64_to)
     | GetNextMsgs t -> Msg_log.dest_to_buffer t
     | GetWork -> GetWorkParams.to_buffer
     | GetAlbaId -> Llio.unit_to
     | ListPresets -> RangeQueryArgs.to_buffer Llio.string_to
     | GetClientConfig -> Llio.unit_to
-    | ListNamespacesById -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListNamespacesById -> RangeQueryArgs.to_buffer x_int64_to
     | GetVersion -> Llio.unit_to
     | CheckClaimOsd -> Llio.string_to
-    | ListDecommissioningOsds  -> RangeQueryArgs.to_buffer Llio.int32_to
-    | ListDecommissioningOsds2 -> RangeQueryArgs.to_buffer Llio.int32_to
-    | ListDecommissioningOsds3 -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListDecommissioningOsds  -> RangeQueryArgs.to_buffer x_int64_to
+    | ListDecommissioningOsds2 -> RangeQueryArgs.to_buffer x_int64_to
+    | ListDecommissioningOsds3 -> RangeQueryArgs.to_buffer x_int64_to
     | ListOsdNamespaces ->
       Llio.pair_to
-        Llio.int32_to
-        (RangeQueryArgs.to_buffer Llio.int32_to)
+        x_int64_to
+        (RangeQueryArgs.to_buffer x_int64_to)
     | Statistics -> Llio.bool_to
     | CheckLease -> Llio.string_to
     | GetParticipants -> Llio.string_to
     | GetProgress -> Llio.string_to
     | GetProgressForPrefix -> Llio.string_to
     | GetMaintenanceConfig -> Llio.unit_to
-    | ListPurgingOsds -> RangeQueryArgs.to_buffer Llio.int32_to
+    | ListPurgingOsds -> RangeQueryArgs.to_buffer x_int64_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -1028,17 +1031,17 @@ module Protocol = struct
     | ListOsdsByOsdId ->
       counted_list_more_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            OsdInfo.from_buffer)
     | ListOsdsByOsdId2 ->
       counted_list_more_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            OsdInfo.from_buffer)
     | ListOsdsByOsdId3 ->
       counted_list_more_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            OsdInfo.from_buffer)
     | ListOsdsByLongId ->
        counted_list_more_from Osd.from_buffer_with_claim_info
@@ -1052,16 +1055,16 @@ module Protocol = struct
     | ListNamespaceOsds ->
       counted_list_more_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            Osd.NamespaceLink.from_buffer)
     | GetNextMsgs t ->
       counted_list_more_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            (Msg_log.msg_from_buffer t))
     | GetWork ->
       counted_list_more_from
-        (Llio.pair_from Llio.int32_from Work.from_buffer)
+        (Llio.pair_from x_int64_from Work.from_buffer)
     | GetAlbaId -> Llio.string_from
     | ListPresets ->
       counted_list_more_from
@@ -1075,7 +1078,7 @@ module Protocol = struct
     | ListNamespacesById ->
        counted_list_more_from
          (Llio.tuple3_from
-            Llio.int32_be_from
+            x_int64_be_from
             Llio.string_from
             Namespace.from_buffer
          )
@@ -1089,19 +1092,19 @@ module Protocol = struct
     | ListDecommissioningOsds ->
       counted_list_more_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            OsdInfo.from_buffer)
     | ListDecommissioningOsds2 ->
        counted_list_more_from
          (Llio.pair_from
-            Llio.int32_from
+            x_int64_from
             OsdInfo.from_buffer)
     | ListDecommissioningOsds3 ->
        counted_list_more_from
          (Llio.pair_from
-            Llio.int32_from
+            x_int64_from
             OsdInfo.from_buffer)
-    | ListOsdNamespaces -> counted_list_more_from Llio.int32_from
+    | ListOsdNamespaces -> counted_list_more_from x_int64_from
     | Statistics     -> Generic.from_buffer
     | CheckLease -> Llio.int_from
     | GetParticipants ->
@@ -1116,7 +1119,7 @@ module Protocol = struct
             Llio.int_from
             Progress.from_buffer)
     | GetMaintenanceConfig -> Maintenance_config.from_buffer
-    | ListPurgingOsds -> counted_list_more_from Llio.int32_from
+    | ListPurgingOsds -> counted_list_more_from x_int64_from
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -1130,17 +1133,17 @@ module Protocol = struct
     | ListOsdsByOsdId ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (OsdInfo.to_buffer ~version:1))
     | ListOsdsByOsdId2 ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (OsdInfo.to_buffer ~version:2))
     | ListOsdsByOsdId3 ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (OsdInfo.to_buffer ~version:3))
     | ListOsdsByLongId ->
        counted_list_more_to (Osd.to_buffer_with_claim_info ~version:1)
@@ -1154,16 +1157,16 @@ module Protocol = struct
     | ListNamespaceOsds ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            Osd.NamespaceLink.to_buffer)
     | GetNextMsgs t ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (Msg_log.msg_to_buffer t))
     | GetWork ->
       counted_list_more_to
-        (Llio.pair_to Llio.int32_to Work.to_buffer)
+        (Llio.pair_to x_int64_to Work.to_buffer)
     | GetAlbaId -> Llio.string_to
     | ListPresets ->
       counted_list_more_to
@@ -1177,7 +1180,7 @@ module Protocol = struct
     | ListNamespacesById ->
        counted_list_more_to
          (Llio.tuple3_to
-            Llio.int32_be_to
+            x_int64_be_to
             Llio.string_to
             Namespace.to_buffer
          )
@@ -1191,20 +1194,20 @@ module Protocol = struct
     | ListDecommissioningOsds ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (OsdInfo.to_buffer ~version:1))
     | ListDecommissioningOsds2 ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (OsdInfo.to_buffer ~version:2))
     | ListDecommissioningOsds3 ->
       counted_list_more_to
         (Llio.pair_to
-           Llio.int32_to
+           x_int64_to
            (OsdInfo.to_buffer ~version:3))
     | ListOsdNamespaces ->
-       counted_list_more_to Llio.int32_to
+       counted_list_more_to x_int64_to
     | Statistics -> Generic.to_buffer
     | CheckLease -> Llio.int_to
     | GetParticipants ->
@@ -1219,7 +1222,7 @@ module Protocol = struct
            Llio.int_to
            Progress.to_buffer)
     | GetMaintenanceConfig -> Maintenance_config.to_buffer
-    | ListPurgingOsds -> counted_list_more_to Llio.int32_to
+    | ListPurgingOsds -> counted_list_more_to x_int64_to
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -1257,17 +1260,17 @@ module Protocol = struct
       Llio.pair_from
         Llio.string_from
         Llio.string_from
-    | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
-    | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) Llio.int32_from
+    | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
+    | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | AddWork -> Llio.counted_list_from Work.from_buffer
-    | MarkWorkCompleted -> Llio.int32_from
+    | MarkWorkCompleted -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
     | DeletePreset -> Llio.string_from
     | SetDefaultPreset -> Llio.string_from
     | AddOsdsToPreset ->
       Llio.pair_from
         Llio.string_from
-        (Llio.counted_list_from Llio.int32_from)
+        (Llio.counted_list_from x_int64_from)
     | UpdatePreset ->
       Llio.pair_from
         Llio.string_from
@@ -1291,6 +1294,9 @@ module Protocol = struct
     | UpdateProgress -> Llio.pair_from Llio.string_from Progress.Update.from_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.from_buffer
     | PurgeOsd -> Llio.string_from
+    | BumpNextWorkItemId -> x_int64_from
+    | BumpNextOsdId -> x_int64_from
+    | BumpNextNamespaceId -> x_int64_from
 
   let write_update_i : type i o. (i, o) update -> i Llio.serializer = function
     | AddNsmHost -> Llio.pair_to Llio.string_to Nsm_host.to_buffer
@@ -1319,17 +1325,17 @@ module Protocol = struct
       Llio.pair_to
         Llio.string_to
         Llio.string_to
-    | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
-    | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) Llio.int32_to
+    | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
+    | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
-    | MarkWorkCompleted -> Llio.int32_to
+    | MarkWorkCompleted -> x_int64_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
     | DeletePreset -> Llio.string_to
     | SetDefaultPreset -> Llio.string_to
     | AddOsdsToPreset ->
       Llio.pair_to
         Llio.string_to
-        (Llio.counted_list_to Llio.int32_to)
+        (Llio.counted_list_to x_int64_to)
     | UpdatePreset ->
       Llio.pair_to
         Llio.string_to
@@ -1353,6 +1359,9 @@ module Protocol = struct
     | UpdateProgress -> Llio.pair_to Llio.string_to Progress.Update.to_buffer
     | UpdateMaintenanceConfig -> Maintenance_config.Update.to_buffer
     | PurgeOsd -> Llio.string_to
+    | BumpNextWorkItemId -> x_int64_to
+    | BumpNextOsdId -> x_int64_to
+    | BumpNextNamespaceId -> x_int64_to
 
 
   let read_update_o : type i o. (i, o) update -> o Llio.deserializer = function
@@ -1365,7 +1374,7 @@ module Protocol = struct
     | UpdateOsds      -> Llio.unit_from
     | UpdateOsds2      -> Llio.unit_from
     | DecommissionOsd -> Llio.unit_from
-    | MarkOsdClaimed  -> Llio.int32_from
+    | MarkOsdClaimed  -> x_int64_from
     | MarkOsdClaimedByOther -> Llio.unit_from
     | CreateNamespace ->    Namespace.from_buffer
     | DeleteNamespace ->    Llio.string_from
@@ -1386,6 +1395,9 @@ module Protocol = struct
     | UpdateProgress     -> Llio.unit_from
     | UpdateMaintenanceConfig -> Maintenance_config.from_buffer
     | PurgeOsd                -> Llio.unit_from
+    | BumpNextWorkItemId -> Llio.unit_from
+    | BumpNextOsdId -> Llio.unit_from
+    | BumpNextNamespaceId -> Llio.unit_from
 
   let write_update_o : type i o. (i, o) update -> o Llio.serializer = function
     | AddNsmHost      -> Llio.unit_to
@@ -1395,9 +1407,9 @@ module Protocol = struct
     | AddOsd3         -> Llio.unit_to
     | UpdateOsd       -> Llio.unit_to
     | UpdateOsds      -> Llio.unit_to
-    | UpdateOsds2      -> Llio.unit_to
+    | UpdateOsds2     -> Llio.unit_to
     | DecommissionOsd -> Llio.unit_to
-    | MarkOsdClaimed -> Llio.int32_to
+    | MarkOsdClaimed  -> x_int64_to
     | MarkOsdClaimedByOther -> Llio.unit_to
     | CreateNamespace ->    Namespace.to_buffer
     | DeleteNamespace ->    Llio.string_to
@@ -1418,6 +1430,9 @@ module Protocol = struct
     | UpdateProgress     -> Llio.unit_to
     | UpdateMaintenanceConfig -> Maintenance_config.to_buffer
     | PurgeOsd                -> Llio.unit_to
+    | BumpNextWorkItemId -> Llio.unit_to
+    | BumpNextOsdId -> Llio.unit_to
+    | BumpNextNamespaceId -> Llio.unit_to
 
 
   type request =
@@ -1504,6 +1519,10 @@ module Protocol = struct
                       Wrap_u AddOsd3, 83l, "AddOsd3";
 
                       Wrap_u UpdateOsds2, 84l, "UpdateOsds2";
+
+                      Wrap_u BumpNextWorkItemId, 85l, "BumpNextWorkItemId";
+                      Wrap_u BumpNextOsdId, 86l, "BumpNextOsdId";
+                      Wrap_u BumpNextNamespaceId, 87l, "BumpNextNamespaceId";
                     ]
 
 

@@ -25,7 +25,7 @@ open Cli_common
 let osd_id =
   let doc = "$(docv) of the osd to connect with" in
   Arg.(required
-       & opt (some int32) None
+       & opt (some int64) None
        & info ["osd-id"] ~docv:"OSD_ID" ~doc)
 
 let long_id =
@@ -261,7 +261,7 @@ let alba_claim_osd alba_cfg_file tls_config long_id to_json verbose =
       tls_config
       (fun alba_client ->
          alba_client # claim_osd ~long_id) >>= fun osd_id ->
-    Lwt_log.debug_f "Claimed %S with id=%li" long_id osd_id
+    Lwt_log.debug_f "Claimed %S with id=%Li" long_id osd_id
   in
   lwt_cmd_line_unit ~to_json ~verbose t
 

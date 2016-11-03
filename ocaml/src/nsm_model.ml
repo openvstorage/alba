@@ -418,7 +418,7 @@ module OsdInfo = struct
 
 end
 
-type osd_id = int32 [@@deriving show, yojson]
+type osd_id = int64 [@@deriving show, yojson]
 
 module GcEpochs = struct
   type gc_epoch = Int64.t [@@deriving show]
@@ -660,8 +660,7 @@ module Manifest = struct
     Llio.int64_to buf t.size;
     Layout.output
       (Llio.pair_to
-         (Llio.option_to
-            Llio.int32_to)
+         (Llio.option_to x_int64_to)
          Llio.int_to)
       buf t.fragment_locations;
     Layout.output Checksum.output buf t.fragment_checksums;
@@ -689,8 +688,7 @@ module Manifest = struct
     let fragment_locations =
       Layout.input
         (Llio.pair_from
-           (Llio.option_from
-              Llio.int32_from)
+           (Llio.option_from x_int64_from)
            Llio.int_from)
         buf in
     let fragment_checksums = Layout.input Checksum.input buf in
@@ -835,7 +833,7 @@ module NamespaceStats = struct
     Llio.int64_to buf storage_size;
     Llio.counted_list_to
       (Llio.pair_to
-         Llio.int32_to
+         x_int64_to
          Llio.int64_to)
       buf
       storage_size_per_osd;
@@ -854,7 +852,7 @@ module NamespaceStats = struct
     let storage_size_per_osd =
       Llio.counted_list_from
         (Llio.pair_from
-           Llio.int32_from
+           x_int64_from
            Llio.int64_from)
         buf in
     let bucket_count =
@@ -956,12 +954,12 @@ module Keys = struct
 
   module Device = struct
 
-    let s device_id = serialize Llio.int32_be_to device_id
+    let s device_id = serialize x_int64_be_to device_id
 
     let extract_osd_id_from ~prefix_len =
       deserialize
         ~offset:prefix_len
-        Llio.int32_be_from
+        x_int64_be_from
 
     let info ~osd_id = "osds/info/" ^ (s osd_id)
 
@@ -973,24 +971,35 @@ module Keys = struct
       extract_osd_id_from ~prefix_len
 
     (* listing of all objects that have fragments on this device, to be used during rebuild/repair *)
+    let objects_prefix_prefix = "osds/objects/"
     let objects_prefix device_id =
-      Printf.sprintf "osds/objects/%s/" (s device_id)
+      Printf.sprintf "%s%s/" objects_prefix_prefix (s device_id)
     let objects device_id object_id =
       (objects_prefix device_id) ^ object_id
     let objects_next_prefix device_id =
       next_prefix (objects_prefix device_id)
-    let objects_extract_object_id =
-      let prefix_len = String.length (objects_prefix 0l) in
-      fun key -> Str.string_after key prefix_len
+    let objects_extract_object_id key =
+      let osd_id =
+        extract_osd_id_from
+          ~prefix_len:(String.length objects_prefix_prefix)
+          key
+      in
+      let prefix_len = String.length (objects_prefix osd_id) in
+      Str.string_after key prefix_len
 
     (* set of keys still to be deleted from a device *)
     let keys_to_be_deleted device_id =
       Printf.sprintf "osds/deletes/%s/" (s device_id)
     let keys_to_be_deleted_next_prefix device_id =
       next_prefix (Printf.sprintf "osds/deletes/%s" (s device_id))
-    let keys_to_be_deleted_extract_key =
-      let prefix_len = String.length (keys_to_be_deleted 0l) in
-      fun key -> Str.string_after key prefix_len
+    let keys_to_be_deleted_extract_key key =
+      let osd_id =
+        extract_osd_id_from
+          ~prefix_len:(String.length objects_prefix_prefix)
+          key
+      in
+      let prefix_len = String.length (objects_prefix osd_id) in
+      Str.string_after key prefix_len
 
     let size_prefix = "osds/size/"
     let size osd_id = Printf.sprintf "%s%s" size_prefix (s osd_id)
@@ -1002,7 +1011,7 @@ module Keys = struct
 end
 
 module type Constants = sig
-  val namespace_id : int32
+  val namespace_id : int64
 end
 
 module Err = struct
@@ -1045,7 +1054,7 @@ let check_fragment_osd_spread manifest =
               | Some osd_id, _ ->
                 if DeviceSet.mem osd_id acc
                 then Err.(failwith
-                            ~payload:([%show : (int32 option * int) list] locations)
+                            ~payload:([%show : (int64 option * int) list] locations)
                             Invalid_fragment_spread)
                 else DeviceSet.add osd_id acc)
            DeviceSet.empty
@@ -1327,7 +1336,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
            let active_osd_key = Keys.Device.active_osds ~osd_id in
            let osd_info_so = KV.get kv active_osd_key in
            if osd_info_so = None
-           then Err.(failwith ~payload:(Int32.to_string osd_id) Inactive_osd);
+           then Err.(failwith ~payload:(Int64.to_string osd_id) Inactive_osd);
 
            Update'.Assert (active_osd_key, osd_info_so) ::
            Update'.set (Keys.Device.objects osd_id object_id) "" ::

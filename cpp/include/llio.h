@@ -185,6 +185,7 @@ void to(message_builder &mb, const std::vector<T> &ts) noexcept {
 }
 
 void to_be(message_builder &mb, const uint32_t &i) noexcept;
+void to_be(message_builder &mb, const uint64_t &i) noexcept;
 
 template <typename T> void from(message &m, std::vector<T> &ts) noexcept {
 
