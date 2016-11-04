@@ -27,17 +27,17 @@ open Nsm_model
 class virtual cache = object(self)
 
     (* this method should _never_ throw! *)
-    method virtual add : int32 -> string -> Bigstring_slice.t -> (Manifest.t * int32 * string) list Lwt.t
+    method virtual add : int64 -> string -> Bigstring_slice.t -> (Manifest.t * int64 * string) list Lwt.t
 
     method add' bid oid blob =
       self # add bid oid blob >>= fun _ -> Lwt.return_unit
 
-    method virtual lookup : int32 -> string -> (Lwt_bytes.t * (Manifest.t * int32 * string) list) option Lwt.t
-    method virtual lookup2 : int32 -> string
+    method virtual lookup : int64 -> string -> (Lwt_bytes.t * (Manifest.t * int64 * string) list) option Lwt.t
+    method virtual lookup2 : int64 -> string
                              -> (int * int * Lwt_bytes.t * int) list
-                             -> (bool * (Manifest.t * int32 * string) list) Lwt.t
+                             -> (bool * (Manifest.t * int64 * string) list) Lwt.t
 
-    method virtual drop  : int32 -> global : bool -> unit Lwt.t
+    method virtual drop  : int64 -> global : bool -> unit Lwt.t
     method virtual close : unit -> unit Lwt.t
 
     method virtual osd_infos : unit ->
@@ -132,7 +132,7 @@ let rm_tree dir =
          Lwt.fail_with (Printf.sprintf "rm_tree : %s" dir)
 
 
-type boid = int32 * string [@@deriving show]
+type boid = int64 * string [@@deriving show]
 
 
 class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
@@ -150,9 +150,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
   and section = Lwt_log.Section.make "fragment_cache"
   in
 
-  let path_of_fsid (bid:int32) fsid =
+  let path_of_fsid (bid:int64) fsid =
       let b = Buffer.create 100 in
-      Buffer.add_string b (Printf.sprintf "%08lx/" bid);
+      Buffer.add_string b (Printf.sprintf "%08Lx/" bid);
       Bytes.iteri
         (fun i c ->
          let h = Printf.sprintf "%02x" (int_of_char c) in
@@ -168,7 +168,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
     let bid, oid = boid in
     let b = Buffer.create 120 in
     Buffer.add_string b _BLOBS;
-    Llio.int32_to b bid;
+    x_int64_to b bid;
     Buffer.add_string b oid;
     Buffer.add_string b attribute_name;
     Buffer.contents b
@@ -180,14 +180,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
   let blob_size_key_of boid   = _blob_key boid _SIZE   in
   let blob_access_key_of boid = _blob_key boid _ACCESS in
   let blob_too_far_key_of bid =
-    if bid = Int32.max_int
+    if bid = Int64.max_int
     then _BLOBS'
-    else blob_start_key_of (Int32.succ bid)
+    else blob_start_key_of (Int64.succ bid)
   in
   let boid_of_fsid_key key =
     let start = String.length _BLOBS in
     let b = Llio.make_buffer key start in
-    let bid = Llio.int32_from b in
+    let bid = x_int64_from b in
     let start4 = start + 4 in
     let oid =
       String.sub
@@ -209,13 +209,13 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
   in
   let boid_of vboid =
     let b   = Llio.make_buffer vboid 0 in
-    let bid = Llio.int32_from b in
+    let bid = x_int64_from b in
     let oid = String.sub vboid 4 (String.length vboid -4) in
     (bid, oid)
   in
   let boid_value_of (bid,oid) =
     let b = Buffer.create (4 + Bytes.length oid) in
-    let () = Llio.int32_to b bid in
+    let () = x_int64_to b bid in
     let () = Buffer.add_string b oid in
     Buffer.contents b
   in
@@ -361,7 +361,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
             Lwt.return ())
         )
 
-    method _lookup : type a. int32 ->
+    method _lookup : type a. int64 ->
                           string ->
                           (Lwt_unix.file_descr -> len : int -> a Lwt.t) ->
                           a option Lwt.t =
@@ -372,7 +372,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       let inner () =
         let boid = bid,oid in
         let blob_fsid_key = blob_fsid_key_of boid in
-        Lwt_log.debug_f "_lookup %lx oid:%S" bid oid >>= fun () ->
+        Lwt_log.debug_f "_lookup %Lx oid:%S" bid oid >>= fun () ->
         match KV.get db blob_fsid_key with
         | None     -> Lwt.return None
         | Some ts ->
@@ -413,7 +413,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                      Rocks.write db wb
                     );
                 end;
-                Lwt_log.debug_f "lookup %lx oid:%S was a hit!" bid oid
+                Lwt_log.debug_f "lookup %Lx oid:%S was a hit!" bid oid
                 >>= fun () ->
                 Lwt.return (Some buffer)
                )
@@ -424,7 +424,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                )
            end
       in
-      Lwt_log.debug_f "lookup %lx oid:%S" bid oid >>= fun () ->
+      Lwt_log.debug_f "lookup %Lx oid:%S" bid oid >>= fun () ->
       Lwt.catch
         (fun () ->
          Lwt_mutex.with_lock
@@ -1010,9 +1010,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
 
     method add bid oid blob =
 
-      Lwt_log.debug_f "add %lx %S" bid oid >>= fun () ->
+      Lwt_log.debug_f "add %Lx %S" bid oid >>= fun () ->
       let _add () =
-        Lwt_log.debug_f "_add %lx %S" bid oid >>= fun () ->
+        Lwt_log.debug_f "_add %Lx %S" bid oid >>= fun () ->
         let boid = (bid, oid) in
 
         let fsid = self # create_fs_id () in
@@ -1063,16 +1063,16 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
       in
       with_timing_lwt
         (fun () ->
-         Lwt_log.debug_f ~section "add %lx %S" bid oid >>= fun () ->
+         Lwt_log.debug_f ~section "add %Lx %S" bid oid >>= fun () ->
          Lwt_mutex.with_lock _mutex _add
         )
       >>= fun (t, ()) ->
-      Lwt_log.debug_f "add %lx %S took:%f" bid oid t
+      Lwt_log.debug_f "add %Lx %S took:%f" bid oid t
       >>= fun () ->
       Lwt.return []
 
     method drop bid ~global =
-      Lwt_log.debug_f ~section "blob_cache # drop %li" bid >>= fun () ->
+      Lwt_log.debug_f ~section "blob_cache # drop %Li" bid >>= fun () ->
       Hashtbl.replace _dropping bid ();
       Lwt.return ()
 

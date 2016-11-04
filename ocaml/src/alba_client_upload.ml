@@ -40,7 +40,7 @@ let upload_packed_fragment_data
   =
   let open Osd_keys in
   Lwt_log.debug_f
-    "upload_packed_fragment_data (%i,%i) to osd:%li"
+    "upload_packed_fragment_data (%i,%i) to osd:%Li"
     chunk_id fragment_id osd_id
   >>= fun () ->
   let set_data =
@@ -70,7 +70,7 @@ let upload_packed_fragment_data
       "" Checksum.NoChecksum true
   in
   let do_upload () =
-    let msg = Printf.sprintf "do_upload ~osd_id:%li" osd_id in
+    let msg = Printf.sprintf "do_upload ~osd_id:%Li" osd_id in
     Lwt_extra2.with_timeout ~msg (osd_access # osd_timeout)
       (fun () ->
        osd_access # with_osd
@@ -204,7 +204,7 @@ let upload_chunk
 
           let res = osd_id_o, checksum in
           Lwt_log.debug_f "fragment_uploaded (%i,%i) to %s"
-                          chunk_id fragment_id ([%show : int32 option] osd_id_o)
+                          chunk_id fragment_id ([%show : int64 option] osd_id_o)
           >>= fun ()->
           Lwt.return (t_fragment, res)
         )
@@ -755,7 +755,7 @@ let store_manifest
             Lwt_log.debug_f
               "epilogue:successfully updated object:%S with updates:%s"
               object_name
-              ([%show : (int * int * int32 option) list] updates)
+              ([%show : (int * int * int64 option) list] updates)
           end
       end)
 

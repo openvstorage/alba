@@ -116,7 +116,7 @@ class client
         with_osd_from_pool ~osd_id f
 
     method with_nsm_client' :
-      'a. namespace_id : int32 ->
+      'a. namespace_id : int64 ->
       (Nsm_client.client -> 'a Lwt.t) -> 'a Lwt.t =
       fun ~namespace_id f ->
         nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->

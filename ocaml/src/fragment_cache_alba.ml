@@ -94,7 +94,7 @@ class alba_cache
                serialize
                  (Llio.tuple3_to
                     Llio.int8_to
-                    Llio.int32_to
+                    x_int64_to
                     Llio.string_to)
                  (1, namespace_id, name))
               items
@@ -169,7 +169,7 @@ class alba_cache
     match bucket_strategy with
     | OneOnOne { prefix;
                  preset; } ->
-       let namespace = Printf.sprintf "%s_%09li" prefix bid in
+       let namespace = Printf.sprintf "%s_%09Li" prefix bid in
        Lwt.catch
          (fun () -> f namespace)
          (fun exn ->

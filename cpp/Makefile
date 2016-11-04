@@ -29,7 +29,7 @@ LIBS_exec = -L/usr/local/lib \
 	-L./lib -lalba -lrdmacm -lpthread \
 	-lsnappy -lgobjfs_client -lxio
 
-_OBJECTS = stuff.o manifest.o alba_logger.o \
+_OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
            proxy_sequences.o \
            io.o proxy_client.o generic_proxy_client.o \

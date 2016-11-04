@@ -81,13 +81,13 @@ let list_device_objects_cmd =
   let osd_id default =
     let doc = "osd's short id" in
     Arg.(value
-         & opt int32 default
+         & opt int64 default
          & info ["osd_id"] ~docv:"OSD_ID" ~doc)
   in
   let namespace_id default =
     let doc = "namespace id" in
     Arg.(value
-         & opt int32 default
+         & opt int64 default
          & info ["namespace_id"] ~docv:"NAMESPACE_ID" ~doc)
   in
   let make_opt_bool name = Arg.(value & opt bool false & info [name]) in
@@ -96,8 +96,8 @@ let list_device_objects_cmd =
   Term.(pure list_device_objects
         $ alba_cfg_url
         $ tls_config
-        $ osd_id 0l
-        $ namespace_id 0l
+        $ osd_id 0L
+        $ namespace_id 0L
         $ first $ finc
         $ max
         $ reverse
@@ -141,13 +141,13 @@ let list_osd_keys_to_be_deleted_cmd =
   let osd_id default =
     let doc = "osd's short id" in
     Arg.(value
-         & opt int32 default
+         & opt int64 default
          & info ["osd_id"] ~docv:"OSD_ID" ~doc)
   in
   let namespace_id default =
     let doc = "namespace id" in
     Arg.(value
-         & opt int32 default
+         & opt int64 default
          & info ["namespace_id"] ~docv:"NAMESPACE_ID" ~doc)
   in
   let make_opt_bool name = Arg.(value & opt bool false & info [name]) in
@@ -155,8 +155,8 @@ let list_osd_keys_to_be_deleted_cmd =
   Term.(pure list_osd_keys_to_be_deleted
         $ alba_cfg_url
         $ tls_config
-        $ osd_id 0l
-        $ namespace_id 0l
+        $ osd_id 0L
+        $ namespace_id 0L
         $ first $ finc
         $ max
         $ reverse

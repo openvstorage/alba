@@ -58,7 +58,7 @@ module AlbaInstance = struct
     Llio.char_to buf AlbaInstanceRegistration.instance_content_prefix;
     Llio.int32_be_to buf 0l;
     Llio.char_to buf 'n';
-    Llio.int32_be_to buf namespace_id
+    x_int64_be_to buf namespace_id
 
   let to_global_key namespace_id (key, offset, length) =
     serialize
@@ -76,7 +76,7 @@ module AlbaInstance = struct
     assert (_0l = 0l);
     let n = Llio.char_from buf in
     assert (n = 'n');
-    let namespace_id' = Llio.int32_be_from buf in
+    let namespace_id' = x_int64_be_from buf in
     assert (namespace_id' = namespace_id);
 
     (* this returns the amount of bytes processed by the verify *)

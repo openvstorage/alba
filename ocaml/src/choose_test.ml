@@ -34,7 +34,7 @@ let test () =
       if i = pop
       then ()
       else
-        let device_id = Int32.of_int i in
+        let device_id = Int64.of_int i in
         let node_id = string_of_int (i lsr 2) in
         let kind = Nsm_model.OsdInfo.Asd (
                        (["127.0.0.1"], 8000 +i, false, false),
@@ -65,17 +65,17 @@ let test () =
       let r = Choose.choose_devices 12 info in
       let all =
         List.fold_left
-          (fun acc (did,_) -> Int32Set.add did acc)
-          Int32Set.empty r
+          (fun acc (did,_) -> Int64Set.add did acc)
+          Int64Set.empty r
       in
       let () = OUnit.assert_equal
                  ~msg:"they all need to be different"
-                 (Int32Set.cardinal all) 12
+                 (Int64Set.cardinal all) 12
       in
       let () =
-        Int32Set.iter
-          (fun i32 ->
-           let i = Int32.to_int i32 in
+        Int64Set.iter
+          (fun i64 ->
+           let i = Int64.to_int i64 in
            let c0 = distribution.(i) in
            let () = distribution.(i) <- c0 + 1 in
            ()
@@ -95,7 +95,7 @@ let choose_bug () =
     if i = pop
     then ()
     else
-      let device_id = Int32.of_int i in
+      let device_id = Int64.of_int i in
       let node_id = "my node" in
       let conn_info = ["127.0.0.1"], 8000 + i, false, false in
 
@@ -131,7 +131,7 @@ let choose_forced () =
       if i = pop
       then ()
       else
-        let osd_id = Int32.of_int i in
+        let osd_id = Int64.of_int i in
         let node_id = string_of_int (i lsr 2) in
         let conn_info = (["127.0.0.1"], 8000 +i, false, false) in
         let kind = OsdInfo.Asd (conn_info,
@@ -151,13 +151,13 @@ let choose_forced () =
         fill (i+1)
   in
   let () = fill 0 in
-  let chosen_osd_ids = [0l; 1l; 4l; 5l;] in
+  let chosen_osd_ids = [0L; 1L; 4L; 5L;] in
   let rec test = function
     | 0 -> ()
     | n ->
       let r = Choose.choose_extra_devices 1 info chosen_osd_ids in
       let extra_osd_id, _ = List.hd_exn r in
-      assert (extra_osd_id > 7l);
+      assert (extra_osd_id > 7L);
       test (n - 1)
   in
   test 10_000
@@ -329,8 +329,8 @@ let test_actually_rebalances () =
 let setup_explicit_info info_list =
   let open Nsm_model in
   let make_kind osd_id =
-    let conn_info = ["127.0.0.1"],8000 + (Int32.to_int osd_id), false, false
-    and asd_id = "asd id choose test " ^ (Int32.to_string osd_id)
+    let conn_info = ["127.0.0.1"],8000 + (Int64.to_int osd_id), false, false
+    and asd_id = "asd id choose test " ^ (Int64.to_string osd_id)
     in
     OsdInfo.Asd (conn_info, asd_id)
   in
@@ -357,26 +357,26 @@ let setup_explicit_info info_list =
 let test_choose_extra_bug () =
   let n = 1
   and info_list = [
-  ( 0l, "2000");( 1l, "2001");( 2l, "2001");( 3l, "2000");
-  ( 4l, "2000");( 5l, "2001");( 6l, "2001");( 7l, "2002");
-  ( 8l, "2000");( 9l, "2002");(10l, "2002");(11l, "2002");
+  ( 0L, "2000");( 1L, "2001");( 2L, "2001");( 3L, "2000");
+  ( 4L, "2000");( 5L, "2001");( 6L, "2001");( 7L, "2002");
+  ( 8L, "2000");( 9L, "2002");(10L, "2002");(11L, "2002");
   ]
-  and chosen = [10l; 2l; 0l; 9l; 4l; 6l; 1l]
+  and chosen = [10L; 2L; 0L; 9L; 4L; 6L; 1L]
   in
   let info = setup_explicit_info info_list in
   let r = choose_extra_devices n info chosen in
   let osd_ids = List.map fst r in
-  Printf.printf "osd_ids:%s\n%!" ([%show : int32 list] osd_ids);
+  Printf.printf "osd_ids:%s\n%!" ([%show : int64 list] osd_ids);
   ()
 
 let test_choose_extra_bug2() =
   let n = 1
   and info_list = [
-      (6l, "2001");  (10l, "2002"); ( 3l, "2000"); ( 0l, "2000");
-      ( 1l, "2000"); ( 4l, "2001"); ( 9l, "2002"); (11l, "2002");
-      ( 7l, "2001"); ( 8l, "2002"); ( 2l, "2000"); ( 5l, "2001")
+      ( 6L, "2001"); (10L, "2002"); ( 3L, "2000"); ( 0L, "2000");
+      ( 1L, "2000"); ( 4L, "2001"); ( 9L, "2002"); (11L, "2002");
+      ( 7L, "2001"); ( 8L, "2002"); ( 2L, "2000"); ( 5L, "2001")
   ]
-  and chosen = [3l;7l;9l;0l;4l;1l;5l;8l;] in
+  and chosen = [3L;7L;9L;0L;4L;1L;5L;8L;] in
   let info = setup_explicit_info info_list in
   let r = choose_extra_devices n info chosen in
   let osd_ids = List.map fst r in
@@ -401,7 +401,7 @@ let test_choose_extra_bug2() =
       (fun node_id cnt acc -> (node_id,cnt) :: acc) osds_per_node []
   in
   Printf.printf "chosen_list:%s\n" ([%show : (string * int) list] chosen_list);
-  Printf.printf "osd_ids:%s\n%!" ([%show : int32 list] osd_ids);
+  Printf.printf "osd_ids:%s\n%!" ([%show : int64 list] osd_ids);
   let extra_id,node_id =
     let (extra_id, osd) = List.hd_exn r in
     let node_id = osd.node_id in
@@ -409,7 +409,7 @@ let test_choose_extra_bug2() =
   in
   let count' = (List.assoc node_id chosen_list) + 1 in
   Printf.printf
-    "%li on node:%s => %i osds on that node\n"
+    "%Li on node:%s => %i osds on that node\n"
     extra_id node_id count';
   OUnit.assert_bool "too many osds on node" (count' < 4);
   ()

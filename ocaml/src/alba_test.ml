@@ -182,9 +182,9 @@ let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
     wait_for_work alba_client >>= fun () ->
 
     alba_client # mgr_access # list_decommissioning_osds
-      ~first:0l ~finc:true ~last:None ~max:1 ~reverse:false >>= fun ((cnt, _), _) ->
+      ~first:0L ~finc:true ~last:None ~max:1 ~reverse:false >>= fun ((cnt, _), _) ->
     alba_client # mgr_access # get_work
-      ~first:0l ~finc:true ~last:None ~max:1 ~reverse:false >>= fun ((cnt', _), _) ->
+      ~first:0L ~finc:true ~last:None ~max:1 ~reverse:false >>= fun ((cnt', _), _) ->
     if cnt + cnt' > 0
     then wait_no_more_decommissionings ()
     else Lwt.return ()
@@ -283,7 +283,7 @@ let test_delete_namespace () =
          let namespace = "test_delete_namespace" in
          client # create_namespace ~namespace ~preset_name:None ~nsm_host_id ()
          >>= fun namespace_id ->
-         Lwt_io.printlf "created namespace with id %li" namespace_id >>= fun () ->
+         Lwt_io.printlf "created namespace with id %Li" namespace_id >>= fun () ->
 
          let objs = ["1"; "2"; "a"; "b"] in
          Lwt_list.iter_p
@@ -340,7 +340,7 @@ let test_delete_namespace () =
          in
          let osd_id_o, version_id = List.hd_exn (List.hd_exn locations) in
          let osd_id = Option.get_some osd_id_o in
-         Lwt_io.printlf "using osd %li for assertions" osd_id >>= fun () ->
+         Lwt_io.printlf "using osd %Li for assertions" osd_id >>= fun () ->
          let assert_osd presence fragment =
            client # with_osd ~osd_id
              (fun c ->
@@ -529,7 +529,7 @@ let test_create_namespaces () =
              let namespace = string_of_int n in
              Lwt_log.debug_f "creating namespace %s" namespace >>= fun () ->
              client # create_namespace ~preset_name:None ~namespace ~nsm_host_id () >>= fun namespace_id ->
-             Lwt_log.debug_f "created namespace %s with id %li" namespace namespace_id >>= fun () ->
+             Lwt_log.debug_f "created namespace %s with id %Li" namespace namespace_id >>= fun () ->
 
              let object_name = "bla" in
              let open Nsm_model in
@@ -1082,7 +1082,7 @@ let test_repair_by_policy () =
                       (1,0,1,1);
                     ];
                   (* only adding 1 disk so far... *)
-                  osds = Explicit [ 0l ];
+                  osds = Explicit [ 0L ];
                 }) >>= fun () ->
 
        let namespace = test_name in
@@ -1111,7 +1111,7 @@ let test_repair_by_policy () =
 
        assert ((1,0,1) = get_k_m_x mf);
 
-       let new_osd_ids = [ 4l; 8l; 11l; ] in
+       let new_osd_ids = [ 4L; 8L; 11L; ] in
        alba_client # mgr_access # add_osds_to_preset
          ~preset_name
          ~osd_ids:new_osd_ids >>= fun () ->
@@ -1237,7 +1237,7 @@ let test_missing_corrupted_fragment () =
        >>= fun (hm,r) ->
        let mf' = Option.get_some r in
        let locations' = List.hd_exn mf'.Manifest.fragment_locations in
-       let l2s = [%show : (int32 option * int) list ] in
+       let l2s = [%show : (int64 option * int) list ] in
        Lwt_log.debug_f "locations :%s" (l2s locations ) >>= fun () ->
        Lwt_log.debug_f "locations':%s" (l2s locations') >>= fun () ->
        let (_,version1)  = List.hd_exn locations' in
@@ -1264,7 +1264,7 @@ let test_full_asd () =
     (* all asd's are full *)
      let osd_ids =
        List.map
-         Int32.of_int
+         Int64.of_int
          [0;1;2;3;4;5;6;7;8;9;10;11] in
      let set_full_all full =
        Lwt_list.iter_s
@@ -1291,7 +1291,7 @@ let test_full_asd () =
          (fun () ->
           Lwt_list.iter_s
             (fun osd_id ->
-             Lwt_log.debug_f "delivering messages for %lil" osd_id
+             Lwt_log.debug_f "delivering messages for %Lil" osd_id
              >>= fun () ->
              alba_client # deliver_osd_messages ~osd_id)
             osd_ids
@@ -1317,7 +1317,7 @@ let test_versions () =
      alba_client # mgr_access # get_version >>= fun mgr_version ->
      let nsm = alba_client # nsm_host_access # get ~nsm_host_id in
      nsm # get_version >>= fun nsm_version ->
-     alba_client # with_osd ~osd_id:0l
+     alba_client # with_osd ~osd_id:0L
        (fun osd -> osd # get_version) >>= fun osd_version ->
      let printer (major,minor,patch,hash) =
        Printf.sprintf "(%i, %i, %i, %S)" major minor patch hash
@@ -2126,7 +2126,7 @@ let test_retry_download () =
        let open Nsm_model.Manifest in
        let fragment_locations =
          [ List.hd_exn mf.fragment_locations;
-           [ (Some 0l,0); (Some 0l,0); (Some 0l,0); ] ]
+           [ (Some 0L,0); (Some 0L,0); (Some 0L,0); ] ]
        in
        { mf with
          size = Int64.(add mf.size 5L);

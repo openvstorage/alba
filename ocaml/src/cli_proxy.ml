@@ -433,10 +433,10 @@ let proxy_osd_view host port transport verbose =
 
      >>= fun () ->
      Lwt_io.printlf "osd_info, state: %i entries:" ci >>= fun () ->
-     let sorted = List.sort (fun (id0,_,_) (id1,_,_) -> Int32.compare id0 id1) items in
+     let sorted = List.sort (fun (id0,_,_) (id1,_,_) -> Int64.compare id0 id1) items in
      Lwt_list.iter_s
        (fun (osd_id, info,state) ->
-        Lwt_io.printlf "%li:\n\t%s\n\t%s"
+        Lwt_io.printlf "%Li:\n\t%s\n\t%s"
                        osd_id
                        (Nsm_model.OsdInfo.show info)
                        (Osd_state.show state)
@@ -458,7 +458,7 @@ let proxy_osd_info host port transport verbose =
      client # osd_info >>= fun (_, r) ->
      Lwt_io.printl
        ([%show :
-            (Int32.t
+            (Int64.t
              * Nsm_model.OsdInfo.t
              * Capabilities.OsdCapabilities.t)
               list]

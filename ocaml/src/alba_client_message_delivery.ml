@@ -31,10 +31,10 @@ let _get_next_msg_id client prio =
          (Slice.wrap_string DK.next_msg_id)
   >>= fun next_id_so ->
   let next_id = match next_id_so with
-    | None -> 0l
+    | None -> 0L
     | Some next_id_s ->
        let module L = Llio2.ReadBuffer in
-       L.deserialize' L.int32_from next_id_s
+       L.deserialize' L.x_int64_from next_id_s
   in
   Lwt.return (next_id_so, next_id)
 
@@ -50,7 +50,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
   in
   let do_one msg_id msg =
     Lwt_log.debug_f
-      "Delivering msg %li to %li: %s"
+      "Delivering msg %Li to %Li: %s"
       msg_id
       osd_id
       ([%show : Albamgr_protocol.Protocol.Osd.Message.t] msg) >>= fun () ->
@@ -58,7 +58,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
       ~osd_id
       (fun client ->
        get_next_msg_id () >>= fun (next_id_so, next_id) ->
-       if Int32.(next_id =: msg_id)
+       if Int64.(next_id =: msg_id)
        then begin
            let open Albamgr_protocol.Protocol.Osd.Message in
            begin
@@ -80,7 +80,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
            let bump_msg_id =
              Osd.Update.set_string
                DK.next_msg_id
-               (serialize Llio.int32_to (Int32.succ next_id))
+               (serialize x_int64_to (Int64.succ next_id))
                Checksum.NoChecksum
                true
            in
@@ -106,13 +106,13 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
                   Error.lwt_fail x
              )
          end
-       else if Int32.(next_id =: succ msg_id)
+       else if Int64.(next_id =: succ msg_id)
        then Lwt.return ()
        else
          begin
            let msg =
              Printf.sprintf
-               "Osd msg_id (%li) too far off"
+               "Osd msg_id (%Li) too far off"
                msg_id
            in
            Lwt_log.warning msg >>= fun () ->
@@ -180,7 +180,7 @@ let deliver_all_messages is_master mgr_access nsm_host_access osd_access =
          mgr_access nsm_host_access osd_access
          ~osd_id)
       Std.id
-      Int32.to_string
+      Int64.to_string
       is_master
   in
   Lwt.choose [ deliver_nsm_messages;

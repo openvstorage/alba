@@ -28,9 +28,9 @@ let repair_object_generic
       ~problem_fragments
   =
   let open Nsm_model in
-  Lwt_log.debug_f "_repair_object_generic ~namespace_id:%li ~manifest:%s ~problem_osds:%s ~problem_fragments:%s"
+  Lwt_log.debug_f "_repair_object_generic ~namespace_id:%Li ~manifest:%s ~problem_osds:%s ~problem_fragments:%s"
                   namespace_id (Manifest.show manifest)
-                  ([%show : int32 list] (Int32Set.elements problem_osds))
+                  ([%show : int64 list] (Int64Set.elements problem_osds))
                   ([%show : (int * int) list] problem_fragments)
   >>= fun () ->
 
@@ -154,9 +154,9 @@ let repair_object_generic_and_update_manifest
                       ~gc_epoch ~version_id)
   >>= fun () ->
   Lwt_log.debug_f
-    "updated_manifest ~namespace_id:%li ~object_id:%S ~updated_object_locations:%s ~version_id:%i"
+    "updated_manifest ~namespace_id:%Li ~object_id:%S ~updated_object_locations:%s ~version_id:%i"
     namespace_id object_id
-    ([%show : (int *int * int32) list] updated_object_locations)
+    ([%show : (int *int * int64) list] updated_object_locations)
     version_id
   >>= fun () ->
   Lwt.return ()
@@ -168,7 +168,7 @@ let rewrite_object
   let open Nsm_model in
 
   Lwt_log.debug_f
-    "Rewriting %s in namespace %li"
+    "Rewriting %s in namespace %Li"
     (Manifest.show manifest) namespace_id
   >>= fun () ->
 

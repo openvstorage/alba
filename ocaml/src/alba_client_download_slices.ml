@@ -78,11 +78,11 @@ let try_get_from_fragments
       (fun exn ->
         Lwt_log.debug_f
           ~exn
-          "Exception while downloading fragment namespace_id=%li object_name,id=(%S,%S) chunk,fragment=(%i,%i) location=%s"
+          "Exception while downloading fragment namespace_id=%Li object_name,id=(%S,%S) chunk,fragment=(%i,%i) location=%s"
           namespace_id
           object_name object_id
           chunk_id fragment_id
-          ([%show : int32 option * int] location) >>= fun () ->
+          ([%show : int64 option * int] location) >>= fun () ->
         Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
     >>= fun (t_fragment, fragment_data, mfs') ->
     mfs := List.rev_append mfs' !mfs;
@@ -425,11 +425,11 @@ let _repair_after_read
             ~problem_fragments:(match fragment_id_o with
                                 | Some id -> [ (chunk_id, id); ]
                                 | None -> [])
-            ~problem_osds:Int32Set.empty
+            ~problem_osds:Int64Set.empty
             ~n_chunks:(List.length manifest.Manifest.fragment_locations)
             ~chunk_location:(List.nth_exn fragment_info chunk_id)
             ~with_chunk_data >>= fun updated_locations ->
-          Lwt_log.debug_f "updated_locations=%s" ([%show : (int * int32) list] updated_locations) >>= fun () ->
+          Lwt_log.debug_f "updated_locations=%s" ([%show : (int * int64) list] updated_locations) >>= fun () ->
           Lwt.return (chunk_id, updated_locations))
         to_repair
       >>= fun updated_locations ->

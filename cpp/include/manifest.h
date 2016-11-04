@@ -77,12 +77,12 @@ class NoEncryption : public EncryptInfo {
   virtual void print(std::ostream &os) const { os << "NoEncryption()"; }
 };
 
-typedef std::pair<boost::optional<uint32_t>, uint32_t> fragment_location_t;
+typedef std::pair<boost::optional<osd_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
 
 struct Location {
-  uint32_t namespace_id;
+  namespace_t namespace_id;
   std::string object_id;
   uint32_t chunk_id;
   uint32_t fragment_id;
@@ -114,20 +114,10 @@ struct Manifest {
 };
 
 struct ManifestWithNamespaceId : Manifest {
-  uint32_t namespace_id;
+  namespace_t namespace_id;
   ManifestWithNamespaceId() = default;
   ManifestWithNamespaceId &operator=(const ManifestWithNamespaceId &) = delete;
   ManifestWithNamespaceId(const ManifestWithNamespaceId &) = delete;
-};
-
-struct FCInfo {
-  alba_id_t alba_id;
-  int32_t namespace_id;
-  std::map<int32_t, std::map<int32_t, std::shared_ptr<Manifest>>> info;
-
-  FCInfo() = default;
-  FCInfo &operator=(const FCInfo &) = delete;
-  FCInfo(const FCInfo &) = delete;
 };
 
 void dump_string(std::ostream &, const std::string &);
@@ -140,6 +130,5 @@ std::ostream &operator<<(std::ostream &, const EncryptInfo &);
 std::ostream &operator<<(std::ostream &, const fragment_location_t &);
 std::ostream &operator<<(std::ostream &, const Manifest &);
 std::ostream &operator<<(std::ostream &, const ManifestWithNamespaceId &);
-std::ostream &operator<<(std::ostream &, const FCInfo &);
 }
 }

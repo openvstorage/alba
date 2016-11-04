@@ -149,7 +149,7 @@ let alba_add_osds_to_preset_cmd =
         $ tls_config
         $ preset_name 0
         $ Arg.(value
-               & opt_all int32 []
+               & opt_all int64 []
                & info
                  ["osd-id"]
                  ~docv:"OSD_IDS"

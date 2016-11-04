@@ -1270,7 +1270,7 @@ module Deployment = struct
 
 
 
-  let setup ?redis_lru t =
+  let setup ?redis_lru ?(bump_ids=false) t =
     let cfg = t.cfg in
     let _ = _arakoon_cmd_line ["--version"] in
     let _ = _alba_cmd_line ~ignore_tls:true ["version"] in
@@ -1300,6 +1300,24 @@ module Deployment = struct
 
     let _ = t.abm # wait_for_master () in
     let _ = t.nsm # wait_for_master () in
+
+    _alba_cmd_line
+      [ "dev-bump-next-work-item-id";
+        "--config"; t.abm # config_url |> Url.canonical;
+        Int32.(to_string (sub max_int (Random.int32 1000l))); ];
+
+    if bump_ids
+    then
+      begin
+        _alba_cmd_line
+          [ "dev-bump-next-osd-id";
+            "--config"; t.abm # config_url |> Url.canonical;
+            Int32.(to_string (sub max_int (Random.int32 12l))); ];
+        _alba_cmd_line
+           [ "dev-bump-next-namespace-id";
+             "--config"; t.abm # config_url |> Url.canonical;
+             Int32.(to_string (sub max_int (Random.int32 100l))); ]
+      end;
 
     begin
       match redis_lru with
@@ -1538,10 +1556,11 @@ module Test = struct
     Yojson.Safe.pretty_to_channel oc json;
     close_out oc
 
-  let wrapper f t =
+  let wrapper cmd f t =
     let t = Deployment.make_default () in
     Deployment.kill t;
-    Deployment.setup t;
+    let bump_ids = List.mem cmd [ "asd_start"; "disk_failures"; "stress"; "voldrv_backend"; "voldrv_tests"; ] in
+    Deployment.setup ~bump_ids t;
     let r = f t in
     let () = Deployment.smoke_test t in
     r
@@ -1557,7 +1576,7 @@ module Test = struct
         " < "; file;
       ]
 
-  let setup_aaa ?(the_prefix="my_prefix") ?(the_preset="default") () =
+  let setup_aaa ~bump_ids ?(the_prefix="my_prefix") ?(the_preset="default") () =
     (* alba accelerated alba *)
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
     let cfg_ssd = Config.make ~use_rora:true ~workspace:(workspace ^ "/tmp/alba_ssd") () in
@@ -1567,6 +1586,7 @@ module Test = struct
 
     let key_for_lru_tracking = "key_for_lru_tracking" in
     Deployment.setup
+      ~bump_ids
       ~redis_lru:(6379, key_for_lru_tracking)
       t_ssd;
 
@@ -1581,11 +1601,11 @@ module Test = struct
       })
         ~cfg:cfg_hdd ~base_port:4000 ()
     in
-    Deployment.setup t_hdd;
+    Deployment.setup ~bump_ids t_hdd;
     (cfg_hdd, t_hdd), (cfg_ssd, t_ssd)
 
   let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
-    let (_, t_hdd), (_, t_ssd) = setup_aaa ~the_preset:"preset_rora" () in
+    let (_, t_hdd), (_, t_ssd) = setup_aaa ~bump_ids:true ~the_preset:"preset_rora" () in
     let cfg = t_hdd.Deployment.cfg in
     let host, transport = _get_ip_transport cfg
     and port = "10000"
@@ -2352,7 +2372,7 @@ module Test = struct
   let aaa ?xml ?filter ?dump _t =
     let the_prefix = "my_prefix" in
     let the_preset = "default" in
-    let (cfg_hdd, t_hdd), (cfg_ssd, t_ssd) = setup_aaa ~the_prefix ~the_preset () in
+    let (cfg_hdd, t_hdd), (cfg_ssd, t_ssd) = setup_aaa ~bump_ids:false ~the_prefix ~the_preset () in
 
     let objname = "fdsij" in
     (* uploading is enough to trigger caching *)
@@ -2593,7 +2613,7 @@ let process_cmd_line () =
   in
   if cmd_len = 2
   then
-    let _, test, setup =
+    let cmd, test, setup =
       try
         List.find
           (fun (cmd, _, _) -> Sys.argv.(1) = cmd)
@@ -2606,7 +2626,7 @@ let process_cmd_line () =
     let t = Deployment.make_default () in
     let w =
       if setup
-      then Test.wrapper
+      then Test.wrapper cmd
       else Test.no_wrapper
     in
     let rc = w (test ~xml:true) t in
@@ -2624,4 +2644,4 @@ let () =
 
 let top_level_run test =
   let t = Deployment.make_default () in
-  Test.wrapper test t
+  Test.wrapper "nil" test t

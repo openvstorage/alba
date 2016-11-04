@@ -134,7 +134,7 @@ let test_rebalance_one () =
      let set2s set=
        Printf.sprintf
          "(%i,%s)" (DeviceSet.cardinal set)
-         (DeviceSet.elements set |> [%show : int32 list])
+         (DeviceSet.elements set |> [%show : int64 list])
      in
      Lwt_log.debug_f "object_osds: %s" (set2s object_osds ) >>= fun () ->
      let get_targets () =
@@ -143,7 +143,7 @@ let test_rebalance_one () =
          # with_nsm_client ~namespace
          (fun nsm -> nsm # list_all_active_osds)
        >>= fun (n,osds_l) ->
-       Lwt_log.debug_f "active_osds: %s" ([%show: int32 list] osds_l)
+       Lwt_log.debug_f "active_osds: %s" ([%show: int64 list] osds_l)
        >>= fun () ->
        let namespace_osds = DeviceSet.of_list osds_l in
        let targets = DeviceSet.diff namespace_osds object_osds in
@@ -197,7 +197,7 @@ let test_rebalance_one () =
           Lwt_log.debug_f "diff_to  :%s" (set2s diff_to)   >>= fun () ->
 
           OUnit.assert_equal ~msg:"target_osd should match"
-            ~printer:Int32.to_string
+            ~printer:Int64.to_string
             (DeviceSet.choose diff_to) target_osd;
 
           List.iter
@@ -540,12 +540,12 @@ let test_rebalance_node_spread () =
             then inner tl
             else osd_id
        in
-       inner [ 0l; 1l; 2l; 3l; ]
+       inner [ 0L; 1L; 2L; 3L; ]
      in
      let source_osd =
-       if is_osd_used mf 4l
-       then 4l
-       else 5l
+       if is_osd_used mf 4L
+       then 4L
+       else 5L
      in
      with_maintenance_client
        alba_client
@@ -841,7 +841,7 @@ let test_automatic_repair () =
                         ~first:"" ~finc:true
                         ~last:None ~max:1 ~reverse:false)
        >>= fun ((cnt, _), _) ->
-       Lwt_log.debug_f "found %i objects on osd %li" cnt osd_id >>= fun () ->
+       Lwt_log.debug_f "found %i objects on osd %Li" cnt osd_id >>= fun () ->
        Lwt.return (cnt > 0)
      in
 

@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Prelude
+
 type 'a t = 'a Llio.deserializer * 'a Llio.serializer
 
 let serialize (_, serializer) = Prelude.serialize serializer
@@ -28,6 +30,7 @@ let to_buffer (_, serializer) = serializer
 let unit = Llio.unit_from, Llio.unit_to
 let int = Llio.int_from, Llio.int_to
 let int64 = Llio.int64_from, Llio.int64_to
+let x_int64 = x_int64_from, x_int64_to
 let string = Llio.string_from, Llio.string_to
 let bool = Llio.bool_from, Llio.bool_to
 

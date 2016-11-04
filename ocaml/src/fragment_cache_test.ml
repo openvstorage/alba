@@ -76,7 +76,7 @@ let run_with_alba_fragment_cache test test_name =
 let test_1 () =
   let _inner (cache :Fragment_cache.blob_cache) =
     let blob = Bigstring_slice.create_random 4096 in
-    let bid = 0l and oid = "0000" in
+    let bid = 0L and oid = "0000" in
     cache # add' bid oid blob  (* _add_new_grow *)
     >>= fun () ->
 
@@ -107,10 +107,10 @@ let test_1 () =
 let test_2 () =
   let _inner (cache: Fragment_cache.blob_cache) =
     let blob = Bigstring_slice.create_random 4096 in
-    cache # add' 0l "X" blob >>= fun () -> (* _add_new_grow *)
-    cache # add' 0l "Y" blob >>= fun () -> (* _add_new_full *)
-    cache # add' 0l "Z" blob >>= fun () -> (* _add_new_full *)
-    cache # add' 0l "T" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0L "X" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0L "Y" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0L "Z" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0L "T" blob >>= fun () -> (* _add_new_full *)
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 1L (cache # get_count ()) ;
@@ -125,11 +125,11 @@ let test_3 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
     let blob = Bigstring_slice.create_random blob_size in
-    cache # add' 0l "X" blob >>= fun () -> (* _add_new_grow *)
-    cache # add' 0l "Y" blob >>= fun () -> (* _add_new_grow *)
-    cache # add' 0l "Z" blob >>= fun () -> (* _add_new_grow *)
-    cache # add' 0l "T" blob >>= fun () -> (* _add_new_grow *)
-    cache # add' 0l "A" blob >>= fun () -> (* _add_new_full *)
+    cache # add' 0L "X" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0L "Y" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0L "Z" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0L "T" blob >>= fun () -> (* _add_new_grow *)
+    cache # add' 0L "A" blob >>= fun () -> (* _add_new_full *)
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 4L (cache # get_count ());
@@ -138,7 +138,7 @@ let test_3 () =
       | [] -> Lwt.return ()
       | (k, is_some)::rest ->
          begin
-           cache # lookup 0l k >>= fun r ->
+           cache # lookup 0L k >>= fun r ->
            match r, is_some with
            | None  , false  -> Lwt.return ()
            | Some _, true   -> Lwt.return ()
@@ -169,12 +169,12 @@ let test_4 () =
       then Lwt.return_unit
       else
         let oid = make_oid n in
-        cache # add' 0l oid blob >>= fun () ->
+        cache # add' 0L oid blob >>= fun () ->
         begin
           if n > 100
           then
             let oid' = make_oid (n - 100) in
-            cache # add' 0l oid' blob
+            cache # add' 0L oid' blob
           else
             Lwt.return_unit
         end
@@ -190,8 +190,8 @@ let test_5 () =
   let blob_size = 4096 in
   let _inner (cache: Fragment_cache.blob_cache) =
     let blob = Bigstring_slice.create_random blob_size in
-    let bid0 = 0l
-    and bid1 = 1l
+    let bid0 = 0L
+    and bid1 = 1L
     in
     let rec fill = function
       | [] -> Lwt.return ()
@@ -204,7 +204,7 @@ let test_5 () =
     let printer = Int64.to_string in
     OUnit.assert_equal
       ~printer ~msg:"cache count" 8L (cache # get_count ());
-    cache # drop ~global:true 0l >>= fun () ->
+    cache # drop ~global:true 0L >>= fun () ->
 
     (* evict the first 4 victims (should all come from bid 0) *)
     let rec inner = function
@@ -230,16 +230,16 @@ let test_5 () =
 
 let test_long () =
   let _inner (cache :Fragment_cache.blob_cache) =
-    let bid_to_drop1 = Int32.of_int 21 in
+    let bid_to_drop1 = 21L in
     let blob = Bigstring_slice.of_string "blob" in
     cache # add' bid_to_drop1 "oid" blob >>= fun () ->
     cache # drop ~global:true bid_to_drop1 >>= fun () ->
-    let bid_to_drop2 = Int32.of_int 20 in
+    let bid_to_drop2 = 20L in
     cache # add' bid_to_drop2 "oid1" blob >>= fun () ->
     cache # add' bid_to_drop2 "oid2" blob >>= fun () ->
     cache # drop ~global:true bid_to_drop2 >>= fun () ->
-    cache # drop ~global:true 22l >>= fun () ->
-    cache # drop ~global:true 23l >>= fun () ->
+    cache # drop ~global:true 22L >>= fun () ->
+    cache # drop ~global:true 23L >>= fun () ->
     let make_blob () = Bigstring_slice.create_random (2048 + Random.int 2048) in
     let fill n =
       let rec loop i =
@@ -247,7 +247,7 @@ let test_long () =
         then Lwt.return_unit
         else
           begin
-            let bid = Random.int32 10l in
+            let bid = Random.int64 10L in
             let oid = Random.int 100  |> Printf.sprintf "%04x" in
             Lwt_io.printlf "i:%i" i >>= fun () ->
             let blob = make_blob() in
@@ -266,7 +266,7 @@ let test_long () =
         then Lwt.return (found,missed)
         else
           begin
-            let bid = Random.int32 10l in
+            let bid = Random.int64 10L in
             let oid = Random.int 100 |> Printf.sprintf "%04x" in
             cache # lookup bid oid
             >>= function
@@ -284,7 +284,7 @@ let test_long () =
     Lwt_log.debug_f "fill loop took: %3f" d >>= fun () ->
     fetch 1000 >>= fun (found, missed) ->
     Lwt_io.printlf "done: found:%i missed:%i" found missed >>= fun () ->
-    cache # drop ~global:true 0l >>= fun () ->
+    cache # drop ~global:true 0L >>= fun () ->
     Lwt.return ()
   in
   run_with_local_fragment_cache 20_000L _inner "test_long"
@@ -297,7 +297,7 @@ let test_remove_local_cache () =
     let _ = Sys.command (Printf.sprintf "mkdir -p %s" root) in
     safe_create root ~max_size ~rocksdb_max_open_files:256
     >>= fun cache ->
-    let bid = 0l in
+    let bid = 0L in
     let value = Bigstring_slice.of_string "value" in
     cache # add' bid "key" value >>= fun () ->
     cache # add' bid "key2" value >>= fun () ->
@@ -323,7 +323,7 @@ let test_remove_local_cache () =
   Lwt_main.run (t ())
 
 let _test_lookup2 (cache : cache) =
-  let bid = 0l in
+  let bid = 0L in
   let key = "key" in
   let size = 1_000_000 in
   let value = Lwt_bytes.create_random size in
