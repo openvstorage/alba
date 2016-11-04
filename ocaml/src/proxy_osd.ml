@@ -45,6 +45,152 @@ class simple_proxy_pool ~ip ~port ~transport ~size =
       Lwt_pool2.finalize pool
   end
 
+class multi_proxy_pool ~(endpoints : (string * int) list ref) ~transport ~size =
+  let fuse = ref false in
+
+  let active_pools : (string * int, simple_proxy_pool) Hashtbl.t = Hashtbl.create 3 in
+  let disqualified_endpoints_requalify_fuses = Hashtbl.create 3 in
+
+  let affinity_mapping = Hashtbl.create 3 in
+
+  let get_pool ~namespace =
+    let get_new_pool () =
+      match Hashtbl.choose_random active_pools with
+      | None -> Lwt.fail_with "no proxies available"
+      | Some (endpoint, pp) ->
+         pp # with_client ~namespace
+            (fun client -> client # invalidate_cache ~namespace)
+         >>= fun () ->
+         Hashtbl.add affinity_mapping namespace endpoint;
+         Lwt.return (endpoint, pp)
+    in
+    match Hashtbl.find affinity_mapping namespace with
+    | endpoint ->
+       begin
+         match Hashtbl.find active_pools endpoint with
+         | pp -> Lwt.return (endpoint, pp)
+         | exception Not_found -> get_new_pool ()
+       end
+    | exception Not_found -> get_new_pool ()
+  in
+
+  let requalify_endpoint ((ip, port) as endpoint) =
+    Hashtbl.remove active_pools endpoint;
+    let fuse = ref false in
+    let rec t () =
+      let pp = new simple_proxy_pool ~ip ~port ~transport:Net_fd.TCP ~size in
+      Lwt.catch
+        (fun () ->
+          pp # with_client
+             ~namespace:""
+             (fun client -> client # get_version) >>= fun _ ->
+          Lwt.return `Done)
+        (fun exn ->
+          pp # finalize >>= fun () ->
+          Lwt.return `TryAgain)
+      >>= function
+      | `Done ->
+         Hashtbl.add disqualified_endpoints_requalify_fuses endpoint fuse;
+         Lwt.return ()
+      | `TryAgain ->
+         if !fuse
+         then Lwt.return ()
+         else t ()
+    in
+    Lwt.ignore_result (t () >>= fun () ->
+                       Hashtbl.remove disqualified_endpoints_requalify_fuses endpoint;
+                       Lwt.return ())
+  in
+
+  let () =
+    let resolve_endpoints () =
+      Lwt_list.map_p
+        (fun (host, port) ->
+          Lwt.catch
+            (fun () ->
+              Lwt_unix.getaddrinfo host "" [ Unix.AI_SOCKTYPE Unix.SOCK_STREAM; ] >>= fun r ->
+              List.map
+                (fun addr_info ->
+                  (match addr_info.Unix.ai_addr with
+                   | Unix.ADDR_UNIX x -> x
+                   | Unix.ADDR_INET (x, _) -> Unix.string_of_inet_addr x),
+                  port)
+                r
+              |> Lwt.return)
+            (fun exn ->
+              Lwt_log.info_f ~exn "Error while resolving host %S" host >>= fun () ->
+              Lwt.return [])
+        )
+        !endpoints >>= fun resolveds ->
+      Lwt.return (List.flatten_unordered resolveds)
+    in
+    let rec inner () =
+      if !fuse
+      then Lwt.return ()
+      else
+        begin
+          resolve_endpoints () >>= fun resolved_endpoints ->
+
+          let active_endpoints = Hashtbl.keys active_pools in
+          let disqualified_endpoints = Hashtbl.keys disqualified_endpoints_requalify_fuses in
+
+          let all_current_endpoints = List.rev_append active_endpoints disqualified_endpoints in
+          let new_endpoints =
+            List.filter
+              (fun endpoint -> not (List.mem endpoint all_current_endpoints))
+              resolved_endpoints
+          in
+
+          List.iter requalify_endpoint new_endpoints;
+
+          let active_to_remove =
+            List.filter
+              (fun endpoint -> not (List.mem endpoint resolved_endpoints))
+              active_endpoints
+          in
+          List.iter
+            (fun endpoint ->
+              let pp = Hashtbl.find active_pools endpoint in
+              pp # finalize |> Lwt.ignore_result;
+              Hashtbl.remove active_pools endpoint)
+            active_to_remove;
+
+          let disqualified_to_remove =
+            List.filter
+              (fun endpoint -> not (List.mem endpoint resolved_endpoints))
+              disqualified_endpoints
+          in
+          List.iter
+            (fun endpoint -> (Hashtbl.find disqualified_endpoints_requalify_fuses endpoint) := true)
+            disqualified_to_remove;
+
+          Lwt_extra2.sleep_approx 60. >>= fun () ->
+          inner ()
+        end
+    in
+    Lwt.ignore_result (inner ())
+  in
+
+  object(self :# proxy_pool)
+    method with_client ~namespace f =
+      if !fuse
+      then Lwt.fail_with "multi_proxy_pool is being finalized"
+      else
+        get_pool ~namespace >>= fun (endpoint, pp) ->
+        Lwt.catch
+          (fun () -> pp # with_client ~namespace f)
+          (fun exn ->
+            requalify_endpoint endpoint;
+            Lwt.fail exn)
+
+    method finalize =
+      Lwt_log.info_f "Finalizing multi_proxy_pool" >>= fun () ->
+      fuse := true;
+      Hashtbl.iter (fun _ p -> p # finalize |> Lwt.ignore_result) active_pools;
+      Hashtbl.clear active_pools;
+      Hashtbl.iter (fun _ fuse -> fuse := true) disqualified_endpoints_requalify_fuses;
+      Lwt.return ()
+  end
 
 class t
         (proxy_pool : proxy_pool)

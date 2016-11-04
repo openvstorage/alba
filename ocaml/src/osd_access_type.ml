@@ -31,7 +31,7 @@ class type t =
              (Nsm_model.OsdInfo.t * Osd_state.t * Capabilities.OsdCapabilities.t) Lwt.t
     method osd_factory :
              Nsm_model.OsdInfo.t ->
-             (Osd.osd_wrap_key_value_osd * (unit -> unit Lwt.t))
+             (Osd.osd * (unit -> unit Lwt.t))
                Lwt.t
     method osd_timeout : float
     method osds_info_cache :

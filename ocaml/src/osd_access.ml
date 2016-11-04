@@ -86,12 +86,12 @@ module Osd_pool = struct
          >>= fun (asd, closer) ->
          let key_value_osd = new Asd_client.asd_osd asd_id asd in
          let osd = new Osd'.osd_wrap_key_value_osd key_value_osd in
-         Lwt.return (osd, closer)
+         Lwt.return ((osd :> Osd'.osd), closer)
       | OsdInfo.Kinetic (conn_info', kinetic_id) ->
          let conn_info = Asd_client.conn_info_from ~tls_config conn_info' in
          Kinetic_client.make_client buffer_pool ~conn_info kinetic_id >>= fun (client, closer) ->
          let osd = new Osd'.osd_wrap_key_value_osd client in
-         Lwt.return (osd, closer)
+         Lwt.return ((osd :> Osd'.osd), closer)
       | OsdInfo.Alba { Nsm_model.OsdInfo.cfg; id; prefix; preset; } ->
          make_alba_osd_client
            (ref cfg)
@@ -107,11 +107,21 @@ module Osd_pool = struct
            ~prefix ~preset_name:(Some preset)
            ~namespace_name_format:1
       | OsdInfo.AlbaProxy { OsdInfo.endpoints; id; prefix; preset; } ->
-         (* TODO use all endpoints! *)
-         let ip, port = List.hd_exn endpoints in
-         let pp = new Proxy_osd.simple_proxy_pool ~ip ~port ~transport:Net_fd.TCP ~size:pool_size in
+         let pp = new Proxy_osd.multi_proxy_pool
+                      ~endpoints:(ref endpoints) (* TODO should refresh this periodically? *)
+                      ~transport:Net_fd.TCP
+                      ~size:pool_size
+         in
+         let proxy_osd =
+           new Proxy_osd.t
+               (pp :> Proxy_osd.proxy_pool)
+               ~long_id:id
+               ~prefix
+               ~preset
+               ~namespace_name_format:1
+         in
          Lwt.return
-           (new Proxy_osd.t (pp :> Proxy_osd.proxy_pool) ~long_id:id ~prefix ~preset ~namespace_name_format:1,
+           ((proxy_osd :> Osd'.osd),
             fun () -> pp # finalize)
 
     let use_osd t ~(osd_id:int64) f =

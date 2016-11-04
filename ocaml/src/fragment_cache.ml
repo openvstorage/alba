@@ -778,7 +778,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
           else if Hashtbl.length _dropping = 0
           then acc
           else
-            match Hashtbl.choose _dropping with
+            match Hashtbl.choose_first _dropping with
             | None -> acc
             | Some (bid, ()) ->
                let victims', n_victims', delta' = get_bid_victims bid victims_size in
