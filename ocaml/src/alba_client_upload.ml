@@ -756,6 +756,33 @@ let store_manifest
               "epilogue:successfully updated object:%S with updates:%s"
               object_name
               ([%show : (int * int * int64 option) list] updates)
+            >>= fun () ->
+            let manifest' =
+              { manifest with
+                fragment_locations =
+                  Nsm_model.Layout.map_indexed
+                    (fun chunk_id fragment_id ((old_o, _) as old) ->
+                      match old_o with
+                      | None ->
+                         begin
+                           let update =
+                             List.find
+                               (fun (cid,fid,_) ->
+                                 cid = chunk_id && fid = fragment_id
+                               ) updates
+                           in
+                           match update with
+                           | Some (_,_,Some osd_id) -> (Some osd_id, 0)
+                           | _ -> (None,0)
+                         end
+                      | _ -> old
+
+                    ) manifest.fragment_locations
+              }
+            in
+            ManifestCache.add
+              manifest_cache namespace_id object_name manifest';
+            Lwt.return ()
           end
       end)
 

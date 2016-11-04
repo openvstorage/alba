@@ -532,6 +532,13 @@ end
 module Layout = struct
     type 'a t = 'a list list [@@deriving show]
     let map f t = List.map (List.map f) t
+
+    let map_indexed f t =
+      List.mapi
+        (fun ci c ->
+          List.mapi (fun fi fr -> f ci fi fr) c
+        ) t
+
     let output a_to buf t =
       let ser_version = 1 in Llio.int8_to buf ser_version;
       Llio.list_to (Llio.list_to a_to) buf t
