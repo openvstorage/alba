@@ -750,7 +750,7 @@ let store_manifest
                    ~object_id:manifest.object_id
                    updates
                    ~gc_epoch
-                   ~version_id:(manifest.version_id + 1)
+                   ~version_id:0
             >>= fun () ->
             Lwt_log.debug_f
               "epilogue:successfully updated object:%S with updates:%s"

@@ -1664,16 +1664,16 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
            (osd_id_o, version_id))
       new_fragments;
     let manifest_old, manifest_old_s = get_object_manifest_by_id kv object_id in
-
+    let version_id_old = manifest_old.Manifest.version_id in
     assert (object_name = manifest_old.Manifest.name);
-    let expected = manifest_old.Manifest.version_id + 1 in
-    if expected <> version_id
-    then Err.failwith
-           Err.InvalidVersionId
-           ~payload:(Printf.sprintf "InvalidVersionId:(expected:%i, got:%i)"
-                    expected version_id);
-
-
+    let expected = version_id_old + 1 in
+    if (version_id = 0 && version_id_old <> 0)
+     || (version_id <> 0 && expected <> version_id)
+    then
+      Err.failwith
+        Err.InvalidVersionId
+        ~payload:(Printf.sprintf "InvalidVersionId:(expected:%i, got: %i)"
+                                 expected version_id);
 
     let old_manifest_locations = manifest_old.Manifest.fragment_locations in
 
