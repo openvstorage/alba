@@ -1,5 +1,5 @@
 {
-    "policies" : [[ 5, 4, 8, 3 ]],
+    "policies" : [[ 5, 4, 9, 3 ]],
     "fragment_size" : 1048576,
     "osds" : ["all"],
     "compression" : "none",
