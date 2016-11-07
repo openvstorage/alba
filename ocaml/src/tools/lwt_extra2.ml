@@ -301,7 +301,7 @@ let copy_between_fds fd_in fd_out size buffer =
 type 'a state =
   | Success of 'a
   | Failed of exn
-  | Ongoing of (unit Lwt.t *  (unit -> ('a,exn) result ))
+  | Ongoing of unit Lwt.t
 
 let first_n ~count ~slack f items ~test =
   let t0 = Unix.gettimeofday() in
@@ -348,13 +348,6 @@ let first_n ~count ~slack f items ~test =
             CountDownLatch.await too_many_failures;
            ]
   >>= fun () ->
-  let t1 = Unix.gettimeofday() in
-  let so_far = t1 -. t0 in
-  let limit = so_far *. slack in
-  Lwt_log.debug_f "waiting for another %f * %f =%f%!" so_far slack limit
-  >>= fun () ->
-  Lwt_unix.sleep limit >>= fun () ->
-  Lwt_log.debug_f "limit reached%!" >>= fun () ->
   let make_results () =
     let rec loop acc i =
       if i = n_items
@@ -365,14 +358,7 @@ let first_n ~count ~slack f items ~test =
             try Hashtbl.find results i
             with _ ->
               let t = Hashtbl.find running i in
-              let pickup_result () =
-                let sf = Hashtbl.find results i in
-                match sf with
-                | Success x ->  Ok x
-                | Failed e  ->  Error e
-                | _         ->  Error (Failure "ongoing?!")
-              in
-              Ongoing (t, pickup_result)
+              Ongoing t
 
           in
           loop (r :: acc) (i+1)
@@ -380,4 +366,18 @@ let first_n ~count ~slack f items ~test =
     in
     loop [] 0
   in
+  let t1 = Unix.gettimeofday() in
+  let so_far = t1 -. t0 in
+  let limit = so_far *. slack in
+  let ongoing = Hashtbl.fold (fun _ t acc -> t :: acc) running [] in
+  Lwt_log.debug_f "waiting for another %f * %f =%f" so_far slack limit
+  >>= fun () ->
+  Lwt.choose
+    [ begin
+        Lwt_unix.sleep limit >>= fun () ->
+        Lwt_log.debug "limit reached"
+      end;
+      Lwt.join ongoing
+    ]
+  >>= fun () ->
   Lwt.return (CountDownLatch.finished success, make_results)

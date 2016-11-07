@@ -480,7 +480,7 @@ let upload_object''
                in
                let res = (None, fragment_checksum) in
                (stats, res)
-            | Ongoing (t,p)  ->
+            | Ongoing t ->
                (* for now, assume these (will) have failed *)
                let stats =
                  Statistics.({
@@ -698,7 +698,7 @@ let store_manifest
             let ongoings =
               List.map_filter_rev
                 (function
-                 | Lwt_extra2.Ongoing (t,_) ->
+                 | Lwt_extra2.Ongoing t ->
                     Some t
                  | _ -> None
                 )
