@@ -53,26 +53,37 @@ class multi_proxy_pool
   let fuse = ref false in
 
   let active_pools : (Net_fd.transport * string * int, simple_proxy_pool) Hashtbl.t = Hashtbl.create 3 in
-  let disqualified_endpoints_requalify_fuses = Hashtbl.create 3 in
+  let disqualified_endpoints_requalify_threads = Hashtbl.create 3 in
 
   let affinity_mapping = Hashtbl.create 3 in
 
   let get_pool ~namespace =
     let get_new_pool () =
-      match Hashtbl.choose_random active_pools with
-      | None -> Lwt.fail_with "no proxies available"
-      | Some (endpoint, pp) ->
-         pp # with_client ~namespace
-            (fun client ->
-              Lwt.catch
-                (fun () -> client # invalidate_cache ~namespace)
-                (let open Proxy_protocol.Protocol.Error in
-                 function
-                 | Exn (NamespaceDoesNotExist, _) -> Lwt.return ()
-                 | exn -> Lwt.fail exn))
-         >>= fun () ->
-         Hashtbl.add affinity_mapping namespace endpoint;
-         Lwt.return (endpoint, pp)
+      let rec inner cnt =
+        match Hashtbl.choose_random active_pools with
+        | None ->
+           if cnt = 1
+           then Lwt.fail_with "no proxies available"
+           else
+             (Hashtbl.values disqualified_endpoints_requalify_threads
+              |> List.map fst
+              |> fun ts ->
+                 Lwt.choose (Lwt_unix.sleep 2. :: ts)) >>= fun () ->
+             inner (cnt + 1)
+        | Some (endpoint, pp) ->
+           pp # with_client ~namespace
+              (fun client ->
+                Lwt.catch
+                  (fun () -> client # invalidate_cache ~namespace)
+                  (let open Proxy_protocol.Protocol.Error in
+                   function
+                   | Exn (NamespaceDoesNotExist, _) -> Lwt.return ()
+                   | exn -> Lwt.fail exn))
+           >>= fun () ->
+           Hashtbl.add affinity_mapping namespace endpoint;
+           Lwt.return (endpoint, pp)
+      in
+      inner 0
     in
     match Hashtbl.find affinity_mapping namespace with
     | endpoint ->
@@ -87,7 +98,6 @@ class multi_proxy_pool
   let requalify_endpoint ((transport, ip, port) as endpoint) =
     Hashtbl.remove active_pools endpoint;
     let fuse = ref false in
-    Hashtbl.add disqualified_endpoints_requalify_fuses endpoint fuse;
     let rec t () =
       let pp = new simple_proxy_pool ~ip ~port ~transport ~size in
       Lwt.catch
@@ -120,8 +130,10 @@ class multi_proxy_pool
          then Lwt.return ()
          else t ()
     in
-    Lwt.ignore_result (t () >>= fun () ->
-                       Hashtbl.remove disqualified_endpoints_requalify_fuses endpoint;
+    let t = t () in
+    Hashtbl.add disqualified_endpoints_requalify_threads endpoint (t, fuse);
+    Lwt.ignore_result (t >>= fun () ->
+                       Hashtbl.remove disqualified_endpoints_requalify_threads endpoint;
                        Lwt.return ())
   in
 
@@ -159,7 +171,7 @@ class multi_proxy_pool
                           ([%show : (Net_fd.transport * string * int) list] resolved_endpoints) >>= fun () ->
 
           let active_endpoints = Hashtbl.keys active_pools in
-          let disqualified_endpoints = Hashtbl.keys disqualified_endpoints_requalify_fuses in
+          let disqualified_endpoints = Hashtbl.keys disqualified_endpoints_requalify_threads in
 
           let all_current_endpoints = List.rev_append active_endpoints disqualified_endpoints in
           let new_endpoints =
@@ -188,7 +200,7 @@ class multi_proxy_pool
               disqualified_endpoints
           in
           List.iter
-            (fun endpoint -> (Hashtbl.find disqualified_endpoints_requalify_fuses endpoint) := true)
+            (fun endpoint -> (Hashtbl.find disqualified_endpoints_requalify_threads endpoint |> snd) := true)
             disqualified_to_remove;
 
           Lwt_extra2.sleep_approx 60. >>= fun () ->
@@ -215,7 +227,7 @@ class multi_proxy_pool
       fuse := true;
       Hashtbl.iter (fun _ p -> p # finalize |> Lwt.ignore_result) active_pools;
       Hashtbl.clear active_pools;
-      Hashtbl.iter (fun _ fuse -> fuse := true) disqualified_endpoints_requalify_fuses;
+      Hashtbl.iter (fun _ (_, fuse) -> fuse := true) disqualified_endpoints_requalify_threads;
       Lwt.return ()
   end
 
