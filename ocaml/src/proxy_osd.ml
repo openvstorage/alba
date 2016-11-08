@@ -45,7 +45,11 @@ class simple_proxy_pool ~ip ~port ~transport ~size =
       Lwt_pool2.finalize pool
   end
 
-class multi_proxy_pool ~(endpoints : (Net_fd.transport * string * int) list ref) ~transport ~size =
+class multi_proxy_pool
+        ~(alba_id : string option)
+        ~(endpoints : (Net_fd.transport * string * int) list ref)
+        ~transport
+        ~size =
   let fuse = ref false in
 
   let active_pools : (Net_fd.transport * string * int, simple_proxy_pool) Hashtbl.t = Hashtbl.create 3 in
@@ -83,8 +87,20 @@ class multi_proxy_pool ~(endpoints : (Net_fd.transport * string * int) list ref)
         (fun () ->
           pp # with_client
              ~namespace:""
-             (fun client -> client # get_version) >>= fun _ ->
-          Lwt.return `Done)
+             (fun client -> client # get_alba_id) >>= fun alba_id' ->
+          match alba_id with
+          | None -> Lwt.return `Done
+          | Some alba_id ->
+             if alba_id = alba_id'
+             then Lwt.return `Done
+             else
+               begin
+                 let msg = Printf.sprintf "proxy_osd expected alba_id %S but got %S instead"
+                                          alba_id alba_id' in
+                 Lwt_log.warning msg  >>= fun () ->
+                 Lwt.fail_with msg
+               end
+        )
         (fun exn ->
           pp # finalize >>= fun () ->
           Lwt.return `TryAgain)
@@ -195,7 +211,7 @@ class multi_proxy_pool ~(endpoints : (Net_fd.transport * string * int) list ref)
 
 class t
         (proxy_pool : proxy_pool)
-        ~long_id
+        ~alba_id
         ~prefix ~preset
         ~namespace_name_format
   =
@@ -436,7 +452,7 @@ class t
 
     method set_full _ = failwith "grmbl this method doesn't belong here."
     method get_version = proxy_pool # with_client ~namespace:"" (fun c -> c # get_version)
-    method get_long_id = long_id
+    method get_long_id = alba_id
     method get_disk_usage = Lwt.return
                               (1000L, 2000L)
     (* (failwith "TODO return sth based on asd disk usage") *)

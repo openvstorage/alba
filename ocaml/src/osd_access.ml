@@ -108,6 +108,7 @@ module Osd_pool = struct
            ~namespace_name_format:1
       | OsdInfo.AlbaProxy { OsdInfo.endpoints; id; prefix; preset; } ->
          let pp = new Proxy_osd.multi_proxy_pool
+                      ~alba_id:(Some id)
                       (* TODO should refresh this periodically? *)
                       ~endpoints:(List.map OsdInfo.parse_endpoint_uri endpoints |> ref)
                       ~transport:Net_fd.TCP
@@ -116,7 +117,7 @@ module Osd_pool = struct
          let proxy_osd =
            new Proxy_osd.t
                (pp :> Proxy_osd.proxy_pool)
-               ~long_id:id
+               ~alba_id:id
                ~prefix
                ~preset
                ~namespace_name_format:1

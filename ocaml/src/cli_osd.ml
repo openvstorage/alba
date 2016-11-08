@@ -140,14 +140,15 @@ let alba_add_osd
       | Some host, Some port, None, Some prefix, Some preset ->
          let pp =
            new Proxy_osd.multi_proxy_pool
+               ~alba_id:None
                ~endpoints:(List.map Nsm_model.OsdInfo.parse_endpoint_uri endpoints |> ref)
                ~transport:Net_fd.TCP
                ~size:1
          in
          pp # with_client ~namespace:""
-            (fun proxy -> proxy # get_alba_id) >>= fun long_id ->
+            (fun proxy -> proxy # get_alba_id) >>= fun alba_id ->
          Lwt.return Nsm_model.OsdInfo.(AlbaProxy {
-                                           id = long_id;
+                                           id = alba_id;
                                            endpoints;
                                            prefix;
                                            preset;

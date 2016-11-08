@@ -31,7 +31,7 @@ let test_with_kvs_client test_name f =
         let prefix = "proxy_osd_test/" ^ test_name in
         let proxy_osd = new t
                             (pp :> Proxy_osd.proxy_pool)
-                            ~long_id:"long_id"
+                            ~alba_id:"long_id"
                             ~prefix ~preset:"default"
                             ~namespace_name_format:1
         in
