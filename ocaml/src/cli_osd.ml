@@ -117,15 +117,15 @@ let alba_add_osd
   in
   let t () =
     begin
-      match host, port, alba_osd_cfg_url, prefix, preset with
-      | Some host, Some port, None, None, None ->
+      match host, port, alba_osd_cfg_url, endpoints, prefix, preset with
+      | Some host, Some port, None, [], None, None ->
          let conn_info = Networking2.make_conn_info [host] port tls_config in
          Discovery.get_kind Buffer_pool.default_buffer_pool conn_info >>=
            (function
              | None -> Lwt.fail_with "I don't think this is an OSD"
              | Some kind ->
                 Lwt.return kind)
-      | None, None, Some alba_osd_cfg_url, Some prefix, Some preset ->
+      | None, None, Some alba_osd_cfg_url, [], Some prefix, Some preset ->
          Alba_arakoon.config_from_url alba_osd_cfg_url >>= fun alba_osd_cfg ->
          Albamgr_client.with_client'
            ~attempts
@@ -137,7 +137,7 @@ let alba_add_osd
                                                prefix;
                                                preset;
                                              })
-      | Some host, Some port, None, Some prefix, Some preset ->
+      | None, None, None, endpoints, Some prefix, Some preset ->
          let pp =
            new Proxy_osd.multi_proxy_pool
                ~alba_id:None
@@ -146,14 +146,16 @@ let alba_add_osd
                ~size:1
          in
          pp # with_client ~namespace:""
-            (fun proxy -> proxy # get_alba_id) >>= fun alba_id ->
+            (fun proxy ->
+              Proxy_osd.ensure_namespace_exists proxy ~namespace:prefix ~preset >>= fun () ->
+              proxy # get_alba_id) >>= fun alba_id ->
          Lwt.return Nsm_model.OsdInfo.(AlbaProxy {
                                            id = alba_id;
                                            endpoints;
                                            prefix;
                                            preset;
          })
-      | _, _, _, _, _ ->
+      | _, _, _, _, _, _ ->
          failwith "incorrect combination of host, port alba_osd_cfg_url, prefix & preset specified"
     end >>= fun kind ->
 

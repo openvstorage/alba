@@ -288,12 +288,6 @@ module OsdInfo = struct
         let prefix = Llio.string_from buf in
         let preset = Llio.string_from buf in
         Alba2 { cfg; id; prefix; preset; }
-      | 5 ->
-         let endpoints = Llio.list_from Llio.string_from buf in
-         let id = Llio.string_from buf in
-         let prefix = Llio.string_from buf in
-         let preset = Llio.string_from buf in
-         AlbaProxy { endpoints; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k in
     let node_id = Llio.string_from buf in
     let decommissioned = Llio.bool_from buf in
@@ -395,6 +389,12 @@ module OsdInfo = struct
         let prefix = Llio.string_from buf in
         let preset = Llio.string_from buf in
         Alba2 { cfg; id; prefix; preset; }
+      | 5 ->
+         let endpoints = Llio.list_from Llio.string_from buf in
+         let id = Llio.string_from buf in
+         let prefix = Llio.string_from buf in
+         let preset = Llio.string_from buf in
+         AlbaProxy { endpoints; id; prefix; preset; }
       | k -> raise_bad_tag "OsdInfo" k
     in
     let node_id = Llio.string_from buf in

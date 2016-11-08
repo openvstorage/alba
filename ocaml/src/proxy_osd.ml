@@ -63,7 +63,13 @@ class multi_proxy_pool
       | None -> Lwt.fail_with "no proxies available"
       | Some (endpoint, pp) ->
          pp # with_client ~namespace
-            (fun client -> client # invalidate_cache ~namespace)
+            (fun client ->
+              Lwt.catch
+                (fun () -> client # invalidate_cache ~namespace)
+                (let open Proxy_protocol.Protocol.Error in
+                 function
+                 | Exn (NamespaceDoesNotExist, _) -> Lwt.return ()
+                 | exn -> Lwt.fail exn))
          >>= fun () ->
          Hashtbl.add affinity_mapping namespace endpoint;
          Lwt.return (endpoint, pp)
@@ -81,6 +87,7 @@ class multi_proxy_pool
   let requalify_endpoint ((transport, ip, port) as endpoint) =
     Hashtbl.remove active_pools endpoint;
     let fuse = ref false in
+    Hashtbl.add disqualified_endpoints_requalify_fuses endpoint fuse;
     let rec t () =
       let pp = new simple_proxy_pool ~ip ~port ~transport ~size in
       Lwt.catch
@@ -106,8 +113,8 @@ class multi_proxy_pool
           Lwt.return `TryAgain)
       >>= function
       | `Done ->
-         Hashtbl.add disqualified_endpoints_requalify_fuses endpoint fuse;
-         Lwt.return ()
+         Hashtbl.add active_pools endpoint pp;
+         Lwt_log.debug_f "(re)qualified proxy %s://%s:%i" ([%show : Net_fd.transport] transport) ip port
       | `TryAgain ->
          if !fuse
          then Lwt.return ()
@@ -147,6 +154,9 @@ class multi_proxy_pool
       else
         begin
           resolve_endpoints () >>= fun resolved_endpoints ->
+
+          Lwt_log.debug_f "proxy_osd: resolved endpoints to: %s"
+                          ([%show : (Net_fd.transport * string * int) list] resolved_endpoints) >>= fun () ->
 
           let active_endpoints = Hashtbl.keys active_pools in
           let disqualified_endpoints = Hashtbl.keys disqualified_endpoints_requalify_fuses in
@@ -208,6 +218,17 @@ class multi_proxy_pool
       Hashtbl.iter (fun _ fuse -> fuse := true) disqualified_endpoints_requalify_fuses;
       Lwt.return ()
   end
+
+let ensure_namespace_exists proxy_client ~namespace ~preset =
+  proxy_client # list_namespaces
+               ~first:namespace ~finc:true
+               ~last:(Some (namespace, true))
+               ~max:1 ~reverse:false
+  >>= fun ((_, x), _) ->
+  match x with
+  | [] -> proxy_client # create_namespace ~namespace ~preset_name:(Some preset)
+  | [ _; ] -> Lwt.return ()
+  | _ -> assert false
 
 class t
         (proxy_pool : proxy_pool)
@@ -407,6 +428,7 @@ class t
               Lwt.fail exn)
     end
   in
+
   object(self :# Osd.osd)
 
     method global_kvs =
@@ -420,16 +442,7 @@ class t
       proxy_pool
         # with_client
         ~namespace
-        (fun proxy_client ->
-          proxy_client # list_namespaces
-                       ~first:namespace ~finc:true
-                       ~last:(Some (namespace, true))
-                       ~max:1 ~reverse:false
-          >>= fun ((_, x), _) ->
-          match x with
-          | [] -> proxy_client # create_namespace ~namespace ~preset_name:(Some preset)
-          | [ _; ] -> Lwt.return ()
-          | _ -> assert false)
+        (fun proxy_client -> ensure_namespace_exists proxy_client ~namespace ~preset)
 
     method delete_namespace namespace_id _ =
       let namespace = to_namespace_name namespace_id in
