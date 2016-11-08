@@ -132,7 +132,7 @@ TEST(proxy_client, get_object_info) {
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
-  string name("object name");
+  string name("get_object_info_object");
   string file("./ocaml/alba.native");
 
   client->write_object_fs(cfg.NAMESPACE, name, file,
