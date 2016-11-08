@@ -118,6 +118,8 @@ module Protocol = struct
         port' : port option;
         (* alba osd *)
         albamgr_cfg' : Alba_arakoon.Config.t option;
+        (* proxy osd *)
+        endpoints' : string list option;
 
         total' : int64 option;
         used' : int64 option;
@@ -132,9 +134,11 @@ module Protocol = struct
         ?ips' ?port'
         ?total' ?used'
         ?(seen' = []) ?(read' = []) ?(write' = []) ?(errors' = [])
-        ?other' ?albamgr_cfg' () =
+        ?other' ?albamgr_cfg' ?endpoints' () =
+        (* validate endpoint uris *)
+        Option.iter (List.iter (fun e -> parse_endpoint_uri e |> ignore)) endpoints';
         { ips'; port';
-          albamgr_cfg';
+          albamgr_cfg'; endpoints';
           total'; used';
           seen'; read'; write'; errors';
           other';
@@ -143,7 +147,7 @@ module Protocol = struct
       let apply
           osd
           { ips'; port';
-            albamgr_cfg';
+            albamgr_cfg'; endpoints';
             total'; used';
             seen'; read'; write'; errors';
             other';
@@ -207,7 +211,10 @@ module Protocol = struct
                                          { x with
                                            cfg = get_cfg cfg;
                                          }
-          | AlbaProxy _ as x -> x
+          | AlbaProxy (_ as x) -> AlbaProxy { x with
+                                              endpoints = (match endpoints' with
+                                                           | Some es -> es
+                                                           | None -> x.endpoints); }
         in
         let max_n = 10 in
         { node_id = osd.node_id;
@@ -286,7 +293,7 @@ module Protocol = struct
             buf in
         let other' = Llio.option_from Llio.string_from buf in
         { ips'; port';
-          albamgr_cfg' = None;
+          albamgr_cfg' = None; endpoints' = None;
           total'; used';
           seen'; read'; write'; errors';
           other';
@@ -312,8 +319,14 @@ module Protocol = struct
             buf in
         let other' = Llio.option_from Llio.string_from buf in
         let albamgr_cfg' = Llio.option_from Alba_arakoon.Config.from_buffer buf in
+        let endpoints' = maybe_from_buffer
+                           (Llio.option_from
+                              (Llio.list_from Llio.string_from))
+                           None
+                           buf
+        in
         { ips'; port';
-          albamgr_cfg';
+          albamgr_cfg'; endpoints';
           total'; used';
           seen'; read'; write'; errors';
           other';

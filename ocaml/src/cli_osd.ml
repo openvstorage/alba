@@ -200,6 +200,13 @@ let alba_osd_cfg_url =
               ~docv:"ALBA_OSD_CONFIG_URL"
               ~doc:"config url for alba mgr of the backend that should be added as osd")
 
+let endpoints =
+  Arg.(value
+       & opt (list string) []
+       & info [ "endpoint" ]
+              ~docv:"ENDPOINT"
+              ~doc:"endpoint for an alba proxy based osd (e.g. tcp://host:port/ or rdma://host:port/).")
+
 let alba_add_osd_cmd =
   Term.(pure alba_add_osd
         $ alba_cfg_url
@@ -215,11 +222,7 @@ let alba_add_osd_cmd =
                       ~docv:"PORT"
                       ~doc:"the port to connect with")
         $ alba_osd_cfg_url
-        $ Arg.(value
-               & opt (list string) []
-               & info [ "endpoint" ]
-                      ~docv:"ENDPOINT"
-                      ~doc:"endpoint for an alba proxy based osd (e.g. tcp://host:port/ or rdma://host:port/).")
+        $ endpoints
         $ Arg.(value
                & opt (some string) None
                & info ["prefix"]
@@ -242,7 +245,7 @@ let alba_add_osd_cmd =
 let alba_update_osd
       alba_cfg_url tls_config long_id
       ips' port'
-      alba_osd_mgr_cfg_url
+      alba_osd_mgr_cfg_url endpoints'
       to_json verbose
   =
   let t () =
@@ -256,8 +259,8 @@ let alba_update_osd
        mgr # update_osds
            [ (long_id,
               Albamgr_protocol.Protocol.Osd.Update.make
-                ~ips' ?port'
-                ?albamgr_cfg'
+                ?ips' ?port'
+                ?albamgr_cfg' ?endpoints'
                 ());
            ])
   in
@@ -269,12 +272,17 @@ let alba_update_osd_cmd =
         $ tls_config
         $ long_id
         $ Arg.(value
-               & opt (list string) []
+               & opt (some (list string)) None
                & info ["ip"])
         $ Arg.(value
                & opt (some int) None
                & info ["port"])
         $ alba_osd_cfg_url
+        $ Arg.(value
+               & opt (some (list string)) None
+               & info [ "endpoint" ]
+                      ~docv:"ENDPOINT"
+                      ~doc:"endpoint for an alba proxy based osd (e.g. tcp://host:port/ or rdma://host:port/).")
         $ to_json
         $ verbose
   ),
