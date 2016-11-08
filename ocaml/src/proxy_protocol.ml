@@ -477,6 +477,7 @@ module Protocol = struct
                                       option list)
                       request
     | MultiExists : (Namespace.name * object_name list, bool list) request
+    | GetAlbaId : (unit, alba_id) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -504,6 +505,7 @@ module Protocol = struct
                       25, Wrap ReadObjects, "ReadObjects";
                       26, Wrap MultiExists, "MultiExists";
                       28, Wrap OsdInfo2, "OsdInfo2";
+                      29, Wrap GetAlbaId, "GetAlbaId";
                     ]
 
   module Error = struct
@@ -646,6 +648,9 @@ module Protocol = struct
        Deser.pair
          Deser.string
          (Deser.list Deser.string)
+    | GetAlbaId ->
+       Deser.unit
+
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | NamespaceExists -> Deser.bool
@@ -717,4 +722,6 @@ module Protocol = struct
                   Deser.bigstring_slice)))
     | MultiExists ->
        Deser.list Deser.bool
+    | GetAlbaId ->
+       Deser.string
 end

@@ -39,7 +39,7 @@ module Osd = struct
     preset : string option;
 
     (* for proxy osd *)
-    endpoints : (string * int) list option;
+    endpoints : string list option;
 
     decommissioned : bool;
     node_id : OsdInfo.node_id;

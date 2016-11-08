@@ -45,10 +45,10 @@ class simple_proxy_pool ~ip ~port ~transport ~size =
       Lwt_pool2.finalize pool
   end
 
-class multi_proxy_pool ~(endpoints : (string * int) list ref) ~transport ~size =
+class multi_proxy_pool ~(endpoints : (Net_fd.transport * string * int) list ref) ~transport ~size =
   let fuse = ref false in
 
-  let active_pools : (string * int, simple_proxy_pool) Hashtbl.t = Hashtbl.create 3 in
+  let active_pools : (Net_fd.transport * string * int, simple_proxy_pool) Hashtbl.t = Hashtbl.create 3 in
   let disqualified_endpoints_requalify_fuses = Hashtbl.create 3 in
 
   let affinity_mapping = Hashtbl.create 3 in
@@ -74,11 +74,11 @@ class multi_proxy_pool ~(endpoints : (string * int) list ref) ~transport ~size =
     | exception Not_found -> get_new_pool ()
   in
 
-  let requalify_endpoint ((ip, port) as endpoint) =
+  let requalify_endpoint ((transport, ip, port) as endpoint) =
     Hashtbl.remove active_pools endpoint;
     let fuse = ref false in
     let rec t () =
-      let pp = new simple_proxy_pool ~ip ~port ~transport:Net_fd.TCP ~size in
+      let pp = new simple_proxy_pool ~ip ~port ~transport ~size in
       Lwt.catch
         (fun () ->
           pp # with_client
@@ -105,12 +105,13 @@ class multi_proxy_pool ~(endpoints : (string * int) list ref) ~transport ~size =
   let () =
     let resolve_endpoints () =
       Lwt_list.map_p
-        (fun (host, port) ->
+        (fun (transport, host, port) ->
           Lwt.catch
             (fun () ->
               Lwt_unix.getaddrinfo host "" [ Unix.AI_SOCKTYPE Unix.SOCK_STREAM; ] >>= fun r ->
               List.map
                 (fun addr_info ->
+                  transport,
                   (match addr_info.Unix.ai_addr with
                    | Unix.ADDR_UNIX x -> x
                    | Unix.ADDR_INET (x, _) -> Unix.string_of_inet_addr x),

@@ -101,9 +101,14 @@ let alba_add_osd
       (* for asd/kinetic *)
       host port
       (* for alba osd *)
-      alba_osd_cfg_url prefix preset
+      alba_osd_cfg_url
+      (* for proxy osd *)
+      endpoints
+
+      prefix preset
 
       node_id
+
       to_json verbose attempts
   =
   let node_id = match node_id with
@@ -132,6 +137,21 @@ let alba_add_osd
                                                prefix;
                                                preset;
                                              })
+      | Some host, Some port, None, Some prefix, Some preset ->
+         let pp =
+           new Proxy_osd.multi_proxy_pool
+               ~endpoints:(List.map Nsm_model.OsdInfo.parse_endpoint_uri endpoints |> ref)
+               ~transport:Net_fd.TCP
+               ~size:1
+         in
+         pp # with_client ~namespace:""
+            (fun proxy -> proxy # get_alba_id) >>= fun long_id ->
+         Lwt.return Nsm_model.OsdInfo.(AlbaProxy {
+                                           id = long_id;
+                                           endpoints;
+                                           prefix;
+                                           preset;
+         })
       | _, _, _, _, _ ->
          failwith "incorrect combination of host, port alba_osd_cfg_url, prefix & preset specified"
     end >>= fun kind ->
@@ -192,6 +212,11 @@ let alba_add_osd_cmd =
                       ~docv:"PORT"
                       ~doc:"the port to connect with")
         $ alba_osd_cfg_url
+        $ Arg.(value
+               & opt (list string) []
+               & info [ "endpoint" ]
+                      ~docv:"ENDPOINT"
+                      ~doc:"endpoint for an alba proxy based osd (e.g. tcp://host:port/ or rdma://host:port/).")
         $ Arg.(value
                & opt (some string) None
                & info ["prefix"]

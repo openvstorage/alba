@@ -175,6 +175,8 @@ class proxy_client fd =
     method get_client_config = self # request GetClientConfig ()
 
     method osd_info = self # request OsdInfo ()
+
+    method get_alba_id = self # request GetAlbaId ()
   end
 
 let _prologue fd magic version =

@@ -32,8 +32,22 @@ module OsdInfo = struct
   type ip = string [@@deriving show, yojson]
   type port = int [@@deriving show, yojson]
 
-  type host = string [@@deriving show, yojson]
-  type endpoint = host * port [@@deriving show, yojson]
+  type endpoint_uri = string [@@deriving show, yojson]
+
+  type host = string
+  type endpoint = Net_fd.transport * host * port
+
+  let parse_endpoint_uri s =
+    let uri = Uri.of_string s in
+    let transport = match Uri.scheme uri with
+      | None -> failwith "Transport should be 'tcp' or 'rdma'"
+      | Some "tcp" -> Net_fd.TCP
+      | Some "rdma" -> Net_fd.RDMA
+      | Some s -> failwith (Printf.sprintf "Transport '%s' not recognized, should be 'tcp' or 'rdma'" s)
+    in
+    let host = Uri.host uri |> Option.get_some in
+    let port = Uri.port uri |> Option.get_some in
+    (transport, host, port)
 
   type node_id = string [@@deriving show, yojson]
 
@@ -52,9 +66,8 @@ module OsdInfo = struct
       preset : string;
     } [@@deriving show, yojson]
 
-  (* TODO allow tls, rdma *)
   type alba_proxy_cfg = {
-      endpoints : endpoint list;
+      endpoints : endpoint_uri list;
       id : alba_id;
       prefix : string;
       preset : string;
@@ -129,9 +142,7 @@ module OsdInfo = struct
        Llio.string_to buf preset
     | AlbaProxy { endpoints; id; prefix; preset; } ->
        Llio.int8_to buf 5;
-       Llio.list_to
-         (Llio.pair_to Llio.string_to Llio.int_to)
-         buf endpoints;
+       Llio.list_to Llio.string_to buf endpoints;
        Llio.string_to buf id;
        Llio.string_to buf prefix;
        Llio.string_to buf preset
@@ -278,7 +289,7 @@ module OsdInfo = struct
         let preset = Llio.string_from buf in
         Alba2 { cfg; id; prefix; preset; }
       | 5 ->
-         let endpoints = Llio.list_from (Llio.pair_from Llio.string_from Llio.int_from) buf in
+         let endpoints = Llio.list_from Llio.string_from buf in
          let id = Llio.string_from buf in
          let prefix = Llio.string_from buf in
          let preset = Llio.string_from buf in
