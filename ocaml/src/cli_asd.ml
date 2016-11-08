@@ -196,7 +196,7 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
        (Alba_osd.make_client ~albamgr_connection_pool_size:10)
        k
        ~pool_size:1
-     >>= fun (client, closer) ->
+     >>= fun (_, client, closer) ->
      Lwt.finalize
        (fun () -> f client)
        closer
