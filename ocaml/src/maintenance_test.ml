@@ -35,21 +35,15 @@ let with_nice_error_log f =
     )
 
 let wait_for_lazy_write alba_client namespace_id manifest =
-  let open Nsm_model.Manifest in
-  let has_holes =
-    List.flatten manifest.fragment_locations |>
-      List.fold_left
-        (fun acc (osd_id_o,_) ->
-          acc || (osd_id_o = None)
-        ) false
-  in
+  let open Nsm_model in
+  let has_holes = Manifest.has_holes manifest in
   begin
     if has_holes
     then
       Lwt_log.debug "lazy_write_out interference" >>= fun ()->
       Lwt_unix.sleep 1.0 >>= fun () ->
       alba_client # get_object_manifest'
-                  ~namespace_id ~object_name:manifest.name
+                  ~namespace_id ~object_name:manifest.Manifest.name
                   ~consistent_read:true ~should_cache:false
       >>= fun (_,mfo) ->
       Lwt.return (Option.get_some mfo)
@@ -115,6 +109,7 @@ let test_rebalance_one () =
          "Let's see if this test_rebalance_one thingy does its job"
      in
      alba_client # upload_object_from_bytes
+       ~epilogue_delay:None
        ~namespace
        ~object_name
        ~object_data
@@ -238,6 +233,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
            begin
              let object_name = object_name_template i in
              alba_client # get_base_client # upload_object_from_string
+                         ~epilogue_delay:None
                          ~namespace
                          ~object_name
                          ~object_data
@@ -376,6 +372,7 @@ let test_repair_orange () =
        let object_name = test_name in
        let object_data = test_name in
        alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data
@@ -446,6 +443,7 @@ let test_repair_orange2 () =
        let object_name = test_name in
        let object_data = get_random_string 399 in
        alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data
@@ -509,6 +507,7 @@ let test_rebalance_node_spread () =
      let object_name = test_name in
      let object_data = get_random_string 399 in
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data
@@ -585,7 +584,8 @@ let test_rewrite_namespace () =
 
      Lwt_list.map_p
        (fun name ->
-        alba_client # get_base_client # upload_object_from_string
+         alba_client # get_base_client # upload_object_from_string
+               ~epilogue_delay:None
                ~namespace
                ~object_name:name
                ~object_data:name
@@ -698,6 +698,7 @@ let test_verify_namespace () =
 
      let object_name = "abc" in
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data:"efg"
@@ -773,14 +774,14 @@ let test_verify_namespace () =
                                |> snd
      in
      OUnit.assert_bool "Manifest.version_id of formerly missing"
-       (1 <= new_version_missing);
+       (1 = new_version_missing);
 
      (* checksum mismatch fragment *)
      assert (mf2.fragment_locations
              |> List.hd_exn
              |> fun l -> List.nth_exn l 1
              |> snd
-             >= 1);
+             = 1);
 
      alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
      assert (cnt = cnt');
@@ -875,12 +876,13 @@ let test_automatic_repair () =
 
         Lwt_list.iter_p
           (fun i ->
-           alba_client # get_base_client # upload_object_from_string
-                       ~namespace
-                       ~object_name:(string_of_int i)
-                       ~object_data:"fsdioap"
-                       ~checksum_o:None
-                       ~allow_overwrite:Nsm_model.NoPrevious
+            alba_client # get_base_client # upload_object_from_string
+                        ~epilogue_delay:None
+                        ~namespace
+                        ~object_name:(string_of_int i)
+                        ~object_data:"fsdioap"
+                        ~checksum_o:None
+                        ~allow_overwrite:Nsm_model.NoPrevious
            >>= fun (mf,_, _,_) ->
            Lwt.return ())
           (Int.range 0 5) >>= fun () ->

@@ -186,6 +186,7 @@ class alba_cache
            (fun namespace ->
             let object_name = make_object_name ~bid ~name in
             client # upload_object_from_bigstring_slice
+                   ~epilogue_delay:None
                    ~namespace
                    ~object_name
                    ~object_data:blob

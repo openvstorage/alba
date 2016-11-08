@@ -28,6 +28,7 @@ object
         ~allow_overwrite
         ?(checksum = None) () =
     alba_client # upload_object_from_file
+                ~epilogue_delay:None
                 ~namespace
                 ~object_name ~input_file
                 ~checksum_o:checksum

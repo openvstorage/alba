@@ -49,6 +49,7 @@ let test_safety () =
        let object_name = test_name in
 
        client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data:"y"

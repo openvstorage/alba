@@ -188,14 +188,15 @@ let rewrite_object
 
   Lwt.catch
     (fun () ->
-     alba_client # upload_object'
-                 ~namespace_id
-                 ~object_name
-                 ~object_reader
-                 ~checksum_o
-                 ~allow_overwrite
-                 ~object_id_hint
-     >>= fun _ ->
+      alba_client # upload_object'
+                  ~epilogue_delay:None
+                  ~namespace_id
+                  ~object_name
+                  ~object_reader
+                  ~checksum_o
+                  ~allow_overwrite
+                  ~object_id_hint
+      >>= fun _ ->
      Lwt.return ())
     (let open Nsm_model.Err in
      function

@@ -233,7 +233,7 @@ let upload_chunk
      else
        begin
          t_add_to_fragment_cache >>= fun mfs ->
-         Lwt.return (make_results, mfs, fragment_checksums)
+         Lwt.return (make_results, mfs, fragment_checksums, packed_fragment_sizes)
        end
     )
     (fun () ->
@@ -454,16 +454,18 @@ let upload_object''
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
-      >>= fun (make_fragment_states, mfs, fragment_checksums)  ->
+      >>= fun (make_fragment_states, mfs,
+               fragment_checksums, packed_fragment_sizes)  ->
       let fragment_states = make_fragment_states () in
       let fragment_info =
         let open Lwt_extra2 in
-        List.map2i
-          (fun i state fragment_checksum ->
+        List.map3i
+          (fun i state fragment_checksum packed_fragment_size ->
             match state with
-            | Success ((stats,res) as x) ->
+            | Success (stats,(osd_o,_)) ->
                Lwt_log.ign_debug_f "i=%i =>%s " i
-                                   (Statistics.show_fragment_upload stats); x
+                                   (Statistics.show_fragment_upload stats);
+               (stats, (osd_o, fragment_checksum, packed_fragment_size))
             | Failed exn ->
                Lwt_log.ign_warning_f "fragment upload failed:%s"
                                      (Printexc.to_string exn);
@@ -478,7 +480,7 @@ let upload_object''
                                 total = 0.0;
                  })
                in
-               let res = (None, fragment_checksum) in
+               let res = (None, fragment_checksum, packed_fragment_size) in
                (stats, res)
             | Ongoing t ->
                (* for now, assume these (will) have failed *)
@@ -493,9 +495,9 @@ let upload_object''
                                 total = 0.0;
                  })
                in
-               let res = (None, fragment_checksum) in
+               let res = (None, fragment_checksum, packed_fragment_size) in
                (stats, res)
-          ) fragment_states fragment_checksums
+          ) fragment_states fragment_checksums packed_fragment_sizes
       in
       let t_fragments, fragment_info = List.split fragment_info in
 
@@ -548,8 +550,8 @@ let upload_object''
   (* all fragments have been stored
          make a manifest and store it in the namespace manager *)
 
-  let locations, fragment_checksums =
-    Nsm_model.Layout.split fragments_info in
+  let locations, fragment_checksums, fragment_packed_sizes =
+    Nsm_model.Layout.split3 fragments_info in
 
   let chunk_sizes = List.map snd chunk_sizes' in
   let open Nsm_model in
@@ -562,14 +564,6 @@ let upload_object''
             checksum <> object_checksum
        then Error.failwith Error.ChecksumMismatch;
        checksum
-  in
-  let fragment_packed_sizes =
-    List.map
-      (fun (ut : Statistics.chunk_upload) ->
-       List.map
-         (fun ft -> ft.Statistics.size_final)
-         ut.Statistics.fragments)
-      chunk_times
   in
   let fragment_locations =
     Nsm_model.Layout.map
@@ -650,6 +644,7 @@ let store_manifest
       manifest_cache
       ~namespace_id
       ~allow_overwrite
+      ~epilogue_delay
       (manifest, chunk_fidmos, almost_t_object, gc_epoch,
        fragment_state_layout)
   =
@@ -692,6 +687,13 @@ let store_manifest
     Lwt.catch
     (fun () ->
       begin
+        (match epilogue_delay with
+         | None   -> Lwt.return_unit
+         | Some d ->
+            Lwt_log.debug_f "epilogue_delay: sleeping %f" d >>= fun () ->
+            Lwt_unix.sleep d
+        )
+        >>= fun () ->
         Lwt_list.map_s
           (fun make_fragment_state ->
             let fragment_states = make_fragment_state() in
@@ -793,6 +795,7 @@ let store_manifest
   Lwt.return (manifest, chunk_fidmos, t_object, namespace_id)
 
 let upload_object'
+      ~epilogue_delay
       nsm_host_access osd_access
       manifest_cache
       get_preset_info
@@ -826,6 +829,7 @@ let upload_object'
       ~upload_slack
     >>=
       store_manifest
+        ~epilogue_delay
         nsm_host_access
         osd_access
         manifest_cache

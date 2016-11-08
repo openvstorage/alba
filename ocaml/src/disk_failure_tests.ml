@@ -76,6 +76,7 @@ let _easiest_upload () =
      >>=fun()->
 
      alba_client # upload_object_from_file
+       ~epilogue_delay:None
        ~namespace
        ~object_name ~input_file
        ~checksum_o:None

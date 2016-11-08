@@ -551,6 +551,8 @@ module Layout = struct
 
     let split xy_t = List.split (List.map List.split xy_t)
 
+    let split3 xyz_t = List.split3 (List.map List.split3 xyz_t)
+
     let congruent x_t y_t =
       let list_ok x y = List.length x = List.length y in
       let rec ok = function
@@ -700,6 +702,13 @@ module Manifest = struct
       (List.flatmap_unordered
          (List.map_filter_rev fst)
          fragment_locations)
+
+  let has_holes t =
+    List.flatten t.fragment_locations
+    |> List.fold_left
+         (fun acc (osd_id_o,_) ->
+           acc || (osd_id_o = None)
+         ) false
 end
 
 module Assert =

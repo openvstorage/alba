@@ -344,7 +344,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
       let open Nsm_model in
       Lwt.catch
         (fun () ->
-           alba_client # upload_object_from_file
+          alba_client # upload_object_from_file
+             ~epilogue_delay:None
              ~namespace
              ~object_name ~input_file
              ~checksum_o

@@ -310,7 +310,7 @@ module List = struct
 
   let map2i f xs ys =
     let rec inner acc i xs ys =
-      match (xs,ys) with
+      match xs, ys with
       | [],[] -> List.rev acc
       | _, [] | [], _ -> raise (Invalid_argument "List.map2i")
       | x :: xs, y :: ys ->
@@ -318,6 +318,18 @@ module List = struct
          inner (r::acc) (i+1) xs ys
     in
     inner [] 0 xs ys
+
+  let map3i f xs ys zs =
+    let rec inner acc i xs ys zs =
+      match xs, ys, zs with
+      | [],[],[] -> List.rev acc
+      | [], _, _ |  _,[], _ |  _, _, [] -> raise (Invalid_argument "List.map2i")
+      | x :: xs, y :: ys, z :: zs ->
+         let r = f i x y z in
+         inner (r::acc) (i+1) xs ys zs
+    in
+    inner [] 0 xs ys zs
+
 end
 
 module Option = struct
