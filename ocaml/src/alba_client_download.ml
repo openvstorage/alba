@@ -355,7 +355,7 @@ let download_chunk
       Error.failwith Error.NotEnoughFragments
   in
   let fragment_size =
-    let _, (_, bs) = Hashtbl.choose fragments |> Option.get_some in
+    let _, (_, bs) = Hashtbl.choose_first fragments |> Option.get_some in
     Lwt_bytes.length bs
   in
 

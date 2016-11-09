@@ -101,9 +101,14 @@ let alba_add_osd
       (* for asd/kinetic *)
       host port
       (* for alba osd *)
-      alba_osd_cfg_url prefix preset
+      alba_osd_cfg_url
+      (* for proxy osd *)
+      endpoints
+
+      prefix preset
 
       node_id
+
       to_json verbose attempts
   =
   let node_id = match node_id with
@@ -112,15 +117,15 @@ let alba_add_osd
   in
   let t () =
     begin
-      match host, port, alba_osd_cfg_url, prefix, preset with
-      | Some host, Some port, None, None, None ->
+      match host, port, alba_osd_cfg_url, endpoints, prefix, preset with
+      | Some host, Some port, None, [], None, None ->
          let conn_info = Networking2.make_conn_info [host] port tls_config in
          Discovery.get_kind Buffer_pool.default_buffer_pool conn_info >>=
            (function
              | None -> Lwt.fail_with "I don't think this is an OSD"
              | Some kind ->
                 Lwt.return kind)
-      | None, None, Some alba_osd_cfg_url, Some prefix, Some preset ->
+      | None, None, Some alba_osd_cfg_url, [], Some prefix, Some preset ->
          Alba_arakoon.config_from_url alba_osd_cfg_url >>= fun alba_osd_cfg ->
          Albamgr_client.with_client'
            ~attempts
@@ -132,7 +137,25 @@ let alba_add_osd
                                                prefix;
                                                preset;
                                              })
-      | _, _, _, _, _ ->
+      | None, None, None, endpoints, Some prefix, Some preset ->
+         let pp =
+           new Proxy_osd.multi_proxy_pool
+               ~alba_id:None
+               ~endpoints:(List.map Nsm_model.OsdInfo.parse_endpoint_uri endpoints |> ref)
+               ~transport:Net_fd.TCP
+               ~size:1
+         in
+         pp # with_client ~namespace:""
+            (fun proxy ->
+              Proxy_osd.ensure_namespace_exists proxy ~namespace:prefix ~preset >>= fun () ->
+              proxy # get_alba_id) >>= fun alba_id ->
+         Lwt.return Nsm_model.OsdInfo.(AlbaProxy {
+                                           id = alba_id;
+                                           endpoints;
+                                           prefix;
+                                           preset;
+         })
+      | _, _, _, _, _, _ ->
          failwith "incorrect combination of host, port alba_osd_cfg_url, prefix & preset specified"
     end >>= fun kind ->
 
@@ -142,7 +165,8 @@ let alba_add_osd
       Buffer_pool.osd_buffer_pool
       (Alba_osd.make_client ~albamgr_connection_pool_size:10)
       kind
-    >>= fun (osd_client, closer) ->
+      ~pool_size:1
+    >>= fun (_, osd_client, closer) ->
     Lwt_log.info_f "long_id :%S" (osd_client # get_long_id) >>= fun () ->
     osd_client # get_disk_usage >>= fun (used, total) ->
     let other = "other?" in
@@ -176,6 +200,13 @@ let alba_osd_cfg_url =
               ~docv:"ALBA_OSD_CONFIG_URL"
               ~doc:"config url for alba mgr of the backend that should be added as osd")
 
+let endpoints =
+  Arg.(value
+       & opt (list string) []
+       & info [ "endpoint" ]
+              ~docv:"ENDPOINT"
+              ~doc:"endpoint for an alba proxy based osd (e.g. tcp://host:port/ or rdma://host:port/).")
+
 let alba_add_osd_cmd =
   Term.(pure alba_add_osd
         $ alba_cfg_url
@@ -191,6 +222,7 @@ let alba_add_osd_cmd =
                       ~docv:"PORT"
                       ~doc:"the port to connect with")
         $ alba_osd_cfg_url
+        $ endpoints
         $ Arg.(value
                & opt (some string) None
                & info ["prefix"]
@@ -213,7 +245,7 @@ let alba_add_osd_cmd =
 let alba_update_osd
       alba_cfg_url tls_config long_id
       ips' port'
-      alba_osd_mgr_cfg_url
+      alba_osd_mgr_cfg_url endpoints'
       to_json verbose
   =
   let t () =
@@ -227,8 +259,8 @@ let alba_update_osd
        mgr # update_osds
            [ (long_id,
               Albamgr_protocol.Protocol.Osd.Update.make
-                ~ips' ?port'
-                ?albamgr_cfg'
+                ?ips' ?port'
+                ?albamgr_cfg' ?endpoints'
                 ());
            ])
   in
@@ -240,12 +272,17 @@ let alba_update_osd_cmd =
         $ tls_config
         $ long_id
         $ Arg.(value
-               & opt (list string) []
+               & opt (some (list string)) None
                & info ["ip"])
         $ Arg.(value
                & opt (some int) None
                & info ["port"])
         $ alba_osd_cfg_url
+        $ Arg.(value
+               & opt (some (list string)) None
+               & info [ "endpoint" ]
+                      ~docv:"ENDPOINT"
+                      ~doc:"endpoint for an alba proxy based osd (e.g. tcp://host:port/ or rdma://host:port/).")
         $ to_json
         $ verbose
   ),

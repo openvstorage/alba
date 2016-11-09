@@ -624,6 +624,7 @@ class proxy ?fragment_cache ?ip ?transport
 
   method config_url = cfg_url
 
+  method proxy_cfg = p_cfg
 
   method log_file = Printf.sprintf "%s/proxy.out" proxy_base
 
@@ -2424,24 +2425,40 @@ module Test = struct
                                             ~__retry_timeout:10.
     in
 
-    let add_backend_as_osd t_local =
-      _alba_cmd_line
-        [ "add-osd";
-          "--config"; t_global.abm # config_url |> Url.canonical;
-          "--alba-osd-config-url"; t_local.abm # config_url |> Url.canonical;
-          (* "--long-id"; long_id; *)
-          "--node-id"; "x";
-          "--prefix"; "alba_osd_prefix";
-          "--preset"; "default"; ];
+    let add_backend_as_osd t_local kind =
+      let () =
+        match kind with
+        | `AlbaOsd ->
+           _alba_cmd_line
+             [ "add-osd";
+               "--config"; t_global.abm # config_url |> Url.canonical;
+               "--alba-osd-config-url"; t_local.abm # config_url |> Url.canonical;
+               "--node-id"; "x";
+               "--prefix"; "alba_osd_prefix";
+               "--preset"; "default";
+               "--to-json";
+             ]
+        | `ProxyOsd ->
+           _alba_cmd_line
+             [ "add-osd";
+               "--config"; t_global.abm # config_url |> Url.canonical;
+               "--endpoint"; Printf.sprintf "tCp://localhost:%i" (t_local.proxy # proxy_cfg
+                                                                  |> Proxy_cfg.port);
+               "--node-id"; "x";
+               "--prefix"; "alba_osd_prefix";
+               "--preset"; "default";
+               "--to-json";
+             ]
+      in
       _alba_cmd_line
         [ "claim-osd";
           "--config"; t_global.abm # config_url |> Url.canonical;
           "--long-id"; get_alba_id t_local; ]
     in
-    add_backend_as_osd t_local1;
-    add_backend_as_osd t_local2;
-    add_backend_as_osd t_local3;
-    add_backend_as_osd t_local4;
+    add_backend_as_osd t_local1 `AlbaOsd;
+    add_backend_as_osd t_local2 `AlbaOsd;
+    add_backend_as_osd t_local3 `ProxyOsd;
+    add_backend_as_osd t_local4 `ProxyOsd;
     _alba_cmd_line
       [ "deliver-messages";
         "--config"; t_global.abm # config_url |> Url.canonical; ];
@@ -2508,7 +2525,7 @@ module Test = struct
     assert (show_namespace_2.bucket_count = [ (2,2,3,3), 3]);
 
     (* add backend again *)
-    add_backend_as_osd t_local1;
+    add_backend_as_osd t_local1 `ProxyOsd;
 
     wait_for_condition
       150

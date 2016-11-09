@@ -271,8 +271,8 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
          objects_slices)
   in
   function
-  | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} ->
-                       "{ }"
+  | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} -> "{ }"
+  | ListNamespaces2 -> fun { RangeQueryArgs.first; finc; last; max; reverse} -> "{ }"
   | CreateNamespace -> fun (namespace, preset_option) ->
                        Printf.sprintf "(%S,_)" namespace
   | DeleteNamespace -> fun namespace ->
@@ -313,6 +313,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                                                 args)
   | MultiExists     -> fun args ->
                        Printf.sprintf "(%S)" ([%show : Namespace.name * object_name list] args)
+  | GetAlbaId       -> fun () -> "()"
 
 let log_request code maybe_renderer time =
   let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
@@ -370,6 +371,14 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
         ~first ~finc ~last
         ~max ~reverse >>= fun ((cnt, namespaces), has_more) ->
       Lwt.return ((cnt, List.map fst namespaces), has_more)
+    | ListNamespaces2 -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
+      (* TODO only return namespaces which are active? hmm, maybe creating too... *)
+      alba_client # mgr_access # list_namespaces
+        ~first ~finc ~last
+        ~max ~reverse >>= fun ((cnt, namespaces), has_more) ->
+      Lwt.return ((cnt,
+                   List.map (fun (name, info) -> name, info.Namespace.preset_name) namespaces),
+                  has_more)
     | NamespaceExists -> fun stats namespace ->
       (* TODO keep namespace state in mind? *)
       alba_client # mgr_access # get_namespace ~namespace >>= fun r ->
@@ -554,6 +563,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        end
     | OsdInfo2 ->
        fun stats () -> alba_client # osd_infos
+    | GetAlbaId ->
+       fun stats () -> alba_client # get_alba_id
   in
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
