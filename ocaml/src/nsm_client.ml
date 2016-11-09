@@ -150,9 +150,12 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
         DeleteObject
         (allow_overwrite, object_name)
 
-    method update_manifest ~object_name ~object_id updated_object_locations ~gc_epoch ~version_id =
+    method update_manifest ~object_name ~object_id
+                           updated_object_locations
+                           ~gc_epoch ~version_id
+      =
       self # update
-        UpdateObject
+        UpdateObject2
         (object_name, object_id, updated_object_locations, gc_epoch, version_id)
 
     method enable_gc_epoch gc_epoch =

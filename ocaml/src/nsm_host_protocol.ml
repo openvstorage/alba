@@ -207,6 +207,7 @@ module Protocol = struct
       nsm_query MultiExists, 35l, "MultiExists";
       nsm_update ApplySequence, 36l, "ApplySequence";
       nsm_query GetObjectManifestsByName, 37l, "GetObjectManifestsByName";
+      nsm_update UpdateObject2, 38l, "UpdateObject2";
     ]
 
   let wrap_unknown_operation f =

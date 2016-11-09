@@ -142,9 +142,12 @@ let _upload_missing_fragments
        encryption
        fragment_checksum_algo
      >>= fun (packed_fragment, _, _, checksum') ->
-
-     if checksum = checksum'
-     then
+     let maybe_changed =
+       if checksum = checksum'
+       then None
+       else
+         Some (Lwt_bytes2.Lwt_bytes.length packed_fragment, checksum)
+     in
        begin
          Alba_client_upload.upload_packed_fragment_data
            osd_access
@@ -156,19 +159,9 @@ let _upload_missing_fragments
            ~gc_epoch ~checksum
            ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
          >>= fun () ->
-         Lwt.return (fragment_id, chosen_osd_id)
+         Lwt.return (fragment_id, Some chosen_osd_id, maybe_changed)
        end
-     else
-       begin
-         let msg =
-           Printf.sprintf
-             "Error while repairing object (this should never happen): %s <> %s"
-             (Checksum.show checksum)
-             (Checksum.show checksum')
-         in
-         Lwt_log.warning msg >>= fun () ->
-         Lwt.fail_with msg
-       end)
+    )
     to_be_repaireds
 
 let upload_missing_fragments

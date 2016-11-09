@@ -208,6 +208,12 @@ let get_updates_res : type i o. read_user_db ->
       | ApplySequence ->
          fun (asserts, updates) ->
          NSM.apply_sequence db asserts updates
+      | UpdateObject2 ->
+         fun (object_name, object_id, new_fragments, gc_epoch, version_id) ->
+         NSM.update_manifest2 db
+                              object_name object_id new_fragments
+                              gc_epoch version_id
+         , ()
     in
     let upds, res = get_updates_res tag req in
     let arakoon_upds = transform_updates namespace_id upds in

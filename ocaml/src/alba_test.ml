@@ -119,7 +119,7 @@ let maybe_delete_fragment
            client # update_manifest
              ~object_name:manifest.Manifest.name
              ~object_id
-             [ (chunk_id, fragment_id, None); ]
+             [ (chunk_id, fragment_id, None, None); ]
              ~gc_epoch ~version_id:(manifest.Manifest.version_id + 1))
     else
       Lwt.return ()
@@ -733,7 +733,8 @@ let test_partial_download_bad_fragment () =
                   client # update_manifest
                          ~object_name
                          ~object_id:mf.Nsm_model.Manifest.object_id
-                         [ 0, 0, None; 0, 1, None; ]
+                         [ 0, 0, None, None;
+                           0, 1, None, None]
                          ~gc_epoch
                          ~version_id:1) >>= fun () ->
 

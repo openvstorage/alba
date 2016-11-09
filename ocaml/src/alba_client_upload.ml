@@ -735,7 +735,7 @@ let store_manifest
                   | None, None   -> ()
 
                   | Some osd_id, None ->
-                     let update = (chunk_id,fragment_id, Some osd_id) in
+                     let update = (chunk_id,fragment_id, Some osd_id, None) in
                      let () = r := update :: !r in ()
                 ) chunk
             ) side_by_side;
@@ -744,9 +744,9 @@ let store_manifest
         if updates = []
         then Lwt_log.debug_f "epilogue:nothing to do for object:%S" object_name
         else
+          let open Nsm_model.Manifest in
           begin
             nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
-            let open Nsm_model.Manifest in
             client # update_manifest
                    ~object_name
                    ~object_id:manifest.object_id
@@ -757,7 +757,7 @@ let store_manifest
             Lwt_log.debug_f
               "epilogue:successfully updated object:%S with updates:%s"
               object_name
-              ([%show : (int * int * int64 option) list] updates)
+              ([%show : Nsm_model.Manifest.fragment_update list] updates)
             >>= fun () ->
             let manifest' =
               { manifest with
@@ -769,12 +769,12 @@ let store_manifest
                          begin
                            let update =
                              List.find
-                               (fun (cid,fid,_) ->
+                               (fun (cid,fid,_,_) ->
                                  cid = chunk_id && fid = fragment_id
                                ) updates
                            in
                            match update with
-                           | Some (_,_,Some osd_id) -> (Some osd_id, 0)
+                           | Some (_,_,Some osd_id,_) -> (Some osd_id, 0)
                            | _ -> (None,0)
                          end
                       | _ -> old
