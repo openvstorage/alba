@@ -170,6 +170,21 @@ class proxy_client fd =
       = self # request ListNamespaces
              RangeQueryArgs.{ first; finc; last; max; reverse; }
 
+    method list_namespaces2 ~first ~finc ~last
+                          ~max ~reverse
+      = self # request ListNamespaces2
+             RangeQueryArgs.{ first; finc; last; max; reverse; }
+
+    method get_namespace_preset ~namespace =
+      self # list_namespaces2
+           ~first:namespace ~finc:true
+           ~last:(Some (namespace, true))
+           ~max:1 ~reverse:false >>= fun ((_, r), _) ->
+      match r with
+      | [] -> Lwt.return None
+      | [ (n, preset) ] when n = namespace -> Lwt.return (Some preset)
+      | _ -> assert false
+
     method osd_view = self # request OsdView ()
 
     method get_client_config = self # request GetClientConfig ()

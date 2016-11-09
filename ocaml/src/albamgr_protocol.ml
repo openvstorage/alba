@@ -212,9 +212,8 @@ module Protocol = struct
                                            cfg = get_cfg cfg;
                                          }
           | AlbaProxy (_ as x) -> AlbaProxy { x with
-                                              endpoints = (match endpoints' with
-                                                           | Some es -> es
-                                                           | None -> x.endpoints); }
+                                              endpoints = Option.get_some_default x.endpoints endpoints';
+                                            }
         in
         let max_n = 10 in
         { node_id = osd.node_id;

@@ -2442,8 +2442,7 @@ module Test = struct
            _alba_cmd_line
              [ "add-osd";
                "--config"; t_global.abm # config_url |> Url.canonical;
-               (* "--alba-osd-config-url"; t_local.abm # config_url |> Url.canonical; *)
-               "--endpoint"; Printf.sprintf "tcp://localhost:%i" (t_local.proxy # proxy_cfg
+               "--endpoint"; Printf.sprintf "tCp://localhost:%i" (t_local.proxy # proxy_cfg
                                                                   |> Proxy_cfg.port);
                "--node-id"; "x";
                "--prefix"; "alba_osd_prefix";

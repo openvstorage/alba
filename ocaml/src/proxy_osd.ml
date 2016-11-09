@@ -148,7 +148,7 @@ class multi_proxy_pool
                 (fun addr_info ->
                   transport,
                   (match addr_info.Unix.ai_addr with
-                   | Unix.ADDR_UNIX x -> x
+                   | Unix.ADDR_UNIX x -> assert false
                    | Unix.ADDR_INET (x, _) -> Unix.string_of_inet_addr x),
                   port)
                 r
@@ -232,15 +232,13 @@ class multi_proxy_pool
   end
 
 let ensure_namespace_exists proxy_client ~namespace ~preset =
-  proxy_client # list_namespaces
-               ~first:namespace ~finc:true
-               ~last:(Some (namespace, true))
-               ~max:1 ~reverse:false
-  >>= fun ((_, x), _) ->
-  match x with
-  | [] -> proxy_client # create_namespace ~namespace ~preset_name:(Some preset)
-  | [ _; ] -> Lwt.return ()
-  | _ -> assert false
+  proxy_client # get_namespace_preset ~namespace >>= function
+  | None -> proxy_client # create_namespace ~namespace ~preset_name:(Some preset)
+  | Some preset' ->
+     if preset = preset'
+     then Lwt.return ()
+     else Lwt.fail_with (Printf.sprintf "ensure_namespace_exists %S %S: it already exist with wrong preset %S!"
+                                        namespace preset preset')
 
 class t
         (proxy_pool : proxy_pool)
