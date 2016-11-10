@@ -106,10 +106,11 @@ let maybe_decrypt
         Cipher.with_t_lwt
           key Cipher.AES256 Cipher.CBC []
           (fun cipher ->
-           Cipher.decrypt
-             ~iv
-             cipher
-             data 0 (Lwt_bytes.length data)) >>= fun () ->
+            Cipher.set_iv cipher iv;
+            Cipher.decrypt_detached
+                  cipher
+                  data 0 (Lwt_bytes.length data)
+          ) >>= fun () ->
         Lwt.return (Padding.unpad data)
     end
 

@@ -51,6 +51,11 @@ module Error = struct
   let check t =
     if t <> 0
     then raise (Error t)
+
+  let check_lwt t =
+    if t <> 0
+    then Lwt.fail (Error t)
+    else Lwt.return ()
 end
 
 let check_version version =
@@ -275,7 +280,13 @@ module Cipher = struct
       Error.check err
 
   let set_ctr =
-    (* gcry_error_t gcry_cipher_setctr (gcry_cipher_hd_t h, const void *c, size_t l) *)
+    (* gcry_error_t gcry_cipher_setctr (gcry_cipher_hd_t h, const void *c, size_t l)
+     *
+     * Set the counter vector used for encryption or decryption.
+     * The counter is passed as the buffer c of length l bytes and copied to internal data structures.
+     * The function checks that the counter matches the requirement of the selected algorithm
+     * (i.e., it must be the same size as the block size).
+     *)
     let inner =
       foreign
         "gcry_cipher_setctr"
@@ -327,11 +338,9 @@ module Cipher = struct
              (bigarray_start array1 data) len
              (from_voidp char null) 0)
         ()
-      >>= fun err ->
-      Error.check err;
-      Lwt.return ()
+      >>= Error.check_lwt
 
-  let decrypt =
+  let decrypt ~release_runtime_lock =
     (* gcry_error_t
          gcry_cipher_decrypt (
            gcry_cipher_hd_t h,
@@ -357,25 +366,61 @@ module Cipher = struct
     let inner =
       foreign
         "gcry_cipher_decrypt"
-        ~release_runtime_lock:true
+        ~release_runtime_lock
         (hd_t @->
          ptr char @-> int_to_size_t @->
          ptr char @-> int_to_size_t @->
          returning Error.t)
     in
-    fun t ?iv (data : Lwt_bytes.t) offset length ->
-      Option.iter (fun iv -> set_iv t iv) iv;
-      let open Lwt.Infix in
-      Lwt_preemptive.detach
-        (fun () ->
-           inner
-             t
-             (bigarray_start array1 data +@ offset) length
-             (from_voidp char null) 0)
-        ()
-      >>= fun err ->
-      Error.check err;
-      Lwt.return ()
+    fun t (data : Lwt_bytes.t) offset length ->
+    inner
+      t
+      (bigarray_start array1 data +@ offset) length
+      (from_voidp char null) 0
+
+  let decrypt_detached t data offset length =
+    let open Lwt.Infix in
+    Lwt_preemptive.detach
+      (fun () -> decrypt ~release_runtime_lock:true
+                         t data offset length)
+      ()
+    >>= Error.check_lwt
+
+  let _burn_buf = Lwt_bytes.create 16
+
+  let set_ctr_with_offset t ctr offset =
+    let block_len = 16 in
+    assert (String.length ctr = block_len);
+    let ctr = Bytes.copy ctr in
+
+    let skip_blocks = offset / block_len in
+    let skip_blocks64 = Int64.of_int skip_blocks in
+
+    (* bump cntr_low *)
+    let cntr_low = EndianBytes.BigEndian.get_int64 ctr 8 in
+    let cntr_low' = Int64.add cntr_low skip_blocks64 in
+    let () = EndianBytes.BigEndian.set_int64 ctr 8 cntr_low' in
+
+    (* update cntr_high if we have overflow *)
+    if cntr_low' >= 0L && cntr_low' < skip_blocks64
+    then
+      begin
+        let cntr_high = EndianBytes.BigEndian.get_int64 ctr 0 in
+        EndianBytes.BigEndian.set_int64 ctr 0 (Int64.succ cntr_high)
+      end;
+
+    set_ctr t ctr;
+
+    let to_burn = offset - (skip_blocks * block_len) in
+    if to_burn > 0
+    then
+      decrypt
+        ~release_runtime_lock:false
+        t
+        _burn_buf
+        0 to_burn
+      |> Error.check
+
 end
 
 module Digest = struct
