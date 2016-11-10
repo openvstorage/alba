@@ -1877,6 +1877,18 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         ~max_disks_per_node:updated_manifest.Manifest.max_disks_per_node
     in
 
+    let update_storage_size =
+      let storage_size_delta =
+        let old_size = get_summed_fragment_sizes manifest_old
+        and new_size = get_summed_fragment_sizes updated_manifest
+        in
+        Int64.sub new_size old_size
+      in
+      if storage_size_delta = 0L
+      then []
+      else
+        [Update'.add Keys.namespace_storage_size storage_size_delta]
+    in
     let update_buckets =
       let Storage_scheme.EncodeCompressEncrypt
           (Encoding_scheme.RSVM (k, m, _), _) =
@@ -1940,6 +1952,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         device_obj_mapping_upds;
         update_osd_sizes;
         update_buckets;
+        update_storage_size;
       ]
 
   let update_manifest
