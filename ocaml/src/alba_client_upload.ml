@@ -449,7 +449,7 @@ let upload_object''
            ~osds:target_osds
            ~fragment_cache
            ~cache_on_write
-           ~upload_slack
+           ~upload_slack:(if has_more then 0.0 else upload_slack)
         )
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
