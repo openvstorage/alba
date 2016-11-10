@@ -23,6 +23,7 @@ open Lwt.Infix
 
 class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
   object(self)
+    val supports_update_manifest2 = ref None
 
     method private query : type req res.
       ?consistency : Consistency.t ->
@@ -154,9 +155,48 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
                            updated_object_locations
                            ~gc_epoch ~version_id
       =
-      self # update
-        UpdateObject2
-        (object_name, object_id, updated_object_locations, gc_epoch, version_id)
+      let old_call () =
+        let updated_object_locations' =
+           List.map
+             (function
+              | (cid,fid,ov ,None) -> (cid,fid,ov)
+              | _ -> failwith "this nsm can't handle that kind of update"
+             )
+             updated_object_locations
+         in
+         self # update
+              UpdateObject
+              (object_name, object_id, updated_object_locations',
+               gc_epoch, version_id)
+      in
+      match !supports_update_manifest2 with
+      | Some true ->
+         self # update
+                  UpdateObject2
+                  (object_name, object_id, updated_object_locations,
+                   gc_epoch, version_id)
+      | Some false -> old_call ()
+      | None ->
+         Lwt.catch
+           (fun () ->
+             self # update
+                  UpdateObject2
+                  (object_name, object_id, updated_object_locations,
+                   gc_epoch, version_id)
+             >>= fun () ->
+             supports_update_manifest2 := Some true;
+             Lwt.return_unit
+           )
+           (let open Nsm_model.Err in
+            function
+            | Nsm_exn (Unknown_operation,_) ->
+               supports_update_manifest2 := Some false;
+               old_call ()
+            | exn -> Lwt.fail exn
+           )
+
+
+
 
     method enable_gc_epoch gc_epoch =
       self # update
