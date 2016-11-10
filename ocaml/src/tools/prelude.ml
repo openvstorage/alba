@@ -586,16 +586,32 @@ module Hashtbl = struct
 
   exception Break
 
-  let choose t =
+  let _choose ~n t =
     let res = ref None in
+    let cntr = ref 0 in
     let () =
       try
         Hashtbl.iter
           (fun k v ->
-             res := Some (k, v);
-             raise Break) t
+            if n = !cntr
+            then
+              begin
+                res := Some (k, v);
+                raise Break
+              end
+            else
+              incr cntr)
+          t
       with Break -> () in
     !res
+
+  let choose_first t = _choose ~n:0 t
+
+  let choose_random t =
+    let len = length t in
+    if len = 0
+    then None
+    else _choose ~n:(Random.int len) t
 
   let map f t =
     Hashtbl.fold
@@ -625,6 +641,10 @@ module Hashtbl = struct
       (fun k v acc -> (k, v) :: acc)
       h
       []
+
+  let keys h = Hashtbl.fold (fun k _ acc -> k :: acc) h []
+
+  let values h = Hashtbl.fold (fun _ v acc -> v :: acc) h []
 
   let to_yojson _ value_to_yojson h =
     to_assoc_list h

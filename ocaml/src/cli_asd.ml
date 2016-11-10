@@ -194,7 +194,9 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
        Tcp_keepalive2.default
        buffer_pool
        (Alba_osd.make_client ~albamgr_connection_pool_size:10 ~upload_slack:0.2)
-       k >>= fun (client, closer) ->
+       k
+     ~pool_size:1
+     >>= fun (_, client, closer) ->
      Lwt.finalize
        (fun () -> f client)
        closer
@@ -560,7 +562,7 @@ let asd_osd_info_from_kind k =
   let open Nsm_model.OsdInfo in
   match k with
   | Asd (x, _) -> x
-  | Kinetic _ | Alba _ | Alba2 _ -> assert false
+  | Kinetic _ | Alba _ | Alba2 _ | AlbaProxy _ -> assert false
 
 let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
   begin

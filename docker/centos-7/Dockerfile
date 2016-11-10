@@ -206,13 +206,46 @@ RUN cd gobjfs \
        && make \
        && make install
 
-RUN yum -y install iproute psmisc
+RUN echo -e '[ovs]\nname=ovs\nbaseurl=http://yum.openvstorage.org/CentOS/7/x86_64/dists/unstable\nenabled=1\ngpgcheck=0' > /etc/yum.repos.d/ovs.repo
+RUN cat /etc/yum.repos.d/ovs.repo
+RUN yum -y update && \
+    yum -y install iproute psmisc
+
+## installing voldrv packages only works from within the OVS LAN
+
+ARG INSTALL_VOLDRV_PACKAGES=false
+
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT going to install the voldrv packages/testers'
+
+# http://10.100.129.100:8080/view/volumedriver/view/centos/job/volumedriver-no-dedup-release-centos-7/14/artifact/volumedriver-core/build/rpm/volumedriver-no-dedup-base-debuginfo_6.3.0.0-1.rpm
+
+ENV voldrv_jenkins=http://10.100.129.100:8080/view/volumedriver/view/centos/job/volumedriver-no-dedup-release-centos-7/14/artifact/volumedriver-core/build/rpm
+
+ENV voldrv_base_pkg_name=volumedriver-no-dedup
+ENV voldrv_version=6.3.0.0-1
+
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.rpm \
+        && yum -y --nogpgcheck localinstall ${voldrv_base_pkg_name}-base_${voldrv_version}.rpm )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.rpm \
+        && yum -y --nogpgcheck localinstall ${voldrv_base_pkg_name}-pitreplication_${voldrv_version}.rpm )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-server_${voldrv_version}.rpm \
+        && yum -y --nogpgcheck localinstall ${voldrv_base_pkg_name}-server_${voldrv_version}.rpm )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/libovsvolumedriver_${voldrv_version}.rpm \
+        && yum -y --nogpgcheck localinstall libovsvolumedriver_${voldrv_version}.rpm )
+RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
+    || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-test_${voldrv_version}.rpm \
+        && yum -y --nogpgcheck localinstall ${voldrv_base_pkg_name}-test_${voldrv_version}.rpm )
+
 
 RUN chmod ugoa+rxw -R ${opam_root}
 RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.bash_profile"
+RUN su - -c "echo 'VOLDRV_TEST=volumedriver_test; export VOLDRV_TEST;' >> /home/jenkins/.bash_profile"
+RUN su - -c "echo 'VOLDRV_BACKEND_TEST=backend_test; export VOLDRV_BACKEND_TEST;' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'GOBJFS_HOME=/usr/local/lib; export GOBJFS_HOME;' >> /home/jenkins/.bash_profile"
-
-ARG INSTALL_VOLDRV_PACKAGES=false
 
 ENTRYPOINT ["/bin/bash", "-c", "set -e && /home/jenkins/alba/docker/docker-entrypoint.sh $@"]

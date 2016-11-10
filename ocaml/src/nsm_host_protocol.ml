@@ -49,7 +49,8 @@ module Protocol = struct
                | _           -> _to_buffer_3
              end
           | Alba _
-          | Alba2 _ ->
+          | Alba2 _
+          | AlbaProxy _ ->
              _to_buffer_3
         in
         to_buffer buf osd_info

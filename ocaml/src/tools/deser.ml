@@ -37,12 +37,6 @@ let bool = Llio.bool_from, Llio.bool_to
 let option (d,s) =
   Llio.option_from d, Llio.option_to s
 
-let list (d,s) =
-  Llio.list_from d, Llio.list_to s
-
-let counted_list (d,s) =
-  Llio.counted_list_from d, Llio.counted_list_to s
-
 let pair (d1, s1) (d2, s2) =
   Llio.pair_from d1 d2,
   Llio.pair_to s1 s2
@@ -70,6 +64,13 @@ let tuple6 (d1,s1) (d2,s2) (d3,s3) (d4,s4) (d5,s5) (d6,s6) =
      s4 buf v4;
      s5 buf v5;
      s6 buf v6)
+
+let list (d,s) =
+  Llio.list_from d, Llio.list_to s
+let counted_list (d,s) =
+  Llio.counted_list_from d, Llio.counted_list_to s
+let counted_list_more ds =
+  pair (counted_list ds) bool
 
 let versioned_to v ser buf x =
   Llio.pair_to Llio.int8_to ser buf (v,x)

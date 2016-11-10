@@ -56,7 +56,8 @@ let _easiest_upload () =
            Lwt_io.printlf "rc=%i" rc
          end
       | OsdInfo.Alba _
-      | OsdInfo.Alba2 _ -> assert false
+      | OsdInfo.Alba2 _
+      | OsdInfo.AlbaProxy _ -> assert false
   in
   Alba_arakoon.config_from_url !cfg_url >>= fun cfg ->
   Alba_client2.with_client

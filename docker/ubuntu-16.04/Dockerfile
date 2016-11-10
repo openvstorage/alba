@@ -171,12 +171,12 @@ ARG INSTALL_VOLDRV_PACKAGES=false
 
 RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT going to install the voldrv packages/testers'
 
-# http://10.100.129.100:8080/job/volumedriver-no-dedup-alba-extend-int32-to-int64-release-ubuntu-16.04/2/artifact/volumedriver-core/build/debian/volumedriver-no-dedup-base-dbgsym_6.2.3-dev.201611021657.856a846_amd64.ddeb
+# http://10.100.129.100:8080/view/volumedriver/view/ubuntu/job/volumedriver-no-dedup-release-ubuntu-16.04/8/artifact/volumedriver-core/build/debian/volumedriver-no-dedup-base_6.3.1-0_amd64.deb
 
-ENV voldrv_jenkins=http://10.100.129.100:8080/job/volumedriver-no-dedup-alba-extend-int32-to-int64-release-ubuntu-16.04/2/artifact/volumedriver-core/build/debian
+ENV voldrv_jenkins=http://10.100.129.100:8080/view/volumedriver/view/ubuntu/job/volumedriver-no-dedup-release-ubuntu-16.04/8/artifact/volumedriver-core/build/debian
 
 ENV voldrv_base_pkg_name=volumedriver-no-dedup
-ENV voldrv_version=6.2.3-dev.201611021657.856a846_amd64
+ENV voldrv_version=6.3.1-0_amd64
 ENV wget_mods='--timeout=10 --tries=2'
 RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
     || (wget ${wget_mods} ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.deb \

@@ -339,6 +339,7 @@ module Deser =
 
     let list (d, s) = ReadBuffer.list_from d, WriteBuffer.list_to s
     let counted_list (d, s) = ReadBuffer.counted_list_from d, WriteBuffer.counted_list_to s
+    let counted_list_more (d, s) = ReadBuffer.counted_list_more_from d, WriteBuffer.counted_list_more_to s
 
     let tuple2 (d1, s1) (d2, s2) =
       ReadBuffer.pair_from d1 d2,
