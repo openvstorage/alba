@@ -104,6 +104,7 @@ let try_get_from_fragments
        && (let open Encryption.Encryption in
            match encryption with
            | NoEncryption -> true
+           | AlgoWithKey (AES (CTR, _), _) -> true
            | AlgoWithKey (AES (CBC, _), _) -> false)
     then
       begin
@@ -136,7 +137,15 @@ let try_get_from_fragments
              let open Osd in
              function
              | Unsupported -> Lwt.return_false
-             | Success -> Lwt.return_true
+             | Success ->
+                Lwt_list.iter_p
+                  (fun (fragment_offset, length, buf, buf_offset) ->
+                    Fragment_helper.maybe_partial_decrypt
+                      encryption
+                      ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:(k=1)
+                      (buf, buf_offset, length) ~fragment_offset)
+                  fragment_intersections >>= fun () ->
+                Lwt.return_true
              | NotFound -> Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; })
       end
     else

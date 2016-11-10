@@ -40,7 +40,7 @@ let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
   in
   let open Encryption in
   match algo with
-  | AES (CBC, L256) ->
+  | AES (_, L256) ->
     let s =
       serialize
         (Llio.tuple3_to
@@ -59,7 +59,10 @@ let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
     in
 
     Cipher.with_t_lwt
-      key Cipher.AES256 Cipher.CBC []
+      key
+      Cipher.AES256
+      Cipher.CBC
+      []
       (fun cipher -> Cipher.encrypt cipher bs) >>= fun () ->
 
     let res = Str.last_chars (Lwt_bytes.to_string bs) block_len in
@@ -89,7 +92,17 @@ let maybe_encrypt
         Cipher.set_iv cipher iv;
         Cipher.encrypt cipher bs) >>= fun () ->
     Lwt.return bs
+  | AlgoWithKey (AES (CTR, L256) as algo, key) ->
+    verify_key_length algo key;
+    get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
+    Cipher.with_t_lwt
+      key Cipher.AES256 Cipher.CTR []
+      (fun cipher ->
+        Cipher.set_ctr cipher iv;
+        Cipher.encrypt cipher plain) >>= fun () ->
+    Lwt.return plain
 
+(* consumes the input and returns a bigstring_slice *)
 let maybe_decrypt
     encryption
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
@@ -112,7 +125,39 @@ let maybe_decrypt
                   data 0 (Lwt_bytes.length data)
           ) >>= fun () ->
         Lwt.return (Padding.unpad data)
+      | AES (CTR, L256) ->
+        Encryption.verify_key_length algo key;
+        get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
+        Cipher.with_t_lwt
+          key Cipher.AES256 Cipher.CTR []
+          (fun cipher ->
+            Cipher.set_ctr cipher iv;
+            Cipher.decrypt_detached
+                  cipher
+                  data 0 (Lwt_bytes.length data)
+          ) >>= fun () ->
+        Lwt.return (Bigstring_slice.wrap_bigstring data)
     end
+
+let maybe_partial_decrypt
+      encryption
+      ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
+      (data, offset, length) ~fragment_offset =
+  let open Encryption in
+  match encryption with
+  | NoEncryption -> Lwt.return ()
+  | AlgoWithKey (algo, key) ->
+     begin
+       match algo with
+       | AES (CBC, _) -> Lwt.fail_with "can't do partial decrypt for AES CBC"
+       | AES (CTR, L256) ->
+          get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun ctr ->
+          Cipher.(with_t_lwt
+                    key AES256 CTR []
+                    (fun handle ->
+                      set_ctr_with_offset handle ctr fragment_offset;
+                      decrypt_detached handle data offset length))
+     end
 
 (* returns a new bigarray *)
 let maybe_compress compression fragment_data =

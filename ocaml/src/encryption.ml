@@ -32,6 +32,9 @@ module Encryption = struct
     | 1 -> L256
     | k -> raise_bad_tag "Encryption.key_length" k
 
+  let key_length = function
+    | L256 -> 256 / 8
+
   type chaining_mode =
     | CBC
     | CTR
@@ -89,16 +92,16 @@ module Encryption = struct
       AlgoWithKey (algo, key)
     | k -> raise_bad_tag "Encryption.t" k
 
-  let key_length = function
-    | AES (_, L256) -> 256 / 8
+  let algo_key_length = function
+    | AES (_, key_len) -> key_length key_len
 
   let is_valid = function
     | NoEncryption -> true
     | AlgoWithKey (algo, key) ->
-      key_length algo = String.length key
+      algo_key_length algo = String.length key
 
   let verify_key_length algo key =
-    assert (key_length algo = String.length key)
+    assert (algo_key_length algo = String.length key)
 
   let block_length = function
     | AES (_, _) -> 16
