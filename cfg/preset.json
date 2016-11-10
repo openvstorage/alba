@@ -22,7 +22,8 @@
         "verify_upload" : true // indicates wether the proxy should verify the checksum passed in by the voldrv
     },
 
-    //"fragment_encryption" : ["none"]
-    "fragment_encryption" : [ "aes-cbc-256", "cfg/enc_key" ]
-    // ./alba create-preset my_fsdajsdfpreset --config cfg/test.ini < cfg/preset.json
+    // "fragment_encryption" : ["none"]
+    // "fragment_encryption" : [ "aes-cbc-256", "cfg/enc_key" ]
+    "fragment_encryption" : [ "aes-ctr-256", "cfg/enc_key" ]
+    // ./alba create-preset my_preset --config cfg/test.ini --input-url cfg/preset.json
 }
