@@ -2473,16 +2473,6 @@ module Test = struct
         | _ -> assert false
     end;
 
-    let show_namespace_1 = show_namespace t_global "demo" in
-    assert (show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]);
-
-    (* unlink a backend *)
-    let local_1_alba_id = get_alba_id t_local1 in
-    _alba_cmd_line
-      [ "purge-osd";
-        "--config"; t_global.abm # config_url |> Url.canonical;
-        "--long-id"; local_1_alba_id; ];
-
     let rec wait_for_condition i msg f =
       if f ()
       then ()
@@ -2495,6 +2485,29 @@ module Test = struct
           wait_for_condition (i - 1) msg f
         end
     in
+
+    let wait_for_lazy_write () =
+      let msg = "Lazy write took too long" in
+      let f () =
+        let show_namespace_1 = show_namespace t_global "demo" in
+        Printf.printf
+                "bucket_count=%s "
+                ([%show: ((int * int * int * int) * int) list ]
+                   show_namespace_1.bucket_count);
+        show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]
+      in
+      wait_for_condition 5 msg f
+    in
+    wait_for_lazy_write ();
+
+    (* unlink a backend *)
+    let local_1_alba_id = get_alba_id t_local1 in
+    _alba_cmd_line
+      [ "purge-osd";
+        "--config"; t_global.abm # config_url |> Url.canonical;
+        "--long-id"; local_1_alba_id; ];
+
+
 
     wait_for_condition
       120
