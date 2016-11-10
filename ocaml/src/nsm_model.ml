@@ -1928,7 +1928,9 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         gc_epoch
         version_id
     =
-    failwith "not implemented yet"
+    update_manifest_generic
+      kv object_name object_id
+      new_fragments gc_epoch version_id
 
   let get_stats kv =
     let read key =
