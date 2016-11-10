@@ -250,6 +250,7 @@ let rec make_client
           ~preset_name
           ~albamgr_connection_pool_size
           ~namespace_name_format
+          ~upload_slack
   =
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
@@ -267,7 +268,7 @@ let rec make_client
         ~default_osd_priority:Osd.High
         ~tls_config
         ~tcp_keepalive
-        (make_client ~albamgr_connection_pool_size)
+        (make_client ~albamgr_connection_pool_size ~upload_slack)
   in
   let alba_client, closer =
     Alba_client.make_client
@@ -275,7 +276,7 @@ let rec make_client
       ~osd_access
       ~tls_config
       ~populate_osds_info_cache:true
-      ~upload_slack:0.2
+      ~upload_slack
       ()
   in
   let closer () =
