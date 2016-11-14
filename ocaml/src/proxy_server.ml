@@ -247,7 +247,9 @@ let read_objects
                         ~manifest
                         ~get_manifest_dh:(0., dh)
                         ~t0_object
-                        ~write_object_data >>= function
+                        ~write_object_data
+                        ~download_strategy:Alba_client_download.AllFragments
+            >>= function
             | None ->
                let () = Lwt_bytes.unsafe_destroy bs in
                Lwt.return None

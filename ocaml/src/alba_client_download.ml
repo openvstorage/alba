@@ -259,10 +259,16 @@ let download_fragment'
      | `ChecksumMismatch -> Lwt.fail_with "checksum mismatch"
 
 
+type download_strategy =
+  | AllFragments
+  | LeastAmount
+[@@deriving show]
+
 (* consumers of this method are responsible for freeing
  * the returned fragment bigstrings
  *)
 let download_chunk
+      ?(download_strategy = AllFragments)
       ~namespace_id
       ~object_id ~object_name
       chunk_locations ~chunk_id
@@ -281,13 +287,27 @@ let download_chunk
   let fragments = Hashtbl.create n in
 
   let module CountDownLatch = Lwt_extra2.CountDownLatch in
-  let successes = CountDownLatch.create ~count:k in
-  let failures = CountDownLatch.create ~count:(m+1) in
+  let chunk_locations_i =
+    List.mapi
+      (fun i cl -> (i,cl))
+      chunk_locations
+  in
+  let chunk_locations_i', success_count, failure_count =
+    match download_strategy with
+    | AllFragments -> chunk_locations_i, k, m+1
+    | LeastAmount  ->
+       List.take k chunk_locations_i, k, 1
+  in
+  Lwt_log.debug_f "download_strategy:%s"
+                  (show_download_strategy download_strategy) >>= fun () ->
+
+  let successes = CountDownLatch.create ~count:success_count in
+  let failures = CountDownLatch.create ~count:failure_count  in
   let finito = ref false in
 
   let threads : unit Lwt.t list =
-    List.mapi
-      (fun fragment_id (location, fragment_checksum) ->
+    List.map
+      (fun (fragment_id, (location, fragment_checksum)) ->
         let t =
           Lwt.catch
             (fun () ->
@@ -329,7 +349,8 @@ let download_chunk
                 Lwt.return ()) in
         Lwt.ignore_result t;
         t)
-      chunk_locations in
+      chunk_locations_i'
+  in
 
   ignore threads;
 

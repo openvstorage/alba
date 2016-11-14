@@ -268,6 +268,7 @@ class client
      * the returned fragment bigstrings
      *)
     method download_chunk
+        ~download_strategy
         ~namespace_id
         ~object_id ~object_name
         chunk_locations ~chunk_id
@@ -285,7 +286,7 @@ class client
         fragment_cache
         ~cache_on_read
         (bad_fragment_callback self)
-
+        ~download_strategy
 
     method download_object_slices
       ~namespace
@@ -351,6 +352,7 @@ class client
              int ->
              int ->
              unit Lwt.t))
+        ~(download_strategy: Alba_client_download.download_strategy)
       =
       let open Nsm_model in
 
@@ -398,6 +400,7 @@ class client
               ~encryption
               decompress
               k m w'
+              ~download_strategy
          >>= fun (data_fragments, coding_fragments, t_chunk) ->
 
 
