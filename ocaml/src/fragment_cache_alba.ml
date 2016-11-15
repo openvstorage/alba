@@ -173,8 +173,14 @@ class alba_cache
        Lwt.catch
          (fun () -> f namespace)
          (fun exn ->
-          client # create_namespace ~namespace ~preset_name:(Some preset) () >>= fun _ ->
-          f namespace)
+           Lwt.catch
+             (client # create_namespace ~namespace ~preset_name:(Some preset))
+             (let open Albamgr_protocol.Protocol.Error in
+              function
+              | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return 0l
+              | exn -> Lwt.fail exn)
+           >>= fun _ ->
+           f namespace)
   in
   object(self)
     inherit Fragment_cache.cache
