@@ -176,7 +176,7 @@ class alba_cache
              (client # create_namespace ~namespace ~preset_name:(Some preset))
              (let open Albamgr_protocol.Protocol.Error in
               function
-              | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return 0l
+              | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return 0L
               | exn -> Lwt.fail exn)
            >>= fun _ ->
            f namespace)
