@@ -944,6 +944,111 @@ let test_automatic_repair () =
     ))
 
 
+let test_repair_evolved_compressor () =
+  test_with_alba_client
+    (fun alba_client ->
+       let test_name = "test_repair_evolved_compressor" in
+       let namespace = test_name in
+       let preset_name = test_name in
+       let preset =
+         Albamgr_protocol.Protocol.Preset.
+         ({
+             _DEFAULT with
+             policies = [ (2,20,5,4); ];
+             compression = Alba_compression.Compression.Test;
+         })
+       in
+       alba_client # mgr_access # create_preset
+         preset_name
+         preset >>= fun () ->
+
+       alba_client # create_namespace ~preset_name:(Some preset_name) ~namespace ()
+       >>= fun namespace_id ->
+
+       let object_name = test_name in
+       let object_data = get_random_string 399 in
+       alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
+         ~namespace
+         ~object_name
+         ~object_data
+         ~allow_overwrite:Nsm_model.NoPrevious
+         ~checksum_o:None >>= fun (mf,_, _ ,_) ->
+
+       wait_for_lazy_write alba_client namespace_id mf >>= fun mf ->
+       let mfs2s = Nsm_model.Manifest.show in
+       Lwt_io.printlf "mf:%s" (mfs2s mf) >>= fun () ->
+
+       Alba_test.maybe_delete_fragment
+         ~update_manifest:true
+         alba_client namespace_id mf 0 0 >>= fun () ->
+
+       Lwt_log.debug "fragment 0 0 deleted" >>= fun () ->
+
+       with_maintenance_client
+         alba_client
+         (fun mc ->
+          mc # repair_by_policy_namespace ~namespace_id)
+       >>= fun () ->
+
+       alba_client # get_object_manifest
+         ~namespace ~object_name
+         ~consistent_read:true
+         ~should_cache:false >>= fun (_, mf_o) ->
+       let mf' = Option.get_some mf_o in
+       Lwt_io.printlf "new manifest: %s" (mfs2s mf') >>= fun () ->
+
+       let open Nsm_model in
+       let open Manifest in
+       (* assert missing data fragment is regenerated *)
+       let osd_id_o, version_id =
+         Layout.index mf'.fragment_locations 0 0 in
+       OUnit.assert_bool "osd_id was None?" (osd_id_o <> None);
+       OUnit.assert_equal ~msg:"version mismatch" ~printer:string_of_int
+                          2 version_id;
+
+       let osd_id = Option.get_some osd_id_o in
+
+       (* check recovery info *)
+       let object_id = mf.object_id in
+       let open Albamgr_protocol.Protocol.Preset in
+       let encryption = preset.fragment_encryption in
+       let open Recovery_info in
+       let get_info osd_id chunk_id fragment_id version_id =
+         let key =
+           Osd_keys.AlbaInstance.fragment_recovery_info
+             ~object_id ~version_id ~chunk_id ~fragment_id
+         |> Slice.Slice.wrap_string
+         in
+         (alba_client # osd_access)
+           # with_osd
+           ~osd_id
+           (fun client ->
+             (client # namespace_kvs namespace_id) # get_exn Osd.Low key
+           )
+         >>= fun recovery_info_ba ->
+
+         let (info:RecoveryInfo.t) =
+           let buf =
+             Llio.make_buffer (Lwt_bytes.to_string recovery_info_ba) 0
+           in
+           RecoveryInfo.from_buffer buf
+         in
+         RecoveryInfo.t_to_t' info encryption ~object_id
+       in
+       let chunk_id = 0 in
+       get_info osd_id chunk_id 0 2 >>= fun info ->
+       let chunk = List.nth_exn mf.fragment_checksums chunk_id in
+       let oks = List.map2
+                   (fun oldc new_c -> true)
+                   chunk info.RecoveryInfo.fragment_checksums
+       in
+       let ok = List.fold_left (&&) true oks in
+       OUnit.assert_bool "fragment_checksums different in recovery info"
+                         ok;
+       Lwt.return_unit
+
+       )
 open OUnit
 
 let suite = "maintenance_test" >:::[
@@ -956,4 +1061,5 @@ let suite = "maintenance_test" >:::[
     "test_rewrite_namespace" >:: test_rewrite_namespace;
     "test_verify_namespace" >:: test_verify_namespace;
     "test_automatic_repair" >:: test_automatic_repair;
+    "test_repair_evolved_compressor" >:: test_repair_evolved_compressor;
 ]

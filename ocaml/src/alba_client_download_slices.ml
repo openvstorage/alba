@@ -100,7 +100,7 @@ let try_get_from_fragments
        && (let open Nsm_model.Compression in
            match compression with
            | NoCompression -> true
-           | Snappy | Bzip2 -> false)
+           | Snappy | Bzip2 | Test -> false)
        && (let open Encryption.Encryption in
            match encryption with
            | NoEncryption -> true

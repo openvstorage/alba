@@ -312,7 +312,9 @@ module Preset = struct
          match preset.compression with
          | NoCompression -> "none"
          | Snappy -> "snappy"
-         | Bzip2 -> "bz2");
+         | Bzip2 -> "bz2"
+         | Test  -> "test"
+        );
       fragment_checksum = preset.fragment_checksum_algo;
       object_checksum = preset.object_checksum;
       fragment_encryption =
