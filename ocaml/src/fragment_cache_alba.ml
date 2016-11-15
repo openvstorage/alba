@@ -82,7 +82,7 @@ class alba_cache
      | Some { Maintenance_config.host; port; key; } ->
         let module R = Redis_lwt.Client in
         let open Lwt_buffer in
-        let redis_lru_buffer = Lwt_buffer.create_fixed_capacity 1000 in
+        let redis_lru_buffer = Lwt_buffer.create ~capacity:(Some 1000) ~leaky:true () in
         let rec push_items client =
           Lwt_buffer.harvest redis_lru_buffer >>= fun items ->
           let items =
