@@ -774,6 +774,8 @@ def deb_integration_test(arakoon_url,
     local("rm -f arakoon_*.deb")
     local("rm -f alba_*.deb")
 
+    local("sudo apt-get -y update")
+
     local("wget %s" % arakoon_url)
     local("sudo gdebi -n arakoon_*.deb")
     local("wget %s" % alba_url)
@@ -826,6 +828,7 @@ def rpm_integration_test(arakoon_url,
     local("rm -f alba-*")
     local("wget %s" % alba_url)
 
+    local("sudo yum -y update")
 
     local("sudo yum -y erase arakoon | true")
     local("sudo yum -y erase alba | true")
