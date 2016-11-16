@@ -43,7 +43,7 @@ let workspace =
 let capacity = ref 0L
 
 let with_asd_client
-      ?(is_restart = false) ?(slow = false) ?(node_id = "bla")
+      ?(is_restart = false) ?(node_id = "bla")
       ?write_blobs test_name port f
   =
   let path = workspace ^ "/tmp/alba/" ^ test_name in
@@ -83,7 +83,6 @@ let with_asd_client
            path
            ~asd_id
            ~node_id
-           ~slow
            ~fsync:false
            ~rocksdb_max_open_files:256
            ~rocksdb_recycle_log_file_num:None

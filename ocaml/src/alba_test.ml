@@ -2261,16 +2261,9 @@ let test_upload_epilogue () =
       let test_name = "test_upload_epilogue" in
       let namespace = test_name in
       let preset_name = test_name in
-      let long_id = "slow_asd" in
-      (* we need an extra, slower asd to make sure we have holes *)
-      let scenario () =
-        alba_client # osd_access # propagate_osd_info ~run_once:true ()
-        >>= fun () ->
-        alba_client # claim_osd ~long_id >>= fun osd_id ->
 
-        Lwt_log.debug_f "claimed osd long_id:%s as %Li" long_id osd_id
-        >>= fun () ->
-        let preset' = Preset.({ _DEFAULT with policies = [( 1,12, 1, 5)]; }) in
+      let scenario () =
+        let preset' = Preset.({ _DEFAULT with policies = [( 1,11, 1, 4)]; }) in
         alba_client # mgr_access # create_preset
                     preset_name preset' >>= fun () ->
 
@@ -2279,7 +2272,12 @@ let test_upload_epilogue () =
                     ~namespace ()
 
         >>= fun namespace_id ->
-        _wait_for_osds ~cnt:13 alba_client namespace_id >>= fun () ->
+        alba_client # with_osd
+                    ~osd_id:0L
+                    (fun osd ->
+                      osd # set_slowness (Some(1.0,1.0))
+                    )
+        >>= fun () ->
 
         let object_name = "test_upload_epilogue_object" in
         let object_data =
@@ -2340,15 +2338,15 @@ let test_upload_epilogue () =
         Lwt.return_unit
       in
       Lwt.finalize
+        scenario
         (fun () ->
-          Asd_test.with_asd_client
-            long_id 64000 ~slow:true ~node_id:"extra_node"
-            (fun _asd_client -> scenario ())
+          alba_client # with_osd
+                      ~osd_id:0L
+                      (fun osd ->
+                        osd # set_slowness None
+                      )
         )
-        (fun () ->
-          safe_delete_namespace alba_client namespace >>= fun () ->
-          purge_osds alba_client [long_id] >>= fun () ->
-          wait_for_work alba_client)
+
     )
 
 

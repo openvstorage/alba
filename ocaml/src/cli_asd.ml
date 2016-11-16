@@ -26,7 +26,7 @@ open Slice
 open Asd_protocol
 open Asd_config
 
-let asd_start cfg_url slow log_sinks =
+let asd_start cfg_url log_sinks =
 
   let t () =
     Asd_config.retrieve_cfg cfg_url >>= function
@@ -135,7 +135,7 @@ let asd_start cfg_url slow log_sinks =
                             ~transport ~rora_transport
                             ~rora_ips
                             ~rora_num_cores ~rora_queue_depth
-                            home ~asd_id ~node_id ~slow
+                            home ~asd_id ~node_id
                             ~fsync
                             ~limit
                             ~capacity
@@ -162,9 +162,6 @@ let asd_start_cmd =
   let asd_start_t =
     Term.(pure asd_start
           $ cfg_url
-          $ Arg.(value
-                 & flag
-                 & info ["slow"] ~doc:"artifically slow down an asd (only for testing purposes!)")
           $ log_sinks)
   in
   let info =

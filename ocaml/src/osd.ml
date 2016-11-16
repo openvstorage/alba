@@ -89,6 +89,7 @@ class type key_value_osd =
     method kvs : key_value_storage
 
     method set_full : bool -> unit Lwt.t
+    method set_slowness : (float * float) option -> unit Lwt.t
     method get_version : (int * int * int * string) Lwt.t
     method get_long_id : string
     method get_disk_usage : (int64 * int64) Lwt.t
@@ -115,6 +116,7 @@ class type osd = object
   method delete_namespace : namespace_id -> key -> key option Lwt.t
 
   method set_full : bool -> unit Lwt.t
+  method set_slowness : (float * float) option -> unit Lwt.t
   method get_version : (int * int * int * string) Lwt.t
   method get_long_id : string
 
@@ -257,6 +259,7 @@ object(self :# osd)
     | Exn e -> Lwt.fail (Asd_protocol.Protocol.Error.Exn e)
 
   method set_full = key_value_osd # set_full
+  method set_slowness = key_value_osd # set_slowness
   method get_version = key_value_osd # get_version
   method get_long_id = key_value_osd # get_long_id
   method get_disk_usage = key_value_osd # get_disk_usage
