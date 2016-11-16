@@ -281,7 +281,6 @@ class client ?(retry_timeout = 60.)
           in
           failwith msg
       in
-      let fragment_checksums = manifest.fragment_checksums in
       let object_id = manifest.object_id in
       let object_name = manifest.name in
 
@@ -292,11 +291,7 @@ class client ?(retry_timeout = 60.)
 
       let version_id0 = manifest.version_id in
       let version_id1 = version_id0 + 1 in
-      let fragment_info =
-        Layout.combine
-          locations
-          fragment_checksums
-      in
+      let fragment_info = Manifest.combined_fragment_infos manifest in
       alba_client # get_ns_preset_info ~namespace_id
       >>= fun preset ->
 
@@ -313,13 +308,13 @@ class client ?(retry_timeout = 60.)
            let rec _find i = function
              | [] -> failwith "all fragments reside on target_osd"
              | f :: fs ->
-                let ((osd_id_o, version), checksum) = f in
+                let ((osd_id_o, version), checksum, fragment_ctr) = f in
                 if osd_id_o = Some source_osd
-                then (i, checksum, version)
+                then (i, checksum, version, fragment_ctr)
                 else _find (i+1) fs
            in _find 0 chunk_location
          in
-         let (fragment_id, fragment_checksum,version) = source_fragment in
+         let (fragment_id, fragment_checksum,version, fragment_ctr) = source_fragment in
 
          let object_info_o =
            let is_last_chunk = chunk_id = List.length locations - 1 in
@@ -335,14 +330,16 @@ class client ?(retry_timeout = 60.)
            else None
          in
 
+
          RecoveryInfo.make
-           object_name
-           object_id
+           ~object_name
+           ~object_id
            object_info_o
            encryption
            (List.nth_exn manifest.chunk_sizes chunk_id)
            (List.nth_exn manifest.fragment_packed_sizes chunk_id)
            (List.nth_exn manifest.fragment_checksums chunk_id)
+           fragment_ctr
          >>= fun recovery_info_slice ->
 
          let open Alba_client_errors.Error in
@@ -350,7 +347,7 @@ class client ?(retry_timeout = 60.)
          (* TODO get unpacked fragment from cache if available? *)
          Alba_client_download.download_packed_fragment
            osd_access
-           ~location:(List.nth_exn chunk_location fragment_id |> fst)
+           ~location:(List.nth_exn chunk_location fragment_id |> (fun (l, _, _) -> l))
            ~namespace_id
            ~object_id ~object_name
            ~chunk_id ~fragment_id >>= function

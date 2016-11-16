@@ -531,7 +531,7 @@ end
 
 module Layout = struct
     type 'a t = 'a list list [@@deriving show]
-    let map f t = List.map (List.map f) t
+
     let output a_to buf t =
       let ser_version = 1 in Llio.int8_to buf ser_version;
       Llio.list_to (Llio.list_to a_to) buf t
@@ -540,9 +540,15 @@ module Layout = struct
       assert (ser_version = 1);
       Llio.list_from (Llio.list_from a_from) buf
 
+    let map f t = List.map (List.map f) t
+
     let combine x_t y_t = List.map2 List.combine x_t y_t
 
+    let combine3 x_t y_t z_t = List.map3 List.combine3 x_t y_t z_t
+
     let split xy_t = List.split (List.map List.split xy_t)
+
+    let split3 xyz_t = List.split3 (List.map List.split3 xyz_t)
 
     let congruent x_t y_t =
       let list_ok x y = List.length x = List.length y in
@@ -555,6 +561,22 @@ module Layout = struct
 
     let index t chunk_id fragment_id =
       List.nth_exn (List.nth_exn t chunk_id) fragment_id
+
+    let unfold ~n_chunks ~n_fragments f =
+      List.unfold
+        (fun chunk_id ->
+          if chunk_id = n_chunks
+          then None
+          else
+            Some
+              (List.unfold
+                 (fun fragment_id ->
+                   if fragment_id = n_fragments
+                   then None
+                   else Some (f chunk_id fragment_id, fragment_id + 1))
+                 0,
+               chunk_id + 1))
+        0
 end
 
 type version = int [@@deriving show]
@@ -584,6 +606,7 @@ module Manifest = struct
     fragment_locations : location Layout.t;
     fragment_checksums : Checksum.t Layout.t;
     fragment_packed_sizes : int Layout.t;
+    fragment_ctrs : string option Layout.t;
     version_id : version;
     max_disks_per_node : int;
 
@@ -598,6 +621,7 @@ module Manifest = struct
            ~fragment_locations
            ~fragment_checksums
            ~fragment_packed_sizes
+           ~fragment_ctrs
            ~version_id
            ~max_disks_per_node
            ~timestamp
@@ -608,6 +632,7 @@ module Manifest = struct
       fragment_locations;
       fragment_checksums;
       fragment_packed_sizes;
+      fragment_ctrs;
       version_id;
       max_disks_per_node;
       timestamp;
@@ -640,7 +665,9 @@ module Manifest = struct
     Layout.output Llio.int_to buf t.fragment_packed_sizes;
     Llio.int_to buf t.version_id;
     Llio.int_to buf t.max_disks_per_node;
-    Llio.float_to buf t.timestamp
+    Llio.float_to buf t.timestamp;
+    Layout.output (Llio.option_to Llio.string_to) buf t.fragment_ctrs;
+    ()
 
   let to_buffer buf t =
     let res = serialize to_buffer' t in
@@ -669,12 +696,18 @@ module Manifest = struct
     let version_id = Llio.int_from buf in
     let max_disks_per_node = Llio.int_from buf in
     let timestamp = Llio.float_from buf in
+    let fragment_ctrs = maybe_from_buffer
+                          (Layout.input (Llio.option_from Llio.string_from))
+                          (Layout.map (fun _ -> None) fragment_checksums)
+                          buf
+    in
     make ~name ~object_id
          ~storage_scheme ~encrypt_info
          ~chunk_sizes ~checksum ~size
          ~fragment_locations
          ~fragment_checksums
          ~fragment_packed_sizes
+         ~fragment_ctrs
          ~version_id
          ~max_disks_per_node
          ~timestamp
@@ -693,6 +726,12 @@ module Manifest = struct
       (List.flatmap_unordered
          (List.map_filter_rev fst)
          fragment_locations)
+
+  let combined_fragment_infos mf =
+    Layout.combine3
+      mf.fragment_locations
+      mf.fragment_checksums
+      mf.fragment_ctrs
 end
 
 module Assert =

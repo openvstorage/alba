@@ -33,7 +33,7 @@ let test_encrypt_decrypt () =
       maybe_encrypt
         encryption
         ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
-        (Lwt_bytes.copy data) >>= fun encrypted ->
+        (Lwt_bytes.copy data) >>= fun (encrypted, fragment_ctr) ->
 
       Lwt_log.debug_f "data=%S encrypted=%S"
                       (Lwt_bytes.show data) (Lwt_bytes.show encrypted) >>= fun () ->
@@ -41,6 +41,7 @@ let test_encrypt_decrypt () =
       maybe_decrypt
         encryption
         ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
+        ~fragment_ctr
         (Lwt_bytes.copy encrypted) >>= fun decrypted ->
       let decrypted = Bigstring_slice.extract_to_bigstring decrypted in
 

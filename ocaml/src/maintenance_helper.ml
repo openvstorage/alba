@@ -121,15 +121,6 @@ let _upload_missing_fragments
   in
 
   let object_id = manifest.Manifest.object_id in
-  RecoveryInfo.make
-    manifest.Manifest.name
-    object_id
-    object_info_o
-    encryption
-    (List.nth_exn manifest.Manifest.chunk_sizes chunk_id)
-    (List.nth_exn manifest.Manifest.fragment_packed_sizes chunk_id)
-    (List.nth_exn manifest.Manifest.fragment_checksums chunk_id)
-  >>= fun recovery_info_slice ->
 
   Lwt_list.map_p
     (fun ((fragment_id, checksum), chosen_osd_id) ->
@@ -141,7 +132,18 @@ let _upload_missing_fragments
        compression
        encryption
        fragment_checksum_algo
-     >>= fun (packed_fragment, _, _, checksum') ->
+     >>= fun (packed_fragment, _, _, checksum', fragment_ctr) ->
+
+     RecoveryInfo.make
+       ~object_name:manifest.Manifest.name
+       ~object_id
+       object_info_o
+       encryption
+       (List.nth_exn manifest.Manifest.chunk_sizes chunk_id)
+       (List.nth_exn manifest.Manifest.fragment_packed_sizes chunk_id)
+       (List.nth_exn manifest.Manifest.fragment_checksums chunk_id)
+       fragment_ctr
+     >>= fun recovery_info_slice ->
 
      if checksum = checksum'
      then
@@ -202,7 +204,7 @@ let upload_missing_fragments
   let _, ok_fragments, fragments_to_be_repaired =
     List.fold_left
       (fun (fragment_id, ok_fragments, to_be_repaireds)
-           ((fragment_osd_id_o, fragment_version_id), fragment_checksum) ->
+           ((fragment_osd_id_o, fragment_version_id), fragment_checksum, fragment_ctr) ->
         let ok_fragments', to_be_repaireds' =
           if List.mem (chunk_id, fragment_id) problem_fragments ||
                (match fragment_osd_id_o with

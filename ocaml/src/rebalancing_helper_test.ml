@@ -103,6 +103,7 @@ let test_check_move () =
                                 4960; 4960; 4960; 4960;
                                 4960; 4960; 4960; 4960]
                               ];
+      fragment_ctrs = [];
       version_id = 2;
       max_disks_per_node = 3; timestamp = 1457402732.57
     }

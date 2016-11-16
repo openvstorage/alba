@@ -308,10 +308,25 @@ module List = struct
         ([], [], []) xs
     in List.rev x0s_r, List.rev x1s_r, List.rev x2s_r
 
+  let rev_map3 f l1 l2 l3 =
+    let rec inner acc = function
+      | [], [], [] -> acc
+      | e1::l1, e2::l2, e3::l3 ->
+         inner (f e1 e2 e3 :: acc) (l1, l2, l3)
+      | _ -> invalid_arg "List.rev_map3"
+    in
+    inner [] (l1, l2, l3)
+
+  let map3 f l1 l2 l3 =
+    rev_map3 f (rev l1) (rev l2) (rev l3)
+
+  let combine3 l1 l2 l3 = map3 (fun e1 e2 e3 -> e1, e2, e3) l1 l2 l3
 end
 
 module Option = struct
   type 'a t = 'a option
+
+  let some x = Some x
 
   let map f = function
     | None -> None

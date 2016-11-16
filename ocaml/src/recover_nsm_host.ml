@@ -348,6 +348,18 @@ let gather_and_push_objects
           fs
       in
 
+      let fragment_ctrs =
+        Layout.unfold
+          ~n_chunks:(List.length fs)
+          ~n_fragments:(k + m)
+          (fun chunk_id fragment_id ->
+            match List.find_exn (fun (chunk_id', _) -> chunk_id' = chunk_id) fs
+                  |> snd
+                  |> List.find (fun f1 -> f1.fragment_id = fragment_id) with
+            | None -> None
+            | Some f -> f.recovery_info.fragment_ctr
+          )
+      in
 
       let open Nsm_model in
       let manifest : Manifest.t =
@@ -364,7 +376,7 @@ let gather_and_push_objects
           ~fragment_checksums
           ~fragment_packed_sizes
           ~version_id
-
+          ~fragment_ctrs
           (* TODO *)
           ~max_disks_per_node:100
       in

@@ -57,7 +57,7 @@ let try_get_from_fragments
   let mfs = ref [] in
 
   let fetch_fragment fragment_id =
-    let location, fragment_checksum =
+    let location, fragment_checksum, fragment_ctr =
       List.nth_exn chunk_locations fragment_id
     in
     Lwt.catch
@@ -70,6 +70,7 @@ let try_get_from_fragments
           ~chunk_id ~fragment_id
           ~k
           ~fragment_checksum
+          ~fragment_ctr
           decompress
           ~encryption
           ~cache_on_read
@@ -108,7 +109,7 @@ let try_get_from_fragments
            | AlgoWithKey (AES (CBC, _), _) -> false)
     then
       begin
-        let (osd_id_o, version_id), fragment_checksum =
+        let (osd_id_o, version_id), fragment_checksum, fragment_ctr =
           List.nth_exn chunk_locations fragment_id
         in
         match osd_id_o with
@@ -143,6 +144,7 @@ let try_get_from_fragments
                     Fragment_helper.maybe_partial_decrypt
                       encryption
                       ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:(k=1)
+                      ~fragment_ctr
                       (buf, buf_offset, length) ~fragment_offset)
                   fragment_intersections >>= fun () ->
                 Lwt.return_true
@@ -246,13 +248,7 @@ let _download_object_slices
       let k, m, w = match es with
         | Encoding_scheme.RSVM (k, m, w) -> k, m, w in
       let w' = Encoding_scheme.w_as_int w in
-      let locations = manifest.Manifest.fragment_locations in
-      let fragment_checksums = manifest.Manifest.fragment_checksums in
-      let fragment_info =
-        Layout.combine
-          locations
-          fragment_checksums
-      in
+      let fragment_info = Manifest.combined_fragment_infos manifest in
 
       let open Albamgr_protocol.Protocol in
       nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
@@ -409,11 +405,7 @@ let _repair_after_read
       let version_id = manifest.Manifest.version_id + 1 in
       let Encoding_scheme.RSVM (k, _, _) = es in
 
-      let fragment_info =
-        Layout.combine
-          manifest.Manifest.fragment_locations
-          manifest.Manifest.fragment_checksums
-      in
+      let fragment_info = Manifest.combined_fragment_infos manifest in
 
       Lwt_list.map_s
         (fun (chunk_id, fragment_id_o, data_fragments, coding_fragments, cleanup) ->

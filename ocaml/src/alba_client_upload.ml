@@ -140,24 +140,15 @@ let upload_chunk
     (fun () ->
      let packed_fragment_sizes =
        List.map
-         (fun (_, _, (packed_fragment, _, _, _)) ->
+         (fun (_, _, (packed_fragment, _, _, _, _)) ->
           Lwt_bytes.length packed_fragment)
          fragments_with_id
      in
      let fragment_checksums =
        List.map
-         (fun (_, _, (_, _, _, checksum)) -> checksum)
+         (fun (_, _, (_, _, _, checksum, _)) -> checksum)
          fragments_with_id
      in
-     RecoveryInfo.make
-       object_name
-       object_id
-       object_info_o
-       encryption
-       chunk_size
-       packed_fragment_sizes
-       fragment_checksums
-     >>= fun recovery_info_slice ->
 
 
      Lwt_list.map_p
@@ -166,13 +157,26 @@ let upload_chunk
               (packed_fragment,
                t_compress_encrypt,
                t_hash,
-               checksum)),
+               checksum,
+               fragment_ctr)),
              osd_id_o) ->
         with_timing_lwt
           (fun () ->
            match osd_id_o with
            | None -> Lwt.return ()
            | Some osd_id ->
+
+              RecoveryInfo.make
+                ~object_name
+                ~object_id
+                object_info_o
+                encryption
+                chunk_size
+                packed_fragment_sizes
+                fragment_checksums
+                fragment_ctr
+              >>= fun recovery_info_slice ->
+
               upload_packed_fragment_data
                 osd_access
                 ~namespace_id
@@ -194,7 +198,7 @@ let upload_chunk
                                         total = (Unix.gettimeofday () -. t0)
                                       }) in
 
-        let res = osd_id_o, checksum in
+        let res = osd_id_o, checksum, fragment_ctr in
 
         Lwt.return (t_fragment, res)
        )
@@ -211,10 +215,10 @@ let upload_chunk
        then
          Lwt_bytes.unsafe_destroy
            (List.hd_exn fragments_with_id
-            |> fun (_, _, (f, _, _, _)) -> f)
+            |> fun (_, _, (f, _, _, _, _)) -> f)
        else
          List.iter
-           (fun (_, _, (f, _, _, _)) ->
+           (fun (_, _, (f, _, _, _, _)) ->
             Lwt_bytes.unsafe_destroy f)
            fragments_with_id
      in
@@ -476,8 +480,8 @@ let upload_object''
   (* all fragments have been stored
          make a manifest and store it in the namespace manager *)
 
-  let locations, fragment_checksums =
-    Nsm_model.Layout.split fragments_info in
+  let locations, fragment_checksums, fragment_ctrs =
+    Nsm_model.Layout.split3 fragments_info in
 
   let chunk_sizes = List.map snd chunk_sizes' in
   let open Nsm_model in
@@ -516,6 +520,7 @@ let upload_object''
       ~fragment_locations
       ~fragment_checksums
       ~fragment_packed_sizes
+      ~fragment_ctrs
       ~version_id
       ~max_disks_per_node
       ~timestamp
