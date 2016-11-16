@@ -2242,70 +2242,86 @@ let test_upload_epilogue () =
       let test_name = "test_upload_epilogue" in
       let namespace = test_name in
       let preset_name = test_name in
-      let preset' = Preset.({ _DEFAULT with policies = [( 1,11, 1, 4)]; }) in
-      alba_client # mgr_access # create_preset
-                  preset_name preset' >>= fun () ->
+      let long_id = "slow_asd" in
+      (* we need the extra, slow asd to make sure we have holes *)
+      Asd_test.with_asd_client
+        long_id 64000 ~slow:true ~node_id:"extra_node"
+        (fun _asd_client ->
 
-      alba_client # create_namespace
-                  ~preset_name:(Some preset_name)
-                  ~namespace ()
-      >>= fun namespace_id ->
-      let object_name = "test_upload_epilogue_object" in
-      let object_data =
-        Lwt_bytes.of_string "this test has nothing to do with the B3 Bomber."
-      in
-      alba_client # upload_object_from_bytes
-                  ~epilogue_delay:(Some 2.0)
-                  ~namespace
-                  ~object_name
-                  ~object_data
-                  ~checksum_o:None
-                  ~allow_overwrite:NoPrevious
-      >>= fun (mf,_,_,_) ->
-      Lwt_io.printlf "manifest:%s" (Manifest.show mf) >>= fun () ->
-      let holes = Manifest.has_holes mf in
-      OUnit.assert_bool "has_holes" holes;
-      Lwt_unix.sleep 4.0 >>= fun () -> (* should be plenty *)
-      alba_client # with_nsm_client' ~namespace_id
-        (fun nsm_client ->
-          nsm_client # get_object_manifest_by_id
-                     mf.Manifest.object_id
-          >>= fun mf'o ->
-          let mf' = Option.get_some mf'o in
-          Lwt.return mf'
-        )
-      >>= fun mf2 ->
-      Lwt_io.printlf "manifest2:%s" (Manifest.show mf2) >>= fun () ->
-      let open Manifest in
-      let side_by_side =
-        Layout.combine mf.fragment_locations mf2.fragment_locations
-      in
-      let _r =
-        Layout.map
-          (fun ((o0,v0), (o1,v1)) ->
-            let () =
-              match v0,v1 with
-              | 0,0 -> ()
-              | 0,1 -> ()
-              | _   ->
-                 failwith (Printf.sprintf "versions did not match:%i %i"
-                                          v0 v1)
-            in
-            match o0,o1 with
-            | None,   None   -> failwith "None,None"
-            | Some x, Some y ->
-               OUnit.assert_equal ~msg:"osd_id" x y ~printer:Int64.to_string
-            | Some _, None   -> failwith "Some,None: we lost a fragment?"
-            | None  , Some x -> ()
-        ) side_by_side
-      in
-      let () =
-        OUnit.assert_equal
-          ~msg:"fragment_sizes differ"
-        ~printer:[%show : int Layout.t ]
-        mf.fragment_packed_sizes mf2.fragment_packed_sizes
-      in
-      Lwt.return_unit)
+          alba_client # osd_access # propagate_osd_info ~run_once:true () >>= fun () ->       Lwt_unix.sleep 1.0 >>= fun () ->
+          alba_client # claim_osd ~long_id >>= fun osd_id ->
+
+          Lwt_log.debug_f "claimed osd long_id:%s as %Li" long_id osd_id
+          >>= fun () ->
+          let preset' = Preset.({ _DEFAULT with policies = [( 1,12, 1, 5)]; }) in
+          alba_client # mgr_access # create_preset
+                      preset_name preset' >>= fun () ->
+
+          alba_client # create_namespace
+                      ~preset_name:(Some preset_name)
+                      ~namespace ()
+
+          >>= fun namespace_id ->
+          alba_client # deliver_osd_messages ~osd_id >>= fun () ->
+
+          let object_name = "test_upload_epilogue_object" in
+          let object_data =
+            Lwt_bytes.of_string "this test has nothing to do with the B3 Bomber."
+          in
+          alba_client # upload_object_from_bytes
+                      ~epilogue_delay:(Some 2.0)
+                      ~namespace
+                      ~object_name
+                      ~object_data
+                      ~checksum_o:None
+                      ~allow_overwrite:NoPrevious
+          >>= fun (mf,_,_,_) ->
+          Lwt_io.printlf "manifest:%s" (Manifest.show mf) >>= fun () ->
+          let holes = Manifest.has_holes mf in
+          OUnit.assert_bool "has_holes" holes;
+          Lwt_unix.sleep 8.0 >>= fun () -> (* should be plenty *)
+          alba_client # with_nsm_client' ~namespace_id
+                      (fun nsm_client ->
+                        nsm_client # get_object_manifest_by_id
+                                   mf.Manifest.object_id
+                        >>= fun mf'o ->
+                        let mf' = Option.get_some mf'o in
+                        Lwt.return mf'
+                      )
+          >>= fun mf2 ->
+          Lwt_io.printlf "manifest2:%s" (Manifest.show mf2) >>= fun () ->
+          let open Manifest in
+          let side_by_side =
+            Layout.combine mf.fragment_locations mf2.fragment_locations
+          in
+          let _r =
+            Layout.map
+              (fun ((o0,v0), (o1,v1)) ->
+                let () =
+                  match v0,v1 with
+                  | 0,0 -> ()
+                  | 0,1 -> ()
+                  | _   ->
+                     failwith (Printf.sprintf "versions did not match:%i %i"
+                                              v0 v1)
+                in
+                match o0,o1 with
+                | None,   None   -> failwith "None,None"
+                | Some x, Some y ->
+                   OUnit.assert_equal ~msg:"osd_id" x y ~printer:Int64.to_string
+                | Some _, None   -> failwith "Some,None: we lost a fragment?"
+                | None  , Some x -> ()
+              ) side_by_side
+          in
+          let () =
+            OUnit.assert_equal
+              ~msg:"fragment_sizes differ"
+              ~printer:[%show : int Layout.t ]
+              mf.fragment_packed_sizes mf2.fragment_packed_sizes
+          in
+          Lwt_log.debug_f "%s: success" test_name >>= fun () ->
+          Lwt.return_unit)
+    )
 
 open OUnit
 
