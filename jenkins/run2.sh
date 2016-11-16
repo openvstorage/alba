@@ -9,13 +9,14 @@ export DRIVER=./setup/setup.native
 
 export ARAKOON_BIN=$(which arakoon)
 
-if [ -t 1 ];
-then TTY="-t";
+if [ -t 1 ]
+then true;
 else
     # this path is taken on jenkins, clean previous builds first
-    TTY="";
-    make clean || true;
-    make || true;
+    make clean
+    if [[ ${1-bash} != "package_"* ]]
+    then make
+    fi
 fi
 
 if (${ALBA_USE_ETCD:-false} -eq true)
