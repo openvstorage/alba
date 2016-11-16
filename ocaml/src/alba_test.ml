@@ -2296,7 +2296,7 @@ let test_upload_epilogue () =
         Lwt_io.printlf "manifest:%s" (Manifest.show mf) >>= fun () ->
         let holes = Manifest.has_holes mf in
         OUnit.assert_bool "has_holes" holes;
-        Lwt_unix.sleep 8.0 >>= fun () -> (* should be plenty *)
+        Lwt_unix.sleep 4.0 >>= fun () -> (* should be plenty *)
         alba_client # with_nsm_client' ~namespace_id
                     (fun nsm_client ->
                       nsm_client # get_object_manifest_by_id
