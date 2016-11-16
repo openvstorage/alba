@@ -65,6 +65,24 @@ let _wait_for_osds ?(cnt=11) (alba_client:Alba_client.alba_client) namespace_id 
   in
   loop ()
 
+
+let wait_for_lazy_write alba_client namespace_id manifest =
+  let open Nsm_model in
+  let has_holes = Manifest.has_holes manifest in
+  begin
+    if has_holes
+    then
+      Lwt_log.debug "lazy_write_out interference" >>= fun ()->
+      Lwt_unix.sleep 1.0 >>= fun () ->
+      alba_client # get_object_manifest'
+                  ~namespace_id ~object_name:manifest.Manifest.name
+                  ~consistent_read:true ~should_cache:false
+      >>= fun (_,mfo) ->
+      Lwt.return (Option.get_some mfo)
+    else
+      Lwt.return manifest
+  end
+
 let delete_fragment
       (alba_client:Alba_client.alba_client)
       namespace_id object_id
@@ -724,6 +742,7 @@ let test_partial_download_bad_fragment () =
                  ~checksum_o:None
                  ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf,_, _, _) ->
 
+     wait_for_lazy_write alba_client namespace_id mf >>= fun mf ->
      (* remove the first fragment's location from the manifest
       * so it can't be used in download-object-slices *)
      alba_client # nsm_host_access # get_gc_epoch ~namespace_id

@@ -22,6 +22,8 @@ open Prelude
 let test_with_alba_client = Alba_test.test_with_alba_client
 let with_maintenance_client = Alba_test.with_maintenance_client
 let _wait_for_osds = Alba_test._wait_for_osds
+let wait_for_lazy_write = Alba_test.wait_for_lazy_write
+
 
 let with_nice_error_log f =
   let open Alba_client_errors in
@@ -34,22 +36,7 @@ let with_nice_error_log f =
       | x     -> Lwt.fail x
     )
 
-let wait_for_lazy_write alba_client namespace_id manifest =
-  let open Nsm_model in
-  let has_holes = Manifest.has_holes manifest in
-  begin
-    if has_holes
-    then
-      Lwt_log.debug "lazy_write_out interference" >>= fun ()->
-      Lwt_unix.sleep 1.0 >>= fun () ->
-      alba_client # get_object_manifest'
-                  ~namespace_id ~object_name:manifest.Manifest.name
-                  ~consistent_read:true ~should_cache:false
-      >>= fun (_,mfo) ->
-      Lwt.return (Option.get_some mfo)
-    else
-      Lwt.return manifest
-  end
+
 
 let maybe_delete_fragment
       alba_client namespace_id mf ~update_manifest
