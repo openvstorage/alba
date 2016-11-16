@@ -82,7 +82,7 @@ class alba_cache
      | Some { Maintenance_config.host; port; key; } ->
         let module R = Redis_lwt.Client in
         let open Lwt_buffer in
-        let redis_lru_buffer = Lwt_buffer.create_fixed_capacity 1000 in
+        let redis_lru_buffer = Lwt_buffer.create ~capacity:(Some 1000) ~leaky:true () in
         let rec push_items client =
           Lwt_buffer.harvest redis_lru_buffer >>= fun items ->
           let items =
@@ -172,8 +172,14 @@ class alba_cache
        Lwt.catch
          (fun () -> f namespace)
          (fun exn ->
-          client # create_namespace ~namespace ~preset_name:(Some preset) () >>= fun _ ->
-          f namespace)
+           Lwt.catch
+             (client # create_namespace ~namespace ~preset_name:(Some preset))
+             (let open Albamgr_protocol.Protocol.Error in
+              function
+              | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return 0L
+              | exn -> Lwt.fail exn)
+           >>= fun _ ->
+           f namespace)
   in
   object(self)
     inherit Fragment_cache.cache

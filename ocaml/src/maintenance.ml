@@ -2084,7 +2084,10 @@ class client ?(retry_timeout = 60.)
             None
          | Alba cfg
          | Alba2 cfg ->
-            Some (osd_id, osd_info, cfg))
+            Some (osd_id, osd_info, cfg)
+         | AlbaProxy _ ->
+            None
+        )
         (osd_access # osds_info_cache)
       |> Lwt_list.filter_map_p
            (fun (osd_id, osd_info, alba_cfg) ->

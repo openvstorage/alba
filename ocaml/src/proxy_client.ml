@@ -170,11 +170,28 @@ class proxy_client fd =
       = self # request ListNamespaces
              RangeQueryArgs.{ first; finc; last; max; reverse; }
 
+    method list_namespaces2 ~first ~finc ~last
+                          ~max ~reverse
+      = self # request ListNamespaces2
+             RangeQueryArgs.{ first; finc; last; max; reverse; }
+
+    method get_namespace_preset ~namespace =
+      self # list_namespaces2
+           ~first:namespace ~finc:true
+           ~last:(Some (namespace, true))
+           ~max:1 ~reverse:false >>= fun ((_, r), _) ->
+      match r with
+      | [] -> Lwt.return None
+      | [ (n, preset) ] when n = namespace -> Lwt.return (Some preset)
+      | _ -> assert false
+
     method osd_view = self # request OsdView ()
 
     method get_client_config = self # request GetClientConfig ()
 
     method osd_info = self # request OsdInfo ()
+
+    method get_alba_id = self # request GetAlbaId ()
   end
 
 let _prologue fd magic version =
@@ -183,13 +200,20 @@ let _prologue fd magic version =
   Llio.int32_to buf version;
   Net_fd.write_all' fd (Buffer.contents buf)
 
-let with_client ip port transport f =
+let make_client ip port transport =
   Networking2.connect_with
     ~tls_config:None
     ip port transport
   >>= fun (nfd, closer) ->
+  Lwt.catch
+    (fun () -> _prologue nfd Protocol.magic Protocol.version >>= fun () ->
+               Lwt.return (new proxy_client nfd, closer))
+    (fun exn ->
+      closer () >>= fun () ->
+      Lwt.fail exn)
+
+let with_client ip port transport f =
+  make_client ip port transport >>= fun (client, closer) ->
   Lwt.finalize
-    (fun () ->
-     _prologue nfd Protocol.magic Protocol.version >>= fun () ->
-     f (new proxy_client nfd))
+    (fun () -> f client)
     closer
