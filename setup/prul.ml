@@ -82,6 +82,10 @@ module Shell = struct
     | true,_ | false,0 -> ()
     | false, rc -> failwith (Printf.sprintf "%S=x => rc=%i" x rc)
 
+  let cmd' ?(ignore_rc=false) xs =
+    xs
+    |> String.concat " "
+    |> cmd ~ignore_rc
 
   let cmd_with_rc x =
     _print x;
@@ -127,6 +131,10 @@ module Shell = struct
   let cp src tgt = Printf.sprintf "cp %s %s" src tgt |> cmd
 
   let mkdir p = "mkdir -p " ^ p |> cmd
+
+  let md5sum file =
+    let x = cmd_with_capture ["md5sum"; file] in
+    Scanf.sscanf x "%s" (fun s -> s)
 end
 
 module Etcdctl = struct
