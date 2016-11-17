@@ -437,6 +437,8 @@ let test_repair_orange2 () =
          ~allow_overwrite:Nsm_model.NoPrevious
          ~checksum_o:None >>= fun (mf,_, object_id,_) ->
 
+       wait_for_lazy_write alba_client namespace_id mf >>= fun mf ->
+
        Alba_test.maybe_delete_fragment
          ~update_manifest:true
          alba_client namespace_id mf 0 0 >>= fun () ->
