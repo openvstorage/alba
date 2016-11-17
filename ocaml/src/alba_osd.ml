@@ -136,7 +136,7 @@ class client
                    ~object_id_hint:None
                    ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
                    ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-                   ~upload_slack:0.2
+                   ~upload_slack:(alba_client # upload_slack)
                  >>= fun (mf, _chunk_fidmos, _, gc_epoch, fragment_state_layout) ->
                  Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch)))
             updates

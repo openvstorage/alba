@@ -54,6 +54,8 @@ class alba_client (base_client : Alba_base_client.client)
     method nsm_host_access = nsm_host_access
     method osd_access = osd_access
 
+    method upload_slack = base_client # upload_slack
+
     method get_object_manifest' = base_client # get_object_manifest'
     method download_object_slices = base_client # download_object_slices
 

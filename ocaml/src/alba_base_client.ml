@@ -86,6 +86,8 @@ class client
 
     method tls_config = tls_config
 
+    method upload_slack = upload_slack
+
     method mgr_access = mgr_access
     method nsm_host_access = nsm_host_access
     method osd_access = osd_access
