@@ -5,8 +5,10 @@ install () {
 
     date
 
-    if [[ -e ~/cache/image.tar.gz ]];
-    then docker load -i ~/cache/image.tar.gz; fi
+    env | sort
+
+    # if [[ -e ~/cache/image.tar.gz ]];
+    # then docker load -i ~/cache/image.tar.gz; fi
 
     # START_BUILD=$(date +%s.%N)
     # echo $START_BUILD

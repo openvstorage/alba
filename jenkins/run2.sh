@@ -9,13 +9,14 @@ export DRIVER=./setup/setup.native
 
 export ARAKOON_BIN=$(which arakoon)
 
-if [ -t 1 ];
-then TTY="-t";
+if [ -t 1 ]
+then true;
 else
     # this path is taken on jenkins, clean previous builds first
-    TTY="";
-    make clean || true;
-    make || true;
+    make clean
+    if [[ ${1-bash} != "package_"* ]]
+    then make
+    fi
 fi
 
 if (${ALBA_USE_ETCD:-false} -eq true)
@@ -38,31 +39,47 @@ function package_debian {
     fi
 }
 
+function check_results {
+    if [[ "${TRAVIS-false}" == "true" ]] && ! grep "errors=\"0\" failures=\"0\"" testresults.xml
+    then
+        cat testresults.xml
+        exit 1
+    fi
+}
+
 case "${1-bash}" in
     asd_start)
         ${DRIVER} asd_start || true
+        check_results
         ;;
     cpp)
         ./jenkins/cpp/010-build_client.sh
         ${DRIVER} cpp  || true
+        check_results
         ;;
     ocaml)
         ${DRIVER} ocaml || true
+        check_results
         ;;
     stress)
         ${DRIVER} stress || true
+        check_results
         ;;
     voldrv_backend)
         ${DRIVER} voldrv_backend || true
+        check_results
         ;;
     voldrv_tests)
         ${DRIVER} voldrv_tests || true
+        check_results
         ;;
     disk_failures)
         ${DRIVER} disk_failures || true
+        check_results
         ;;
     compat)
         ${DRIVER} compat || true
+        check_results
         ;;
     recovery)
         find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
@@ -70,6 +87,7 @@ case "${1-bash}" in
         ;;
     everything_else)
         ${DRIVER} everything_else  || true
+        check_results
         ;;
     test_integrate_deb)
         ./jenkins/run.sh test_integrate_deb
