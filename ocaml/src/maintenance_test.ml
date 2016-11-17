@@ -108,11 +108,11 @@ let test_rebalance_one () =
      let base_client = alba_client # get_base_client in
      base_client # get_namespace_osds_info_cache ~namespace_id >>= fun cache ->
 
+
+     wait_for_lazy_write alba_client namespace_id manifest >>= fun manifest ->
      let object_osds =
        Manifest.osds_used manifest.Manifest.fragment_locations
      in
-     wait_for_lazy_write alba_client namespace_id manifest >>= fun manifest ->
-
      let set2s set=
        Printf.sprintf
          "(%i,%s)" (DeviceSet.cardinal set)
