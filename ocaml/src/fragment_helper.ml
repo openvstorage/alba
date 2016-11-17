@@ -106,10 +106,10 @@ let maybe_decrypt
   | NoEncryption ->
     Lwt.return (Bigstring_slice.wrap_bigstring data)
   | AlgoWithKey (algo, key) ->
-     let encrypt mode set_iv_ctr =
+     let decrypt mode set_iv_ctr =
        Encryption.verify_key_length algo key;
        Cipher.with_t_lwt
-         key Cipher.AES256 Cipher.CBC []
+         key Cipher.AES256 mode []
           (fun cipher ->
             set_iv_ctr cipher;
             Cipher.decrypt_detached
@@ -120,10 +120,10 @@ let maybe_decrypt
      begin match algo with
      | AES (CBC, L256) ->
         get_iv key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
-        encrypt Cipher.CBC (fun h -> Cipher.set_iv h iv) >>= fun () ->
+        decrypt Cipher.CBC (fun h -> Cipher.set_iv h iv) >>= fun () ->
         Lwt.return (Padding.unpad data)
      | AES (CTR, L256) ->
-        encrypt Cipher.CTR (fun h -> Cipher.set_ctr h (Option.get_some fragment_ctr)) >>= fun () ->
+        decrypt Cipher.CTR (fun h -> Cipher.set_ctr h (Option.get_some fragment_ctr)) >>= fun () ->
         Lwt.return (Bigstring_slice.wrap_bigstring data)
     end
 

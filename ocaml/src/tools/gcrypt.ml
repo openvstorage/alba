@@ -46,7 +46,7 @@ module Error = struct
   type t = int
   let t = int_to_uint
 
-  exception Error of t * string * string
+  exception Error of t * string * string * string
 
   let get_string =
     let inner =
@@ -76,13 +76,13 @@ module Error = struct
     in
     inner
 
-  let check t =
+  let check ~location t =
     if t <> 0
-    then raise (Error (t, get_string t, get_source t))
+    then raise (Error (t, location, get_string t, get_source t))
 
-  let check_lwt t =
+  let check_lwt ~location t =
     if t <> 0
-    then Lwt.fail (Error (t, get_string t, get_source t))
+    then Lwt.fail (Error (t, location, get_string t, get_source t))
     else Lwt.return ()
 end
 
@@ -118,7 +118,7 @@ let control =
   in
   fun cmd1 cmd2 ->
     let err = inner cmd1 cmd2 in
-    Error.check err
+    Error.check ~location:"gcrypt.control" err
 
 
 external gcrypt_set_threads : unit -> unit = "gcrypt_set_threads"
@@ -252,7 +252,7 @@ module Cipher = struct
       let res = allocate hd_t { ptr = null;
                                 valid = true; } in
       let err = inner res algo mode flags in
-      Error.check err;
+      Error.check ~location:"Cipher.open" err;
       !@res
 
   let close =
@@ -275,7 +275,7 @@ module Cipher = struct
     in
     fun t key ->
       let err = inner t (ocaml_string_start key) (String.length key) in
-      Error.check err
+      Error.check ~location:"Cipher.set_key" err
 
   let create key algo mode flags =
     let t = open_ algo mode flags in
@@ -305,7 +305,7 @@ module Cipher = struct
     in
     fun t iv ->
       let err = inner t (ocaml_string_start iv) (String.length iv) in
-      Error.check err
+      Error.check ~location:"Cipher.set_iv" err
 
   let set_ctr =
     (* gcry_error_t gcry_cipher_setctr (gcry_cipher_hd_t h, const void *c, size_t l)
@@ -322,7 +322,7 @@ module Cipher = struct
     in
     fun t ctr ->
     let err = inner t (ocaml_string_start ctr) (String.length ctr) in
-    Error.check err
+    Error.check ~location:"Cipher.set_ctr" err
 
   let encrypt =
     (* gcry_error_t
@@ -366,7 +366,7 @@ module Cipher = struct
              (bigarray_start array1 data) len
              (from_voidp char null) 0)
         ()
-      >>= Error.check_lwt
+      >>= Error.check_lwt ~location:"Cipher.encrypt"
 
   let decrypt ~release_runtime_lock =
     (* gcry_error_t
@@ -412,7 +412,7 @@ module Cipher = struct
       (fun () -> decrypt ~release_runtime_lock:true
                          t data offset length)
       ()
-    >>= Error.check_lwt
+    >>= Error.check_lwt ~location:"Cipher.decrypt_detached"
 
   let _burn_buf = Lwt_bytes.create 16
 
@@ -447,7 +447,7 @@ module Cipher = struct
         t
         _burn_buf
         0 to_burn
-      |> Error.check
+      |> Error.check ~location:"Cipher.set_ctr_with_offset decrypt"
 
 end
 
@@ -492,7 +492,7 @@ module Digest = struct
       let res = allocate hd_t { ptr = null;
                                 valid = true; } in
       let err = inner res algo 0 in
-      Error.check err;
+      Error.check ~location:"Digest.open" err;
       !@res
 
   let close =
@@ -528,7 +528,7 @@ module Digest = struct
             (Bytes_descr.start descr_key key)
             (Bytes_descr.length descr_key key)
         in
-        Error.check err
+        Error.check ~location:"Digest.set_key" err
 
   let set_key t key = set_key_ Bytes_descr.Slice t (Slice.wrap_string key)
 

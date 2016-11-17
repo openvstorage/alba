@@ -45,6 +45,8 @@ let test_encrypt_decrypt () =
         (Lwt_bytes.copy encrypted) >>= fun decrypted ->
       let decrypted = Bigstring_slice.extract_to_bigstring decrypted in
 
+      Lwt_log.debug_f "decrypted=%S" (Lwt_bytes.show decrypted) >>= fun () ->
+
       assert (data = decrypted);
 
       Lwt.return ()
