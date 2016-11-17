@@ -2275,7 +2275,7 @@ let test_upload_epilogue () =
         alba_client # with_osd
                     ~osd_id:0L
                     (fun osd ->
-                      osd # set_slowness (Some(1.0,1.0))
+                      osd # set_slowness (Some(1.0,0.5))
                     )
         >>= fun () ->
 
@@ -2284,7 +2284,7 @@ let test_upload_epilogue () =
           Lwt_bytes.of_string "this test has nothing to do with the B3 Bomber."
         in
         alba_client # upload_object_from_bytes
-                    ~epilogue_delay:(Some 2.0)
+                    ~epilogue_delay:(Some 3.0)
                     ~namespace
                     ~object_name
                     ~object_data

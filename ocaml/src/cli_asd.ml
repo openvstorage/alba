@@ -821,6 +821,39 @@ let asd_set_full_cmd =
   in
   asd_set_full_t, info
 
+let asd_set_slowness hosts port tls_config asd_id
+                     slowness
+                     verbose
+  =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id ~to_json:false ~verbose
+    (fun client -> client # set_slowness slowness)
+
+let asd_set_slowness_cmd =
+  let doc = "$(docv) adds fixed + random(variable) delay to each request" in
+  let slow =
+    Arg.(value
+         & pos 0 (some (pair float float)) None
+         & info [] ~docv:"(fixed,variable)" ~doc
+    )
+  in
+  let asd_set_slowness_t =
+    Term.(pure asd_set_slowness
+          $ hosts $ (port 8_000) $ tls_config
+          $ lido
+          $ slow
+          $ verbose
+    )
+  in
+  let info =
+    let doc =
+      "slow down the asd with a delay on each request"
+    in
+    Term.info "asd-set-slowness" ~doc
+  in
+  asd_set_slowness_t, info
+
 let asd_capabilities hosts port tls_config asd_id verbose =
   let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
@@ -916,6 +949,7 @@ let cmds = [
   asd_statistics_cmd;
   asd_multistatistics_cmd;
   asd_set_full_cmd;
+  asd_set_slowness_cmd;
   asd_get_version_cmd;
   asd_disk_usage_cmd;
   asd_capabilities_cmd;
