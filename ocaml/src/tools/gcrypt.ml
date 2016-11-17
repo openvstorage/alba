@@ -46,15 +46,43 @@ module Error = struct
   type t = int
   let t = int_to_uint
 
-  exception Error of t
+  exception Error of t * string * string
+
+  let get_string =
+    let inner =
+      (* Function: const char * gcry_strerror (gcry_error_t err)
+       *
+       * The function gcry_strerror returns a pointer to a statically allocated string
+       * containing a description of the error code contained in the error value err.
+       * This string can be used to output a diagnostic message to the user.
+       *)
+      foreign
+        "gcry_strerror"
+        (int @-> returning string)
+    in
+    inner
+
+  let get_source =
+    let inner =
+      (* Function: const char * gcry_strsource (gcry_error_t err)
+       *
+       * The function gcry_strsource returns a pointer to a statically allocated string
+       * containing a description of the error source contained in the error value err.
+       * This string can be used to output a diagnostic message to the user. 
+       *)
+      foreign
+        "gcry_strsource"
+        (int @-> returning string)
+    in
+    inner
 
   let check t =
     if t <> 0
-    then raise (Error t)
+    then raise (Error (t, get_string t, get_source t))
 
   let check_lwt t =
     if t <> 0
-    then Lwt.fail (Error t)
+    then Lwt.fail (Error (t, get_string t, get_source t))
     else Lwt.return ()
 end
 
