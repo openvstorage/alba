@@ -1335,20 +1335,20 @@ let asd_protocol
       (fun buf ->
        let code = Llio2.ReadBuffer.int32_from buf in
        with_timing_lwt
-         (fun () -> handle_request buf code >>= fun () ->
-                    Lwt.return code))
+         (fun () ->
+           (match mgmt.AsdMgmt.slowness with
+            | None -> Lwt.return_unit
+            | Some (fixed, variable) ->
+               begin
+                 let delay = fixed +. Random.float variable in
+                 Lwt_log.info_f "Slowness: sleeping %f" delay >>= fun () ->
+                 Lwt_unix.sleep delay
+               end
+           ) >>= fun () ->
+           handle_request buf code >>= fun () ->
+           Lwt.return code))
     >>= fun (delta, code) ->
     Statistics_collection.Generic.new_delta stats code delta;
-
-    (match mgmt.AsdMgmt.slowness with
-     | None -> Lwt.return_unit
-     | Some (fixed, variable) ->
-       begin
-         let delay = fixed +. Random.float variable in
-         Lwt_log.info_f "Slowness: sleeping an additional %f" delay >>= fun () ->
-         Lwt_unix.sleep delay
-       end
-    ) >>= fun () ->
 
     (if delta > 0.5
      then Lwt_log.info_f
