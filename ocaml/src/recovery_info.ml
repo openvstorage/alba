@@ -96,7 +96,8 @@ module RecoveryInfo = struct
   let to_buffer buf t =
     Llio.int8_to buf 1;
     EncryptInfo.to_buffer buf t.encrypt_info;
-    Llio.string_to buf t.payload
+    Llio.string_to buf t.payload;
+    Llio.option_to Llio.string_to buf t.payload_ctr
 
   let from_buffer buf =
     let tag = Llio.int8_from buf in

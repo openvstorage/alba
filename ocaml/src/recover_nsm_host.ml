@@ -523,6 +523,7 @@ let nsm_recovery_agent
      R.set kv Keys.worker_id (serialize Llio.int_to worker_id));
 
   (* start threads to scrape an osd *)
+  Lwt_log.info "Start reap osd" >>= fun () ->
   Lwt_list.map_p
     (fun osd_id ->
        reap_osd
@@ -531,6 +532,7 @@ let nsm_recovery_agent
          total_workers worker_id)
     osds >>= fun (_ : unit list) ->
 
+  Lwt_log.info "gather_and_push_objects" >>= fun () ->
   gather_and_push_objects
     alba_client
     ~namespace_id
