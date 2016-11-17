@@ -275,10 +275,11 @@ let download_chunk
       decompress
       ~encryption
       k m w'
-      osd_access
+      (osd_access:Osd_access_type.t)
       fragment_cache
       ~cache_on_read
       bad_fragment_callback
+      ~(read_preference: string list option)
   =
 
   let t0_chunk = Unix.gettimeofday () in
@@ -292,14 +293,56 @@ let download_chunk
       (fun i cl -> (i,cl))
       chunk_locations
   in
-  let chunk_locations_i', success_count, failure_count =
-    match download_strategy with
-    | AllFragments -> chunk_locations_i, k, m+1
-    | LeastAmount  ->
-       List.take k chunk_locations_i, k, 1
-  in
-  Lwt_log.debug_f "download_strategy:%s"
+  begin
+    Lwt_log.debug_f "download_strategy:%s"
                   (show_download_strategy download_strategy) >>= fun () ->
+    match download_strategy with
+    | AllFragments -> Lwt.return (chunk_locations_i, k, m+1)
+    | LeastAmount  ->
+       if k = 1
+       then
+         begin
+           Lwt_log.debug_f
+             "replication: opportunity to use read_preference:%s"
+             ([%show: string list option] read_preference)
+           >>= fun () ->
+           (match read_preference with
+            | None-> Lwt.return_none
+            | Some prefered_nodes ->
+               begin
+                 let rec find_prefered_osd chunk_locations_i =
+                   match chunk_locations_i with
+                   | [] -> Lwt.return_none
+                   | (_,((None,_),_)) :: rest -> find_prefered_osd rest
+                   | (_,((Some osd_id,_),_)) as ci :: rest ->
+                      osd_access # get_osd_info ~osd_id
+                      >>= fun (info,_state,_caps) ->
+                      let node_id = info.Nsm_model.OsdInfo.node_id in
+                      if List.mem node_id prefered_nodes
+                      then
+                        Lwt_log.debug_f
+                          "clear preference for osd_id:%Li"
+                          osd_id
+                        >>= fun () ->
+                        Lwt.return (Some ci)
+                      else find_prefered_osd rest
+                 in
+                 find_prefered_osd chunk_locations_i
+               end
+           )
+           >>= fun prefered_osd_o ->
+
+           let target =
+             match prefered_osd_o with
+             | None -> List.take k chunk_locations_i (* TODO:maybe randomize? *)
+             | Some c_i -> [c_i]
+           in
+           Lwt.return (target, k, 1)
+         end
+       else
+         Lwt.return (List.take k chunk_locations_i, k, 1)
+  end
+  >>= fun (chunk_locations_i', success_count, failure_count) ->
 
   let successes = CountDownLatch.create ~count:success_count in
   let failures = CountDownLatch.create ~count:failure_count  in

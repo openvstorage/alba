@@ -470,6 +470,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                 ?(cache_on_read = true)
                 ?(cache_on_write = true)
                 ~populate_osds_info_cache
+                ?read_preference
                 ()
   =
   let base_client = new Alba_base_client.client
@@ -484,6 +485,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                         ~partial_osd_read
                         ~cache_on_read ~cache_on_write
                         ~populate_osds_info_cache
+                        ~read_preference
   in
   let client = new alba_client base_client in
   let closer () =

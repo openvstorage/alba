@@ -188,6 +188,7 @@ let _download_object_slices
       ~cache_on_read
       bad_fragment_callback
       ~partial_osd_read
+      ~(read_preference:string list option)
   =
   let open Nsm_model in
 
@@ -333,6 +334,7 @@ let _download_object_slices
               fragment_cache
               ~cache_on_read
               bad_fragment_callback
+              ~read_preference
           in
 
           Lwt.catch
@@ -541,6 +543,7 @@ let download_object_slices_from_fresh_manifest
       ~do_repair
       ~get_ns_preset_info
       ~get_namespace_osds_info_cache
+      ~read_preference
   =
   _download_object_slices
       nsm_host_access
@@ -553,7 +556,9 @@ let download_object_slices_from_fresh_manifest
       fragment_cache
       ~cache_on_read
       bad_fragment_callback
-      ~partial_osd_read >>= fun (failures, mfs) ->
+      ~partial_osd_read
+      ~read_preference
+  >>= fun (failures, mfs) ->
   handle_failures
     manifest mfs
     mgr_access
@@ -584,6 +589,7 @@ let download_object_slices
       ~get_ns_preset_info
       ~get_namespace_osds_info_cache
       ~do_repair
+      ~read_preference
   =
   Alba_client_download.get_object_manifest'
     nsm_host_access
@@ -605,7 +611,9 @@ let download_object_slices
        fragment_cache
        ~cache_on_read
        bad_fragment_callback
-       ~partial_osd_read >>= fun (failures, mfs) ->
+       ~partial_osd_read
+       ~read_preference
+     >>= fun (failures, mfs) ->
      if failures = []
      then Lwt.return (Some (manifest, namespace_id, mf_source, mfs))
      else
@@ -653,7 +661,9 @@ let download_object_slices
                      ~partial_osd_read
                      ~get_ns_preset_info
                      ~get_namespace_osds_info_cache
-                     ~do_repair >>= fun mfs ->
+                     ~do_repair
+                     ~read_preference
+                   >>= fun mfs ->
                    Lwt.return (Some (manifest', namespace_id, Cache.Stale, mfs))
                  end
                else

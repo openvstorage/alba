@@ -41,6 +41,7 @@ class client
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
     ~populate_osds_info_cache
+    ~(read_preference: string list option)
   =
   let () =
     if populate_osds_info_cache
@@ -84,6 +85,7 @@ class client
     method get_fragment_cache = fragment_cache
 
     method tls_config = tls_config
+    method read_preference = read_preference
 
     method mgr_access = mgr_access
     method nsm_host_access = nsm_host_access
@@ -287,6 +289,7 @@ class client
         ~cache_on_read
         (bad_fragment_callback self)
         ~download_strategy
+        ~read_preference
 
     method download_object_slices
       ~namespace
@@ -340,7 +343,7 @@ class client
         ~get_ns_preset_info:(self # get_ns_preset_info)
         ~get_namespace_osds_info_cache
         ~do_repair:true
-
+        ~read_preference
 
     method download_object_generic''
         ~namespace_id

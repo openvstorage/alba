@@ -25,7 +25,11 @@ let _fetch_abm_client_cfg () =
   let cfg_url  = Albamgr_test.get_ccfg_url () in
   Alba_arakoon.config_from_url cfg_url
 
-let test_with_alba_client ?bad_fragment_callback f =
+let test_with_alba_client
+      ?bad_fragment_callback
+      ?read_preference
+      f
+  =
   let t =
     begin
       _fetch_abm_client_cfg () >>= fun abm_ccfg ->
@@ -37,6 +41,7 @@ let test_with_alba_client ?bad_fragment_callback f =
         ~release_resources:true
         ~tcp_keepalive:Tcp_keepalive2.default
         ~populate_osds_info_cache:true
+        ?read_preference
         f
     end
   in

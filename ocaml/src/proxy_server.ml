@@ -806,6 +806,7 @@ let run_server hosts port ~transport
                ~use_fadvise
                ~partial_osd_read
                ~cache_on_read ~cache_on_write
+               ~read_preference
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
