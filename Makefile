@@ -13,11 +13,10 @@ clean:
               ./ocaml/disk_failure_tests.native
 
 
-build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin \
-	build-disk-failure-tests setup
+build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin setup
 
 build-alba:
-	cd ocaml && ocamlbuild -j 0 -use-ocamlfind alba.native
+	cd ocaml && ocamlbuild -j 0 -use-ocamlfind alba.native disk_failure_tests.native
 
 build-cmxs: build-alba
 	cd ocaml && ocamlbuild -use-ocamlfind \
@@ -97,9 +96,6 @@ build-mgr-plugin: build-alba
 	-linkpkg -package uuidm \
         -linkpkg -package result \
 	-shared -o albamgr_plugin.cmxs
-
-build-disk-failure-tests: build-alba
-	cd ocaml && ocamlbuild -use-ocamlfind disk_failure_tests.native
 
 setup:
 	cd ./setup && ocamlbuild -use-ocamlfind setup.native

@@ -14,8 +14,8 @@ script:         ./travis.sh script
 services:
   - docker
 
-cache:
-  directories:
-    - ~/cache
-  timeout:
-    1000
+# cache:
+#   directories:
+#     - ~/cache
+#   timeout:
+#     1000
