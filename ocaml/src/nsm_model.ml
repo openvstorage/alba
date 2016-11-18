@@ -429,7 +429,7 @@ module OsdInfo = struct
 
 end
 
-type osd_id = int64 [@@deriving show, yojson]
+type osd_id = Osd.id [@@deriving show, yojson]
 
 module GcEpochs = struct
   type gc_epoch = Int64.t [@@deriving show]

@@ -228,7 +228,7 @@ let deliver_messages_to_most_osds
                     osds_delivered := osd_id :: !osds_delivered;
                     osd_access # osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
                     if get_best_policy
-                         preset.Albamgr_protocol.Protocol.Preset.policies
+                         preset.Preset.policies
                          osds_info_cache = None
                     then Lwt.return ()
                     else begin

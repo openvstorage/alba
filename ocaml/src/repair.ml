@@ -48,8 +48,7 @@ let repair_object_generic
   alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
   alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
 
-  let fragment_checksum_algo =
-    preset.Albamgr_protocol.Protocol.Preset.fragment_checksum_algo in
+  let fragment_checksum_algo = preset.Preset.fragment_checksum_algo in
 
   let es, compression = match manifest.Manifest.storage_scheme with
     | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in

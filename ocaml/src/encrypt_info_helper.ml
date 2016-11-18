@@ -44,7 +44,6 @@ let from_encryption =
 let get_encryption t encrypt_info =
   let open Nsm_model in
   let open Encryption.Encryption in
-  let open Albamgr_protocol.Protocol in
   match t.Preset.fragment_encryption, encrypt_info with
   | NoEncryption, EncryptInfo.NoEncryption ->
      t.Preset.fragment_encryption

@@ -915,7 +915,7 @@ class client ?(retry_timeout = 60.)
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
       alba_client # get_namespace_osds_info_cache ~namespace_id
       >>= fun osd_info_cache ->
-      let open Albamgr_protocol.Protocol.Preset in
+      let open Preset in
       let policies = preset.policies in
       let best = Alba_client_common.get_best_policy_exn policies osd_info_cache in
       let (best_k, best_m, _, _), _, _ = best in
@@ -1081,10 +1081,7 @@ class client ?(retry_timeout = 60.)
     method repair_by_policy_namespace' ~namespace_id =
 
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
-      let policies =
-        let open Albamgr_protocol.Protocol.Preset in
-        preset.policies
-      in
+      let policies = preset.Preset.policies in
       alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache ->
 
       let ((best_k, best_m, _, _) as best_policy),

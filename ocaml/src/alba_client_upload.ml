@@ -255,7 +255,7 @@ let upload_object''
       compression, fragment_checksum_algo,
       allowed_checksum_algos, verify_upload,
       encryption =
-    let open Albamgr_protocol.Protocol.Preset in
+    let open Preset in
     preset.policies, preset.w,
     preset.fragment_size,
     preset.compression, preset.fragment_checksum_algo,
@@ -296,7 +296,7 @@ let upload_object''
   in
 
   let object_checksum_algo =
-    let open Albamgr_protocol.Protocol.Preset in
+    let open Preset in
     match checksum_o with
     | None -> preset.object_checksum.default
     | Some checksum ->

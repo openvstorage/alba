@@ -41,7 +41,7 @@ module Osd_pool = struct
                                tls_config:Tls.t Ppx_deriving_runtime.option ->
                                tcp_keepalive:Tcp_keepalive.t ->
                                prefix:string ->
-                               preset_name:Albamgr_protocol.Protocol.Preset.name option ->
+                               preset_name:Preset.name option ->
                                namespace_name_format:int ->
                                (Osd'.osd * (unit -> unit Lwt.t)) Lwt.t;
       }

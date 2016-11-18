@@ -146,7 +146,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
   let object_name_template i = Printf.sprintf "object_name_%03i" i in
   test_with_alba_client
     (fun alba_client ->
-     let open Albamgr_protocol.Protocol.Preset in
+     let open Preset in
      alba_client # mgr_access # create_preset
        preset_name { _DEFAULT with policies = [(5,3,8,3)];}
      >>= fun () ->
@@ -353,7 +353,7 @@ let test_repair_orange2 () =
 
        let preset_name = test_name in
        let preset =
-         Albamgr_protocol.Protocol.Preset.({
+         Preset.({
              _DEFAULT with
              policies = [ (2,20,5,4); ];
            }) in
@@ -413,7 +413,7 @@ let test_rebalance_node_spread () =
     (fun alba_client ->
      let preset_name = test_name in
      let preset =
-       Albamgr_protocol.Protocol.Preset.(
+       Preset.(
          { _DEFAULT with
            policies = [ (5,4,8,4); ];
          }) in
@@ -587,9 +587,7 @@ let test_verify_namespace () =
     (fun alba_client ->
 
      let preset_name = test_name in
-     let preset' =
-       let open Albamgr_protocol.Protocol in
-       Preset.({ _DEFAULT with policies = [ (5,4,8,3); ]; }) in
+     let preset' = Preset.({ _DEFAULT with policies = [ (5,4,8,3); ]; }) in
      alba_client # mgr_access # create_preset preset_name preset' >>= fun () ->
 
      let namespace = test_name in

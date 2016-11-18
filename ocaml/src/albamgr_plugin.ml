@@ -641,8 +641,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    Update.Set(Keys.Preset.default, preset_name);
                    Update.Set(Keys.Preset.prefix ^ preset_name,
                               serialize
-                                Protocol.Preset.to_buffer
-                                Protocol.Preset._DEFAULT); ]) >>= fun _ ->
+                                Preset.to_buffer
+                                Preset._DEFAULT); ]) >>= fun _ ->
          Lwt.return ())
         (function
           | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
@@ -1677,11 +1677,11 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | None -> Error.failwith Error.Preset_does_not_exist
         | Some v -> v
       end in
-      let preset = deserialize Protocol.Preset.from_buffer preset_v in
-      let preset' = Protocol.Preset.Update.apply preset preset_update in
+      let preset = deserialize Preset.from_buffer preset_v in
+      let preset' = Preset.Update.apply preset preset_update in
       return_upds [
           Update.Assert (preset_key, Some preset_v);
-          Update.Set    (preset_key, serialize Protocol.Preset.to_buffer preset');
+          Update.Set    (preset_key, serialize Preset.to_buffer preset');
         ]
     | StoreClientConfig -> fun ccfg ->
       return_upds [ Update.Set

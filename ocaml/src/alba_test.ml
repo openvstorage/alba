@@ -551,7 +551,6 @@ let test_partial_download () =
        let test_name = "test_partial_download" in
        let namespace = test_name in
 
-       let open Albamgr_protocol.Protocol in
        let preset_name = test_name in
        let preset' = Preset.({ _DEFAULT with
                                compression = Alba_compression.Compression.NoCompression;
@@ -788,7 +787,6 @@ let test_partial_download_bad_fragment () =
 let test_encryption () =
   test_with_alba_client
     (fun alba_client ->
-       let open Albamgr_protocol.Protocol in
        let namespace = "test_encryption" in
        let preset_name = "enc_preset" in
        let algo = Encryption.(AES (CBC, L256)) in
@@ -946,7 +944,6 @@ let test_change_osd_ip_port () =
     test_name ^ Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
 
   let t (client : Alba_client.alba_client) =
-       let open Albamgr_protocol.Protocol in
        let namespace = test_name in
        let object_name = "object_name" in
 
@@ -1061,7 +1058,6 @@ let test_repair_by_policy () =
   let test_name = "test_repair_by_policy" in
   test_with_alba_client
     (fun alba_client ->
-       let open Albamgr_protocol.Protocol in
 
        let preset_name = test_name in
        alba_client # mgr_access # create_preset
@@ -1176,7 +1172,7 @@ let test_missing_corrupted_fragment () =
        let preset_name = test_name in
        alba_client # mgr_access # create_preset
          preset_name
-         Albamgr_protocol.Protocol.Preset.({
+         Preset.({
              _DEFAULT with
              policies = [ (2,1,3,3); ];
            }) >>= fun () ->
@@ -1377,7 +1373,7 @@ let test_disk_churn () =
 
        let inner osd_ids =
          let preset =
-           Albamgr_protocol.Protocol.Preset.({
+           Preset.({
                _DEFAULT
                with
                  osds = Explicit osd_ids;
@@ -1620,8 +1616,6 @@ let test_replication () =
          Lwt.return ()
        in
 
-       let open Albamgr_protocol.Protocol in
-
        begin
          let preset_name = test_name in
 
@@ -1708,7 +1702,6 @@ let test_striping () =
        Lwt.return ()
      in
 
-     let open Albamgr_protocol.Protocol in
      inner
        (test_name ^ "_1")
        Preset.({ _DEFAULT with
@@ -1894,7 +1887,6 @@ let test_update_policies () =
     (fun alba_client ->
      let namespace = test_name in
      let preset_name = test_name in
-     let open Albamgr_protocol.Protocol in
      let preset =
        Preset.({ _DEFAULT with
                  policies = [ (2,1,2,3); ]; })
@@ -1964,7 +1956,6 @@ let test_stale_manifest_download () =
      let test_name = "test_stale_manifest_download" in
      let namespace = test_name in
 
-     let open Albamgr_protocol.Protocol in
      let preset_name = test_name in
      let preset' = Preset.({ _DEFAULT with
                              compression = Alba_compression.Compression.NoCompression;
@@ -2051,7 +2042,6 @@ let test_object_sizes () =
     (fun client ->
      let test_name = "test_object_sizes" in
      let preset_name = test_name in
-     let open Albamgr_protocol.Protocol in
      let preset' = Preset.({ _DEFAULT with
                              policies = [ (2,1,3,3); ];
                              fragment_size = 128; }) in
@@ -2085,7 +2075,6 @@ let test_retry_download () =
     (fun client ->
      let test_name = "test_retry_download" in
 
-     let open Albamgr_protocol.Protocol in
      let preset_name = test_name in
      let preset' = Preset.({ _DEFAULT with
                              policies = [ (2,1,3,3); ];
