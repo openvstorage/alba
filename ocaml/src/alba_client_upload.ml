@@ -693,16 +693,7 @@ let store_manifest
         >>= fun () ->
         Lwt_list.map_s
           (fun fragment_ts ->
-            let ongoings =
-              List.map_filter_rev
-                (fun t ->
-                  match Lwt.state t with
-                  | Lwt.Sleep -> Some t
-                  | _ -> None
-                )
-                fragment_ts
-            in
-            Lwt.join (List.map (fun t -> t >|= ignore) ongoings) >>= fun () ->
+            Lwt_extra2.join_threads_ignore_errors fragment_ts >>= fun () ->
             let last_states = List.map Lwt.state fragment_ts in
             let osd_id_os =
               List.map

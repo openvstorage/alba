@@ -297,6 +297,14 @@ let copy_between_fds fd_in fd_out size buffer =
   let writer = write_all_lwt_bytes fd_out in
   copy_using reader writer size buffer
 
+let join_threads_ignore_errors ts =
+  Lwt.join
+    (List.map
+       (fun t ->
+         Lwt.catch
+           (fun () -> t >>= fun _ -> Lwt.return_unit)
+           (fun exn -> Lwt.return_unit))
+       ts)
 
 let first_n ~count ~slack f items ~test =
   let t0 = Unix.gettimeofday() in
@@ -344,7 +352,7 @@ let first_n ~count ~slack f items ~test =
         Lwt_unix.sleep limit >>= fun () ->
         Lwt_log.debug "limit reached"
       end;
-      Lwt.join (List.map (fun t -> t >|= ignore) ts)
+      join_threads_ignore_errors ts;
     ]
   >>= fun () ->
   Lwt.return (CountDownLatch.finished success, ts)
