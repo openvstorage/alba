@@ -374,7 +374,7 @@ let upload_object''
   let fold_chunks chunk =
 
     let rec inner
-              acc_make_fragment_states
+              acc_fragment_ts
               acc_chunk_sizes
               acc_fragments_info
               acc_mfs
@@ -454,19 +454,18 @@ let upload_object''
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
-      >>= fun (make_fragment_states, mfs,
+      >>= fun (fragment_ts, mfs,
                fragment_checksums, packed_fragment_sizes)  ->
-      let fragment_states = make_fragment_states () in
+      let fragment_states = List.map Lwt.state fragment_ts in
       let fragment_info =
-        let open Lwt_extra2 in
         List.map3i
           (fun i state fragment_checksum packed_fragment_size ->
             match state with
-            | Success (stats,(osd_o,_)) ->
+            | Lwt.Return (stats,(osd_o,_)) ->
                Lwt_log.ign_debug_f "i=%i =>%s " i
                                    (Statistics.show_fragment_upload stats);
                (stats, (osd_o, fragment_checksum, packed_fragment_size))
-            | Failed exn ->
+            | Lwt.Fail exn ->
                Lwt_log.ign_warning_f "fragment upload failed:%s"
                                      (Printexc.to_string exn);
                let stats =
@@ -482,7 +481,7 @@ let upload_object''
                in
                let res = (None, fragment_checksum, packed_fragment_size) in
                (stats, res)
-            | Ongoing t ->
+            | Lwt.Sleep ->
                (* for now, assume these (will) have failed *)
                let stats =
                  Statistics.({
@@ -513,13 +512,11 @@ let upload_object''
                                  }) in
 
       let chunk_times' = t_chunk :: chunk_times in
-      let acc_make_fragment_states' =
-        make_fragment_states :: acc_make_fragment_states
-      in
+      let acc_fragment_ts' = fragment_ts :: acc_fragment_ts in
       if has_more
       then
         inner
-          acc_make_fragment_states'
+          acc_fragment_ts'
           acc_chunk_sizes'
           acc_fragments_info'
           acc_mfs'
@@ -528,7 +525,7 @@ let upload_object''
           hash_time'
           (chunk_id + 1)
       else
-        Lwt.return ((List.rev acc_make_fragment_states',
+        Lwt.return ((List.rev acc_fragment_ts',
                      List.rev acc_chunk_sizes',
                      List.rev acc_fragments_info',
                      acc_mfs'
@@ -695,23 +692,13 @@ let store_manifest
         )
         >>= fun () ->
         Lwt_list.map_s
-          (fun make_fragment_state ->
-            let fragment_states = make_fragment_state() in
-            let ongoings =
-              List.map_filter_rev
-                (function
-                 | Lwt_extra2.Ongoing t ->
-                    Some t
-                 | _ -> None
-                )
-                fragment_states
-            in
-            Lwt.join ongoings >>= fun () ->
-            let last_states = make_fragment_state() in
+          (fun fragment_ts ->
+            Lwt_extra2.join_threads_ignore_errors fragment_ts >>= fun () ->
+            let last_states = List.map Lwt.state fragment_ts in
             let osd_id_os =
               List.map
                 (function
-                 | Lwt_extra2.Success (stats,(osd_id,checksum)) -> osd_id
+                 | Lwt.Return (stats,(osd_id,checksum)) -> osd_id
                  | _ -> None
                 ) last_states
             in
