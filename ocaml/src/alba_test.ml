@@ -1166,11 +1166,15 @@ let test_missing_corrupted_fragment () =
     Lwt.ignore_result
       (Lwt_extra2.ignore_errors
          (fun () ->
-            alba_client # mgr_access # add_work_repair_fragment
-                   ~namespace_id ~object_id
-                   ~object_name
-                   ~chunk_id
-                   ~fragment_id ~version_id:(snd location)))
+           let version_id = snd location in
+           Lwt_log.debug_f
+             "bad fragment: %S (%i,%i) ~version_id:%i" object_name chunk_id fragment_id version_id
+           >>= fun () ->
+           alba_client # mgr_access # add_work_repair_fragment
+                       ~namespace_id ~object_id
+                       ~object_name
+                       ~chunk_id
+                       ~fragment_id ~version_id))
   in
   test_with_alba_client
     ~bad_fragment_callback
