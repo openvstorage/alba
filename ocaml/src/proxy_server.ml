@@ -249,6 +249,7 @@ let read_objects
                         ~t0_object
                         ~write_object_data
                         ~download_strategy:Alba_client_download.AllFragments
+                        ~use_bfc:true
             >>= function
             | None ->
                let () = Lwt_bytes.unsafe_destroy bs in

@@ -270,13 +270,21 @@ class client
      * the returned fragment bigstrings
      *)
     method download_chunk
+        ?(use_bfc = true)
         ~download_strategy
         ~namespace_id
         ~object_id ~object_name
         chunk_locations ~chunk_id
         decompress
         ~encryption
-        k m w' =
+        k m w'
+
+      =
+      let bfc =
+        if use_bfc
+        then Some (bad_fragment_callback self)
+        else None
+      in
       Alba_client_download.download_chunk
         ~namespace_id
         ~object_id ~object_name
@@ -287,7 +295,7 @@ class client
         osd_access
         fragment_cache
         ~cache_on_read
-        (bad_fragment_callback self)
+        bfc
         ~download_strategy
         ~read_preference
 
@@ -325,6 +333,7 @@ class client
              ~consistent_read
              ~fragment_statistics_cb
       =
+      let bfc = Some (bad_fragment_callback self) in
       Alba_client_download_slices.download_object_slices
         mgr_access
         nsm_host_access
@@ -338,7 +347,7 @@ class client
         osd_access
         fragment_cache
         ~cache_on_read
-        (bad_fragment_callback self)
+        bfc
         ~partial_osd_read
         ~get_ns_preset_info:(self # get_ns_preset_info)
         ~get_namespace_osds_info_cache
@@ -346,6 +355,7 @@ class client
         ~read_preference
 
     method download_object_generic''
+        ?(use_bfc = true)
         ~namespace_id
         ~manifest
         ~get_manifest_dh
@@ -395,6 +405,7 @@ class client
          let fragment_size = chunk_size / k in
 
          self # download_chunk
+              ~use_bfc
               ~namespace_id
               ~object_id
               ~object_name

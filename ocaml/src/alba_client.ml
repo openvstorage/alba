@@ -368,6 +368,7 @@ class alba_client (base_client : Alba_base_client.client)
         let get_manifest_dh = t_get_manifest, mf_src in
         let attempt_download get_manifest_dh manifest
                              ~download_strategy
+                             ~use_bfc
           =
           write_object_data manifest.Manifest.size >>= fun write_object_data ->
           base_client # download_object_generic''
@@ -377,6 +378,7 @@ class alba_client (base_client : Alba_base_client.client)
                ~t0_object
                ~write_object_data
                ~download_strategy
+               ~use_bfc
         in
         begin
           Lwt.catch
@@ -384,6 +386,7 @@ class alba_client (base_client : Alba_base_client.client)
               attempt_download
                 get_manifest_dh manifest
                 ~download_strategy:Alba_client_download.LeastAmount
+                ~use_bfc:false
             )
             (function
               | Error.Exn Error.NotEnoughFragments as exn ->
@@ -406,8 +409,11 @@ class alba_client (base_client : Alba_base_client.client)
                    | None -> Lwt.return None
                    | Some fresh ->
                       let get_manifest_dh' = (delay, Cache.Stale) in
-                      attempt_download get_manifest_dh' fresh
-                      ~download_strategy:Alba_client_download.AllFragments
+                      attempt_download
+                        get_manifest_dh' fresh
+                        ~download_strategy:Alba_client_download.AllFragments
+                        ~use_bfc:true
+
                  end
               | exn -> Lwt.fail exn
             )

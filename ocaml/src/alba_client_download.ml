@@ -248,9 +248,13 @@ let download_fragment'
   >>= function
   | Prelude.Error.Ok a -> Lwt.return a
   | Prelude.Error.Error x ->
-     bad_fragment_callback
-       ~namespace_id ~object_name ~object_id
-       ~chunk_id ~fragment_id ~location;
+     let () =
+       match bad_fragment_callback
+       with | None -> ()
+            | Some bfc ->
+               bfc ~namespace_id ~object_name ~object_id
+                   ~chunk_id ~fragment_id ~location
+     in
      match x with
      | `AsdError err -> Lwt.fail (Asd_protocol.Protocol.Error.Exn err)
      | `AsdExn exn -> Lwt.fail exn
