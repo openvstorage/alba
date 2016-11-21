@@ -309,26 +309,10 @@ let download_chunk
            (match read_preference with
             | None-> Lwt.return_none
             | Some prefered_nodes ->
-               begin
-                 let rec find_prefered_osd chunk_locations_i =
-                   match chunk_locations_i with
-                   | [] -> Lwt.return_none
-                   | (_,((None,_),_)) :: rest -> find_prefered_osd rest
-                   | (_,((Some osd_id,_),_)) as ci :: rest ->
-                      osd_access # get_osd_info ~osd_id
-                      >>= fun (info,_state,_caps) ->
-                      let node_id = info.Nsm_model.OsdInfo.node_id in
-                      if List.mem node_id prefered_nodes
-                      then
-                        Lwt_log.debug_f
-                          "clear preference for osd_id:%Li"
-                          osd_id
-                        >>= fun () ->
-                        Lwt.return (Some ci)
-                      else find_prefered_osd rest
-                 in
-                 find_prefered_osd chunk_locations_i
-               end
+               Alba_client_common.find_prefered_osd
+                 prefered_nodes
+                 osd_access
+                 chunk_locations_i
            )
            >>= fun prefered_osd_o ->
 

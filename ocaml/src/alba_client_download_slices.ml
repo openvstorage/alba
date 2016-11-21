@@ -53,13 +53,42 @@ let try_get_from_fragments
       fragment_statistics_cb
       ~partial_osd_read
       bad_fragment_callback
+      ~read_preference
   =
   let mfs = ref [] in
 
   let fetch_fragment fragment_id =
-    let location, fragment_checksum =
-      List.nth_exn chunk_locations fragment_id
+
+    let determine_location () =
+      if k = 1
+      then
+        begin
+          Lwt_log.debug_f
+            "replication: opportunity to use read_preference:%s"
+            ([%show: string list option] read_preference)>>= fun () ->
+          begin
+            match read_preference with
+            | None -> Lwt.return None
+            | Some prefered_nodes ->
+               begin
+                 Alba_client_common.find_prefered_osd
+                   prefered_nodes
+                   osd_access
+                   (List.mapi (fun i c -> (i,c)) chunk_locations)
+               end
+          end
+          >>= fun prefered_osd_o ->
+          let target = match prefered_osd_o with
+            | None -> (List.nth_exn chunk_locations fragment_id), fragment_id
+            | Some (i,c) -> c,i
+          in
+          Lwt.return target
+        end
+      else
+        let r = (List.nth_exn chunk_locations fragment_id), fragment_id in
+        Lwt.return r
     in
+    determine_location () >>= fun ((location, fragment_checksum), fragment_id') ->
     Lwt.catch
       (fun () ->
         Alba_client_download.download_fragment'
@@ -67,7 +96,7 @@ let try_get_from_fragments
           ~namespace_id
           ~object_id ~object_name
           ~location
-          ~chunk_id ~fragment_id
+          ~chunk_id ~fragment_id:fragment_id'
           ~k
           ~fragment_checksum
           decompress
@@ -81,9 +110,9 @@ let try_get_from_fragments
           "Exception while downloading fragment namespace_id=%Li object_name,id=(%S,%S) chunk,fragment=(%i,%i) location=%s"
           namespace_id
           object_name object_id
-          chunk_id fragment_id
+          chunk_id fragment_id'
           ([%show : int64 option * int] location) >>= fun () ->
-        Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
+        Lwt.fail (Unreachable_fragment { chunk_id; fragment_id = fragment_id'; }))
     >>= fun (t_fragment, fragment_data, mfs') ->
     mfs := List.rev_append mfs' !mfs;
     Lwt.catch
@@ -356,7 +385,9 @@ let _download_object_slices
                     encryption
                     fragment_statistics_cb
                     ~partial_osd_read
-                    bad_fragment_callback >>= fun mfs ->
+                    bad_fragment_callback
+                    ~read_preference
+                  >>= fun mfs ->
                   Lwt.return (`Success mfs))
             )
             (fun exn ->

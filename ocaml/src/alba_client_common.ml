@@ -38,3 +38,28 @@ let get_best_policy_exn policies osds_info_cache =
   match get_best_policy policies osds_info_cache with
   | None -> Error.(failwith NoSatisfiablePolicy)
   | Some p -> p
+
+open Lwt.Infix
+
+let find_prefered_osd prefered_nodes osd_access chunk_locations_i =
+  let rec _inner = function
+    | [] -> Lwt.return None
+    | (_,((None,_),_)) :: rest -> _inner rest
+    | (_,((Some osd_id, _),_)) as ci :: rest ->
+       begin
+         osd_access # get_osd_info ~osd_id
+         >>= fun (info,_state,_caps) ->
+         let node_id = info.Nsm_model.OsdInfo.node_id in
+         if List.mem node_id prefered_nodes
+         then
+           begin
+             Lwt_log.debug_f
+               "clear preference for osd_id:%Li"
+               osd_id >>= fun () ->
+             Lwt.return (Some ci)
+           end
+         else
+           _inner rest
+       end
+  in
+  _inner chunk_locations_i

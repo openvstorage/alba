@@ -1232,6 +1232,7 @@ let test_missing_corrupted_fragment () =
          ~should_cache:true
        >>= fun (hm,r) ->
        let mf' = Option.get_some r in
+       Lwt_log.debug_f "mf':%s" (Manifest.show mf') >>= fun () ->
        let locations' = List.hd_exn mf'.Manifest.fragment_locations in
        let l2s = [%show : (int64 option * int) list ] in
        Lwt_log.debug_f "locations :%s" (l2s locations ) >>= fun () ->
