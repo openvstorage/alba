@@ -91,11 +91,13 @@ let get_counters stats =
       (fun (osd_id,coll) -> get_n_multiget2 coll)
       stats
   in
-  let max = List.hd_exn counts in
+  let prefered_count = List.hd_exn counts in
   let rest = List.tl_exn counts in
-  Lwt_io.printlf "max:%Li rest:%S" max ([%show: int64 list] rest)
+  Lwt_io.printlf "prefered_count:%Li rest:%S"
+                 prefered_count
+                 ([%show: int64 list] rest)
   >>= fun () ->
-  Lwt.return (max, rest)
+  Lwt.return (prefered_count, rest)
 
 let test_with_wrapper test_name f =
   let namespace = test_name in
@@ -128,6 +130,18 @@ let test_with_wrapper test_name f =
       _wait_for_osds ~cnt:4 alba_client namespace_id >>= fun () ->
       f alba_client namespace prefered others
     )
+
+let check prefered_count rest =
+  let msg =
+    Printf.sprintf
+      "prefered osd was not most popular prefered_count:%Li rest:%s"
+      prefered_count ([%show : int64 list] rest)
+  in
+  OUnit.assert_bool "prefered count too low" (prefered_count > 20L);
+
+  OUnit.assert_bool
+    msg
+    (prefered_count > (List.max rest |> Option.get_some))
 
 
 let test_replication_download () =
@@ -166,15 +180,8 @@ let test_replication_download () =
     let check_osd_ids = prefered:: others in
     Lwt_list.map_p (get_stats alba_client) check_osd_ids >>= fun stats ->
 
-    get_counters stats >>= fun (max,rest) ->
-
-    List.iter
-      (fun c ->
-        OUnit.assert_bool
-          "nonprefered osd used too much"
-          (Int64.add c 15L < max)
-      )
-      rest;
+    get_counters stats >>= fun (prefered_count, rest) ->
+    check prefered_count rest;
     Lwt.return_unit
   in
   test_with_wrapper test_name scenario
@@ -212,17 +219,8 @@ let test_replication_partial_read () =
     >>= fun () ->
     let check_osd_ids = prefered::others in
     Lwt_list.map_p (get_stats alba_client) check_osd_ids >>= fun stats ->
-    get_counters stats >>= fun (max,rest) ->
-    let msg =
-      Printf.sprintf
-             "nonprefered osd used too much: max:%Li rest:%s"
-             max ([%show: int64 list] rest)
-    in
-    List.iter
-      (fun c ->
-        OUnit.assert_bool msg (Int64.add c 15L < max)
-      )
-      rest;
+    get_counters stats >>= fun (prefered_count, rest) ->
+    check prefered_count rest;
     Lwt.return_unit
   in
   test_with_wrapper test_name scenario
