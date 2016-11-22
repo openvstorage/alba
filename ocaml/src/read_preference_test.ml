@@ -93,7 +93,7 @@ let get_counters stats =
   in
   let max = List.hd_exn counts in
   let rest = List.tl_exn counts in
-  Lwt_log.info_f "max:%Li rest:%S" max ([%show: int64 list] rest)
+  Lwt_io.printlf "max:%Li rest:%S" max ([%show: int64 list] rest)
   >>= fun () ->
   Lwt.return (max, rest)
 
@@ -213,11 +213,14 @@ let test_replication_partial_read () =
     let check_osd_ids = prefered::others in
     Lwt_list.map_p (get_stats alba_client) check_osd_ids >>= fun stats ->
     get_counters stats >>= fun (max,rest) ->
+    let msg =
+      Printf.sprintf
+             "nonprefered osd used too much: max:%Li rest:%s"
+             max ([%show: int64 list] rest)
+    in
     List.iter
       (fun c ->
-        OUnit.assert_bool
-          "nonprefered osd used too much"
-          (Int64.add c 15L < max)
+        OUnit.assert_bool msg (Int64.add c 15L < max)
       )
       rest;
     Lwt.return_unit
