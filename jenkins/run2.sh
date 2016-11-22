@@ -10,8 +10,8 @@ export DRIVER=./setup/setup.native
 export ARAKOON_BIN=$(which arakoon)
 
 
-if [ -t 1 ]
-then make; true;
+if [ -t 1 ] || [[ ${1-bash} == "test_integrate_"* ]]
+then true;
 else
     # this path is taken on jenkins, clean previous builds first
     make clean
