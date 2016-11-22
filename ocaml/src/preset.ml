@@ -58,9 +58,11 @@ module Encoding_scheme = struct
     | k -> raise_bad_tag "Encoding_scheme" k
 end
 
+type osd_id = int64 [@@deriving show, yojson]
+
 type osds =
   | All
-  | Explicit of Osd.id list
+  | Explicit of osd_id list
  [@@deriving show]
 
 let osds_to_buffer buf = function

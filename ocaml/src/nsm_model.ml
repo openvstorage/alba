@@ -426,7 +426,7 @@ module OsdInfo = struct
 
 end
 
-type osd_id = Osd.id [@@deriving show, yojson]
+type osd_id = Preset.osd_id [@@deriving show, yojson]
 
 module GcEpochs = struct
   type gc_epoch = Int64.t [@@deriving show]

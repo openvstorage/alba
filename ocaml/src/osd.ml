@@ -19,8 +19,6 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Slice
 
-type id = int64 [@@deriving show, yojson]
-
 type key = Asd_protocol.key
 type value = Lwt_bytes.t
 type checksum = Asd_protocol.checksum
