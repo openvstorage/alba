@@ -69,6 +69,7 @@ RUN eval `${opam_env}` && \
     opam install -y \
         oasis.0.4.6 \
         ocamlfind \
+        omake.0.9.8.6-0.rc1 \
         ssl.0.5.2 \
         camlbz2 \
         snappy \
