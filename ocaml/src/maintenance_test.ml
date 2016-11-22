@@ -60,22 +60,8 @@ let maybe_delete_fragment
                   Lwt.return mf'
                 )
   in
-  Lwt.catch
-  (fun () ->
-    delete_using_manifest mf >>= fun () ->
-    fetch_manifest ()
-  )
-  (function
-   | Err.Nsm_exn(Err.InvalidVersionId,_) ->
-      begin
-        Lwt_log.debug "interference from lazy_write out"
-        >>= fun () ->
-        fetch_manifest() >>= fun mf ->
-        delete_using_manifest mf >>= fun () ->
-        fetch_manifest()
-      end
-   | exn -> Lwt.fail exn
-  )
+  delete_using_manifest mf >>= fun () ->
+  fetch_manifest ()
 
 
 let test_rebalance_one () =
