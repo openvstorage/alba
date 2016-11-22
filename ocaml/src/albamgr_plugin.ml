@@ -812,12 +812,18 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~first ~finc ~last ~max ~reverse
         (fun cur key ->
            let preset_name = key in
-           let preset = deserialize Preset.from_buffer (KV.cur_get_value cur) in
+           let preset, version =
+             deserialize
+               (Llio.pair_from
+                  Preset.from_buffer
+                  (maybe_from_buffer Llio.int64_from 0L))
+               (KV.cur_get_value cur)
+           in
            let in_use =
              let (cnt, _), _ = list_preset_namespaces ~preset_name ~max:1 in
              cnt > 0
            in
-           (preset_name, preset, Some preset_name = default_preset, in_use)) in
+           (preset_name, preset, version, Some preset_name = default_preset, in_use)) in
     presets
   in
 
@@ -1180,13 +1186,13 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       (* TODO getting to this point could be made more efficient with an index... *)
       let presets_with_all_osds =
         List.filter
-          (fun (_name, preset, _is_default, _) ->
+          (fun (_name, preset, _, _is_default, _) ->
              preset.Preset.osds = Preset.All)
           all_presets
       in
       let add_osd_to_namespaces_upds =
         List.flatmap_unordered
-          (fun (preset_name, _, _, _) ->
+          (fun (preset_name, _, _, _, _) ->
              let (_, namespace_ids), _ =
                list_preset_namespaces
                  ~preset_name
@@ -1207,7 +1213,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
       let assert_namespaces_in_presets =
         List.map
-          (fun (preset_name, _, _, _) ->
+          (fun (preset_name, _, _, _, _) ->
              let (_, namespace_ids), _ = list_preset_namespaces ~preset_name ~max:(-1) in
              Update.Assert_range (Keys.Preset.namespaces_prefix ~preset_name,
                                   Range_assertion.ContainsExactly
@@ -1936,11 +1942,28 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       items
     | GetAlbaId -> fun () ->
       alba_id
-    | ListPresets -> fun { RangeQueryArgs.first; finc; last; max; reverse } ->
-      list_presets
-        ~first ~finc ~last
-        ~max:(cap_max ~max ())
-        ~reverse
+    | ListPresets ->
+       fun { RangeQueryArgs.first; finc; last; max; reverse } ->
+       let (cnt, items), has_more =
+         list_presets
+           ~first ~finc ~last
+           ~max:(cap_max ~max ())
+           ~reverse
+       in
+       ((cnt,
+         List.map
+           (fun (name, preset, _, x, y) -> name, preset, x, y)
+           items),
+        has_more)
+    | ListPresets2 ->
+       fun { RangeQueryArgs.first; finc; last; max; reverse } ->
+       list_presets
+         ~first ~finc ~last
+         ~max:(cap_max ~max ())
+         ~reverse
+    | ListPresetNamespaces ->
+       fun preset_name ->
+       list_preset_namespaces ~preset_name ~max:(-1) |> fst
     | GetClientConfig -> fun () ->
       db # get_exn Keys.client_config |>
       deserialize Alba_arakoon.Config.from_buffer

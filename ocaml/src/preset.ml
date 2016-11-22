@@ -18,6 +18,46 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Prelude
 
+type k = Policy.k [@@deriving show]
+type m = Policy.m [@@deriving show]
+
+module Encoding_scheme = struct
+  type w =
+    | W8 [@value 1]
+  [@@deriving show, enum]
+
+  let w_as_int = function
+    | W8 -> 8
+
+  let w_to_buffer buf w =
+    Llio.int8_to buf (w_to_enum w)
+  let w_from_buffer buf =
+    let w_i = Llio.int8_from buf in
+    match w_of_enum w_i with
+    | None -> raise_bad_tag "Encoding_scheme.w" w_i
+    | Some w -> w
+
+  type t =
+    | RSVM of k * m * w (* k identity blocks + m redundancy blocks * word size *)
+  [@@deriving show]
+
+  let output buf = function
+    | RSVM (k, m, w) ->
+      Llio.int8_to buf 1;
+      Llio.int_to buf k;
+      Llio.int_to buf m;
+      w_to_buffer buf w
+
+  let input buf =
+    match Llio.int8_from buf with
+    | 1 ->
+      let k = Llio.int_from buf in
+      let m = Llio.int_from buf in
+      let w = w_from_buffer buf in
+      RSVM (k, m, w)
+    | k -> raise_bad_tag "Encoding_scheme" k
+end
+
 type osds =
   | All
   | Explicit of Osd.id list
@@ -58,7 +98,7 @@ let object_checksum_from_buffer buf =
   { allowed; default; verify_upload; }
 
 type t = {
-    w : Nsm_model.Encoding_scheme.w;
+    w : Encoding_scheme.w;
     policies : Policy.policy list;
     fragment_size : int;
     osds : osds;
@@ -69,6 +109,7 @@ type t = {
   }
            [@@deriving show]
 
+type version = int64
 
 let is_valid t =
   let default_in_allowed_list = List.mem t.object_checksum.default t.object_checksum.allowed in
@@ -93,7 +134,7 @@ type name = string [@@deriving show]
 
 let to_buffer buf t =
   let ser_version = 1 in Llio.int8_to buf ser_version;
-                         Nsm_model.Encoding_scheme.w_to_buffer buf t.w;
+                         Encoding_scheme.w_to_buffer buf t.w;
                          Llio.list_to
                            Policy.to_buffer
                            buf
@@ -108,7 +149,7 @@ let to_buffer buf t =
 let from_buffer buf =
   let ser_version = Llio.int8_from buf in
   assert (ser_version = 1);
-  let w = Nsm_model.Encoding_scheme.w_from_buffer buf in
+  let w = Encoding_scheme.w_from_buffer buf in
   let policies =
     Llio.list_from
       Policy.from_buffer
@@ -127,7 +168,7 @@ let from_buffer buf =
 
 let _DEFAULT = {
     policies = [(5, 4, 8, 3); (2, 2, 3, 4);];
-    w = Nsm_model.Encoding_scheme.W8;
+    w = Encoding_scheme.W8;
     fragment_size = 1024 * 1024;
     osds = All;
     compression = Alba_compression.Compression.Snappy;

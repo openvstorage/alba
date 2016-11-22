@@ -19,9 +19,6 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Key_value_store
 
-type k = Policy.k [@@deriving show]
-type m = Policy.m [@@deriving show]
-
 type object_name = string [@@deriving show]
 type object_id = HexString.t [@@deriving show]
 
@@ -460,42 +457,7 @@ end
 
 include Alba_compression (* arakoon client has a "compression" module *)
 
-module Encoding_scheme = struct
-  type w =
-    | W8 [@value 1]
-  [@@deriving show, enum]
-
-  let w_as_int = function
-    | W8 -> 8
-
-  let w_to_buffer buf w =
-    Llio.int8_to buf (w_to_enum w)
-  let w_from_buffer buf =
-    let w_i = Llio.int8_from buf in
-    match w_of_enum w_i with
-    | None -> raise_bad_tag "Encoding_scheme.w" w_i
-    | Some w -> w
-
-  type t =
-    | RSVM of k * m * w (* k identity blocks + m redundancy blocks * word size *)
-  [@@deriving show]
-
-  let output buf = function
-    | RSVM (k, m, w) ->
-      Llio.int8_to buf 1;
-      Llio.int_to buf k;
-      Llio.int_to buf m;
-      w_to_buffer buf w
-
-  let input buf =
-    match Llio.int8_from buf with
-    | 1 ->
-      let k = Llio.int_from buf in
-      let m = Llio.int_from buf in
-      let w = w_from_buffer buf in
-      RSVM (k, m, w)
-    | k -> raise_bad_tag "Encoding_scheme" k
-end
+module Encoding_scheme = Preset.Encoding_scheme
 
 type chunk_size = int
 [@@deriving show]
@@ -962,6 +924,9 @@ module Keys = struct
            Llio.int32_be_from
            Llio.int32_be_from)
         (Str.string_after key prefix_len)
+
+  let preset = "preset"
+  let preset_version = "preset_version"
 
   module Device = struct
 
@@ -1933,6 +1898,27 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          let k, m, fragment_count, max_disks_per_node, object_id = Keys.parse_policies_key key in
          let manifest, _ = get_object_manifest_by_id kv object_id in
          manifest)
+
+  let update_preset kv preset version =
+    let version_s = KV.get kv Keys.preset_version in
+    let version' =
+      match version_s with
+      | None -> -1L
+      | Some v -> deserialize Llio.int64_from v
+    in
+    if version > version'
+    then
+      begin
+        [ Update'.Assert (Keys.preset_version,
+                          version_s);
+          Update'.set Keys.preset_version
+                      (serialize Llio.int64_to version);
+          Update'.set Keys.preset
+                      (serialize Preset.to_buffer preset); ],
+        ()
+      end
+    else
+      [], ()
 
 (*
 

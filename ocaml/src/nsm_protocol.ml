@@ -21,6 +21,8 @@ open Nsm_model
 
 module Protocol = struct
 
+  type namespace_id = int64 [@@deriving show, yojson]
+
   module RangeQueryArgs =
     struct
       type 'a t = 'a Range_query_args.RangeQueryArgs.t = {
@@ -88,6 +90,8 @@ module Protocol = struct
     | CleanupOsdKeysToBeDeleted : (osd_id, int) update
 
     | ApplySequence : (Assert.t list * Update.t list, unit) update
+
+    | UpdatePreset : (Preset.t * Preset.version, unit) update
 
   let overwrite_to buf = function
     | Unconditionally -> Llio.int8_to buf 1
@@ -167,6 +171,10 @@ module Protocol = struct
          Llio.pair_from
            (Llio.list_from Assert.from_buffer)
            (Llio.list_from Update.from_buffer)
+      | UpdatePreset ->
+         Llio.pair_from
+           Preset.from_buffer
+           Llio.int64_from
 
   let write_query_request : type req res. (req, res) query -> req Llio.serializer
     = function
@@ -231,6 +239,10 @@ module Protocol = struct
          Llio.pair_to
            (Llio.list_to Assert.to_buffer)
            (Llio.list_to Update.to_buffer)
+      | UpdatePreset ->
+         Llio.pair_to
+           Preset.to_buffer
+           Llio.int64_to
 
   let write_query_response : type req res. (req, res) query -> res Llio.serializer
     = function
@@ -272,6 +284,7 @@ module Protocol = struct
       | MarkKeysDeleted -> Llio.unit_to
       | CleanupOsdKeysToBeDeleted -> Llio.int_to
       | ApplySequence -> Llio.unit_to
+      | UpdatePreset -> Llio.unit_to
 
   let read_query_response : type req res. (req, res) query -> res Llio.deserializer
     = function
@@ -313,5 +326,6 @@ module Protocol = struct
       | MarkKeysDeleted -> Llio.unit_from
       | CleanupOsdKeysToBeDeleted -> Llio.int_from
       | ApplySequence -> Llio.unit_from
+      | UpdatePreset -> Llio.unit_from
 
 end
