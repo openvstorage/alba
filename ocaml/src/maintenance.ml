@@ -211,11 +211,23 @@ class client ?(retry_timeout = 60.)
     val maybe_dead_osds = Hashtbl.create 3
     method should_repair ~osd_id =
       osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
-      Lwt.return ((maintenance_config.Maintenance_config.enable_auto_repair
-                   && Hashtbl.mem maybe_dead_osds osd_id)
-                  || osd_info.Nsm_model.OsdInfo.decommissioned)
+      if maintenance_config.Maintenance_config.enable_auto_repair
+         && Hashtbl.mem maybe_dead_osds osd_id
+      then
+        Lwt_log.info_f "%Li may be dead => should repair" osd_id
+        >>= fun () ->
+        Lwt.return true
+      else
+        if osd_info.Nsm_model.OsdInfo.decommissioned
+        then
+          Lwt_log.info_f "%Li was decommissioned => should repair" osd_id
+          >>= fun () ->
+          Lwt.return true
+        else
+          Lwt.return false
 
     method failure_detect_all_osds : unit Lwt.t =
+      let first_time = ref true in
       Lwt_extra2.run_forever
         "failure_detect_all_osds"
         (fun () ->
@@ -230,14 +242,22 @@ class client ?(retry_timeout = 60.)
                  (fun (_, osd_info) -> not osd_info.Nsm_model.OsdInfo.decommissioned)
                  osds
              in
-
-             Lwt.async
-               (fun () ->
-                Automatic_repair.periodic_load_osds
+             let load osds () =
+               Automatic_repair.periodic_load_osds
                   alba_client
                   maintenance_config
-                  osds);
-
+                  osds
+             in
+             begin
+               if !first_time
+               then
+                 load osds () >>= fun () ->
+                 let () = first_time := false in
+                 Lwt.return_unit
+               else
+                 let () = Lwt.async (load osds) in
+                 Lwt.return_unit
+             end >>= fun () ->
              let past_date =
                Unix.gettimeofday () -.
                  maintenance_config.Maintenance_config.auto_repair_timeout_seconds
