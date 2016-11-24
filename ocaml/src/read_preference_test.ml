@@ -230,5 +230,5 @@ let test_replication_partial_read () =
 open OUnit
 let suite = "read_preference" >:::[
       "test_replication_download" >:: test_replication_download;
-      "test_partial_read_partial_read" >:: test_replication_partial_read;
+      "test_replication_partial_read" >:: test_replication_partial_read;
     ]

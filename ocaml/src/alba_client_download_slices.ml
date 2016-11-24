@@ -66,24 +66,29 @@ let try_get_from_fragments
           Lwt_log.debug_f
             "replication: opportunity to use read_preference:%s"
             ([%show: string list ] read_preference)>>= fun () ->
-          begin
-            Alba_client_common.find_prefered_osd
-              read_preference
-              osd_access
-              (List.mapi (fun i c -> (i,c)) chunk_locations)
-          end
+          let downloadable_chunk_locations, _nones =
+              Alba_client_common.downloadable chunk_locations
+          in
+          Alba_client_common.find_prefered_osd
+            read_preference
+            osd_access
+            downloadable_chunk_locations
           >>= fun prefered_osd_o ->
           let target = match prefered_osd_o with
-            | None -> (List.nth_exn chunk_locations fragment_id), fragment_id
-            | Some (i,c) -> c,i
+            | None -> List.hd_exn downloadable_chunk_locations
+            | Some target -> target
           in
           Lwt.return target
         end
       else
-        let r = (List.nth_exn chunk_locations fragment_id), fragment_id in
-        Lwt.return r
+        let location = (List.nth_exn chunk_locations fragment_id) in
+        match location with
+        | (None,_),_h       ->
+           let e = Unreachable_fragment { chunk_id; fragment_id; } in
+           Lwt.fail e
+        | (Some osd_id,v),h -> Lwt.return (fragment_id, ((osd_id,v),h))
     in
-    determine_location () >>= fun ((location, fragment_checksum), fragment_id') ->
+    determine_location () >>= fun (fragment_id', (location, fragment_checksum)) ->
     Lwt.catch
       (fun () ->
         Alba_client_download.download_fragment'
@@ -106,7 +111,7 @@ let try_get_from_fragments
           namespace_id
           object_name object_id
           chunk_id fragment_id'
-          ([%show : int64 option * int] location) >>= fun () ->
+          ([%show : int64 * int] location) >>= fun () ->
         Lwt.fail (Unreachable_fragment { chunk_id; fragment_id = fragment_id'; }))
     >>= fun (t_fragment, fragment_data, mfs') ->
     mfs := List.rev_append mfs' !mfs;

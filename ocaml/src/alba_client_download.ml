@@ -68,18 +68,13 @@ let (>>==) = E.bind
  *)
 let download_packed_fragment
       (osd_access : Osd_access_type.t)
-      ~location
+      ~(location:Nsm_model.osd_id * Nsm_model.version)
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
   =
 
-  let osd_id_o, version_id = location in
-
-  (match osd_id_o with
-   | None -> E.fail `NoneOsd
-   | Some osd_id -> E.return osd_id)
-  >>== fun osd_id ->
+  let osd_id, version_id = location in
 
   Lwt_log.debug_f
     "download_packed_fragment: object (%S, %S) chunk %i, fragment %i"
@@ -258,7 +253,6 @@ let download_fragment'
      match x with
      | `AsdError err -> Lwt.fail (Asd_protocol.Protocol.Error.Exn err)
      | `AsdExn exn -> Lwt.fail exn
-     | `NoneOsd -> Lwt.fail_with "can't download fragment from None osd"
      | `FragmentMissing -> Lwt.fail_with "missing fragment"
      | `ChecksumMismatch -> Lwt.fail_with "checksum mismatch"
 
@@ -292,16 +286,14 @@ let download_chunk
   let fragments = Hashtbl.create n in
 
   let module CountDownLatch = Lwt_extra2.CountDownLatch in
-  let chunk_locations_i =
-    List.mapi
-      (fun i cl -> (i,cl))
-      chunk_locations
+  let downloadable_chunk_locations_i, nones =
+    Alba_client_common.downloadable chunk_locations
   in
   begin
     Lwt_log.debug_f "download_strategy:%s"
                   (show_download_strategy download_strategy) >>= fun () ->
     match download_strategy with
-    | AllFragments -> Lwt.return (chunk_locations_i, k, m+1)
+    | AllFragments -> Lwt.return (downloadable_chunk_locations_i, k, m+1 - nones)
     | LeastAmount  ->
        if k = 1
        then
@@ -313,18 +305,19 @@ let download_chunk
            Alba_client_common.find_prefered_osd
              read_preference
              osd_access
-             chunk_locations_i
+             downloadable_chunk_locations_i
            >>= fun prefered_osd_o ->
 
            let target =
              match prefered_osd_o with
-             | None -> List.take k chunk_locations_i (* TODO:maybe randomize? *)
+             | None -> List.take 1 downloadable_chunk_locations_i
+                       (* TODO:maybe randomize? *)
              | Some c_i -> [c_i]
            in
            Lwt.return (target, k, 1)
          end
        else
-         Lwt.return (List.take k chunk_locations_i, k, 1)
+         Lwt.return (List.take k downloadable_chunk_locations_i, k, 1)
   end
   >>= fun (chunk_locations_i', success_count, failure_count) ->
 

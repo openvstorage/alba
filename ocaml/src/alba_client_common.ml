@@ -41,25 +41,39 @@ let get_best_policy_exn policies osds_info_cache =
 
 open Lwt.Infix
 
-let find_prefered_osd prefered_nodes osd_access chunk_locations_i =
-  let rec _inner = function
-    | [] -> Lwt.return None
-    | (_,((None,_),_)) :: rest -> _inner rest
-    | (_,((Some osd_id, _),_)) as ci :: rest ->
-       begin
-         osd_access # get_osd_info ~osd_id
-         >>= fun (info,_state,_caps) ->
-         let node_id = info.Nsm_model.OsdInfo.node_id in
-         if List.mem node_id prefered_nodes
-         then
-           begin
-             Lwt_log.debug_f
-               "clear preference for osd_id:%Li"
-               osd_id >>= fun () ->
-             Lwt.return (Some ci)
-           end
-         else
-           _inner rest
-       end
+let downloadable chunk_locations =
+  let rec build acc nones i = function
+    | [] -> List.rev acc , nones
+    | ((None, _), _) :: cls -> build acc (nones+1) (i+1) cls
+    | ((Some osd, v), h) :: cls ->
+       let cl' = (osd, v), h in
+       let acc' = (i,cl') :: acc
+       and i' = i+1 in
+       build acc' nones i' cls
   in
-  _inner chunk_locations_i
+  build [] 0 0 chunk_locations
+
+let find_prefered_osd prefered_nodes osd_access chunk_locations_i =
+  if prefered_nodes = []
+  then Lwt.return None
+  else
+    let rec _inner = function
+      | [] -> Lwt.return None
+      | (_,((osd_id, _),_)) as ci :: rest ->
+         begin
+           osd_access # get_osd_info ~osd_id
+           >>= fun (info,_state,_caps) ->
+           let node_id = info.Nsm_model.OsdInfo.node_id in
+           if List.mem node_id prefered_nodes
+           then
+             begin
+               Lwt_log.debug_f
+                 "clear preference for osd_id:%Li"
+                 osd_id >>= fun () ->
+               Lwt.return (Some ci)
+             end
+           else
+             _inner rest
+         end
+    in
+    _inner chunk_locations_i

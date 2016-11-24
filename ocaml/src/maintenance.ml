@@ -348,12 +348,28 @@ class client ?(retry_timeout = 60.)
          let open Alba_client_errors.Error in
 
          (* TODO get unpacked fragment from cache if available? *)
-         Alba_client_download.download_packed_fragment
-           osd_access
-           ~location:(List.nth_exn chunk_location fragment_id |> fst)
-           ~namespace_id
-           ~object_id ~object_name
-           ~chunk_id ~fragment_id >>= function
+         (match (List.nth_exn chunk_location fragment_id |> fst) with
+           | (None,v) ->
+              let msg =
+                Printf.sprintf
+                  ("namespace_id=%Li object_name=%S object_id=%S"
+                   ^^ "there is no (chunk_id,fragment_id,version) = (%i,%i,%i)")
+                  namespace_id object_name object_id
+                  chunk_id fragment_id v
+              in
+              Lwt_log.warning msg >>= fun () ->
+              Prelude.Error.Lwt.fail `FragmentMissing
+
+           | (Some osd_id, v) ->
+              let location = (osd_id,v) in
+              Alba_client_download.download_packed_fragment
+                osd_access
+                ~location
+                ~namespace_id
+                ~object_id ~object_name
+                ~chunk_id ~fragment_id
+         )
+         >>= function
          | Prelude.Error.Error x ->
             Lwt.fail (Exn NotEnoughFragments)
          | Prelude.Error.Ok (_, packed_fragment) ->
