@@ -283,7 +283,7 @@ let download_chunk
       fragment_cache
       ~cache_on_read
       bad_fragment_callback
-      ~(read_preference: string list option)
+      ~(read_preference: string list)
   =
 
   let t0_chunk = Unix.gettimeofday () in
@@ -308,16 +308,12 @@ let download_chunk
          begin
            Lwt_log.debug_f
              "replication: opportunity to use read_preference:%s"
-             ([%show: string list option] read_preference)
+             ([%show: string list] read_preference)
            >>= fun () ->
-           (match read_preference with
-            | None-> Lwt.return_none
-            | Some prefered_nodes ->
-               Alba_client_common.find_prefered_osd
-                 prefered_nodes
-                 osd_access
-                 chunk_locations_i
-           )
+           Alba_client_common.find_prefered_osd
+             read_preference
+             osd_access
+             chunk_locations_i
            >>= fun prefered_osd_o ->
 
            let target =

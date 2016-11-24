@@ -41,7 +41,7 @@ class client
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
     ~populate_osds_info_cache
-    ~(read_preference: string list option)
+    ~(read_preference: string list)
   =
   let () =
     if populate_osds_info_cache

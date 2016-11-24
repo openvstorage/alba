@@ -65,17 +65,12 @@ let try_get_from_fragments
         begin
           Lwt_log.debug_f
             "replication: opportunity to use read_preference:%s"
-            ([%show: string list option] read_preference)>>= fun () ->
+            ([%show: string list ] read_preference)>>= fun () ->
           begin
-            match read_preference with
-            | None -> Lwt.return None
-            | Some prefered_nodes ->
-               begin
-                 Alba_client_common.find_prefered_osd
-                   prefered_nodes
-                   osd_access
-                   (List.mapi (fun i c -> (i,c)) chunk_locations)
-               end
+            Alba_client_common.find_prefered_osd
+              read_preference
+              osd_access
+              (List.mapi (fun i c -> (i,c)) chunk_locations)
           end
           >>= fun prefered_osd_o ->
           let target = match prefered_osd_o with
@@ -217,7 +212,7 @@ let _download_object_slices
       ~cache_on_read
       bad_fragment_callback
       ~partial_osd_read
-      ~(read_preference:string list option)
+      ~(read_preference:string list)
   =
   let open Nsm_model in
 
