@@ -26,16 +26,13 @@ let recent_enough target = function
 
 let periodic_load_osds
       (alba_client : Alba_base_client.client)
-      maintenance_config osds =
+      maintenance_config osds_with_state =
   let past_date =
     Unix.gettimeofday () -.
       (maintenance_config.Maintenance_config.auto_repair_timeout_seconds
        /. 2.) in
   let open Nsm_model in
-  let do_one (osd_id, osd_info) =
-        alba_client # osd_access # get_osd_info ~osd_id
-        >>= fun (_, osd_state,_) ->
-
+  let do_one (osd_id, osd_info, osd_state) =
         let write_test_blob () =
           alba_client # with_osd
                       ~osd_id
@@ -58,7 +55,7 @@ let periodic_load_osds
                 Lwt_log.info_f "Write load on %Li" osd_id >>= fun () ->
                 write_test_blob ()
                 >>= function
-                | Osd.Ok ->
+                | Osd.Ok | Osd.Exn Osd.Error.Full  ->
                    Osd_state.add_write osd_state;
                    Lwt.return ()
                 | Osd.Exn _ ->
@@ -101,4 +98,4 @@ let periodic_load_osds
     (fun o ->
      Lwt_extra2.ignore_errors
        (fun () -> do_one o))
-    osds
+    osds_with_state
