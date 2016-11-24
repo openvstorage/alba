@@ -271,16 +271,24 @@ class client ?(retry_timeout = 60.)
                  maintenance_config.Maintenance_config.auto_repair_timeout_seconds
              in
              List.iter
-               (fun (osd_id, osd_info, (osd_state:Osd_state.t)) ->
+               (fun (osd_id,
+                     (osd_info:Nsm_model.OsdInfo.t),
+                     (osd_state:Osd_state.t)) ->
+
                  let open Nsm_model.OsdInfo in
                  let open Automatic_repair in
+                 let open Osd_state in
+
+                 let have_read =
+                   recent_enough past_date osd_info.read
+                   || recent_enough past_date osd_state.read
+                 and have_write =
+                   recent_enough past_date osd_info.write
+                   || recent_enough past_date osd_state.read
+                 in
                  let alive =
                    (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
-                   || (recent_enough past_date osd_info.read
-                       && recent_enough past_date osd_info.write)
-                   || (recent_enough past_date osd_state.Osd_state.read
-                       && recent_enough past_date osd_state.Osd_state.write
-                      )
+                   || (have_read && have_write)
                  in
                  if alive
                  then Hashtbl.remove maybe_dead_osds osd_id
