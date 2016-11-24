@@ -242,20 +242,28 @@ class client ?(retry_timeout = 60.)
                  (fun (_, osd_info) -> not osd_info.Nsm_model.OsdInfo.decommissioned)
                  osds
              in
-             let load osds () =
+             Lwt_list.map_s
+               (fun (osd_id, osd_info) ->
+                 alba_client # osd_access # get_osd_info ~osd_id
+                 >>= fun (_, osd_state, _) ->
+                 Lwt.return (osd_id, osd_info, osd_state)
+               ) osds
+             >>= fun osds_with_state ->
+
+             let load osds_with_state () =
                Automatic_repair.periodic_load_osds
                   alba_client
                   maintenance_config
-                  osds
+                  osds_with_state
              in
              begin
                if !first_time
                then
-                 load osds () >>= fun () ->
+                 load osds_with_state () >>= fun () ->
                  let () = first_time := false in
                  Lwt.return_unit
                else
-                 let () = Lwt.async (load osds) in
+                 let () = Lwt.async (load osds_with_state) in
                  Lwt.return_unit
              end >>= fun () ->
              let past_date =
@@ -263,14 +271,22 @@ class client ?(retry_timeout = 60.)
                  maintenance_config.Maintenance_config.auto_repair_timeout_seconds
              in
              List.iter
-               (fun (osd_id, osd_info) ->
-                let open Nsm_model.OsdInfo in
-                if not (Automatic_repair.recent_enough past_date osd_info.read
-                        && Automatic_repair.recent_enough past_date osd_info.write)
-                   && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
-                then Hashtbl.replace maybe_dead_osds osd_id ()
-                else Hashtbl.remove maybe_dead_osds osd_id)
-               osds;
+               (fun (osd_id, osd_info, (osd_state:Osd_state.t)) ->
+                 let open Nsm_model.OsdInfo in
+                 let open Automatic_repair in
+                 let alive =
+                   (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
+                   || (recent_enough past_date osd_info.read
+                       && recent_enough past_date osd_info.write)
+                   || (recent_enough past_date osd_state.Osd_state.read
+                       && recent_enough past_date osd_state.Osd_state.write
+                      )
+                 in
+                 if alive
+                 then Hashtbl.remove maybe_dead_osds osd_id
+                 else Hashtbl.replace maybe_dead_osds osd_id ()
+               )
+               osds_with_state;
 
              Lwt.return ()
            end
