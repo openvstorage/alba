@@ -608,7 +608,7 @@ class osd_access
         let n_updates = List.length updates in
         if n_updates > 0
         then
-          Lwt_log.debug_f "propagate %i updates" n_updates >>= fun () ->
+          Lwt_log.info_f "propagate %i osd updates" n_updates >>= fun () ->
           mgr_access # update_osds updates
         else
           Lwt.return_unit
