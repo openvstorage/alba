@@ -55,7 +55,7 @@ let periodic_load_osds
            begin
              Lwt.catch
                (fun () ->
-                Lwt_log.debug_f "Write load on %Li" osd_id >>= fun () ->
+                Lwt_log.info_f "Write load on %Li" osd_id >>= fun () ->
                 write_test_blob ()
                 >>= function
                 | Osd.Ok ->
@@ -74,7 +74,7 @@ let periodic_load_osds
            begin
              Lwt_extra2.ignore_errors
                (fun () ->
-                Lwt_log.debug_f "Read load on %Li" osd_id >>= fun () ->
+                Lwt_log.info_f "Read load on %Li" osd_id >>= fun () ->
                 let rec inner () =
                   alba_client # with_osd
                               ~osd_id
