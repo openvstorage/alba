@@ -96,7 +96,8 @@ let test_update_abm_cfg () =
                             tcp_keepalive = Tcp_keepalive.default_tcp_keepalive
                           });
                         prefix = "";
-                        preset = ""; };
+                        preset = "";
+                      };
          decommissioned = false;
          node_id = "";
          other = "";
@@ -105,6 +106,7 @@ let test_update_abm_cfg () =
          read = [];
          write = [];
          errors = [];
+         checksum_errors = 0L;
        }) >>= fun () ->
      client # get_osd_by_long_id ~long_id >>= fun o_osd_info ->
 
