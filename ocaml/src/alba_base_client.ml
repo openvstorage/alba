@@ -333,7 +333,6 @@ class client
              ~consistent_read
              ~fragment_statistics_cb
       =
-      let bfc = Some (bad_fragment_callback self) in
       Alba_client_download_slices.download_object_slices
         mgr_access
         nsm_host_access
@@ -347,7 +346,7 @@ class client
         osd_access
         fragment_cache
         ~cache_on_read
-        bfc
+        None
         ~partial_osd_read
         ~get_ns_preset_info:(self # get_ns_preset_info)
         ~get_namespace_osds_info_cache
