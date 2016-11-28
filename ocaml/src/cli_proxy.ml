@@ -45,6 +45,7 @@ module Config = struct
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
     use_fadvise: bool [@default true];
     upload_slack : float [@default 0.2];
+    read_preference : string list [@default []];
   } [@@deriving yojson, show]
 end
 
@@ -103,7 +104,8 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          osd_connection_pool_size, osd_timeout,
          lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size,
          max_client_connections, tcp_keepalive,
-         use_fadvise, upload_slack
+         use_fadvise, upload_slack,
+         read_preference
          =
          cfg.manifest_cache_size,
          cfg.albamgr_connection_pool_size,
@@ -111,7 +113,8 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          cfg.osd_connection_pool_size, cfg.osd_timeout,
          cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
          cfg.max_client_connections, cfg.tcp_keepalive,
-         cfg.use_fadvise, cfg.upload_slack
+         cfg.use_fadvise, cfg.upload_slack,
+         cfg.read_preference
        and fragment_cache_cfg =
          match cfg.fragment_cache, cfg.fragment_cache_dir, cfg.fragment_cache_size with
          | Some f, None, None ->
@@ -189,6 +192,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
                            | _ -> false)
         ~cache_on_read ~cache_on_write
         ~upload_slack
+        ~read_preference
       >>= fun () ->
 
       fragment_cache # close ()

@@ -53,13 +53,39 @@ let try_get_from_fragments
       fragment_statistics_cb
       ~partial_osd_read
       bad_fragment_callback
+      ~read_preference
   =
   let mfs = ref [] in
 
   let fetch_fragment fragment_id =
-    let location, fragment_checksum =
-      List.nth_exn chunk_locations fragment_id
+
+    let determine_location () =
+      if k = 1
+      then
+        begin
+          Lwt_log.debug_f
+            "replication: opportunity to use read_preference:%s"
+            ([%show: string list ] read_preference)>>= fun () ->
+          let downloadable_chunk_locations, _nones =
+              Alba_client_common.downloadable chunk_locations
+          in
+          Alba_client_common.sort_by_preference
+            read_preference
+            osd_access
+            downloadable_chunk_locations
+          >>= fun sorted ->
+          let target = List.hd_exn sorted in
+          Lwt.return target
+        end
+      else
+        let location = (List.nth_exn chunk_locations fragment_id) in
+        match location with
+        | (None,_),_h       ->
+           let e = Unreachable_fragment { chunk_id; fragment_id; } in
+           Lwt.fail e
+        | (Some osd_id,v),h -> Lwt.return (fragment_id, ((osd_id,v),h))
     in
+    determine_location () >>= fun (fragment_id', (location, fragment_checksum)) ->
     Lwt.catch
       (fun () ->
         Alba_client_download.download_fragment'
@@ -67,7 +93,7 @@ let try_get_from_fragments
           ~namespace_id
           ~object_id ~object_name
           ~location
-          ~chunk_id ~fragment_id
+          ~chunk_id ~fragment_id:fragment_id'
           ~k
           ~fragment_checksum
           decompress
@@ -81,9 +107,9 @@ let try_get_from_fragments
           "Exception while downloading fragment namespace_id=%Li object_name,id=(%S,%S) chunk,fragment=(%i,%i) location=%s"
           namespace_id
           object_name object_id
-          chunk_id fragment_id
-          ([%show : int64 option * int] location) >>= fun () ->
-        Lwt.fail (Unreachable_fragment { chunk_id; fragment_id; }))
+          chunk_id fragment_id'
+          ([%show : int64 * int] location) >>= fun () ->
+        Lwt.fail (Unreachable_fragment { chunk_id; fragment_id = fragment_id'; }))
     >>= fun (t_fragment, fragment_data, mfs') ->
     mfs := List.rev_append mfs' !mfs;
     Lwt.catch
@@ -188,6 +214,7 @@ let _download_object_slices
       ~cache_on_read
       bad_fragment_callback
       ~partial_osd_read
+      ~(read_preference:string list)
   =
   let open Nsm_model in
 
@@ -333,6 +360,7 @@ let _download_object_slices
               fragment_cache
               ~cache_on_read
               bad_fragment_callback
+              ~read_preference
           in
 
           Lwt.catch
@@ -354,7 +382,9 @@ let _download_object_slices
                     encryption
                     fragment_statistics_cb
                     ~partial_osd_read
-                    bad_fragment_callback >>= fun mfs ->
+                    bad_fragment_callback
+                    ~read_preference
+                  >>= fun mfs ->
                   Lwt.return (`Success mfs))
             )
             (fun exn ->
@@ -547,6 +577,7 @@ let download_object_slices_from_fresh_manifest
       ~do_repair
       ~get_ns_preset_info
       ~get_namespace_osds_info_cache
+      ~read_preference
   =
   _download_object_slices
       nsm_host_access
@@ -559,7 +590,9 @@ let download_object_slices_from_fresh_manifest
       fragment_cache
       ~cache_on_read
       bad_fragment_callback
-      ~partial_osd_read >>= fun (failures, mfs) ->
+      ~partial_osd_read
+      ~read_preference
+  >>= fun (failures, mfs) ->
   handle_failures
     manifest mfs
     mgr_access
@@ -590,6 +623,7 @@ let download_object_slices
       ~get_ns_preset_info
       ~get_namespace_osds_info_cache
       ~do_repair
+      ~read_preference
   =
   Alba_client_download.get_object_manifest'
     nsm_host_access
@@ -611,7 +645,9 @@ let download_object_slices
        fragment_cache
        ~cache_on_read
        bad_fragment_callback
-       ~partial_osd_read >>= fun (failures, mfs) ->
+       ~partial_osd_read
+       ~read_preference
+     >>= fun (failures, mfs) ->
      if failures = []
      then Lwt.return (Some (manifest, namespace_id, mf_source, mfs))
      else
@@ -659,7 +695,9 @@ let download_object_slices
                      ~partial_osd_read
                      ~get_ns_preset_info
                      ~get_namespace_osds_info_cache
-                     ~do_repair >>= fun mfs ->
+                     ~do_repair
+                     ~read_preference
+                   >>= fun mfs ->
                    Lwt.return (Some (manifest', namespace_id, Cache.Stale, mfs))
                  end
                else

@@ -465,6 +465,7 @@ module Proxy_cfg =
         fragment_cache : fragment_cache_cfg;
         tls_client : tls_client option;
         use_fadvise : bool [@default true];
+        read_preference : string list [@default []];
       } [@@deriving yojson]
 
     type t =
@@ -478,7 +479,9 @@ module Proxy_cfg =
     let make_06 ?fragment_cache
                 ?ip
                 ?transport
-                id abm_cfg_url base tls_client port =
+                id abm_cfg_url base tls_client port
+                read_preference
+      =
       Old
         { port = port + id;
           albamgr_cfg_file = abm_cfg_url;
@@ -493,7 +496,9 @@ module Proxy_cfg =
     let make ?fragment_cache
              ?ip
              ?transport
-             id albamgr_cfg_url base tls_client port =
+             id albamgr_cfg_url base tls_client port
+             read_preference
+      =
       let fragment_cache =
         match fragment_cache with
         | Some x -> x
@@ -517,6 +522,7 @@ module Proxy_cfg =
           manifest_cache_size = 100 * 1000;
           tls_client;
           use_fadvise = true;
+          read_preference;
         }
 
     let port = function
@@ -564,7 +570,9 @@ let suppress_tags tags = function
   | _ -> failwith "unexpected json"
 
 class proxy ?fragment_cache ?ip ?transport
-            id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port =
+            id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port
+            ~read_preference
+  =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
   let tls_client = make_tls_client cfg in
   let p_cfg =
@@ -572,7 +580,7 @@ class proxy ?fragment_cache ?ip ?transport
      then Proxy_cfg.make_06
      else Proxy_cfg.make)
       id abm_cfg_url proxy_base tls_client
-      port ?fragment_cache ?ip ?transport
+      port ?fragment_cache ?ip ?transport read_preference
   in
   let config_persister, cfg_url =
     match etcd with
@@ -686,16 +694,24 @@ type maintenance_cfg = {
     log_level : string;
     tls_client : tls_client option;
     __retry_timeout : float;
+    read_preference : string list [@default []];
   } [@@deriving yojson]
 
-let make_maintenance_config ?(__retry_timeout = 60.) abm_cfg_url tls_client =
+let make_maintenance_config
+      ?(__retry_timeout = 60.)
+      ?(read_preference = [])
+      abm_cfg_url tls_client =
   { albamgr_cfg_url = abm_cfg_url;
     log_level = "debug";
     tls_client;
     __retry_timeout;
+    read_preference;
   }
 
-class maintenance ?__retry_timeout id cfg (abm_cfg_url:Url.t) etcd =
+class maintenance
+        ?__retry_timeout
+        ?read_preference
+        id cfg (abm_cfg_url:Url.t) etcd =
   let maintenance_base =
     Printf.sprintf "%s/maintenance/%02i" cfg.alba_base_path id
   in
@@ -706,7 +722,9 @@ class maintenance ?__retry_timeout id cfg (abm_cfg_url:Url.t) etcd =
     | Some etcd -> abm_cfg_url
   in
   let tls_client = make_tls_client cfg in
-  let m_cfg = make_maintenance_config ?__retry_timeout maintenance_abm_cfg_url tls_client in
+  let m_cfg = make_maintenance_config
+                ?__retry_timeout ?read_preference
+                maintenance_abm_cfg_url tls_client in
 
   let config_persister, cfg_url = match etcd with
     | None ->
@@ -1077,13 +1095,22 @@ module Deployment = struct
       | None -> None, cfg.ip
       | Some ip ->Some "rdma", Some ip
     in
+    let read_preference =
+      let node_id = Printf.sprintf "%s_%i" cfg.local_nodeid_prefix 1 in
+      [node_id]
+    in
+
     let proxy = new proxy
                     0 cfg cfg.alba_bin
                     (abm # config_url) cfg.etcd ~v06_proxy:false
                     (base_port * 2 + 2000)
-                    ?fragment_cache ?transport ?ip
+                    ?fragment_cache ?transport ?ip ~read_preference
     in
-    let make_maintenance id = new maintenance ?__retry_timeout id cfg  (abm # config_url) cfg.etcd in
+    let make_maintenance id = new maintenance
+                                  ?__retry_timeout
+                                  ~read_preference
+                                  id cfg  (abm # config_url) cfg.etcd
+    in
     let maintenance_processes = [ make_maintenance 0;
                                   make_maintenance 1;
                                   make_maintenance 2; ] in
@@ -2252,7 +2279,7 @@ module Test = struct
                   tx.cfg.alba_06_bin
                   (tx.abm # config_url)
                   tx.cfg.etcd ~v06_proxy:true
-                  10_000
+                  10_000 ~read_preference:[]
             in
             {tx with proxy = old_proxy }
           else tx

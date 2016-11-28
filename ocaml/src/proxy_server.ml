@@ -248,7 +248,10 @@ let read_objects
                         ~manifest
                         ~get_manifest_dh:(0., dh)
                         ~t0_object
-                        ~write_object_data >>= function
+                        ~write_object_data
+                        ~download_strategy:Alba_client_download.AllFragments
+                        ~use_bfc:true
+            >>= function
             | None ->
                let () = Lwt_bytes.unsafe_destroy bs in
                Lwt.return None
@@ -807,6 +810,7 @@ let run_server hosts port ~transport
                ~partial_osd_read
                ~cache_on_read ~cache_on_write
                ~upload_slack
+               ~read_preference
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->

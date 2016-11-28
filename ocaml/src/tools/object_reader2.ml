@@ -46,11 +46,12 @@ class object_reader
       (alba_client # osd_access)
       (alba_client # get_fragment_cache)
       ~cache_on_read:(alba_client # get_cache_on_read_write |> fst)
-      (fun ~namespace_id ~object_name ~object_id ~chunk_id ~fragment_id ~location -> ())
+      None
       ~partial_osd_read:(alba_client # get_partial_osd_read)
       ~do_repair:false
       ~get_ns_preset_info:(alba_client # get_ns_preset_info)
       ~get_namespace_osds_info_cache:(alba_client # get_namespace_osds_info_cache)
+      ~read_preference: (alba_client # read_preference)
     >>= fun _mfs ->
     pos <- pos + cnt;
     Lwt.return ()

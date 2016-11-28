@@ -50,6 +50,7 @@ module Osd = struct
     read : timestamp list;
     write : timestamp list;
     errors : (timestamp * string) list;
+    checksum_errors : int64;
     }
   [@@deriving yojson]
 
@@ -60,7 +61,9 @@ module Osd = struct
       { OsdInfo.kind; decommissioned; node_id;
         other;
         total; used;
-        seen; read; write; errors; } =
+        seen; read; write;
+        errors; checksum_errors;
+      } =
     let id, alba_id =
       let open Osd.ClaimInfo in
       match claim_info with
@@ -114,6 +117,7 @@ module Osd = struct
       decommissioned;
       total; used;
       seen; read; write; errors;
+      checksum_errors;
     }
 end
 

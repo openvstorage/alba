@@ -668,6 +668,7 @@ module Int64Set = Set.Make(Int64)
 module StringSet = Set.Make(String)
 
 module IntMap = Map.Make(struct type t = int let compare = compare end)
+module Int64Map = Map.Make(Int64)
 module StringMap = Map.Make(String)
 
 let finalize f final =

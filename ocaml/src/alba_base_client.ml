@@ -42,6 +42,7 @@ class client
     ~cache_on_read ~cache_on_write
     ~populate_osds_info_cache
     ~upload_slack
+    ~(read_preference: string list)
   =
   let () =
     if populate_osds_info_cache
@@ -85,6 +86,7 @@ class client
     method get_fragment_cache = fragment_cache
 
     method tls_config = tls_config
+    method read_preference = read_preference
 
     method upload_slack = upload_slack
 
@@ -279,12 +281,21 @@ class client
      * the returned fragment bigstrings
      *)
     method download_chunk
+        ?(use_bfc = true)
+        ~download_strategy
         ~namespace_id
         ~object_id ~object_name
         chunk_locations ~chunk_id
         decompress
         ~encryption
-        k m w' =
+        k m w'
+
+      =
+      let bfc =
+        if use_bfc
+        then Some (bad_fragment_callback self)
+        else None
+      in
       Alba_client_download.download_chunk
         ~namespace_id
         ~object_id ~object_name
@@ -295,8 +306,9 @@ class client
         osd_access
         fragment_cache
         ~cache_on_read
-        (bad_fragment_callback self)
-
+        bfc
+        ~download_strategy
+        ~read_preference
 
     method download_object_slices
       ~namespace
@@ -345,14 +357,15 @@ class client
         osd_access
         fragment_cache
         ~cache_on_read
-        (bad_fragment_callback self)
+        None
         ~partial_osd_read
         ~get_ns_preset_info:(self # get_ns_preset_info)
         ~get_namespace_osds_info_cache
         ~do_repair:true
-
+        ~read_preference
 
     method download_object_generic''
+        ?(use_bfc = true)
         ~namespace_id
         ~manifest
         ~get_manifest_dh
@@ -362,6 +375,7 @@ class client
              int ->
              int ->
              unit Lwt.t))
+        ~(download_strategy: Alba_client_download.download_strategy)
       =
       let open Nsm_model in
 
@@ -401,6 +415,7 @@ class client
          let fragment_size = chunk_size / k in
 
          self # download_chunk
+              ~use_bfc
               ~namespace_id
               ~object_id
               ~object_name
@@ -409,6 +424,7 @@ class client
               ~encryption
               decompress
               k m w'
+              ~download_strategy
          >>= fun (data_fragments, coding_fragments, t_chunk) ->
 
 

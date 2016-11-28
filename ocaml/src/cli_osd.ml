@@ -181,6 +181,7 @@ let alba_add_osd
                             read = [];
                             write = [];
                             errors = [];
+                            checksum_errors = 0L;
                           })
     in
     with_albamgr_client

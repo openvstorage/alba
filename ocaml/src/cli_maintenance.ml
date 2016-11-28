@@ -37,6 +37,7 @@ module Config = struct
     load : (int [@default 10]);
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
     __retry_timeout : (float [@default 60.]);
+    read_preference : string list [@default []];
     } [@@deriving yojson, show]
 
   let abm_cfg_url_from_cfg (t:t) : Prelude.Url.t =
@@ -184,6 +185,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
         ~cache_on_read ~cache_on_write
         ~populate_osds_info_cache:true
         ~upload_slack:1.0
+        ~read_preference: cfg.read_preference
         (fun client ->
            let maintenance_client =
              new Maintenance.client
