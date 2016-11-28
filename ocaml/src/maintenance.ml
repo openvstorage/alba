@@ -1657,6 +1657,27 @@ class client ?(retry_timeout = 60.)
                         ~namespace_id
                         ~verify_checksum:checksum
                         ~repair_osd_unavailable obj
+                      >>= fun (m, u, fcm) ->
+                      let per_osd = Int64Map.bindings fcm in
+                      Lwt_list.iter_s
+                        (fun (osd_id, n_checksum_mismatch) ->
+                          alba_client # osd_access # get_osd_info ~osd_id
+                          >>= fun (_,state,_) ->
+                          let () =
+                            Osd_state.add_checksum_errors
+                              state
+                              (Int64.of_int n_checksum_mismatch)
+                          in
+                          Lwt.return_unit
+                        ) per_osd
+
+                      >>= fun () ->
+
+                      let total =
+                        Int64Map.fold
+                          (fun osd_id count sum -> sum + count) fcm 0
+                      in
+                      Lwt.return (m,u,total)
                      )
                   )
                   objs >>= fun res ->
@@ -1666,10 +1687,12 @@ class client ?(retry_timeout = 60.)
                     fragments_checksum_mismatch =
                   List.fold_left
                     (fun (a,b,c) (a',b',c') ->
+
                      let open Int64 in
                      add a (of_int a'),
                      add b (of_int b'),
-                     add c (of_int c'))
+                     add c (of_int c')
+                    )
                     (fragments_detected_missing,
                      fragments_osd_unavailable,
                      fragments_checksum_mismatch)

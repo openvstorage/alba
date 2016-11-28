@@ -99,6 +99,7 @@ module OsdInfo = struct
     read : timestamp list;
     write : timestamp list;
     errors : (timestamp * string) list;
+    checksum_errors : int64;
   }
   [@@deriving show, yojson]
 
@@ -107,11 +108,14 @@ module OsdInfo = struct
       ~decommissioned ~other
       ~total ~used
       ~seen ~read ~write ~errors
+      ~checksum_errors
     =
     { kind; node_id;
       decommissioned; other;
       total; used;
-      seen; read; write; errors; }
+      seen; read; write; errors;
+      checksum_errors;
+    }
 
   let _check_rdma = function
     | true ->
@@ -226,6 +230,7 @@ module OsdInfo = struct
         decommissioned; other;
         total; used;
         seen; read; write; errors;
+        checksum_errors;
       }
     =
     let ser_version = 3 in
@@ -252,7 +257,8 @@ module OsdInfo = struct
            Llio.float_to
            Llio.string_to)
         buf
-        errors
+        errors;
+      Llio.int64_to buf checksum_errors
     in
     Llio.string_to final_buf (Buffer.contents buf)
 
@@ -306,6 +312,7 @@ module OsdInfo = struct
     { kind; node_id; decommissioned; other;
       total; used;
       seen; read; write; errors;
+      checksum_errors = 0L;
     }
 
   let _from_buffer2 orig_buf =
@@ -353,6 +360,7 @@ module OsdInfo = struct
     { kind; node_id; decommissioned; other;
       total; used;
       seen; read; write; errors;
+      checksum_errors = 0L;
     }
 
   let _from_buffer3 orig_buf =
@@ -411,9 +419,11 @@ module OsdInfo = struct
            Llio.float_from
            Llio.string_from)
         buf in
+    let checksum_errors = maybe_from_buffer Llio.int64_from 0L buf in
     { kind; node_id; decommissioned; other;
       total; used;
       seen; read; write; errors;
+      checksum_errors;
     }
 
 

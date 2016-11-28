@@ -711,6 +711,22 @@ let test_verify_namespace () =
      assert (fragments_osd_unavailable = 0);
      assert (fragments_checksum_mismatch = 1);
 
+     (* was the abm's counter for checksum mismatches updated ? *)
+     alba_client # osd_access # propagate_osd_info ~run_once:true ()
+     >>= fun () ->
+     alba_client # mgr_access # list_all_claimed_osds >>= fun (_,r) ->
+     let mismatches =
+       List.fold_left
+         (fun acc (_,info) ->
+           acc + Int64.to_int info.Nsm_model.OsdInfo.checksum_errors)
+         0
+         r
+     in
+     OUnit.assert_equal
+       ~msg:"abm's checksum_errors wrong" ~printer:string_of_int
+       2 (* one from the verify, and one from the download during repair.*)
+       mismatches;
+
      Lwt.return ())
 
 let test_automatic_repair () =

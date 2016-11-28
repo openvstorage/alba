@@ -128,13 +128,16 @@ module Protocol = struct
         write' : float list;
         errors' : (float * string) list;
         other' : string option;
+        checksum_errors' : int64 option;
       } [@@deriving show]
 
       let make
         ?ips' ?port'
         ?total' ?used'
         ?(seen' = []) ?(read' = []) ?(write' = []) ?(errors' = [])
-        ?other' ?albamgr_cfg' ?endpoints' () =
+        ?other' ?albamgr_cfg' ?endpoints'
+        ?(checksum_errors' = None)
+        () =
         (* validate endpoint uris *)
         Option.iter (List.iter (fun e -> parse_endpoint_uri e |> ignore)) endpoints';
         { ips'; port';
@@ -142,6 +145,7 @@ module Protocol = struct
           total'; used';
           seen'; read'; write'; errors';
           other';
+          checksum_errors';
         }
 
       let apply
@@ -151,6 +155,7 @@ module Protocol = struct
             total'; used';
             seen'; read'; write'; errors';
             other';
+            checksum_errors';
           }
         =
         let my_compare x y = compare y x in
@@ -227,6 +232,10 @@ module Protocol = struct
           errors = List.merge_head
                      ~compare:(fun i1 i2 -> my_compare (fst i1) (fst i2))
                      osd.errors errors' max_n;
+          checksum_errors =
+            match checksum_errors' with
+            | None   -> osd.checksum_errors
+            | Some x -> Int64.add osd.checksum_errors x
         }
 
       let _to_buffer_1 buf u =
@@ -263,6 +272,8 @@ module Protocol = struct
             u.errors';
           Llio.option_to Llio.string_to buf u.other';
           Llio.option_to Alba_arakoon.Config.to_buffer buf u.albamgr_cfg';
+          Llio.option_to (Llio.list_to Llio.string_to) buf u.endpoints';
+          Llio.option_to Llio.int64_to buf u.checksum_errors';
           Buffer.contents buf
         in
         Llio.string_to buf s
@@ -296,6 +307,7 @@ module Protocol = struct
           total'; used';
           seen'; read'; write'; errors';
           other';
+          checksum_errors' = None;
         }
 
       let _from_buffer_2 buf =
@@ -324,11 +336,18 @@ module Protocol = struct
                            None
                            buf
         in
+        let checksum_errors' =
+          maybe_from_buffer
+            (Llio.option_from Llio.int64_from)
+            None
+            buf
+        in
         { ips'; port';
           albamgr_cfg'; endpoints';
           total'; used';
           seen'; read'; write'; errors';
           other';
+          checksum_errors';
         }
 
       let from_buffer buf =
