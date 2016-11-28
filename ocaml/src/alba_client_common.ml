@@ -53,27 +53,37 @@ let downloadable chunk_locations =
   in
   build [] 0 0 chunk_locations
 
-let find_prefered_osd prefered_nodes osd_access chunk_locations_i =
-  if prefered_nodes = []
-  then Lwt.return None
-  else
-    let rec _inner = function
-      | [] -> Lwt.return None
-      | (_,((osd_id, _),_)) as ci :: rest ->
-         begin
-           osd_access # get_osd_info ~osd_id
-           >>= fun (info,_state,_caps) ->
-           let node_id = info.Nsm_model.OsdInfo.node_id in
-           if List.mem node_id prefered_nodes
-           then
-             begin
-               Lwt_log.debug_f
-                 "clear preference for osd_id:%Li"
-                 osd_id >>= fun () ->
-               Lwt.return (Some ci)
-             end
-           else
-             _inner rest
-         end
-    in
-    _inner chunk_locations_i
+
+
+let sort_by_preference prefered_nodes osd_access
+                       chunk_locations_i
+  =
+  let needed = Hashtbl.create 16 in
+  let open Nsm_model in
+  Lwt_list.iter_s
+    (fun (_i,((osd_id, _version), _hash)) ->
+      osd_access # get_osd_info ~osd_id
+      >>= fun (info,_,_) ->
+      let node_id =  info.OsdInfo.node_id in
+      let () = Hashtbl.add needed osd_id node_id in
+      Lwt.return_unit
+    )
+    chunk_locations_i
+  >>= fun () ->
+
+  let cvalue (osd_id:osd_id) =
+    let (node_id:OsdInfo.node_id)  = Hashtbl.find needed osd_id in
+    if List.mem node_id prefered_nodes
+    then 1
+    else 0
+  in
+  let compare
+        (_,((osd_id0, _),_))
+        (_,((osd_id1, _),_))
+    =
+    let c0 = cvalue osd_id0
+    and c1 = cvalue osd_id1
+    in c1 - c0
+  in
+  let sorted = List.sort compare chunk_locations_i in
+  Lwt.return sorted

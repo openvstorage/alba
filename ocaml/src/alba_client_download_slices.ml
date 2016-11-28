@@ -69,15 +69,12 @@ let try_get_from_fragments
           let downloadable_chunk_locations, _nones =
               Alba_client_common.downloadable chunk_locations
           in
-          Alba_client_common.find_prefered_osd
+          Alba_client_common.sort_by_preference
             read_preference
             osd_access
             downloadable_chunk_locations
-          >>= fun prefered_osd_o ->
-          let target = match prefered_osd_o with
-            | None -> List.hd_exn downloadable_chunk_locations
-            | Some target -> target
-          in
+          >>= fun sorted ->
+          let target = List.hd_exn sorted in
           Lwt.return target
         end
       else

@@ -295,28 +295,10 @@ let download_chunk
     match download_strategy with
     | AllFragments -> Lwt.return (downloadable_chunk_locations_i, k, m+1 - nones)
     | LeastAmount  ->
-       if k = 1
-       then
-         begin
-           Lwt_log.debug_f
-             "replication: opportunity to use read_preference:%s"
-             ([%show: string list] read_preference)
-           >>= fun () ->
-           Alba_client_common.find_prefered_osd
-             read_preference
-             osd_access
-             downloadable_chunk_locations_i
-           >>= fun prefered_osd_o ->
-
-           let target =
-             match prefered_osd_o with
-             | None -> List.take 1 downloadable_chunk_locations_i
-             | Some c_i -> [c_i]
-           in
-           Lwt.return (target, k, 1)
-         end
-       else
-         Lwt.return (List.take k downloadable_chunk_locations_i, k, 1)
+       Alba_client_common.sort_by_preference
+         read_preference osd_access downloadable_chunk_locations_i
+       >>= fun sorted ->
+       Lwt.return (List.take k sorted , k , 1)
   end
   >>= fun (chunk_locations_i', success_count, failure_count) ->
 
