@@ -77,6 +77,7 @@ let repair_object_generic
                     ~encryption
                     decompress
                     k m w'
+                    ~download_strategy:Alba_client_download.AllFragments
         >>= fun (data_fragments, coding_fragments, t_chunk) ->
         Lwt.finalize
           (fun () -> f data_fragments coding_fragments)

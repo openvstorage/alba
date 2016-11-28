@@ -392,12 +392,14 @@ class client ?(retry_timeout = 60.)
          let open Alba_client_errors.Error in
 
          (* TODO get unpacked fragment from cache if available? *)
+         let location = (source_osd, version) in
          Alba_client_download.download_packed_fragment
            osd_access
-           ~location:(List.nth_exn chunk_location fragment_id |> fst)
+           ~location
            ~namespace_id
            ~object_id ~object_name
-           ~chunk_id ~fragment_id >>= function
+           ~chunk_id ~fragment_id
+         >>= function
          | Prelude.Error.Error x ->
             Lwt.fail (Exn NotEnoughFragments)
          | Prelude.Error.Ok (_, packed_fragment) ->
@@ -1532,17 +1534,30 @@ class client ?(retry_timeout = 60.)
                (* object must've been deleted in the mean time, so no work to do here *)
                Lwt.return ()
             | Some manifest ->
-               if manifest.Nsm_model.Manifest.object_id = object_id
+               let open Nsm_model in
+               if manifest.Manifest.object_id = object_id
                then begin
                    Lwt_log.warning_f
                      "Repairing object due to bad (missing/corrupted) fragment (%Li, %S, %S, %i, %i)"
                      namespace_id object_id object_name chunk_id fragment_id
                    >>= fun () ->
                    (* this is inefficient but in general it should never happen *)
+                   let (_,fragment_version) =
+                     Layout.index manifest.Manifest.fragment_locations
+                                  chunk_id fragment_id
+                   in
+                   if fragment_version = version
+                   then
                    self # repair_object
                         ~namespace_id
                         ~manifest
                         ~problem_fragments:[(chunk_id,fragment_id)]
+                   else
+                     Lwt_log.warning_f
+                       ("not repairing (%Li, %S, %S, %i, %i): "
+                        ^^ "version in manifest :%i <> version:%i")
+                       namespace_id object_id object_name chunk_id fragment_id
+                       fragment_version version
                  end else
                  (* object has been replaced with a new version in the mean time,
                so no work to do here *)

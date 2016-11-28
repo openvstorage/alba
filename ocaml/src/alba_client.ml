@@ -343,7 +343,7 @@ class alba_client (base_client : Alba_base_client.client)
              ~should_cache
              ~(write_object_data :
                  Int64.t ->
-               (Lwt_bytes.t -> int -> int -> unit Lwt.t) Lwt.t)
+                 (Lwt_bytes.t -> int -> int -> unit Lwt.t) Lwt.t)
          : (Nsm_model.Manifest.t
             * Statistics.object_download
             * int64) option Lwt.t
@@ -366,7 +366,10 @@ class alba_client (base_client : Alba_base_client.client)
           (Manifest.show manifest) >>= fun () ->
 
         let get_manifest_dh = t_get_manifest, mf_src in
-        let attempt_download get_manifest_dh manifest =
+        let attempt_download get_manifest_dh manifest
+                             ~download_strategy
+                             ~use_bfc
+          =
           write_object_data manifest.Manifest.size >>= fun write_object_data ->
           base_client # download_object_generic''
                ~namespace_id
@@ -374,10 +377,17 @@ class alba_client (base_client : Alba_base_client.client)
                ~get_manifest_dh
                ~t0_object
                ~write_object_data
+               ~download_strategy
+               ~use_bfc
         in
         begin
           Lwt.catch
-            (fun () -> attempt_download get_manifest_dh manifest)
+            (fun () ->
+              attempt_download
+                get_manifest_dh manifest
+                ~download_strategy:Alba_client_download.LeastAmount
+                ~use_bfc:false
+            )
             (function
               | Error.Exn Error.NotEnoughFragments as exn ->
                  (* Download probably failed because of stale manifest *)
@@ -399,7 +409,11 @@ class alba_client (base_client : Alba_base_client.client)
                    | None -> Lwt.return None
                    | Some fresh ->
                       let get_manifest_dh' = (delay, Cache.Stale) in
-                      attempt_download get_manifest_dh' fresh
+                      attempt_download
+                        get_manifest_dh' fresh
+                        ~download_strategy:Alba_client_download.AllFragments
+                        ~use_bfc:true
+
                  end
               | exn -> Lwt.fail exn
             )
@@ -462,6 +476,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                 ?(cache_on_read = true)
                 ?(cache_on_write = true)
                 ~populate_osds_info_cache
+                ?(read_preference = [])
                 ()
   =
   let base_client = new Alba_base_client.client
@@ -476,6 +491,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                         ~partial_osd_read
                         ~cache_on_read ~cache_on_write
                         ~populate_osds_info_cache
+                        ~read_preference
   in
   let client = new alba_client base_client in
   let closer () =
