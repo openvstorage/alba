@@ -24,6 +24,6 @@
     // wrap object file usage with posix_fadvise calls
     //, "use_fadvise" : true // optional, default true
 
-    // node_id of osds that are considered closer, default []
+    // node_ids of osds that are considered closer, default []
     , "read_preference" : []
 }

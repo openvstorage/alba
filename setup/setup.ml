@@ -694,16 +694,24 @@ type maintenance_cfg = {
     log_level : string;
     tls_client : tls_client option;
     __retry_timeout : float;
+    read_preference : string list [@default []];
   } [@@deriving yojson]
 
-let make_maintenance_config ?(__retry_timeout = 60.) abm_cfg_url tls_client =
+let make_maintenance_config
+      ?(__retry_timeout = 60.)
+      ?(read_preference = [])
+      abm_cfg_url tls_client =
   { albamgr_cfg_url = abm_cfg_url;
     log_level = "debug";
     tls_client;
     __retry_timeout;
+    read_preference;
   }
 
-class maintenance ?__retry_timeout id cfg (abm_cfg_url:Url.t) etcd =
+class maintenance
+        ?__retry_timeout
+        ?read_preference
+        id cfg (abm_cfg_url:Url.t) etcd =
   let maintenance_base =
     Printf.sprintf "%s/maintenance/%02i" cfg.alba_base_path id
   in
@@ -714,7 +722,9 @@ class maintenance ?__retry_timeout id cfg (abm_cfg_url:Url.t) etcd =
     | Some etcd -> abm_cfg_url
   in
   let tls_client = make_tls_client cfg in
-  let m_cfg = make_maintenance_config ?__retry_timeout maintenance_abm_cfg_url tls_client in
+  let m_cfg = make_maintenance_config
+                ?__retry_timeout ?read_preference
+                maintenance_abm_cfg_url tls_client in
 
   let config_persister, cfg_url = match etcd with
     | None ->
@@ -1094,7 +1104,11 @@ module Deployment = struct
                     (base_port * 2 + 2000)
                     ?fragment_cache ?transport ?ip ~read_preference
     in
-    let make_maintenance id = new maintenance ?__retry_timeout id cfg  (abm # config_url) cfg.etcd in
+    let make_maintenance id = new maintenance
+                                  ?__retry_timeout
+                                  ~read_preference
+                                  id cfg  (abm # config_url) cfg.etcd
+    in
     let maintenance_processes = [ make_maintenance 0;
                                   make_maintenance 1;
                                   make_maintenance 2; ] in
