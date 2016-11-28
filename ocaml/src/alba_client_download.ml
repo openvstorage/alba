@@ -311,7 +311,6 @@ let download_chunk
            let target =
              match prefered_osd_o with
              | None -> List.take 1 downloadable_chunk_locations_i
-                       (* TODO:maybe randomize? *)
              | Some c_i -> [c_i]
            in
            Lwt.return (target, k, 1)
