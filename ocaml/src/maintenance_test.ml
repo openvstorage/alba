@@ -724,7 +724,8 @@ let test_verify_namespace () =
      in
      OUnit.assert_equal
        ~msg:"abm's checksum_errors wrong" ~printer:string_of_int
-       1 mismatches;
+       2 (* one from the verify, and one from the download during repair.*)
+       mismatches;
 
      Lwt.return ())
 

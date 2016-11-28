@@ -170,6 +170,8 @@ let download_fragment
       else
         begin
           Lwt_bytes.unsafe_destroy fragment_data;
+          osd_access # get_osd_info ~osd_id >>= fun (_,osd_state,_) ->
+          Osd_state.add_checksum_errors osd_state 1L;
           E.fail `ChecksumMismatch
         end) >>== fun () ->
 
