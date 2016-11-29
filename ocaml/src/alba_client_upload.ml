@@ -656,7 +656,7 @@ let upload_object'
   Lwt.catch
     (fun () -> do_upload object_t0)
     (fun exn ->
-     Lwt_log.debug_f ~exn "Exception while uploading object, retrying once" >>= fun () ->
+
      let open Nsm_model in
      let timestamp = match exn with
        | Err.Nsm_exn (Err.Old_timestamp, payload) ->
@@ -673,7 +673,8 @@ let upload_object'
      begin
        let open Err in
        match exn with
-       | Nsm_exn (err, _) ->
+       | Nsm_exn (err, msg) ->
+          Lwt_log.debug_f "upload_exception %s" msg >>= fun () ->
           begin match err with
                 | Inactive_osd ->
                    Lwt_log.info_f
@@ -702,8 +703,12 @@ let upload_object'
                 | Non_unique_object_id ->
                    Lwt.return ()
           end
+       | Alba_client_errors.Error.Exn e ->
+          Lwt_log.debug_f "upload of %S failed with:%s"
+                          object_name (Error.show e)
        | _ ->
           Lwt.return ()
      end >>= fun () ->
+     Lwt_log.debug_f "Exception while uploading object, retrying once" >>= fun () ->
      do_upload timestamp
     )

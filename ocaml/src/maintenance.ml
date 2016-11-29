@@ -211,11 +211,23 @@ class client ?(retry_timeout = 60.)
     val maybe_dead_osds = Hashtbl.create 3
     method should_repair ~osd_id =
       osd_access # get_osd_info ~osd_id >>= fun (osd_info, _, _) ->
-      Lwt.return ((maintenance_config.Maintenance_config.enable_auto_repair
-                   && Hashtbl.mem maybe_dead_osds osd_id)
-                  || osd_info.Nsm_model.OsdInfo.decommissioned)
+      if maintenance_config.Maintenance_config.enable_auto_repair
+         && Hashtbl.mem maybe_dead_osds osd_id
+      then
+        Lwt_log.info_f "%Li may be dead => should repair" osd_id
+        >>= fun () ->
+        Lwt.return true
+      else
+        if osd_info.Nsm_model.OsdInfo.decommissioned
+        then
+          Lwt_log.info_f "%Li was decommissioned => should repair" osd_id
+          >>= fun () ->
+          Lwt.return true
+        else
+          Lwt.return false
 
     method failure_detect_all_osds : unit Lwt.t =
+      let first_time = ref true in
       Lwt_extra2.run_forever
         "failure_detect_all_osds"
         (fun () ->
@@ -230,27 +242,59 @@ class client ?(retry_timeout = 60.)
                  (fun (_, osd_info) -> not osd_info.Nsm_model.OsdInfo.decommissioned)
                  osds
              in
+             Lwt_list.map_s
+               (fun (osd_id, osd_info) ->
+                 alba_client # osd_access # get_osd_info ~osd_id
+                 >>= fun (_, osd_state, _) ->
+                 Lwt.return (osd_id, osd_info, osd_state)
+               ) osds
+             >>= fun osds_with_state ->
 
-             Lwt.async
-               (fun () ->
-                Automatic_repair.periodic_load_osds
+             let load osds_with_state () =
+               Automatic_repair.periodic_load_osds
                   alba_client
                   maintenance_config
-                  osds);
-
+                  osds_with_state
+             in
+             begin
+               if !first_time
+               then
+                 load osds_with_state () >>= fun () ->
+                 let () = first_time := false in
+                 Lwt.return_unit
+               else
+                 let () = Lwt.async (load osds_with_state) in
+                 Lwt.return_unit
+             end >>= fun () ->
              let past_date =
                Unix.gettimeofday () -.
                  maintenance_config.Maintenance_config.auto_repair_timeout_seconds
              in
              List.iter
-               (fun (osd_id, osd_info) ->
-                let open Nsm_model.OsdInfo in
-                if not (Automatic_repair.recent_enough past_date osd_info.read
-                        && Automatic_repair.recent_enough past_date osd_info.write)
-                   && not (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
-                then Hashtbl.replace maybe_dead_osds osd_id ()
-                else Hashtbl.remove maybe_dead_osds osd_id)
-               osds;
+               (fun (osd_id,
+                     (osd_info:Nsm_model.OsdInfo.t),
+                     (osd_state:Osd_state.t)) ->
+
+                 let open Nsm_model.OsdInfo in
+                 let open Automatic_repair in
+                 let open Osd_state in
+
+                 let have_read =
+                   recent_enough past_date osd_info.read
+                   || recent_enough past_date osd_state.read
+                 and have_write =
+                   recent_enough past_date osd_info.write
+                   || recent_enough past_date osd_state.read
+                 in
+                 let alive =
+                   (List.mem osd_info.node_id maintenance_config.Maintenance_config.auto_repair_disabled_nodes)
+                   || (have_read && have_write)
+                 in
+                 if alive
+                 then Hashtbl.remove maybe_dead_osds osd_id
+                 else Hashtbl.replace maybe_dead_osds osd_id ()
+               )
+               osds_with_state;
 
              Lwt.return ()
            end
@@ -348,12 +392,14 @@ class client ?(retry_timeout = 60.)
          let open Alba_client_errors.Error in
 
          (* TODO get unpacked fragment from cache if available? *)
+         let location = (source_osd, version) in
          Alba_client_download.download_packed_fragment
            osd_access
-           ~location:(List.nth_exn chunk_location fragment_id |> fst)
+           ~location
            ~namespace_id
            ~object_id ~object_name
-           ~chunk_id ~fragment_id >>= function
+           ~chunk_id ~fragment_id
+         >>= function
          | Prelude.Error.Error x ->
             Lwt.fail (Exn NotEnoughFragments)
          | Prelude.Error.Ok (_, packed_fragment) ->
@@ -1485,17 +1531,30 @@ class client ?(retry_timeout = 60.)
                (* object must've been deleted in the mean time, so no work to do here *)
                Lwt.return ()
             | Some manifest ->
-               if manifest.Nsm_model.Manifest.object_id = object_id
+               let open Nsm_model in
+               if manifest.Manifest.object_id = object_id
                then begin
                    Lwt_log.warning_f
                      "Repairing object due to bad (missing/corrupted) fragment (%Li, %S, %S, %i, %i)"
                      namespace_id object_id object_name chunk_id fragment_id
                    >>= fun () ->
                    (* this is inefficient but in general it should never happen *)
+                   let (_,fragment_version) =
+                     Layout.index manifest.Manifest.fragment_locations
+                                  chunk_id fragment_id
+                   in
+                   if fragment_version = version
+                   then
                    self # repair_object
                         ~namespace_id
                         ~manifest
                         ~problem_fragments:[(chunk_id,fragment_id)]
+                   else
+                     Lwt_log.warning_f
+                       ("not repairing (%Li, %S, %S, %i, %i): "
+                        ^^ "version in manifest :%i <> version:%i")
+                       namespace_id object_id object_name chunk_id fragment_id
+                       fragment_version version
                  end else
                  (* object has been replaced with a new version in the mean time,
                so no work to do here *)
@@ -1595,6 +1654,27 @@ class client ?(retry_timeout = 60.)
                         ~namespace_id
                         ~verify_checksum:checksum
                         ~repair_osd_unavailable obj
+                      >>= fun (m, u, fcm) ->
+                      let per_osd = Int64Map.bindings fcm in
+                      Lwt_list.iter_s
+                        (fun (osd_id, n_checksum_mismatch) ->
+                          alba_client # osd_access # get_osd_info ~osd_id
+                          >>= fun (_,state,_) ->
+                          let () =
+                            Osd_state.add_checksum_errors
+                              state
+                              (Int64.of_int n_checksum_mismatch)
+                          in
+                          Lwt.return_unit
+                        ) per_osd
+
+                      >>= fun () ->
+
+                      let total =
+                        Int64Map.fold
+                          (fun osd_id count sum -> sum + count) fcm 0
+                      in
+                      Lwt.return (m,u,total)
                      )
                   )
                   objs >>= fun res ->
@@ -1604,10 +1684,12 @@ class client ?(retry_timeout = 60.)
                     fragments_checksum_mismatch =
                   List.fold_left
                     (fun (a,b,c) (a',b',c') ->
+
                      let open Int64 in
                      add a (of_int a'),
                      add b (of_int b'),
-                     add c (of_int c'))
+                     add c (of_int c')
+                    )
                     (fragments_detected_missing,
                      fragments_osd_unavailable,
                      fragments_checksum_mismatch)

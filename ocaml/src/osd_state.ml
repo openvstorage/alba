@@ -29,6 +29,7 @@ type t = {
   mutable json  : string option;
   mutable total : int64 option;
   mutable used  : int64 option;
+  mutable checksum_errors : int64 option;
   }[@@deriving show]
 
 let reset osd_state =
@@ -40,7 +41,8 @@ let reset osd_state =
   osd_state.port <- None;
   osd_state.json <- None;
   osd_state.total <- None;
-  osd_state.used <- None
+  osd_state.used <- None;
+  osd_state.checksum_errors <- None
 
 let make () = {
     disqualified = false;
@@ -53,6 +55,7 @@ let make () = {
     json = None;
     total = None;
     used = None;
+    checksum_errors = None;
   }
 
 let add_error t exn =
@@ -86,6 +89,16 @@ let add_disk_usage t (used, total) =
 let add_json t json =
   t.json <- Some json
 
+let add_checksum_errors t = function
+  | 0L -> ()
+  | count ->
+    let c0 =
+      match t.checksum_errors with
+      | None -> 0L
+      | Some c -> c
+    in
+    t.checksum_errors <- Some (Int64.add c0 count)
+
 
 let disqualify t v = t.disqualified <- v
 
@@ -116,7 +129,8 @@ let to_buffer buf t =
   Llio.option_to (Llio.list_to Llio.string_to) buf t.ips;
   Llio.option_to Llio.int_to buf t.port;
   Llio.option_to Llio.int64_to buf t.used;
-  Llio.option_to Llio.int64_to buf t.total
+  Llio.option_to Llio.int64_to buf t.total;
+  Llio.option_to Llio.int64_to buf t.checksum_errors
 
 let from_buffer buf =
   let module Llio = Llio2.ReadBuffer in
@@ -134,11 +148,17 @@ let from_buffer buf =
   let port = Llio.option_from Llio.int_from buf in
   let used = Llio.option_from Llio.int64_from buf in
   let total = Llio.option_from Llio.int64_from buf in
+  let checksum_errors =
+    Llio.maybe_from_buffer
+      (Llio.option_from Llio.int64_from) None
+      buf
+  in
   { disqualified;
     read; write; errors; seen;
     ips; port;
     json;
     total; used;
+    checksum_errors;
   }
 
 let deser_state = from_buffer, to_buffer

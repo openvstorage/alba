@@ -25,7 +25,11 @@ let _fetch_abm_client_cfg () =
   let cfg_url  = Albamgr_test.get_ccfg_url () in
   Alba_arakoon.config_from_url cfg_url
 
-let test_with_alba_client ?bad_fragment_callback f =
+let test_with_alba_client
+      ?bad_fragment_callback
+      ?read_preference
+      f
+  =
   let t =
     begin
       _fetch_abm_client_cfg () >>= fun abm_ccfg ->
@@ -37,6 +41,7 @@ let test_with_alba_client ?bad_fragment_callback f =
         ~release_resources:true
         ~tcp_keepalive:Tcp_keepalive2.default
         ~populate_osds_info_cache:true
+        ?read_preference
         f
     end
   in
@@ -1157,11 +1162,15 @@ let test_missing_corrupted_fragment () =
     Lwt.ignore_result
       (Lwt_extra2.ignore_errors
          (fun () ->
-            alba_client # mgr_access # add_work_repair_fragment
-                   ~namespace_id ~object_id
-                   ~object_name
-                   ~chunk_id
-                   ~fragment_id ~version_id:(snd location)))
+           let version_id = snd location in
+           Lwt_log.debug_f
+             "bad fragment: %S (%i,%i) ~version_id:%i" object_name chunk_id fragment_id version_id
+           >>= fun () ->
+           alba_client # mgr_access # add_work_repair_fragment
+                       ~namespace_id ~object_id
+                       ~object_name
+                       ~chunk_id
+                       ~fragment_id ~version_id))
   in
   test_with_alba_client
     ~bad_fragment_callback
@@ -1223,6 +1232,7 @@ let test_missing_corrupted_fragment () =
          ~should_cache:true
        >>= fun (hm,r) ->
        let mf' = Option.get_some r in
+       Lwt_log.debug_f "mf':%s" (Manifest.show mf') >>= fun () ->
        let locations' = List.hd_exn mf'.Manifest.fragment_locations in
        let l2s = [%show : (int64 option * int) list ] in
        Lwt_log.debug_f "locations :%s" (l2s locations ) >>= fun () ->

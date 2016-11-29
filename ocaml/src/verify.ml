@@ -36,22 +36,24 @@ let verify_and_maybe_repair_object
   let verify =
     if verify_checksum
     then
-      fun (osd : Osd.osd) key ~chunk_id ~fragment_id ->
+      fun (osd : Osd.osd) key ~chunk_id ~fragment_id ~osd_id ->
       (osd # namespace_kvs namespace_id) # get_option
           Osd.Low
           key >>= function
       | None -> Lwt.return `Missing
       | Some fragment_data ->
-         let checksum = Layout.index manifest.fragment_checksums chunk_id fragment_id in
+         let checksum = Layout.index manifest.fragment_checksums
+                                     chunk_id fragment_id
+         in
          Fragment_helper.verify fragment_data checksum
          >>= fun checksum_valid ->
          Lwt_bytes.unsafe_destroy fragment_data;
          Lwt.return
            (if checksum_valid
             then `Ok
-            else `ChecksumMismatch)
+            else (`ChecksumMismatch osd_id))
     else
-      fun osd key ~chunk_id ~fragment_id ->
+      fun osd key ~chunk_id ~fragment_id ~osd_id ->
       (* TODO verify multiple objects at once? *)
       (osd # namespace_kvs namespace_id) # multi_exists
           Osd.Low
@@ -72,7 +74,7 @@ let verify_and_maybe_repair_object
       (fun () ->
        osd_access # with_osd
          ~osd_id
-         (fun osd -> verify osd key ~chunk_id ~fragment_id))
+         (fun osd -> verify osd key ~chunk_id ~fragment_id ~osd_id))
       (fun exn ->
        Lwt.return `Unavailable)
   in
@@ -93,56 +95,66 @@ let verify_and_maybe_repair_object
        fragments_osd_unavailable,
        fragments_checksum_mismatch,
        problem_fragments) =
+
+    let incr_count fcm osd_id =
+      let c0 = try Int64Map.find osd_id fcm with Not_found -> 0 in
+      Int64Map.add osd_id (c0 + 1) fcm
+    in
+    let empty = Int64Map.empty in
+
     List.fold_left
       (fun (chunk_id, (fragments_detected_missing,
                        fragments_osd_unavailable,
                        fragments_checksum_mismatch,
                        problem_fragments))
            ls ->
-       let _, acc =
-         List.fold_left
-           (fun (fragment_id,
-                 (fragments_detected_missing,
-                  fragments_osd_unavailable,
-                  fragments_checksum_mismatch,
-                  problem_fragments)) status ->
-            let fragments_detected_missing = match status with
-              | `Missing -> fragments_detected_missing + 1
-              | _        -> fragments_detected_missing
-            in
-            let fragments_osd_unavailable = match status with
-              | `Unavailable -> fragments_osd_unavailable + 1
-              | _            -> fragments_osd_unavailable
-            in
-            let fragments_checksum_mismatch = match status with
-              | `ChecksumMismatch -> fragments_checksum_mismatch + 1
-              | _                 -> fragments_checksum_mismatch
-            in
-            let should_repair =
-              match status with
-              | `NoneOsd
-              | `Ok -> false
-              | `ChecksumMismatch
-              | `Missing -> true
-              | `Unavailable -> repair_osd_unavailable
-            in
-            fragment_id + 1,
-            (fragments_detected_missing,
-             fragments_osd_unavailable,
-             fragments_checksum_mismatch,
-             if should_repair
-             then (chunk_id, fragment_id) :: problem_fragments
-             else problem_fragments))
-           (0,
-            (fragments_detected_missing,
-             fragments_osd_unavailable,
-             fragments_checksum_mismatch,
-             problem_fragments))
-           ls
-       in
-       chunk_id + 1,
-       acc)
-      (0, (0,0,0,[]))
+
+        let _, acc =
+          List.fold_left
+            (fun (fragment_id,
+                  (fragments_detected_missing,
+                   fragments_osd_unavailable,
+                   fragments_checksum_mismatch,
+                   problem_fragments)) status ->
+              let fragments_detected_missing = match status with
+                | `Missing -> fragments_detected_missing + 1
+                | _        -> fragments_detected_missing
+              in
+              let fragments_osd_unavailable = match status with
+                | `Unavailable -> fragments_osd_unavailable + 1
+                | _            -> fragments_osd_unavailable
+              in
+              let fragments_checksum_mismatch = match status with
+                | `ChecksumMismatch osd_id ->
+                   incr_count fragments_checksum_mismatch osd_id
+                | _                        ->
+                   fragments_checksum_mismatch
+              in
+              let should_repair =
+                match status with
+                | `NoneOsd
+                  | `Ok -> false
+                | `ChecksumMismatch _
+                  | `Missing -> true
+                | `Unavailable -> repair_osd_unavailable
+              in
+              fragment_id + 1,
+              (fragments_detected_missing,
+               fragments_osd_unavailable,
+               fragments_checksum_mismatch,
+               if should_repair
+               then (chunk_id, fragment_id) :: problem_fragments
+               else problem_fragments))
+            (0,
+             (fragments_detected_missing,
+              fragments_osd_unavailable,
+              fragments_checksum_mismatch,
+              problem_fragments))
+            ls
+        in
+        chunk_id + 1,
+        acc)
+      (0, (0,0,empty ,[]))
       results
   in
 

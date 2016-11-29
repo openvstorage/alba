@@ -580,12 +580,14 @@ class osd_access
         and write'  = most_recent osd_state.write
         and errors' = most_recent osd_state.errors
         and other'  = osd_state.json
+        and checksum_errors' = osd_state.checksum_errors
         in
         let update = Osd.Update.make
                        ?ips' ?port'
                        ?total' ?used'
                        ?other'
                        ~seen' ~read' ~write' ~errors'
+                       ~checksum_errors'
                        ()
         in
         (long_id, update)
@@ -608,7 +610,7 @@ class osd_access
         let n_updates = List.length updates in
         if n_updates > 0
         then
-          Lwt_log.debug_f "propagate %i updates" n_updates >>= fun () ->
+          Lwt_log.info_f "propagate %i osd updates" n_updates >>= fun () ->
           mgr_access # update_osds updates
         else
           Lwt.return_unit
@@ -738,6 +740,7 @@ class osd_access
                            read = [];
                            write = [];
                            errors = [];
+                           checksum_errors = 0L;
                          })
              in
 

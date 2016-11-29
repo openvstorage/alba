@@ -128,7 +128,11 @@ class multi_proxy_pool
       | `TryAgain ->
          if !fuse
          then Lwt.return ()
-         else t ()
+         else
+           begin
+             Lwt_extra2.sleep_approx 60. >>= fun () ->
+             t ()
+           end
     in
     let t = t () in
     Hashtbl.add disqualified_endpoints_requalify_threads endpoint (t, fuse);

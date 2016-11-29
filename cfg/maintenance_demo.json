@@ -15,4 +15,6 @@
         "cert"    : "/tmp/arakoon/my_client/my_client.pem",
         "key"     : "/tmp/arakoon/my_client/my_client.key",
     }
+    // node_ids of osds that are considered closer, default []
+    , "read_preference" : []
 }
