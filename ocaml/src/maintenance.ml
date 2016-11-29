@@ -1632,6 +1632,19 @@ class client ?(retry_timeout = 60.)
       | IterNamespace _ ->
         (* the logic for this task is on the albamgr (server) side *)
         Lwt.return ()
+      | PropagatePreset (preset_name, _) ->
+         (* TODO
+          * grab latest version of preset
+          * list preset namespaces
+          * bulk deliver presets to namespaces
+          *)
+         Lwt.return ()
+      | PropagatePresetNamespace namespace_id ->
+         (* TODO
+          * grab latest version of associated preset
+          * propagate to namespace
+          *)
+         Lwt.return ()
 
 
     val mutable next_work_item = 0L

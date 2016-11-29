@@ -489,6 +489,8 @@ module Protocol = struct
       | WaitUntilDecommissioned of Osd.id
       | IterNamespace of action * Namespace.id * string * int
       | IterNamespaceLeaf of action * Namespace.id * string * range
+      | PropagatePreset of Preset.name * Preset.version
+      | PropagatePresetNamespace of Namespace.id
     [@@ deriving show]
 
     let to_buffer buf = function
@@ -540,6 +542,14 @@ module Protocol = struct
           (Llio.option_to Llio.string_to)
           buf
           range
+      | PropagatePreset (name, version) ->
+         Llio.int8_to buf 14;
+         Llio.string_to buf name;
+         Llio.int64_to buf version
+      | PropagatePresetNamespace namespace_id ->
+         Llio.int8_to buf 15;
+         Llio.int64_to buf namespace_id
+
 
     let from_buffer buf =
       match Llio.int8_from buf with
@@ -592,6 +602,13 @@ module Protocol = struct
         let namespace_id = x_int64_from buf in
         let object_id = Llio.string_from buf in
         RewriteObject (namespace_id, object_id)
+      | 14 ->
+         let name = Llio.string_from buf in
+         let version = Llio.int64_from buf in
+         PropagatePreset (name, version)
+      | 15 ->
+         let namespace_id = Llio.int64_from buf in
+         PropagatePresetNamespace namespace_id
       | k -> raise_bad_tag "Work" k
   end
 

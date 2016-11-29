@@ -111,7 +111,7 @@ type t = {
   }
            [@@deriving show]
 
-type version = int64
+type version = int64 [@@deriving show]
 
 let is_valid t =
   let default_in_allowed_list = List.mem t.object_checksum.default t.object_checksum.allowed in

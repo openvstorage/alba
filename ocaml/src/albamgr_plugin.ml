@@ -204,6 +204,9 @@ module Keys = struct
     let namespaces_extract_namespace_id ~preset_name =
       let prefix_len = String.length (namespaces_prefix ~preset_name) in
       fun key -> x_int64_be_from (Llio.make_buffer key prefix_len)
+
+    let initial_update_propagation = "/alba/preset/initial_update_propagation"
+    let propagation = "/alba/preset/propagation/"
   end
 end
 
@@ -292,12 +295,12 @@ let get_namespace_osds
      (osd_id, state))
 
 let add_work_items work_items =
-  [ Log_plugin.make_update_x64
-      ~next_id_key:Keys.Work.next_id
-      ~log_prefix:Keys.Work.prefix
-      ~msgs:(List.map
-               (serialize Protocol.Work.to_buffer)
-               work_items) ]
+  Log_plugin.make_update_x64
+    ~next_id_key:Keys.Work.next_id
+    ~log_prefix:Keys.Work.prefix
+    ~msgs:(List.map
+             (serialize Protocol.Work.to_buffer)
+             work_items)
 
 let add_msgs : type dest msg.
                     (dest, msg) Protocol.Msg_log.t ->
@@ -446,11 +449,11 @@ let upds_for_delivered_msg
                 List.fold_left
                   (fun acc osd_id ->
                    let upds =
-                     Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
-                                     None) ::
+                     [ Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
+                                       None);
                        Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
-                                       None) ::
-                         add_work_items [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
+                                       None);
+                       add_work_items [ Work.CleanupOsdNamespace (osd_id, namespace_id) ] ]
                    in
                    upds::acc)
                   []
@@ -458,7 +461,7 @@ let upds_for_delivered_msg
               in
 
               List.concat
-                [ add_work_item;
+                [ [ add_work_item; ];
                   List.concat cleanup_osds;
                   delete_ns_info;
                   [ delete_preset_used_by_ns; ]; ]
@@ -498,13 +501,11 @@ let upds_for_delivered_msg
                 add_work_items
                   [ Work.WaitUntilRepaired (osd_id, namespace_id) ]  in
 
-              List.concat
-                [ update_namespace_link
+              add_work_item
+              :: (update_namespace_link
                     ~namespace_id ~osd_id
                     Osd.NamespaceLink.Decommissioning
-                    Osd.NamespaceLink.Repairing;
-                  add_work_item
-                ]
+                    Osd.NamespaceLink.Repairing)
          end
     end
   | Msg_log.Osd -> begin
@@ -524,9 +525,9 @@ let upds_for_delivered_msg
                add_work_items
                  [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
              in
-             Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None)
-             :: Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None)
-             :: add_work_items
+             [ Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None);
+               Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None);
+               add_work_items; ]
            end
          else
            begin
@@ -827,6 +828,98 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     presets
   in
 
+  let propagate_preset_version preset_name version =
+    let (_, namespace_ids), _ = list_preset_namespaces ~preset_name ~max:(-1) in
+    let work_item = add_work_items [ Work.PropagatePreset (preset_name, version) ] in
+    let assert_preset_namespaces =
+      Update.Assert_range
+        (Keys.Preset.namespaces_prefix ~preset_name,
+         Range_assertion.ContainsExactly
+           (List.map
+              (fun namespace_id ->
+                Keys.Preset.namespaces
+                  ~preset_name
+                  ~namespace_id)
+              namespace_ids))
+    in
+    let propagation_state_updates =
+      let propagation_key = Keys.Preset.propagation ^ preset_name in
+      match db # get propagation_key with
+      | None ->
+         [ Update.Assert (propagation_key, None);
+           Update.Set (propagation_key,
+                       serialize
+                         (Llio.pair_to
+                            Llio.int64_to
+                            (Llio.list_to Llio.int64_to))
+                         (version, namespace_ids)
+                      ); ]
+      | Some v ->
+         let version', namespace_ids' =
+           deserialize
+             (Llio.pair_from
+                Llio.int64_from
+                (Llio.list_from Llio.int64_from))
+             v
+         in
+         if version >= version'
+         then [ Update.Assert (propagation_key, Some v);
+                Update.Set (propagation_key,
+                            serialize
+                              (Llio.pair_to
+                                 Llio.int64_to
+                                 (Llio.list_to Llio.int64_to))
+                              (version, namespace_ids)
+                           ); ]
+         else []
+    in
+    work_item
+    :: assert_preset_namespaces
+    :: propagation_state_updates
+  in
+
+  begin
+    match db # get Keys.Preset.initial_update_propagation with
+    | None ->
+       Lwt.catch
+         (fun () ->
+           let (_, all_presets), _ =
+             list_presets
+               ~first:"" ~finc:true ~last:None
+               ~max:(-1) ~reverse:false in
+
+           let assert_all_presets_unchanged =
+             Update.Assert_range (Keys.Preset.prefix,
+                                  Range_assertion.ContainsExactly
+                                    (List.map
+                                       (fun (p, _, version, _, _) -> Keys.Preset.prefix ^ p)
+                                       all_presets))
+           in
+
+           let propagate_all_presets =
+             List.flatmap
+               (fun (preset_name, _, version, _, _) ->
+                 propagate_preset_version preset_name version)
+               all_presets
+           in
+
+           backend # push_update
+                   (Update.Sequence
+                      (Update.Assert (Keys.Preset.initial_update_propagation, None)
+                       :: Update.Set (Keys.Preset.initial_update_propagation, "")
+                       :: assert_all_presets_unchanged
+                       :: propagate_all_presets)
+                   ) >>= fun _ ->
+           Lwt.return ())
+         (function
+          | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+             db # get_exn Keys.Preset.initial_update_propagation |> ignore;
+             Lwt.return ()
+          | exn ->
+             Lwt.fail exn)
+    | Some _ ->
+       Lwt.return_unit
+  end >>= fun () ->
 
   let get_next_msgs : type dest msg. (dest, msg) Msg_log.t -> dest -> (Msg_log.id * msg) counted_list_more =
     fun t dest ->
@@ -1081,8 +1174,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       in
 
       let upds = List.concat [
-          add_work_item;
-          [ add_to_decommissioned_osds; ];
+          [ add_work_item;
+            add_to_decommissioned_osds; ];
           List.flatten unlink_from_namespaces;
           upd_namespace_links;
           upd_info;
@@ -1312,9 +1405,45 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               Update.Set (Keys.Namespace.name namespace_id, name);
             ]
           in
-          let preset = match db # get (Keys.Preset.prefix ^ preset_name) with
+          let preset, preset_version = match db # get (Keys.Preset.prefix ^ preset_name) with
             | None -> Error.failwith Error.Preset_does_not_exist
-            | Some p -> deserialize Preset.from_buffer p
+            | Some p -> deserialize
+                          (Llio.pair_from
+                             Preset.from_buffer
+                             (maybe_from_buffer Llio.int64_from 0L))
+                          p
+          in
+
+          let add_preset_work_item = add_work_items [ Work.PropagatePresetNamespace namespace_id; ] in
+          let update_propagation_state =
+            let propagation_key = Keys.Preset.propagation ^ preset_name in
+            match db # get propagation_key with
+            | None ->
+               [ Update.Assert (propagation_key, None);
+                 Update.Set (propagation_key,
+                             serialize
+                               (Llio.pair_to
+                                  Llio.int64_to
+                                  (Llio.list_to Llio.int64_to))
+                               (preset_version, [ namespace_id; ])
+                            ); ]
+            | Some v ->
+               let version', namespace_ids' =
+                 deserialize
+                   (Llio.pair_from
+                      Llio.int64_from
+                      (Llio.list_from Llio.int64_from))
+                   v
+               in
+               assert (version' = preset_version);
+               [ Update.Assert (propagation_key, Some v);
+                 Update.Set (propagation_key,
+                             serialize
+                               (Llio.pair_to
+                                  Llio.int64_to
+                                  (Llio.list_to Llio.int64_to))
+                               (version', namespace_id :: namespace_ids')
+                            ); ]
           in
 
           let osd_ids =
@@ -1362,7 +1491,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                 bump_next_namespace_id;
                 set_ns_info;
                 add_osds_upds;
-                [ mark_preset_used_by_namespace ];
+                [ mark_preset_used_by_namespace;
+                  add_preset_work_item; ];
+                update_propagation_state;
                 incr_count;
               ]
           in
@@ -1486,7 +1617,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                     dest,
                     msg_id))) ]
     | AddWork -> fun (_cnt, work) ->
-      return_upds (add_work_items work)
+      return_upds [ add_work_items work ]
     | MarkWorkCompleted -> fun id ->
       let work_key = Keys.Work.prefix ^ serialize x_int64_be_to id in
       let upds = match db # get work_key with
@@ -1538,7 +1669,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
             let add_work_items = add_work_items (List.map fst items) in
             let update_progress = List.map snd items in
-            List.rev_append add_work_items update_progress
+            add_work_items :: update_progress
           | WaitUntilRepaired (osd_id, namespace_id) ->
             let add_work =
               add_work_items
@@ -1551,8 +1682,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               [ Update.Replace (key1, None);
                 Update.Replace (key2, None); ]
             in
-            List.concat [ add_work;
-                          deletes; ]
+            add_work :: deletes
           | WaitUntilDecommissioned osd_id ->
              begin
                let remove_x = Update.Replace (Keys.Osd.decommissioning ~osd_id, None); in
@@ -1566,6 +1696,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                   :: remove_x
                   :: purge_osd ~osd_id ~long_id
              end
+          | PropagatePreset (name, version) ->
+             []
+          | PropagatePresetNamespace namespace_id ->
+             []
       in
       return_upds
         (Update.Replace (work_key, None) ::
@@ -1683,12 +1817,23 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | None -> Error.failwith Error.Preset_does_not_exist
         | Some v -> v
       end in
-      let preset = deserialize Preset.from_buffer preset_v in
+      let preset, version =
+        deserialize
+          (Llio.pair_from
+             Preset.from_buffer
+             (maybe_from_buffer Llio.int64_from 0L))
+          preset_v
+      in
       let preset' = Preset.Update.apply preset preset_update in
-      return_upds [
-          Update.Assert (preset_key, Some preset_v);
-          Update.Set    (preset_key, serialize Preset.to_buffer preset');
-        ]
+      let version' = Int64.succ version in
+      return_upds
+        (Update.Assert (preset_key, Some preset_v)
+         :: Update.Set (preset_key, serialize
+                                      (Llio.pair_to
+                                         Preset.to_buffer
+                                         Llio.int64_to)
+                                      (preset', version'))
+         :: propagate_preset_version preset_name version')
     | StoreClientConfig -> fun ccfg ->
       return_upds [ Update.Set
                       (Keys.client_config,
