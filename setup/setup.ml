@@ -2049,7 +2049,7 @@ module Test = struct
     let _, rc = Shell.cmd_with_capture_and_rc cmd in
     if rc = 2
     then JUnit.Ok
-    else JUnit.Fail (Printf.sprintf "expected: rc=4 reality: rc=%i" rc)
+    else JUnit.Fail (Printf.sprintf "expected: rc=2 reality: rc=%i" rc)
 
   let cli t =
     let suite_name = "run_tests_cli" in
