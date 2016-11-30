@@ -605,7 +605,7 @@ class proxy ?fragment_cache ?ip ?transport
        let url = Etcdctl.url etcd key in
        persister, url
   in
-  let proxy_cmd_line_with_capture cmd =
+  let _build_cmd_line cmd =
     let _ip = match ip with
       | None    -> "127.0.0.1"
       | Some ip -> ip
@@ -621,9 +621,18 @@ class proxy ?fragment_cache ?ip ?transport
         "-p"; Proxy_cfg.port p_cfg |> string_of_int;
         "-t"; _transport
       ]
-    |> Shell.cmd_with_capture
   in
-  let proxy_cmd_line cmd = proxy_cmd_line_with_capture cmd |> ignore in
+
+  let proxy_cmd_line_with_capture_and_rc cmd =
+    _build_cmd_line cmd |> Shell.cmd_with_capture_and_rc
+  in
+
+  let proxy_cmd_line_with_capture cmd =
+    _build_cmd_line cmd |> Shell.cmd_with_capture
+  in
+  let proxy_cmd_line cmd =
+    proxy_cmd_line_with_capture cmd |> ignore
+  in
   object (self : # component)
 
   method persist_config :unit =
@@ -684,9 +693,12 @@ class proxy ?fragment_cache ?ip ?transport
   method list_namespaces =
     [ "proxy-list-namespaces" ] |> proxy_cmd_line_with_capture
 
+  method cmd_line_with_capture_and_rc = proxy_cmd_line_with_capture_and_rc
+  method cmd_line_with_capture = proxy_cmd_line_with_capture
   method cmd_line cmd = proxy_cmd_line cmd
 
-  method cmd_line_with_capture = proxy_cmd_line_with_capture
+
+
 end
 
 type maintenance_cfg = {
@@ -2009,6 +2021,35 @@ module Test = struct
         _assert_parseable stats_s
       end)
 
+  let return_codes_1 t =
+    let cmd = [
+        "proxy-create-namespace";
+        "proxy_create_namespace_return_code"
+      ]
+    in
+    let out,rc = t.Deployment.proxy # cmd_line_with_capture_and_rc cmd in
+    let () = Printf.printf "output=%S\n%!" out in
+    assert (rc = 0);
+    let _,rc = t.Deployment.proxy # cmd_line_with_capture_and_rc cmd
+    in
+    if rc = 2
+    then JUnit.Ok
+    else JUnit.Fail (Printf.sprintf "expected: rc=2 reality: rc=%i" rc)
+
+  let return_codes_2 t =
+    let cmd = [
+        t.cfg.alba_bin;
+        "proxy-upload-object";
+        "demo";
+        t.cfg.alba_bin;
+        "proxy-upload-object-return-code";
+        "-p"; "60000" (* no proxy here *)
+      ]
+    in
+    let _, rc = Shell.cmd_with_capture_and_rc cmd in
+    if rc = 2
+    then JUnit.Ok
+    else JUnit.Fail (Printf.sprintf "expected: rc=2 reality: rc=%i" rc)
 
   let cli t =
     let suite_name = "run_tests_cli" in
@@ -2020,6 +2061,8 @@ module Test = struct
                  "nsm_host_statistics", nsm_host_statistics;
                  "asd_cli_env", asd_cli_env;
                  "create_example_preset", create_example_preset;
+                 "return_codes_1", return_codes_1;
+                 "return_codes_2", return_codes_2;
                  "proxy_statistics", proxy_statistics;
                 ]
     in
@@ -2041,7 +2084,7 @@ module Test = struct
           let d = t1 -. t0 in
           let testcase = JUnit.make_testcase name name d result in
           testcase ::acc
-        ) [] tests
+        ) [] tests |> List.rev
     in
     let t1 = Unix.gettimeofday() in
     let d = t1 -. t0 in
