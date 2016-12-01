@@ -1019,6 +1019,8 @@ module Err = struct
     | Too_many_disks_per_node [@value 18]
     | Insufficient_fragments  [@value 19]
     | Assert_failed           [@value 20]
+    | Invalid_bucket          [@value 21]
+    | Preset_violated         [@value 22]
   [@@deriving show, enum]
 
   exception Nsm_exn of t * string
@@ -1119,16 +1121,22 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          manifest.Manifest.fragment_packed_sizes
          manifest.Manifest.fragment_locations)
 
+  let get_preset kv =
+    (* TODO cache per namespace
+     * validate dat preset version is still the same
+     *)
+    KV.get kv Keys.preset
+    |> Option.map (deserialize Preset.from_buffer)
 
-  let get_min_fragment_count_and_max_disks_per_node kv ~k ~max_disks_per_node locations =
+  let get_min_fragment_count_and_max_disks_per_node kv ~k ~m locations =
     let get_bla_per_chunk chunk_location =
       let osds_per_node = Hashtbl.create 3 in
       List.fold_left
         (fun (effective_fragment_count, effective_max_disks_per_node) -> function
-           | None, _ ->
+          | None, _ ->
              (effective_fragment_count,
               effective_max_disks_per_node)
-           | Some osd_id, _ ->
+          | Some osd_id, _ ->
              let osd_info = get_osd_info kv osd_id in
              let node_id = osd_info.OsdInfo.node_id in
              let cnt =
@@ -1137,14 +1145,6 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              in
 
              let cnt' = cnt + 1 in
-             (* if cnt' > max_disks_per_node *)
-             (* then Err.(failwith *)
-             (*             ~payload:(Printf.sprintf *)
-             (*                         "Attempting to use %i disks of node %s while max %i permitted (%s)" *)
-             (*                         cnt' node_id max_disks_per_node *)
-             (*                         ([%show : int32 option list] *)
-             (*                            (List.map fst chunk_location))) *)
-             (*             Too_many_disks_per_node); *)
 
              Hashtbl.replace osds_per_node node_id cnt';
              (effective_fragment_count + 1,
@@ -1155,18 +1155,34 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let min_fragment_count, max_disks_per_node =
       List.fold_left
         (fun (effective_fragment_count, effective_max_disks_per_node) chunk_location ->
-           let effective_fragment_count', effective_max_disks_per_node' =
-             get_bla_per_chunk chunk_location
-           in
-           (min effective_fragment_count effective_fragment_count',
-            max effective_max_disks_per_node effective_max_disks_per_node'))
+          let effective_fragment_count', effective_max_disks_per_node' =
+            get_bla_per_chunk chunk_location
+          in
+          (min effective_fragment_count effective_fragment_count',
+           max effective_max_disks_per_node effective_max_disks_per_node'))
         (max_int, 0)
         locations
     in
 
-    (* TODO should actually compare with whatever is specified in the policy *)
-    if min_fragment_count < k
-    then Err.(failwith Insufficient_fragments);
+    let maybe_preset = get_preset kv in
+    let () =
+      match maybe_preset with
+      | None -> ()
+      | Some p ->
+         (* bucket = k, m, min_fragment_count, max_disks_per_node
+          * match bucket with policy ... if we can't -> throw error *)
+         let policy =
+           List.find
+             (fun (k', m', min_fragment_count', max_disks_per_node') ->
+               k = k' && m = m'
+               && min_fragment_count >= min_fragment_count'
+               && max_disks_per_node <= max_disks_per_node')
+             p.Preset.policies
+         in
+         match policy with
+         | None -> Err.(failwith Invalid_bucket)
+         | Some _ -> ()
+    in
 
     (min_fragment_count, max_disks_per_node)
 
@@ -1239,7 +1255,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let fragment_count, max_disks_per_node =
         get_min_fragment_count_and_max_disks_per_node
           kv
-          ~k ~max_disks_per_node:old_manifest.max_disks_per_node
+          ~k ~m
           old_manifest.fragment_locations
       in
       [ Update'.delete (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id:old_object_id);
@@ -1346,6 +1362,56 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       then Err.failwith Err.Overwrite_not_allowed
 
   let put_object kv overwrite manifest gc_epoch =
+    let maybe_preset = get_preset kv in
+    let () =
+      match maybe_preset with
+      | None -> ()
+      | Some p ->
+         (* verify object upload is according to preset *)
+
+         let Storage_scheme.EncodeCompressEncrypt
+               (Encoding_scheme.RSVM (k, m, w), compression) =
+           manifest.Manifest.storage_scheme in
+
+         List.iter
+           (fun chunk_size ->
+             if chunk_size / k > p.Preset.fragment_size
+             then Err.(failwith Preset_violated))
+           manifest.Manifest.chunk_sizes;
+
+         let () =
+           let open EncryptInfo in
+           let open Encryption in
+           match manifest.Manifest.encrypt_info, p.Preset.fragment_encryption with
+           | NoEncryption, Encryption.NoEncryption -> ()
+           | NoEncryption, _ -> Err.(failwith Preset_violated)
+           | Encrypted (algo1, key_identification), Encryption.AlgoWithKey (algo2, key) ->
+              if algo1 <> algo2 (* || key_identification <> Encrypt_info_helper.get_id_for_key key *)
+              then Err.(failwith Preset_violated)
+           | Encrypted _, _ -> Err.(failwith Preset_violated)
+         in
+
+         List.iter
+           (List.iter
+              (fun cs ->
+                if p.Preset.fragment_checksum_algo <> Checksum.algo_of cs
+                then Err.(failwith Preset_violated)))
+           manifest.Manifest.fragment_checksums;
+
+         if not (List.mem
+                   (Checksum.algo_of manifest.Manifest.checksum)
+                   Preset.(p.object_checksum.allowed))
+         then Err.(failwith Preset_violated);
+
+         if w <> p.Preset.w
+         then Err.(failwith Preset_violated);
+
+         if compression <> p.Preset.compression
+         then Err.(failwith Preset_violated);
+
+         ()
+    in
+
     let object_name = manifest.Manifest.name in
     let object_id = manifest.Manifest.object_id in
 
@@ -1431,7 +1497,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let fragment_count, max_disks_per_node =
         get_min_fragment_count_and_max_disks_per_node
           kv
-          ~k ~max_disks_per_node:manifest.max_disks_per_node
+          ~k ~m
           manifest.fragment_locations
       in
       [ Update'.set (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id) "";
@@ -1788,16 +1854,17 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let Storage_scheme.EncodeCompressEncrypt
           (Encoding_scheme.RSVM (k, m, _), _) =
         manifest_old.storage_scheme in
-      let max_disks_per_node = manifest_old.max_disks_per_node in
 
       let fragment_count_old, max_disks_per_node_old =
         get_min_fragment_count_and_max_disks_per_node
-          kv ~k ~max_disks_per_node
+          kv
+          ~k ~m
           manifest_old.fragment_locations
       in
       let fragment_count_updated, max_disks_per_node_updated =
         get_min_fragment_count_and_max_disks_per_node
-          kv ~k ~max_disks_per_node
+          kv
+          ~k ~m
           updated_manifest.fragment_locations
       in
       if fragment_count_old     <> fragment_count_updated ||

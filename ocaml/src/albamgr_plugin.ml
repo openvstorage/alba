@@ -832,13 +832,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     db # get (Keys.Preset.propagation ^ preset_name)
     |> Option.map
          (fun v ->
-           let version, namespace_ids =
-             deserialize
-               (Llio.pair_from
-                  Llio.int64_from
-                  (Llio.list_from Llio.int64_from))
-               v
-           in
+           let version, namespace_ids = deserialize Preset.Propagation.from_buffer v in
            (version, namespace_ids, v))
   in
 

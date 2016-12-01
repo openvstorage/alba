@@ -683,6 +683,10 @@ let upload_object'
                    nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
                    Lwt.return ()
 
+                | Preset_violated
+                | Invalid_bucket ->
+                   (* TODO refresh preset, make sure its fully propagated *)
+                   Lwt.return ()
                 | Unknown
                 | Old_plugin_version
                 | Unknown_operation

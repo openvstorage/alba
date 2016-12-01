@@ -637,6 +637,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Old_timestamp
             | Invalid_fragment_spread
             | Inactive_osd
+            | Invalid_bucket
+            | Preset_violated
             | Too_many_disks_per_node
             | Insufficient_fragments
             | Unknown_operation ->
