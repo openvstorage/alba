@@ -238,7 +238,9 @@ let gather_and_push_objects
   Lwt.ignore_result begin
     let inner () =
       Lwt_buffer.take buf >>= fun acc ->
-      Lwt_log.debug_f "Took item from buf, trying to recover it..." >>= fun () ->
+      Lwt_log.debug_f "Took item from buf, trying to recover it..."
+      >>= fun () ->
+
 
       let fs =
         acc |>
@@ -254,10 +256,19 @@ let gather_and_push_objects
                  fs |>
                Hashtbl.to_assoc_list
              in
+             let find_best (_,(infos : fragment_info list))=
+               let infos_sorted =
+                 List.sort
+                   (fun i0 i1 -> i1.version_id - i0.version_id)
+                   infos
+               in
+               List.hd_exn infos_sorted
+             in
              chunk_id,
              List.map
-               (* only keep one fragment for each chunk_id, fragment_id combination *)
-               (compose List.hd_exn snd)
+               (* only keep one fragment for each chunk_id,
+                  fragment_id combination *)
+               find_best
                fs)
       in
       let last_chunk_id, last_chunk = List.last_exn fs in

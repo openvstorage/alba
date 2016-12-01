@@ -330,6 +330,8 @@ module List = struct
     in
     inner [] 0 xs ys zs
 
+  let replace index x_new xs =
+    List.mapi (fun i x -> if index = i then x_new else x) xs
 end
 
 module Option = struct

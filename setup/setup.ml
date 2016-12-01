@@ -674,8 +674,13 @@ class proxy ?fragment_cache ?ip ?transport
   method list_objects namespace =
     [ "proxy-list-objects"; namespace ] |> proxy_cmd_line_with_capture
 
-  method create_namespace name =
-    [ "proxy-create-namespace"; name ] |> proxy_cmd_line
+  method create_namespace ?preset_name name =
+    let cmd = [ "proxy-create-namespace"; name ] in
+    let cmd' = match preset_name with
+      | None -> cmd
+      | Some preset -> cmd @ [preset]
+    in
+    proxy_cmd_line cmd'
 
   method delete_namespace name =
     ["proxy-delete-namespace"; name] |> proxy_cmd_line
@@ -1447,23 +1452,35 @@ module Deployment = struct
       | Result.Error x -> failwith x
       | Result.Ok x -> x
 
+  let _alba_with_cfg t args =
+    [t.cfg.alba_bin]
+    @ args
+    @ ["--config"; t.abm # config_url |> Url.canonical;]
+    |> Shell.cmd'
+
   let show_object t namespace obj =
-    Shell.cmd'
-    [t.cfg.alba_bin; "show-object";
-     "--config"; t.abm # config_url |> Url.canonical;
-     namespace; obj
-    ]
+    _alba_with_cfg t ["show-object";namespace;obj]
+
+  let download_object t ns name location =
+    _alba_with_cfg t [ "download-object"; ns; name; location;]
 
   let recover_namespace t namespace nsm_id =
-    Shell.cmd'
-    [t.cfg.alba_bin ; "recover-namespace"; namespace; nsm_id;
-     "--config"; t.abm # config_url |> Url.canonical;
-    ]
+    _alba_with_cfg t ["recover-namespace"; namespace;nsm_id ]
 
   let deliver_messages t =
-    Shell.cmd'
-    [ t.cfg.alba_bin; "deliver-messages";
-      "--config"; t.abm # config_url |> Url.canonical; ]
+    _alba_with_cfg t ["deliver-messages"]
+
+  let delete_fragment t namespace obj chunk fragment immediate_repair =
+    let extra = if immediate_repair then ["--immediate-repair"] else [] in
+    [ "dev-delete-fragment";
+        namespace; obj;
+        "--chunk" ; string_of_int chunk;
+        "--fragment"; string_of_int fragment;
+        "--verbose";
+    ] @ extra |> _alba_with_cfg t
+
+  let verify_namespace t namespace job_name=
+    _alba_with_cfg t ["verify-namespace"; namespace; job_name]
 
 end
 
@@ -2656,25 +2673,41 @@ module Test = struct
   let recovery ?(xml=false) ?filter ?dump t =
     let t0 = Unix.gettimeofday() in
     let test () =
+      let preset_name = "preset_recovery" in
+      let () =
+        _create_preset
+          t
+          preset_name
+          "./cfg/preset_test.json"
+      in
       let ns = "test_recovery" in
-      t.proxy # create_namespace ns;
+      t.proxy # create_namespace ~preset_name:preset_name ns;
       let obj_name = "obj" in
 
       let object_location = t.cfg.alba_bin in
       t.proxy # upload_object ns object_location obj_name;
       Deployment.show_object t ns obj_name;
-
-
+      let immediate_repair = true in
+      Deployment.delete_fragment t ns obj_name 0 0 immediate_repair;
+      Deployment.show_object t ns obj_name;
+      let object_location2 = t.cfg.alba_base_path ^ "/after_repair.out" in
+      Deployment.download_object t ns obj_name object_location2;
       let checksum1 = Shell.md5sum object_location in
+      let checksum2 = Shell.md5sum object_location2 in
+      let () =
+        if checksum1 = checksum2
+        then Printf.printf "checksums still match (OK)\n%!"
+        else failwith (Printf.sprintf "%s <> %s\n%!" checksum1 checksum2)
+      in
+      Shell.rm object_location2;
+
+
       t.nsm # stop;
       t.nsm # remove_dirs;
 
-      Shell.cmd'
-        [t.cfg.alba_bin;
-         "update-nsm-host";
+      Deployment._alba_with_cfg t [ "update-nsm-host";
          t.nsm # config_url |> Url.canonical;
          "--lost";
-         "--config"; t.abm # config_url |> Url.canonical
         ];
 
       let nsm2_id = "nsm_reincarnated" in
@@ -2695,13 +2728,7 @@ module Test = struct
       Deployment.add_nsm_host t nsm2;
       Deployment.recover_namespace t ns nsm2_id;
       Deployment.deliver_messages t;
-
-      Shell.cmd'
-        [t.cfg.alba_bin;
-         "list-ns-osds";
-         ns;
-         "--config"; t.abm # config_url |> Url.canonical;
-        ];
+      Deployment._alba_with_cfg t ["list-ns-osds"; ns;];
 
       t.osds.(0) # stop;
       Deployment.deliver_messages t;
@@ -2709,6 +2736,7 @@ module Test = struct
       Deployment.deliver_messages t;
       let dir = t.cfg.alba_base_path ^ "/recovery-agent" in
       Shell.mkdir dir;
+
       Shell.cmd'
         [t.cfg.alba_bin;
          "namespace-recovery-agent";
@@ -2721,17 +2749,19 @@ module Test = struct
          "--osd-id";"5";
          "--osd-id";"6";
          "--osd-id";"7";
+         "--osd-id";"8";
+         "--osd-id";"9";
+         "--osd-id";"10";
+         "--osd-id";"11";
          "--verbose";
         ];
 
       Deployment.show_object t ns obj_name;
-      let object_location2 = t.cfg.alba_base_path ^ "/destination_file.out" in
-      Shell.cmd'
-        [t.cfg.alba_bin;
-         "download-object"; ns ; obj_name ; object_location2 ;
-         "--config"; t.abm # config_url |> Url.canonical;
-        ];
-      let checksum2 = Shell.md5sum object_location2 in
+
+      let object_location3 = t.cfg.alba_base_path ^ "/after_recovery.out" in
+      Deployment.download_object t ns obj_name object_location3;
+
+      let checksum2 = Shell.md5sum object_location3 in
       Printf.printf "%s <> %s\n%!" checksum1 checksum2;
       if checksum2 = checksum1
         then JUnit.Ok
@@ -2739,12 +2769,13 @@ module Test = struct
     in
     begin
       let open JUnit in
-      let t1 = Unix.gettimeofday() in
-      let time = t1 -. t0 in
+
       let result =
         try test ()
         with exn -> JUnit.Err (Printexc.to_string exn)
       in
+      let t1 = Unix.gettimeofday() in
+      let time = t1 -. t0 in
       let testcase =
         make_testcase "nsm_recovery" "recover_one_object" time
                       result

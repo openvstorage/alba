@@ -45,7 +45,14 @@ module Checksum = struct
     | NoChecksum
     | Sha1 of HexString.t (* a string of size 20, actually *)
     | Crc32c of HexInt32.t
-  [@@deriving show]
+
+  let show = function
+    | NoChecksum -> "NoChecksum"
+    | Sha1 x     -> Printf.sprintf "Sha1 %s" (HexString.show x)
+    | Crc32c x   -> Printf.sprintf "Crc32c %s" (HexInt32.show x)
+
+
+  let pp formatter t = Format.pp_print_string formatter (show t)
 
   let output buf = function
     | NoChecksum ->

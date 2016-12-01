@@ -359,6 +359,7 @@ module Preset = struct
            | "snappy" -> Snappy
            | "bz2" -> Bzip2
            | "none" -> NoCompression
+           | "test" -> Test
            | s -> failwith (Printf.sprintf "unknown compressor: %S" s));
         object_checksum;
         osds;

@@ -135,6 +135,9 @@ module Shell = struct
   let md5sum file =
     let x = cmd_with_capture ["md5sum"; file] in
     Scanf.sscanf x "%s" (fun s -> s)
+
+  let rm file =
+    "rm " ^ file |> cmd
 end
 
 module Etcdctl = struct

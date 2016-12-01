@@ -152,17 +152,31 @@ let _upload_missing_fragments
            (Checksum.show checksum) (Checksum.show checksum')
            (Compression.show compression)
          >>= fun () ->
+         let packed_size' = Lwt_bytes2.Lwt_bytes.length packed_fragment in
+
+         let old_f_checksums_for_chunk =
+           List.nth_exn manifest.Manifest.fragment_checksums chunk_id
+         in
+         let new_f_checksums_for_chunk =
+           List.replace fragment_id checksum' old_f_checksums_for_chunk
+         in
+         let old_fp_sizes_for_chunk =
+           List.nth_exn manifest.Manifest.fragment_packed_sizes chunk_id
+         in
+         let new_fp_sizes_for_chunk =
+           List.replace fragment_id packed_size' old_fp_sizes_for_chunk
+         in
          RecoveryInfo.make
            manifest.Manifest.name
            object_id
            object_info_o
            encryption
            (List.nth_exn manifest.Manifest.chunk_sizes chunk_id)
-           (List.nth_exn manifest.Manifest.fragment_packed_sizes chunk_id)
-           (List.nth_exn manifest.Manifest.fragment_checksums chunk_id)
+           new_fp_sizes_for_chunk
+           new_f_checksums_for_chunk
          >>= fun recovery_info' ->
          Lwt.return
-           (Some (Lwt_bytes2.Lwt_bytes.length packed_fragment, checksum')
+           (Some (packed_size', checksum')
          , checksum'
          , (Osd.Blob.Slice recovery_info'))
        end)
