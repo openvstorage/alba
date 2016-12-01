@@ -170,9 +170,9 @@ let _read_all read_to_target offset length =
   let rec inner offset count = function
     | 0 ->
        begin
-         if count < 2
+         if count < 4 || (length / count > 65536)
          then Lwt.return_unit
-         else Lwt_log.info_f "reading from fd: %iB in %i steps" length count
+         else Lwt_log.warning_f "reading from fd: %iB in %i steps" length count
        end >>= fun () ->
        Lwt.return length
     | todo ->
@@ -296,5 +296,3 @@ let copy_between_fds fd_in fd_out size buffer =
   let reader = Lwt_bytes.read fd_in in
   let writer = write_all_lwt_bytes fd_out in
   copy_using reader writer size buffer
-
-
