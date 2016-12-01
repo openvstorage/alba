@@ -218,3 +218,21 @@ module Update = struct
       buf
       t.policies'
 end
+
+module Propagation = struct
+  type namespace_id = int64
+  type t = version * namespace_id list
+
+  let to_buffer buf (version, namespace_ids) =
+    let ser_version = 1 in
+    Llio.int8_to buf ser_version;
+    Llio.int64_to buf version;
+    Llio.list_to Llio.int64_to buf namespace_ids
+
+  let from_buffer buf =
+    let ser_version = Llio.int8_from buf in
+    assert (ser_version = 1);
+    let version = Llio.int64_from buf in
+    let namespace_ids = Llio.list_from Llio.int64_from buf in
+    (version, namespace_ids)
+end

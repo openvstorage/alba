@@ -229,6 +229,23 @@ object(self)
         ~max:1 ~reverse:false >>= fun ((_, presets), _) ->
       Lwt.return (List.hd presets)
 
+    method list_presets2 ~first ~finc ~last ~reverse ~max =
+      client # query
+        ListPresets2
+        RangeQueryArgs.({ first; finc; last; reverse; max; })
+
+    method get_preset2 ~preset_name =
+      self # list_presets2
+           ~first:preset_name ~finc:true ~last:(Some (preset_name, true))
+           ~max:1 ~reverse:false >>= fun ((_, presets), _) ->
+      Lwt.return (List.hd presets)
+
+    method get_preset_propagation_state ~preset_name =
+      client # query GetPresetPropagationState preset_name
+
+    method update_preset_propagation_state ~preset_name ~preset_version ~namespace_ids =
+      client # update UpdatePresetPropagationState (preset_name, preset_version, namespace_ids)
+
     method add_osds_to_preset ~preset_name ~osd_ids =
       client # update
         AddOsdsToPreset

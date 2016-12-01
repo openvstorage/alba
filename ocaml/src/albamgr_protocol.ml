@@ -508,8 +508,7 @@ module Protocol = struct
       | WaitUntilDecommissioned of Osd.id
       | IterNamespace of action * Namespace.id * string * int
       | IterNamespaceLeaf of action * Namespace.id * string * range
-      | PropagatePreset of Preset.name * Preset.version
-      | PropagatePresetNamespace of Namespace.id
+      | PropagatePreset of Preset.name
     [@@ deriving show]
 
     let to_buffer buf = function
@@ -561,13 +560,9 @@ module Protocol = struct
           (Llio.option_to Llio.string_to)
           buf
           range
-      | PropagatePreset (name, version) ->
+      | PropagatePreset name ->
          Llio.int8_to buf 14;
-         Llio.string_to buf name;
-         Llio.int64_to buf version
-      | PropagatePresetNamespace namespace_id ->
-         Llio.int8_to buf 15;
-         Llio.int64_to buf namespace_id
+         Llio.string_to buf name
 
 
     let from_buffer buf =
@@ -623,11 +618,7 @@ module Protocol = struct
         RewriteObject (namespace_id, object_id)
       | 14 ->
          let name = Llio.string_from buf in
-         let version = Llio.int64_from buf in
-         PropagatePreset (name, version)
-      | 15 ->
-         let namespace_id = Llio.int64_from buf in
-         PropagatePresetNamespace namespace_id
+         PropagatePreset name
       | k -> raise_bad_tag "Work" k
   end
 
@@ -776,6 +767,7 @@ module Protocol = struct
     | ListPresets2 : (string RangeQueryArgs.t,
                       (Preset.name * Preset.t * Preset.version * bool * bool) counted_list_more) query
     | ListPresetNamespaces : (Preset.name, Namespace.id counted_list) query
+    | GetPresetPropagationState : (Preset.name, Preset.Propagation.t option) query
     | GetClientConfig : (unit, Alba_arakoon.Config.t) query
     | ListNamespacesById : (Namespace.id RangeQueryArgs.t,
                            (Namespace.id *
@@ -834,6 +826,7 @@ module Protocol = struct
     | BumpNextWorkItemId : (Work.id, unit) update
     | BumpNextOsdId : (Osd.id, unit) update
     | BumpNextNamespaceId : (Namespace.id, unit) update
+    | UpdatePresetPropagationState : (Preset.name * Preset.version * Namespace.id list, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -856,6 +849,7 @@ module Protocol = struct
     | ListPresets -> RangeQueryArgs.from_buffer Llio.string_from
     | ListPresets2 -> RangeQueryArgs.from_buffer Llio.string_from
     | ListPresetNamespaces -> Llio.string_from
+    | GetPresetPropagationState -> Llio.string_from
     | GetClientConfig -> Llio.unit_from
     | ListNamespacesById -> RangeQueryArgs.from_buffer x_int64_from
     | GetVersion -> Llio.unit_from
@@ -895,6 +889,7 @@ module Protocol = struct
     | ListPresets -> RangeQueryArgs.to_buffer Llio.string_to
     | ListPresets2 -> RangeQueryArgs.to_buffer Llio.string_to
     | ListPresetNamespaces -> Llio.string_to
+    | GetPresetPropagationState -> Llio.string_to
     | GetClientConfig -> Llio.unit_to
     | ListNamespacesById -> RangeQueryArgs.to_buffer x_int64_to
     | GetVersion -> Llio.unit_to
@@ -972,13 +967,15 @@ module Protocol = struct
       counted_list_more_from
         (Llio.tuple5_from
            Llio.string_from
-           Preset.from_buffer
+           Preset.from_buffer   (* TODO new preset serialization? zodat preset formaat extendable wordt... *)
            Llio.int64_from
            Llio.bool_from
            Llio.bool_from
         )
     | ListPresetNamespaces ->
        Llio.counted_list_from Llio.int64_from
+    | GetPresetPropagationState ->
+       Llio.option_from Preset.Propagation.from_buffer
     | GetClientConfig ->
       Alba_arakoon.Config.from_buffer
     | ListNamespacesById ->
@@ -1092,6 +1089,8 @@ module Protocol = struct
         )
     | ListPresetNamespaces ->
        Llio.counted_list_to Llio.int64_to
+    | GetPresetPropagationState ->
+       Llio.option_to Preset.Propagation.to_buffer
     | GetClientConfig ->
       Alba_arakoon.Config.to_buffer
     | ListNamespacesById ->
@@ -1192,6 +1191,11 @@ module Protocol = struct
       Llio.pair_from
         Llio.string_from
         Preset.Update.from_buffer
+    | UpdatePresetPropagationState ->
+       Llio.tuple3_from
+         Llio.string_from
+         Llio.int64_from
+         (Llio.list_from Llio.int64_from)
     | StoreClientConfig ->
        Alba_arakoon.Config.from_buffer
     | TryGetLease ->
@@ -1257,6 +1261,11 @@ module Protocol = struct
       Llio.pair_to
         Llio.string_to
         Preset.Update.to_buffer
+    | UpdatePresetPropagationState ->
+       Llio.tuple3_to
+         Llio.string_to
+         Llio.int64_to
+         (Llio.list_to Llio.int64_to)
     | StoreClientConfig ->
        Alba_arakoon.Config.to_buffer
     | TryGetLease ->
@@ -1305,6 +1314,7 @@ module Protocol = struct
     | SetDefaultPreset ->   Llio.unit_from
     | AddOsdsToPreset ->    Llio.unit_from
     | UpdatePreset ->       Llio.unit_from
+    | UpdatePresetPropagationState -> Llio.unit_from
     | StoreClientConfig ->  Llio.unit_from
     | TryGetLease ->        Llio.unit_from
     | RegisterParticipant ->Llio.unit_from
@@ -1340,6 +1350,7 @@ module Protocol = struct
     | SetDefaultPreset ->   Llio.unit_to
     | AddOsdsToPreset ->    Llio.unit_to
     | UpdatePreset ->       Llio.unit_to
+    | UpdatePresetPropagationState -> Llio.unit_to
     | StoreClientConfig ->  Llio.unit_to
     | TryGetLease ->        Llio.unit_to
     | RegisterParticipant ->Llio.unit_to
@@ -1443,6 +1454,8 @@ module Protocol = struct
 
                       Wrap_q ListPresets2, 90l, "ListPresets2";
                       Wrap_q ListPresetNamespaces, 91l, "ListPresetNamespaces";
+                      Wrap_q GetPresetPropagationState, 92l, "GetPresetPropagationState";
+                      Wrap_u UpdatePresetPropagationState, 93l, "UpdatePresetPropagationState";
                     ]
 
 

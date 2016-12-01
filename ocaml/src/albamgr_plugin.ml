@@ -828,9 +828,23 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     presets
   in
 
+  let get_preset_propagation ~preset_name =
+    db # get (Keys.Preset.propagation ^ preset_name)
+    |> Option.map
+         (fun v ->
+           let version, namespace_ids =
+             deserialize
+               (Llio.pair_from
+                  Llio.int64_from
+                  (Llio.list_from Llio.int64_from))
+               v
+           in
+           (version, namespace_ids, v))
+  in
+
   let propagate_preset_version preset_name version =
     let (_, namespace_ids), _ = list_preset_namespaces ~preset_name ~max:(-1) in
-    let work_item = add_work_items [ Work.PropagatePreset (preset_name, version) ] in
+    let work_item = add_work_items [ Work.PropagatePreset preset_name ] in
     let assert_preset_namespaces =
       Update.Assert_range
         (Keys.Preset.namespaces_prefix ~preset_name,
@@ -844,31 +858,20 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     in
     let propagation_state_updates =
       let propagation_key = Keys.Preset.propagation ^ preset_name in
-      match db # get propagation_key with
+      match get_preset_propagation ~preset_name with
       | None ->
          [ Update.Assert (propagation_key, None);
            Update.Set (propagation_key,
                        serialize
-                         (Llio.pair_to
-                            Llio.int64_to
-                            (Llio.list_to Llio.int64_to))
+                         Preset.Propagation.to_buffer
                          (version, namespace_ids)
                       ); ]
-      | Some v ->
-         let version', namespace_ids' =
-           deserialize
-             (Llio.pair_from
-                Llio.int64_from
-                (Llio.list_from Llio.int64_from))
-             v
-         in
+      | Some (version', namespace_ids', v) ->
          if version >= version'
          then [ Update.Assert (propagation_key, Some v);
                 Update.Set (propagation_key,
                             serialize
-                              (Llio.pair_to
-                                 Llio.int64_to
-                                 (Llio.list_to Llio.int64_to))
+                              Preset.Propagation.to_buffer
                               (version, namespace_ids)
                            ); ]
          else []
@@ -1414,7 +1417,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                           p
           in
 
-          let add_preset_work_item = add_work_items [ Work.PropagatePresetNamespace namespace_id; ] in
+          let add_preset_work_item =
+            add_work_items
+              [ Work.PropagatePreset preset_name; ]
+          in
           let update_propagation_state =
             let propagation_key = Keys.Preset.propagation ^ preset_name in
             match db # get propagation_key with
@@ -1422,26 +1428,16 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                [ Update.Assert (propagation_key, None);
                  Update.Set (propagation_key,
                              serialize
-                               (Llio.pair_to
-                                  Llio.int64_to
-                                  (Llio.list_to Llio.int64_to))
+                               Preset.Propagation.to_buffer
                                (preset_version, [ namespace_id; ])
                             ); ]
             | Some v ->
-               let version', namespace_ids' =
-                 deserialize
-                   (Llio.pair_from
-                      Llio.int64_from
-                      (Llio.list_from Llio.int64_from))
-                   v
-               in
+               let version', namespace_ids' = deserialize Preset.Propagation.from_buffer v in
                assert (version' = preset_version);
                [ Update.Assert (propagation_key, Some v);
                  Update.Set (propagation_key,
                              serialize
-                               (Llio.pair_to
-                                  Llio.int64_to
-                                  (Llio.list_to Llio.int64_to))
+                               Preset.Propagation.to_buffer
                                (version', namespace_id :: namespace_ids')
                             ); ]
           in
@@ -1696,9 +1692,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                   :: remove_x
                   :: purge_osd ~osd_id ~long_id
              end
-          | PropagatePreset (name, version) ->
-             []
-          | PropagatePresetNamespace namespace_id ->
+          | PropagatePreset _ ->
              []
       in
       return_upds
@@ -1834,6 +1828,32 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                                          Llio.int64_to)
                                       (preset', version'))
          :: propagate_preset_version preset_name version')
+    | UpdatePresetPropagationState ->
+       fun (preset_name, preset_version, namespace_ids) ->
+       let upds =
+         match get_preset_propagation ~preset_name with
+         | None -> []
+         | Some (version', namespace_ids', v) ->
+            if preset_version <> version'
+            then []
+            else
+              begin
+                let namespace_ids =
+                  List.filter
+                    (fun namespace_id -> not (List.mem namespace_id namespace_ids))
+                    namespace_ids'
+                in
+                let key = Keys.Preset.propagation ^ preset_name in
+                [ Update.Assert (key, Some v);
+                  (if namespace_ids = []
+                   then Update.Delete key
+                   else Update.Set (key,
+                                    serialize
+                                      Preset.Propagation.to_buffer
+                                      (version', namespace_ids))); ]
+              end
+       in
+       return_upds upds
     | StoreClientConfig -> fun ccfg ->
       return_upds [ Update.Set
                       (Keys.client_config,
@@ -2109,6 +2129,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | ListPresetNamespaces ->
        fun preset_name ->
        list_preset_namespaces ~preset_name ~max:(-1) |> fst
+    | GetPresetPropagationState ->
+       fun preset_name ->
+       get_preset_propagation ~preset_name
+       |> Option.map (fun (v, ids, _) -> v, ids)
     | GetClientConfig -> fun () ->
       db # get_exn Keys.client_config |>
       deserialize Alba_arakoon.Config.from_buffer
