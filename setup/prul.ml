@@ -91,7 +91,7 @@ module Shell = struct
     _print x;
     Sys.command x
 
-  let cmd_with_capture cmd =
+  let cmd_with_capture_and_rc cmd =
     let line = String.concat " " cmd in
     _print line;
     let open Unix in
@@ -109,11 +109,15 @@ module Shell = struct
     let result = loop [] in
     let status = close_process_in ic in
     match status with
-    | WEXITED rc ->
-       if rc = 0 then result
-       else failwith "bad_rc"
+    | WEXITED rc -> result, rc
     | WSIGNALED signal -> failwith "signal?"
     | WSTOPPED x -> failwith "stopped?"
+
+  let cmd_with_capture cmd =
+    let result,rc = cmd_with_capture_and_rc cmd in
+    if rc = 0
+    then result
+    else Printf.sprintf "rc=%i" rc |> failwith
 
   let cat f = cmd_with_capture ["cat" ; f]
 

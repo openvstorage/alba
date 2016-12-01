@@ -226,7 +226,7 @@ module List = struct
        List.fold_left
          (fun (min, min_acc) item ->
            let res = compare min item in
-           if res < 0
+           if res > 0
            then item, [ item; ]
            else if res = 0
            then min, (item :: min_acc)

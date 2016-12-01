@@ -845,6 +845,7 @@ let alba_update_maintenance_config
       add_cache_eviction_prefix_preset_pairs
       remove_cache_eviction_prefix_preset_pairs
       redis_lru_cache_eviction'
+      to_json
       verbose
   =
   let t () =
@@ -862,11 +863,13 @@ let alba_update_maintenance_config
            remove_cache_eviction_prefix_preset_pairs;
            redis_lru_cache_eviction';
          }) >>= fun maintenance_config ->
-       Lwt_io.printlf
-         "Maintenance config now is %s"
-         (Maintenance_config.show maintenance_config))
+       if to_json
+       then Lwt.return ()
+       else Lwt_io.printlf
+              "Maintenance config now is %s"
+              (Maintenance_config.show maintenance_config))
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_update_maintenance_config_cmd =
   Term.(pure alba_update_maintenance_config
@@ -926,6 +929,7 @@ let alba_update_maintenance_config_cmd =
                & opt (some converter) None
                & info ["set-lru-cache-eviction"]
                       ~doc:"set lru cache eviction parameters (e.g. redis://127.0.0.1:6379/key_for_sorted_set)")
+        $ to_json
         $ verbose
   ),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"
@@ -965,7 +969,7 @@ let alba_get_abm_client_config_cmd =
         $ verbose),
   Term.info "get-abm-client-config"
 
-let alba_update_abm_client_config cfg_url tls_config verbose attempts =
+let alba_update_abm_client_config cfg_url tls_config to_json verbose attempts =
   let t () =
     Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     with_albamgr_client
@@ -973,12 +977,13 @@ let alba_update_abm_client_config cfg_url tls_config verbose attempts =
       (fun client ->
        client # store_client_config cfg)
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_update_abm_client_config_cmd =
   Term.(pure alba_update_abm_client_config
         $ alba_cfg_url
         $ tls_config
+        $ to_json
         $ verbose
         $ attempts 1),
   Term.info "update-abm-client-config"
