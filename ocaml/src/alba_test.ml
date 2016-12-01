@@ -2198,6 +2198,91 @@ let test_list_objects_by_id () =
                   assert (objs = [ mf; ]);
                   Lwt.return ()))
 
+let test_preset_validation () =
+  let test_name = "test_preset_validation" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+      let preset_name = "default" in
+      alba_client # create_namespace
+                  ~preset_name:(Some preset_name)
+                  ~namespace () >>= fun namespace_id ->
+
+      wait_for_work alba_client >>= fun () ->
+
+      alba_client # mgr_access # get_preset_propagation_state ~preset_name >>= fun r ->
+      assert (r = None);
+
+      alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm_client ->
+
+      nsm_client # get_gc_epochs >>= fun gc_epochs ->
+      let gc_epoch = Nsm_model.GcEpochs.get_latest_valid gc_epochs |> Option.get_some in
+
+      let do_upload manifest =
+        nsm_client # put_object
+                   ~allow_overwrite:Nsm_model.Unconditionally
+                   ~gc_epoch
+                   ~manifest >>= fun _ ->
+        Lwt.return ()
+      in
+
+      let mf =
+        let open Nsm_model in
+        {
+          Manifest.name = test_name;
+          object_id = get_random_string 32;
+
+          storage_scheme = Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (5,4, W8)),
+                                                                 Compression.Snappy);
+          encrypt_info = EncryptInfo.NoEncryption;
+          fragment_locations = [];
+          chunk_sizes = [];
+          size = 0L;
+          checksum = Checksum.NoChecksum;
+          fragment_checksums = [];
+          fragment_packed_sizes = [];
+          version_id = 0;
+          max_disks_per_node = 3;
+          timestamp = 0.;
+        } in
+
+      do_upload mf >>= fun () ->
+
+      let test_mf manifest err =
+        let manifest = { manifest with
+                         Nsm_model.Manifest.object_id = get_random_string 32;
+                         timestamp = Unix.gettimeofday ();
+                       }
+        in
+        Lwt.catch
+          (fun () ->
+            do_upload manifest >>= fun () ->
+            assert false)
+          (function
+           | Nsm_model.Err.Nsm_exn (err', _) ->
+              Lwt_log.debug_f "Got error %s" ([%show : Nsm_model.Err.t] err') >>= fun () ->
+              assert (err' = err);
+              Lwt.return ()
+           | exn ->
+              Lwt.fail exn)
+      in
+
+      test_mf
+        { mf with
+          Nsm_model.Manifest.storage_scheme =
+            Nsm_model.Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (1,2, W8)),
+                                                            Alba_compression.Compression.Snappy);
+        }
+        Nsm_model.Err.Invalid_bucket >>= fun () ->
+
+
+      (* TODO max node constraint violation na update manifest
+       *)
+
+      Lwt.return ()
+    )
+
+
 open OUnit
 
 let suite = "alba_test" >:::[
@@ -2226,4 +2311,5 @@ let suite = "alba_test" >:::[
     "test_object_sizes" >:: test_object_sizes;
     "test_retry_download" >:: test_retry_download;
     "test_list_objects_by_id" >:: test_list_objects_by_id;
+    "test_preset_validation" >:: test_preset_validation;
   ]
