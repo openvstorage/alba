@@ -1452,14 +1452,16 @@ module Deployment = struct
       | Result.Error x -> failwith x
       | Result.Ok x -> x
 
-  let _alba_with_cfg t args =
+  let _mk_cmd t args =
     [t.cfg.alba_bin]
     @ args
     @ ["--config"; t.abm # config_url |> Url.canonical;]
-    |> Shell.cmd'
+
+  let _alba_with_cfg t args =
+    _mk_cmd t args |> Shell.cmd'
 
   let show_object t namespace obj =
-    _alba_with_cfg t ["show-object";namespace;obj]
+    _mk_cmd t ["show-object";namespace;obj] |> Shell.cmd_with_capture
 
   let download_object t ns name location =
     _alba_with_cfg t [ "download-object"; ns; name; location;]
@@ -2686,10 +2688,10 @@ module Test = struct
 
       let object_location = t.cfg.alba_bin in
       t.proxy # upload_object ns object_location obj_name;
-      Deployment.show_object t ns obj_name;
+      let _show0 = Deployment.show_object t ns obj_name in
       let immediate_repair = true in
       Deployment.delete_fragment t ns obj_name 0 0 immediate_repair;
-      Deployment.show_object t ns obj_name;
+      let show_repaired = Deployment.show_object t ns obj_name in
       let object_location2 = t.cfg.alba_base_path ^ "/after_repair.out" in
       Deployment.download_object t ns obj_name object_location2;
       let checksum1 = Shell.md5sum object_location in
@@ -2756,8 +2758,8 @@ module Test = struct
          "--verbose";
         ];
 
-      Deployment.show_object t ns obj_name;
-
+      let show_recovered = Deployment.show_object t ns obj_name in
+      Printf.printf "\n%s\n%s\n%!" show_repaired show_recovered;
       let object_location3 = t.cfg.alba_base_path ^ "/after_recovery.out" in
       Deployment.download_object t ns obj_name object_location3;
 

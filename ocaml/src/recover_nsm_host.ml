@@ -84,7 +84,8 @@ type fragment_info = {
     version_id : int;
     recovery_info : RecoveryInfo.t';
     osd_id : int64;
-  }
+  } [@@ deriving show]
+
 
 module Keys = struct
   let ns_info = "ns_info"
@@ -241,7 +242,11 @@ let gather_and_push_objects
       Lwt_log.debug_f "Took item from buf, trying to recover it..."
       >>= fun () ->
 
-
+      let sort_version infos =
+        List.sort
+          (fun i0 i1 -> i1.version_id - i0.version_id)
+          infos
+      in
       let fs =
         acc |>
         (List.group_by
@@ -256,12 +261,8 @@ let gather_and_push_objects
                  fs |>
                Hashtbl.to_assoc_list
              in
-             let find_best (_,(infos : fragment_info list))=
-               let infos_sorted =
-                 List.sort
-                   (fun i0 i1 -> i1.version_id - i0.version_id)
-                   infos
-               in
+             let find_best (fid,(infos : fragment_info list))=
+               let infos_sorted = sort_version infos in
                List.hd_exn infos_sorted
              in
              chunk_id,
@@ -290,29 +291,33 @@ let gather_and_push_objects
                 size; checksum; } ->
 
       assert (List.length fs = last_chunk_id + 1);
-
+      let fs_reduced = (* use information in chunk's
+                          fragment with highest version *)
+        List.map
+          (fun (chunk_id, chunk_fragments) ->
+            let sorted = sort_version chunk_fragments in
+            (chunk_id, List.hd_exn sorted)
+          )
+        fs
+      in
       let chunk_sizes =
         List.map
-          (fun (_, chunk_fragments) ->
-           let { recovery_info; } = List.hd_exn chunk_fragments in
-           recovery_info.RecoveryInfo.chunk_size)
-          fs
+          (fun (_, {recovery_info; } ) -> recovery_info.RecoveryInfo.chunk_size)
+          fs_reduced
       in
 
       let fragment_checksums =
         List.map
-          (fun (_, chunk_fragments) ->
-           let { recovery_info; } = List.hd_exn chunk_fragments in
+          (fun (_, {recovery_info;} ) ->
            recovery_info.RecoveryInfo.fragment_checksums)
-          fs
+          fs_reduced
       in
 
       let fragment_packed_sizes =
         List.map
-          (fun (_, chunk_fragments) ->
-           let { recovery_info; } = List.hd_exn chunk_fragments in
-           recovery_info.RecoveryInfo.fragment_sizes)
-          fs
+          (fun (_, {recovery_info;}) ->
+            recovery_info.RecoveryInfo.fragment_sizes)
+          fs_reduced
       in
 
       let open Nsm_model in
