@@ -388,3 +388,7 @@ module DiskSafety = struct
 
   type t_list = t list [@@deriving yojson]
 end
+
+module Version = struct
+  type t = int * int * int * string [@@deriving yojson]
+end

@@ -243,11 +243,16 @@ let proxy_list_namespaces_cmd =
         $ verbose),
   Term.info "proxy-list-namespaces" ~doc:"list namespaces"
 
-let proxy_create_namespace host port transport namespace preset_name verbose =
+let proxy_create_namespace
+      host port transport namespace preset_name
+      to_json verbose
+  =
   proxy_client_cmd_line
-    host port transport ~to_json:false ~verbose
+    host port transport ~to_json ~verbose
     (fun client ->
-       client # create_namespace ~namespace ~preset_name)
+      client # create_namespace ~namespace ~preset_name
+      >>= unit_result to_json
+    )
 
 let proxy_create_namespace_cmd =
   Term.(pure proxy_create_namespace
@@ -256,19 +261,23 @@ let proxy_create_namespace_cmd =
         $ transport
         $ namespace 0
         $ preset_name_namespace_creation 1
-        $ verbose),
+        $ to_json $ verbose),
   Term.info "proxy-create-namespace" ~doc:"create a namespace"
 
 
-let proxy_upload_object host port transport namespace input_file object_name allow_overwrite verbose =
+let proxy_upload_object host port transport namespace input_file object_name
+                        allow_overwrite to_json verbose
+  =
   proxy_client_cmd_line
-    host port transport ~to_json:false ~verbose
+    host port transport ~to_json ~verbose
     (fun client ->
        client # write_object_fs
          ~namespace
          ~object_name
          ~input_file
-         ~allow_overwrite ())
+         ~allow_overwrite ()
+     >>= unit_result to_json
+    )
 
 let proxy_upload_object_cmd =
   Term.(pure proxy_upload_object
@@ -279,13 +288,15 @@ let proxy_upload_object_cmd =
         $ file_upload 1
         $ object_name_upload 2
         $ allow_overwrite
-        $ verbose),
+        $ to_json $ verbose),
   Term.info "proxy-upload-object" ~doc:"upload an object to alba"
 
 let proxy_download_object host port transport namespace object_name
-                          output_file consistent_read verbose =
+                          output_file consistent_read
+                          to_json verbose
+  =
   proxy_client_cmd_line
-    host port transport ~to_json:false ~verbose
+    host port transport ~to_json ~verbose
     (fun client ->
        client # read_object_fs
          ~namespace
@@ -293,6 +304,7 @@ let proxy_download_object host port transport namespace object_name
          ~output_file
          ~consistent_read
          ~should_cache:true
+     >>= unit_result to_json
     )
 
 let proxy_download_object_cmd =
@@ -304,18 +316,22 @@ let proxy_download_object_cmd =
         $ object_name_download 1
         $ file_download 2
         $ consistent_read
-        $ verbose
+        $ to_json $ verbose
   ),
   Term.info "proxy-download-object" ~doc:"download an object from alba"
 
-let proxy_delete_object host port transport namespace object_name verbose =
+let proxy_delete_object
+      host port transport namespace object_name
+      to_json verbose
+  =
   proxy_client_cmd_line
-    host port transport ~to_json:false ~verbose
+    host port transport ~to_json ~verbose
     (fun client ->
        client # delete_object
          ~namespace
          ~object_name
          ~may_not_exist:false
+     >>= unit_result to_json
     )
 
 let proxy_delete_object_cmd =
@@ -325,7 +341,7 @@ let proxy_delete_object_cmd =
         $ transport
         $ namespace 0
         $ object_name_upload 1
-        $ verbose
+        $ to_json $ verbose
   ),
   Term.info "proxy-delete-object" ~doc:"delete an object from alba"
 
@@ -367,16 +383,18 @@ let proxy_statistics_cmd =
         $ clear $ to_json $ verbose ),
   Term.info "proxy-statistics" ~doc:"retrieve statistics for this proxy"
 
-let proxy_delete_namespace host port transport namespace verbose =
-  proxy_client_cmd_line host port transport ~to_json:false ~verbose
+let proxy_delete_namespace host port transport namespace to_json verbose =
+  proxy_client_cmd_line host port transport ~to_json ~verbose
   (fun client ->
-   client # delete_namespace ~namespace >>= fun () ->
-   Lwt_io.printl (namespace ^ " is deleted"))
+    client # delete_namespace ~namespace
+    >>= unit_result to_json
+  )
 
 let proxy_delete_namespace_cmd =
   Term.(pure proxy_delete_namespace
         $ host $ port 10000 $ transport
-        $ namespace 0 $ verbose),
+        $ namespace 0
+        $ to_json $ verbose),
   Term.info "proxy-delete-namespace" ~doc:"delete a namespace"
 
 let proxy_list_objects
@@ -401,11 +419,11 @@ let proxy_list_objects_cmd =
           finc $ last $ max $ reverse $ verbose),
   Term.info "proxy-list-objects" ~doc:"list the objects"
 
-let proxy_get_version host port transport verbose =
-  proxy_client_cmd_line host port transport ~to_json:false ~verbose
+let proxy_get_version host port transport to_json verbose =
+  proxy_client_cmd_line host port transport ~to_json ~verbose
     (fun client ->
-     client # get_version >>= fun (major,minor,patch, hash) ->
-     Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
+      client # get_version
+      >>= version_result to_json
     )
 
 let proxy_get_version_cmd =
@@ -413,7 +431,7 @@ let proxy_get_version_cmd =
         $ host
         $ port 10000
         $ transport
-        $ verbose
+        $ to_json $ verbose
   ),
   Term.info "proxy-get-version" ~doc:"the proxy's version info"
 
