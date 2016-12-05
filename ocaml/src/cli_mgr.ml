@@ -375,22 +375,24 @@ let alba_update_nsm_host_cmd =
   ),
   Term.info "update-nsm-host" ~doc:"update a nsm host"
 
-let alba_mgr_get_version cfg_file tls_config verbose attempts =
+let alba_mgr_get_version
+      cfg_file tls_config
+      to_json verbose attempts
+  =
   let t () =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-       client # get_version >>= fun (major,minor, patch, hash) ->
-       Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
+       client # get_version >>= version_result to_json
       )
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_mgr_get_version_cmd =
   Term.(pure alba_mgr_get_version
         $ alba_cfg_url
         $ tls_config
-        $ verbose
+        $ to_json $ verbose
         $ attempts 1
   ),
   Term.info

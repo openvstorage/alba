@@ -166,6 +166,21 @@ let lwt_cmd_line ~to_json ~verbose t =
   let rc = Lwt_main.run (t' ()) in
   exit rc
 
+let unit_result to_json () =
+  if to_json
+  then print_result () (fun () -> `Assoc [])
+  else Lwt.return_unit
+
+let version_result to_json version =
+  if to_json
+  then
+    begin
+      print_result version Alba_json.Version.to_yojson
+    end
+  else
+    let major, minor, patch, hash = version in
+    Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
+
 let lwt_cmd_line_result ~to_json ~verbose t res_to_json =
   lwt_cmd_line
     ~to_json ~verbose
