@@ -32,6 +32,7 @@ let make_client albamgr_client_cfg
                 ?partial_osd_read
                 ?cache_on_read
                 ?cache_on_write
+                ~upload_slack
                 ?read_preference
                 ()
   =
@@ -49,7 +50,7 @@ let make_client albamgr_client_cfg
         ~osd_connection_pool_size ~osd_timeout
         ~default_osd_priority
         ~tls_config ~tcp_keepalive
-        (Alba_osd.make_client ~albamgr_connection_pool_size)
+        (Alba_osd.make_client ~albamgr_connection_pool_size ~upload_slack)
   in
   Alba_client.make_client
     mgr_access
@@ -65,6 +66,7 @@ let make_client albamgr_client_cfg
     ?partial_osd_read
     ?cache_on_read
     ?cache_on_write
+    ~upload_slack
     ?read_preference
     ()
 
@@ -86,7 +88,7 @@ let with_client albamgr_client_cfg
                 ?cache_on_write
                 ?read_preference
                 ~populate_osds_info_cache
-
+                ~upload_slack
                 f
   =
   let client, closer =
@@ -107,6 +109,7 @@ let with_client albamgr_client_cfg
                 ?cache_on_read
                 ?cache_on_write
                 ~populate_osds_info_cache
+                ~upload_slack
                 ?read_preference
                 ()
   in

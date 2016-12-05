@@ -49,7 +49,6 @@ class single_connection_client (ic, oc) =
       let payload = Llio.string_from res_buf in
       let exn = Err.Nsm_exn (ec, payload) in
       Lwt_log.debug_f
-        ~exn
         "nsm host operation failed: %i %s" ierr (Err.show ec)
       >>= fun () ->
       Lwt.fail exn

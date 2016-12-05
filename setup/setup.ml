@@ -683,8 +683,13 @@ class proxy ?fragment_cache ?ip ?transport
   method list_objects namespace =
     [ "proxy-list-objects"; namespace ] |> proxy_cmd_line_with_capture
 
-  method create_namespace name =
-    [ "proxy-create-namespace"; name ] |> proxy_cmd_line
+  method create_namespace ?preset_name name =
+    let cmd = [ "proxy-create-namespace"; name ] in
+    let cmd' = match preset_name with
+      | None -> cmd
+      | Some preset -> cmd @ [preset]
+    in
+    proxy_cmd_line cmd'
 
   method delete_namespace name =
     ["proxy-delete-namespace"; name] |> proxy_cmd_line
@@ -1009,13 +1014,15 @@ module Deployment = struct
       etcd: etcd option;
     }
 
-  let nsm_host_register t : unit =
-    let cfg_url = t.nsm # config_url in
+  let add_nsm_host t nsm =
+    let cfg_url = nsm # config_url in
     let cmd = ["add-nsm-host"; Url.canonical cfg_url ;
                "--config" ; t.abm # config_url |> Url.canonical ]
     in
     _alba_cmd_line cmd
 
+  let nsm_host_register t : unit =
+    add_nsm_host t t.nsm
 
 
   let make_osds
@@ -1456,6 +1463,39 @@ module Deployment = struct
     |> function
       | Result.Error x -> failwith x
       | Result.Ok x -> x
+
+  let _mk_cmd t args =
+    [t.cfg.alba_bin]
+    @ args
+    @ ["--config"; t.abm # config_url |> Url.canonical;]
+
+  let _alba_with_cfg t args =
+    _mk_cmd t args |> Shell.cmd'
+
+  let show_object t namespace obj =
+    _mk_cmd t ["show-object";namespace;obj] |> Shell.cmd_with_capture
+
+  let download_object t ns name location =
+    _alba_with_cfg t [ "download-object"; ns; name; location;]
+
+  let recover_namespace t namespace nsm_id =
+    _alba_with_cfg t ["recover-namespace"; namespace;nsm_id ]
+
+  let deliver_messages t =
+    _alba_with_cfg t ["deliver-messages"]
+
+  let delete_fragment t namespace obj chunk fragment immediate_repair =
+    let extra = if immediate_repair then ["--immediate-repair"] else [] in
+    [ "dev-delete-fragment";
+        namespace; obj;
+        "--chunk" ; string_of_int chunk;
+        "--fragment"; string_of_int fragment;
+        "--verbose";
+    ] @ extra |> _alba_with_cfg t
+
+  let verify_namespace t namespace job_name=
+    _alba_with_cfg t ["verify-namespace"; namespace; job_name]
+
 end
 
 module JUnit = struct
@@ -2529,9 +2569,7 @@ module Test = struct
     add_backend_as_osd t_local2 `AlbaOsd;
     add_backend_as_osd t_local3 `ProxyOsd;
     add_backend_as_osd t_local4 `ProxyOsd;
-    _alba_cmd_line
-      [ "deliver-messages";
-        "--config"; t_global.abm # config_url |> Url.canonical; ];
+    Deployment.deliver_messages t_global;
 
     let do_upload objname =
       t_global.proxy # upload_object "demo" cfg_global.alba_bin objname
@@ -2560,16 +2598,6 @@ module Test = struct
         | _ -> assert false
     end;
 
-    let show_namespace_1 = show_namespace t_global "demo" in
-    assert (show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]);
-
-    (* unlink a backend *)
-    let local_1_alba_id = get_alba_id t_local1 in
-    _alba_cmd_line
-      [ "purge-osd";
-        "--config"; t_global.abm # config_url |> Url.canonical;
-        "--long-id"; local_1_alba_id; ];
-
     let rec wait_for_condition i msg f =
       if f ()
       then ()
@@ -2582,6 +2610,29 @@ module Test = struct
           wait_for_condition (i - 1) msg f
         end
     in
+
+    let wait_for_lazy_write () =
+      let msg = "Lazy write took too long" in
+      let f () =
+        let show_namespace_1 = show_namespace t_global "demo" in
+        Printf.printf
+                "bucket_count=%s "
+                ([%show: ((int * int * int * int) * int) list ]
+                   show_namespace_1.bucket_count);
+        show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]
+      in
+      wait_for_condition 5 msg f
+    in
+    wait_for_lazy_write ();
+
+    (* unlink a backend *)
+    let local_1_alba_id = get_alba_id t_local1 in
+    _alba_cmd_line
+      [ "purge-osd";
+        "--config"; t_global.abm # config_url |> Url.canonical;
+        "--long-id"; local_1_alba_id; ];
+
+
 
     wait_for_condition
       120
@@ -2664,6 +2715,125 @@ module Test = struct
      *)
     0
 
+  let recovery ?(xml=false) ?filter ?dump t =
+    let t0 = Unix.gettimeofday() in
+    let test () =
+      let preset_name = "preset_recovery" in
+      let () =
+        _create_preset
+          t
+          preset_name
+          "./cfg/preset_test.json"
+      in
+      let ns = "test_recovery" in
+      t.proxy # create_namespace ~preset_name:preset_name ns;
+      let obj_name = "obj" in
+
+      let object_location = t.cfg.alba_bin in
+      t.proxy # upload_object ns object_location obj_name;
+      let _show0 = Deployment.show_object t ns obj_name in
+      let immediate_repair = true in
+      Deployment.delete_fragment t ns obj_name 0 0 immediate_repair;
+      let show_repaired = Deployment.show_object t ns obj_name in
+      let object_location2 = t.cfg.alba_base_path ^ "/after_repair.out" in
+      Deployment.download_object t ns obj_name object_location2;
+      let checksum1 = Shell.md5sum object_location in
+      let checksum2 = Shell.md5sum object_location2 in
+      let () =
+        if checksum1 = checksum2
+        then Printf.printf "checksums still match (OK)\n%!"
+        else failwith (Printf.sprintf "%s <> %s\n%!" checksum1 checksum2)
+      in
+      Shell.rm object_location2;
+
+
+      t.nsm # stop;
+      t.nsm # remove_dirs;
+
+      Deployment._alba_with_cfg t [ "update-nsm-host";
+         t.nsm # config_url |> Url.canonical;
+         "--lost";
+        ];
+
+      let nsm2_id = "nsm_reincarnated" in
+      let nsm2 =
+        let nodes = ["nsm_reincarnated_0";
+                     "nsm_reincarnated_1";
+                     "nsm_reincarnated_2";
+                    ]
+        in
+        new arakoon
+            ~cfg:t.cfg nsm2_id nodes
+            5000 t.cfg.etcd
+      in
+      nsm2 # persist_config;
+      nsm2 # start;
+      let m = nsm2 # wait_for_master () in
+      Printf.printf "master=%s\n%!" m;
+      Deployment.add_nsm_host t nsm2;
+      Deployment.recover_namespace t ns nsm2_id;
+      Deployment.deliver_messages t;
+      Deployment._alba_with_cfg t ["list-ns-osds"; ns;];
+
+      t.osds.(0) # stop;
+      Deployment.deliver_messages t;
+      Unix.sleep 10;
+      Deployment.deliver_messages t;
+      let dir = t.cfg.alba_base_path ^ "/recovery-agent" in
+      Shell.mkdir dir;
+
+      Shell.cmd'
+        [t.cfg.alba_bin;
+         "namespace-recovery-agent";
+         ns; dir; "1";"0";
+         "--config"; t.abm # config_url |> Url.canonical;
+         "--osd-id";"1";
+         "--osd-id";"2";
+         "--osd-id";"3";
+         "--osd-id";"4";
+         "--osd-id";"5";
+         "--osd-id";"6";
+         "--osd-id";"7";
+         "--osd-id";"8";
+         "--osd-id";"9";
+         "--osd-id";"10";
+         "--osd-id";"11";
+         "--verbose";
+        ];
+
+      let show_recovered = Deployment.show_object t ns obj_name in
+      Printf.printf "\n%s\n%s\n%!" show_repaired show_recovered;
+      let object_location3 = t.cfg.alba_base_path ^ "/after_recovery.out" in
+      Deployment.download_object t ns obj_name object_location3;
+
+      let checksum2 = Shell.md5sum object_location3 in
+      Printf.printf "%s <> %s\n%!" checksum1 checksum2;
+      if checksum2 = checksum1
+        then JUnit.Ok
+        else JUnit.Err "checksums differ"
+    in
+    begin
+      let open JUnit in
+
+      let result =
+        try test ()
+        with exn -> JUnit.Err (Printexc.to_string exn)
+      in
+      let t1 = Unix.gettimeofday() in
+      let time = t1 -. t0 in
+      let testcase =
+        make_testcase "nsm_recovery" "recover_one_object" time
+                      result
+      in
+      let suite = make_suite "recovery suite" [testcase] time in
+      let suites = [suite] in
+      let () =
+        if xml
+        then dump_xml suites "testresults.xml"
+        else dump suites
+      in
+      rc suites
+    end
 end
 
 
@@ -2690,6 +2860,7 @@ let process_cmd_line () =
                           0), true;
       "asd_transport_combos", Test.asd_transport_combos, false;
       "rora",            Test.rora, false;
+      "recovery",        Test.recovery, true;
     ]
   in
   let print_suites () =

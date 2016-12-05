@@ -49,6 +49,7 @@ let test_safety () =
        let object_name = test_name in
 
        client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data:"y"
@@ -108,7 +109,7 @@ let test_safety () =
               client # update_manifest
                 ~object_name
                 ~object_id
-                [ (0, 0, None) ]
+                [ (0, 0, None, None) ]
                 ~gc_epoch ~version_id
            )
        end >>= fun () ->

@@ -304,7 +304,8 @@ let alba_upload_object
     with_alba_client
       cfg_file tls_config
       (fun alba_client ->
-         alba_client # upload_object_from_file
+        alba_client # upload_object_from_file
+           ~epilogue_delay:None
            ~namespace
            ~object_name ~input_file
            ~allow_overwrite:(let open Nsm_model in

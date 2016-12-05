@@ -478,6 +478,8 @@ class t
           | _ -> assert false)
 
     method set_full _ = failwith "grmbl this method doesn't belong here."
+    method set_slowness _ = failwith "set_slowness not implemented"
+
     method get_version = proxy_pool # with_client ~namespace:"" (fun c -> c # get_version)
     method get_long_id = alba_id
     method get_disk_usage = Lwt.return

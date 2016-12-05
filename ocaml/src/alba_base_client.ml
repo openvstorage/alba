@@ -41,6 +41,7 @@ class client
     ~partial_osd_read
     ~cache_on_read ~cache_on_write
     ~populate_osds_info_cache
+    ~upload_slack
     ~(read_preference: string list)
   =
   let () =
@@ -86,6 +87,8 @@ class client
 
     method tls_config = tls_config
     method read_preference = read_preference
+
+    method upload_slack = upload_slack
 
     method mgr_access = mgr_access
     method nsm_host_access = nsm_host_access
@@ -139,6 +142,7 @@ class client
         manifest_cache
 
     method upload_object_from_file
+      ~(epilogue_delay:float option)
       ~namespace
       ~object_name
       ~input_file
@@ -162,6 +166,7 @@ class client
                   ~checksum_o
                   ~allow_overwrite
                   ~object_id_hint:None
+                  ~epilogue_delay
             )
         )
         (function
@@ -230,11 +235,13 @@ class client
         ~(checksum_o: Checksum.t option)
         ~(allow_overwrite : Nsm_model.overwrite)
         ~(object_id_hint: string option)
+        ~(epilogue_delay: float option)
       =
       nsm_host_access # with_namespace_id
         ~namespace
         (fun namespace_id ->
-           self # upload_object'
+          self # upload_object'
+             ~epilogue_delay
              ~namespace_id
              ~object_name
              ~object_reader
@@ -244,12 +251,14 @@ class client
         )
 
     method upload_object'
+             ~epilogue_delay
              ~namespace_id
              ~object_name
              ~object_reader
              ~checksum_o
              ~allow_overwrite
              ~object_id_hint
+
       =
        Alba_client_upload.upload_object'
          nsm_host_access osd_access
@@ -264,6 +273,8 @@ class client
          ~object_id_hint
          ~fragment_cache
          ~cache_on_write
+         ~upload_slack
+         ~epilogue_delay:None
 
 
     (* consumers of this method are responsible for freeing

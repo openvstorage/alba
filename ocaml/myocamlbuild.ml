@@ -163,7 +163,8 @@ let _ = dispatch &
              flag ["ocaml"; "compile"; "ppx_lwt"] &
                (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
                S [A "-ppx"; A "ppx_lwt -log";];
-
+             flag ["link";"ocaml";]
+                  (S[A"-cclib"; A"-lbz2"]);
              flag ["link";"ocaml";"use_gcrypt"]
                   (S[A"-cclib";A"-lgcrypt"]);
              flag ["link";"ocaml";"use_Jerasure"]

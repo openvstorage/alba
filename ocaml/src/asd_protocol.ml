@@ -237,6 +237,7 @@ module AsdMgmt = struct
                capacity : int64 ref;
                limit : int64;
                mutable full : bool; (* override *)
+               mutable slowness : (float * float) option
              }
     let _next_msg_id =
       Slice.wrap_string Osd_keys.AlbaInstance.next_msg_id
@@ -248,6 +249,7 @@ module AsdMgmt = struct
       = { latest_disk_usage; capacity;
           limit;
           full=false;
+          slowness = None;
         }
 
     let updates_allowed t (updates:Update.t list) =
@@ -278,6 +280,8 @@ module AsdMgmt = struct
 
 
     let set_full t b = t.full <- b
+
+    let set_slowness t s = t.slowness <- s
 end
 
 module Protocol = struct
@@ -419,6 +423,7 @@ module Protocol = struct
   type ('request, 'response) update =
     | Apply : (Assert.t list * Update.t list * priority, unit) update
     | SetFull: (bool, unit) update
+    | Slowness: ((float * float) option, unit) update
 
   type t =
     | Wrap_query : _ query -> t
@@ -437,6 +442,7 @@ module Protocol = struct
                       Wrap_query PartialGet,   11l, "PartialGet";
                       Wrap_query Capabilities, 12l, "Capabilities";
                       Wrap_query RangeValidate,13l, "RangeValidate";
+                      Wrap_update Slowness    ,14l, "Slowness";
                     ]
 
   let wrap_unknown_operation f =
@@ -645,38 +651,58 @@ module Protocol = struct
     =
     let module Llio = Llio2.WriteBuffer in
     function
-      | Apply -> fun buf (asserts, updates, prio) ->
-        Llio.list_to Assert.to_buffer' buf asserts;
-        Llio.list_to Update.to_buffer' buf updates;
-        priority_to_buffer' buf prio
-      | SetFull -> fun buf full ->
-        Llio.bool_to buf full
+    | Apply ->
+       fun buf (asserts, updates, prio) ->
+       Llio.list_to Assert.to_buffer' buf asserts;
+       Llio.list_to Update.to_buffer' buf updates;
+       priority_to_buffer' buf prio
+    | SetFull ->
+       fun buf full ->
+       Llio.bool_to buf full
+    | Slowness ->
+       fun buf slowness ->
+       Llio.option_to
+         (Llio.pair_to
+            Llio.float_to
+            Llio.float_to
+         ) buf slowness
 
   let update_request_deserializer : type req res. (req, res) update -> req Llio2.deserializer
     =
     let module Llio = Llio2.ReadBuffer in
     function
-      | Apply -> fun buf ->
-        Lwt_log.ign_debug "Apply deser";
-        let asserts = Llio.list_from Assert.from_buffer' buf in
-        let updates = Llio.list_from Update.from_buffer' buf in
-        let prio    = maybe_priority_from_buffer' buf in
-        (asserts, updates, prio)
-      | SetFull -> fun buf ->
-        Lwt_log.ign_debug "SetFull deser";
-        Llio.bool_from buf
+    | Apply ->
+       fun buf ->
+       Lwt_log.ign_debug "Apply deser";
+       let asserts = Llio.list_from Assert.from_buffer' buf in
+       let updates = Llio.list_from Update.from_buffer' buf in
+       let prio    = maybe_priority_from_buffer' buf in
+       (asserts, updates, prio)
+    | SetFull ->
+       fun buf ->
+       Lwt_log.ign_debug "SetFull deser";
+       Llio.bool_from buf
+    | Slowness ->
+       fun buf ->
+       Llio.option_from
+         (Llio.pair_from
+            Llio.float_from
+            Llio.float_from)
+         buf
 
   let update_response_serializer : type req res. (req, res) update -> res Llio2.serializer
     =
     let module Llio = Llio2.WriteBuffer in
     function
-      | Apply -> Llio.unit_to
-      | SetFull -> Llio.unit_to
+      | Apply    -> Llio.unit_to
+      | SetFull  -> Llio.unit_to
+      | Slowness -> Llio.unit_to
 
   let update_response_deserializer : type req res. (req, res) update -> res Llio2.deserializer
     =
     let module Llio = Llio2.ReadBuffer in
     function
-      | Apply -> Llio.unit_from
-      | SetFull -> Llio.unit_from
+      | Apply    -> Llio.unit_from
+      | SetFull  -> Llio.unit_from
+      | Slowness -> Llio.unit_from
 end

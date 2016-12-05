@@ -54,6 +54,8 @@ class alba_client (base_client : Alba_base_client.client)
     method nsm_host_access = nsm_host_access
     method osd_access = osd_access
 
+    method upload_slack = base_client # upload_slack
+
     method get_object_manifest' = base_client # get_object_manifest'
     method download_object_slices = base_client # download_object_slices
 
@@ -476,6 +478,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                 ?(cache_on_read = true)
                 ?(cache_on_write = true)
                 ~populate_osds_info_cache
+                ~upload_slack
                 ?(read_preference = [])
                 ()
   =
@@ -491,6 +494,7 @@ let make_client (mgr_access : Albamgr_access.mgr_access)
                         ~partial_osd_read
                         ~cache_on_read ~cache_on_write
                         ~populate_osds_info_cache
+                        ~upload_slack
                         ~read_preference
   in
   let client = new alba_client base_client in
@@ -522,6 +526,7 @@ let with_client albamgr_client_cfg
                 ?cache_on_read
                 ?cache_on_write
                 ~populate_osds_info_cache
+                ~upload_slack
                 f
   =
   let client, closer =
@@ -539,6 +544,7 @@ let with_client albamgr_client_cfg
               ?cache_on_read
               ?cache_on_write
               ~populate_osds_info_cache
+              ~upload_slack
               ()
   in
   Lwt.finalize

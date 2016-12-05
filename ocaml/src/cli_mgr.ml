@@ -991,6 +991,99 @@ let alba_update_abm_client_config_cmd =
   Term.info "update-abm-client-config"
 
 
+let alba_delete_fragment
+      cfg_file tls_config verbose
+      namespace object_name chunk_id fragment_id immediate_repair
+  =
+  let t () =
+    with_alba_client
+      cfg_file tls_config
+      (fun alba_client ->
+        alba_client # mgr_access # get_namespace ~namespace
+        >>= fun nso ->
+        match nso with
+        | None -> Lwt_io.printlf "namespace %S not found" namespace
+        | Some (x,ns) ->
+           let namespace_id =
+             let open Albamgr_protocol.Protocol in
+             ns.Namespace.id
+           in
+           begin
+             alba_client # get_object_manifest ~namespace ~object_name
+                         ~consistent_read:true ~should_cache:false
+             >>=fun (hm,r) ->
+             begin
+               match r with
+               | None -> Lwt.fail_with "object not found"
+               | Some mf ->
+                  let open Nsm_model in
+                  let locations = mf.Manifest.fragment_locations in
+                  let floc = Layout.index
+                               locations chunk_id fragment_id
+                  in
+                  let object_id = mf.Manifest.object_id in
+                  begin
+                    match floc with
+                    | (None,_) -> Lwt.fail_with "no such fragment"
+                    | (Some osd_id, version) ->
+                       Lwt_log.debug_f "osd_id:%Li version:%i" osd_id version
+                       >>= fun () ->
+                       Alba_test.delete_fragment
+                         alba_client
+                         namespace_id
+                         object_id
+                         (osd_id, version)
+                         chunk_id fragment_id
+                       >>= fun () ->
+                       if immediate_repair
+                       then
+                         Alba_test.with_maintenance_client
+                           alba_client
+                           (fun mc ->
+                             mc # repair_object ~namespace_id ~manifest:mf
+                            ~problem_fragments:[(chunk_id, fragment_id)]
+                           )
+                       else Lwt.return_unit
+                  end
+             end
+
+           end
+      )
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+
+let alba_delete_fragment_cmd =
+  let chunk_id =
+    Arg.(required
+         & opt (some int) None
+         & info ["chunk"] ~docv:"target chunk of the object"
+    )
+  in
+  let fragment_id =
+    Arg.(required
+         & opt (some int) None
+         & info ["fragment"] ~docv:"target fragment of the chunk"
+    )
+  in
+  let immediate_repair =
+    Arg.(value
+         & flag
+         & info ["immediate-repair"] ~doc:"repair now"
+    )
+  in
+  Term.(pure alba_delete_fragment
+        $ alba_cfg_url
+        $ tls_config
+        $ verbose
+        $ namespace 0
+        $ object_name_upload 1
+        $ chunk_id
+        $ fragment_id
+        $ immediate_repair
+  ),
+  Term.info "dev-delete-fragment" ~doc:"remove a fragment of an object"
+
 let cmds = [
     alba_list_namespaces_cmd;
     alba_list_namespaces_by_id_cmd;
@@ -1028,4 +1121,5 @@ let cmds = [
     alba_bump_next_work_item_id_cmd;
     alba_bump_next_osd_id_cmd;
     alba_bump_next_namespace_id_cmd;
+    alba_delete_fragment_cmd;
   ]

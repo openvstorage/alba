@@ -39,6 +39,25 @@ let test_bzip2' () =
   assert (data = data')
 
 
+let test_test () =
+  let open Lwt.Infix in
+  let open Alba_compression.Compression in
+  let t =
+    let data =
+      "'in politics, stupidity is not a handicap' (Napoleon Bonaparte)"
+    in
+    let data_s = Bigstring_slice.of_string data in
+    compress Test data_s >>= fun c ->
+    let cs = Bigstring_slice.wrap_bigstring c in
+    decompress Test cs >>= fun data_ba' ->
+    let data' = Lwt_bytes.to_string data_ba' in
+    assert (data = data');
+    compress Test data_s >>= fun c' ->
+    assert (c' <> c);
+    Lwt.return_unit
+  in
+  Lwt_main.run t;;
+
 
 open OUnit
 
@@ -46,4 +65,5 @@ let suite = "compressors_test" >:::[
     "test_snappy" >:: test_snappy;
     "test_bzip2" >:: test_bzip2;
     "test_bzip2'" >:: test_bzip2';
+    "test_test"   >:: test_test;
   ]

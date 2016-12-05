@@ -297,6 +297,9 @@ class client (fd:Net_fd.t) id =
     method set_full full =
       self # update SetFull full Lwt.return
 
+    method set_slowness slowness =
+      self # update Slowness slowness Lwt.return
+
     method get_version () =
       self # query GetVersion () Lwt.return
 
@@ -421,7 +424,7 @@ object(self :# Osd.key_value_osd)
     end
 
   method set_full full = asd # set_full full
-
+  method set_slowness slowness = asd # set_slowness slowness
   method get_version = asd # get_version ()
   method get_long_id = asd_id
   method get_disk_usage = asd # get_disk_usage ()

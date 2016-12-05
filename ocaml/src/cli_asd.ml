@@ -26,7 +26,7 @@ open Slice
 open Asd_protocol
 open Asd_config
 
-let asd_start cfg_url slow log_sinks =
+let asd_start cfg_url log_sinks =
 
   let t () =
     Asd_config.retrieve_cfg cfg_url >>= function
@@ -135,7 +135,7 @@ let asd_start cfg_url slow log_sinks =
                             ~transport ~rora_transport
                             ~rora_ips
                             ~rora_num_cores ~rora_queue_depth
-                            home ~asd_id ~node_id ~slow
+                            home ~asd_id ~node_id
                             ~fsync
                             ~limit
                             ~capacity
@@ -162,9 +162,6 @@ let asd_start_cmd =
   let asd_start_t =
     Term.(pure asd_start
           $ cfg_url
-          $ Arg.(value
-                 & flag
-                 & info ["slow"] ~doc:"artifically slow down an asd (only for testing purposes!)")
           $ log_sinks)
   in
   let info =
@@ -193,9 +190,9 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
        conn_info.tls_config
        Tcp_keepalive2.default
        buffer_pool
-       (Alba_osd.make_client ~albamgr_connection_pool_size:10)
+       (Alba_osd.make_client ~albamgr_connection_pool_size:10 ~upload_slack:0.2)
        k
-       ~pool_size:1
+     ~pool_size:1
      >>= fun (_, client, closer) ->
      Lwt.finalize
        (fun () -> f client)
@@ -839,6 +836,39 @@ let asd_set_full_cmd =
   in
   asd_set_full_t, info
 
+let asd_set_slowness hosts port tls_config asd_id
+                     slowness
+                     verbose
+  =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id ~to_json:false ~verbose
+    (fun client -> client # set_slowness slowness)
+
+let asd_set_slowness_cmd =
+  let doc = "$(docv) adds fixed + random(variable) delay to each request" in
+  let slow =
+    Arg.(value
+         & pos 0 (some (pair float float)) None
+         & info [] ~docv:"(fixed,variable)" ~doc
+    )
+  in
+  let asd_set_slowness_t =
+    Term.(pure asd_set_slowness
+          $ hosts $ (port 8_000) $ tls_config
+          $ lido
+          $ slow
+          $ verbose
+    )
+  in
+  let info =
+    let doc =
+      "slow down the asd with a delay on each request"
+    in
+    Term.info "asd-set-slowness" ~doc
+  in
+  asd_set_slowness_t, info
+
 let asd_capabilities hosts port tls_config asd_id verbose =
   let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
@@ -934,6 +964,7 @@ let cmds = [
   asd_statistics_cmd;
   asd_multistatistics_cmd;
   asd_set_full_cmd;
+  asd_set_slowness_cmd;
   asd_get_version_cmd;
   asd_disk_usage_cmd;
   asd_capabilities_cmd;

@@ -296,3 +296,63 @@ let copy_between_fds fd_in fd_out size buffer =
   let reader = Lwt_bytes.read fd_in in
   let writer = write_all_lwt_bytes fd_out in
   copy_using reader writer size buffer
+
+let join_threads_ignore_errors ts =
+  Lwt.join
+    (List.map
+       (fun t ->
+         Lwt.catch
+           (fun () -> t >>= fun _ -> Lwt.return_unit)
+           (fun exn -> Lwt.return_unit))
+       ts)
+
+let first_n ~count ~slack f items ~test =
+  let t0 = Unix.gettimeofday() in
+  let success = CountDownLatch.create ~count in
+  let n_items = List.length items in
+  let failures = CountDownLatch.create ~count:(n_items - count + 1) in
+
+  let log_state index =
+    let open CountDownLatch in
+    Lwt_log.debug_f
+      "%i finished (needed=%i, distance to failure=%i)%!"
+      index
+      success.needed
+      failures.needed
+  in
+
+  let ts = List.mapi
+             (fun index item ->
+               Lwt.catch
+                 (fun () ->
+                   f item >>= fun r ->
+                   if test r
+                   then CountDownLatch.count_down success
+                   else CountDownLatch.count_down failures;
+                   log_state index >>= fun () ->
+                   Lwt.return r)
+                 (fun exn ->
+                   CountDownLatch.count_down failures;
+                   log_state index >>= fun () ->
+                   Lwt.fail exn))
+             items
+  in
+
+  Lwt.pick [CountDownLatch.await success;
+            CountDownLatch.await failures;
+           ]
+  >>= fun () ->
+  let t1 = Unix.gettimeofday() in
+  let so_far = t1 -. t0 in
+  let limit = so_far *. slack in
+  Lwt_log.debug_f "waiting for another %f * %f =%f" so_far slack limit
+  >>= fun () ->
+  Lwt.choose
+    [ begin
+        Lwt_unix.sleep limit >>= fun () ->
+        Lwt_log.debug "limit reached"
+      end;
+      join_threads_ignore_errors ts;
+    ]
+  >>= fun () ->
+  Lwt.return (CountDownLatch.finished success, ts)
