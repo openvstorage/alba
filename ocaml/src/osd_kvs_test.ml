@@ -165,6 +165,11 @@ let test_list_all client =
   Lwt.return ()
 
 let test_assert (client : kvs) =
+  apply
+    client
+    []
+    [ Osd.Update.set_string "key" "not this value" Checksum.Checksum.NoChecksum false; ]
+  >>= fun () ->
   Lwt.catch
     (fun () ->
      apply client
