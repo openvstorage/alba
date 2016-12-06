@@ -404,15 +404,19 @@ class t
                     List.map2
                       (fun assert_ mf_v_o ->
                         let open Proxy_protocol.Protocol in
+                        let failed_assert key = Osd.Error.(lwt_fail (Assert_failed (Slice.get_string_unsafe key))) in
                         match assert_, mf_v_o with
                         | Osd.Assert.Value (key, None), None ->
                            Lwt.return (Assert.ObjectDoesNotExist (Slice.get_string_unsafe key))
                         | Osd.Assert.Value (key, None), Some _
-                          | Osd.Assert.Value (key, Some _), None ->
-                           Osd.Error.(lwt_fail (Assert_failed (Slice.get_string_unsafe key)))
+                        | Osd.Assert.Value (key, Some _), None ->
+                           failed_assert key
                         | Osd.Assert.Value (key, Some v), Some (mf, v') ->
-                           Lwt.return (Assert.ObjectHasId (Slice.get_string_unsafe key,
-                                                           mf.Nsm_model.Manifest.object_id)))
+                           if Osd.Blob.(equal (Bigslice v') v)
+                           then Lwt.return (Assert.ObjectHasId (Slice.get_string_unsafe key,
+                                                                mf.Nsm_model.Manifest.object_id))
+                           else failed_assert key
+                      )
                       asserts values
                     |> Lwt_list.map_s Std.id
                   )
