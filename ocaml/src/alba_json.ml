@@ -395,3 +395,12 @@ end
 module Version = struct
   type t = int * int * int * string [@@deriving yojson]
 end
+
+module Checksum = struct
+  type t = Checksum.Checksum.t =
+    | NoChecksum
+    | Sha1 of HexString.t
+    | Crc32c of HexInt32.t
+    [@@deriving yojson]
+
+end
