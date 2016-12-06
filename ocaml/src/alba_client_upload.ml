@@ -618,7 +618,7 @@ let store_manifest
 let upload_object'
       nsm_host_access osd_access
       manifest_cache
-      get_preset_info
+      (preset_cache : Alba_client_preset_cache.preset_cache)
       get_namespace_osds_info_cache
       ~namespace_id
       ~object_name
@@ -635,7 +635,7 @@ let upload_object'
     upload_object''
       nsm_host_access
       osd_access
-      get_preset_info
+      (preset_cache # get)
       get_namespace_osds_info_cache
       ~object_t0 ~timestamp
       ~object_name
@@ -683,10 +683,12 @@ let upload_object'
                    nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
                    Lwt.return ()
 
+                | Too_many_disks_per_node
                 | Preset_violated
                 | Invalid_bucket ->
-                   (* TODO refresh preset, make sure its fully propagated *)
-                   Lwt.return ()
+                   nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+                   let open Albamgr_protocol.Protocol in
+                   preset_cache # refresh ~preset_name:ns_info.Namespace.preset_name
                 | Unknown
                 | Old_plugin_version
                 | Unknown_operation
@@ -695,7 +697,6 @@ let upload_object'
                 | InvalidVersionId
                 | Overwrite_not_allowed
                 | Assert_failed
-                | Too_many_disks_per_node
                 | Insufficient_fragments
                 | Object_not_found ->
                    Lwt.fail exn

@@ -1716,56 +1716,7 @@ class client ?(retry_timeout = 60.)
         (* the logic for this task is on the albamgr (server) side *)
         Lwt.return ()
       | PropagatePreset preset_name ->
-         begin
-           mgr_access # get_preset2 ~preset_name >>= function
-           | None ->
-              (* preset was deleted in the mean time *)
-              Lwt.return ()
-           | Some (_, preset, version, _, _) ->
-              begin
-                mgr_access # get_preset_propagation_state ~preset_name >>= function
-                | None -> Lwt.return ()
-                | Some (version', namespace_ids) ->
-                   Lwt_list.map_p
-                     (fun namespace_id ->
-                       Lwt.catch
-                         (fun () ->
-                           nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
-                           Lwt.return
-                             (Some (namespace_id,
-                                    ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id)))
-                         (let open Albamgr_protocol.Protocol.Error in
-                          function
-                          | Albamgr_exn (Namespace_does_not_exist, _) -> Lwt.return None
-                          | exn -> Lwt.fail exn))
-                     namespace_ids
-                   >|= List.map_filter_rev Std.id
-                   >|= List.group_by snd
-                   >|= Hashtbl.to_assoc_list
-                   >>= Lwt_list.iter_p
-                         (fun (nsm_host_id, namespace_ids) ->
-                           (nsm_host_access # get ~nsm_host_id)
-                             # update_presets
-                             (List.map
-                                (fun (namespace_id, _) -> namespace_id, (preset, version))
-                                namespace_ids) >>= fun results ->
-                           List.iter
-                             (function
-                              | Ok _ -> ()
-                              | Error err ->
-                                 let open Nsm_model.Err in
-                                 match err with
-                                 | Namespace_id_not_found -> () (* namespace was deleted in the mean time *)
-                                 | _ -> assert false)
-                             results;
-                           Lwt.return ())
-                   >>= fun () ->
-                   mgr_access # update_preset_propagation_state
-                              ~preset_name
-                              ~preset_version:version
-                              ~namespace_ids
-              end
-         end
+         alba_client # get_preset_cache # refresh ~preset_name
 
 
     val mutable next_work_item = 0L
