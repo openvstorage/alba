@@ -919,10 +919,12 @@ let execute_update : type req res.
                    "Assertion failed, expected some but got None instead" >>= fun () ->
                  Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                | Some value ->
-                 begin match snd value with
-                   | Value.Direct _ ->
-                     (* must be checked just before applying the transaction *)
-                     Lwt.return (`AssertSome (key, expected, value))
+                 begin
+                   match snd value with
+                   | Value.Direct actual ->
+                      if Blob.(equal (Slice actual) expected)
+                      then Lwt.return ()
+                      else Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                    | Value.OnFs (loc, size) ->
                      (* check the blob now, and just before applying the transaction
                         check whether the key is still associated with the same blob
@@ -940,8 +942,11 @@ let execute_update : type req res.
                        Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                      end else
                        (* could also be ok for other values ... *)
-                       Lwt.return (`AssertSome (key, expected, value))
-                 end)
+                       Lwt.return ()
+                 end >>= fun () ->
+                 (* must be checked just before applying the transaction *)
+                 Lwt.return (`AssertSome (key, value))
+            )
             some_asserts_with_values >>= fun some_asserts' ->
           Lwt.return (none_asserts', some_asserts')
         in
@@ -1057,7 +1062,7 @@ let execute_update : type req res.
 
           List.iter
             (function
-              | `AssertSome (key, expected, expected_value) ->
+              | `AssertSome (key, expected) ->
                  begin match get_value_option kv key with
                        | None ->
                           Lwt_log.ign_warning_f
@@ -1065,7 +1070,7 @@ let execute_update : type req res.
                             ([%show : Slice.t] key);
                           Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                        | Some value ->
-                          if value <> expected_value
+                          if value <> expected
                           then raise ConcurrentModification
                  end)
             some_asserts;
