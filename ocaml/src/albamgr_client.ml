@@ -355,15 +355,15 @@ object(self)
     method mark_osd_claimed_by_other ~long_id ~alba_id =
       client # update MarkOsdClaimedByOther (long_id, alba_id)
 
-    method add_work_items work_items =
+    method add_work_items ~(check:bool) work_items =
       client # update
         AddWork
-        (List.length work_items, work_items)
+        ((List.length work_items, work_items),check)
 
     method add_work_repair_fragment
       ~namespace_id ~object_id ~object_name
       ~chunk_id ~fragment_id ~version_id =
-      self # add_work_items
+      self # add_work_items ~check:false
            [ Work.RepairBadFragment (namespace_id,
                                      object_id,
                                      object_name,
@@ -376,6 +376,10 @@ object(self)
         GetWork
         GetWorkParams.({ first; finc; last;
                          max; reverse; })
+
+    method list_jobs ~first ~finc ~last ~max ~reverse =
+      client # query
+             ListJobs (RangeQueryArgs.{ first; finc ; last ; reverse; max })
 
     method mark_work_completed ~work_id =
       client # update MarkWorkCompleted work_id

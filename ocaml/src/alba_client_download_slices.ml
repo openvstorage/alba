@@ -549,6 +549,7 @@ let handle_failures
                 (fun exn ->
                   Lwt_log.debug_f ~exn "Exception in _repair_after_read, falling back to rewrite" >>= fun () ->
                   mgr_access # add_work_items
+                             ~check:false
                              [ Albamgr_protocol.Protocol.Work.RewriteObject (namespace_id,
                                                                              manifest.Nsm_model.Manifest.object_id); ]
                 )

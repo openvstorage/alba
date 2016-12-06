@@ -939,6 +939,7 @@ module Protocol = struct
     | GetProgressForPrefix : (string, (int * Progress.t) counted_list) query
     | GetMaintenanceConfig : (unit, Maintenance_config.t) query
     | ListPurgingOsds : (Osd.id RangeQueryArgs.t, Osd.id counted_list_more) query
+    | ListJobs : (String.t RangeQueryArgs.t, string counted_list_more) query
 
   type ('i, 'o) update =
     | AddNsmHost : (Nsm_host.id * Nsm_host.t, unit) update
@@ -957,7 +958,7 @@ module Protocol = struct
     | MarkOsdClaimedByOther : (OsdInfo.long_id * alba_id, unit) update
     | MarkMsgDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
     | MarkMsgsDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
-    | AddWork : (Work.t Std.counted_list, unit) update
+    | AddWork : (Work.t Std.counted_list * bool, unit) update
     | MarkWorkCompleted : (Work.id, unit) update
     | CreatePreset : (Preset.name * Preset.t, unit) update
     | DeletePreset : (Preset.name, unit) update
@@ -1012,6 +1013,7 @@ module Protocol = struct
     | GetProgressForPrefix -> Llio.string_from
     | GetMaintenanceConfig -> Llio.unit_from
     | ListPurgingOsds -> RangeQueryArgs.from_buffer x_int64_from
+    | ListJobs -> RangeQueryArgs.from_buffer Llio.string_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -1049,6 +1051,7 @@ module Protocol = struct
     | GetProgressForPrefix -> Llio.string_to
     | GetMaintenanceConfig -> Llio.unit_to
     | ListPurgingOsds -> RangeQueryArgs.to_buffer x_int64_to
+    | ListJobs -> RangeQueryArgs.to_buffer Llio.string_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -1151,6 +1154,7 @@ module Protocol = struct
             Progress.from_buffer)
     | GetMaintenanceConfig -> Maintenance_config.from_buffer
     | ListPurgingOsds -> counted_list_more_from x_int64_from
+    | ListJobs -> counted_list_more_from Llio.string_from
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -1254,6 +1258,7 @@ module Protocol = struct
            Progress.to_buffer)
     | GetMaintenanceConfig -> Maintenance_config.to_buffer
     | ListPurgingOsds -> counted_list_more_to x_int64_to
+    | ListJobs -> counted_list_more_to Llio.string_to
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -1293,7 +1298,10 @@ module Protocol = struct
         Llio.string_from
     | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
-    | AddWork -> Llio.counted_list_from Work.from_buffer
+    | AddWork ->
+       Llio.pair_from
+         (Llio.counted_list_from Work.from_buffer)
+         (maybe_from_buffer Llio.bool_from false)
     | MarkWorkCompleted -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
     | DeletePreset -> Llio.string_from
@@ -1358,7 +1366,10 @@ module Protocol = struct
         Llio.string_to
     | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
-    | AddWork -> Llio.counted_list_to Work.to_buffer
+    | AddWork ->
+       Llio.pair_to
+         (Llio.counted_list_to Work.to_buffer)
+         Llio.bool_to
     | MarkWorkCompleted -> x_int64_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
     | DeletePreset -> Llio.string_to
@@ -1554,6 +1565,7 @@ module Protocol = struct
                       Wrap_u BumpNextWorkItemId, 85l, "BumpNextWorkItemId";
                       Wrap_u BumpNextOsdId, 86l, "BumpNextOsdId";
                       Wrap_u BumpNextNamespaceId, 87l, "BumpNextNamespaceId";
+                      Wrap_q ListJobs, 95l, "ListJobs";
                     ]
 
 

@@ -146,7 +146,11 @@ end
 
 module Read_store_extensions(KV : Read_key_value_store) = struct
 
-  let _fold_range cur comp_end_key cur_next max f init =
+  let _fold_range
+        cur comp_end_key cur_next max
+        f
+        init
+    =
     let rec inner acc count =
       if count = max
       then begin
@@ -158,8 +162,7 @@ module Read_store_extensions(KV : Read_key_value_store) = struct
           if comp_end_key k
           then
             begin
-              let count' = count + 1 in
-              let acc' = f cur k count acc in
+              let count',acc' = f cur k (count,acc) in
               if cur_next cur
               then
                 inner acc' count'
@@ -214,9 +217,12 @@ module Read_store_extensions(KV : Read_key_value_store) = struct
         t
         ~first ~finc ~last
         ~max ~reverse
-        (fun cur key _cnt acc ->
-           let item = f cur key in
-           item :: acc)
+        (fun cur key (cnt,acc) ->
+          let item = f cur key in
+          let acc' = item :: acc in
+          let cnt' = cnt +1 in
+          cnt',acc'
+        )
         []
     in
     (cnt, List.rev items), have_more
