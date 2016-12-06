@@ -2235,12 +2235,15 @@ let test_preset_validation () =
           storage_scheme = Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (5,4, W8)),
                                                                  Compression.Snappy);
           encrypt_info = EncryptInfo.NoEncryption;
-          fragment_locations = [];
+          fragment_locations = [ [ Some 0L, 0; Some 1L, 0; Some 2L, 0; Some 4L, 0; Some 5L, 0;
+                                   Some 6L, 0; Some 8L, 0; Some 9L, 0; None, 0;
+                                 ];
+                               ];
           chunk_sizes = [];
           size = 0L;
           checksum = Checksum.NoChecksum;
           fragment_checksums = [];
-          fragment_packed_sizes = [];
+          fragment_packed_sizes = [ [ 0; 0; 0; 0; 0; 0; 0; 0; 0; ]; ];
           version_id = 0;
           max_disks_per_node = 3;
           timestamp = 0.;
@@ -2275,9 +2278,42 @@ let test_preset_validation () =
         }
         Nsm_model.Err.Invalid_bucket >>= fun () ->
 
+      test_mf
+        { mf with
+          Nsm_model.Manifest.storage_scheme =
+            Nsm_model.Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (5,4, W8)),
+                                                            Alba_compression.Compression.Bzip2);
+        }
+        Nsm_model.Err.Preset_violated >>= fun () ->
 
-      (* TODO max node constraint violation na update manifest
-       *)
+      let test_update_manifest updated_object_locations err =
+        Lwt.catch
+          (fun () ->
+            let open Nsm_model.Manifest in
+            nsm_client # update_manifest
+                       ~object_name:mf.name
+                       ~object_id:mf.object_id (* TODO wrong *)
+                       updated_object_locations
+                       ~gc_epoch
+                       ~version_id:1 >>= fun () ->
+            Lwt.fail_with "arrr update_manifest didn't fail!"
+          )
+          (function
+           | Nsm_model.Err.Nsm_exn (err', _) ->
+              Lwt_log.debug_f "Got error %s" ([%show : Nsm_model.Err.t] err') >>= fun () ->
+              assert (err' = err);
+              Lwt.return ()
+           | exn ->
+              Lwt.fail exn)
+      in
+
+      test_update_manifest
+        [ 0, 0, Some 7L ]
+        Nsm_model.Err.Invalid_bucket >>= fun () ->
+
+      test_update_manifest
+        [ 0, 0, Some 1L ]
+        Nsm_model.Err.Invalid_fragment_spread >>= fun () ->
 
       Lwt.return ()
     )
