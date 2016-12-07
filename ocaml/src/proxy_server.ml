@@ -167,7 +167,15 @@ let apply_sequence
       ~object_id_hint:None
       ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-    >>= fun (mf, extra_mfs, _upload_stats, gc_epoch) ->
+    >>= fun (mf, extra_mfs, upload_stats, gc_epoch) ->
+
+    let t1 = Unix.gettimeofday () in
+    let delta = t1 -. t0 in
+    Lwt_log.debug_f
+      ~section:Alba_statistics.Statistics.section
+      "Uploaded object %S with the following timings: %s"
+      object_name (Alba_statistics.Statistics.show_object_upload (upload_stats delta)) >>= fun () ->
+
     let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
                     (List.map
                        (fun (mf, namespace_id, alba) ->

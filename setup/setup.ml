@@ -1798,7 +1798,7 @@ module Test = struct
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml"] else cmd in
     let cmd3 = match filter with
-      | None -> cmd2 @ ["--gtest_filter=SimpleVolumeTests/SimpleVolumeTest*"]
+      | None -> cmd2 @ ["--gtest_filter=SimpleVolumeTests/SimpleVolumeTest*:DataStoreNGTests/DataStoreNGTest.corruptedReadSCO/0"]
       | Some filter -> cmd2 @ ["--gtest_filter=" ^ filter]
     in
     let cmd4 = match dump with
