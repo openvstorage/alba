@@ -169,20 +169,13 @@ let apply_sequence
       ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
     >>= fun (mf, extra_mfs, upload_stats, gc_epoch) ->
 
-    let t1 = Unix.gettimeofday () in
-    let delta = t1 -. t0 in
-    Lwt_log.debug_f
-      ~section:Alba_statistics.Statistics.section
-      "Uploaded object %S with the following timings: %s"
-      object_name (Alba_statistics.Statistics.show_object_upload (upload_stats delta)) >>= fun () ->
-
     let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
                     (List.map
                        (fun (mf, namespace_id, alba) ->
                          mf.Nsm_model.Manifest.name, alba, (mf, namespace_id))
                        extra_mfs)
     in
-    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch), all_mfs, `Upload)
+    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch), all_mfs, `Upload (mf, gc_epoch, upload_stats))
   in
 
   Lwt_list.map_p
@@ -214,9 +207,19 @@ let apply_sequence
     let delta = t1 -. t0 in
     List.iter
       (function
-       | `Upload -> ProxyStatistics.new_upload stats namespace delta
-       | `Delete -> ProxyStatistics.new_delete stats namespace delta
-      ) upload_statss
+       | `Upload (manifest, gc_epoch, upload_stats) ->
+          Alba_client_upload.store_manifest_epilogue
+            (alba_client # osd_access)
+            (alba_client # get_manifest_cache)
+            manifest
+            gc_epoch
+            ~namespace_id
+            (upload_stats delta);
+          ProxyStatistics.new_upload stats namespace delta
+       | `Delete ->
+          ProxyStatistics.new_delete stats namespace delta
+      )
+      upload_statss
   in
   Lwt.return manifests
 

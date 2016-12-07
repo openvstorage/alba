@@ -571,6 +571,28 @@ let cleanup_gc_tags
   |> Lwt.ignore_result
 
 
+let store_manifest_epilogue
+      (osd_access : Osd_access_type.t)
+      manifest_cache
+      manifest
+      gc_epoch
+      ~namespace_id
+      t_object
+  =
+  let () = cleanup_gc_tags osd_access manifest gc_epoch ~namespace_id in
+
+  let object_name = manifest.Nsm_model.Manifest.name in
+  Lwt_log.ign_debug_f
+    ~section:Statistics.section
+    "Uploaded object %S with the following timings: %s"
+    object_name (Statistics.show_object_upload t_object);
+
+  let open Manifest_cache in
+  ManifestCache.add
+    manifest_cache
+    namespace_id object_name manifest
+
+
 let store_manifest
       (nsm_host_access : Nsm_host_access.nsm_host_access)
       (osd_access : Osd_access_type.t)
@@ -597,23 +619,19 @@ let store_manifest
           namespace_id object_name;
         Lwt.fail exn))
   >>= fun (t_store_manifest, old_manifest_o) ->
-  (* TODO maybe clean up fragments from old object *)
-
-  let () = cleanup_gc_tags osd_access manifest gc_epoch ~namespace_id in
 
   let t_object = almost_t_object t_store_manifest in
 
-  Lwt_log.debug_f
-    ~section:Statistics.section
-    "Uploaded object %S with the following timings: %s"
-    object_name (Statistics.show_object_upload t_object)
-  >>= fun () ->
-  let open Manifest_cache in
-  ManifestCache.add
+  store_manifest_epilogue
+    osd_access
     manifest_cache
-    namespace_id object_name manifest;
+    manifest
+    gc_epoch
+    ~namespace_id
+    t_object;
 
   Lwt.return (manifest, chunk_fidmos, t_object, namespace_id)
+
 
 let upload_object'
       nsm_host_access osd_access
