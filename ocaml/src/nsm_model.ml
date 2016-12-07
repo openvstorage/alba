@@ -1128,7 +1128,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     KV.get kv Keys.preset
     |> Option.map (deserialize Preset.from_buffer)
 
-  let get_min_fragment_count_and_max_disks_per_node kv ~k ~m locations =
+  let get_min_fragment_count_and_max_disks_per_node kv ~k ~m locations ~validate =
     let get_bla_per_chunk chunk_location =
       let osds_per_node = Hashtbl.create 3 in
       List.fold_left
@@ -1166,9 +1166,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     let maybe_preset = get_preset kv in
     let () =
-      match maybe_preset with
-      | None -> ()
-      | Some p ->
+      match validate, maybe_preset with
+      | _, None -> ()
+      | false, _ -> ()
+      | true, Some p ->
          (* bucket = k, m, min_fragment_count, max_disks_per_node
           * match bucket with policy ... if we can't -> throw error *)
          let policy =
@@ -1180,7 +1181,13 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              p.Preset.policies
          in
          match policy with
-         | None -> Err.(failwith Invalid_bucket)
+         | None -> Err.(failwith
+                          ~payload:(Printf.sprintf
+                                      "bucket %s not valid for policies %s"
+                                      ([%show : int * int * int * int] (k, m, min_fragment_count, max_disks_per_node))
+                                      ([%show : (int * int * int * int) list] p.Preset.policies)
+                                   )
+                          Invalid_bucket)
          | Some _ -> ()
     in
 
@@ -1257,6 +1264,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           kv
           ~k ~m
           old_manifest.fragment_locations
+          ~validate:false
       in
       [ Update'.delete (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id:old_object_id);
         Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) (-1L); ]
@@ -1499,6 +1507,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           kv
           ~k ~m
           manifest.fragment_locations
+          ~validate:true
       in
       [ Update'.set (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id) "";
         Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) 1L; ]
@@ -1860,12 +1869,14 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           kv
           ~k ~m
           manifest_old.fragment_locations
+          ~validate:false
       in
       let fragment_count_updated, max_disks_per_node_updated =
         get_min_fragment_count_and_max_disks_per_node
           kv
           ~k ~m
           updated_manifest.fragment_locations
+          ~validate:true
       in
       if fragment_count_old     <> fragment_count_updated ||
          max_disks_per_node_old <> max_disks_per_node_updated

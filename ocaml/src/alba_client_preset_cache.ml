@@ -23,6 +23,7 @@ let propagate_preset
       (mgr_access : Albamgr_client.client)
       (nsm_host_access : Nsm_host_access.nsm_host_access)
       ~preset_name =
+  Lwt_log.info_f "Alba_client_preset_cache.propagate_preset %S" preset_name >>= fun () ->
   mgr_access # get_preset2 ~preset_name >>= function
   | None ->
      (* preset was deleted in the mean time *)
