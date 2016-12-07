@@ -642,7 +642,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                    Update.Set(Keys.Preset.default, preset_name);
                    Update.Set(Keys.Preset.prefix ^ preset_name,
                               serialize
-                                Preset.to_buffer
+                                (Preset.to_buffer ~version:2)
                                 Preset._DEFAULT); ]) >>= fun _ ->
          Lwt.return ())
         (function
@@ -1705,7 +1705,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
       return_upds
         [ Update.Assert (preset_key, None);
-          Update.Set (preset_key, serialize Preset.to_buffer preset); ]
+          Update.Set (preset_key, serialize (Preset.to_buffer ~version:2) preset); ]
 
     | DeletePreset -> fun preset_name ->
       let current_default = db # get Keys.Preset.default in
@@ -1796,7 +1796,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                                              ~namespace_id)
                                         namespace_ids));
               Update.Assert (preset_key, Some preset_v);
-              Update.Set (preset_key, serialize Preset.to_buffer preset') ];
+              Update.Set (preset_key, serialize (Preset.to_buffer ~version:2) preset') ];
             add_namespace_osds_upds ])
     | UpdatePreset ->
       fun (preset_name, preset_update) ->
@@ -1818,7 +1818,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         (Update.Assert (preset_key, Some preset_v)
          :: Update.Set (preset_key, serialize
                                       (Llio.pair_to
-                                         Preset.to_buffer
+                                         (Preset.to_buffer ~version:2)
                                          Llio.int64_to)
                                       (preset', version'))
          :: propagate_preset_version preset_name version')

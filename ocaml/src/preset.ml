@@ -134,23 +134,30 @@ let is_valid t =
 
 type name = string [@@deriving show]
 
-let to_buffer buf t =
-  let ser_version = 1 in Llio.int8_to buf ser_version;
-                         Encoding_scheme.w_to_buffer buf t.w;
-                         Llio.list_to
-                           Policy.to_buffer
-                           buf
-                           t.policies;
-                         Llio.int_to buf t.fragment_size;
-                         osds_to_buffer buf t.osds;
-                         Alba_compression.Compression.output buf t.compression;
-                         object_checksum_to_buffer buf t.object_checksum;
-                         Checksum.Checksum.Algo.to_buffer buf t.fragment_checksum_algo;
-                         Encryption.Encryption.to_buffer buf t.fragment_encryption
+let _to_buffer buf t =
+  Encoding_scheme.w_to_buffer buf t.w;
+  Llio.list_to
+    Policy.to_buffer
+    buf
+    t.policies;
+  Llio.int_to buf t.fragment_size;
+  osds_to_buffer buf t.osds;
+  Alba_compression.Compression.output buf t.compression;
+  object_checksum_to_buffer buf t.object_checksum;
+  Checksum.Checksum.Algo.to_buffer buf t.fragment_checksum_algo;
+  Encryption.Encryption.to_buffer buf t.fragment_encryption
 
-let from_buffer buf =
-  let ser_version = Llio.int8_from buf in
-  assert (ser_version = 1);
+let to_buffer ~version buf t =
+  Llio.int8_to buf version;
+  match version with
+  | 1 -> _to_buffer buf t
+  | 2 ->
+     let s = serialize _to_buffer t in
+     Llio.string_to buf s
+  | k ->
+     assert false
+
+let _from_buffer buf =
   let w = Encoding_scheme.w_from_buffer buf in
   let policies =
     Llio.list_from
@@ -167,6 +174,15 @@ let from_buffer buf =
     object_checksum; fragment_checksum_algo;
     fragment_encryption; }
 
+let from_buffer buf =
+  let version = Llio.int8_from buf in
+  match version with
+  | 1 -> _from_buffer buf
+  | 2 ->
+     let s = Llio.string_from buf in
+     deserialize _from_buffer s
+  | k ->
+     raise_bad_tag "Preset" k
 
 let _DEFAULT = {
     policies = [(5, 4, 8, 3); (2, 2, 3, 4);];

@@ -2104,7 +2104,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           Update'.set Keys.preset_version
                       (serialize Llio.int64_to version);
           Update'.set Keys.preset
-                      (serialize Preset.to_buffer preset); ],
+                      (serialize (Preset.to_buffer ~version:2) preset); ],
         ()
       end
     else

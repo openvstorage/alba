@@ -967,7 +967,7 @@ module Protocol = struct
       counted_list_more_from
         (Llio.tuple5_from
            Llio.string_from
-           Preset.from_buffer   (* TODO new preset serialization? zodat preset formaat extendable wordt... *)
+           Preset.from_buffer
            Llio.int64_from
            Llio.bool_from
            Llio.bool_from
@@ -1075,14 +1075,14 @@ module Protocol = struct
       counted_list_more_to
         (Llio.tuple4_to
            Llio.string_to
-           Preset.to_buffer
+           (Preset.to_buffer ~version:1)
            Llio.bool_to
            Llio.bool_to)
     | ListPresets2 ->
       counted_list_more_to
         (Llio.tuple5_to
            Llio.string_to
-           Preset.to_buffer
+           (Preset.to_buffer ~version:2)
            Llio.int64_to
            Llio.bool_to
            Llio.bool_to
@@ -1250,7 +1250,7 @@ module Protocol = struct
     | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
     | MarkWorkCompleted -> x_int64_to
-    | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
+    | CreatePreset -> Llio.pair_to Llio.string_to (Preset.to_buffer ~version:1)
     | DeletePreset -> Llio.string_to
     | SetDefaultPreset -> Llio.string_to
     | AddOsdsToPreset ->

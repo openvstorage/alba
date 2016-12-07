@@ -266,7 +266,7 @@ module Protocol = struct
            (Llio.list_to Update.to_buffer)
       | UpdatePreset ->
          Llio.pair_to
-           Preset.to_buffer
+           (Preset.to_buffer ~version:2)
            Llio.int64_to
       | UpdateObject2 ->
          Llio.tuple5_to
