@@ -1075,6 +1075,21 @@ let check_fragment_osd_spread manifest =
 
 module Update' = Key_value_store.Update
 
+module Preset_cache =
+  struct
+    let t = Hashtbl.create 3
+    let get ~namespace_id ~version =
+      match Hashtbl.find t namespace_id with
+      | exception Not_found -> None
+      | (version', preset) ->
+         if version' = version
+         then Some preset
+         else None
+
+    let store ~namespace_id ~version ~preset =
+      Hashtbl.replace t namespace_id (version, preset)
+  end
+
 module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
   module EKV = Read_store_extensions(KV)
@@ -1145,11 +1160,19 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          manifest.Manifest.fragment_locations)
 
   let get_preset kv =
-    (* TODO cache per namespace
-     * validate dat preset version is still the same
-     *)
-    KV.get kv Keys.preset
-    |> Option.map (deserialize Preset.from_buffer)
+    match KV.get kv Keys.preset_version with
+    | None -> None
+    | Some version ->
+       match Preset_cache.get ~namespace_id:C.namespace_id ~version with
+       | None ->
+          let preset =
+            KV.get_exn kv Keys.preset
+            |> deserialize Preset.from_buffer
+          in
+          Preset_cache.store ~namespace_id:C.namespace_id ~version ~preset;
+          Some preset
+       | Some preset ->
+          Some preset
 
   let get_min_fragment_count_and_max_disks_per_node kv ~k ~m locations ~validate =
     let get_bla_per_chunk chunk_location =
