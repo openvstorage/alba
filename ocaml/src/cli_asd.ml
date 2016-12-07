@@ -26,7 +26,7 @@ open Slice
 open Asd_protocol
 open Asd_config
 
-let asd_start cfg_url slow log_sinks =
+let asd_start cfg_url log_sinks =
 
   let t () =
     Asd_config.retrieve_cfg cfg_url >>= function
@@ -135,7 +135,7 @@ let asd_start cfg_url slow log_sinks =
                             ~transport ~rora_transport
                             ~rora_ips
                             ~rora_num_cores ~rora_queue_depth
-                            home ~asd_id ~node_id ~slow
+                            home ~asd_id ~node_id
                             ~fsync
                             ~limit
                             ~capacity
@@ -162,9 +162,6 @@ let asd_start_cmd =
   let asd_start_t =
     Term.(pure asd_start
           $ cfg_url
-          $ Arg.(value
-                 & flag
-                 & info ["slow"] ~doc:"artifically slow down an asd (only for testing purposes!)")
           $ log_sinks)
   in
   let info =
@@ -193,9 +190,9 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
        conn_info.tls_config
        Tcp_keepalive2.default
        buffer_pool
-       (Alba_osd.make_client ~albamgr_connection_pool_size:10)
+       (Alba_osd.make_client ~albamgr_connection_pool_size:10 ~upload_slack:0.2)
        k
-       ~pool_size:1
+     ~pool_size:1
      >>= fun (_, client, closer) ->
      Lwt.finalize
        (fun () -> f client)
@@ -209,12 +206,18 @@ let run_with_osd_client' conn_info osd_id verbose f =
 let _maybe_unescape unescape key =
   if unescape then Scanf.unescaped key else key
 
-let asd_set hosts port transport tls_config asd_id (verbose:bool) key value unescape =
+
+
+
+let asd_set hosts port transport tls_config
+            asd_id to_json (verbose:bool)
+            key value unescape
+  =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   let key' = _maybe_unescape unescape key in
   let value' = _maybe_unescape unescape value in
   run_with_asd_client'
-    ~conn_info asd_id ~to_json:false ~verbose
+    ~conn_info asd_id ~to_json ~verbose
     (fun client ->
      let checksum = Checksum.NoChecksum in
      Lwt_log.warning "checksum option will be `NoChecksum`"
@@ -225,6 +228,7 @@ let asd_set hosts port transport tls_config asd_id (verbose:bool) key value unes
                  (Osd.Blob.Bytes value')
                  checksum true
              ]
+     >>= unit_result to_json
     )
 
 let asd_set_cmd =
@@ -239,7 +243,7 @@ let asd_set_cmd =
                         $ hosts $ (port 8_000)
                         $ transport
                         $ tls_config
-                        $ lido $ verbose
+                        $ lido $ to_json $ verbose
                         $ key $ value
                         $ unescape
                   ) in
@@ -247,13 +251,15 @@ let asd_set_cmd =
     let doc = "perform a set on a remote ASD" in
     Term.info "asd-set" ~doc in asd_set_t, info
 
-let asd_get_version hosts port transport tls_config asd_id verbose =
+let asd_get_version
+      hosts port transport tls_config asd_id to_json verbose
+  =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   run_with_asd_client'
-    ~conn_info asd_id ~to_json:false ~verbose
+    ~conn_info asd_id ~to_json ~verbose
     (fun client ->
-     client # get_version () >>= fun (major,minor,patch, hash) ->
-     Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
+      client # get_version ()
+      >>= version_result to_json
     )
 
 let asd_get_version_cmd =
@@ -262,7 +268,7 @@ let asd_get_version_cmd =
           $ hosts $ (port 8_000)
           $ transport
           $ tls_config
-          $ lido $ verbose
+          $ lido $ to_json $ verbose
     ) in
   let info = Term.info "asd-get-version"
                        ~doc:"get remote version"
@@ -300,17 +306,44 @@ let asd_multi_delete_cmd =
     Term.info "asd-multi-delete" ~doc
   in asd_multi_delete_t, info
 
-let asd_multi_get hosts port transport tls_config asd_id (keys:string list) verbose unescape =
+let asd_multi_get hosts port transport tls_config asd_id (keys:string list)
+                  to_json verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   let keys' = List.map (_maybe_unescape unescape) keys in
   run_with_asd_client'
-    ~conn_info asd_id ~to_json:false ~verbose
+    ~conn_info asd_id ~to_json ~verbose
     (fun client ->
 
      client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys')
      >>= fun values ->
-     print_endline ([%show: (Lwt_bytes2.Lwt_bytes.t * Checksum.t) option list] values);
-     Lwt.return ())
+     let zipped =
+       List.map2
+         (fun k vo ->
+
+           let vj =
+             match vo with
+             | None -> `Null
+             | Some (vb,crc) ->
+                let vs = Lwt_bytes.to_string vb in
+                `List [`String vs;
+                       Alba_json.Checksum.to_yojson crc
+                      ]
+           in
+           k, vj
+         )
+         keys' values
+     in
+     if to_json
+     then
+       print_result
+         zipped
+         (fun x -> `Assoc x)
+     else
+       Lwt_io.printl
+         ([%show: (Lwt_bytes2.Lwt_bytes.t * Checksum.t) option list] values)
+     >>= fun () ->
+       Lwt.return ()
+    )
 
 let asd_multi_get_cmd =
   let doc = "$(docv)" in
@@ -322,7 +355,9 @@ let asd_multi_get_cmd =
           $ hosts $ (port 8_000) $ transport
           $ tls_config
           $ lido
-          $ keys $ verbose $ unescape)
+          $ keys
+          $ to_json $ verbose
+          $ unescape)
   in
   let info =
     let doc = "perform a multi get on a remote ASD" in
@@ -330,12 +365,17 @@ let asd_multi_get_cmd =
   in asd_multi_get_t, info
 
 
-let asd_delete hosts port transport tls_config asd_id key verbose unescape =
+
+let asd_delete hosts port transport tls_config asd_id key
+               to_json verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   let key' = _maybe_unescape unescape key in
   run_with_asd_client'
-    ~conn_info asd_id ~to_json:false ~verbose
-    (fun client -> client # delete ~prio:Osd.High (Slice.wrap_string key'))
+    ~conn_info asd_id ~to_json ~verbose
+    (fun client ->
+      client # delete ~prio:Osd.High (Slice.wrap_string key')
+      >>= unit_result to_json
+    )
 
 let asd_delete_cmd =
   let doc = "$(docv)" in
@@ -347,7 +387,8 @@ let asd_delete_cmd =
           $ hosts $ (port 8_000) $ transport
           $ tls_config
           $ lido
-          $ key $ verbose $ unescape)
+          $ key
+          $ to_json $ verbose $ unescape)
   in
   let info =
     let doc = "perform a delete on a remote ASD" in
@@ -824,6 +865,39 @@ let asd_set_full_cmd =
   in
   asd_set_full_t, info
 
+let asd_set_slowness hosts port tls_config asd_id
+                     slowness
+                     verbose
+  =
+  let conn_info = Networking2.make_conn_info hosts port tls_config in
+  run_with_asd_client'
+    ~conn_info asd_id ~to_json:false ~verbose
+    (fun client -> client # set_slowness slowness)
+
+let asd_set_slowness_cmd =
+  let doc = "$(docv) adds fixed + random(variable) delay to each request" in
+  let slow =
+    Arg.(value
+         & pos 0 (some (pair float float)) None
+         & info [] ~docv:"(fixed,variable)" ~doc
+    )
+  in
+  let asd_set_slowness_t =
+    Term.(pure asd_set_slowness
+          $ hosts $ (port 8_000) $ tls_config
+          $ lido
+          $ slow
+          $ verbose
+    )
+  in
+  let info =
+    let doc =
+      "slow down the asd with a delay on each request"
+    in
+    Term.info "asd-set-slowness" ~doc
+  in
+  asd_set_slowness_t, info
+
 let asd_capabilities hosts port tls_config asd_id verbose =
   let conn_info = Networking2.make_conn_info hosts port tls_config in
   run_with_asd_client'
@@ -919,6 +993,7 @@ let cmds = [
   asd_statistics_cmd;
   asd_multistatistics_cmd;
   asd_set_full_cmd;
+  asd_set_slowness_cmd;
   asd_get_version_cmd;
   asd_disk_usage_cmd;
   asd_capabilities_cmd;

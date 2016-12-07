@@ -106,7 +106,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
                   Error.lwt_fail x
              )
          end
-       else if Int64.(next_id =: succ msg_id)
+       else if Int64.(next_id >: msg_id)
        then Lwt.return ()
        else
          begin

@@ -41,8 +41,16 @@ let test_with_alba_client
         ~release_resources:true
         ~tcp_keepalive:Tcp_keepalive2.default
         ~populate_osds_info_cache:true
+        ~upload_slack:0.001
         ?read_preference
-        f
+        (fun client ->
+          Lwt.catch
+          (fun () -> f client)
+          (fun exn ->
+            (* get a stack trace *)
+            Lwt_log.info ~exn "test exits" >>= fun () ->
+            Lwt.fail exn)
+        )
     end
   in
   Lwt_main.run t
@@ -60,6 +68,24 @@ let _wait_for_osds ?(cnt=11) (alba_client:Alba_client.alba_client) namespace_id 
     else Lwt_unix.sleep 0.1 >>= fun () -> loop ()
   in
   loop ()
+
+
+let wait_for_lazy_write alba_client namespace_id manifest =
+  let open Nsm_model in
+  let has_holes = Manifest.has_holes manifest in
+  begin
+    if has_holes
+    then
+      Lwt_log.debug "lazy_write_out interference" >>= fun ()->
+      Lwt_unix.sleep 1.0 >>= fun () ->
+      alba_client # get_object_manifest'
+                  ~namespace_id ~object_name:manifest.Manifest.name
+                  ~consistent_read:true ~should_cache:false
+      >>= fun (_,mfo) ->
+      Lwt.return (Option.get_some mfo)
+    else
+      Lwt.return manifest
+  end
 
 let delete_fragment
       (alba_client:Alba_client.alba_client)
@@ -115,7 +141,7 @@ let maybe_delete_fragment
            client # update_manifest
              ~object_name:manifest.Manifest.name
              ~object_id
-             [ (chunk_id, fragment_id, None); ]
+             [ (chunk_id, fragment_id, None, None); ]
              ~gc_epoch ~version_id:(manifest.Manifest.version_id + 1))
     else
       Lwt.return ()
@@ -219,6 +245,7 @@ let test_upload_download () =
 
          let open Nsm_model in
          alba_client # upload_object_from_bytes
+         ~epilogue_delay:None
            ~namespace
            ~object_name
            ~object_data
@@ -286,6 +313,7 @@ let test_delete_namespace () =
            (fun name ->
               let open Nsm_model in
               client # upload_object_from_bytes
+                     ~epilogue_delay: None
                 ~namespace
                 ~object_name:name
                 ~object_data:(Lwt_bytes.of_string name)
@@ -393,6 +421,7 @@ let test_clean_obsolete_keys () =
          let open Nsm_model in
          let object_name = "my object" in
          client # upload_object_from_bytes
+           ~epilogue_delay:None
            ~namespace
            ~object_name
            ~object_data:(Lwt_bytes.of_string "bla")
@@ -530,6 +559,7 @@ let test_create_namespaces () =
              let object_name = "bla" in
              let open Nsm_model in
              client # upload_object_from_bytes
+               ~epilogue_delay:None
                ~namespace
                ~object_name
                ~object_data:(Lwt_bytes.of_string "fds")
@@ -572,6 +602,7 @@ let test_partial_download () =
        let object_data = "jfsdaovovvovo" in
        let object_data_ba = Lwt_bytes.of_string object_data in
        client # upload_object_from_bytes
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data:object_data_ba
@@ -590,6 +621,7 @@ let test_partial_download () =
        assert (object_data = object_data');
 
        client # upload_object_from_file
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~input_file:"bin/kinetic-all-0.8.0.4-SNAPSHOT-jar-with-dependencies.jar"
@@ -706,12 +738,14 @@ let test_partial_download_bad_fragment () =
      let object_name = test_name in
      let object_data = Lwt_bytes.create 2_000_000 in
      alba_client # upload_object_from_bytes
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data
                  ~checksum_o:None
                  ~allow_overwrite:Nsm_model.NoPrevious >>= fun (mf,_, _, _) ->
 
+     wait_for_lazy_write alba_client namespace_id mf >>= fun mf ->
      (* remove the first fragment's location from the manifest
       * so it can't be used in download-object-slices *)
      alba_client # nsm_host_access # get_gc_epoch ~namespace_id
@@ -721,7 +755,8 @@ let test_partial_download_bad_fragment () =
                   client # update_manifest
                          ~object_name
                          ~object_id:mf.Nsm_model.Manifest.object_id
-                         [ 0, 0, None; 0, 1, None; ]
+                         [ 0, 0, None, None;
+                           0, 1, None, None]
                          ~gc_epoch
                          ~version_id:1) >>= fun () ->
 
@@ -806,6 +841,7 @@ let test_encryption () =
        let object_name = "object_name" in
        let object_data = "fsafaivvio;zjviz;" in
        alba_client # upload_object_from_bytes
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data:(Lwt_bytes.of_bytes object_data)
@@ -826,6 +862,7 @@ let test_encryption () =
        let object_name' = "empty" in
        let object_data' = "" in
        alba_client # upload_object_from_bytes
+         ~epilogue_delay:None
          ~namespace
          ~object_name:object_name'
          ~object_data:(Lwt_bytes.of_bytes object_data')
@@ -982,6 +1019,7 @@ let test_change_osd_ip_port () =
             client # create_namespace ~preset_name:(Some test_name) ~namespace () >>= fun _ ->
 
             client # get_base_client # upload_object_from_string
+              ~epilogue_delay:None
               ~namespace
               ~object_name
               ~object_data:"fsdajivivivisjivo"
@@ -1095,6 +1133,7 @@ let test_repair_by_policy () =
 
        let object_name = test_name in
        alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data:"dfjsdl cjivo jiovppp"
@@ -1195,6 +1234,7 @@ let test_missing_corrupted_fragment () =
        let open Nsm_model in
 
        alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data
@@ -1252,6 +1292,7 @@ let test_full_asd () =
      let object_name = "the_object"
      and object_data = Lwt_bytes.of_string "that'll do" in
      alba_client # upload_object_from_bytes
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data
@@ -1405,6 +1446,7 @@ let test_disk_churn () =
          let open Nsm_model in
 
          alba_client # get_base_client # upload_object_from_string
+           ~epilogue_delay:None
            ~namespace
            ~object_name
            ~object_data
@@ -1598,6 +1640,7 @@ let test_replication () =
          let object_data = "a" in
 
          client # get_base_client # upload_object_from_string
+           ~epilogue_delay:None
            ~namespace
            ~object_name
            ~object_data
@@ -1696,6 +1739,7 @@ let test_striping () =
        let object_data = test_name in
 
        client # get_base_client # upload_object_from_string
+              ~epilogue_delay:None
               ~namespace
               ~object_name
               ~object_data
@@ -1775,6 +1819,7 @@ let test_invalidate_deleted_namespace () =
          ~release_resources:true
          ~tcp_keepalive:Tcp_keepalive2.default
          ~populate_osds_info_cache:true
+         ~upload_slack:0.2
          (fun alba_client2 ->
 
             (* alba_client1 is used to manipulate namespaces
@@ -1788,6 +1833,7 @@ let test_invalidate_deleted_namespace () =
 
             let do_upload (client : Alba_client.alba_client) =
               client # get_base_client # upload_object_from_string
+                ~epilogue_delay:None
                 ~namespace
                 ~object_name
                 ~object_data
@@ -1918,6 +1964,7 @@ let test_update_policies () =
 
      let object_name = "1" in
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data:"a"
@@ -1933,6 +1980,7 @@ let test_update_policies () =
      alba_client # get_base_client # get_preset_cache # refresh ~preset_name >>= fun () ->
 
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name:"2"
                  ~object_data:"a"
@@ -1981,6 +2029,7 @@ let test_stale_manifest_download () =
      let object_length = 932 in
      let object_data = Bytes.create object_length in
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data
@@ -2018,6 +2067,7 @@ let test_stale_manifest_download () =
          ~release_resources:true
          ~tcp_keepalive:Tcp_keepalive2.default
          ~populate_osds_info_cache:true
+         ~upload_slack:0.2
          (fun alba_client2 ->
           let maintenance_client =
             new Maintenance.client (alba_client2 # get_base_client) in
@@ -2064,6 +2114,7 @@ let test_object_sizes () =
         let object_name = string_of_int i in
         let object_data = Bytes.create i in
         client # get_base_client # upload_object_from_string
+               ~epilogue_delay:None
                ~namespace
                ~object_name
                ~object_data
@@ -2103,6 +2154,7 @@ let test_retry_download () =
        Lwt_bytes2.Lwt_bytes.create (2*2*128)
      in
      client # upload_object_from_bytes
+            ~epilogue_delay:None
             ~namespace
             ~object_name
             ~object_data
@@ -2177,6 +2229,7 @@ let test_list_objects_by_id () =
 
      let open Nsm_model in
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name:""
                  ~object_data:""
@@ -2308,14 +2361,109 @@ let test_preset_validation () =
       in
 
       test_update_manifest
-        [ 0, 0, Some 7L ]
+        [ 0, 0, Some 7L, None ]
         Nsm_model.Err.Invalid_bucket >>= fun () ->
 
       test_update_manifest
-        [ 0, 0, Some 1L ]
+        [ 0, 0, Some 1L, None ]
         Nsm_model.Err.Invalid_fragment_spread >>= fun () ->
 
-      Lwt.return ()
+      Lwt.return ())
+
+
+let test_upload_epilogue () =
+  test_with_alba_client
+    (fun alba_client ->
+      let open Nsm_model in
+      let test_name = "test_upload_epilogue" in
+      let namespace = test_name in
+      let preset_name = test_name in
+
+      let scenario () =
+        let preset' = Preset.({ _DEFAULT with policies = [( 1,11, 1, 4)]; }) in
+        alba_client # mgr_access # create_preset
+                    preset_name preset' >>= fun () ->
+
+        alba_client # create_namespace
+                    ~preset_name:(Some preset_name)
+                    ~namespace ()
+
+        >>= fun namespace_id ->
+        alba_client # with_osd
+                    ~osd_id:0L
+                    (fun osd ->
+                      osd # set_slowness (Some(1.0,0.5))
+                    )
+        >>= fun () ->
+
+        let object_name = "test_upload_epilogue_object" in
+        let object_data =
+          Lwt_bytes.of_string "this test has nothing to do with the B3 Bomber."
+        in
+        alba_client # upload_object_from_bytes
+                    ~epilogue_delay:(Some 3.0)
+                    ~namespace
+                    ~object_name
+                    ~object_data
+                    ~checksum_o:None
+                    ~allow_overwrite:NoPrevious
+        >>= fun (mf,_,_,_) ->
+        Lwt_io.printlf "manifest:%s" (Manifest.show mf) >>= fun () ->
+        let holes = Manifest.has_holes mf in
+        OUnit.assert_bool "has_holes" holes;
+        Lwt_unix.sleep 4.0 >>= fun () -> (* should be plenty *)
+        alba_client # with_nsm_client' ~namespace_id
+                    (fun nsm_client ->
+                      nsm_client # get_object_manifest_by_id
+                                 mf.Manifest.object_id
+                      >>= fun mf'o ->
+                      let mf' = Option.get_some mf'o in
+                      Lwt.return mf'
+                    )
+        >>= fun mf2 ->
+        Lwt_io.printlf "manifest2:%s" (Manifest.show mf2) >>= fun () ->
+        let open Manifest in
+        let side_by_side =
+          Layout.combine mf.fragment_locations mf2.fragment_locations
+        in
+        let _r =
+          Layout.map
+            (fun ((o0,v0), (o1,v1)) ->
+              let () =
+                match v0,v1 with
+                | 0,0 -> ()
+                | 0,1 -> ()
+                | _   ->
+                   failwith (Printf.sprintf "versions did not match:%i %i"
+                                            v0 v1)
+              in
+              match o0,o1 with
+              | None,   None   -> failwith "None,None"
+              | Some x, Some y ->
+                 OUnit.assert_equal ~msg:"osd_id" x y ~printer:Int64.to_string
+              | Some _, None   -> failwith "Some,None: we lost a fragment?"
+              | None  , Some x -> ()
+            ) side_by_side
+        in
+        let () =
+          OUnit.assert_equal
+            ~msg:"fragment_sizes differ"
+            ~printer:[%show : int Layout.t ]
+            mf.fragment_packed_sizes mf2.fragment_packed_sizes
+        in
+        Lwt_log.debug_f "%s: success" test_name >>= fun () ->
+        Lwt.return_unit
+      in
+      Lwt.finalize
+        scenario
+        (fun () ->
+          alba_client # with_osd
+                      ~osd_id:0L
+                      (fun osd ->
+                        osd # set_slowness None
+                      )
+        )
+
     )
 
 
@@ -2348,4 +2496,5 @@ let suite = "alba_test" >:::[
     "test_retry_download" >:: test_retry_download;
     "test_list_objects_by_id" >:: test_list_objects_by_id;
     "test_preset_validation" >:: test_preset_validation;
+    "test_upload_epilogue" >:: test_upload_epilogue;
   ]

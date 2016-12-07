@@ -39,6 +39,10 @@ let upload_packed_fragment_data
       ~osd_id
   =
   let open Osd_keys in
+  Lwt_log.debug_f
+    "upload_packed_fragment_data (%i,%i) to osd:%Li"
+    chunk_id fragment_id osd_id
+  >>= fun () ->
   let set_data =
     Osd.Update.set
       (AlbaInstance.fragment
@@ -95,7 +99,7 @@ let upload_chunk
       ~namespace_id
       ~object_id ~object_name
       ~chunk ~chunk_id ~chunk_size
-      ~k ~m ~w'
+      ~k ~m ~w' ~min_fragment_count
       ~compression ~encryption
       ~fragment_checksum_algo
       ~version_id ~gc_epoch
@@ -103,6 +107,7 @@ let upload_chunk
       ~osds
       ~(fragment_cache : Fragment_cache.cache)
       ~cache_on_write
+      ~upload_slack
   =
 
   let t0 = Unix.gettimeofday () in
@@ -136,6 +141,9 @@ let upload_chunk
       Lwt.return []
   in
 
+  let __shared_packed_fragments = ref (k+m) in
+  let get_checksum (_, _, (_, _, _, checksum)) = checksum in
+
   Lwt.finalize
     (fun () ->
      let packed_fragment_sizes =
@@ -144,11 +152,7 @@ let upload_chunk
           Lwt_bytes.length packed_fragment)
          fragments_with_id
      in
-     let fragment_checksums =
-       List.map
-         (fun (_, _, (_, _, _, checksum)) -> checksum)
-         fragments_with_id
-     in
+     let fragment_checksums = List.map get_checksum fragments_with_id in
      RecoveryInfo.make
        object_name
        object_id
@@ -158,67 +162,84 @@ let upload_chunk
        packed_fragment_sizes
        fragment_checksums
      >>= fun recovery_info_slice ->
-
-
-     Lwt_list.map_p
-       (fun ((fragment_id,
+     let upload_fragment_and_finalize
+       ((fragment_id,
               fragment,
               (packed_fragment,
                t_compress_encrypt,
                t_hash,
                checksum)),
-             osd_id_o) ->
-        with_timing_lwt
-          (fun () ->
-           match osd_id_o with
-           | None -> Lwt.return ()
-           | Some osd_id ->
-              upload_packed_fragment_data
-                osd_access
-                ~namespace_id
-                ~osd_id
-                ~object_id ~version_id
-                ~chunk_id ~fragment_id
-                ~packed_fragment ~checksum
-                ~gc_epoch
-                ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
-        >>= fun (t_store, x) ->
+        osd_id_o)
+       =
+       Lwt.finalize
+        (fun () ->
+          with_timing_lwt
+            (fun () ->
+              match osd_id_o with
+              | None -> Lwt.return ()
+              | Some osd_id ->
+                 upload_packed_fragment_data
+                   osd_access
+                   ~namespace_id
+                   ~osd_id
+                   ~object_id ~version_id
+                   ~chunk_id ~fragment_id
+                   ~packed_fragment ~checksum
+                   ~gc_epoch
+                   ~recovery_info_blob:(Asd_protocol.Blob.Slice recovery_info_slice))
+          >>= fun (t_store, ()) ->
 
-        let t_fragment = Statistics.({
-                                        size_orig = Bigstring_slice.length fragment;
-                                        size_final = Lwt_bytes.length packed_fragment;
-                                        compress_encrypt = t_compress_encrypt;
-                                        hash = t_hash;
-                                        osd_id_o;
-                                        store_osd = t_store;
-                                        total = (Unix.gettimeofday () -. t0)
-                                      }) in
+          let t_fragment =
+            let open Statistics in
+            {
+              size_orig = Bigstring_slice.length fragment;
+              size_final = Lwt_bytes.length packed_fragment;
+              compress_encrypt = t_compress_encrypt;
+              hash = t_hash;
+              osd_id_o;
+              store_osd = t_store;
+              total = (Unix.gettimeofday () -. t0)
+            }
+          in
 
-        let res = osd_id_o, checksum in
-
-        Lwt.return (t_fragment, res)
-       )
+          let res = osd_id_o, checksum in
+          Lwt_log.debug_f "fragment_uploaded (%i,%i) to %s"
+                          chunk_id fragment_id ([%show : int64 option] osd_id_o)
+          >>= fun ()->
+          Lwt.return (t_fragment, res)
+        )
+        (fun () ->
+          if k <> 1
+          then Lwt_bytes.unsafe_destroy packed_fragment
+          else
+            begin
+              decr __shared_packed_fragments;
+              if !__shared_packed_fragments = 0
+              then Lwt_bytes.unsafe_destroy packed_fragment
+            end;
+          Lwt.return_unit
+        )
+     in
+     let test = function | (_,(Some _,_)) -> true | _ -> false in
+     Lwt_extra2.first_n
+       ~count:min_fragment_count
+       ~slack:upload_slack
+       ~test
+       upload_fragment_and_finalize
        (List.combine fragments_with_id osds)
-     >>= fun r ->
-     t_add_to_fragment_cache
-     >>= fun mfs ->
-     Lwt.return (r, mfs)
+     >>= fun (success, make_results)  ->
+     if not success
+     then Lwt.fail_with (Printf.sprintf "chunk %i failed" chunk_id)
+     else
+       begin
+         t_add_to_fragment_cache >>= fun mfs ->
+         Lwt.return (make_results, mfs, fragment_checksums, packed_fragment_sizes)
+       end
     )
     (fun () ->
-     t_add_to_fragment_cache >>= fun _ ->
-     let () =
-       if k = 1
-       then
-         Lwt_bytes.unsafe_destroy
-           (List.hd_exn fragments_with_id
-            |> fun (_, _, (f, _, _, _)) -> f)
-       else
-         List.iter
-           (fun (_, _, (f, _, _, _)) ->
-            Lwt_bytes.unsafe_destroy f)
-           fragments_with_id
-     in
-     Lwt.return_unit)
+      t_add_to_fragment_cache >>= fun _ ->
+      Lwt.return_unit
+    )
 
 let upload_object''
       (nsm_host_access : Nsm_host_access.nsm_host_access)
@@ -233,6 +254,7 @@ let upload_object''
       ~(object_id_hint: string option)
       ~fragment_cache
       ~cache_on_write
+      ~upload_slack
   =
 
   (* TODO
@@ -352,6 +374,7 @@ let upload_object''
   let fold_chunks chunk =
 
     let rec inner
+              acc_fragment_ts
               acc_chunk_sizes
               acc_fragments_info
               acc_mfs
@@ -419,18 +442,62 @@ let upload_object''
            ~object_id ~object_name
            ~chunk:chunk' ~chunk_size:chunk_size_with_padding
            ~chunk_id
-           ~k ~m ~w'
+           ~k ~m ~w' ~min_fragment_count
            ~compression ~encryption ~fragment_checksum_algo
            ~version_id ~gc_epoch
            ~object_info_o
            ~osds:target_osds
            ~fragment_cache
-           ~cache_on_write)
+           ~cache_on_write
+           ~upload_slack:(if has_more then 0.0 else upload_slack)
+        )
         (fun () ->
          Lwt_bytes.unsafe_destroy chunk';
          Lwt.return ())
-      >>= fun (fragment_info, mfs)  ->
-
+      >>= fun (fragment_ts, mfs,
+               fragment_checksums, packed_fragment_sizes)  ->
+      let fragment_states = List.map Lwt.state fragment_ts in
+      let fragment_info =
+        List.map3i
+          (fun i state fragment_checksum packed_fragment_size ->
+            match state with
+            | Lwt.Return (stats,(osd_o,_)) ->
+               Lwt_log.ign_debug_f "i=%i =>%s " i
+                                   (Statistics.show_fragment_upload stats);
+               (stats, (osd_o, fragment_checksum, packed_fragment_size))
+            | Lwt.Fail exn ->
+               Lwt_log.ign_warning_f "fragment upload failed:%s"
+                                     (Printexc.to_string exn);
+               let stats =
+                 Statistics.({
+                                size_orig = 0;
+                                size_final = 0;
+                                compress_encrypt = 0.0;
+                                hash = 0.0;
+                                osd_id_o = None;
+                                store_osd = 0.0;
+                                total = 0.0;
+                 })
+               in
+               let res = (None, fragment_checksum, packed_fragment_size) in
+               (stats, res)
+            | Lwt.Sleep ->
+               (* for now, assume these (will) have failed *)
+               let stats =
+                 Statistics.({
+                                size_orig = 0;
+                                size_final = 0;
+                                compress_encrypt = 0.0;
+                                hash = 0.0;
+                                osd_id_o = None;
+                                store_osd = 0.0;
+                                total = 0.0;
+                 })
+               in
+               let res = (None, fragment_checksum, packed_fragment_size) in
+               (stats, res)
+          ) fragment_states fragment_checksums packed_fragment_sizes
+      in
       let t_fragments, fragment_info = List.split fragment_info in
 
       let acc_chunk_sizes' = (chunk_id, chunk_size_with_padding) :: acc_chunk_sizes in
@@ -445,9 +512,11 @@ let upload_object''
                                  }) in
 
       let chunk_times' = t_chunk :: chunk_times in
+      let acc_fragment_ts' = fragment_ts :: acc_fragment_ts in
       if has_more
       then
         inner
+          acc_fragment_ts'
           acc_chunk_sizes'
           acc_fragments_info'
           acc_mfs'
@@ -456,7 +525,8 @@ let upload_object''
           hash_time'
           (chunk_id + 1)
       else
-        Lwt.return ((List.rev acc_chunk_sizes',
+        Lwt.return ((List.rev acc_fragment_ts',
+                     List.rev acc_chunk_sizes',
                      List.rev acc_fragments_info',
                      acc_mfs'
                     ),
@@ -464,20 +534,21 @@ let upload_object''
                     List.rev chunk_times',
                     hash_time')
     in
-    inner [] [] [] 0 [] 0. (0:Nsm_model.chunk_id) in
+    inner [] [] [] [] 0 [] 0. (0:Nsm_model.chunk_id) in
 
   let chunk = Lwt_bytes.create desired_chunk_size in
   Lwt.finalize
     (fun () -> fold_chunks chunk)
     (fun () -> Lwt_bytes.unsafe_destroy chunk;
                Lwt.return ())
-  >>= fun ((chunk_sizes', fragments_info, chunk_mfs), size, chunk_times, hash_time) ->
+  >>= fun ((fragment_state_layout, chunk_sizes', fragments_info, chunk_mfs),
+           size, chunk_times, hash_time) ->
 
   (* all fragments have been stored
          make a manifest and store it in the namespace manager *)
 
-  let locations, fragment_checksums =
-    Nsm_model.Layout.split fragments_info in
+  let locations, fragment_checksums, fragment_packed_sizes =
+    Nsm_model.Layout.split3 fragments_info in
 
   let chunk_sizes = List.map snd chunk_sizes' in
   let open Nsm_model in
@@ -490,14 +561,6 @@ let upload_object''
             checksum <> object_checksum
        then Error.failwith Error.ChecksumMismatch;
        checksum
-  in
-  let fragment_packed_sizes =
-    List.map
-      (fun (ut : Statistics.chunk_upload) ->
-       List.map
-         (fun ft -> ft.Statistics.size_final)
-         ut.Statistics.fragments)
-      chunk_times
   in
   let fragment_locations =
     Nsm_model.Layout.map
@@ -529,7 +592,8 @@ let upload_object''
                    total = Unix.gettimeofday () -. object_t0;
     })
   in
-  Lwt.return (manifest, chunk_mfs, almost_t_object, gc_epoch)
+  Lwt.return (manifest, chunk_mfs, almost_t_object, gc_epoch,
+              fragment_state_layout)
 
 let cleanup_gc_tags
       (osd_access : Osd_access_type.t)
@@ -577,7 +641,9 @@ let store_manifest
       manifest_cache
       ~namespace_id
       ~allow_overwrite
-      (manifest, chunk_fidmos, almost_t_object, gc_epoch)
+      ~epilogue_delay
+      (manifest, chunk_fidmos, almost_t_object, gc_epoch,
+       fragment_state_layout)
   =
   let object_name = manifest.Nsm_model.Manifest.name in
   let store_manifest () =
@@ -613,9 +679,110 @@ let store_manifest
     manifest_cache
     namespace_id object_name manifest;
 
+  let upload_epilogue () =
+    Lwt_log.debug_f "epilogue for object:%S" object_name >>= fun () ->
+    Lwt.catch
+    (fun () ->
+      begin
+        (match epilogue_delay with
+         | None   -> Lwt.return_unit
+         | Some d ->
+            Lwt_log.debug_f "epilogue_delay: sleeping %f" d >>= fun () ->
+            Lwt_unix.sleep d
+        )
+        >>= fun () ->
+        Lwt_list.map_s
+          (fun fragment_ts ->
+            Lwt_extra2.join_threads_ignore_errors fragment_ts >>= fun () ->
+            let last_states = List.map Lwt.state fragment_ts in
+            let osd_id_os =
+              List.map
+                (function
+                 | Lwt.Return (stats,(osd_id,checksum)) -> osd_id
+                 | _ -> None
+                ) last_states
+            in
+            Lwt.return osd_id_os
+          )
+          fragment_state_layout
+        >>= fun locations ->
+        let side_by_side =
+          let open Nsm_model in
+          Layout.combine locations manifest.Manifest.fragment_locations
+        in
+        let updates =
+          let r = ref [] in
+          List.iteri
+            (fun chunk_id chunk ->
+              List.iteri
+                (fun fragment_id (new_o , (old_o, old_version)) ->
+                  match new_o, old_o with
+                  | None, Some _ -> failwith "new is None ?"
+                  | Some x,Some y -> assert (x=y);
+                  | None, None   -> ()
+
+                  | Some osd_id, None ->
+                     let update = (chunk_id,fragment_id, Some osd_id, None) in
+                     let () = r := update :: !r in ()
+                ) chunk
+            ) side_by_side;
+          !r
+        in
+        if updates = []
+        then Lwt_log.debug_f "epilogue:nothing to do for object:%S" object_name
+        else
+          let open Nsm_model.Manifest in
+          begin
+            nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
+            client # update_manifest
+                   ~object_name
+                   ~object_id:manifest.object_id
+                   updates
+                   ~gc_epoch
+                   ~version_id:0
+            >>= fun () ->
+            Lwt_log.debug_f
+              "epilogue:successfully updated object:%S with updates:%s"
+              object_name
+              ([%show : Nsm_model.Manifest.fragment_update list] updates)
+            >>= fun () ->
+            let manifest' =
+              { manifest with
+                fragment_locations =
+                  Nsm_model.Layout.map_indexed
+                    (fun chunk_id fragment_id ((old_o, _) as old) ->
+                      match old_o with
+                      | None ->
+                         begin
+                           let update =
+                             List.find
+                               (fun (cid,fid,_,_) ->
+                                 cid = chunk_id && fid = fragment_id
+                               ) updates
+                           in
+                           match update with
+                           | Some (_,_,Some osd_id,_) -> (Some osd_id, 0)
+                           | _ -> (None,0)
+                         end
+                      | _ -> old
+
+                    ) manifest.fragment_locations
+              }
+            in
+            ManifestCache.add
+              manifest_cache namespace_id object_name manifest';
+            Lwt.return ()
+          end
+      end)
+
+    (fun exn -> Lwt_log.info ~exn "failure in epilogue")
+  in
+  Lwt.ignore_result (upload_epilogue());
+
   Lwt.return (manifest, chunk_fidmos, t_object, namespace_id)
 
 let upload_object'
+      ~epilogue_delay
       nsm_host_access osd_access
       manifest_cache
       (preset_cache : Alba_client_preset_cache.preset_cache)
@@ -628,6 +795,7 @@ let upload_object'
       ~object_id_hint
       ~fragment_cache
       ~cache_on_write
+      ~upload_slack
   =
 
   let object_t0 = Unix.gettimeofday () in
@@ -645,8 +813,10 @@ let upload_object'
       ~object_id_hint
       ~fragment_cache
       ~cache_on_write
+      ~upload_slack
     >>=
       store_manifest
+        ~epilogue_delay
         nsm_host_access
         osd_access
         manifest_cache

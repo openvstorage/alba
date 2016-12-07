@@ -1,13 +1,14 @@
 {
-    "policies" : [[ 5, 4, 9, 3 ]],
+    "policies" : [[ 5, 4, 8, 3 ], [ 2, 2, 3, 4 ]],
     "fragment_size" : 1048576,
     "osds" : ["all"],
-    "compression" : "none",
+    "compression" : "test",
     "fragment_checksum" : ["crc-32c"],
     "object_checksum" : {
-        "allowed" : [ ["crc-32c"] ],
+        "allowed" : [ ["none"], ["sha-1"], ["crc-32c"] ],
         "default" : ["crc-32c"],
         "verify_upload" : true
     },
-    "fragment_encryption" : [ "none" ]
+
+    "fragment_encryption" : ["none"]
 }

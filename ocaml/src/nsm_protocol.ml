@@ -90,6 +90,15 @@ module Protocol = struct
     | CleanupOsdKeysToBeDeleted : (osd_id, int) update
 
     | ApplySequence : (Assert.t list * Update.t list, unit) update
+    | UpdateObject2 :
+        (object_name * object_id
+         * (chunk_id
+            * fragment_id
+            * osd_id option
+            * (int * Checksum.t) option ) list
+         * GcEpochs.gc_epoch * version,
+         unit
+        ) update
 
     | UpdatePreset : (Preset.t * Preset.version, unit) update
 
@@ -175,6 +184,22 @@ module Protocol = struct
          Llio.pair_from
            Preset.from_buffer
            Llio.int64_from
+      | UpdateObject2 ->
+         Llio.tuple5_from
+           Llio.string_from
+           Llio.string_from
+           (Llio.list_from
+              (Llio.tuple4_from
+                 Llio.int_from
+                 Llio.int_from
+                 (Llio.option_from x_int64_from)
+                 (Llio.option_from
+                    (Llio.pair_from Llio.int_from Checksum.from_buffer)
+                 )
+              )
+           )
+           Llio.int64_from
+           Llio.int_from
 
   let write_query_request : type req res. (req, res) query -> req Llio.serializer
     = function
@@ -243,6 +268,22 @@ module Protocol = struct
          Llio.pair_to
            Preset.to_buffer
            Llio.int64_to
+      | UpdateObject2 ->
+         Llio.tuple5_to
+           Llio.string_to
+           Llio.string_to
+           (Llio.list_to
+              (Llio.tuple4_to
+                 Llio.int_to
+                 Llio.int_to
+                 (Llio.option_to x_int64_to)
+                 (Llio.option_to
+                    (Llio.pair_to Llio.int_to Checksum.to_buffer)
+                 )
+              )
+           )
+           Llio.int64_to
+           Llio.int_to
 
   let write_query_response : type req res. (req, res) query -> res Llio.serializer
     = function
@@ -285,6 +326,7 @@ module Protocol = struct
       | CleanupOsdKeysToBeDeleted -> Llio.int_to
       | ApplySequence -> Llio.unit_to
       | UpdatePreset -> Llio.unit_to
+      | UpdateObject2 -> Llio.unit_to
 
   let read_query_response : type req res. (req, res) query -> res Llio.deserializer
     = function
@@ -327,5 +369,6 @@ module Protocol = struct
       | CleanupOsdKeysToBeDeleted -> Llio.int_from
       | ApplySequence -> Llio.unit_from
       | UpdatePreset -> Llio.unit_from
+      | UpdateObject2 -> Llio.unit_from
 
 end

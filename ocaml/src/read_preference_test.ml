@@ -157,6 +157,7 @@ let test_replication_download () =
                 ~object_data
                 ~checksum_o:None
                 ~allow_overwrite:NoPrevious
+                ~epilogue_delay:None
     >>= fun (mf,_,_,_) ->
     Lwt_io.printlf "mf:%s" (Manifest.show mf) >>= fun () ->
     let rec loop n =
@@ -197,6 +198,7 @@ let test_replication_partial_read () =
                 ~object_data
                 ~checksum_o:None
                 ~allow_overwrite:NoPrevious
+                ~epilogue_delay:None
     >>=fun (mf,_,_,_) ->
     Lwt_io.printlf "mf:%s" (Manifest.show mf) >>= fun () ->
     let rec loop n =

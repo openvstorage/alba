@@ -28,6 +28,7 @@ object
         ~allow_overwrite
         ?(checksum = None) () =
     alba_client # upload_object_from_file
+                ~epilogue_delay:None
                 ~namespace
                 ~object_name ~input_file
                 ~checksum_o:checksum
@@ -68,13 +69,14 @@ end
 let do_scenarios
       albamgr_cfg
       n_clients n
-      file_name power prefix client_file_prefix
+      file_name power prefix client_file_prefix upload_slack
       slice_size namespace
       scenarios =
   let period = period_of_power power in
   Alba_client2.with_client
     ~tcp_keepalive:Tcp_keepalive2.default
     ~populate_osds_info_cache:true
+    ~upload_slack
     albamgr_cfg
     (fun alba_client ->
       let client = new alba_bench_client alba_client in

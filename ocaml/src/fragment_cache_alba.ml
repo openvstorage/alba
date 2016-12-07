@@ -61,6 +61,7 @@ class alba_cache
                                   ~location -> ())
       ~use_fadvise:true
       ~populate_osds_info_cache:true
+      ~upload_slack:1.0
       ()
   in
   let lru_track = ref (fun ~namespace ~object_name -> ()) in
@@ -191,6 +192,7 @@ class alba_cache
            (fun namespace ->
             let object_name = make_object_name ~bid ~name in
             client # upload_object_from_bigstring_slice
+                   ~epilogue_delay:None
                    ~namespace
                    ~object_name
                    ~object_data:blob

@@ -23,13 +23,16 @@ module Compression = struct
     | NoCompression
     | Snappy
     | Bzip2
+    | Test
   [@@deriving show]
 
   let output buf c =
     let t = match c with
       | NoCompression -> 1
       | Snappy -> 2
-      | Bzip2 -> 3 in
+      | Bzip2  -> 3
+      | Test   -> 4
+    in
     Llio.int8_to buf t
 
   let input buf =
@@ -37,6 +40,7 @@ module Compression = struct
     | 1 -> NoCompression
     | 2 -> Snappy
     | 3 -> Bzip2
+    | 4 -> Test
     | k -> raise_bad_tag "Compression" k
 
 end

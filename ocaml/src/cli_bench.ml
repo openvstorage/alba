@@ -89,6 +89,9 @@ let files =
        & opt_all non_dir_file []
        & info ["file"] ~doc:"file to upload, may be specified multiple times")
 
+let upload_slack =
+  let doc = "after a successful upload, wait an extra factor $(docv) for laggards" in
+  Arg.(value & opt float 0.2 & info ["upload-slack"] ~docv:"UPLOAD_SLACK" ~doc)
 let proxy_bench_cmd =
   Term.(pure proxy_bench
         $ host $ port 10000 $ transport
@@ -106,7 +109,7 @@ let proxy_bench_cmd =
 
 let alba_bench alba_cfg_url tls_config
                n_clients n file_name power
-               prefix client_file_prefix
+               prefix client_file_prefix upload_slack
                slice_size namespace
                scenarios robust
   =
@@ -121,7 +124,7 @@ let alba_bench alba_cfg_url tls_config
         ~tls_config
         n_clients n
         file_name power
-        prefix client_file_prefix
+        prefix client_file_prefix upload_slack
         slice_size namespace
         mapped
     )
@@ -136,6 +139,7 @@ let alba_bench_cmd =
         $ power 4
         $ prefix ""
         $ client_file_prefix "0"
+        $ upload_slack
         $ slice_size 4096
         $ namespace 0
         $ scenarios

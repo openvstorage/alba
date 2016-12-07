@@ -542,6 +542,13 @@ end
 module Layout = struct
     type 'a t = 'a list list [@@deriving show]
     let map f t = List.map (List.map f) t
+
+    let map_indexed f t =
+      List.mapi
+        (fun ci c ->
+          List.mapi (fun fi fr -> f ci fi fr) c
+        ) t
+
     let output a_to buf t =
       let ser_version = 1 in Llio.int8_to buf ser_version;
       Llio.list_to (Llio.list_to a_to) buf t
@@ -553,6 +560,8 @@ module Layout = struct
     let combine x_t y_t = List.map2 List.combine x_t y_t
 
     let split xy_t = List.split (List.map List.split xy_t)
+
+    let split3 xyz_t = List.split3 (List.map List.split3 xyz_t)
 
     let congruent x_t y_t =
       let list_ok x y = List.length x = List.length y in
@@ -703,6 +712,20 @@ module Manifest = struct
       (List.flatmap_unordered
          (List.map_filter_rev fst)
          fragment_locations)
+
+  let has_holes t =
+    List.flatten t.fragment_locations
+    |> List.fold_left
+         (fun acc (osd_id_o,_) ->
+           acc || (osd_id_o = None)
+         ) false
+
+  type fragment_update =
+    chunk_id
+    * fragment_id
+    * osd_id option
+    * (int * Checksum.t) option [@@deriving show]
+
 end
 
 module Assert =
@@ -1718,9 +1741,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     in
     mark_keys_deleted kv [ (osd_id, keys); ], cnt
 
-  let update_manifest
+
+  let update_manifest_generic
       kv object_name object_id
-      (new_fragments : (chunk_id * fragment_id * osd_id option) list)
+      (new_fragments : Manifest.fragment_update list)
       gc_epoch
       version_id
     =
@@ -1732,7 +1756,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     in
     let fragments = Hashtbl.create 3 in
     List.iter
-      (fun (chunk_id, fragment_id, osd_id_o) ->
+      (fun (chunk_id, fragment_id, osd_id_o, maybe_changed) ->
        let key = chunk_id, fragment_id in
        if Hashtbl.mem fragments key
        then
@@ -1743,32 +1767,45 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          Hashtbl.add
            fragments
            key
-           (osd_id_o, version_id))
+           (osd_id_o, version_id, maybe_changed))
       new_fragments;
     let manifest_old, manifest_old_s = get_object_manifest_by_id kv object_id in
-
+    let version_id_old = manifest_old.Manifest.version_id in
     assert (object_name = manifest_old.Manifest.name);
-
-    if (manifest_old.Manifest.version_id + 1) <> version_id
-    then Err.failwith Err.InvalidVersionId;
+    let expected = version_id_old + 1 in
+    if (version_id = 0 && version_id_old <> 0)
+     || (version_id <> 0 && expected <> version_id)
+    then
+      Err.failwith
+        Err.InvalidVersionId
+        ~payload:(Printf.sprintf "InvalidVersionId:(expected:%i, got: %i)"
+                                 expected version_id);
 
     let old_manifest_locations = manifest_old.Manifest.fragment_locations in
 
     let update_osd_sizes =
       List.fold_left
-        (fun acc (chunk_id, fragment_id, osd_id_o) ->
-           let fragment_size =
+        (fun acc (chunk_id, fragment_id, osd_id_o, maybe_changed) ->
+           let old_fragment_size =
              Layout.index
                manifest_old.Manifest.fragment_packed_sizes
                chunk_id
                fragment_id
            in
-           let upd1 = match osd_id_o with
-             | None -> []
-             | Some osd_id ->
+           let upd1 = match osd_id_o, maybe_changed with
+             | None, None -> []
+             | None, Some _ ->
+                (* fragment has new checksum, but was stored nowhere *)
+                []
+             | Some osd_id , None ->
                [ Update'.add
                    (Keys.Device.size osd_id)
-                   (Int64.of_int fragment_size) ]
+                   (Int64.of_int old_fragment_size) ]
+             | Some osd_id, Some (new_size, _new_checksum) ->
+                [ Update'.add
+                    (Keys.Device.size osd_id)
+                    (Int64.of_int new_size)
+                ]
            in
            let upd2 =
              match Layout.index
@@ -1779,7 +1816,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              | Some previous_osd_id, _ ->
                [ Update'.add
                    (Keys.Device.size previous_osd_id)
-                   (Int64.of_int (-fragment_size)) ]
+                   (Int64.of_int (-old_fragment_size)) ]
            in
            List.flatten_unordered [ upd1; upd2; acc ])
         []
@@ -1796,7 +1833,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                   let obsolete_fragments', loc' =
                     if Hashtbl.mem fragments loc_index
                     then begin
-                      let new_loc = Hashtbl.find fragments loc_index in
+                        let (osd_id_o, version, _) =
+                          Hashtbl.find fragments loc_index
+                        in
+                      let new_loc = (osd_id_o, version) in
                       ((loc_index, old_loc)::obsolete_fragments,
                        new_loc)
                     end else
@@ -1841,10 +1881,32 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         obsolete_fragments in
 
     let open Manifest in
+    let maybe_replace extract c i old  =
+      try
+        let key = (c,i) in
+        let _,_,maybe_new = Hashtbl.find fragments key in
+        match maybe_new with
+        | None -> old
+        | Some x -> extract x
+      with Not_found ->
+        old
+    in
+    let new_fragment_checksums =
+      Layout.map_indexed
+        (maybe_replace snd)
+        manifest_old.fragment_checksums
+    in
+    let new_fragment_packed_sizes =
+      Layout.map_indexed
+        (maybe_replace fst)
+        manifest_old.fragment_packed_sizes
+    in
     let updated_manifest =
       { manifest_old with
         version_id;
         fragment_locations;
+        fragment_checksums = new_fragment_checksums;
+        fragment_packed_sizes = new_fragment_packed_sizes;
       }
     in
 
@@ -1859,6 +1921,18 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         ~max_disks_per_node:updated_manifest.Manifest.max_disks_per_node
     in
 
+    let update_storage_size =
+      let storage_size_delta =
+        let old_size = get_summed_fragment_sizes manifest_old
+        and new_size = get_summed_fragment_sizes updated_manifest
+        in
+        Int64.sub new_size old_size
+      in
+      if storage_size_delta = 0L
+      then []
+      else
+        [Update'.add Keys.namespace_storage_size storage_size_delta]
+    in
     let update_buckets =
       let Storage_scheme.EncodeCompressEncrypt
           (Encoding_scheme.RSVM (k, m, _), _) =
@@ -1925,8 +1999,36 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         device_obj_mapping_upds;
         update_osd_sizes;
         update_buckets;
+        update_storage_size;
       ]
 
+  let update_manifest
+        kv object_name object_id
+        new_fragments gc_epoch version_id
+    =
+    let new_fragments' =
+      List.map
+        (fun (chunk_id, fragment_id, osd_id_o)
+           -> chunk_id,fragment_id, osd_id_o, None)
+        new_fragments
+    in
+    update_manifest_generic
+      kv object_name object_id
+      new_fragments' gc_epoch version_id
+
+  let update_manifest2
+        kv object_name object_id
+        (new_fragments : (chunk_id
+                          * fragment_id
+                          * osd_id option
+                          * (int * Checksum.t) option)
+                           list)
+        gc_epoch
+        version_id
+    =
+    update_manifest_generic
+      kv object_name object_id
+      new_fragments gc_epoch version_id
 
   let get_stats kv =
     let read key =

@@ -128,6 +128,6 @@ uninstall:
 	rm $(START)/bin/alba
 
 doc :
-	emacs -u $(USER) --script ./doc/export.el
+	emacs -u $(USER) --script ./docs/export.el
 
 .PHONY: install build doc setup

@@ -437,7 +437,7 @@ class client ?(retry_timeout = 60.)
       let updated_object_locations =
         List.map
           (fun (c,f,s, target_osd_id) ->
-             (c,f, Some target_osd_id))
+             (c,f, Some target_osd_id, None))
           object_location_movements
       in
       alba_client # with_nsm_client'
@@ -515,7 +515,7 @@ class client ?(retry_timeout = 60.)
                           | None -> acc
                           | Some osd_id ->
                              if Hashtbl.mem purging_osds osd_id
-                             then (chunk_id, fragment_id, None) :: acc
+                             then (chunk_id, fragment_id, None, None) :: acc
                              else acc
                         in
                         (fragment_id + 1, acc))

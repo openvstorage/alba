@@ -213,7 +213,9 @@ module Protocol = struct
       nsm_update ApplySequence, 36l, "ApplySequence";
       nsm_query GetObjectManifestsByName, 37l, "GetObjectManifestsByName";
 
-      Wrap_u (NsmsUpdate UpdatePreset), 38l, "Multi UpdatePreset";
+      nsm_update UpdateObject2, 38l, "UpdateObject2";
+
+      Wrap_u (NsmsUpdate UpdatePreset), 39l, "Multi UpdatePreset";
     ]
 
   let wrap_unknown_operation f =

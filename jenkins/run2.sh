@@ -9,6 +9,7 @@ export DRIVER=./setup/setup.native
 
 export ARAKOON_BIN=$(which arakoon)
 
+
 if [ -t 1 ] || [[ ${1-bash} == "test_integrate_"* ]]
 then true;
 else
@@ -82,8 +83,7 @@ case "${1-bash}" in
         check_results
         ;;
     recovery)
-        find cfg/*.ini -exec sed -i "s,/tmp,${WORKSPACE}/tmp,g" {} \;
-        fab dev.run_tests_recovery:xml=True
+        ${DRIVER} recovery || true
         ;;
     everything_else)
         ${DRIVER} everything_else  || true

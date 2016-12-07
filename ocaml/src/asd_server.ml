@@ -919,10 +919,12 @@ let execute_update : type req res.
                    "Assertion failed, expected some but got None instead" >>= fun () ->
                  Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                | Some value ->
-                 begin match snd value with
-                   | Value.Direct _ ->
-                     (* must be checked just before applying the transaction *)
-                     Lwt.return (`AssertSome (key, expected, value))
+                 begin
+                   match snd value with
+                   | Value.Direct actual ->
+                      if Blob.(equal (Slice actual) expected)
+                      then Lwt.return ()
+                      else Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                    | Value.OnFs (loc, size) ->
                      (* check the blob now, and just before applying the transaction
                         check whether the key is still associated with the same blob
@@ -940,8 +942,11 @@ let execute_update : type req res.
                        Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                      end else
                        (* could also be ok for other values ... *)
-                       Lwt.return (`AssertSome (key, expected, value))
-                 end)
+                       Lwt.return ()
+                 end >>= fun () ->
+                 (* must be checked just before applying the transaction *)
+                 Lwt.return (`AssertSome (key, value))
+            )
             some_asserts_with_values >>= fun some_asserts' ->
           Lwt.return (none_asserts', some_asserts')
         in
@@ -1057,7 +1062,7 @@ let execute_update : type req res.
 
           List.iter
             (function
-              | `AssertSome (key, expected, expected_value) ->
+              | `AssertSome (key, expected) ->
                  begin match get_value_option kv key with
                        | None ->
                           Lwt_log.ign_warning_f
@@ -1065,7 +1070,7 @@ let execute_update : type req res.
                             ([%show : Slice.t] key);
                           Error.(failwith (Assert_failed (Slice.get_string_unsafe key)))
                        | Some value ->
-                          if value <> expected_value
+                          if value <> expected
                           then raise ConcurrentModification
                  end)
             some_asserts;
@@ -1193,10 +1198,19 @@ let execute_update : type req res.
            in
            inner 0)
       end
-    | SetFull -> fun full ->
-      Lwt_log.warning_f "SetFull %b" full >>= fun () ->
-      AsdMgmt.set_full mgmt full;
-      Lwt.return ()
+    | SetFull ->
+       fun full ->
+       Lwt_log.warning_f "SetFull %b" full >>= fun () ->
+       AsdMgmt.set_full mgmt full;
+       Lwt.return_unit
+    | Slowness ->
+       fun slowness ->
+       Lwt_log.warning_f "Slowness %s"
+                         ([%show: (float * float) option] slowness)
+       >>= fun () ->
+       AsdMgmt.set_slowness mgmt slowness;
+       Lwt.return_unit
+
 
 let check_node_id kv external_id =
   let internal_ido = Rocks_key_value_store.get kv Keys.node_id  in
@@ -1231,7 +1245,8 @@ let done_writing (nfd:Net_fd.t) = Lwt.return_unit
 
 let asd_protocol
       ?cancel
-      kv ~release_fnr ~slow io_sched
+      kv ~release_fnr
+      io_sched
       dir_info stats ~mgmt ~capabilities
       ~get_next_fnr asd_id
       nfd
@@ -1325,20 +1340,20 @@ let asd_protocol
       (fun buf ->
        let code = Llio2.ReadBuffer.int32_from buf in
        with_timing_lwt
-         (fun () -> handle_request buf code >>= fun () ->
-                    Lwt.return code))
+         (fun () ->
+           (match mgmt.AsdMgmt.slowness with
+            | None -> Lwt.return_unit
+            | Some (fixed, variable) ->
+               begin
+                 let delay = fixed +. Random.float variable in
+                 Lwt_log.info_f "Slowness: sleeping %f" delay >>= fun () ->
+                 Lwt_unix.sleep delay
+               end
+           ) >>= fun () ->
+           handle_request buf code >>= fun () ->
+           Lwt.return code))
     >>= fun (delta, code) ->
     Statistics_collection.Generic.new_delta stats code delta;
-
-    (if slow
-     then
-       begin
-         let delay = Random.float 3. in
-         Lwt_log.info_f "Sleeping an additional %f" delay >>= fun () ->
-         Lwt_unix.sleep delay
-       end
-     else
-       Lwt.return_unit) >>= fun () ->
 
     (if delta > 0.5
      then Lwt_log.info_f
@@ -1436,7 +1451,7 @@ let run_server
       ~rora_queue_depth
       (path:string)
       ~asd_id ~node_id
-      ~fsync ~slow
+      ~fsync
       ~rocksdb_max_open_files
       ~rocksdb_recycle_log_file_num
       ~rocksdb_block_cache_size
@@ -1787,7 +1802,6 @@ let run_server
       ?cancel
       db
       ~release_fnr:(fun fnr -> advancer # release fnr)
-      ~slow
       io_sched
       dir_info
       stats

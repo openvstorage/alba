@@ -211,6 +211,12 @@ let rec get_updates_res : type i o. read_user_db ->
       | UpdatePreset ->
          fun (preset, version) ->
          NSM.update_preset db preset version
+      | UpdateObject2 ->
+         fun (object_name, object_id, new_fragments, gc_epoch, version_id) ->
+         NSM.update_manifest2 db
+                              object_name object_id new_fragments
+                              gc_epoch version_id
+         , ()
     in
     let upds, res = get_updates_res tag req in
     let arakoon_upds = transform_updates namespace_id upds in
@@ -475,8 +481,8 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                     (assert_version_update :: upds)) >>= fun _ ->
                Lwt.return (`Succes res))
                (function
-                 | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
-                   Plugin_helper.info_f "NSM: Assert failed %s" msg;
+                 | Protocol_common.XException (rc, key) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+                   Plugin_helper.info_f "NSM: Assert failed %S" key;
                    (* TODO if the optimistic concurrency fails too many times then
                       automatically turn it into a user function? *)
                    Lwt.return `Retry

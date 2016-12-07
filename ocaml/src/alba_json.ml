@@ -316,7 +316,9 @@ module Preset = struct
          match preset.compression with
          | NoCompression -> "none"
          | Snappy -> "snappy"
-         | Bzip2 -> "bz2");
+         | Bzip2 -> "bz2"
+         | Test  -> "test"
+        );
       fragment_checksum = preset.fragment_checksum_algo;
       object_checksum = preset.object_checksum;
       fragment_encryption =
@@ -357,6 +359,7 @@ module Preset = struct
            | "snappy" -> Snappy
            | "bz2" -> Bzip2
            | "none" -> NoCompression
+           | "test" -> Test
            | s -> failwith (Printf.sprintf "unknown compressor: %S" s));
         object_checksum;
         osds;
@@ -387,4 +390,17 @@ module DiskSafety = struct
   [@@deriving yojson]
 
   type t_list = t list [@@deriving yojson]
+end
+
+module Version = struct
+  type t = int * int * int * string [@@deriving yojson]
+end
+
+module Checksum = struct
+  type t = Checksum.Checksum.t =
+    | NoChecksum
+    | Sha1 of HexString.t
+    | Crc32c of HexInt32.t
+    [@@deriving yojson]
+
 end

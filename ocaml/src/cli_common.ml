@@ -166,6 +166,21 @@ let lwt_cmd_line ~to_json ~verbose t =
   let rc = Lwt_main.run (t' ()) in
   exit rc
 
+let unit_result to_json () =
+  if to_json
+  then print_result () (fun () -> `Assoc [])
+  else Lwt.return_unit
+
+let version_result to_json version =
+  if to_json
+  then
+    begin
+      print_result version Alba_json.Version.to_yojson
+    end
+  else
+    let major, minor, patch, hash = version in
+    Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
+
 let lwt_cmd_line_result ~to_json ~verbose t res_to_json =
   lwt_cmd_line
     ~to_json ~verbose
@@ -448,6 +463,7 @@ let with_alba_client cfg_url tls_config f =
     cfg_ref
     ~tls_config
     ~populate_osds_info_cache:false
+    ~upload_slack:0.2
     f
 
 let with_albamgr_client ~attempts cfg_url tls_config f =
