@@ -151,67 +151,46 @@ let apply_sequence
       updates
       stats
   =
-  let t0 = Unix.gettimeofday () in
-  let upload object_name object_reader checksum_o =
-    Alba_client_upload.upload_object''
-      (alba_client # nsm_host_access)
-      (alba_client # osd_access)
-      (alba_client # get_base_client # get_preset_cache # get)
-      (alba_client # get_base_client # get_namespace_osds_info_cache)
-      ~object_t0:t0
-      ~timestamp:t0
-      ~namespace_id
-      ~object_name
-      ~object_reader
-      ~checksum_o
-      ~object_id_hint:None
-      ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
-      ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-      ~upload_slack:0.2
-    >>= fun (mf, extra_mfs, _upload_stats, gc_epoch, fragment_state_layout) ->
-    let all_mfs = (mf.Nsm_model.Manifest.name, "", (mf, namespace_id)) ::
-                    (List.map
-                       (fun (mf, namespace_id, alba) ->
-                         mf.Nsm_model.Manifest.name, alba, (mf, namespace_id))
-                       extra_mfs)
-    in
-    Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch), all_mfs, `Upload)
+  let rec with_alba_sequence_updates updates' = function
+    | [] ->
+       Alba_client_sequence.apply_sequence
+         alba_client
+         namespace_id
+         (Lwt.return asserts)
+         updates' >>= fun (mfs, delta) ->
+       List.iter
+         (let open Alba_client_sequence in
+          function
+          | UploadObjectFromReader _ ->
+             ProxyStatistics.new_upload stats namespace delta
+          | DeleteObject _ ->
+             ProxyStatistics.new_delete stats namespace delta)
+         updates';
+       Lwt.return mfs
+    | update :: rest ->
+       let open Protocol.Update in
+       match update with
+       | UploadObjectFromFile (object_name, file_name, cs_o) ->
+          Object_reader.with_file_reader
+            ~use_fadvise:true
+            file_name
+            (fun ~object_reader ->
+              let update' = Alba_client_sequence.UploadObjectFromReader (object_name, object_reader, cs_o) in
+              with_alba_sequence_updates
+                (update' :: updates')
+                rest)
+       | UploadObject (object_name, blob, cs_o) ->
+          let reader = new Object_reader.bigstring_slice_reader blob in
+          let update' = Alba_client_sequence.UploadObjectFromReader (object_name, reader, cs_o) in
+          with_alba_sequence_updates
+            (update' :: updates')
+            rest
+       | DeleteObject object_name ->
+          with_alba_sequence_updates
+            (Alba_client_sequence.DeleteObject object_name :: updates')
+            rest
   in
-
-  Lwt_list.map_p
-    (let open Protocol.Update in
-     function
-     | UploadObjectFromFile (object_name, file_name, cs_o) ->
-        Object_reader.with_file_reader
-          ~use_fadvise:true
-          file_name
-          (fun ~object_reader ->
-            upload object_name
-                   object_reader
-                   cs_o)
-     | UploadObject (object_name, blob, cs_o) ->
-        upload object_name
-               (new Object_reader.bigstring_slice_reader blob)
-               cs_o
-     | DeleteObject object_name ->
-        Lwt.return (Nsm_model.Update.DeleteObject object_name, [], `Delete)
-    )
-    updates >>= fun updates ->
-  let updates, manifests, upload_statss = List.split3 updates in
-  let manifests = List.flatten_unordered manifests in
-
-  alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
-  nsm # apply_sequence asserts updates >>= fun () ->
-  let () =
-    let t1 = Unix.gettimeofday () in
-    let delta = t1 -. t0 in
-    List.iter
-      (function
-       | `Upload -> ProxyStatistics.new_upload stats namespace delta
-       | `Delete -> ProxyStatistics.new_delete stats namespace delta
-      ) upload_statss
-  in
-  Lwt.return manifests
+  with_alba_sequence_updates [] updates
 
 
 let read_objects

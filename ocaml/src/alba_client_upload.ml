@@ -635,45 +635,25 @@ let cleanup_gc_tags
   |> Lwt.ignore_result
 
 
-let store_manifest
-      (nsm_host_access : Nsm_host_access.nsm_host_access)
+let store_manifest_epilogue
       (osd_access : Osd_access_type.t)
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
       manifest_cache
+      manifest
+      gc_epoch
       ~namespace_id
-      ~allow_overwrite
+      t_object
       ~epilogue_delay
-      (manifest, chunk_fidmos, almost_t_object, gc_epoch,
-       fragment_state_layout)
+      fragment_state_layout
   =
-  let object_name = manifest.Nsm_model.Manifest.name in
-  let store_manifest () =
-    nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
-    client # put_object
-           ~allow_overwrite
-           ~manifest
-           ~gc_epoch
-  in
-  with_timing_lwt
-    (fun () ->
-     Lwt.catch
-       store_manifest
-       (fun exn ->
-        Manifest_cache.ManifestCache.remove
-          manifest_cache
-          namespace_id object_name;
-        Lwt.fail exn))
-  >>= fun (t_store_manifest, old_manifest_o) ->
-  (* TODO maybe clean up fragments from old object *)
-
   let () = cleanup_gc_tags osd_access manifest gc_epoch ~namespace_id in
 
-  let t_object = almost_t_object t_store_manifest in
-
-  Lwt_log.debug_f
+  let object_name = manifest.Nsm_model.Manifest.name in
+  Lwt_log.ign_debug_f
     ~section:Statistics.section
     "Uploaded object %S with the following timings: %s"
-    object_name (Statistics.show_object_upload t_object)
-  >>= fun () ->
+    object_name (Statistics.show_object_upload t_object);
+
   let open Manifest_cache in
   ManifestCache.add
     manifest_cache
@@ -777,9 +757,53 @@ let store_manifest
 
     (fun exn -> Lwt_log.info ~exn "failure in epilogue")
   in
-  Lwt.ignore_result (upload_epilogue());
+  Lwt.ignore_result (upload_epilogue())
+
+
+let store_manifest
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
+      (osd_access : Osd_access_type.t)
+      manifest_cache
+      ~namespace_id
+      ~allow_overwrite
+      ~epilogue_delay
+      (manifest, chunk_fidmos, almost_t_object, gc_epoch,
+       fragment_state_layout)
+  =
+  let object_name = manifest.Nsm_model.Manifest.name in
+  let store_manifest () =
+    nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
+    client # put_object
+           ~allow_overwrite
+           ~manifest
+           ~gc_epoch
+  in
+  with_timing_lwt
+    (fun () ->
+     Lwt.catch
+       store_manifest
+       (fun exn ->
+        Manifest_cache.ManifestCache.remove
+          manifest_cache
+          namespace_id object_name;
+        Lwt.fail exn))
+  >>= fun (t_store_manifest, old_manifest_o) ->
+
+  let t_object = almost_t_object t_store_manifest in
+
+  store_manifest_epilogue
+    osd_access
+    nsm_host_access
+    manifest_cache
+    manifest
+    gc_epoch
+    ~namespace_id
+    t_object
+    fragment_state_layout
+    ~epilogue_delay;
 
   Lwt.return (manifest, chunk_fidmos, t_object, namespace_id)
+
 
 let upload_object'
       ~epilogue_delay
