@@ -307,7 +307,7 @@ class client ?(retry_timeout = 60.)
              ~manifest
              ~(source_osd:Nsm_model.osd_id)
              ~(target_osd:Nsm_model.osd_id)
-           : (int * int * Nsm_model.osd_id * Nsm_model.osd_id) list Lwt.t
+           : (int * int * Nsm_model.osd_id * Nsm_model.osd_id * bytes option) list Lwt.t
       =
       let open Nsm_model in
       let open Manifest in
@@ -418,7 +418,7 @@ class client ?(retry_timeout = 60.)
                      ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
                      ~osd_id:target_osd
                    >>= fun () ->
-                   Lwt.return (chunk_id, fragment_id, source_osd, target_osd)
+                   Lwt.return (chunk_id, fragment_id, source_osd, target_osd, fragment_ctr)
                  end)
               (fun () ->
                Lwt_bytes.unsafe_destroy packed_fragment;
@@ -427,12 +427,12 @@ class client ?(retry_timeout = 60.)
         (List.mapi (fun i lc -> i, lc) fragment_info)
       >>= fun object_location_movements ->
       Lwt_log.debug_f "object_location_movements: %s"
-        ([%show: (int * int * osd_id * osd_id ) list] object_location_movements)
+        ([%show: (int * int * osd_id * osd_id * bytes option) list] object_location_movements)
       >>= fun ()->
       let updated_object_locations =
         List.map
-          (fun (c,f,s, target_osd_id) ->
-             (c,f, Some target_osd_id, None))
+          (fun (c,f,s, target_osd_id, fragment_ctr) ->
+             (c,f, Some target_osd_id, None, fragment_ctr))
           object_location_movements
       in
       alba_client # with_nsm_client'
@@ -510,7 +510,7 @@ class client ?(retry_timeout = 60.)
                           | None -> acc
                           | Some osd_id ->
                              if Hashtbl.mem purging_osds osd_id
-                             then (chunk_id, fragment_id, None, None) :: acc
+                             then (chunk_id, fragment_id, None, None, None) :: acc
                              else acc
                         in
                         (fragment_id + 1, acc))

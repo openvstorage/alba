@@ -702,21 +702,25 @@ let store_manifest_epilogue
         >>= fun locations ->
         let side_by_side =
           let open Nsm_model in
-          Layout.combine locations manifest.Manifest.fragment_locations
+          let open Manifest in
+          Layout.combine3
+            locations
+            manifest.fragment_locations
+            manifest.fragment_ctrs
         in
         let updates =
           let r = ref [] in
           List.iteri
             (fun chunk_id chunk ->
               List.iteri
-                (fun fragment_id (new_o , (old_o, old_version)) ->
+                (fun fragment_id (new_o , (old_o, _old_version), fragment_ctr) ->
                   match new_o, old_o with
                   | None, Some _ -> failwith "new is None ?"
                   | Some x,Some y -> assert (x=y);
                   | None, None   -> ()
 
                   | Some osd_id, None ->
-                     let update = (chunk_id,fragment_id, Some osd_id, None) in
+                     let update = (chunk_id,fragment_id, Some osd_id, None, fragment_ctr) in
                      let () = r := update :: !r in ()
                 ) chunk
             ) side_by_side;
@@ -750,12 +754,12 @@ let store_manifest_epilogue
                          begin
                            let update =
                              List.find
-                               (fun (cid,fid,_,_) ->
+                               (fun (cid,fid,_,_,_) ->
                                  cid = chunk_id && fid = fragment_id
                                ) updates
                            in
                            match update with
-                           | Some (_,_,Some osd_id,_) -> (Some osd_id, 0)
+                           | Some (_,_,Some osd_id, _, _) -> (Some osd_id, 0)
                            | _ -> (None,0)
                          end
                       | _ -> old

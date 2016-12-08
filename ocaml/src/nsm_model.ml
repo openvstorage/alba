@@ -801,8 +801,10 @@ module Manifest = struct
     chunk_id
     * fragment_id
     * osd_id option
-    * (int * Checksum.t) option [@@deriving show]
-                         (* TODO add fragment_ctr *)
+    * (int * Checksum.t) option
+    * bytes option
+  [@@deriving show]
+
 end
 
 module Assert =
@@ -1761,7 +1763,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     in
     let fragments = Hashtbl.create 3 in
     List.iter
-      (fun (chunk_id, fragment_id, osd_id_o, maybe_changed) ->
+      (fun (chunk_id, fragment_id, osd_id_o, maybe_changed, fragment_ctr) ->
        let key = chunk_id, fragment_id in
        if Hashtbl.mem fragments key
        then
@@ -1772,7 +1774,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          Hashtbl.add
            fragments
            key
-           (osd_id_o, version_id, maybe_changed))
+           (osd_id_o, version_id, maybe_changed, fragment_ctr))
       new_fragments;
     let manifest_old, manifest_old_s = get_object_manifest_by_id kv object_id in
     let version_id_old = manifest_old.Manifest.version_id in
@@ -1790,7 +1792,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     let update_osd_sizes =
       List.fold_left
-        (fun acc (chunk_id, fragment_id, osd_id_o, maybe_changed) ->
+        (fun acc (chunk_id, fragment_id, osd_id_o, maybe_changed, fragment_ctr) ->
            let old_fragment_size =
              Layout.index
                manifest_old.Manifest.fragment_packed_sizes
@@ -1838,7 +1840,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                   let obsolete_fragments', loc' =
                     if Hashtbl.mem fragments loc_index
                     then begin
-                        let (osd_id_o, version, _) =
+                        let (osd_id_o, version, _, _) =
                           Hashtbl.find fragments loc_index
                         in
                       let new_loc = (osd_id_o, version) in
@@ -1889,7 +1891,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let maybe_replace extract c i old  =
       try
         let key = (c,i) in
-        let _,_,maybe_new = Hashtbl.find fragments key in
+        let _,_,maybe_new, _ = Hashtbl.find fragments key in
         match maybe_new with
         | None -> old
         | Some x -> extract x
@@ -1906,12 +1908,23 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         (maybe_replace fst)
         manifest_old.fragment_packed_sizes
     in
+    let new_fragment_ctrs =
+      Layout.map_indexed
+        (fun chunk_id fragment_id old ->
+          try
+            let _, _, _, fragment_ctr = Hashtbl.find fragments (chunk_id, fragment_id) in
+            fragment_ctr
+          with Not_found ->
+            old)
+        manifest_old.fragment_ctrs
+    in
     let updated_manifest =
       { manifest_old with
         version_id;
         fragment_locations;
         fragment_checksums = new_fragment_checksums;
         fragment_packed_sizes = new_fragment_packed_sizes;
+        fragment_ctrs = new_fragment_ctrs;
       }
     in
 
@@ -2011,7 +2024,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let new_fragments' =
       List.map
         (fun (chunk_id, fragment_id, osd_id_o)
-           -> chunk_id,fragment_id, osd_id_o, None)
+           -> chunk_id,fragment_id, osd_id_o, None, None)
         new_fragments
     in
     update_manifest_generic
@@ -2020,11 +2033,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
   let update_manifest2
         kv object_name object_id
-        (new_fragments : (chunk_id
-                          * fragment_id
-                          * osd_id option
-                          * (int * Checksum.t) option)
-                           list)
+        (new_fragments : Manifest.fragment_update list)
         gc_epoch
         version_id
     =

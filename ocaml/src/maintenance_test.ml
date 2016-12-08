@@ -147,7 +147,7 @@ let test_rebalance_one () =
      >>= fun object_locations_movements ->
      let source_osds =
        List.map
-         (fun (c,f,s,t) -> s) object_locations_movements
+         (fun (c,f,s,t,_) -> s) object_locations_movements
      in
      alba_client # get_object_manifest'
        ~namespace_id ~object_name

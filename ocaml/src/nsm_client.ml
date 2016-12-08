@@ -159,7 +159,7 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
         let updated_object_locations' =
            List.map
              (function
-              | (cid,fid,ov ,None) -> (cid,fid,ov)
+              | (cid,fid,ov ,None, None) -> (cid,fid,ov)
               | _ -> failwith "this nsm can't handle that kind of update"
              )
              updated_object_locations

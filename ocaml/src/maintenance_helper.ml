@@ -197,7 +197,7 @@ let _upload_missing_fragments
          ~gc_epoch ~checksum:new_checksum
          ~recovery_info_blob
        >>= fun () ->
-       Lwt.return (fragment_id, Some chosen_osd_id, maybe_changed)
+       Lwt.return (fragment_id, Some chosen_osd_id, maybe_changed, fragment_ctr)
      end
     )
     to_be_repaireds
