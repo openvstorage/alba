@@ -1777,7 +1777,12 @@ module Test = struct
     let () = Printf.printf "cmd_s = %s\n%!" cmd_s in
     cmd_s |> Shell.cmd_with_rc
 
-  let voldrv_tests ?(xml = false) ?filter ?dump t =
+  let voldrv_tests
+        ?(xml = false)
+        ?(filter="SimpleVolumeTests/SimpleVolumeTest*:DataStoreNGTests/DataStoreNGTest.*")
+        ?dump
+        t
+    =
     let cfg = t.Deployment.cfg in
     let () = _create_preset t
                             "preset_rora"
@@ -1797,10 +1802,7 @@ module Test = struct
       else cmd
     in
     let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml"] else cmd in
-    let cmd3 = match filter with
-      | None -> cmd2 @ ["--gtest_filter=SimpleVolumeTests/SimpleVolumeTest*"]
-      | Some filter -> cmd2 @ ["--gtest_filter=" ^ filter]
-    in
+    let cmd3 = cmd2 @ ["--gtest_filter=" ^ filter] in
     let cmd4 = match dump with
       | None -> cmd3
       | Some dump -> cmd3 @ ["> " ^ dump ^ " 2>&1"]
