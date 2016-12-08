@@ -549,8 +549,9 @@ let nsm_recovery_agent
     osds >>= fun (_ : unit list) ->
 
   Lwt_log.info "gather_and_push_objects" >>= fun () ->
+  alba_client # get_base_client # get_ns_preset_info ~namespace_id >>= fun preset ->
   gather_and_push_objects
     alba_client
     ~namespace_id
-    ~encryption:Encryption.Encryption.NoEncryption
+    ~encryption:preset.Preset.fragment_encryption
     kv

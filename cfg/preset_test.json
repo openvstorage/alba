@@ -10,5 +10,5 @@
         "verify_upload" : true
     },
 
-    "fragment_encryption" : ["none"]
+    "fragment_encryption" : [ "aes-ctr-256", "cfg/enc_key" ]
 }
