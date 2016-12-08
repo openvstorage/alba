@@ -77,8 +77,9 @@ def arakoon_start_(arakoon_config_file,
             "-config", arakoon_config_file
         ]
 
-        cmd_line = _detach(inner)
+
         dir_path = "%s/%s" % (base_dir, node)
+        cmd_line = _detach(inner, out = "%s/out" % dir_path)
         where("mkdir -p %s" % dir_path)
         where("ln -fs %s/nsm_host_plugin.cmxs %s/nsm_host_plugin.cmxs" %
               (env['alba_plugin_path'], dir_path))
@@ -308,7 +309,9 @@ def _asd_inner(port, path, node_id, slow, multicast,
     ]
 
     if slow:
-        cmd.append('--slow')
+        #cmd.append('--slow')
+        # mind: we only use fabric for integration tests. This too shall pass
+        pass
     return cmd
 
 def _kinetic_inner(port, path):
