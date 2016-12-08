@@ -22,6 +22,8 @@ open Prelude
 let test_with_alba_client = Alba_test.test_with_alba_client
 let with_maintenance_client = Alba_test.with_maintenance_client
 let _wait_for_osds = Alba_test._wait_for_osds
+let wait_for_lazy_write = Alba_test.wait_for_lazy_write
+
 
 let with_nice_error_log f =
   let open Alba_client_errors in
@@ -33,6 +35,34 @@ let with_nice_error_log f =
          >>= fun () -> Lwt.fail x
       | x     -> Lwt.fail x
     )
+
+
+
+let maybe_delete_fragment
+      alba_client namespace_id mf ~update_manifest
+      chunk_id fragment_id =
+
+  let open Nsm_model in
+  let object_id = mf.Manifest.object_id in
+
+  let delete_using_manifest mf =
+    Alba_test.maybe_delete_fragment
+      ~update_manifest
+      alba_client namespace_id mf chunk_id fragment_id
+  in
+  let fetch_manifest () =
+    alba_client # with_nsm_client' ~namespace_id
+                (fun nsm_client ->
+                  nsm_client # get_object_manifest_by_id
+                             object_id
+                  >>= fun mf'o ->
+                  let mf' = Option.get_some mf'o in
+                  Lwt.return mf'
+                )
+  in
+  delete_using_manifest mf >>= fun () ->
+  fetch_manifest ()
+
 
 let test_rebalance_one () =
   let test_name = "test_rebalance_one" in
@@ -52,18 +82,28 @@ let test_rebalance_one () =
          "Let's see if this test_rebalance_one thingy does its job"
      in
      alba_client # upload_object_from_bytes
+       ~epilogue_delay:None
        ~namespace
        ~object_name
        ~object_data
        ~checksum_o:None
        ~allow_overwrite:NoPrevious
      >>= fun (manifest,_, stats,_) ->
-     Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest) >>= fun () ->
+     Lwt_log.debug_f "uploaded object:%s" ([% show : Manifest.t] manifest)
+     >>= fun () ->
      let base_client = alba_client # get_base_client in
      base_client # get_namespace_osds_info_cache ~namespace_id >>= fun cache ->
 
-     let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
-     let set2s set= DeviceSet.elements set |> [%show : int64 list] in
+
+     wait_for_lazy_write alba_client namespace_id manifest >>= fun manifest ->
+     let object_osds =
+       Manifest.osds_used manifest.Manifest.fragment_locations
+     in
+     let set2s set=
+       Printf.sprintf
+         "(%i,%s)" (DeviceSet.cardinal set)
+         (DeviceSet.elements set |> [%show : int64 list])
+     in
      Lwt_log.debug_f "object_osds: %s" (set2s object_osds ) >>= fun () ->
      let get_targets () =
        alba_client
@@ -166,6 +206,7 @@ let _test_rebalance_namespace test_name fat ano categorize =
            begin
              let object_name = object_name_template i in
              alba_client # get_base_client # upload_object_from_string
+                         ~epilogue_delay:None
                          ~namespace
                          ~object_name
                          ~object_data
@@ -304,15 +345,16 @@ let test_repair_orange () =
        let object_name = test_name in
        let object_data = test_name in
        alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data
          ~allow_overwrite:NoPrevious
          ~checksum_o:(Alba_test.get_checksum_o object_data) >>= fun (mf,_, _,_) ->
 
-       Alba_test.maybe_delete_fragment
+       maybe_delete_fragment
          ~update_manifest:true
-         alba_client namespace_id mf 0 0 >>= fun () ->
+         alba_client namespace_id mf 0 0 >>= fun mf_2 ->
 
        alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
        nsm # list_objects_by_policy' ~k:5 ~m:4 ~max:10 >>= fun ((cnt, _), _) ->
@@ -330,9 +372,16 @@ let test_repair_orange () =
          ~should_cache:false >>= fun (_, mf_o) ->
        let mf' = Option.get_some mf_o in
 
-       let osd_id_o, version = Layout.index mf'.Manifest.fragment_locations 0 0 in
-       assert (version = 2);
+       let get_version mf x y =
+         Layout.index mf.Manifest.fragment_locations 0 0
+       in
+       let osd_id_o, version = get_version mf' 0 0 in
+       let _, version2 = get_version mf_2 0 0 in
        assert (osd_id_o <> None);
+       OUnit.assert_equal ~msg:"fragment_version"
+                          ~printer:string_of_int
+                          (version2 + 1) version;
+
 
        Lwt.return ())
 
@@ -367,15 +416,20 @@ let test_repair_orange2 () =
        let object_name = test_name in
        let object_data = get_random_string 399 in
        alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
          ~namespace
          ~object_name
          ~object_data
          ~allow_overwrite:Nsm_model.NoPrevious
          ~checksum_o:None >>= fun (mf,_, object_id,_) ->
 
+       wait_for_lazy_write alba_client namespace_id mf >>= fun mf ->
+
        Alba_test.maybe_delete_fragment
          ~update_manifest:true
          alba_client namespace_id mf 0 0 >>= fun () ->
+
+       Lwt_log.debug "fragment 0 0 deleted" >>= fun () ->
 
        with_maintenance_client
          alba_client
@@ -394,8 +448,9 @@ let test_repair_orange2 () =
        let open Nsm_model in
        (* missing data fragment is regenerated *)
        let osd_id_o, version = Layout.index mf'.Manifest.fragment_locations 0 0 in
-       assert (version = 2);
-       assert (osd_id_o <> None);
+       OUnit.assert_bool "osd_id was None?" (osd_id_o <> None);
+       OUnit.assert_equal ~msg:"version mismatch" ~printer:string_of_int
+       2 version;
 
        Lwt.return ())
 
@@ -415,7 +470,7 @@ let test_rebalance_node_spread () =
      let preset =
        Albamgr_protocol.Protocol.Preset.(
          { _DEFAULT with
-           policies = [ (5,4,8,4); ];
+           policies = [ (5,4,9,4); ];
          }) in
      alba_client # mgr_access # create_preset
                  preset_name
@@ -427,6 +482,7 @@ let test_rebalance_node_spread () =
      let object_name = test_name in
      let object_data = get_random_string 399 in
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data
@@ -441,7 +497,10 @@ let test_rebalance_node_spread () =
      in
 
      get_buckets () >>= fun r ->
-     assert (r = [ (5,4,9,3), 1L; ]);
+     OUnit.assert_equal ~msg:"wrong bucket"
+                        ~printer:[%show : ((int * int * int * int)* int64) list ]
+                        [ (5,4,9,3), 1L; ]
+                        r;
 
      (* move a fragment to create a sub awesome node spread *)
      let is_osd_used mf osd_id =
@@ -500,7 +559,8 @@ let test_rewrite_namespace () =
 
      Lwt_list.map_p
        (fun name ->
-        alba_client # get_base_client # upload_object_from_string
+         alba_client # get_base_client # upload_object_from_string
+               ~epilogue_delay:None
                ~namespace
                ~object_name:name
                ~object_data:name
@@ -533,7 +593,19 @@ let test_rewrite_namespace () =
      in
 
      get_objs () >>= fun manifests' ->
-     assert (manifests' = manifests);
+     (* Lazy writes can cause minor differences between this and
+        the original list:
+        assert (manifests' = manifests);
+      *)
+     List.iter2
+       (fun m1 m2 ->
+         OUnit.assert_equal
+           ~msg:"object_ids differ"
+           ~printer:(fun x -> x) m1.Manifest.object_id m2.Manifest.object_id;
+
+       )
+       manifests manifests';
+
 
      let open Albamgr_protocol.Protocol in
      let name = "name" in
@@ -601,11 +673,15 @@ let test_verify_namespace () =
 
      let object_name = "abc" in
      alba_client # get_base_client # upload_object_from_string
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name
                  ~object_data:"efg"
                  ~checksum_o:None
                  ~allow_overwrite:NoPrevious >>= fun (mf,_, _,_) ->
+
+     wait_for_lazy_write alba_client namespace_id mf
+     >>= fun mf ->
 
      let object_id = mf.Manifest.object_id in
 
@@ -660,19 +736,23 @@ let test_verify_namespace () =
                  ~namespace_id
                  (fun client ->
                   client # get_object_manifest_by_name object_name)
-     >>= fun mfo ->
-     let mf = Option.get_some mfo in
-     assert (mf.Manifest.version_id = 1);
+     >>= fun mf2o ->
+     let mf2 = Option.get_some mf2o in
+     let open Manifest in
+     OUnit.assert_equal
+     ~msg:"version_id" ~printer:string_of_int (mf.version_id +1) mf2.version_id;
 
      (* missing fragment *)
-     assert (mf.Manifest.fragment_locations
-             |> List.hd_exn
-             |> List.hd_exn
-             |> snd
-             = 1);
+     let new_version_missing = mf2.fragment_locations
+                               |> List.hd_exn
+                               |> List.hd_exn
+                               |> snd
+     in
+     OUnit.assert_bool "Manifest.version_id of formerly missing"
+       (1 = new_version_missing);
 
      (* checksum mismatch fragment *)
-     assert (mf.Manifest.fragment_locations
+     assert (mf2.fragment_locations
              |> List.hd_exn
              |> fun l -> List.nth_exn l 1
              |> snd
@@ -706,11 +786,34 @@ let test_verify_namespace () =
          (0, 0, 0, 0)
          progresses
      in
-     assert (objects_verified = 1);
-     assert (fragments_detected_missing = 1);
-     assert (fragments_osd_unavailable = 0);
-     assert (fragments_checksum_mismatch = 1);
+     OUnit.assert_equal ~msg:"objects_verified"
+                        ~printer:string_of_int
+                        1 objects_verified;
+     OUnit.assert_equal ~msg:"fragments_detected_missing"
+                        ~printer:string_of_int
+                        1 fragments_detected_missing;
+     OUnit.assert_equal ~msg:"fragments_osd_unavailable"
+                        ~printer:string_of_int
+                        0 fragments_osd_unavailable;
+     OUnit.assert_equal ~msg:"fragments_checksum_mismatch"
+                        ~printer:string_of_int
+                        1 fragments_checksum_mismatch;
 
+     (* was the abm's counter for checksum mismatches updated ? *)
+     alba_client # osd_access # propagate_osd_info ~run_once:true ()
+     >>= fun () ->
+     alba_client # mgr_access # list_all_claimed_osds >>= fun (_,r) ->
+     let mismatches =
+       List.fold_left
+         (fun acc (_,info) ->
+           acc + Int64.to_int info.Nsm_model.OsdInfo.checksum_errors)
+         0
+         r
+     in
+     OUnit.assert_equal
+       ~msg:"abm's checksum_errors wrong" ~printer:string_of_int
+       2 (* one from the verify, and one from the download during repair.*)
+       mismatches;
      Lwt.return ())
 
 let test_automatic_repair () =
@@ -764,12 +867,13 @@ let test_automatic_repair () =
 
         Lwt_list.iter_p
           (fun i ->
-           alba_client # get_base_client # upload_object_from_string
-                       ~namespace
-                       ~object_name:(string_of_int i)
-                       ~object_data:"fsdioap"
-                       ~checksum_o:None
-                       ~allow_overwrite:Nsm_model.NoPrevious
+            alba_client # get_base_client # upload_object_from_string
+                        ~epilogue_delay:None
+                        ~namespace
+                        ~object_name:(string_of_int i)
+                        ~object_data:"fsdioap"
+                        ~checksum_o:None
+                        ~allow_overwrite:Nsm_model.NoPrevious
            >>= fun (mf,_, _,_) ->
            Lwt.return ())
           (Int.range 0 5) >>= fun () ->
@@ -831,6 +935,111 @@ let test_automatic_repair () =
     ))
 
 
+let test_repair_evolved_compressor () =
+  test_with_alba_client
+    (fun alba_client ->
+       let test_name = "test_repair_evolved_compressor" in
+       let namespace = test_name in
+       let preset_name = test_name in
+       let preset =
+         Albamgr_protocol.Protocol.Preset.
+         ({
+             _DEFAULT with
+             policies = [ (2,20,5,4); ];
+             compression = Alba_compression.Compression.Test;
+         })
+       in
+       alba_client # mgr_access # create_preset
+         preset_name
+         preset >>= fun () ->
+
+       alba_client # create_namespace ~preset_name:(Some preset_name) ~namespace ()
+       >>= fun namespace_id ->
+
+       let object_name = test_name in
+       let object_data = get_random_string 399 in
+       alba_client # get_base_client # upload_object_from_string
+         ~epilogue_delay:None
+         ~namespace
+         ~object_name
+         ~object_data
+         ~allow_overwrite:Nsm_model.NoPrevious
+         ~checksum_o:None >>= fun (mf,_, _ ,_) ->
+
+       wait_for_lazy_write alba_client namespace_id mf >>= fun mf ->
+       let mfs2s = Nsm_model.Manifest.show in
+       Lwt_io.printlf "mf:%s" (mfs2s mf) >>= fun () ->
+
+       Alba_test.maybe_delete_fragment
+         ~update_manifest:true
+         alba_client namespace_id mf 0 0 >>= fun () ->
+
+       Lwt_log.debug "fragment 0 0 deleted" >>= fun () ->
+
+       with_maintenance_client
+         alba_client
+         (fun mc ->
+          mc # repair_by_policy_namespace ~namespace_id)
+       >>= fun () ->
+
+       alba_client # get_object_manifest
+         ~namespace ~object_name
+         ~consistent_read:true
+         ~should_cache:false >>= fun (_, mf_o) ->
+       let mf' = Option.get_some mf_o in
+       Lwt_io.printlf "new manifest: %s" (mfs2s mf') >>= fun () ->
+
+       let open Nsm_model in
+       let open Manifest in
+       (* assert missing data fragment is regenerated *)
+       let osd_id_o, version_id =
+         Layout.index mf'.fragment_locations 0 0 in
+       OUnit.assert_bool "osd_id was None?" (osd_id_o <> None);
+       OUnit.assert_equal ~msg:"version mismatch" ~printer:string_of_int
+                          2 version_id;
+
+       let osd_id = Option.get_some osd_id_o in
+
+       (* check recovery info *)
+       let object_id = mf.object_id in
+       let open Albamgr_protocol.Protocol.Preset in
+       let encryption = preset.fragment_encryption in
+       let open Recovery_info in
+       let get_info osd_id chunk_id fragment_id version_id =
+         let key =
+           Osd_keys.AlbaInstance.fragment_recovery_info
+             ~object_id ~version_id ~chunk_id ~fragment_id
+         |> Slice.Slice.wrap_string
+         in
+         (alba_client # osd_access)
+           # with_osd
+           ~osd_id
+           (fun client ->
+             (client # namespace_kvs namespace_id) # get_exn Osd.Low key
+           )
+         >>= fun recovery_info_ba ->
+
+         let (info:RecoveryInfo.t) =
+           let buf =
+             Llio.make_buffer (Lwt_bytes.to_string recovery_info_ba) 0
+           in
+           RecoveryInfo.from_buffer buf
+         in
+         RecoveryInfo.t_to_t' info encryption ~object_id
+       in
+       let chunk_id = 0 in
+       get_info osd_id chunk_id 0 2 >>= fun info ->
+       let chunk = List.nth_exn mf.fragment_checksums chunk_id in
+       let oks = List.map2
+                   (fun oldc new_c -> true)
+                   chunk info.RecoveryInfo.fragment_checksums
+       in
+       let ok = List.fold_left (&&) true oks in
+       OUnit.assert_bool "fragment_checksums different in recovery info"
+                         ok;
+       Lwt.return_unit
+
+       )
 open OUnit
 
 let suite = "maintenance_test" >:::[
@@ -843,4 +1052,5 @@ let suite = "maintenance_test" >:::[
     "test_rewrite_namespace" >:: test_rewrite_namespace;
     "test_verify_namespace" >:: test_verify_namespace;
     "test_automatic_repair" >:: test_automatic_repair;
+    "test_repair_evolved_compressor" >:: test_repair_evolved_compressor;
 ]

@@ -409,6 +409,16 @@ let decompress c f =
        (Bzip2.decompress_bs_ba ~release_runtime_lock:true) f >>= fun res ->
      Lwt_bytes.unsafe_destroy f.Bigstring_slice.bs;
      Lwt.return res
+  | Test ->
+     let f' = let open Bigstring_slice in
+              { bs = f.bs;
+                offset = f.offset + 8;
+                length = f.length -8 }
+     in
+     Lwt_preemptive.detach
+       (Bzip2.decompress_bs_ba ~release_runtime_lock:true) f' >>= fun res ->
+     Lwt_bytes.unsafe_destroy f.Bigstring_slice.bs;
+     Lwt.return res
 
 (* returns a new bigarray *)
 let compress c f = match c with
@@ -420,3 +430,15 @@ let compress c f = match c with
   | Bzip2 ->
      Lwt_preemptive.detach
        (Bzip2.compress_bss_ba ~release_runtime_lock:true) f
+  | Test ->
+     begin
+     Lwt_preemptive.detach
+       (Bzip2.compress_bss_ba ~release_runtime_lock:true) f
+     >>= fun res ->
+     let len = Lwt_bytes.length res in
+     let res' = Lwt_bytes2.Lwt_bytes.create (len + 8) in
+     Lwt_bytes.blit res 0 res' 8 len;
+     let t64 = Unix.gettimeofday() |> Int64.bits_of_float in
+     Prelude.set64_prim' res' 0 t64;
+     Lwt.return res'
+     end

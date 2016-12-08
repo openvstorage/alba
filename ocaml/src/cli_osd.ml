@@ -163,7 +163,7 @@ let alba_add_osd
       tls_config
       Tcp_keepalive2.default
       Buffer_pool.osd_buffer_pool
-      (Alba_osd.make_client ~albamgr_connection_pool_size:10)
+      (Alba_osd.make_client ~albamgr_connection_pool_size:10 ~upload_slack:0.2)
       kind
       ~pool_size:1
     >>= fun (_, osd_client, closer) ->
@@ -181,6 +181,7 @@ let alba_add_osd
                             read = [];
                             write = [];
                             errors = [];
+                            checksum_errors = 0L;
                           })
     in
     with_albamgr_client

@@ -82,12 +82,16 @@ module Shell = struct
     | true,_ | false,0 -> ()
     | false, rc -> failwith (Printf.sprintf "%S=x => rc=%i" x rc)
 
+  let cmd' ?(ignore_rc=false) xs =
+    xs
+    |> String.concat " "
+    |> cmd ~ignore_rc
 
   let cmd_with_rc x =
     _print x;
     Sys.command x
 
-  let cmd_with_capture cmd =
+  let cmd_with_capture_and_rc cmd =
     let line = String.concat " " cmd in
     _print line;
     let open Unix in
@@ -105,11 +109,15 @@ module Shell = struct
     let result = loop [] in
     let status = close_process_in ic in
     match status with
-    | WEXITED rc ->
-       if rc = 0 then result
-       else failwith "bad_rc"
+    | WEXITED rc -> result, rc
     | WSIGNALED signal -> failwith "signal?"
     | WSTOPPED x -> failwith "stopped?"
+
+  let cmd_with_capture cmd =
+    let result,rc = cmd_with_capture_and_rc cmd in
+    if rc = 0
+    then result
+    else Printf.sprintf "rc=%i" rc |> failwith
 
   let cat f = cmd_with_capture ["cat" ; f]
 
@@ -127,6 +135,13 @@ module Shell = struct
   let cp src tgt = Printf.sprintf "cp %s %s" src tgt |> cmd
 
   let mkdir p = "mkdir -p " ^ p |> cmd
+
+  let md5sum file =
+    let x = cmd_with_capture ["md5sum"; file] in
+    Scanf.sscanf x "%s" (fun s -> s)
+
+  let rm file =
+    "rm " ^ file |> cmd
 end
 
 module Etcdctl = struct

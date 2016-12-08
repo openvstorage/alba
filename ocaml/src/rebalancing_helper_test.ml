@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-let total = 1999419994112L 
+let total = 1999419994112L
 let used =
   [|
     1973915885568L;
@@ -54,7 +54,8 @@ let test_check_move () =
                  ~other:""
                  ~total
                  ~used
-                 ~seen:[] ~read:[] ~write:[] ~errors:[]
+                 ~seen:[] ~read:[] ~write:[]
+                 ~errors:[] ~checksum_errors:0L
   in
   let () = Array.iteri
              (fun osd_id used ->
@@ -114,7 +115,7 @@ let test_check_move () =
     | None -> OUnit.assert_equal true false ~msg:"there should be a solution"
     | Some (m,src,tgt,_score) ->
        Printf.printf "src:%Li -> tgt:%Li\n" src tgt
-  
+
 
 let suite =
   let open OUnit in

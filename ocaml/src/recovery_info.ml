@@ -27,7 +27,7 @@ module RecoveryInfo = struct
     size : Int64.t;
     checksum : Checksum.t;
     timestamp : float;
-  }
+  } [@@ deriving show]
 
   type t' = {
     name : string;
@@ -41,7 +41,7 @@ module RecoveryInfo = struct
 
      (* only fill this in for the last chunk *)
     object_info_o : object_info option;
-  }
+  } [@@ deriving show]
 
   type t = {
     encrypt_info : EncryptInfo.t;

@@ -42,7 +42,10 @@ let workspace =
 
 let capacity = ref 0L
 
-let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
+let with_asd_client
+      ?(is_restart = false) ?(node_id = "bla")
+      ?write_blobs test_name port f
+  =
   let path = workspace ^ "/tmp/alba/" ^ test_name in
   let abm_tls_config = Albamgr_test.get_tls_config () in (* client config *)
   let o_port, tls_config =
@@ -79,8 +82,7 @@ let with_asd_client ?(is_restart=false) ?write_blobs test_name port f =
            ~rora_num_cores:0 ~rora_queue_depth:0
            path
            ~asd_id
-           ~node_id:"bla"
-           ~slow:false
+           ~node_id
            ~fsync:false
            ~rocksdb_max_open_files:256
            ~rocksdb_recycle_log_file_num:None

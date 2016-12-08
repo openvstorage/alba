@@ -20,7 +20,15 @@
         "creds"    : [ "/tmp/arakoon/my_client/my_client.pem",
                        "/tmp/arakoon/my_client/my_client.key" ]
     }
-    
+
     // wrap object file usage with posix_fadvise calls
     //, "use_fadvise" : true // optional, default true
+
+    // the upload waits a factor upload_slack longer after min_fragment_count
+    // fragments have been successfully uploaded before it continues
+    //, "upload_slack": 0.2  // optional, default 0.2
+
+    // node_ids of osds that are considered closer, default []
+    , "read_preference" : []
+
 }

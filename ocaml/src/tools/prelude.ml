@@ -226,7 +226,7 @@ module List = struct
        List.fold_left
          (fun (min, min_acc) item ->
            let res = compare min item in
-           if res < 0
+           if res > 0
            then item, [ item; ]
            else if res = 0
            then min, (item :: min_acc)
@@ -321,6 +321,52 @@ module List = struct
     rev_map3 f (rev l1) (rev l2) (rev l3)
 
   let combine3 l1 l2 l3 = map3 (fun e1 e2 e3 -> e1, e2, e3) l1 l2 l3
+
+  let map2i f xs ys =
+    let rec inner acc i xs ys =
+      match xs, ys with
+      | [],[] -> List.rev acc
+      | _, [] | [], _ -> raise (Invalid_argument "List.map2i")
+      | x :: xs, y :: ys ->
+         let r = f i x y in
+         inner (r::acc) (i+1) xs ys
+    in
+    inner [] 0 xs ys
+
+  let map3i f xs ys zs =
+    let rec inner acc i xs ys zs =
+      match xs, ys, zs with
+      | [],[],[] -> List.rev acc
+      | [], _, _ |  _,[], _ |  _, _, [] -> raise (Invalid_argument "List.map3i")
+      | x :: xs, y :: ys, z :: zs ->
+         let r = f i x y z in
+         inner (r::acc) (i+1) xs ys zs
+    in
+    inner [] 0 xs ys zs
+
+  let map4i f ws xs ys zs =
+    let rec inner acc i ws xs ys zs =
+      match ws, xs, ys, zs with
+      | [],[],[],[] -> List.rev acc
+      | [], _, _, _
+      | _,[], _, _
+      | _, _, [],_
+      | _, _, _,[] -> raise (Invalid_argument "List.map4i")
+      | w :: ws, x :: xs, y :: ys, z :: zs ->
+         let r = f i w x y z in
+         inner (r::acc) (i+1) ws xs ys zs
+    in
+    inner [] 0 ws xs ys zs
+
+  let split4 xs =
+    let x0s_r, x1s_r, x2s_r, x3s_r =
+      List.fold_left
+        (fun (x0s,x1s,x2s,x3s) (x0,x1,x2,x3) -> (x0::x0s, x1::x1s, x2::x2s, x3::x3s))
+        ([], [], [], []) xs
+    in List.rev x0s_r, List.rev x1s_r, List.rev x2s_r, List.rev x3s_r
+
+  let replace index x_new xs =
+    List.mapi (fun i x -> if index = i then x_new else x) xs
 end
 
 module Option = struct
@@ -661,6 +707,7 @@ module Int64Set = Set.Make(Int64)
 module StringSet = Set.Make(String)
 
 module IntMap = Map.Make(struct type t = int let compare = compare end)
+module Int64Map = Map.Make(Int64)
 module StringMap = Map.Make(String)
 
 let finalize f final =
@@ -682,6 +729,12 @@ module HexString = struct
 
   let pp formatter t =
     Format.pp_print_string formatter (show t)
+
+  let to_yojson t =
+    `String (show t)
+
+  let of_yojson t = failwith "not implemented"
+
 end
 
 module HexInt32 = struct
@@ -691,6 +744,11 @@ module HexInt32 = struct
 
   let pp formatter t =
     Format.pp_print_string formatter (show t)
+
+  let to_yojson t =
+    `String (show t)
+
+  let of_yojson x = failwith "not implemented"
 end
 
 (* a call with return value has_more may return less than the

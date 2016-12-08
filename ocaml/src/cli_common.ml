@@ -135,28 +135,51 @@ let lwt_cmd_line ~to_json ~verbose t =
   let t' () =
     Lwt.catch
       (fun () ->
-       install_logger ~log_sinks:`Stderr ~subcomponent:"cli" ~verbose () >>= fun () ->
-       t ())
+        install_logger ~log_sinks:`Stderr ~subcomponent:"cli" ~verbose ()
+        >>= fun () ->
+        t () >>= fun () ->
+        Lwt.return 0)
       (fun exn ->
         let exc_type, exc_code, message = exn_to_string_code exn in
+        begin
           if to_json
           then
             Lwt_io.printlf
-                "%s"
-                (Yojson.Safe.to_string
-                   (`Assoc [
-                       ("success", `Bool false);
-                       ("error", `Assoc [
-                                    ("message", `String message);
-                                    ("exception_type", `String exc_type);
-                                    ("exception_code", `Int exc_code);
-                       ])
-                ]))
+              "%s"
+              (Yojson.Safe.to_string
+                 (`Assoc [
+                     ("success", `Bool false);
+                     ("error", `Assoc [
+                                  ("message", `String message);
+                                  ("exception_type", `String exc_type);
+                                  ("exception_code", `Int exc_code);
+                     ])
+              ])) >>= fun () ->
+            Lwt.return 0
           else
-            Lwt_log.warning message
+            Lwt_log.warning message >>= fun () ->
+            Lwt.return 2
+        end
+
       )
   in
-  Lwt_main.run (t' ())
+  let rc = Lwt_main.run (t' ()) in
+  exit rc
+
+let unit_result to_json () =
+  if to_json
+  then print_result () (fun () -> `Assoc [])
+  else Lwt.return_unit
+
+let version_result to_json version =
+  if to_json
+  then
+    begin
+      print_result version Alba_json.Version.to_yojson
+    end
+  else
+    let major, minor, patch, hash = version in
+    Lwt_io.printlf "(%i, %i, %i, %S)" major minor patch hash
 
 let lwt_cmd_line_result ~to_json ~verbose t res_to_json =
   lwt_cmd_line
@@ -440,6 +463,7 @@ let with_alba_client cfg_url tls_config f =
     cfg_ref
     ~tls_config
     ~populate_osds_info_cache:false
+    ~upload_slack:0.2
     f
 
 let with_albamgr_client ~attempts cfg_url tls_config f =

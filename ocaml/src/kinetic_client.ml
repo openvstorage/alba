@@ -341,6 +341,9 @@ object (self :# Osd.key_value_osd)
       Lwt.fail_with "Kinetic_client: `set_full` is not implemented"
     method get_long_id = cid
 
+    method set_slowness slowness =
+      Lwt.fail_with "Kinetic_client: `set_slowness` is not implemented"
+
     method get_disk_usage =
       (* TODO real implementation *)
       Lwt.return (Int64.shift_left 1L 41, Int64.shift_left 1L 42)

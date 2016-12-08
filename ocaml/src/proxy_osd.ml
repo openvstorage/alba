@@ -128,7 +128,11 @@ class multi_proxy_pool
       | `TryAgain ->
          if !fuse
          then Lwt.return ()
-         else t ()
+         else
+           begin
+             Lwt_extra2.sleep_approx 60. >>= fun () ->
+             t ()
+           end
     in
     let t = t () in
     Hashtbl.add disqualified_endpoints_requalify_threads endpoint (t, fuse);
@@ -400,15 +404,19 @@ class t
                     List.map2
                       (fun assert_ mf_v_o ->
                         let open Proxy_protocol.Protocol in
+                        let failed_assert key = Osd.Error.(lwt_fail (Assert_failed (Slice.get_string_unsafe key))) in
                         match assert_, mf_v_o with
                         | Osd.Assert.Value (key, None), None ->
                            Lwt.return (Assert.ObjectDoesNotExist (Slice.get_string_unsafe key))
                         | Osd.Assert.Value (key, None), Some _
-                          | Osd.Assert.Value (key, Some _), None ->
-                           Osd.Error.(lwt_fail (Assert_failed (Slice.get_string_unsafe key)))
+                        | Osd.Assert.Value (key, Some _), None ->
+                           failed_assert key
                         | Osd.Assert.Value (key, Some v), Some (mf, v') ->
-                           Lwt.return (Assert.ObjectHasId (Slice.get_string_unsafe key,
-                                                           mf.Nsm_model.Manifest.object_id)))
+                           if Osd.Blob.(equal (Bigslice v') v)
+                           then Lwt.return (Assert.ObjectHasId (Slice.get_string_unsafe key,
+                                                                mf.Nsm_model.Manifest.object_id))
+                           else failed_assert key
+                      )
                       asserts values
                     |> Lwt_list.map_s Std.id
                   )
@@ -474,6 +482,8 @@ class t
           | _ -> assert false)
 
     method set_full _ = failwith "grmbl this method doesn't belong here."
+    method set_slowness _ = failwith "set_slowness not implemented"
+
     method get_version = proxy_pool # with_client ~namespace:"" (fun c -> c # get_version)
     method get_long_id = alba_id
     method get_disk_usage = Lwt.return

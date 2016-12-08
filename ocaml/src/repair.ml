@@ -72,6 +72,7 @@ let repair_object_generic
                     ~encryption
                     decompress
                     k m w'
+                    ~download_strategy:Alba_client_download.AllFragments
         >>= fun (data_fragments, coding_fragments, t_chunk) ->
         Lwt.finalize
           (fun () -> f data_fragments coding_fragments)
@@ -109,8 +110,8 @@ let repair_object_generic
       (fun acc (chunk_id, updated_locations) ->
        let updated_chunk_locations =
          List.map
-           (fun (fragment_id, device_id) ->
-            (chunk_id, fragment_id, device_id))
+           (fun (fragment_id, device_id,maybe_changed) ->
+            (chunk_id, fragment_id, device_id, maybe_changed))
            updated_locations in
        List.rev_append updated_chunk_locations acc)
       []
@@ -143,15 +144,14 @@ let repair_object_generic_and_update_manifest
                client # update_manifest
                       ~object_name
                       ~object_id
-                      (List.map
-                         (fun (c,f,o) -> c,f,Some o)
-                         updated_object_locations)
+                      updated_object_locations
                       ~gc_epoch ~version_id)
   >>= fun () ->
   Lwt_log.debug_f
-    "updated_manifest ~namespace_id:%Li ~object_id:%S ~updated_object_locations:%s"
+    "updated_manifest ~namespace_id:%Li ~object_id:%S ~updated_object_locations:%s ~version_id:%i"
     namespace_id object_id
-    ([%show : (int *int * int64) list] updated_object_locations)
+    ([%show : (Manifest.fragment_update) list] updated_object_locations)
+    version_id
   >>= fun () ->
   Lwt.return ()
 
@@ -182,14 +182,15 @@ let rewrite_object
 
   Lwt.catch
     (fun () ->
-     alba_client # upload_object'
-                 ~namespace_id
-                 ~object_name
-                 ~object_reader
-                 ~checksum_o
-                 ~allow_overwrite
-                 ~object_id_hint
-     >>= fun _ ->
+      alba_client # upload_object'
+                  ~epilogue_delay:None
+                  ~namespace_id
+                  ~object_name
+                  ~object_reader
+                  ~checksum_o
+                  ~allow_overwrite
+                  ~object_id_hint
+      >>= fun _ ->
      Lwt.return ())
     (let open Nsm_model.Err in
      function

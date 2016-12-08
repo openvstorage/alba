@@ -68,23 +68,19 @@ let (>>==) = E.bind
  *)
 let download_packed_fragment
       (osd_access : Osd_access_type.t)
-      ~location
+      ~(location:Nsm_model.osd_id * Nsm_model.version)
       ~namespace_id
       ~object_id ~object_name
       ~chunk_id ~fragment_id
   =
 
-  let osd_id_o, version_id = location in
-
-  (match osd_id_o with
-   | None -> E.fail `NoneOsd
-   | Some osd_id -> E.return osd_id)
-  >>== fun osd_id ->
+  let osd_id, version_id = location in
 
   Lwt_log.debug_f
-    "download_packed_fragment: object (%S, %S) chunk %i, fragment %i"
+    "download_packed_fragment: object (%S, %S) chunk %i, fragment %i from osd_id:%Li"
     object_id object_name
     chunk_id fragment_id
+    osd_id
   >>= fun () ->
 
   let osd_key =
@@ -176,6 +172,8 @@ let download_fragment
       else
         begin
           Lwt_bytes.unsafe_destroy fragment_data;
+          osd_access # get_osd_info ~osd_id >>= fun (_,osd_state,_) ->
+          Osd_state.add_checksum_errors osd_state 1L;
           E.fail `ChecksumMismatch
         end) >>== fun () ->
 
@@ -252,31 +250,41 @@ let download_fragment'
   >>= function
   | Prelude.Error.Ok a -> Lwt.return a
   | Prelude.Error.Error x ->
-     bad_fragment_callback
-       ~namespace_id ~object_name ~object_id
-       ~chunk_id ~fragment_id ~location;
+     let () =
+       match bad_fragment_callback
+       with | None -> ()
+            | Some bfc ->
+               bfc ~namespace_id ~object_name ~object_id
+                   ~chunk_id ~fragment_id ~location
+     in
      match x with
      | `AsdError err -> Lwt.fail (Asd_protocol.Protocol.Error.Exn err)
      | `AsdExn exn -> Lwt.fail exn
-     | `NoneOsd -> Lwt.fail_with "can't download fragment from None osd"
      | `FragmentMissing -> Lwt.fail_with "missing fragment"
      | `ChecksumMismatch -> Lwt.fail_with "checksum mismatch"
 
+
+type download_strategy =
+  | AllFragments
+  | LeastAmount
+[@@deriving show]
 
 (* consumers of this method are responsible for freeing
  * the returned fragment bigstrings
  *)
 let download_chunk
+      ?(download_strategy = AllFragments)
       ~namespace_id
       ~object_id ~object_name
       chunk_locations ~chunk_id
       decompress
       ~encryption
       k m w'
-      osd_access
+      (osd_access:Osd_access_type.t)
       fragment_cache
       ~cache_on_read
       bad_fragment_callback
+      ~(read_preference: string list)
   =
 
   let t0_chunk = Unix.gettimeofday () in
@@ -285,13 +293,29 @@ let download_chunk
   let fragments = Hashtbl.create n in
 
   let module CountDownLatch = Lwt_extra2.CountDownLatch in
-  let successes = CountDownLatch.create ~count:k in
-  let failures = CountDownLatch.create ~count:(m+1) in
+  let downloadable_chunk_locations_i, nones =
+    Alba_client_common.downloadable chunk_locations
+  in
+  begin
+    Lwt_log.debug_f "download_strategy:%s"
+                  (show_download_strategy download_strategy) >>= fun () ->
+    match download_strategy with
+    | AllFragments -> Lwt.return (downloadable_chunk_locations_i, k, m+1 - nones)
+    | LeastAmount  ->
+       Alba_client_common.sort_by_preference
+         read_preference osd_access downloadable_chunk_locations_i
+       >>= fun sorted ->
+       Lwt.return (List.take k sorted , k , 1)
+  end
+  >>= fun (chunk_locations_i', success_count, failure_count) ->
+
+  let successes = CountDownLatch.create ~count:success_count in
+  let failures = CountDownLatch.create ~count:failure_count  in
   let finito = ref false in
 
   let threads : unit Lwt.t list =
-    List.mapi
-      (fun fragment_id (location, fragment_checksum, fragment_ctr) ->
+    List.map
+      (fun (fragment_id, (location, fragment_checksum, fragment_ctr)) ->
         let t =
           Lwt.catch
             (fun () ->
@@ -334,7 +358,8 @@ let download_chunk
                 Lwt.return ()) in
         Lwt.ignore_result t;
         t)
-      chunk_locations in
+      chunk_locations_i'
+  in
 
   ignore threads;
 

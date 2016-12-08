@@ -47,4 +47,5 @@ let suite = "all" >:::[
     Proxy_osd_test.suite;
     Fragment_helper_test.suite;
     Fragment_size_helper_test.suite;
+    Read_preference_test.suite;
   ]
