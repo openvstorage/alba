@@ -337,6 +337,8 @@ end
 module Option = struct
   type 'a t = 'a option
 
+  let some a = Some a
+
   let map f = function
     | None -> None
     | Some a -> Some (f a)

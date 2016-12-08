@@ -19,14 +19,16 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Lwt.Infix
 
-let propagate_preset
+let _propagate_preset
       (mgr_access : Albamgr_client.client)
       (nsm_host_access : Nsm_host_access.nsm_host_access)
       ~preset_name =
   Lwt_log.info_f "Alba_client_preset_cache.propagate_preset %S" preset_name >>= fun () ->
   mgr_access # get_preset2 ~preset_name >>= function
   | None ->
-     (* preset was deleted in the mean time *)
+     (* preset was deleted in the mean time, or albamgr does not yet support
+      * the ListPresets2 call
+      *)
      Lwt.return ()
   | Some (_, preset, version, _, _) ->
      begin
@@ -73,6 +75,16 @@ let propagate_preset
                      ~namespace_ids
      end
 
+let propagate_preset
+      (mgr_access : Albamgr_client.client)
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
+      ~preset_name =
+  Lwt_extra2.ignore_errors
+    (fun () ->
+      _propagate_preset
+        mgr_access
+        nsm_host_access
+        ~preset_name)
 
 class preset_cache
         (mgr_access : Albamgr_client.client)
