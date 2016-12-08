@@ -306,17 +306,44 @@ let asd_multi_delete_cmd =
     Term.info "asd-multi-delete" ~doc
   in asd_multi_delete_t, info
 
-let asd_multi_get hosts port transport tls_config asd_id (keys:string list) verbose unescape =
+let asd_multi_get hosts port transport tls_config asd_id (keys:string list)
+                  to_json verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
   let keys' = List.map (_maybe_unescape unescape) keys in
   run_with_asd_client'
-    ~conn_info asd_id ~to_json:false ~verbose
+    ~conn_info asd_id ~to_json ~verbose
     (fun client ->
 
      client # multi_get ~prio:Osd.High (List.map Slice.wrap_string keys')
      >>= fun values ->
-     print_endline ([%show: (Lwt_bytes2.Lwt_bytes.t * Checksum.t) option list] values);
-     Lwt.return ())
+     let zipped =
+       List.map2
+         (fun k vo ->
+
+           let vj =
+             match vo with
+             | None -> `Null
+             | Some (vb,crc) ->
+                let vs = Lwt_bytes.to_string vb in
+                `List [`String vs;
+                       Alba_json.Checksum.to_yojson crc
+                      ]
+           in
+           k, vj
+         )
+         keys' values
+     in
+     if to_json
+     then
+       print_result
+         zipped
+         (fun x -> `Assoc x)
+     else
+       Lwt_io.printl
+         ([%show: (Lwt_bytes2.Lwt_bytes.t * Checksum.t) option list] values)
+     >>= fun () ->
+       Lwt.return ()
+    )
 
 let asd_multi_get_cmd =
   let doc = "$(docv)" in
@@ -328,7 +355,9 @@ let asd_multi_get_cmd =
           $ hosts $ (port 8_000) $ transport
           $ tls_config
           $ lido
-          $ keys $ verbose $ unescape)
+          $ keys
+          $ to_json $ verbose
+          $ unescape)
   in
   let info =
     let doc = "perform a multi get on a remote ASD" in

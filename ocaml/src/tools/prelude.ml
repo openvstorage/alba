@@ -692,6 +692,12 @@ module HexString = struct
 
   let pp formatter t =
     Format.pp_print_string formatter (show t)
+
+  let to_yojson t =
+    `String (show t)
+
+  let of_yojson t = failwith "not implemented"
+
 end
 
 module HexInt32 = struct
@@ -701,6 +707,11 @@ module HexInt32 = struct
 
   let pp formatter t =
     Format.pp_print_string formatter (show t)
+
+  let to_yojson t =
+    `String (show t)
+
+  let of_yojson x = failwith "not implemented"
 end
 
 (* a call with return value has_more may return less than the

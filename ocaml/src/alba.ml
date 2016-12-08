@@ -337,7 +337,7 @@ let alba_download_object
   cfg_file tls_config
   namespace
   object_name output_file
-  verbose
+  to_json verbose
   =
 
   let t () =
@@ -350,14 +350,25 @@ let alba_download_object
            ~output_file
            ~consistent_read:true ~should_cache:false
       )
-    >>= function
-    | None ->
-      Lwt_io.printlf "no object with name %s could be found" object_name
-    | Some (manifest, _, _) ->
-      Lwt_io.printlf "object %s with size %Li downloaded to file %s"
-                     object_name manifest.Nsm_model.Manifest.size output_file
+    >>= fun ro ->
+    let msg () =
+      Printf.sprintf "no object with name %s could be found" object_name
+    in
+    if to_json
+    then
+      match ro with
+      | None -> failwith (msg ())
+      | Some (_,_,_) ->
+         unit_result true ()
+    else
+      match ro with
+      | None ->
+         Lwt_io.printl (msg ())
+      | Some (manifest, _, _) ->
+         Lwt_io.printlf "object %s with size %Li downloaded to file %s"
+                        object_name manifest.Nsm_model.Manifest.size output_file
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_download_object_cmd =
   Term.(pure alba_download_object
@@ -366,7 +377,7 @@ let alba_download_object_cmd =
         $ namespace 0
         $ object_name_download 1
         $ file_download 2
-        $ verbose
+        $ to_json $ verbose
   ),
   Term.info "download-object" ~doc:"download an object from alba"
 
