@@ -711,7 +711,7 @@ let alba_bump_next_namespace_id_cmd =
 
 let alba_add_iter_namespace_item
       cfg_file tls_config namespace name factor action
-      ~check ~to_json ~verbose =
+      ~to_json ~verbose =
   let t () =
     with_albamgr_client
       cfg_file ~attempts:1 tls_config
@@ -721,7 +721,7 @@ let alba_add_iter_namespace_item
        | Some (_, namespace_info) ->
           let open Albamgr_protocol.Protocol in
           let namespace_id = namespace_info.Namespace.id in
-          client # add_work_items ~check
+          client # add_work_items
                  [ Work.(IterNamespace
                            (action,
                             namespace_id,
@@ -734,7 +734,7 @@ let alba_rewrite_namespace cfg_file tls_arg namespace name factor to_json verbos
   alba_add_iter_namespace_item
     cfg_file tls_arg namespace name factor
     Albamgr_protocol.Protocol.Work.Rewrite
-    ~check:false ~to_json ~verbose
+    ~to_json ~verbose
 
 let job_name p =
   Arg.(required
@@ -775,18 +775,10 @@ let no_repair_osd_unavailable =
        & info
            ["no-repair-osd-unavailable"]
            ~doc:"flag to specify that fragments on unavailable osds should not be repaired")
-let only_if_absent =
-  Arg.(value
-       & flag
-       & info
-           ["only-if-absent"]
-           ~doc:"only add the job if it's not yet there"
-  )
 
 let alba_verify_namespace
       cfg_file tls_config namespace name factor
       no_verify_checksum no_repair_osd_unavailable
-      (only_if_absent:bool)
       to_json verbose
   =
   alba_add_iter_namespace_item
@@ -794,7 +786,7 @@ let alba_verify_namespace
     (let open Albamgr_protocol.Protocol.Work in
      Verify { checksum = not no_verify_checksum;
               repair_osd_unavailable = not no_repair_osd_unavailable; })
-    ~check:only_if_absent ~to_json ~verbose
+    ~to_json ~verbose
 
 let alba_verify_namespace_cmd =
   Term.(pure alba_verify_namespace
@@ -805,7 +797,6 @@ let alba_verify_namespace_cmd =
         $ factor 1
         $ no_verify_checksum
         $ no_repair_osd_unavailable
-        $ only_if_absent
         $ to_json
         $ verbose
   ),
@@ -818,18 +809,9 @@ let alba_verify_namespaces
       (ns_names: (string * string) list)
       factor
       no_verify_checksum no_repair_osd_unavailable
-      (only_if_absent:bool)
       to_json verbose
   =
   let t () =
-    let check = only_if_absent in
-    Lwt_list.iter_s
-      (fun (ns_name,job_name) ->
-        Lwt_io.printlf "(%S,%S)" ns_name job_name
-      ) ns_names
-
-    >>= fun () ->
-
     with_albamgr_client
       cfg_file ~attempts:1 tls_config
       (fun client ->
@@ -860,7 +842,7 @@ let alba_verify_namespaces
             )
             ns_names
         in
-        client # add_work_items ~check work_items
+        client # add_work_items work_items
       )
   in
   lwt_cmd_line ~to_json ~verbose t
@@ -882,7 +864,6 @@ let alba_verify_namespaces_cmd =
         $ ns_names
         $ factor 1
         $ no_verify_checksum $ no_repair_osd_unavailable
-        $ only_if_absent
         $ to_json
         $ verbose),
   Term.info

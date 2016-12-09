@@ -311,15 +311,24 @@ let get_namespace_osds
      let state = deserialize Protocol.Osd.NamespaceLink.from_buffer (KV.cur_get_value cur) in
      (osd_id, state))
 
-let add_work_items ?(check=false) work_items =
+let add_work_items (db : read_user_db) ?(check=true) work_items =
   let module W = Protocol.Work in
-  let secondary =
-    List.map
-      (function
-       | W.IterNamespace (W.Verify _, nsid, name, cnt) -> Some (name,check)
-       | _ -> None
+  let secondary,_ =
+    List.fold_left
+      (fun (acc,names) item ->
+        match item with
+        | W.IterNamespace (W.Verify _, nsid, name, cnt) ->
+          let key = Keys.Work.job_name_prefix ^ name in
+          if StringSet.mem name names || db # exists key
+          then
+            let open Protocol in
+            Error.failwith
+              ~payload:(Printf.sprintf "job with name %S exists" name)
+              Error.Bad_argument
+          else (Some name :: acc, StringSet.add name names)
+       | _ -> (None::acc,names)
       )
-      work_items
+      ([],StringSet.empty) (List.rev work_items)
   in
   let updates = [
       Log_plugin.make_update_x64_with_secondary
@@ -476,7 +485,9 @@ let upds_for_delivered_msg
               in
               let add_work_item =
                 add_work_items
-                  [ Work.CleanupNsmHostNamespace (nsm_host_id, namespace_id) ]  in
+                  db
+                  [ Work.CleanupNsmHostNamespace (nsm_host_id, namespace_id) ]
+              in
 
               let cleanup_osds =
                 List.fold_left
@@ -486,7 +497,9 @@ let upds_for_delivered_msg
                                      None) ::
                        Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
                                        None) ::
-                         add_work_items [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
+                         add_work_items
+                           db
+                           [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
                    in
                    upds::acc)
                   []
@@ -531,7 +544,7 @@ let upds_for_delivered_msg
            | LinkOsd _ -> []
            | UnlinkOsd osd_id ->
               let add_work_item =
-                add_work_items
+                add_work_items db
                   [ Work.WaitUntilRepaired (osd_id, namespace_id) ]  in
 
               List.concat
@@ -557,7 +570,7 @@ let upds_for_delivered_msg
          then
            begin
              let add_work_items =
-               add_work_items
+               add_work_items db
                  [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
              in
              Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None)
@@ -1166,7 +1179,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       in
 
       let add_to_decommissioned_osds = Update.Set (Keys.Osd.decommissioning ~osd_id, "") in
-      let add_work_item = add_work_items [ Work.WaitUntilDecommissioned osd_id ] in
+      let add_work_item = add_work_items db
+                                         [ Work.WaitUntilDecommissioned osd_id ]
+      in
 
       let upd_namespace_links =
         List.fold_left
@@ -1588,8 +1603,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                     dest,
                     msg_id))) ]
     | AddWork ->
-       fun ((_cnt, work), check) ->
-       let updates = add_work_items ~check work in
+       fun (_cnt, work) ->
+       let updates = add_work_items db ~check:true work in
        return_upds updates
     | MarkWorkCompleted -> fun id ->
       let work_key = Keys.Work.prefix ^ serialize x_int64_be_to id in
@@ -1640,12 +1655,13 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                 (Int.range 0 cnt)
             in
 
-            let add_work_items = add_work_items (List.map fst items) in
+            let add_work_items = add_work_items db (List.map fst items) in
             let update_progress = List.map snd items in
             List.rev_append add_work_items update_progress
           | WaitUntilRepaired (osd_id, namespace_id) ->
             let add_work =
               add_work_items
+                db
                 [ Work.CleanupNamespaceOsd (namespace_id, osd_id);
                   Work.CleanupOsdNamespace (osd_id, namespace_id); ]  in
 

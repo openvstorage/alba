@@ -958,7 +958,7 @@ module Protocol = struct
     | MarkOsdClaimedByOther : (OsdInfo.long_id * alba_id, unit) update
     | MarkMsgDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
     | MarkMsgsDelivered : ('dest, 'msg) Msg_log.t -> ('dest * Msg_log.id, unit) update
-    | AddWork : (Work.t Std.counted_list * bool, unit) update
+    | AddWork : (Work.t Std.counted_list, unit) update
     | MarkWorkCompleted : (Work.id, unit) update
     | CreatePreset : (Preset.name * Preset.t, unit) update
     | DeletePreset : (Preset.name, unit) update
@@ -1299,9 +1299,7 @@ module Protocol = struct
     | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | AddWork ->
-       Llio.pair_from
-         (Llio.counted_list_from Work.from_buffer)
-         (maybe_from_buffer Llio.bool_from false)
+       Llio.counted_list_from Work.from_buffer
     | MarkWorkCompleted -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
     | DeletePreset -> Llio.string_from
@@ -1366,10 +1364,7 @@ module Protocol = struct
         Llio.string_to
     | MarkMsgDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
-    | AddWork ->
-       Llio.pair_to
-         (Llio.counted_list_to Work.to_buffer)
-         Llio.bool_to
+    | AddWork -> Llio.counted_list_to Work.to_buffer
     | MarkWorkCompleted -> x_int64_to
     | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
     | DeletePreset -> Llio.string_to
@@ -1602,6 +1597,7 @@ module Protocol = struct
 
       | Progress_does_not_exist         [@value 30]
       | Progress_CAS_failed             [@value 31]
+      | Bad_argument                    [@value 32]
     [@@deriving show, enum]
 
     exception Albamgr_exn of t * string

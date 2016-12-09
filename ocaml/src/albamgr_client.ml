@@ -355,15 +355,15 @@ object(self)
     method mark_osd_claimed_by_other ~long_id ~alba_id =
       client # update MarkOsdClaimedByOther (long_id, alba_id)
 
-    method add_work_items ~(check:bool) work_items =
+    method add_work_items work_items =
       client # update
         AddWork
-        ((List.length work_items, work_items),check)
+        (List.length work_items, work_items)
 
     method add_work_repair_fragment
       ~namespace_id ~object_id ~object_name
       ~chunk_id ~fragment_id ~version_id =
-      self # add_work_items ~check:false
+      self # add_work_items
            [ Work.RepairBadFragment (namespace_id,
                                      object_id,
                                      object_name,
@@ -586,10 +586,12 @@ class single_connection_client (ic, oc) =
     | 0 ->
       Lwt.return (deserializer res_buf)
     | ierr ->
-      let err = Error.int2err ierr in
-      Lwt_log.debug_f "albamgr operation failed: %i %s" ierr (Error.show err)
+       let err = Error.int2err ierr in
+       let payload = Llio.string_from res_buf in
+       Lwt_log.debug_f
+         "albamgr operation failed: %i %s:%s"
+         ierr (Error.show err) payload
       >>= fun () ->
-      let payload = Llio.string_from res_buf in
       Lwt.fail (Error.Albamgr_exn (err, payload))
   in
   let do_request tag serialize_request deserialize_response =

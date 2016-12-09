@@ -60,14 +60,7 @@ let user_function_x64_sec
      let log_prefix = Llio.string_from buf in
      let msgs = Llio.list_from Llio.string_from buf in
      let secondary_prefix = Llio.string_from buf in
-     let secondary =
-       Llio.list_from
-         (Llio.option_from
-            (Llio.pair_from
-               Llio.string_from
-               Llio.bool_from))
-         buf
-     in
+     let secondary = Llio.list_from (Llio.option_from Llio.string_from) buf in
      let next_id = match user_db # get next_id_key with
        | None -> 0L
        | Some v -> deserialize x_int64_be_from v
@@ -85,14 +78,10 @@ let user_function_x64_sec
            begin
              match maybe_secondary with
              | None -> store_item ()
-             | Some (secondary,check) ->
+             | Some secondary  ->
                 let sec_key = secondary_prefix ^ secondary in
-                let sec_exists = user_db # exists sec_key in
-                if check && sec_exists
-                then ()
-                else
-                  let () = store_item () in
-                  user_db # put sec_key (Some key)
+                let () = user_db # put sec_key (Some key) in
+                store_item ()
            end;
            Int64.succ next_id)
          next_id
@@ -134,7 +123,7 @@ let make_payload_with_secondary
        Llio.string_to
        (Llio.list_to Llio.string_to)
        Llio.string_to
-       (Llio.list_to (Llio.option_to (Llio.pair_to Llio.string_to Llio.bool_to)))
+       (Llio.list_to (Llio.option_to Llio.string_to ))
     )
     (next_id_key,log_prefix,msgs,secondary_prefix, secondary)
 

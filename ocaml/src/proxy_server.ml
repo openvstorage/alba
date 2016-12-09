@@ -640,7 +640,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
             | Namespace_does_not_exist ->
               return_err_response Protocol.Error.NamespaceDoesNotExist
             | Preset_does_not_exist ->
-              return_err_response Protocol.Error.PresetDoesNotExist
+               return_err_response Protocol.Error.PresetDoesNotExist
+            | Bad_argument ->
+               return_err_response Protocol.Error.BadArgument
             | Unknown
             | Osd_already_exists
             | Nsm_host_already_exists

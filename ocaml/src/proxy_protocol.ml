@@ -530,6 +530,7 @@ module Protocol = struct
       | NoSatisfiablePolicy     [@value 15]
       | ProtocolVersionMismatch [@value 17]
       | AssertFailed            [@value 18]
+      | BadArgument             [@value 19]
     [@@deriving show, enum]
 
     exception Exn of t * string option

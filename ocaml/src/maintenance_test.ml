@@ -610,7 +610,7 @@ let test_rewrite_namespace () =
      let open Albamgr_protocol.Protocol in
      let name = "name" in
      let cnt = 10 in
-     alba_client # mgr_access # add_work_items ~check:false
+     alba_client # mgr_access # add_work_items
                  [ Work.(IterNamespace
                            (Rewrite,
                             namespace_id,
@@ -720,7 +720,7 @@ let test_verify_namespace () =
      let open Albamgr_protocol.Protocol in
      let name = "name" in
      let cnt = 10 in
-     alba_client # mgr_access # add_work_items ~check:false
+     alba_client # mgr_access # add_work_items
                  [ Work.(IterNamespace
                            (Verify
                               { checksum = true;

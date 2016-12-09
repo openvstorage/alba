@@ -1517,10 +1517,13 @@ module Deployment = struct
         "--verbose";
     ] @ extra |> _alba_with_cfg t
 
-  let verify_namespace t namespace job_name ~only_if_absent =
+  let verify_namespace t namespace job_name =
     let cmd0 = ["verify-namespace"; namespace; job_name] in
-    let extra = if only_if_absent then ["--only-if-absent"] else [] in
-    cmd0 @ extra |> _alba_with_cfg t
+    cmd0 |> _alba_with_cfg t
+
+  let verify_namespaces t ns_names =
+    "verify_namespaces" :: "--namespaces" :: ns_names
+    |> _alba_with_cfg t
 
   let list_jobs t =
     _mk_cmd t ["list-jobs"; "--to-json"]
@@ -2735,21 +2738,27 @@ module Test = struct
             let jn = job_name n in
             let () = Deployment.verify_namespace
                        t ns jn
-                       ~only_if_absent:true
             in
             loop (n+1)
         in
         loop 0
       in
+      let expect_failure f =
+        let ok =
+          try f (); false
+          with _ -> true
+        in
+        assert ok
+      in
       let () =
         let add () =
           Deployment.verify_namespace
             t ns "there_can_be_only_one"
-            ~only_if_absent:true
         in
         add ();
-        add ();
-        add ()
+        expect_failure add;
+        expect_failure
+          (fun () ->Deployment.verify_namespaces t ["demo,bad;demo,bad"])
       in
       let () =
         let x = Deployment.list_jobs t in
