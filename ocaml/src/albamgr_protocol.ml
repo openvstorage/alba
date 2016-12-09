@@ -767,7 +767,7 @@ module Protocol = struct
     | ListPresets2 : (string RangeQueryArgs.t,
                       (Preset.name * Preset.t * Preset.version * bool * bool) counted_list_more) query
     | ListPresetNamespaces : (Preset.name, Namespace.id counted_list) query
-    | GetPresetPropagationState : (Preset.name, Preset.Propagation.t option) query
+    | GetPresetsPropagationState : (Preset.name list, Preset.Propagation.t option list) query
     | GetClientConfig : (unit, Alba_arakoon.Config.t) query
     | ListNamespacesById : (Namespace.id RangeQueryArgs.t,
                            (Namespace.id *
@@ -849,7 +849,7 @@ module Protocol = struct
     | ListPresets -> RangeQueryArgs.from_buffer Llio.string_from
     | ListPresets2 -> RangeQueryArgs.from_buffer Llio.string_from
     | ListPresetNamespaces -> Llio.string_from
-    | GetPresetPropagationState -> Llio.string_from
+    | GetPresetsPropagationState -> Llio.list_from Llio.string_from
     | GetClientConfig -> Llio.unit_from
     | ListNamespacesById -> RangeQueryArgs.from_buffer x_int64_from
     | GetVersion -> Llio.unit_from
@@ -889,7 +889,7 @@ module Protocol = struct
     | ListPresets -> RangeQueryArgs.to_buffer Llio.string_to
     | ListPresets2 -> RangeQueryArgs.to_buffer Llio.string_to
     | ListPresetNamespaces -> Llio.string_to
-    | GetPresetPropagationState -> Llio.string_to
+    | GetPresetsPropagationState -> Llio.list_to Llio.string_to
     | GetClientConfig -> Llio.unit_to
     | ListNamespacesById -> RangeQueryArgs.to_buffer x_int64_to
     | GetVersion -> Llio.unit_to
@@ -974,8 +974,8 @@ module Protocol = struct
         )
     | ListPresetNamespaces ->
        Llio.counted_list_from Llio.int64_from
-    | GetPresetPropagationState ->
-       Llio.option_from Preset.Propagation.from_buffer
+    | GetPresetsPropagationState ->
+       Llio.list_from (Llio.option_from Preset.Propagation.from_buffer)
     | GetClientConfig ->
       Alba_arakoon.Config.from_buffer
     | ListNamespacesById ->
@@ -1089,8 +1089,8 @@ module Protocol = struct
         )
     | ListPresetNamespaces ->
        Llio.counted_list_to Llio.int64_to
-    | GetPresetPropagationState ->
-       Llio.option_to Preset.Propagation.to_buffer
+    | GetPresetsPropagationState ->
+       Llio.list_to (Llio.option_to Preset.Propagation.to_buffer)
     | GetClientConfig ->
       Alba_arakoon.Config.to_buffer
     | ListNamespacesById ->
@@ -1454,7 +1454,7 @@ module Protocol = struct
 
                       Wrap_q ListPresets2, 90l, "ListPresets2";
                       Wrap_q ListPresetNamespaces, 91l, "ListPresetNamespaces";
-                      Wrap_q GetPresetPropagationState, 92l, "GetPresetPropagationState";
+                      Wrap_q GetPresetsPropagationState, 92l, "GetPresetsPropagationState";
                       Wrap_u UpdatePresetPropagationState, 93l, "UpdatePresetPropagationState";
                     ]
 

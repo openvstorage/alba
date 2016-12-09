@@ -236,8 +236,8 @@ module Update = struct
 end
 
 module Propagation = struct
-  type namespace_id = int64
-  type t = version * namespace_id list
+  type namespace_id = int64 [@@deriving show]
+  type t = version * namespace_id list [@@deriving show]
 
   let to_buffer buf (version, namespace_ids) =
     let ser_version = 1 in

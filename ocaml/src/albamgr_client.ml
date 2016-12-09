@@ -253,8 +253,14 @@ object(self)
       | Some ((_, presets), _) ->
          Lwt.return (List.hd presets)
 
+    method get_presets_propagation_state ~preset_names =
+      client # query GetPresetsPropagationState preset_names
+
     method get_preset_propagation_state ~preset_name =
-      client # query GetPresetPropagationState preset_name
+      client # query GetPresetsPropagationState [ preset_name ] >>= function
+      | [] -> assert false
+      | [ r ] -> Lwt.return r
+      | _ :: _ :: _ -> assert false
 
     method update_preset_propagation_state ~preset_name ~preset_version ~namespace_ids =
       client # update UpdatePresetPropagationState (preset_name, preset_version, namespace_ids)

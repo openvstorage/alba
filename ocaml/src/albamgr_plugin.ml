@@ -2123,10 +2123,13 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     | ListPresetNamespaces ->
        fun preset_name ->
        list_preset_namespaces ~preset_name ~max:(-1) |> fst
-    | GetPresetPropagationState ->
-       fun preset_name ->
-       get_preset_propagation ~preset_name
-       |> Option.map (fun (v, ids, _) -> v, ids)
+    | GetPresetsPropagationState ->
+       fun preset_names ->
+       List.map
+         (fun preset_name ->
+           get_preset_propagation ~preset_name
+           |> Option.map (fun (v, ids, _) -> v, ids))
+         preset_names
     | GetClientConfig -> fun () ->
       db # get_exn Keys.client_config |>
       deserialize Alba_arakoon.Config.from_buffer

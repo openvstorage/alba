@@ -23,10 +23,10 @@ open Cmdliner
 
 let alba_list_namespaces cfg_file tls_config to_json verbose =
   let t () =
-    with_alba_client
-      cfg_file tls_config
+    with_albamgr_client
+      cfg_file tls_config ~attempts:1
       (fun client ->
-         client # mgr_access # list_all_namespaces >>= fun (cnt, namespaces) ->
+         client # list_all_namespaces >>= fun (cnt, namespaces) ->
          if to_json
          then begin
            let res =
@@ -1084,6 +1084,45 @@ let alba_delete_fragment_cmd =
   ),
   Term.info "dev-delete-fragment" ~doc:"remove a fragment of an object"
 
+
+let alba_get_presets_propagation_state
+      cfg_file tls_config
+      preset_names
+      include_all_presets
+      verbose
+  =
+  let t () =
+    with_albamgr_client
+      cfg_file tls_config
+      ~attempts:1
+      (fun client ->
+        (if include_all_presets
+         then client # list_all_presets ()
+              >|= snd
+              >|= List.map (fun (name, _, _, _) -> name)
+         else Lwt.return preset_names)
+        >>= fun preset_names ->
+
+        client # get_presets_propagation_state ~preset_names >>= fun prop_states ->
+
+        Lwt_log.info_f "prop_states = %s" ([%show : Preset.Propagation.t option list] prop_states)
+      )
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let alba_get_presets_propagation_state_cmd =
+  Term.(pure alba_get_presets_propagation_state
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(value
+               & opt (list string) []
+               & info [ "preset" ] ~docv:"PRESET" ~doc:"specify one or more presets")
+        $ Arg.(value
+               & flag
+               & info [ "all-presets" ] ~doc:"for all presets")
+        $ verbose),
+  Term.info "get-presets-propagation-state" ~doc:"gets the preset propagation state"
+
 let cmds = [
     alba_list_namespaces_cmd;
     alba_list_namespaces_by_id_cmd;
@@ -1122,4 +1161,6 @@ let cmds = [
     alba_bump_next_osd_id_cmd;
     alba_bump_next_namespace_id_cmd;
     alba_delete_fragment_cmd;
+
+    alba_get_presets_propagation_state_cmd;
   ]
