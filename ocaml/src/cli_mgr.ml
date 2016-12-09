@@ -801,28 +801,33 @@ let alba_verify_namespace_cmd =
     ~doc:"verify all objects in the specified namespace"
 
 
-let alba_show_job_progress cfg_file tls_config name verbose =
+let alba_show_job_progress cfg_file tls_config name to_json verbose =
   let t () =
     with_albamgr_client
       cfg_file ~attempts:1 tls_config
       (fun client ->
-       client # get_progress_for_prefix name >>= fun (_, progresses) ->
-       Lwt_list.iter_s
-         (fun (id, p) ->
-          Lwt_log.info_f
-            "%i: %s"
-            id
-            ([%show : Albamgr_protocol.Protocol.Progress.t] p))
-         progresses)
+        client # get_progress_for_prefix name >>= fun (_, progresses) ->
+        if to_json
+        then
+          let to_yojson p = Alba_json.Progress.progresses_to_yojson p in
+          print_result progresses to_yojson
+        else
+          Lwt_list.iter_s
+            (fun (id, p) ->
+              Lwt_log.info_f
+                "%i: %s"
+                id
+                ([%show : Albamgr_protocol.Protocol.Progress.t] p))
+            progresses)
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_show_job_progress_cmd =
   Term.(pure alba_show_job_progress
         $ alba_cfg_url
         $ tls_config
         $ job_name 0
-        $ verbose),
+        $ to_json $ verbose),
   Term.info
     "show-job-progress"
     ~doc:"show progress of a certain job"

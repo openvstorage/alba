@@ -634,11 +634,11 @@ module Protocol = struct
     type verify_params = {
         checksum : bool;
         repair_osd_unavailable : bool;
-      } [@@deriving show]
+      } [@@deriving show, yojson]
     type action =
       | Rewrite
       | Verify of verify_params
-    [@@deriving show]
+    [@@deriving show, yojson]
     let action_to_buffer buf = function
       | Rewrite -> Llio.int8_to buf 1
       | Verify { checksum; repair_osd_unavailable; } ->
@@ -809,7 +809,7 @@ module Protocol = struct
     type base = {
         count : int64;
         next : string option;
-      } [@@deriving show]
+      } [@@deriving show, yojson]
     let base_to_buffer buf { count; next; } =
       Llio.int64_to buf count;
       Llio.string_option_to buf next
@@ -822,7 +822,7 @@ module Protocol = struct
         fragments_detected_missing  : int64;
         fragments_osd_unavailable   : int64;
         fragments_checksum_mismatch : int64;
-    } [@@deriving show]
+    } [@@deriving show, yojson]
     let verify_params_to_buffer
           buf
           { fragments_detected_missing;
@@ -842,7 +842,7 @@ module Protocol = struct
     type t =
       | Rewrite of base
       | Verify of base * verify_params
-    [@@deriving show]
+    [@@deriving show, yojson]
 
     let to_buffer buf = function
       | Rewrite b ->
