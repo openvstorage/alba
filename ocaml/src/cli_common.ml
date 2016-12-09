@@ -22,11 +22,7 @@ open Lwt.Infix
 let stderr_logger =
   let mutex = Lwt_mutex.create () in
   let lg_output line =
-    Lwt_mutex.with_lock
-      mutex
-      (fun () ->
-       Lwt_io.write Lwt_io.stderr line >>= fun () ->
-       Lwt_io.write_char Lwt_io.stdout '\n')
+    Lwt_mutex.with_lock mutex (fun () -> Lwt_io.eprintl line)
   in
   let close () = Lwt.return_unit in
   lg_output, close
