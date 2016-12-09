@@ -87,17 +87,12 @@ let user_function_x64_sec
              | None -> store_item ()
              | Some (secondary,check) ->
                 let sec_key = secondary_prefix ^ secondary in
-                (* TODO: use check *)
-                if check
-                then
-                  begin
-                  if not (user_db # exists sec_key)
-                  then
-                    let () = store_item () in
-                    user_db # put sec_key (Some key)
-                  end
+                let sec_exists = user_db # exists sec_key in
+                if check && sec_exists
+                then ()
                 else
-                  store_item()
+                  let () = store_item () in
+                  user_db # put sec_key (Some key)
            end;
            Int64.succ next_id)
          next_id
