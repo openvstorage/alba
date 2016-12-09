@@ -381,13 +381,7 @@ class client
 
       let object_name = manifest.Manifest.name in
       let object_id = manifest.Manifest.object_id in
-      let locations = manifest.Manifest.fragment_locations in
-      let fragment_checksums = manifest.Manifest.fragment_checksums in
-      let fragment_info =
-        Layout.combine
-          locations
-          fragment_checksums
-      in
+      let fragment_info = Manifest.combined_fragment_infos manifest in
       let es, compression = match manifest.Manifest.storage_scheme with
         | Storage_scheme.EncodeCompressEncrypt (es, c) -> es, c in
       let enc = manifest.Manifest.encrypt_info in

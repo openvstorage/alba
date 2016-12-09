@@ -364,6 +364,18 @@ let gather_and_push_objects
           fs
       in
 
+      let fragment_ctrs =
+        Layout.unfold
+          ~n_chunks:(List.length fs)
+          ~n_fragments:(k + m)
+          (fun chunk_id fragment_id ->
+            match List.find_exn (fun (chunk_id', _) -> chunk_id' = chunk_id) fs
+                  |> snd
+                  |> List.find (fun f1 -> f1.fragment_id = fragment_id) with
+            | None -> None
+            | Some f -> f.recovery_info.fragment_ctr
+          )
+      in
 
       let open Nsm_model in
       let manifest : Manifest.t =
@@ -380,7 +392,7 @@ let gather_and_push_objects
           ~fragment_checksums
           ~fragment_packed_sizes
           ~version_id
-
+          ~fragment_ctrs
           (* TODO *)
           ~max_disks_per_node:100
       in
@@ -527,6 +539,7 @@ let nsm_recovery_agent
      R.set kv Keys.worker_id (serialize Llio.int_to worker_id));
 
   (* start threads to scrape an osd *)
+  Lwt_log.info "Start reap osd" >>= fun () ->
   Lwt_list.map_p
     (fun osd_id ->
        reap_osd
@@ -535,8 +548,10 @@ let nsm_recovery_agent
          total_workers worker_id)
     osds >>= fun (_ : unit list) ->
 
+  Lwt_log.info "gather_and_push_objects" >>= fun () ->
+  alba_client # get_base_client # get_ns_preset_info ~namespace_id >>= fun preset ->
   gather_and_push_objects
     alba_client
     ~namespace_id
-    ~encryption:Encryption.Encryption.NoEncryption
+    ~encryption:preset.Preset.fragment_encryption
     kv

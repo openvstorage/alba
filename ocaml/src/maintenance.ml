@@ -307,7 +307,7 @@ class client ?(retry_timeout = 60.)
              ~manifest
              ~(source_osd:Nsm_model.osd_id)
              ~(target_osd:Nsm_model.osd_id)
-           : (int * int * Nsm_model.osd_id * Nsm_model.osd_id) list Lwt.t
+           : (int * int * Nsm_model.osd_id * Nsm_model.osd_id * bytes option) list Lwt.t
       =
       let open Nsm_model in
       let open Manifest in
@@ -325,7 +325,6 @@ class client ?(retry_timeout = 60.)
           in
           failwith msg
       in
-      let fragment_checksums = manifest.fragment_checksums in
       let object_id = manifest.object_id in
       let object_name = manifest.name in
 
@@ -336,11 +335,7 @@ class client ?(retry_timeout = 60.)
 
       let version_id0 = manifest.version_id in
       let version_id1 = version_id0 + 1 in
-      let fragment_info =
-        Layout.combine
-          locations
-          fragment_checksums
-      in
+      let fragment_info = Manifest.combined_fragment_infos manifest in
       alba_client # get_ns_preset_info ~namespace_id
       >>= fun preset ->
 
@@ -357,13 +352,13 @@ class client ?(retry_timeout = 60.)
            let rec _find i = function
              | [] -> failwith "all fragments reside on target_osd"
              | f :: fs ->
-                let ((osd_id_o, version), checksum) = f in
+                let ((osd_id_o, version), checksum, fragment_ctr) = f in
                 if osd_id_o = Some source_osd
-                then (i, checksum, version)
+                then (i, checksum, version, fragment_ctr)
                 else _find (i+1) fs
            in _find 0 chunk_location
          in
-         let (fragment_id, fragment_checksum,version) = source_fragment in
+         let (fragment_id, fragment_checksum,version, fragment_ctr) = source_fragment in
 
          let object_info_o =
            let is_last_chunk = chunk_id = List.length locations - 1 in
@@ -379,14 +374,16 @@ class client ?(retry_timeout = 60.)
            else None
          in
 
+
          RecoveryInfo.make
-           object_name
-           object_id
+           ~object_name
+           ~object_id
            object_info_o
            encryption
            (List.nth_exn manifest.chunk_sizes chunk_id)
            (List.nth_exn manifest.fragment_packed_sizes chunk_id)
            (List.nth_exn manifest.fragment_checksums chunk_id)
+           fragment_ctr
          >>= fun recovery_info_slice ->
 
          let open Alba_client_errors.Error in
@@ -421,7 +418,7 @@ class client ?(retry_timeout = 60.)
                      ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
                      ~osd_id:target_osd
                    >>= fun () ->
-                   Lwt.return (chunk_id, fragment_id, source_osd, target_osd)
+                   Lwt.return (chunk_id, fragment_id, source_osd, target_osd, fragment_ctr)
                  end)
               (fun () ->
                Lwt_bytes.unsafe_destroy packed_fragment;
@@ -430,12 +427,12 @@ class client ?(retry_timeout = 60.)
         (List.mapi (fun i lc -> i, lc) fragment_info)
       >>= fun object_location_movements ->
       Lwt_log.debug_f "object_location_movements: %s"
-        ([%show: (int * int * osd_id * osd_id ) list] object_location_movements)
+        ([%show: (int * int * osd_id * osd_id * bytes option) list] object_location_movements)
       >>= fun ()->
       let updated_object_locations =
         List.map
-          (fun (c,f,s, target_osd_id) ->
-             (c,f, Some target_osd_id, None))
+          (fun (c,f,s, target_osd_id, fragment_ctr) ->
+             (c,f, Some target_osd_id, None, fragment_ctr))
           object_location_movements
       in
       alba_client # with_nsm_client'
@@ -513,7 +510,7 @@ class client ?(retry_timeout = 60.)
                           | None -> acc
                           | Some osd_id ->
                              if Hashtbl.mem purging_osds osd_id
-                             then (chunk_id, fragment_id, None, None) :: acc
+                             then (chunk_id, fragment_id, None, None, None) :: acc
                              else acc
                         in
                         (fragment_id + 1, acc))

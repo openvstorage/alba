@@ -141,7 +141,7 @@ let maybe_delete_fragment
            client # update_manifest
              ~object_name:manifest.Manifest.name
              ~object_id
-             [ (chunk_id, fragment_id, None, None); ]
+             [ (chunk_id, fragment_id, None, None, None); ]
              ~gc_epoch ~version_id:(manifest.Manifest.version_id + 1))
     else
       Lwt.return ()
@@ -581,15 +581,14 @@ let test_create_namespaces () =
          inner 0)
 
 let test_partial_download () =
-  test_with_alba_client
-    (fun client ->
-       let test_name = "test_partial_download" in
+  let t (client : Alba_client.alba_client) test_name fragment_encryption =
        let namespace = test_name in
 
        let open Albamgr_protocol.Protocol in
        let preset_name = test_name in
        let preset' = Preset.({ _DEFAULT with
                                compression = Alba_compression.Compression.NoCompression;
+                               fragment_encryption;
                              }) in
        client # mgr_access # create_preset
               preset_name preset' >>= fun () ->
@@ -724,7 +723,19 @@ let test_partial_download () =
          assert (Slice.compare' slice1 slice2 = Compare.EQ);
 
          Lwt.return ()
-       end)
+       end
+  in
+  let open Encryption in
+  List.iteri
+    (fun i encryption ->
+      test_with_alba_client
+        (fun client ->
+          let test_name = Printf.sprintf "test_partial_download_%i" i in
+          t client test_name encryption))
+    [ NoEncryption;
+      AlgoWithKey (AES (CTR, L256), get_random_string (key_length L256));
+    ]
+
 
 let test_partial_download_bad_fragment () =
   test_with_alba_client
@@ -756,8 +767,8 @@ let test_partial_download_bad_fragment () =
                   client # update_manifest
                          ~object_name
                          ~object_id:mf.Nsm_model.Manifest.object_id
-                         [ 0, 0, None, None;
-                           0, 1, None, None]
+                         [ 0, 0, None, None, None;
+                           0, 1, None, None, None; ]
                          ~gc_epoch
                          ~version_id:1) >>= fun () ->
 
@@ -832,7 +843,7 @@ let test_encryption () =
        let namespace = "test_encryption" in
        let preset_name = "enc_preset" in
        let algo = Encryption.(AES (CBC, L256)) in
-       let key = get_random_string (Encryption.key_length algo) in
+       let key = get_random_string (Encryption.algo_key_length algo) in
        let preset' = Preset.({ _DEFAULT with
                                compression = Alba_compression.Compression.NoCompression;
                                fragment_encryption = Encryption.(AlgoWithKey (algo, key)); }) in
@@ -1679,7 +1690,7 @@ let test_replication () =
          let preset_name = test_name in
 
          let algo = Encryption.(AES (CBC, L256)) in
-         let key = get_random_string (Encryption.key_length algo) in
+         let key = get_random_string (Encryption.algo_key_length algo) in
          let preset' = Preset.({ _DEFAULT with
                                  policies = [(1,2,2,1);];
                                  fragment_encryption = Encryption.(AlgoWithKey (algo, key)); }) in

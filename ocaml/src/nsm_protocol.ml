@@ -90,10 +90,7 @@ module Protocol = struct
     | ApplySequence : (Assert.t list * Update.t list, unit) update
     | UpdateObject2 :
         (object_name * object_id
-         * (chunk_id
-            * fragment_id
-            * osd_id option
-            * (int * Checksum.t) option ) list
+         * Manifest.fragment_update list
          * GcEpochs.gc_epoch * version,
          unit
         ) update
@@ -181,13 +178,14 @@ module Protocol = struct
            Llio.string_from
            Llio.string_from
            (Llio.list_from
-              (Llio.tuple4_from
+              (Llio.tuple5_from
                  Llio.int_from
                  Llio.int_from
                  (Llio.option_from x_int64_from)
                  (Llio.option_from
                     (Llio.pair_from Llio.int_from Checksum.from_buffer)
                  )
+                 (Llio.option_from Llio.string_from)
               )
            )
            Llio.int64_from
@@ -261,13 +259,14 @@ module Protocol = struct
            Llio.string_to
            Llio.string_to
            (Llio.list_to
-              (Llio.tuple4_to
+              (Llio.tuple5_to
                  Llio.int_to
                  Llio.int_to
                  (Llio.option_to x_int64_to)
                  (Llio.option_to
                     (Llio.pair_to Llio.int_to Checksum.to_buffer)
                  )
+                 (Llio.option_to Llio.string_to)
               )
            )
            Llio.int64_to
