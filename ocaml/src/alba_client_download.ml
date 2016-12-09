@@ -129,6 +129,7 @@ let download_fragment
       ~chunk_id ~fragment_id
       ~k
       ~fragment_checksum
+      ~fragment_ctr
       decompress
       ~encryption
       (fragment_cache : Fragment_cache.cache)
@@ -183,6 +184,7 @@ let download_fragment
           ~object_id ~chunk_id ~fragment_id
           ~ignore_fragment_id:(k=1)
           fragment_data
+          ~fragment_ctr
         >>= E.return)
      >>== fun (t_decrypt, maybe_decrypted) ->
 
@@ -225,6 +227,7 @@ let download_fragment'
       ~chunk_id ~fragment_id
       ~k
       ~fragment_checksum
+      ~fragment_ctr
       decompress
       ~encryption
       fragment_cache
@@ -239,6 +242,7 @@ let download_fragment'
     ~chunk_id ~fragment_id
     ~k
     ~fragment_checksum
+    ~fragment_ctr
     decompress
     ~encryption
     fragment_cache
@@ -311,7 +315,7 @@ let download_chunk
 
   let threads : unit Lwt.t list =
     List.map
-      (fun (fragment_id, (location, fragment_checksum)) ->
+      (fun (fragment_id, (location, fragment_checksum, fragment_ctr)) ->
         let t =
           Lwt.catch
             (fun () ->
@@ -325,6 +329,7 @@ let download_chunk
                 ~fragment_id
                 ~k
                 ~fragment_checksum
+                ~fragment_ctr
                 decompress
                 ~encryption
                 fragment_cache

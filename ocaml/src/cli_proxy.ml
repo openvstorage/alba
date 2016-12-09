@@ -271,7 +271,9 @@ let proxy_create_namespace_cmd =
 
 let proxy_upload_object host port transport namespace input_file object_name
                         allow_overwrite to_json verbose
+                        unescape
   =
+  let object_name = maybe_unescape unescape object_name in
   proxy_client_cmd_line
     host port transport ~to_json ~verbose
     (fun client ->
@@ -292,13 +294,17 @@ let proxy_upload_object_cmd =
         $ file_upload 1
         $ object_name_upload 2
         $ allow_overwrite
-        $ to_json $ verbose),
+        $ to_json $ verbose
+        $ unescape
+  ),
   Term.info "proxy-upload-object" ~doc:"upload an object to alba"
 
 let proxy_download_object host port transport namespace object_name
                           output_file consistent_read
                           to_json verbose
+                          unescape
   =
+  let object_name = maybe_unescape unescape object_name in
   proxy_client_cmd_line
     host port transport ~to_json ~verbose
     (fun client ->
@@ -321,13 +327,15 @@ let proxy_download_object_cmd =
         $ file_download 2
         $ consistent_read
         $ to_json $ verbose
+        $ unescape
   ),
   Term.info "proxy-download-object" ~doc:"download an object from alba"
 
 let proxy_delete_object
       host port transport namespace object_name
-      to_json verbose
+      to_json verbose unescape
   =
+  let object_name = maybe_unescape unescape object_name in
   proxy_client_cmd_line
     host port transport ~to_json ~verbose
     (fun client ->
@@ -346,6 +354,7 @@ let proxy_delete_object_cmd =
         $ namespace 0
         $ object_name_upload 1
         $ to_json $ verbose
+        $ unescape
   ),
   Term.info "proxy-delete-object" ~doc:"delete an object from alba"
 

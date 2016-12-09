@@ -24,7 +24,7 @@ open Encryption
 open Gcrypt
 open Lwt.Infix
 
-let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
+let get_iv key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
   (*
      deterministic iv for fragment encryption
      this way we get security without needing to store the iv in the manifest / recovery info
@@ -38,32 +38,28 @@ let get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
     then 0
     else fragment_id
   in
-  let open Encryption in
-  match algo with
-  | AES (CBC, L256) ->
-    let s =
-      serialize
-        (Llio.tuple3_to
-           Llio.string_to
-           Llio.int_to
-           Llio.int_to)
-        (object_id, chunk_id, fragment_id)
-    in
+  let s =
+    serialize
+      (Llio.tuple3_to
+         Llio.string_to
+         Llio.int_to
+         Llio.int_to)
+      (object_id, chunk_id, fragment_id)
+  in
 
-    let block_len = block_length algo in
-    let bs =
-      let x = Lwt_bytes.of_string s in
-      finalize
-        (fun () -> Padding.pad (Bigstring_slice.wrap_bigstring x) block_len)
-        (fun () -> Lwt_bytes.unsafe_destroy x)
-    in
+  let block_len = 16 in
+  let bs =
+    let x = Lwt_bytes.of_string s in
+    finalize
+      (fun () -> Padding.pad (Bigstring_slice.wrap_bigstring x) block_len)
+      (fun () -> Lwt_bytes.unsafe_destroy x)
+  in
 
-    Cipher.with_t_lwt
-      key Cipher.AES256 Cipher.CBC []
-      (fun cipher -> Cipher.encrypt cipher bs) >>= fun () ->
+  Cipher.with_t_lwt key Cipher.AES256 Cipher.CBC []
+    (fun cipher -> Cipher.encrypt cipher bs) >>= fun () ->
 
-    let res = Str.last_chars (Lwt_bytes.to_string bs) block_len in
-    Lwt.return res
+  let res = Str.last_chars (Lwt_bytes.to_string bs) block_len in
+  Lwt.return res
 
 (* consumes the input and returns a big_array *)
 let maybe_encrypt
@@ -73,7 +69,7 @@ let maybe_encrypt
   let open Encryption in
   match encryption with
   | NoEncryption ->
-    Lwt.return plain
+    Lwt.return (plain, None)
   | AlgoWithKey (AES (CBC, L256) as algo, key) ->
     verify_key_length algo key;
     let block_len = block_length algo in
@@ -82,34 +78,74 @@ let maybe_encrypt
         (fun () -> Padding.pad (Bigstring_slice.wrap_bigstring plain) block_len)
         (fun () -> Lwt_bytes.unsafe_destroy plain)
     in
-    get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
+    get_iv key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
     Cipher.with_t_lwt
       key Cipher.AES256 Cipher.CBC []
-      (fun cipher -> Cipher.encrypt ~iv cipher bs) >>= fun () ->
-    Lwt.return bs
+      (fun cipher ->
+        Cipher.set_iv cipher iv;
+        Cipher.encrypt cipher bs) >>= fun () ->
+    Lwt.return (bs, None)
+  | AlgoWithKey (AES (CTR, L256) as algo, key) ->
+    verify_key_length algo key;
+    let iv = get_random_string 16 in
+    Cipher.with_t_lwt
+      key Cipher.AES256 Cipher.CTR []
+      (fun cipher ->
+        Cipher.set_ctr cipher iv;
+        Cipher.encrypt cipher plain) >>= fun () ->
+    Lwt.return (plain, Some iv)
 
+(* consumes the input and returns a bigstring_slice *)
 let maybe_decrypt
     encryption
     ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
+    ~fragment_ctr
     data =
   let open Encryption in
   match encryption with
   | NoEncryption ->
     Lwt.return (Bigstring_slice.wrap_bigstring data)
   | AlgoWithKey (algo, key) ->
-    begin match algo with
-      | AES (CBC, L256) ->
-        Encryption.verify_key_length algo key;
-        get_iv algo key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
-        Cipher.with_t_lwt
-          key Cipher.AES256 Cipher.CBC []
+     let decrypt mode set_iv_ctr =
+       Encryption.verify_key_length algo key;
+       Cipher.with_t_lwt
+         key Cipher.AES256 mode []
           (fun cipher ->
-           Cipher.decrypt
-             ~iv
-             cipher
-             data 0 (Lwt_bytes.length data)) >>= fun () ->
+            set_iv_ctr cipher;
+            Cipher.decrypt_detached
+                  cipher
+                  data 0 (Lwt_bytes.length data)
+          )
+     in
+     begin match algo with
+     | AES (CBC, L256) ->
+        get_iv key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id >>= fun iv ->
+        decrypt Cipher.CBC (fun h -> Cipher.set_iv h iv) >>= fun () ->
         Lwt.return (Padding.unpad data)
+     | AES (CTR, L256) ->
+        decrypt Cipher.CTR (fun h -> Cipher.set_ctr h (Option.get_some fragment_ctr)) >>= fun () ->
+        Lwt.return (Bigstring_slice.wrap_bigstring data)
     end
+
+let maybe_partial_decrypt
+      encryption
+      ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
+      ~fragment_ctr
+      (data, offset, length) ~fragment_offset =
+  let open Encryption in
+  match encryption with
+  | NoEncryption -> Lwt.return ()
+  | AlgoWithKey (algo, key) ->
+     begin
+       match algo with
+       | AES (CBC, _) -> Lwt.fail_with "can't do partial decrypt for AES CBC"
+       | AES (CTR, L256) ->
+          Cipher.(with_t_lwt
+                    key AES256 CTR []
+                    (fun handle ->
+                      set_ctr_with_offset handle (Option.get_some fragment_ctr) fragment_offset;
+                      decrypt_detached handle data offset length))
+     end
 
 (* returns a new bigarray *)
 let maybe_compress compression fragment_data =
@@ -170,7 +206,7 @@ let pack_fragment
          ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id
          encryption
          compressed)
-  >>= fun (t_compress_encrypt, final_data) ->
+  >>= fun (t_compress_encrypt, (final_data, fragment_ctr)) ->
 
   with_timing_lwt
     (fun () ->
@@ -182,7 +218,7 @@ let pack_fragment
        Lwt.return (hash # final ()))
   >>= fun (t_hash, checksum) ->
 
-  Lwt.return (final_data, t_compress_encrypt, t_hash, checksum)
+  Lwt.return (final_data, t_compress_encrypt, t_hash, checksum, fragment_ctr)
 
 let chunk_to_data_fragments ~chunk ~chunk_size ~k =
   let fragment_size = chunk_size / k in
@@ -257,13 +293,13 @@ let chunk_to_packed_fragments
         fragment
         ~object_id ~chunk_id ~fragment_id:0 ~ignore_fragment_id:true
         compression encryption fragment_checksum_algo
-      >>= fun (packed, f1, f2, cs) ->
+      >>= fun (packed, f1, f2, cs, ctr) ->
 
       let rec build_result acc = function
         | 0 -> acc
         | n ->
           let fragment_id = n - 1 in
-          let acc' = (fragment_id, fragment, (packed, f1, f2, cs)) :: acc in
+          let acc' = (fragment_id, fragment, (packed, f1, f2, cs, ctr)) :: acc in
           build_result
             acc'
             (n-1)
@@ -284,8 +320,8 @@ let chunk_to_packed_fragments
               fragment
               ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id:false
               compression encryption fragment_checksum_algo
-            >>= fun (packed, f1, f2, cs) ->
-            Lwt.return (fragment_id, fragment, (packed, f1, f2, cs)))
+            >>= fun (packed, f1, f2, cs, ctr) ->
+            Lwt.return (fragment_id, fragment, (packed, f1, f2, cs, ctr)))
            all_fragments >>= fun packed_fragments ->
          Lwt.return (data_fragments, packed_fragments))
         (fun () ->

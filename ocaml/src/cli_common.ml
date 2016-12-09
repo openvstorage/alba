@@ -241,6 +241,11 @@ let unescape =
        & flag & info ["unescape"] ~doc:"ocaml unescape keys"
   )
 
+let maybe_unescape unescape s =
+  if unescape
+  then Scanf.unescaped s
+  else s
+
 let port default =
   let doc = "tcp $(docv)" in
   Arg.(value

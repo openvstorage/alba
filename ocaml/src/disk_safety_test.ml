@@ -109,7 +109,7 @@ let test_safety () =
               client # update_manifest
                 ~object_name
                 ~object_id
-                [ (0, 0, None, None) ]
+                [ (0, 0, None, None, None) ]
                 ~gc_epoch ~version_id
            )
        end >>= fun () ->

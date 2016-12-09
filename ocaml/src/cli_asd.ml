@@ -203,19 +203,14 @@ let run_with_osd_client' conn_info osd_id verbose f =
     ~to_json:false ~verbose
     (fun () -> with_osd_client conn_info osd_id f)
 
-let _maybe_unescape unescape key =
-  if unescape then Scanf.unescaped key else key
-
-
-
 
 let asd_set hosts port transport tls_config
             asd_id to_json (verbose:bool)
             key value unescape
   =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
-  let key' = _maybe_unescape unescape key in
-  let value' = _maybe_unescape unescape value in
+  let key' = maybe_unescape unescape key in
+  let value' = maybe_unescape unescape value in
   run_with_asd_client'
     ~conn_info asd_id ~to_json ~verbose
     (fun client ->
@@ -278,7 +273,7 @@ let asd_get_version_cmd =
 
 let asd_multi_delete hosts port transport tls_config asd_id (keys:string list) verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
-  let keys' = List.map (_maybe_unescape unescape) keys in
+  let keys' = List.map (maybe_unescape unescape) keys in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
@@ -309,7 +304,7 @@ let asd_multi_delete_cmd =
 let asd_multi_get hosts port transport tls_config asd_id (keys:string list)
                   to_json verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
-  let keys' = List.map (_maybe_unescape unescape) keys in
+  let keys' = List.map (maybe_unescape unescape) keys in
   run_with_asd_client'
     ~conn_info asd_id ~to_json ~verbose
     (fun client ->
@@ -369,7 +364,7 @@ let asd_multi_get_cmd =
 let asd_delete hosts port transport tls_config asd_id key
                to_json verbose unescape =
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
-  let key' = _maybe_unescape unescape key in
+  let key' = maybe_unescape unescape key in
   run_with_asd_client'
     ~conn_info asd_id ~to_json ~verbose
     (fun client ->
@@ -422,7 +417,7 @@ let asd_range hosts port transport tls_config asd_id first verbose unescape =
   let finc = true
   and last = None in
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
-  let first' = _maybe_unescape unescape first in
+  let first' = maybe_unescape unescape first in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
     (fun client ->
@@ -459,8 +454,8 @@ let asd_range_validate hosts port transport tls_config asd_id
   =
   let finc = true in
   let conn_info = Networking2.make_conn_info hosts port ~transport tls_config in
-  let first' = _maybe_unescape unescape first in
-  let last'  =  Option.map (_maybe_unescape unescape) last in
+  let first' = maybe_unescape unescape first in
+  let last'  =  Option.map (maybe_unescape unescape) last in
   let last'' =  Option.map (fun x -> (Slice.wrap_string x), true) last' in
   run_with_asd_client'
     ~conn_info asd_id ~to_json:false ~verbose
