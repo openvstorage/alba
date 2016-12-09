@@ -762,6 +762,27 @@ let alba_rewrite_namespace_cmd =
     ~doc:"rewrite all objects in the specified namespace"
 
 
+let no_verify_checksum =
+  Arg.(value
+       & flag
+       & info
+           ["no-verify-checksum"]
+           ~doc:"flag to specify checksums should not be verified")
+
+let no_repair_osd_unavailable =
+  Arg.(value
+       & flag
+       & info
+           ["no-repair-osd-unavailable"]
+           ~doc:"flag to specify that fragments on unavailable osds should not be repaired")
+let only_if_absent =
+  Arg.(value
+       & flag
+       & info
+           ["only-if-absent"]
+           ~doc:"only add the job if it's not yet there"
+  )
+
 let alba_verify_namespace
       cfg_file tls_config namespace name factor
       no_verify_checksum no_repair_osd_unavailable
@@ -782,17 +803,9 @@ let alba_verify_namespace_cmd =
         $ namespace 0
         $ job_name 1
         $ factor 1
-        $ Arg.(value
-               & flag
-               & info ["no-verify-checksum"] ~doc:"flag to specify checksums should not be verified")
-        $ Arg.(value
-               & flag
-               & info ["no-repair-osd-unavailable"] ~doc:"flag to specify that fragments on unavailable osds should not be repaired")
-        $ Arg.(value
-               & flag
-               & info ["only-if-absent"]
-              ~doc:"only add the job if it's not yet there"
-          )
+        $ no_verify_checksum
+        $ no_repair_osd_unavailable
+        $ only_if_absent
         $ to_json
         $ verbose
   ),
@@ -800,6 +813,81 @@ let alba_verify_namespace_cmd =
     "verify-namespace"
     ~doc:"verify all objects in the specified namespace"
 
+let alba_verify_namespaces
+      cfg_file tls_config
+      (ns_names: (string * string) list)
+      factor
+      no_verify_checksum no_repair_osd_unavailable
+      (only_if_absent:bool)
+      to_json verbose
+  =
+  let t () =
+    let check = only_if_absent in
+    Lwt_list.iter_s
+      (fun (ns_name,job_name) ->
+        Lwt_io.printlf "(%S,%S)" ns_name job_name
+      ) ns_names
+
+    >>= fun () ->
+
+    with_albamgr_client
+      cfg_file ~attempts:1 tls_config
+      (fun client ->
+        client # list_all_namespaces >>= fun (_,ns_infos) ->
+        let ns_info_map =
+          List.fold_left
+            (fun acc (name,info) -> StringMap.add name info acc)
+            StringMap.empty ns_infos
+        in
+        let work_items =
+          List.map
+            (fun (ns_name,job_name) ->
+              let namespace_info =
+                try StringMap.find ns_name ns_info_map
+                with
+                | Not_found -> failwith (Printf.sprintf "%s not found" ns_name)
+              in
+              let open Albamgr_protocol.Protocol in
+              let namespace_id = namespace_info.Namespace.id in
+              let action =
+                Work.Verify {
+                    Work.checksum = not no_verify_checksum;
+                    Work.repair_osd_unavailable = not no_repair_osd_unavailable;
+                  }
+              in
+              Work.(IterNamespace
+                      (action, namespace_id, job_name, factor))
+            )
+            ns_names
+        in
+        client # add_work_items ~check work_items
+      )
+  in
+  lwt_cmd_line ~to_json ~verbose t
+
+
+
+let alba_verify_namespaces_cmd =
+  let ns_names =
+    Arg.(required
+         & opt (some (list ~sep:';' (pair ~sep:',' string string))) None
+         & info
+             ["namespaces"]
+             ~doc:"for example: \"ns1,job1;ns2,job2\" will add 2 jobs"
+             ~docv:"[(namespace, job_name)]"
+    )
+  in
+  Term.(pure alba_verify_namespaces
+        $ alba_cfg_url $ tls_config
+        $ ns_names
+        $ factor 1
+        $ no_verify_checksum $ no_repair_osd_unavailable
+        $ only_if_absent
+        $ to_json
+        $ verbose),
+  Term.info
+    "verify-namespaces"
+    ~doc:"add more verify namespace jobs at once"
 
 let alba_show_job_progress cfg_file tls_config name to_json verbose =
   let t () =
@@ -1158,6 +1246,7 @@ let cmds = [
 
     alba_rewrite_namespace_cmd;
     alba_verify_namespace_cmd;
+    alba_verify_namespaces_cmd;
     alba_show_job_progress_cmd;
     alba_clear_job_progress_cmd;
 
