@@ -2240,7 +2240,7 @@ let test_list_objects_by_id () =
 
      let open Nsm_model in
      alba_client # get_base_client # upload_object_from_string
-                 ~epilogue_delay:None
+                 ~epilogue_delay:(Some 1.)
                  ~namespace
                  ~object_name:""
                  ~object_data:""
