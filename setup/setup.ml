@@ -751,6 +751,7 @@ class maintenance
          let oc = open_out m_cfg_file in
          let json = maintenance_cfg_to_yojson cfg in
          Yojson.Safe.pretty_to_channel oc json;
+         output_char oc '\n';
          close_out oc
        in
        persister, url
@@ -768,6 +769,8 @@ class maintenance
   let out = Printf.sprintf "%s/maintenance.out" maintenance_base in
   object (self)
     method abm_config_url : Url.t = maintenance_abm_cfg_url
+
+    method cfg_url :Url.t = cfg_url
 
     method write_config_file : unit =
       "mkdir -p " ^ maintenance_base |> Shell.cmd;
@@ -1522,7 +1525,7 @@ module Deployment = struct
     cmd0 |> _alba_with_cfg t
 
   let verify_namespaces t ns_names =
-    "verify_namespaces" :: "--namespaces" :: ns_names
+    "verify-namespaces" :: "--namespaces" :: ns_names
     |> _alba_with_cfg t
 
   let list_jobs t =
@@ -2427,6 +2430,9 @@ module Test = struct
       Shell.cmd "pkill alba" ~ignore_rc:true;
       Shell.cmd "pkill arakoon" ~ignore_rc:true;
 
+      Shell.cmd "pgrep -a alba" ~ignore_rc:true;
+      Shell.cmd "pgrep -a arakoon" ~ignore_rc:true;
+
       t.abm # persist_config;
       t.abm # start;
 
@@ -2455,9 +2461,11 @@ module Test = struct
       List.iter
         (fun maintenance ->
           maintenance # write_config_file;
-          maintenance # start)
+          ["cat" ; (maintenance # cfg_url |> Url.canonical)] |> Shell.cmd';
+          maintenance # start;
+        )
         t.maintenance_processes;
-
+      Unix.sleep 5;
       Deployment.nsm_host_register t;
       Deployment.setup_osds t;
       Deployment.claim_local_osds t t.cfg.n_osds;
@@ -2725,7 +2733,8 @@ module Test = struct
     0
 
 
-    let job_crud ?(xml=false) ?filter ?dump t =
+  let job_crud ?(xml=false) ?filter ?dump t =
+    let () = Shell._print ">>>>> start of job_crud" in
     let test () =
       Deployment.stop_maintenance t;
       let ns = "demo" in
@@ -2787,6 +2796,7 @@ module Test = struct
       let jobs = Deployment.list_jobs t in
       assert (100 = List.length jobs);
       assert (not (List.mem job jobs) );
+      let () = Shell._print ">>>>> end of job_crud" in
       JUnit.Ok
     in
     run_test_as_suite
@@ -2811,9 +2821,9 @@ module Test = struct
       [ big_object;
         cli;
         arakoon_changes;
+        transform job_crud "job_crud";
         transform aaa "aaa";
         transform alba_as_osd "alba_as_osd";
-        transform job_crud "job_crud";
       ]
     in
     let results = List.map (fun s -> s t) suites in
