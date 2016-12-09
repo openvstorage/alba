@@ -800,6 +800,7 @@ let alba_verify_namespace_cmd =
     "verify-namespace"
     ~doc:"verify all objects in the specified namespace"
 
+
 let alba_show_job_progress cfg_file tls_config name verbose =
   let t () =
     with_albamgr_client
@@ -839,7 +840,6 @@ let alba_clear_job_progress cfg_file tls_config name to_json verbose =
                                     Llio.int_to)
                                  (name, i)
             in
-            Lwt_log.info_f "name=%S" name >>= fun () ->
             client # update_progress name p None)
           progresses)
   in

@@ -2205,13 +2205,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         ~last
         ~max
         ~reverse
-        (fun cur key ->
-          let job_name = Keys.Work.extract_job_name key in
-          let () =
-            Lwt_log.ign_debug_f "ListJobs:%s =>%s" key job_name
-          in
-          job_name
-        )
+        (fun cur key -> Keys.Work.extract_job_name key)
   in
 
 
