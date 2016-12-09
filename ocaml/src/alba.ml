@@ -298,8 +298,9 @@ let alba_upload_object
     (input_file:string)
     (object_name:string)
     (allow_overwrite : bool)
-    verbose
+    verbose unescape
   =
+  let object_name = maybe_unescape unescape object_name in
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -329,6 +330,7 @@ let alba_upload_object_cmd =
         $ object_name_upload 2
         $ allow_overwrite
         $ verbose
+        $ unescape
        )
   ,
   Term.info "upload-object" ~doc:"upload an object to alba"
@@ -338,7 +340,9 @@ let alba_download_object
   namespace
   object_name output_file
   to_json verbose
+  unescape
   =
+  let object_name = maybe_unescape unescape object_name in
 
   let t () =
     with_alba_client
@@ -377,11 +381,17 @@ let alba_download_object_cmd =
         $ namespace 0
         $ object_name_download 1
         $ file_download 2
-        $ to_json $ verbose
+        $ to_json
+        $ verbose
+        $ unescape
   ),
   Term.info "download-object" ~doc:"download an object from alba"
 
-let alba_delete_object cfg_file tls_config namespace object_name verbose =
+let alba_delete_object
+      cfg_file tls_config
+      namespace object_name
+      verbose unescape =
+  let object_name = maybe_unescape unescape object_name in
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -393,12 +403,26 @@ let alba_delete_object cfg_file tls_config namespace object_name verbose =
   in
   lwt_cmd_line ~to_json:false ~verbose t
 
+let alba_delete_object_cmd =
+  Term.(pure alba_delete_object
+        $ alba_cfg_url
+        $ tls_config
+        $ namespace 0
+        $ Arg.(required &
+             pos 1 (some string) None &
+               info [] ~docv:"OBJECT NAME" ~doc:"the object to delete from alba")
+        $ verbose
+        $ unescape
+  ),
+  Term.info "delete-object" ~doc:"delete an object from alba"
+
 let alba_show_object
       cfg_file tls_config
       namespace object_name
       attribute_name
-      verbose
+      verbose unescape
   =
+  let object_name = maybe_unescape unescape object_name in
 
   let t () =
     with_alba_client
@@ -441,20 +465,9 @@ let alba_show_object_cmd =
                  info ["attribute"] ~docv:"ATTRIBUTE"
                       ~doc:"nothing or 'checksum' ")
         $ verbose
+        $ unescape
   ),
   Term.info "show-object" ~doc:"print some info about the object"
-
-let alba_delete_object_cmd =
-  Term.(pure alba_delete_object
-        $ alba_cfg_url
-        $ tls_config
-        $ namespace 0
-        $ Arg.(required &
-             pos 1 (some string) None &
-               info [] ~docv:"OBJECT NAME" ~doc:"the object to delete from alba")
-        $ verbose
-  ),
-  Term.info "delete-object" ~doc:"delete an object from alba"
 
 let alba_list_objects cfg_file tls_config namespace verbose =
   let t () =

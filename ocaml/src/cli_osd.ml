@@ -44,9 +44,8 @@ let osd_multi_get osd_id cfg_file tls_config keys unescape verbose =
                 (fun key ->
                    (osd # global_kvs) # get_option
                      Osd.High
-                     (Slice.wrap_string (if unescape
-                      then Scanf.unescaped key
-                      else key)))
+                     (Slice.wrap_string (maybe_unescape unescape key))
+                )
                 keys >>= fun values_s ->
               let values = List.map
                              (fun v -> Option.map Lwt_bytes.to_string v)
