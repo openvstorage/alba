@@ -44,9 +44,9 @@ open Lwt.Infix
 let downloadable chunk_locations =
   let rec build acc nones i = function
     | [] -> List.rev acc , nones
-    | ((None, _), _) :: cls -> build acc (nones+1) (i+1) cls
-    | ((Some osd, v), h) :: cls ->
-       let cl' = (osd, v), h in
+    | ((None, _), _, _) :: cls -> build acc (nones+1) (i+1) cls
+    | ((Some osd, v), checksum, ctr) :: cls ->
+       let cl' = (osd, v), checksum, ctr in
        let acc' = (i,cl') :: acc
        and i' = i+1 in
        build acc' nones i' cls
@@ -61,7 +61,7 @@ let sort_by_preference prefered_nodes osd_access
   let needed = Hashtbl.create 16 in
   let open Nsm_model in
   Lwt_list.iter_s
-    (fun (_i,((osd_id, _version), _hash)) ->
+    (fun (_i,((osd_id, _version), _hash, _ctr)) ->
       osd_access # get_osd_info ~osd_id
       >>= fun (info,_,_) ->
       let node_id =  info.OsdInfo.node_id in
@@ -78,8 +78,8 @@ let sort_by_preference prefered_nodes osd_access
     else 0
   in
   let compare
-        (_,((osd_id0, _),_))
-        (_,((osd_id1, _),_))
+        (_,((osd_id0, _),_,_))
+        (_,((osd_id1, _),_,_))
     =
     let c0 = cvalue osd_id0
     and c1 = cvalue osd_id1

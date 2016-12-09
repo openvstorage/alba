@@ -308,6 +308,20 @@ module List = struct
         ([], [], []) xs
     in List.rev x0s_r, List.rev x1s_r, List.rev x2s_r
 
+  let rev_map3 f l1 l2 l3 =
+    let rec inner acc = function
+      | [], [], [] -> acc
+      | e1::l1, e2::l2, e3::l3 ->
+         inner (f e1 e2 e3 :: acc) (l1, l2, l3)
+      | _ -> invalid_arg "List.rev_map3"
+    in
+    inner [] (l1, l2, l3)
+
+  let map3 f l1 l2 l3 =
+    rev_map3 f (rev l1) (rev l2) (rev l3)
+
+  let combine3 l1 l2 l3 = map3 (fun e1 e2 e3 -> e1, e2, e3) l1 l2 l3
+
   let map2i f xs ys =
     let rec inner acc i xs ys =
       match xs, ys with
@@ -330,6 +344,27 @@ module List = struct
     in
     inner [] 0 xs ys zs
 
+  let map4i f ws xs ys zs =
+    let rec inner acc i ws xs ys zs =
+      match ws, xs, ys, zs with
+      | [],[],[],[] -> List.rev acc
+      | [], _, _, _
+      | _,[], _, _
+      | _, _, [],_
+      | _, _, _,[] -> raise (Invalid_argument "List.map4i")
+      | w :: ws, x :: xs, y :: ys, z :: zs ->
+         let r = f i w x y z in
+         inner (r::acc) (i+1) ws xs ys zs
+    in
+    inner [] 0 ws xs ys zs
+
+  let split4 xs =
+    let x0s_r, x1s_r, x2s_r, x3s_r =
+      List.fold_left
+        (fun (x0s,x1s,x2s,x3s) (x0,x1,x2,x3) -> (x0::x0s, x1::x1s, x2::x2s, x3::x3s))
+        ([], [], [], []) xs
+    in List.rev x0s_r, List.rev x1s_r, List.rev x2s_r, List.rev x3s_r
+
   let replace index x_new xs =
     List.mapi (fun i x -> if index = i then x_new else x) xs
 end
@@ -337,7 +372,7 @@ end
 module Option = struct
   type 'a t = 'a option
 
-  let some a = Some a
+  let some x = Some x
 
   let map f = function
     | None -> None

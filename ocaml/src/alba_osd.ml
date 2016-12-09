@@ -110,39 +110,29 @@ class client
         | Some _ -> Lwt.return Osd.Success
 
       method apply_sequence prio asserts updates =
-        let prepare_updates namespace_id =
-          let t0 = Unix.gettimeofday () in
-          Lwt_list.map_p
+
+        let apply_sequence_updates =
+          List.map
             (function
-              | Osd.Update.Set (key, None) ->
-                 Lwt.return (Nsm_model.Update.DeleteObject (Slice.get_string_unsafe key))
-              | Osd.Update.Set (key, Some (value, cs, _)) ->
-                 Alba_client_upload.upload_object''
-                   (alba_client # nsm_host_access)
-                   (alba_client # osd_access)
-                   (alba_client # get_base_client # get_preset_cache # get)
-                   (alba_client # get_base_client # get_namespace_osds_info_cache)
-                   ~object_t0:t0
-                   ~timestamp:t0
-                   ~namespace_id
-                   ~object_name:(Slice.get_string_unsafe key)
-                   ~object_reader:(let open Asd_protocol.Blob in
-                                   match value with
-                                   | Lwt_bytes s -> new Object_reader.bytes_reader s
-                                   | Bigslice s -> new Object_reader.bigstring_slice_reader s
-                                   | Bytes s -> new Object_reader.string_reader s
-                                   | Slice s -> new Object_reader.slice_reader s)
-                   ~checksum_o:(Some cs)
-                   ~object_id_hint:None
-                   ~fragment_cache:(alba_client # get_base_client # get_fragment_cache)
-                   ~cache_on_write:(alba_client # get_base_client # get_cache_on_read_write |> snd)
-                   ~upload_slack:(alba_client # upload_slack)
-                 >>= fun (mf, _chunk_fidmos, _, gc_epoch, fragment_state_layout) ->
-                 Lwt.return (Nsm_model.Update.PutObject (mf, gc_epoch)))
+             | Osd.Update.Set (key, None) ->
+                Alba_client_sequence.DeleteObject (Slice.get_string_unsafe key)
+             | Osd.Update.Set (key, Some (value, cs, _)) ->
+                let object_reader =
+                  let open Asd_protocol.Blob in
+                  match value with
+                  | Lwt_bytes s -> new Object_reader.bytes_reader s
+                  | Bigslice s -> new Object_reader.bigstring_slice_reader s
+                  | Bytes s -> new Object_reader.string_reader s
+                  | Slice s -> new Object_reader.slice_reader s
+                in
+                Alba_client_sequence.UploadObjectFromReader
+                  (Slice.get_string_unsafe key,
+                   object_reader,
+                   Some cs))
             updates
         in
 
-        let prepare_asserts () =
+        let assert_ts namespace_id =
           Lwt_list.map_p
             (function
               | Osd.Assert.Value (key, None) ->
@@ -157,7 +147,8 @@ class client
                              ~consistent_read:true
                              ~should_cache:true >>= function
                  | None -> Lwt.fail Nsm_model.Err.(Nsm_exn (Assert_failed, object_name))
-                 | Some (v, mf, _) ->
+                 | Some (v, mf, namespace_id') ->
+                    assert (namespace_id = namespace_id');
                     if Osd.Blob.equal blob (Osd.Blob.Lwt_bytes v)
                     then Lwt.return (Nsm_model.Assert.ObjectHasId
                                        (object_name,
@@ -166,43 +157,24 @@ class client
             asserts
         in
 
-        Lwt.catch
-          (fun () ->
-           let nsm_asserts_t = prepare_asserts () in
-           let nsm_updates_t =
-             alba_client # nsm_host_access # with_namespace_id
-                         ~namespace
-                         prepare_updates
-           in
-           nsm_asserts_t >>= fun nsm_asserts ->
-           nsm_updates_t >>= fun nsm_updates ->
-
-           alba_client # nsm_host_access
-                       # with_nsm_client
-                       ~namespace
-                       (fun nsm ->
-                        nsm # apply_sequence nsm_asserts nsm_updates) >>= fun () ->
-
-           (* update the manifest cache *)
-           alba_client # nsm_host_access # with_namespace_id
-                       ~namespace
-                       (fun namespace_id ->
-                        List.iter
-                          (function
-                            | Nsm_model.Update.DeleteObject _ -> ()
-                            | Nsm_model.Update.PutObject (mf, _) ->
-                               Manifest_cache.ManifestCache.add
-                                 (alba_client # get_manifest_cache)
-                                 namespace_id mf.Nsm_model.Manifest.name mf)
-                          nsm_updates;
-                        Lwt.return ())
-           >>= fun () ->
-           Lwt.return Osd.Ok)
-          (function
-            | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Assert_failed, key) ->
-               Lwt.return (Osd.Exn Osd.Error.(Assert_failed key))
-            | exn ->
-               Lwt.fail exn)
+        alba_client
+          # nsm_host_access
+          # with_namespace_id
+          ~namespace
+          (fun namespace_id ->
+            Lwt.catch
+              (fun () ->
+                Alba_client_sequence.apply_sequence
+                  alba_client
+                  namespace_id
+                  (assert_ts namespace_id)
+                  apply_sequence_updates >>= fun _ ->
+                Lwt.return Osd.Ok)
+              (function
+               | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Assert_failed, key) ->
+                  Lwt.return (Osd.Exn Osd.Error.(Assert_failed key))
+               | exn ->
+                  Lwt.fail exn))
     end
   in
   object(self :# Osd.osd)

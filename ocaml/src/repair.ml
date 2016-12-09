@@ -38,12 +38,7 @@ let repair_object_generic
   let object_id = manifest.Manifest.object_id in
 
   let locations = manifest.Manifest.fragment_locations in
-  let fragment_checksums = manifest.Manifest.fragment_checksums in
-  let fragment_info =
-    Layout.combine
-      locations
-      fragment_checksums
-  in
+  let fragment_info = Manifest.combined_fragment_infos manifest in
 
   alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
   alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
@@ -114,8 +109,8 @@ let repair_object_generic
       (fun acc (chunk_id, updated_locations) ->
        let updated_chunk_locations =
          List.map
-           (fun (fragment_id, device_id,maybe_changed) ->
-            (chunk_id, fragment_id, device_id, maybe_changed))
+           (fun (fragment_id, device_id,maybe_changed, fragment_ctr) ->
+            (chunk_id, fragment_id, device_id, maybe_changed, fragment_ctr))
            updated_locations in
        List.rev_append updated_chunk_locations acc)
       []

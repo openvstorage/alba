@@ -54,6 +54,6 @@ let test_determine_chunk_size () =
 
 open OUnit
 
-let suite = "asd_test" >:::[
+let suite = "fragment_size_helper_test" >:::[
       "test_determine_chunk_size" >:: test_determine_chunk_size;
     ]
