@@ -287,7 +287,7 @@ let alba_maintenance_cmd =
   ),
   Term.info "maintenance" ~doc:"run the maintenance process (garbage collection, obsolete fragment deletion, repair, ...)"
 
-let alba_deliver_messages cfg_file tls_config =
+let alba_deliver_messages cfg_file tls_config to_json verbose =
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -309,12 +309,14 @@ let alba_deliver_messages cfg_file tls_config =
            nsms
       )
   in
-  lwt_cmd_line ~to_json:false ~verbose:true t
+  lwt_cmd_line_unit ~to_json ~verbose t
 
 let alba_deliver_messages_cmd =
   Term.(pure alba_deliver_messages
         $ alba_cfg_url
-        $ tls_config)
+        $ tls_config
+        $ to_json $ verbose
+  )
   , Term.info "deliver-messages" ~doc:"deliver all outstanding messages (note that this happens automatically by the maintenance process too, so you usually shouldn't need this.)"
 
 let alba_rewrite_object

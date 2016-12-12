@@ -2680,7 +2680,7 @@ module Test = struct
 
 
 
-    let wait_for_lazy_write () =
+    let wait_for_lazy_write ?(delay=10)() =
       let msg = "Lazy write took too long" in
       let f () =
         let show_namespace_1 = show_namespace t_global "demo" in
@@ -2690,7 +2690,7 @@ module Test = struct
                    show_namespace_1.bucket_count);
         show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]
       in
-      wait_for_condition 5 msg f
+      wait_for_condition delay msg f
     in
     wait_for_lazy_write ();
 
