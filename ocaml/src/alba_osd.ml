@@ -238,7 +238,7 @@ let rec make_client
   let osd_access =
     new Osd_access.osd_access mgr_access
         ~osd_connection_pool_size:10
-        ~osd_timeout:2.
+        ~osd_timeout:5.0
         ~default_osd_priority:Osd.High
         ~tls_config
         ~tcp_keepalive
