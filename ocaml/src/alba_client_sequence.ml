@@ -25,12 +25,18 @@ type update =
   | UploadObjectFromReader of object_name * Object_reader.reader * Checksum.t option
   | DeleteObject of object_name
 
-let apply_sequence
+let show_update = function
+  | UploadObjectFromReader (object_name, _, cs_o) -> Printf.sprintf "(UploadObjectFromReader %S,_,_)" object_name
+  | DeleteObject object_name -> Printf.sprintf "(DeleteObject %S)" object_name
+
+let pp_update formatter t = Format.pp_print_string formatter (show_update t)
+
+let _apply_sequence
+      timestamp
       (alba_client : Alba_client.alba_client)
-      (* namespace *) namespace_id
+      namespace_id
       (assert_ts : Nsm_model.Assert.t list Lwt.t)
       (updates : update list)
-      (* stats *)
   =
   let t0 = Unix.gettimeofday () in
   let upload object_name object_reader checksum_o =
@@ -40,7 +46,7 @@ let apply_sequence
       (alba_client # get_base_client # get_preset_cache # get)
       (alba_client # get_base_client # get_namespace_osds_info_cache)
       ~object_t0:t0
-      ~timestamp:t0
+      ~timestamp
       ~namespace_id
       ~object_name
       ~object_reader
@@ -115,3 +121,26 @@ let apply_sequence
     upload_statss;
 
   Lwt.return (manifests, delta)
+
+let apply_sequence
+      (alba_client : Alba_client.alba_client)
+      namespace_id
+      (assert_ts : Nsm_model.Assert.t list Lwt.t)
+      (updates : update list)
+  =
+  let do_upload timestamp =
+    _apply_sequence
+      timestamp
+      alba_client
+      namespace_id
+      assert_ts
+      updates
+  in
+  Alba_client_upload._upload_with_retry
+    (alba_client # nsm_host_access)
+    (alba_client # get_base_client # get_preset_cache)
+    ~namespace_id
+    do_upload
+    (lazy (Printf.sprintf
+             "Apply sequence (updates=%s)"
+             ([%show : update list] updates)))
