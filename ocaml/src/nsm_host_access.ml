@@ -212,7 +212,10 @@ class nsm_host_access
         Lwt_list.iter_s
           (fun (namespace_id, _, namespace_info) ->
             next_id := namespace_id;
-            maybe_update_namespace_info ~namespace_id namespace_info >>= fun _ ->
+            Lwt_extra2.ignore_errors
+              (fun () ->
+                maybe_update_namespace_info ~namespace_id namespace_info >>= fun _ ->
+                Lwt.return ()) >>= fun () ->
             Lwt.return ())
           namespaces >>= fun () ->
         if has_more
