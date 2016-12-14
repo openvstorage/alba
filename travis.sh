@@ -43,7 +43,8 @@ before_install () {
 
     env | sort
 
-    sudo add-apt-repository "deb http://us-central1.gce.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse"
+    sudo sed -i 's/us-central1.gce.archive/us-central1.gce.clouds.archive/' /etc/apt/sources.list
+    sudo add-apt-repository "deb http://us-central1.gce.clouds.archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse"
     sudo add-apt-repository --yes ppa:avsm/ocaml42+opam12
 
     echo "Updating Apt cache"
