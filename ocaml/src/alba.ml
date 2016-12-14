@@ -38,7 +38,7 @@ let () =
            in
            Printf.eprintf "%s" msg;
            failwith msg
-    with Not_found -> (new Lwt_rsocket.libev :> Lwt_engine.t)
+    with Not_found -> (new Lwt_engine.libev :> Lwt_engine.t)
   in
   Lwt_engine.set engine;
   Lwt.async_exception_hook :=
