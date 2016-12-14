@@ -190,7 +190,13 @@ let with_osd_client (conn_info:Networking2.conn_info) osd_id f =
        conn_info.tls_config
        Tcp_keepalive2.default
        buffer_pool
-       (Alba_osd.make_client ~albamgr_connection_pool_size:10 ~upload_slack:0.2)
+       (Alba_osd.make_client
+          ~albamgr_connection_pool_size:10
+          ~upload_slack:0.2
+          ~osd_connection_pool_size:10
+          ~osd_timeout:2.0
+          ~default_osd_priority:Osd.High
+       )
        k
      ~pool_size:1
      >>= fun (_, client, closer) ->

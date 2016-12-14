@@ -162,7 +162,13 @@ let alba_add_osd
       tls_config
       Tcp_keepalive2.default
       Buffer_pool.osd_buffer_pool
-      (Alba_osd.make_client ~albamgr_connection_pool_size:10 ~upload_slack:0.2)
+      (Alba_osd.make_client
+         ~albamgr_connection_pool_size:10
+         ~upload_slack:0.2
+         ~osd_connection_pool_size:10
+         ~osd_timeout:2.0
+         ~default_osd_priority:Osd.High
+      )
       kind
       ~pool_size:1
     >>= fun (_, osd_client, closer) ->
