@@ -25,7 +25,8 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace llio {
 
-template <> void from(message &m, proxy_protocol::EncodingScheme &es) {
+using namespace proxy_protocol;
+template <> void from(message &m, EncodingScheme &es) {
   uint8_t version;
   from(m, version);
   if (version != 1) {
@@ -37,37 +38,85 @@ template <> void from(message &m, proxy_protocol::EncodingScheme &es) {
   from(m, es.w);
 }
 
-void from(message &m, std::unique_ptr<proxy_protocol::Compression> &p) {
+void from(message &m, std::unique_ptr<Compression> &p) {
   uint8_t type;
   from(m, type);
-  proxy_protocol::Compression *r;
+  Compression *r;
   switch (type) {
   case 1: {
-    r = new proxy_protocol::NoCompression();
+    r = new NoCompression();
   }; break;
   case 2: {
-    r = new proxy_protocol::SnappyCompression();
+    r = new SnappyCompression();
   }; break;
   case 3: {
-    r = new proxy_protocol::BZip2Compression();
+    r = new BZip2Compression();
   }; break;
   default: { throw deserialisation_exception("unknown compression type"); };
   }
   p.reset(r);
 }
 
-void from(message &m, std::unique_ptr<proxy_protocol::EncryptInfo> &p) {
+void from(message &m, chaining_mode_t &mode) {
   uint8_t type;
   from(m, type);
   switch (type) {
   case 1: {
-    p.reset(new proxy_protocol::NoEncryption());
+    mode = chaining_mode_t::CBC;
   }; break;
-  default: { throw deserialisation_exception("unknown encryption scheme)"); };
+  case 2: {
+    mode = chaining_mode_t::CTR;
+  }; break;
+  default: { throw deserialisation_exception("unknown chaining_mode"); };
   }
 }
 
-template <> void from(message &m, proxy_protocol::Manifest &mf) {
+void from(message &m, key_length_t &kl) {
+  uint8_t type;
+  from(m, type);
+  switch (type) {
+  case 1: {
+    kl = key_length_t::L256;
+  } break;
+  default: { throw deserialisation_exception("unknown key_length"); };
+  }
+}
+
+void from(message &m, proxy_protocol::algo_t &algo) {
+  uint8_t type;
+  from(m, type);
+  switch (type) {
+  case 1: {
+    algo = proxy_protocol::algo_t::AES;
+  }; break;
+  default: { throw deserialisation_exception("unknown algo"); };
+  }
+}
+void from(message &m, AlgoWithKey &awk) {
+  from(m, awk.algo);
+  from(m, awk.mode);
+  from(m, awk.key_length);
+}
+
+void from(message &m, std::unique_ptr<EncryptInfo> &p) {
+  uint8_t type;
+  from(m, type);
+  EncryptInfo *r;
+  switch (type) {
+  case 1: {
+    r = new NoEncryption();
+  }; break;
+  case 2: {
+    AlgoWithKey *awk = new AlgoWithKey();
+    from(m, *awk);
+    r = awk;
+  }; break;
+  default: { throw deserialisation_exception("unknown encryption scheme)"); };
+  }
+  p.reset(r);
+}
+
+template <> void from(message &m, Manifest &mf) {
   uint8_t version;
   from(m, version);
   if (version != 1) {
@@ -147,8 +196,8 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
 }
 
 template <>
-void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid) {
-  from(m, (proxy_protocol::Manifest &)mfid);
+void from(message &m, ManifestWithNamespaceId &mfid) {
+  from(m, (Manifest &)mfid);
   from(m, mfid.namespace_id);
 }
 }
@@ -185,6 +234,8 @@ std::ostream &operator<<(std::ostream &os, const encryption_t &encryption) {
   case encryption_t::NO_ENCRYPTION:
     os << "NO_ENCRYPTION";
     break;
+  case encryption_t::ALGO_WITH_KEY:
+    os << "ALGO_WITH_KEY";
   default:
     os << "?encryption?";
   };

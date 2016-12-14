@@ -59,7 +59,7 @@ class BZip2Compression : public Compression {
   virtual void print(std::ostream &os) const { os << "BZip2Compression()"; }
 };
 
-enum class encryption_t { NO_ENCRYPTION };
+enum class encryption_t { NO_ENCRYPTION, ALGO_WITH_KEY };
 
 class EncryptInfo {
 public:
@@ -75,6 +75,23 @@ class NoEncryption : public EncryptInfo {
   }
 
   virtual void print(std::ostream &os) const { os << "NoEncryption()"; }
+};
+
+enum class algo_t { AES };
+enum class chaining_mode_t { CBC, CTR };
+enum class key_length_t { L256 };
+
+class AlgoWithKey : public EncryptInfo {
+  virtual encryption_t get_encryption() const {
+    return encryption_t::ALGO_WITH_KEY;
+  }
+
+  virtual void print(std::ostream &os) const { os << "AlgoWithKey()"; }
+
+public:
+  algo_t algo = algo_t::AES;
+  chaining_mode_t mode = chaining_mode_t::CTR;
+  key_length_t key_length = key_length_t::L256;
 };
 
 typedef std::pair<boost::optional<osd_t>, uint32_t> fragment_location_t;

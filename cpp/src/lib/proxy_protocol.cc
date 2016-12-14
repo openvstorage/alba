@@ -289,18 +289,27 @@ void _read_object_infos(message &m, std::vector<object_info> &object_infos) {
   // todo: automatically via templates
   uint32_t size;
   from(m, size);
-  object_infos.resize(size);
+  object_infos.reserve(size);
   for (int32_t i = size - 1; i >= 0; --i) {
     std::string name;
     from(m, name);
     std::string future;
     from(m, future);
-    std::unique_ptr<ManifestWithNamespaceId> umf(new ManifestWithNamespaceId());
-    from(m, *umf);
-    assert(name == umf->name);
-    auto t =
-        std::make_tuple(std::move(name), std::move(future), std::move(umf));
-    object_infos[i] = std::move(t);
+    try {
+      std::unique_ptr<ManifestWithNamespaceId> umf(
+          new ManifestWithNamespaceId());
+      from(m, *umf);
+      assert(name == umf->name);
+      auto t =
+          std::make_tuple(std::move(name), std::move(future), std::move(umf));
+      object_infos.push_back(std::move(t));
+    } catch (alba::llio::deserialisation_exception &e) {
+      ALBA_LOG(WARNING,
+               "skipping name="
+               << name
+               << "because of:" <<
+               e.what());
+    }
   }
 }
 
