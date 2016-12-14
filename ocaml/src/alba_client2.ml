@@ -50,7 +50,13 @@ let make_client albamgr_client_cfg
         ~osd_connection_pool_size ~osd_timeout
         ~default_osd_priority
         ~tls_config ~tcp_keepalive
-        (Alba_osd.make_client ~albamgr_connection_pool_size ~upload_slack)
+        (Alba_osd.make_client
+           ~albamgr_connection_pool_size
+           ~upload_slack
+           ~osd_connection_pool_size
+           ~osd_timeout
+           ~default_osd_priority
+        )
   in
   Alba_client.make_client
     mgr_access

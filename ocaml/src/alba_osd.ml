@@ -225,6 +225,9 @@ let rec make_client
           ~albamgr_connection_pool_size
           ~namespace_name_format
           ~upload_slack
+          ~osd_connection_pool_size
+          ~osd_timeout
+          ~default_osd_priority
   =
   let albamgr_pool =
     Remotes.Pool.Albamgr.make
@@ -237,12 +240,18 @@ let rec make_client
   let mgr_access = Albamgr_access.make albamgr_pool in
   let osd_access =
     new Osd_access.osd_access mgr_access
-        ~osd_connection_pool_size:10
-        ~osd_timeout:2.
-        ~default_osd_priority:Osd.High
+        ~osd_connection_pool_size
+        ~osd_timeout
+        ~default_osd_priority
         ~tls_config
         ~tcp_keepalive
-        (make_client ~albamgr_connection_pool_size ~upload_slack)
+        (make_client
+           ~albamgr_connection_pool_size
+           ~upload_slack
+           ~osd_connection_pool_size
+           ~osd_timeout
+           ~default_osd_priority
+        )
   in
   let alba_client, closer =
     Alba_client.make_client
