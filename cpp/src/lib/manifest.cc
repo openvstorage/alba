@@ -52,7 +52,12 @@ void from(message &m, std::unique_ptr<Compression> &p) {
   case 3: {
     r = new BZip2Compression();
   }; break;
-  default: { throw deserialisation_exception("unknown compression type"); };
+  case 4: {
+    r = new TestCompression();
+  }; break;
+  default: {
+      ALBA_LOG(WARNING, "unknown compression type " << (int)type);
+      throw deserialisation_exception("unknown compression type"); };
   }
   p.reset(r);
 }
@@ -93,9 +98,21 @@ void from(message &m, proxy_protocol::algo_t &algo) {
   }
 }
 void from(message &m, AlgoWithKey &awk) {
+
+  // ALBA_LOG(DEBUG, "pos = " << m.get_pos());
+  // alba::stuff::dump_buffer(std::cout, m.current(16), 16);
+
+  // AES   CTR  KEY_LENGTH  x length of key  key bytes
+  // 01    02   01         01 20 00 00 00    fa c8
   from(m, awk.algo);
   from(m, awk.mode);
   from(m, awk.key_length);
+  uint8_t x;
+  from (m,x);
+  from(m, awk.key);
+  if (awk.key.size() != 32){
+      throw deserialisation_exception("key length != 32");
+  }
 }
 
 void from(message &m, std::unique_ptr<EncryptInfo> &p) {
@@ -111,7 +128,9 @@ void from(message &m, std::unique_ptr<EncryptInfo> &p) {
     from(m, *awk);
     r = awk;
   }; break;
-  default: { throw deserialisation_exception("unknown encryption scheme)"); };
+  default: {
+      ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
+      throw deserialisation_exception("unknown encryption scheme)"); };
   }
   p.reset(r);
 }
@@ -220,10 +239,34 @@ std::ostream &operator<<(std::ostream &os, const compressor_t &compressor) {
     os << "SNAPPY";
     break;
   case compressor_t::BZIP2:
-    os << "BZIP2";
+    os << "BZIP2"; break;
+  case compressor_t::TEST:
+    os << "TEST"; break;
   };
   return os;
 }
+
+std::ostream &operator <<(std::ostream &os, const algo_t &algo){
+    switch(algo){
+    case algo_t::AES:{
+        os <<"AES";
+    }
+    };
+    return os;
+}
+
+std::ostream &operator <<(std::ostream &os, const chaining_mode_t &mode){
+    switch(mode){
+    case chaining_mode_t::CBC:{
+        os <<"CBC";
+    };break;
+    case chaining_mode_t::CTR:{
+        os << "CTR";
+    };break;
+    };
+    return os;
+}
+
 std::ostream &operator<<(std::ostream &os, const Compression &c) {
   c.print(os);
   return os;
