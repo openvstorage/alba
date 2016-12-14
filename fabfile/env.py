@@ -34,13 +34,6 @@ ARAKOON_HOME = env_or_default("ARAKOON_HOME",
 ARAKOON_BIN = env_or_default("ARAKOON_BIN",
                          "%s/arakoon/arakoon.native" % ARAKOON_HOME)
 
-VOLDRV_HOME = env_or_default("VOLDRV_HOME",
-                             "%s/workspace/VOLDRV" % os.environ['HOME'])
-VOLDRV_TEST = env_or_default("VOLDRV_TEST",
-                             "%s/volumedriver_test" % VOLDRV_HOME)
-VOLDRV_BACKEND_TEST = env_or_default("VOLDRV_BACKEND_TEST",
-                                     "%s/backend_test" % VOLDRV_HOME)
-
 ALBA_BIN = env_or_default("ALBA_BIN",
                           "%s/ocaml/alba.native" % cwd)
 
@@ -60,13 +53,8 @@ env = {
     'kinetic_bin': '%s/bin/start_kinetic.sh' % cwd,
     'asd_path_t': ALBA_ASD_PATH_T,
     'arakoon_bin' : ARAKOON_BIN,
-    'voldrv_backend_test' : VOLDRV_BACKEND_TEST,
-    'voldrv_tests' : VOLDRV_TEST,
-    'failure_tester' : "%s/ocaml/disk_failure_tests.native" % cwd,
-    'osds_on_separate_fs' : False,
     'alba_tls' : env_or_default('ALBA_TLS', 'False'),
-    'alba.0.6' : env_or_default('ALBA_06', 'alba.0.6')
-    , 'monitoring_file' : "%s/tmp/alba/monitor.txt" % WORKSPACE
+    'monitoring_file' : "%s/tmp/alba/monitor.txt" % WORKSPACE
 }
 
 arakoon_nodes = ["arakoon_0", "arakoon_1", "witness_0"]

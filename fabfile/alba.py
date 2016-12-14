@@ -256,32 +256,19 @@ def dump_to_cfg_as_json(cfg_path, obj):
     cfg_file.write(cfg_content)
     cfg_file.close()
 
-created_loop_devices = False
-@task
-def create_loop_devices():
-    global created_loop_devices
-    if not created_loop_devices:
-        local("modprobe loop max_loop=64")
-        for i in range(30):
-            with warn_only():
-                local("sudo mknod -m 660 /dev/loop%i b 7 %i" % (i,i))
-        created_loop_devices = True
-
 local_nodeid_prefix = str(uuid4())
 
-def _asd_inner(port, path, node_id, slow, multicast,
+def _asd_inner(port, path, node_id, multicast,
                env, restart):
     global local_nodeid_prefix
     cfg_path = path + "/cfg.json"
     if not restart:
-        limit = 90 if env['osds_on_separate_fs'] else 99
         asd_id = "%i_%i_%s" % (port,node_id, local_nodeid_prefix)
         cfg = {
                 'node_id' : "%s_%i" % (local_nodeid_prefix, node_id),
                 'home' : path,
                 'log_level' : 'debug',
                 'asd_id' : asd_id,
-                'limit' : limit,
                 '__sync_dont_use' : False
         }
         if not multicast:
@@ -308,10 +295,6 @@ def _asd_inner(port, path, node_id, slow, multicast,
         "--config", cfg_path
     ]
 
-    if slow:
-        #cmd.append('--slow')
-        # mind: we only use fabric for integration tests. This too shall pass
-        pass
     return cmd
 
 def _kinetic_inner(port, path):
@@ -328,25 +311,17 @@ def get_osd_port(n):
     return (8500+n if use_tls else 8000+n)
 
 @task
-def osd_start(port, path, node_id, kind, slow,
+def osd_start(port, path, node_id, kind,
               setup_dir=True, multicast = True,
               env = env, restart = False):
     where = local
     if setup_dir:
         where("mkdir -p %s" % path)
 
-        if env['osds_on_separate_fs']:
-            create_loop_devices()
-            volume_file = path + "_file"
-            where("fallocate -l 200000000 %s" % volume_file)
-            where("mke2fs -t ext4 -F %s" % volume_file)
-            where("sudo mount -o loop,async %s %s" % (volume_file, path))
-            where("sudo chown -R $USER %s" % path)
-
     inner = None
     if kind == "ASD":
         inner = _asd_inner(port, path,
-                           node_id, slow and port == get_osd_port(0),
+                           node_id,
                            multicast, env = env, restart = restart)
     else:
         inner = _kinetic_inner(port, path)
@@ -587,7 +562,7 @@ def claim_local_osds(n, abm_cfg = arakoon_config_file,
     assert (claimed_osds == n)
 
 @task
-def start_osds(kind, n, slow, multicast=True,
+def start_osds(kind, n, multicast=True,
                env = env, restart = False):
     n = int(n) # as a separate task, you will be getting a string
     for i in range(n):
@@ -603,7 +578,6 @@ def start_osds(kind, n, slow, multicast=True,
                   path = path,
                   node_id = node_id,
                   kind = my_kind,
-                  slow = slow,
                   multicast = multicast,
                   env = env,
                   restart = restart
@@ -643,7 +617,6 @@ def install_monitoring():
 
 
 @task
-
 def demo_setup(kind = default_kind,
                multicast = True,
                n_agents = 1,
@@ -689,7 +662,7 @@ def demo_setup(kind = default_kind,
 
     nsm_host_register_default()
 
-    start_osds(kind, N, True, multicast)
+    start_osds(kind, N, multicast)
 
     claim_local_osds(N, abm_cfg = acf, multicast = multicast)
 
@@ -767,6 +740,7 @@ def _alba_package(alba_version, alba_revision):
 
     alba_package = "%s%s" % (alba_version, alba_suffix)
     return alba_package
+
 @task
 def deb_integration_test(arakoon_url,
                          alba_url,
