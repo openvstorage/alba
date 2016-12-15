@@ -203,6 +203,8 @@ module WriteBuffer = struct
 
     let reset buf = buf.pos <- 0
 
+    let dispose t = Lwt_bytes.unsafe_destroy t.buf
+
     let advance_pos buf delta =
       buf.pos <- buf.pos + delta
 

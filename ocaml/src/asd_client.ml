@@ -321,6 +321,8 @@ class client (fd:Net_fd.t) id =
            RangeValidate
            (RangeQueryArgs.({first;finc;last;reverse;max}), verify_checksum, show_all, prio)
            Lwt.return
+
+    method dispose () = WB.dispose buffer
   end
 
 exception BadLongId of string * string
@@ -369,10 +371,14 @@ let make_client ~conn_info (lido:string option)  =
        Net_fd.write_all' nfd prologue_bytes >>= fun () ->
        _prologue_response nfd lido >>= fun long_id ->
        let client = new client nfd long_id in
-       Lwt.return (client, closer)
+       let closer' () =
+         let () = client # dispose () in
+         closer()
+       in
+       Lwt.return (client, closer')
     )
     (fun exn ->
-     closer () >>= fun () ->
+      closer () >>= fun () ->
      Lwt.fail exn)
 
 let with_client ~conn_info (lido:string option) f =
