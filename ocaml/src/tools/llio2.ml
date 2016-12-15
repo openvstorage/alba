@@ -31,7 +31,10 @@ module ReadBuffer = struct
       assert (pos <= max_pos);
       { buf; pos; max_pos }
 
-    let advance_pos buf delta = buf.pos <- buf.pos + delta
+    let advance_pos buf delta =
+      let pos' = buf.pos + delta in
+      assert (pos' <= buf.max_pos);
+      buf.pos <- pos'
 
     let buffer_done buf = buf.pos = buf.max_pos
 
