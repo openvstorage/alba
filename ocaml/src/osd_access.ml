@@ -114,7 +114,7 @@ module Osd_pool = struct
            ~prefix ~preset_name:(Some preset)
            ~namespace_name_format:1 >>= fun (client, closer) ->
          Lwt.return ((function
-                      | OsdInfo.Alba { OsdInfo.cfg; } -> cfg_ref := cfg;
+                      | OsdInfo.Alba2 { OsdInfo.cfg; } -> cfg_ref := cfg;
                       | _ -> assert false),
                      client,
                      closer)

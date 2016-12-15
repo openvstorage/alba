@@ -1910,7 +1910,7 @@ let run_server
     Mem_stats.reporting_t
       ~section
       ~f:(fun () ->
-          Lwt_log.info_f
+          Lwt_log.error_f
             ~section "%s"
             (AsdStatistics.show_inner
                stats

@@ -31,12 +31,12 @@ class type basic_client = object
 end
 
 class single_connection_client (ic, oc) =
-  let read_response deserializer =
+  let read_response tag_name deserializer =
     Llio.input_string ic >>= fun res_s ->
 
     Lwt_log.debug_f
-      "nsm host client read response of size %i"
-      (String.length res_s)
+      "nsm host client read response of size %i for %s"
+      (String.length res_s) tag_name
     >>= fun () ->
 
     let res_buf = Llio.make_buffer res_s 0 in
@@ -49,20 +49,23 @@ class single_connection_client (ic, oc) =
       let payload = Llio.string_from res_buf in
       let exn = Err.Nsm_exn (ec, payload) in
       Lwt_log.debug_f
-        "nsm host operation failed: %i %s" ierr (Err.show ec)
+        "nsm host operation %s failed: %i %s,%s"
+        tag_name
+        ierr (Err.show ec) payload
       >>= fun () ->
       Lwt.fail exn
   in
   let do_request tag serialize_request deserialize_response =
     let buf = Buffer.create 20 in
     Llio.int32_to buf tag;
-    Lwt_log.debug_f "nsm_host_client: %s" (tag_to_name tag) >>= fun () ->
+    let tag_name = tag_to_name tag in
+    Lwt_log.debug_f "nsm_host_client: %s" tag_name >>= fun () ->
     serialize_request buf;
     Lwt_unix.with_timeout
       10.
       (fun () ->
        Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-       read_response deserialize_response
+       read_response tag_name deserialize_response
       )
   in
   object(self :# basic_client)

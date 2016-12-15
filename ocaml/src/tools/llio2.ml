@@ -21,22 +21,31 @@ open Lwt_bytes2
 
 module ReadBuffer = struct
     type t = { buf : Lwt_bytes.t;
-               mutable pos : int; }
+               mutable pos : int;
+               max_pos : int;
+             }
 
     type 'a deserializer = t -> 'a
 
-    let make_buffer buf pos = { buf; pos; }
+    let make_buffer buf pos max_pos =
+      assert (pos <= max_pos);
+      { buf; pos; max_pos }
 
-    let advance_pos buf delta = buf.pos <- buf.pos + delta
+    let advance_pos buf delta =
+      let pos' = buf.pos + delta in
+      assert (pos' <= buf.max_pos);
+      buf.pos <- pos'
 
-    let buffer_done buf = buf.pos = Lwt_bytes.length buf.buf
+    let buffer_done buf = buf.pos = buf.max_pos
 
     let deserialize ?(pos = 0) deserializer buf =
-      deserializer { buf; pos; }
+      deserializer { buf; pos; max_pos = Lwt_bytes.length buf}
 
     let deserialize' ?(pos = 0) deserializer (buf : Lwt_bytes.t) =
       deserializer { buf = buf;
-                     pos = pos; }
+                     pos = pos;
+                     max_pos = Lwt_bytes.length buf;
+                   }
 
     let unit_from buf = ()
 
@@ -184,12 +193,17 @@ module WriteBuffer = struct
       if pos + delta > len
       then
         begin
-          let newbuf = Lwt_bytes.create (max (len + delta) (2*len)) in
+          let new_len = max (len + delta) (2*len) in
+          let newbuf = Lwt_bytes.create new_len in
           let oldbuf = buf.buf in
           Lwt_bytes.blit oldbuf 0 newbuf 0 pos;
           buf.buf <- newbuf;
           Lwt_bytes.unsafe_destroy oldbuf
         end
+
+    let reset buf = buf.pos <- 0
+
+    let dispose t = Lwt_bytes.unsafe_destroy t.buf
 
     let advance_pos buf delta =
       buf.pos <- buf.pos + delta
@@ -376,7 +390,7 @@ module NetFdReader = struct
       with_lwt_bytes
         fd len
         (fun buf ->
-         let b = ReadBuffer.make_buffer buf 0 in
+         let b = ReadBuffer.make_buffer buf 0 (Lwt_bytes.length buf) in
          f b)
 
     let from_buf fd len a_from =

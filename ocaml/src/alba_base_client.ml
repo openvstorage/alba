@@ -22,7 +22,6 @@ open Checksum
 open Lwt_bytes2
 open Alba_statistics
 open Fragment_cache
-open Alba_client_errors
 module Osd_sec = Osd
 open Nsm_host_access
 
@@ -159,29 +158,16 @@ class client
         namespace
         input_file >>= fun () ->
 
-      Lwt.catch
-        (fun () ->
-          Object_reader.with_file_reader
-            ~use_fadvise
-            input_file
-            (self # upload_object
-                  ~namespace
-                  ~object_name
-                  ~checksum_o
-                  ~allow_overwrite
-                  ~object_id_hint:None
-                  ~epilogue_delay
-            )
-        )
-        (function
-          | Unix.Unix_error(Unix.ENOENT,_,y) ->
-             let open Error in failwith FileNotFound
-          | (Error.Exn e) as exn ->
-             Lwt_log.info_f ~exn "%s" (Error.show e) >>= fun () ->
-             Lwt.fail exn
-          | exn ->
-             Lwt_log.info_f ~exn "generic propagation ..." >>= fun () ->
-             Lwt.fail exn
+      Object_reader.with_file_reader
+        ~use_fadvise
+        input_file
+        (self # upload_object
+              ~namespace
+              ~object_name
+              ~checksum_o
+              ~allow_overwrite
+              ~object_id_hint:None
+              ~epilogue_delay
         )
 
     method upload_object_from_bytes

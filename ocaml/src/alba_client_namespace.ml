@@ -68,7 +68,7 @@ let create_namespace
 
         let nsm_host_delivery_thread = ref None in
         let need_more_delivery = ref false in
-        let ensure_delivery () =
+        let ensure_nsm_host_delivery () =
           match !nsm_host_delivery_thread with
           | None ->
              let rec inner () =
@@ -98,10 +98,17 @@ let create_namespace
 
         deliver_messages_to_most_osds
           ~osds ~preset
-          ~delivered:ensure_delivery >>= fun () ->
-        match !nsm_host_delivery_thread with
-        | Some t -> t
-        | None -> Lwt.return ()
+          ~delivered:ensure_nsm_host_delivery >>= fun () ->
+
+        let wait_for_nsm_host_delivery_thread () =
+          match !nsm_host_delivery_thread with
+          | Some t -> t
+          | None -> Lwt.return ()
+        in
+
+        wait_for_nsm_host_delivery_thread () >>= fun () ->
+        ensure_nsm_host_delivery ();
+        wait_for_nsm_host_delivery_thread ()
       end; ] >>= fun () ->
 
   Lwt_log.info_f "Alba_client: create_namespace %S:%Li ok"
