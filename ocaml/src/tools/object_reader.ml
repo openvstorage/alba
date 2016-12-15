@@ -40,7 +40,7 @@ class file_reader fd size = (object
     Lwt.return_unit
 end : reader)
 
-let with_file_reader ~use_fadvise file_name f =
+let _with_file_reader ~use_fadvise file_name f =
   Lwt_extra2.with_fd
     file_name
     ~flags:Lwt_unix.([O_RDONLY;])
@@ -55,6 +55,14 @@ let with_file_reader ~use_fadvise file_name f =
       >>= fun r ->
       let () = if use_fadvise then Posix.posix_fadvise ufd 0 size Posix.POSIX_FADV_DONTNEED in
       Lwt.return r
+    )
+
+let with_file_reader ~use_fadvise file_name f =
+  Lwt.catch
+    (fun () -> _with_file_reader ~use_fadvise file_name f)
+    (function
+     | Unix.Unix_error(Unix.ENOENT,_,_) -> Alba_client_errors.Error.(lwt_failwith FileNotFound)
+     | exn -> Lwt.fail exn
     )
 
 class slice_reader object_data =
