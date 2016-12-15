@@ -702,7 +702,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                  )
              end
           | exn ->
-             Lwt_log.info_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
+             Lwt_log.error_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
              let msg = Printexc.to_string exn in
              return_err_response ~msg Protocol.Error.Unknown)
 
