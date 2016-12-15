@@ -573,23 +573,25 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           | Some msg -> msg)) in
     Lwt.return res_s
   in
+  let default_renderer () = "(request could not be parsed)" in
   let handle_request buf code : (bool * (unit -> string)) Lwt.t =
-    match Protocol.code_to_command code with
-    | Protocol.Wrap r ->
-       let req =
-         try Deser.from_buffer (Protocol.deser_request_i r) buf
-         with exn ->
-           Lwt_log.ign_error ~exn "error during deserializing proxy request";
-           raise exn
-       in
-       let renderer () = render_request_args r req in
-       let return_err_response ?msg err =
-         return_err_response ?msg err >>= fun res ->
-         Lwt.return (true, res)
-       in
+    Lwt_log.debug_f "Proxy_server: got command with code %i" code >>= fun () ->
+    let return_err_response ?msg err =
+      return_err_response ?msg err >>= fun res ->
+      Lwt.return (true, res)
+    in
+    let renderer = ref default_renderer in
+    Lwt.catch
+      (fun () ->
+        match Protocol.code_to_command code with
+        | Protocol.Wrap r ->
+           (try Deser.from_buffer (Protocol.deser_request_i r) buf |> Lwt.return
+            with exn ->
+              Lwt_log.error ~exn "error while deserializing proxy request" >>= fun () ->
+              Lwt.fail exn) >>= fun req ->
 
-       Lwt.catch
-         (fun () ->
+           renderer := (fun () -> render_request_args r req);
+
            execute_request r stats req >>= fun res ->
            Lwt.return (false,
                        Llio.serialize_with_length'
@@ -706,9 +708,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              let msg = Printexc.to_string exn in
              return_err_response ~msg Protocol.Error.Unknown)
 
-       >>= fun (error, res) ->
-       Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
-       Lwt.return (error, renderer)
+    >>= fun (error, res) ->
+    Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
+    Lwt.return (error, !renderer)
   in
   let rec inner () =
     Llio2.NetFdReader.int_from nfd >>= fun len ->
