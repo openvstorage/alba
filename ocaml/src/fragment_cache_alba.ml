@@ -165,11 +165,17 @@ class alba_cache
     | OneOnOne _ ->
        name
   in
+  let get_namespace_name bid =
+    match bucket_strategy with
+    | OneOnOne { prefix;
+                 preset; } ->
+       Printf.sprintf "%s_%09Li" prefix bid
+  in
   let with_namespace bid f =
     match bucket_strategy with
     | OneOnOne { prefix;
                  preset; } ->
-       let namespace = Printf.sprintf "%s_%09Li" prefix bid in
+       let namespace = get_namespace_name bid in
        Lwt.catch
          (fun () -> f namespace)
          (fun exn ->
@@ -268,12 +274,41 @@ class alba_cache
     method drop bid ~global =
       if global
       then
-        Lwt_extra2.ignore_errors
-          ~logging:true
-          (fun () ->
-           with_namespace
-             bid
-             (fun namespace -> client # delete_namespace ~namespace))
+        let namespace = get_namespace_name bid  in
+        let rec cleanup_namespace () =
+          Lwt.catch
+            (fun () ->
+              client # mgr_access # get_namespace ~namespace >>= function
+              | None -> Lwt.return `Done
+              | Some _ ->
+                 client # delete_namespace ~namespace >>= fun () ->
+                 Lwt.return `Done)
+            (fun exn ->
+              Lwt_log.info_f ~exn
+                             "Cleanup of fragment cache namespace %s failed, will retry in a minute"
+                             namespace >>= fun () ->
+              Lwt.return `Retry)
+          >>= function
+          | `Done ->
+             Lwt.return ()
+          | `Retry ->
+             Lwt_extra2.sleep_approx 60. >>= fun () ->
+             cleanup_namespace ()
+        in
+
+        cleanup_namespace () >>= fun () ->
+
+        (* delete the namespace again after some delay, as otherwise
+         * there might be namespace left due to a race between namespace
+         * deletion and possible uploads/downloads that were still ongoing.
+         *
+         * (eventually the namespace would get deleted when the fragment cache
+         *  gets full, however that might take a long time, and in some scenarios
+         *  this could lead to many useless namespaces, which then again leads
+         *  to plenty of nsm_host arakoon clusters.)
+         *)
+        Lwt_extra2.sleep_approx 120. >>= fun () ->
+        cleanup_namespace ()
       else
         Lwt.return_unit
 
