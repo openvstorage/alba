@@ -22,24 +22,26 @@ open Lwt_bytes2
 module ReadBuffer = struct
     type t = { buf : Lwt_bytes.t;
                mutable pos : int;
-               too_far : int;
+               max_pos : int;
              }
 
     type 'a deserializer = t -> 'a
 
-    let make_buffer buf pos too_far = { buf; pos; too_far }
+    let make_buffer buf pos max_pos =
+      assert (pos <= max_pos);
+      { buf; pos; max_pos }
 
     let advance_pos buf delta = buf.pos <- buf.pos + delta
 
-    let buffer_done buf = buf.pos = buf.too_far
+    let buffer_done buf = buf.pos = buf.max_pos
 
     let deserialize ?(pos = 0) deserializer buf =
-      deserializer { buf; pos; too_far = Lwt_bytes.length buf}
+      deserializer { buf; pos; max_pos = Lwt_bytes.length buf}
 
     let deserialize' ?(pos = 0) deserializer (buf : Lwt_bytes.t) =
       deserializer { buf = buf;
                      pos = pos;
-                     too_far = Lwt_bytes.length buf;
+                     max_pos = Lwt_bytes.length buf;
                    }
 
     let unit_from buf = ()
