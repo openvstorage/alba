@@ -20,15 +20,8 @@ open Cmdliner
 open Lwt.Infix
 
 let stderr_logger =
-  let mutex = Lwt_mutex.create () in
-  let lg_output line =
-    Lwt_mutex.with_lock
-      mutex
-      (fun () ->
-       Lwt_io.write Lwt_io.stderr line >>= fun () ->
-       Lwt_io.write_char Lwt_io.stdout '\n')
-  in
-  let close () = Lwt.return_unit in
+  let lg_output = Lwt_io.eprintl in
+  let close = Lwt.return in
   lg_output, close
 
 let log_sinks =
