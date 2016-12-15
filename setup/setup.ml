@@ -2587,7 +2587,7 @@ module Test = struct
 
     0
 
-  let alba_as_osd ?xml ?filter ?dump _t =
+  let setup_global_backend () =
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
 
@@ -2650,6 +2650,19 @@ module Test = struct
     add_backend_as_osd t_local3 `ProxyOsd;
     add_backend_as_osd t_local4 `ProxyOsd;
     Deployment.deliver_messages t_global;
+
+    cfg_global, t_global,
+    [ t_local1; t_local2; t_local3; t_local4; ],
+    add_backend_as_osd
+
+  let alba_as_osd ?xml ?filter ?dump _t =
+    let cfg_global, t_global, t_locals, add_backend_as_osd =
+      setup_global_backend ()
+    in
+    let t_local1, t_local2, t_local3, t_local4 = match t_locals with
+      | [ t_local1; t_local2; t_local3; t_local4; ] -> t_local1, t_local2, t_local3, t_local4
+      | _ -> assert false
+    in
 
     let do_upload objname =
       t_global.proxy # upload_object "demo" cfg_global.alba_bin objname
@@ -2732,7 +2745,6 @@ module Test = struct
 
     0
 
-
   let job_crud ?(xml=false) ?filter ?dump t =
     let () = Shell._print ">>>>> start of job_crud" in
     let test () =
@@ -2803,6 +2815,25 @@ module Test = struct
       test
       "job_crud_suite" "list_jobs" "test"
       xml dump
+
+  let test_427 ?xml ?filter ?dump _ =
+    let cfg_global, t_global, _, _ = setup_global_backend () in
+
+    let proxy = t_global.proxy in
+
+    let rec inner = function
+      | 100 -> ()
+      | n ->
+         let namespace = Printf.sprintf "ns_%i" n in
+         let objname = "obj" in
+         proxy # create_namespace namespace;
+         proxy # upload_object namespace cfg_global.alba_bin objname;
+         proxy # download_object namespace objname "/tmp/427.obj";
+         proxy # delete_namespace namespace;
+         inner (n + 1)
+    in
+    inner 0;
+    0
 
   let everything_else ?(xml=false) ?filter ?dump t =
     let transform suite name =
@@ -2987,6 +3018,7 @@ let process_cmd_line () =
       "rora",            Test.rora, false;
       "recovery",        Test.recovery, true;
       "job_crud",        Test.job_crud, true;
+      "test_427",        Test.test_427, false;
     ]
   in
   let print_suites () =
