@@ -24,22 +24,27 @@ open Asd_protocol
 open Protocol
 open Range_query_args
 
+module WB = Llio2.WriteBuffer
 
 class client (fd:Net_fd.t) id =
+  let buffer = WB.make ~length:200 in
+
   let with_response deserializer f =
     Llio2.NetFdReader.int_from fd >>= fun size ->
-    Llio2.NetFdReader.with_buffer_from
-      fd size
-      (fun res_buf ->
-       let module Llio = Llio2.ReadBuffer in
-       match Llio.int_from res_buf with
-       | 0 ->
-          f (deserializer res_buf)
-       | err ->
-          let open Error in
-          let err' = deserialize' err res_buf in
-          Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
-          lwt_fail err')
+    let () = WB.reset buffer in
+    let () = WB.ensure_space buffer size in
+    Net_fd.read_all_lwt_bytes_exact fd buffer.WB.buf 0 size
+    >>= fun () ->
+    let module Llio = Llio2.ReadBuffer in
+    let res_buf = Llio.make_buffer buffer.WB.buf 0 size in
+    match Llio.int_from res_buf with
+    | 0 ->
+       f (deserializer res_buf)
+    | err ->
+       let open Error in
+       let err' = deserialize' err res_buf in
+       Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
+       lwt_fail err'
   in
   let do_request
         code
@@ -52,20 +57,22 @@ class client (fd:Net_fd.t) id =
       id description >>= fun () ->
     with_timing_lwt
       (fun () ->
-       let module Llio = Llio2.WriteBuffer in
-       let buf =
-         Llio.serialize_with_length'
-           (Llio.pair_to
-              Llio.int32_to
-              serialize_request)
-           (code,
-            request)
-       in
-       let () = Net_fd.cork fd in
-       Net_fd.write_all_lwt_bytes fd buf.Llio.buf 0 buf.Llio.pos
-       >>= fun () ->
-       let () = Net_fd.uncork fd in
-       with_response deserialize_response f)
+        let module Llio = WB in
+        let () = Llio.reset buffer in
+        let buf =
+          Llio.serialize_with_length'
+            ~buf:buffer
+            (Llio.pair_to
+               Llio.int32_to
+               serialize_request)
+            (code,
+             request)
+        in
+        let () = Net_fd.cork fd in
+        Net_fd.write_all_lwt_bytes fd buf.Llio.buf 0 buf.Llio.pos
+        >>= fun () ->
+        let () = Net_fd.uncork fd in
+        with_response deserialize_response f)
     >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
     Lwt.return r
