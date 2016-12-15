@@ -535,6 +535,7 @@ module Protocol = struct
     exception Exn of t * string option
 
     let failwith ?payload err = raise (Exn (err, payload))
+    let lwt_failwith ?payload err = Lwt.fail (Exn (err, payload))
 
     let err2int = to_enum
     let int2err x = Option.get_some_default Unknown (of_enum x)
