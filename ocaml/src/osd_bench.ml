@@ -29,10 +29,11 @@ let maybe_fail = function
   | Osd.Ok -> Lwt.return_unit
   | Osd.Exn e -> Osd.Error.lwt_fail e
 
-let deletes with_client progress n value_size _ period prefix =
+let deletes with_client progress n value_size _
+            ~seed ~period prefix =
 
   let run client =
-      let gen = make_key period prefix in
+      let gen = make_key ~seed ~period prefix in
       let do_one i =
         let key = gen () in
         let key_slice = Slice.wrap_string key in
@@ -47,9 +48,10 @@ let deletes with_client progress n value_size _ period prefix =
   with_client run
 
 
-let gets with_client progress n value_size _ period prefix =
+let gets with_client progress n value_size _
+         ~seed ~period prefix =
   let run client =
-      let gen = make_key period prefix in
+      let gen = make_key ~seed ~period prefix in
       let do_one i =
         let key = gen () in
         let key_slice = Slice.wrap_string key in
@@ -67,9 +69,10 @@ let gets with_client progress n value_size _ period prefix =
   with_client run
 
 
-let partial_reads with_client progress n _value_size partial_fetch_size period prefix =
+let partial_reads with_client progress n _value_size partial_fetch_size
+                  ~seed ~period prefix =
   let run client =
-    let gen = make_key period prefix in
+    let gen = make_key ~seed ~period prefix in
     let target = Lwt_bytes.create partial_fetch_size in
     let do_one i =
       let key = gen () in
@@ -87,7 +90,7 @@ let partial_reads with_client progress n _value_size partial_fetch_size period p
   with_client run
 
 
-let get_version with_client progress n _ _ _ _ =
+let get_version with_client progress n _ _ ~seed ~period _ =
   let run client =
     let do_one _ =
       client # get_version >>= fun _ ->
@@ -98,7 +101,7 @@ let get_version with_client progress n _ _ _ _ =
   in
   with_client run
 
-let churn with_client progress n _ _ _ _ =
+let churn with_client progress n _ _ ~seed ~period _ =
   let do_one i =
     with_client
       (fun client ->
@@ -115,9 +118,9 @@ let churn with_client progress n _ _ _ _ =
   report oc "churn" r
 
 
-let exists with_client progress n _ _ period prefix =
+let exists with_client progress n _ _ ~seed ~period prefix =
   let run client =
-    let gen = make_key period prefix in
+    let gen = make_key ~seed ~period prefix in
     let do_one i =
       let key = gen () in
       client # global_kvs # multi_exists
@@ -145,9 +148,10 @@ let _make_value value_size =
      let t3 = t2 mod 251 in
      Char.chr t3)
 
-let sets with_client progress n value_size _ period prefix =
+let sets with_client progress n value_size _
+         ~seed ~period prefix =
   let run client =
-    let gen = make_key period prefix in
+    let gen = make_key ~seed ~period prefix in
 
     let value = _make_value value_size in
 
@@ -167,9 +171,9 @@ let sets with_client progress n value_size _ period prefix =
   in
   with_client run
 
-let range_queries with_client progress n value_size _ period prefix =
+let range_queries with_client progress n value_size _ ~seed ~period prefix =
   let run client =
-    let gen = make_key period prefix in
+    let gen = make_key ~seed ~period prefix in
     let do_one i =
       let first_key = gen () in
       let first = Slice.wrap_string first_key in
@@ -183,9 +187,10 @@ let range_queries with_client progress n value_size _ period prefix =
   in
   with_client run
 
-let upload_fragments with_client progress n value_size _ period prefix =
+let upload_fragments with_client progress n value_size _
+                     ~seed ~period prefix =
   let run client =
-    let gen = make_key period prefix in
+    let gen = make_key ~seed ~period prefix in
     let open Osd_keys in
     let value = _make_value value_size in
     let value_blob = Blob.Bytes value in
@@ -264,6 +269,7 @@ let do_scenarios
       with_client
       n_clients n
       value_size partial_fetch_size power prefix
+      seeds
       scenarios
   =
   let period = period_of_power power in
@@ -273,13 +279,15 @@ let do_scenarios
       let progress = make_progress step in
       Lwt_list.iter_p
         (fun i ->
+          let seed = List.nth seeds i |> Option.get_some in
           scenario
             with_client
             progress
             (n/n_clients)
             value_size
             partial_fetch_size
-            period
+            ~seed
+            ~period
             (Printf.sprintf "%s_%i" prefix i)
         )
         (Int.range 0 n_clients)

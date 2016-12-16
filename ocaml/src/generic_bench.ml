@@ -80,20 +80,19 @@ let measure_and_report oc progress do_one n (scenario_name:string) =
 let final_key prefix i =
   Printf.sprintf "%s%s_%016i" Osd_keys.bench_prefix prefix i
 
-let _make_key period prefix =
+let _make_key ~seed ~period prefix =
   (* math:
          X_{n+1} = (aX_{n} + c) mod m
          if a = 21, c = 3 and m = 10^ x
          then this one is of full period
    *)
-  let _x = ref 42 in
+  let _x = ref seed in
   fun () ->
-  begin
-    let i = !_x in
-    let x' = (21 * !_x + 3) mod period in
-    let () = _x := x'  in
-    final_key prefix i
-  end
+  let i = !_x in
+  let x' = (21 * !_x + 3) mod period in
+  let () = _x := x'  in
+  final_key prefix i
+
 
 
 
@@ -105,4 +104,4 @@ let period_of_power power =
   in
   loop 1 power
 
-let make_key period prefix = _make_key period prefix
+let make_key ~seed ~period prefix = _make_key ~seed ~period prefix

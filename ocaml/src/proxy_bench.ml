@@ -22,9 +22,11 @@ open Generic_bench
 
 let do_writes
       ~robust ~oc
-      client progress n input_files period prefix _ namespace
+      client progress n input_files
+      ~seed ~period
+      prefix _ namespace
   =
-  let gen = make_key period prefix in
+  let gen = make_key ~seed ~period prefix in
   let no_files = List.length input_files in
   if no_files = 0
   then failwith "please specify files for 'writes' scenario";
@@ -69,9 +71,10 @@ let do_writes
 let do_reads
       ~oc
       client
-      progress n _ period prefix
+      progress n _
+      ~seed ~period prefix
       (_:int) namespace =
-  let gen = make_key period prefix in
+  let gen = make_key ~seed ~period prefix in
   let do_one i =
     let object_name = gen () in
     let output_file = Printf.sprintf "/tmp/%s_%s.tmp" namespace prefix in
@@ -87,9 +90,10 @@ let do_reads
 let do_partial_reads
       ~oc
       client
-      progress n _ period prefix
+      progress n _
+      ~seed ~period prefix
       (slice_size:int) namespace =
-  let gen = make_key period prefix in
+  let gen = make_key ~seed ~period prefix in
   let do_one i =
     let object_name = gen () in
     let object_slices = [
@@ -105,9 +109,10 @@ let do_partial_reads
 let do_deletes
       ~oc
       client
-      progress n _ period prefix
+      progress n _
+      ~seed ~period prefix
       (_:int) namespace =
-  let gen = make_key period prefix in
+  let gen = make_key ~seed ~period prefix in
   let do_one i =
     let object_name = gen ()  in
     client # delete_object ~namespace ~object_name ~may_not_exist:false
@@ -117,8 +122,9 @@ let do_deletes
 let do_get_version
       ~oc
       client
-      progress n
-      _ _ _ _ _ =
+      progress n _
+      ~seed ~period
+      _prefix _ _namespace =
   let do_one _ =
     client # get_version >>= fun _ ->
     Lwt.return_unit
@@ -130,14 +136,19 @@ let do_scenarios
       host port transport
       n_clients n
       file_names power prefix slice_size namespace
-      scenarios =
+      scenarios (seeds:int list)
+  =
   let period = period_of_power power in
+
   Lwt_list.iter_s
     (fun scenario ->
       let step = max (n / 100) 1 in
       let progress = make_progress step  in
       Lwt_list.iter_p
         (fun i ->
+          let seed : int = List.nth seeds i |> Option.get_some
+          and prefix = Printf.sprintf "%s_%i" prefix i
+          in
           Proxy_client.with_client
             host port transport
             (fun client ->
@@ -149,8 +160,9 @@ let do_scenarios
                 progress
                 per_client
                 file_names
-                period
-                (Printf.sprintf "%s_%i" prefix i)
+                ~seed
+                ~period
+                prefix
                 slice_size
                 namespace
         ))
