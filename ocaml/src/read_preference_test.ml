@@ -18,7 +18,6 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Lwt.Infix
 
-open Albamgr_protocol.Protocol
 open Alba_test
 open Prelude
 open Nsm_model

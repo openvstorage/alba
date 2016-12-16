@@ -64,7 +64,11 @@ class client
     osd_access # osds_to_osds_info_cache osds
   in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
-  let preset_cache = new Alba_client_preset_cache.preset_cache mgr_access in
+  let preset_cache =
+    new Alba_client_preset_cache.preset_cache
+        mgr_access
+        nsm_host_access
+  in
   let get_preset_info = preset_cache # get in
   let manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size in
   let bad_fragment_callback
@@ -249,7 +253,7 @@ class client
        Alba_client_upload.upload_object'
          nsm_host_access osd_access
          manifest_cache
-         get_preset_info
+         preset_cache
          get_namespace_osds_info_cache
          ~namespace_id
          ~object_name

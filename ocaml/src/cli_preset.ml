@@ -52,7 +52,6 @@ let alba_create_preset
     in
     Alba_json.Preset.to_preset
       preset' >>= fun preset ->
-    let open Albamgr_protocol.Protocol in
     Lwt_log.debug_f "Storing preset %s" (Preset.show preset) >>= fun () ->
     Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
@@ -86,7 +85,6 @@ let alba_update_preset
   let t () =
     from_input_url input_url >>= fun txt ->
     let json = Yojson.Safe.from_string txt in
-    let open Albamgr_protocol.Protocol in
     let preset_updates =
       match Preset.Update.of_yojson json with
       | Result.Error s -> failwith s
@@ -179,7 +177,6 @@ let alba_delete_preset_cmd =
 
 let alba_list_presets cfg_url tls_config to_json verbose =
   let t () =
-    let open Albamgr_protocol.Protocol in
     Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
     Albamgr_client.with_client'
       cfg

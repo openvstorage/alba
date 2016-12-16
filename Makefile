@@ -45,6 +45,8 @@ build-nsm-plugin: build-cmxs
 	_build/src/mem_key_value_store.cmx \
 	_build/src/osd_keys.cmx \
 	_build/src/alba_arakoon.cmx \
+        _build/src/fragment_size_helper.cmx \
+        _build/src/preset.cmx \
         _build/src/nsm_model.cmx \
 	_build/src/tools/stat.cmx \
 	_build/src/alba_statistics.cmx \
@@ -82,6 +84,7 @@ build-mgr-plugin: build-alba
 	_build/src/plugin_extra.cmx \
 	_build/src/log_plugin.cmx \
 	_build/src/osd_keys.cmx \
+        _build/src/preset.cmx \
 	_build/src/nsm_model.cmx \
 	_build/src/tools/stat.cmx \
 	_build/src/alba_statistics.cmx \

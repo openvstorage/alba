@@ -625,19 +625,21 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                | Assert_failed ->
                   return_err_response ~msg:payload Protocol.Error.AssertFailed
                | Namespace_id_not_found
-                 | Unknown
-                 | Invalid_gc_epoch
-                 | Non_unique_object_id
-                 | Not_master
-                 | Inconsistent_read
-                 | InvalidVersionId
-                 | Old_plugin_version
-                 | Old_timestamp
-                 | Invalid_fragment_spread
-                 | Inactive_osd
-                 | Too_many_disks_per_node
-                 | Insufficient_fragments
-                 | Unknown_operation ->
+               | Unknown
+               | Invalid_gc_epoch
+               | Non_unique_object_id
+               | Not_master
+               | Inconsistent_read
+               | InvalidVersionId
+               | Old_plugin_version
+               | Old_timestamp
+               | Invalid_fragment_spread
+               | Inactive_osd
+               | Invalid_bucket
+               | Preset_violated
+               | Too_many_disks_per_node
+               | Insufficient_fragments
+               | Unknown_operation ->
                   let msg = Nsm_model.Err.show err in
                   Lwt_log.info_f
                     "Unexpected Nsm_model.Err exception in proxy while handling request: %s" msg
@@ -659,26 +661,26 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                | Preset_does_not_exist ->
                   return_err_response Protocol.Error.PresetDoesNotExist
                | Unknown
-                 | Osd_already_exists
-                 | Nsm_host_already_exists
-                 | Nsm_host_unknown
-                 | Nsm_host_not_lost
-                 | Osd_already_linked_to_namespace
-                 | Not_master
-                 | Inconsistent_read
-                 | Old_plugin_version
-                 | Preset_already_exists
-                 | Preset_cant_delete_default
-                 | Preset_cant_delete_in_use
-                 | Invalid_preset
-                 | Osd_already_claimed
-                 | Osd_unknown
-                 | Osd_info_mismatch
-                 | Osd_already_decommissioned
-                 | Claim_lease_mismatch
-                 | Progress_does_not_exist
-                 | Progress_CAS_failed
-                 | Unknown_operation ->
+               | Osd_already_exists
+               | Nsm_host_already_exists
+               | Nsm_host_unknown
+               | Nsm_host_not_lost
+               | Osd_already_linked_to_namespace
+               | Not_master
+               | Inconsistent_read
+               | Old_plugin_version
+               | Preset_already_exists
+               | Preset_cant_delete_default
+               | Preset_cant_delete_in_use
+               | Invalid_preset
+               | Osd_already_claimed
+               | Osd_unknown
+               | Osd_info_mismatch
+               | Osd_already_decommissioned
+               | Claim_lease_mismatch
+               | Progress_does_not_exist
+               | Progress_CAS_failed
+               | Unknown_operation ->
                   let msg = Albamgr_protocol.Protocol.Error.show err in
                   Lwt_log.info_f
                     "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"  msg

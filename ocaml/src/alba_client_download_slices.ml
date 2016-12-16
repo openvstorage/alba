@@ -425,8 +425,7 @@ let _repair_after_read
       get_ns_preset_info ~namespace_id >>= fun preset ->
       nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
 
-      let fragment_checksum_algo =
-        preset.Albamgr_protocol.Protocol.Preset.fragment_checksum_algo in
+      let fragment_checksum_algo = preset.Preset.fragment_checksum_algo in
 
       let open Nsm_model in
       let es, compression = match manifest.Manifest.storage_scheme with

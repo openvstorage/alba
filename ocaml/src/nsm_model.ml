@@ -19,9 +19,6 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Key_value_store
 
-type k = Policy.k [@@deriving show]
-type m = Policy.m [@@deriving show]
-
 type object_name = string [@@deriving show]
 type object_id = HexString.t [@@deriving show]
 
@@ -439,7 +436,7 @@ module OsdInfo = struct
 
 end
 
-type osd_id = int64 [@@deriving show, yojson]
+type osd_id = Preset.osd_id [@@deriving show, yojson]
 
 module GcEpochs = struct
   type gc_epoch = Int64.t [@@deriving show]
@@ -470,42 +467,7 @@ end
 
 include Alba_compression (* arakoon client has a "compression" module *)
 
-module Encoding_scheme = struct
-  type w =
-    | W8 [@value 1]
-  [@@deriving show, enum]
-
-  let w_as_int = function
-    | W8 -> 8
-
-  let w_to_buffer buf w =
-    Llio.int8_to buf (w_to_enum w)
-  let w_from_buffer buf =
-    let w_i = Llio.int8_from buf in
-    match w_of_enum w_i with
-    | None -> raise_bad_tag "Encoding_scheme.w" w_i
-    | Some w -> w
-
-  type t =
-    | RSVM of k * m * w (* k identity blocks + m redundancy blocks * word size *)
-  [@@deriving show]
-
-  let output buf = function
-    | RSVM (k, m, w) ->
-      Llio.int8_to buf 1;
-      Llio.int_to buf k;
-      Llio.int_to buf m;
-      w_to_buffer buf w
-
-  let input buf =
-    match Llio.int8_from buf with
-    | 1 ->
-      let k = Llio.int_from buf in
-      let m = Llio.int_from buf in
-      let w = w_from_buffer buf in
-      RSVM (k, m, w)
-    | k -> raise_bad_tag "Encoding_scheme" k
-end
+module Encoding_scheme = Preset.Encoding_scheme
 
 type chunk_size = int
 [@@deriving show]
@@ -1037,6 +999,9 @@ module Keys = struct
            Llio.int32_be_from)
         (Str.string_after key prefix_len)
 
+  let preset = "preset"
+  let preset_version = "preset_version"
+
   module Device = struct
 
     let s device_id = serialize x_int64_be_to device_id
@@ -1118,6 +1083,8 @@ module Err = struct
     | Too_many_disks_per_node [@value 18]
     | Insufficient_fragments  [@value 19]
     | Assert_failed           [@value 20]
+    | Invalid_bucket          [@value 21]
+    | Preset_violated         [@value 22]
   [@@deriving show, enum]
 
   exception Nsm_exn of t * string
@@ -1148,6 +1115,21 @@ let check_fragment_osd_spread manifest =
     manifest.Manifest.fragment_locations
 
 module Update' = Key_value_store.Update
+
+module Preset_cache =
+  struct
+    let t = Hashtbl.create 3
+    let get ~namespace_id ~version =
+      match Hashtbl.find t namespace_id with
+      | exception Not_found -> None
+      | (version', preset) ->
+         if version' = version
+         then Some preset
+         else None
+
+    let store ~namespace_id ~version ~preset =
+      Hashtbl.replace t namespace_id (version, preset)
+  end
 
 module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
@@ -1218,16 +1200,30 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          manifest.Manifest.fragment_packed_sizes
          manifest.Manifest.fragment_locations)
 
+  let get_preset kv =
+    match KV.get kv Keys.preset_version with
+    | None -> None
+    | Some version ->
+       match Preset_cache.get ~namespace_id:C.namespace_id ~version with
+       | None ->
+          let preset =
+            KV.get_exn kv Keys.preset
+            |> deserialize Preset.from_buffer
+          in
+          Preset_cache.store ~namespace_id:C.namespace_id ~version ~preset;
+          Some preset
+       | Some preset ->
+          Some preset
 
-  let get_min_fragment_count_and_max_disks_per_node kv ~k ~max_disks_per_node locations =
+  let get_min_fragment_count_and_max_disks_per_node kv ~k ~m locations ~validate =
     let get_bla_per_chunk chunk_location =
       let osds_per_node = Hashtbl.create 3 in
       List.fold_left
         (fun (effective_fragment_count, effective_max_disks_per_node) -> function
-           | None, _ ->
+          | None, _ ->
              (effective_fragment_count,
               effective_max_disks_per_node)
-           | Some osd_id, _ ->
+          | Some osd_id, _ ->
              let osd_info = get_osd_info kv osd_id in
              let node_id = osd_info.OsdInfo.node_id in
              let cnt =
@@ -1236,14 +1232,6 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
              in
 
              let cnt' = cnt + 1 in
-             (* if cnt' > max_disks_per_node *)
-             (* then Err.(failwith *)
-             (*             ~payload:(Printf.sprintf *)
-             (*                         "Attempting to use %i disks of node %s while max %i permitted (%s)" *)
-             (*                         cnt' node_id max_disks_per_node *)
-             (*                         ([%show : int32 option list] *)
-             (*                            (List.map fst chunk_location))) *)
-             (*             Too_many_disks_per_node); *)
 
              Hashtbl.replace osds_per_node node_id cnt';
              (effective_fragment_count + 1,
@@ -1254,24 +1242,41 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let min_fragment_count, max_disks_per_node =
       List.fold_left
         (fun (effective_fragment_count, effective_max_disks_per_node) chunk_location ->
-           let effective_fragment_count', effective_max_disks_per_node' =
-             get_bla_per_chunk chunk_location
-           in
-           (min effective_fragment_count effective_fragment_count',
-            max effective_max_disks_per_node effective_max_disks_per_node'))
+          let effective_fragment_count', effective_max_disks_per_node' =
+            get_bla_per_chunk chunk_location
+          in
+          (min effective_fragment_count effective_fragment_count',
+           max effective_max_disks_per_node effective_max_disks_per_node'))
         (max_int, 0)
         locations
     in
 
-    (* TODO should actually compare with whatever is specified in the policy *)
-    if min_fragment_count < k
-    then
-      begin
-        let payload =
-          Printf.sprintf "min_fragment_count:%i < k:%i" min_fragment_count k
-        in
-        Err.(failwith Insufficient_fragments ~payload);
-      end;
+    let maybe_preset = get_preset kv in
+    let () =
+      match validate, maybe_preset with
+      | _, None -> ()
+      | false, _ -> ()
+      | true, Some p ->
+         (* bucket = k, m, min_fragment_count, max_disks_per_node
+          * match bucket with policy ... if we can't -> throw error *)
+         let policy =
+           List.find
+             (fun (k', m', min_fragment_count', max_disks_per_node') ->
+               k = k' && m = m'
+               && min_fragment_count >= min_fragment_count'
+               && max_disks_per_node <= max_disks_per_node')
+             p.Preset.policies
+         in
+         match policy with
+         | None -> Err.(failwith
+                          ~payload:(Printf.sprintf
+                                      "bucket %s not valid for policies %s"
+                                      ([%show : int * int * int * int] (k, m, min_fragment_count, max_disks_per_node))
+                                      ([%show : (int * int * int * int) list] p.Preset.policies)
+                                   )
+                          Invalid_bucket)
+         | Some _ -> ()
+    in
 
     (min_fragment_count, max_disks_per_node)
 
@@ -1344,8 +1349,9 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let fragment_count, max_disks_per_node =
         get_min_fragment_count_and_max_disks_per_node
           kv
-          ~k ~max_disks_per_node:old_manifest.max_disks_per_node
+          ~k ~m
           old_manifest.fragment_locations
+          ~validate:false
       in
       [ Update'.delete (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id:old_object_id);
         Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) (-1L); ]
@@ -1451,6 +1457,56 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       then Err.failwith Err.Overwrite_not_allowed
 
   let put_object kv overwrite manifest gc_epoch =
+    let maybe_preset = get_preset kv in
+    let () =
+      match maybe_preset with
+      | None -> ()
+      | Some p ->
+         (* verify object upload is according to preset *)
+
+         let Storage_scheme.EncodeCompressEncrypt
+               (Encoding_scheme.RSVM (k, m, w), compression) =
+           manifest.Manifest.storage_scheme in
+
+         List.iter
+           (fun chunk_size ->
+             if chunk_size / k > p.Preset.fragment_size
+             then Err.(failwith Preset_violated))
+           manifest.Manifest.chunk_sizes;
+
+         let () =
+           let open EncryptInfo in
+           let open Encryption in
+           match manifest.Manifest.encrypt_info, p.Preset.fragment_encryption with
+           | NoEncryption, Encryption.NoEncryption -> ()
+           | NoEncryption, _ -> Err.(failwith Preset_violated)
+           | Encrypted (algo1, key_identification), Encryption.AlgoWithKey (algo2, key) ->
+              if algo1 <> algo2 (* || key_identification <> Encrypt_info_helper.get_id_for_key key *)
+              then Err.(failwith Preset_violated)
+           | Encrypted _, _ -> Err.(failwith Preset_violated)
+         in
+
+         List.iter
+           (List.iter
+              (fun cs ->
+                if p.Preset.fragment_checksum_algo <> Checksum.algo_of cs
+                then Err.(failwith Preset_violated)))
+           manifest.Manifest.fragment_checksums;
+
+         if not (List.mem
+                   (Checksum.algo_of manifest.Manifest.checksum)
+                   Preset.(p.object_checksum.allowed))
+         then Err.(failwith Preset_violated);
+
+         if w <> p.Preset.w
+         then Err.(failwith Preset_violated);
+
+         if compression <> p.Preset.compression
+         then Err.(failwith Preset_violated);
+
+         ()
+    in
+
     let object_name = manifest.Manifest.name in
     let object_id = manifest.Manifest.object_id in
 
@@ -1536,8 +1592,9 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let fragment_count, max_disks_per_node =
         get_min_fragment_count_and_max_disks_per_node
           kv
-          ~k ~max_disks_per_node:manifest.max_disks_per_node
+          ~k ~m
           manifest.fragment_locations
+          ~validate:true
       in
       [ Update'.set (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id) "";
         Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) 1L; ]
@@ -1955,17 +2012,20 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let Storage_scheme.EncodeCompressEncrypt
           (Encoding_scheme.RSVM (k, m, _), _) =
         manifest_old.storage_scheme in
-      let max_disks_per_node = manifest_old.max_disks_per_node in
 
       let fragment_count_old, max_disks_per_node_old =
         get_min_fragment_count_and_max_disks_per_node
-          kv ~k ~max_disks_per_node
+          kv
+          ~k ~m
           manifest_old.fragment_locations
+          ~validate:false
       in
       let fragment_count_updated, max_disks_per_node_updated =
         get_min_fragment_count_and_max_disks_per_node
-          kv ~k ~max_disks_per_node
+          kv
+          ~k ~m
           updated_manifest.fragment_locations
+          ~validate:true
       in
       if fragment_count_old     <> fragment_count_updated ||
          max_disks_per_node_old <> max_disks_per_node_updated
@@ -2099,6 +2159,27 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          let k, m, fragment_count, max_disks_per_node, object_id = Keys.parse_policies_key key in
          let manifest, _ = get_object_manifest_by_id kv object_id in
          manifest)
+
+  let update_preset kv preset version =
+    let version_s = KV.get kv Keys.preset_version in
+    let version' =
+      match version_s with
+      | None -> -1L
+      | Some v -> deserialize Llio.int64_from v
+    in
+    if version > version'
+    then
+      begin
+        [ Update'.Assert (Keys.preset_version,
+                          version_s);
+          Update'.set Keys.preset_version
+                      (serialize Llio.int64_to version);
+          Update'.set Keys.preset
+                      (serialize (Preset.to_buffer ~version:2) preset); ],
+        ()
+      end
+    else
+      [], ()
 
 (*
 

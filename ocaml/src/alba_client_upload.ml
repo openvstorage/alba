@@ -283,7 +283,7 @@ let upload_object''
       compression, fragment_checksum_algo,
       allowed_checksum_algos, verify_upload,
       encryption =
-    let open Albamgr_protocol.Protocol.Preset in
+    let open Preset in
     preset.policies, preset.w,
     preset.fragment_size,
     preset.compression, preset.fragment_checksum_algo,
@@ -324,7 +324,7 @@ let upload_object''
   in
 
   let object_checksum_algo =
-    let open Albamgr_protocol.Protocol.Preset in
+    let open Preset in
     match checksum_o with
     | None -> preset.object_checksum.default
     | Some checksum ->
@@ -823,11 +823,86 @@ let store_manifest
   Lwt.return (manifest, chunk_fidmos, t_object, namespace_id)
 
 
+let _upload_with_retry
+      nsm_host_access
+      (preset_cache : Alba_client_preset_cache.preset_cache)
+      ~namespace_id
+      do_upload
+      (message : string lazy_t)
+  =
+  let timestamp = Unix.gettimeofday () in
+  Lwt.catch
+    (fun () -> do_upload timestamp)
+    (fun exn ->
+
+      let open Nsm_model in
+      let timestamp = match exn with
+        | Err.Nsm_exn (Err.Old_timestamp, payload) ->
+           (* if the upload failed due to the timestamp being not
+             recent enough we should retry with a more recent one...
+
+             (ideally we should only overwrite the recovery info,
+             so this is a rather brute approach. but for an
+             exceptional situation that's ok.)
+            *)
+           (deserialize Llio.float_from payload) +. 0.1
+        | _ ->
+           timestamp
+      in
+      begin
+        let open Err in
+        match exn with
+        | Nsm_exn (err, msg) ->
+           Lwt_log.debug_f "upload_exception %s" msg >>= fun () ->
+           begin match err with
+           | Inactive_osd ->
+              Lwt_log.info_f
+                "%s failed due to inactive (decommissioned) osd, retrying..."
+                (Lazy.force message)
+              >>= fun () ->
+              nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
+              Lwt.return ()
+
+           | Too_many_disks_per_node
+           | Preset_violated
+           | Invalid_bucket ->
+              nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+              let open Albamgr_protocol.Protocol in
+              preset_cache # refresh ~preset_name:ns_info.Namespace.preset_name
+           | Unknown
+           | Old_plugin_version
+           | Unknown_operation
+           | Inconsistent_read
+           | Namespace_id_not_found
+           | InvalidVersionId
+           | Overwrite_not_allowed
+           | Assert_failed
+           | Insufficient_fragments
+           | Object_not_found ->
+              Lwt.fail exn
+
+           | Not_master
+           | Old_timestamp
+           | Invalid_gc_epoch
+           | Invalid_fragment_spread
+           | Non_unique_object_id ->
+              Lwt.return ()
+           end
+        | Alba_client_errors.Error.Exn e ->
+           Lwt_log.debug_f "%s failed with:%s" (Lazy.force message) (Error.show e)
+        | _ ->
+           Lwt.return ()
+      end >>= fun () ->
+      Lwt_log.debug_f "Exception during %s, retrying once" (Lazy.force message) >>= fun () ->
+      do_upload timestamp
+    )
+
+
 let upload_object'
       ~epilogue_delay
       nsm_host_access osd_access
       manifest_cache
-      get_preset_info
+      (preset_cache : Alba_client_preset_cache.preset_cache)
       get_namespace_osds_info_cache
       ~namespace_id
       ~object_name
@@ -845,7 +920,7 @@ let upload_object'
     upload_object''
       nsm_host_access
       osd_access
-      get_preset_info
+      (preset_cache # get)
       get_namespace_osds_info_cache
       ~object_t0 ~timestamp
       ~object_name
@@ -865,62 +940,9 @@ let upload_object'
         ~namespace_id
         ~allow_overwrite
   in
-  Lwt.catch
-    (fun () -> do_upload object_t0)
-    (fun exn ->
-
-     let open Nsm_model in
-     let timestamp = match exn with
-       | Err.Nsm_exn (Err.Old_timestamp, payload) ->
-          (* if the upload failed due to the timestamp being not
-             recent enough we should retry with a more recent one...
-
-             (ideally we should only overwrite the recovery info,
-             so this is a rather brute approach. but for an
-             exceptional situation that's ok.)
-           *)
-          (deserialize Llio.float_from payload) +. 0.1
-       | _ -> object_t0
-     in
-     begin
-       let open Err in
-       match exn with
-       | Nsm_exn (err, msg) ->
-          Lwt_log.debug_f "upload_exception %s" msg >>= fun () ->
-          begin match err with
-                | Inactive_osd ->
-                   Lwt_log.info_f
-                     "Upload object %S failed due to inactive (decommissioned) osd, retrying..."
-                     object_name >>= fun () ->
-                   nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
-                   Lwt.return ()
-
-                | Unknown
-                | Old_plugin_version
-                | Unknown_operation
-                | Inconsistent_read
-                | Namespace_id_not_found
-                | InvalidVersionId
-                | Overwrite_not_allowed
-                | Assert_failed
-                | Too_many_disks_per_node
-                | Insufficient_fragments
-                | Object_not_found ->
-                   Lwt.fail exn
-
-                | Not_master
-                | Old_timestamp
-                | Invalid_gc_epoch
-                | Invalid_fragment_spread
-                | Non_unique_object_id ->
-                   Lwt.return ()
-          end
-       | Alba_client_errors.Error.Exn e ->
-          Lwt_log.debug_f "upload of %S failed with:%s"
-                          object_name (Error.show e)
-       | _ ->
-          Lwt.return ()
-     end >>= fun () ->
-     Lwt_log.debug_f "Exception while uploading object, retrying once" >>= fun () ->
-     do_upload timestamp
-    )
+  _upload_with_retry
+    nsm_host_access
+    preset_cache
+    ~namespace_id
+    do_upload
+    (lazy (Printf.sprintf "Upload of %S" object_name))

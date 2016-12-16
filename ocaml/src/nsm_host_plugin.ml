@@ -134,10 +134,10 @@ let deliver_msgs (db : user_db) msgs =
     msgs
 
 
-let get_updates_res : type i o. read_user_db ->
-                           (i, o) Protocol.update ->
-                           i ->
-                           (o * Arakoon_update.Update.t list) Lwt.t =
+let rec get_updates_res : type i o. read_user_db ->
+                               (i, o) Protocol.update ->
+                               i ->
+                               (o * Arakoon_update.Update.t list) Lwt.t =
   fun db ->
   let open Protocol in
   let open Arakoon_update in
@@ -208,6 +208,9 @@ let get_updates_res : type i o. read_user_db ->
       | ApplySequence ->
          fun (asserts, updates) ->
          NSM.apply_sequence db asserts updates
+      | UpdatePreset ->
+         fun (preset, version) ->
+         NSM.update_preset db preset version
       | UpdateObject2 ->
          fun (object_name, object_id, new_fragments, gc_epoch, version_id) ->
          NSM.update_manifest2 db
@@ -218,6 +221,21 @@ let get_updates_res : type i o. read_user_db ->
     let upds, res = get_updates_res tag req in
     let arakoon_upds = transform_updates namespace_id upds in
     Lwt.return (res, arakoon_upds)
+  | NsmsUpdate tag ->
+     fun reqs ->
+     Lwt_list.map_s
+       (fun req ->
+         Lwt.catch
+           (fun () ->
+             get_updates_res db (NsmUpdate tag) req >>= fun (res, upds) ->
+             Lwt.return (upds, Result.Ok res))
+           (function
+            | Nsm_model.Err.Nsm_exn (err, _) ->
+               Lwt.return ([], Result.Error err))
+       )
+       reqs >>= fun r ->
+     let upds, res = List.split r in
+     Lwt.return (res, List.flatten upds)
 
 let statistics = Protocol.NSMHStatistics.make ()
 

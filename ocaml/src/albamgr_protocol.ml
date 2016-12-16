@@ -468,166 +468,6 @@ module Protocol = struct
       | Osd -> Osd.Message.to_buffer
   end
 
-  module Preset = struct
-    type osds =
-      | All
-      | Explicit of Osd.id list
-    [@@deriving show]
-
-    let osds_to_buffer buf = function
-      | All -> Llio.int8_to buf 1
-      | Explicit osd_ids ->
-        Llio.int8_to buf 2;
-        Llio.list_to x_int64_to buf osd_ids
-
-    let osds_from_buffer buf =
-      match Llio.int8_from buf with
-      | 1 -> All
-      | 2 -> Explicit (Llio.list_from x_int64_from buf)
-      | k -> raise_bad_tag "Preset.osds" k
-
-    type checksum_algo = Checksum.Checksum.algo [@@deriving show]
-
-    type object_checksum = {
-      allowed : checksum_algo list;
-      default : checksum_algo;
-      verify_upload : bool;
-    }
-    [@@deriving show]
-
-    let object_checksum_to_buffer buf t =
-      let open Checksum.Checksum.Algo in
-      to_buffer buf t.default;
-      Llio.list_to to_buffer buf t.allowed;
-      Llio.bool_to buf t.verify_upload
-
-    let object_checksum_from_buffer buf =
-      let open Checksum.Checksum.Algo in
-      let default = from_buffer buf in
-      let allowed = Llio.list_from from_buffer buf in
-      let verify_upload = Llio.bool_from buf in
-      { allowed; default; verify_upload; }
-
-    type t = {
-      w : Nsm_model.Encoding_scheme.w;
-      policies : Policy.policy list;
-      fragment_size : int;
-      osds : osds;
-      compression : Alba_compression.Compression.t;
-      object_checksum : object_checksum;
-      fragment_checksum_algo : Checksum.Checksum.algo;
-      fragment_encryption : Encryption.Encryption.t;
-    }
-    [@@deriving show]
-
-
-    let is_valid t =
-      let default_in_allowed_list = List.mem t.object_checksum.default t.object_checksum.allowed in
-      let enc_key_length = Encryption.Encryption.is_valid t.fragment_encryption in
-      let policies_ok =
-        t.policies <> [] &&
-        List.for_all
-          (fun (k, m, fragment_count, _) ->
-           (k > 0)
-           && (k <= fragment_count)
-           && (fragment_count <= k + m)
-          )
-          t.policies
-      in
-      let fragment_size_ok = t.fragment_size >= Fragment_size_helper.fragment_multiple in
-      default_in_allowed_list
-      && enc_key_length
-      && policies_ok
-      && fragment_size_ok
-
-    type name = string [@@deriving show]
-
-    let to_buffer buf t =
-      let ser_version = 1 in Llio.int8_to buf ser_version;
-      Nsm_model.Encoding_scheme.w_to_buffer buf t.w;
-      Llio.list_to
-        Policy.to_buffer
-        buf
-        t.policies;
-      Llio.int_to buf t.fragment_size;
-      osds_to_buffer buf t.osds;
-      Alba_compression.Compression.output buf t.compression;
-      object_checksum_to_buffer buf t.object_checksum;
-      Checksum.Checksum.Algo.to_buffer buf t.fragment_checksum_algo;
-      Encryption.Encryption.to_buffer buf t.fragment_encryption
-
-    let from_buffer buf =
-      let ser_version = Llio.int8_from buf in
-      assert (ser_version = 1);
-      let w = Nsm_model.Encoding_scheme.w_from_buffer buf in
-      let policies =
-        Llio.list_from
-          Policy.from_buffer
-          buf in
-      let fragment_size = Llio.int_from buf in
-      let osds = osds_from_buffer buf in
-      let compression = Alba_compression.Compression.input buf in
-      let object_checksum = object_checksum_from_buffer buf in
-      let fragment_checksum_algo = Checksum.Checksum.Algo.from_buffer buf in
-      let fragment_encryption = Encryption.Encryption.from_buffer buf in
-      { w; policies;
-        fragment_size; osds; compression;
-        object_checksum; fragment_checksum_algo;
-        fragment_encryption; }
-
-
-    let _DEFAULT = {
-        policies = [(5, 4, 8, 3); (2, 2, 3, 4);];
-        w = Nsm_model.Encoding_scheme.W8;
-        fragment_size = 1024 * 1024;
-        osds = All;
-        compression = Alba_compression.Compression.Snappy;
-        object_checksum =
-          (let open Checksum.Checksum.Algo in
-           { allowed = [ NO_CHECKSUM;
-                         SHA1;
-                         CRC32c ];
-             default = CRC32c;
-             verify_upload = true;
-          });
-        fragment_checksum_algo = Checksum.Checksum.Algo.CRC32c;
-        fragment_encryption = Encryption.Encryption.NoEncryption;
-        }
-
-    module Update = struct
-      type t = {
-        policies' : (Policy.policy list option [@default None]) [@key "policies"];
-      } [@@deriving show, yojson]
-
-      let make ?policies' () = { policies'; }
-
-      let apply preset t =
-        { preset with
-          policies = (Option.get_some_default
-                        preset.policies
-                        t.policies'); }
-
-      let from_buffer buf =
-        let ser_version = Llio.int8_from buf in
-        assert (ser_version = 1);
-        let policies' =
-          Llio.option_from
-            (Llio.list_from
-               Policy.from_buffer)
-            buf
-        in
-        { policies' }
-
-      let to_buffer buf t =
-        let ser_version = 1 in
-        Llio.int8_to buf ser_version;
-        Llio.option_to
-          (Llio.list_to Policy.to_buffer)
-          buf
-          t.policies'
-    end
-  end
-
   module Work = struct
     type id = Int64.t
 
@@ -668,6 +508,7 @@ module Protocol = struct
       | WaitUntilDecommissioned of Osd.id
       | IterNamespace of action * Namespace.id * string * int
       | IterNamespaceLeaf of action * Namespace.id * string * range
+      | PropagatePreset of Preset.name
     [@@ deriving show]
 
     let to_buffer buf = function
@@ -719,6 +560,10 @@ module Protocol = struct
           (Llio.option_to Llio.string_to)
           buf
           range
+      | PropagatePreset name ->
+         Llio.int8_to buf 14;
+         Llio.string_to buf name
+
 
     let from_buffer buf =
       match Llio.int8_from buf with
@@ -771,6 +616,9 @@ module Protocol = struct
         let namespace_id = x_int64_from buf in
         let object_id = Llio.string_from buf in
         RewriteObject (namespace_id, object_id)
+      | 14 ->
+         let name = Llio.string_from buf in
+         PropagatePreset name
       | k -> raise_bad_tag "Work" k
   end
 
@@ -916,6 +764,10 @@ module Protocol = struct
     | GetAlbaId : (unit, alba_id) query
     | ListPresets : (string RangeQueryArgs.t,
                      (Preset.name * Preset.t * bool * bool) counted_list_more) query
+    | ListPresets2 : (string RangeQueryArgs.t,
+                      (Preset.name * Preset.t * Preset.version * bool * bool) counted_list_more) query
+    | ListPresetNamespaces : (Preset.name, Namespace.id counted_list) query
+    | GetPresetsPropagationState : (Preset.name list, Preset.Propagation.t option list) query
     | GetClientConfig : (unit, Alba_arakoon.Config.t) query
     | ListNamespacesById : (Namespace.id RangeQueryArgs.t,
                            (Namespace.id *
@@ -974,6 +826,7 @@ module Protocol = struct
     | BumpNextWorkItemId : (Work.id, unit) update
     | BumpNextOsdId : (Osd.id, unit) update
     | BumpNextNamespaceId : (Namespace.id, unit) update
+    | UpdatePresetPropagationState : (Preset.name * Preset.version * Namespace.id list, unit) update
 
 
   let read_query_i : type i o. (i, o) query -> i Llio.deserializer = function
@@ -994,6 +847,9 @@ module Protocol = struct
     | GetWork -> GetWorkParams.from_buffer
     | GetAlbaId -> Llio.unit_from
     | ListPresets -> RangeQueryArgs.from_buffer Llio.string_from
+    | ListPresets2 -> RangeQueryArgs.from_buffer Llio.string_from
+    | ListPresetNamespaces -> Llio.string_from
+    | GetPresetsPropagationState -> Llio.list_from Llio.string_from
     | GetClientConfig -> Llio.unit_from
     | ListNamespacesById -> RangeQueryArgs.from_buffer x_int64_from
     | GetVersion -> Llio.unit_from
@@ -1031,6 +887,9 @@ module Protocol = struct
     | GetWork -> GetWorkParams.to_buffer
     | GetAlbaId -> Llio.unit_to
     | ListPresets -> RangeQueryArgs.to_buffer Llio.string_to
+    | ListPresets2 -> RangeQueryArgs.to_buffer Llio.string_to
+    | ListPresetNamespaces -> Llio.string_to
+    | GetPresetsPropagationState -> Llio.list_to Llio.string_to
     | GetClientConfig -> Llio.unit_to
     | ListNamespacesById -> RangeQueryArgs.to_buffer x_int64_to
     | GetVersion -> Llio.unit_to
@@ -1104,6 +963,19 @@ module Protocol = struct
            Preset.from_buffer
            Llio.bool_from
            Llio.bool_from)
+    | ListPresets2 ->
+      counted_list_more_from
+        (Llio.tuple5_from
+           Llio.string_from
+           Preset.from_buffer
+           Llio.int64_from
+           Llio.bool_from
+           Llio.bool_from
+        )
+    | ListPresetNamespaces ->
+       Llio.counted_list_from Llio.int64_from
+    | GetPresetsPropagationState ->
+       Llio.list_from (Llio.option_from Preset.Propagation.from_buffer)
     | GetClientConfig ->
       Alba_arakoon.Config.from_buffer
     | ListNamespacesById ->
@@ -1203,9 +1075,22 @@ module Protocol = struct
       counted_list_more_to
         (Llio.tuple4_to
            Llio.string_to
-           Preset.to_buffer
+           (Preset.to_buffer ~version:1)
            Llio.bool_to
            Llio.bool_to)
+    | ListPresets2 ->
+      counted_list_more_to
+        (Llio.tuple5_to
+           Llio.string_to
+           (Preset.to_buffer ~version:2)
+           Llio.int64_to
+           Llio.bool_to
+           Llio.bool_to
+        )
+    | ListPresetNamespaces ->
+       Llio.counted_list_to Llio.int64_to
+    | GetPresetsPropagationState ->
+       Llio.list_to (Llio.option_to Preset.Propagation.to_buffer)
     | GetClientConfig ->
       Alba_arakoon.Config.to_buffer
     | ListNamespacesById ->
@@ -1306,6 +1191,11 @@ module Protocol = struct
       Llio.pair_from
         Llio.string_from
         Preset.Update.from_buffer
+    | UpdatePresetPropagationState ->
+       Llio.tuple3_from
+         Llio.string_from
+         Llio.int64_from
+         (Llio.list_from Llio.int64_from)
     | StoreClientConfig ->
        Alba_arakoon.Config.from_buffer
     | TryGetLease ->
@@ -1360,7 +1250,7 @@ module Protocol = struct
     | MarkMsgsDelivered t -> Llio.pair_to (Msg_log.dest_to_buffer t) x_int64_to
     | AddWork -> Llio.counted_list_to Work.to_buffer
     | MarkWorkCompleted -> x_int64_to
-    | CreatePreset -> Llio.pair_to Llio.string_to Preset.to_buffer
+    | CreatePreset -> Llio.pair_to Llio.string_to (Preset.to_buffer ~version:1)
     | DeletePreset -> Llio.string_to
     | SetDefaultPreset -> Llio.string_to
     | AddOsdsToPreset ->
@@ -1371,6 +1261,11 @@ module Protocol = struct
       Llio.pair_to
         Llio.string_to
         Preset.Update.to_buffer
+    | UpdatePresetPropagationState ->
+       Llio.tuple3_to
+         Llio.string_to
+         Llio.int64_to
+         (Llio.list_to Llio.int64_to)
     | StoreClientConfig ->
        Alba_arakoon.Config.to_buffer
     | TryGetLease ->
@@ -1419,6 +1314,7 @@ module Protocol = struct
     | SetDefaultPreset ->   Llio.unit_from
     | AddOsdsToPreset ->    Llio.unit_from
     | UpdatePreset ->       Llio.unit_from
+    | UpdatePresetPropagationState -> Llio.unit_from
     | StoreClientConfig ->  Llio.unit_from
     | TryGetLease ->        Llio.unit_from
     | RegisterParticipant ->Llio.unit_from
@@ -1454,6 +1350,7 @@ module Protocol = struct
     | SetDefaultPreset ->   Llio.unit_to
     | AddOsdsToPreset ->    Llio.unit_to
     | UpdatePreset ->       Llio.unit_to
+    | UpdatePresetPropagationState -> Llio.unit_to
     | StoreClientConfig ->  Llio.unit_to
     | TryGetLease ->        Llio.unit_to
     | RegisterParticipant ->Llio.unit_to
@@ -1554,6 +1451,11 @@ module Protocol = struct
                       Wrap_u BumpNextWorkItemId, 85l, "BumpNextWorkItemId";
                       Wrap_u BumpNextOsdId, 86l, "BumpNextOsdId";
                       Wrap_u BumpNextNamespaceId, 87l, "BumpNextNamespaceId";
+
+                      Wrap_q ListPresets2, 90l, "ListPresets2";
+                      Wrap_q ListPresetNamespaces, 91l, "ListPresetNamespaces";
+                      Wrap_q GetPresetsPropagationState, 92l, "GetPresetsPropagationState";
+                      Wrap_u UpdatePresetPropagationState, 93l, "UpdatePresetPropagationState";
                     ]
 
 
