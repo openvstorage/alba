@@ -1326,73 +1326,12 @@ let asd_protocol
     let () = Net_fd.uncork nfd in
     Lwt.return_unit
   in
-  let with_maybe_cancel f =
-    match cancel with
-    | None -> f ()
-    | Some cancel ->
-       Lwt.pick
-         [ (Lwt_condition.wait cancel >>= fun () ->
-            Lwt.fail Lwt.Canceled);
-           f (); ]
-  in
   let rec inner buffer =
-    with_maybe_cancel
-      (fun () ->
-        Net_fd.read_lwt_bytes_at_least
-          nfd buffer
-          ~offset:0
-          ~max_length:(Lwt_bytes.length buffer)
-          ~min_length:4)
-    >>= fun read ->
-
-    let message_length = get32_prim' buffer 0 |> Int32.to_int in
-
-    let module L = Llio2.ReadBuffer in
-
-    let with_message_buffer f =
-      if message_length + 4 = read
-      then
-        (* read the message entirely, perfect *)
-        let read_buffer = L.make_buffer buffer ~offset:4 ~length:message_length in
-        f read_buffer
-      else
-        let message_bytes_read = read - 4 in
-
-        (* no pipelining of request messages is possible with
-         * this read strategy...
-         *)
-        assert (message_bytes_read <= message_length);
-
-        let with_sufficiently_large_buffer f =
-          if message_length < ((Lwt_bytes.length buffer) - 4)
-          then
-            f (buffer, 4)
-          else
-            let buf' = Lwt_bytes.create message_length in
-            Lwt_bytes.blit buffer 4 buf' 0 message_bytes_read;
-            Lwt.finalize
-              (fun () -> f (buf', 0))
-              (fun () ->
-                Lwt_bytes.unsafe_destroy buf';
-                Lwt.return_unit)
-        in
-
-        (* only got part of the message so far
-         * gather the message into a sufficiently large buffer
-         * (maybe blit, get the rest from nfd)
-         *)
-        with_sufficiently_large_buffer
-          (fun (buffer, offset) ->
-            Net_fd.read_all_lwt_bytes_exact
-              nfd buffer
-              (offset + message_bytes_read)
-              (message_length - message_bytes_read) >>= fun () ->
-            let read_buffer = L.make_buffer buffer ~offset ~length:message_length in
-            f read_buffer)
-    in
-
-    with_message_buffer
-      (fun buf ->
+    Net_fd.with_message_buffer_from
+      nfd buffer cancel
+      (fun (buf, offset, length) ->
+       let module L = Llio2.ReadBuffer in
+       let buf = L.make_buffer buf ~offset ~length in
        let code = L.int32_from buf in
        with_timing_lwt
          (fun () ->
