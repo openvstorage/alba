@@ -242,6 +242,20 @@ let read_all_lwt_bytes_exact nfd target offset length = match nfd with
      Lwt_extra2._read_all read_to_target offset length
      >>= Lwt_extra2.expect_exact_length length
 
+let read_lwt_bytes_at_least nfd target ~offset ~max_length ~min_length =
+  match nfd with
+  | Plain fd -> Lwt_extra2.read_lwt_bytes_at_least fd target ~offset ~max_length ~min_length
+  | SSL _ssl ->
+     let socket = _ssl_get_socket _ssl in
+     Lwt_extra2._read_buffer_at_least
+       (Lwt_ssl.read_bytes socket target)
+       ~offset ~max_length ~min_length
+  | Rsocket socket ->
+     Lwt_extra2._read_buffer_at_least
+       (fun offset length -> Lwt_rsocket.Bytes.recv socket target offset length [])
+       ~offset ~max_length ~min_length
+
+
 let cork = function
   | Plain fd ->
      Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false 
