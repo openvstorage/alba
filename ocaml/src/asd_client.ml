@@ -27,6 +27,8 @@ open Range_query_args
 module WB = Llio2.WriteBuffer
 
 class client (fd:Net_fd.t) id =
+  let () = Net_fd.uncork fd in
+
   let buffer = WB.make ~length:200 in
 
   let with_response deserializer f =
@@ -68,10 +70,8 @@ class client (fd:Net_fd.t) id =
             (code,
              request)
         in
-        let () = Net_fd.cork fd in
         Net_fd.write_all_lwt_bytes fd buf.Llio.buf 0 buf.Llio.pos
         >>= fun () ->
-        let () = Net_fd.uncork fd in
         with_response deserialize_response f)
     >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
