@@ -124,9 +124,14 @@ void from(message &m, std::unique_ptr<EncryptInfo> &p) {
     r = new NoEncryption();
   }; break;
   case 2: {
-    AlgoWithKey *awk = new AlgoWithKey();
+    // comment for now until the serialisation has been cleared out
+
+    /* AlgoWithKey *awk = new AlgoWithKey();
     from(m, *awk);
-    r = awk;
+    r = awk; */
+
+    throw deserialisation_exception("AlgoWithKey not yet supported");
+
   }; break;
   default: {
       ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
