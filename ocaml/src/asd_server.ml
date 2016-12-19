@@ -526,16 +526,18 @@ let _range_validate
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
-                         (Llio2.WriteBuffer.t * (Net_fd.t ->
-                                                 unit Lwt.t)) Asd_io_scheduler.t ->
+                         (Llio2.WriteBuffer.t
+                          * (Net_fd.t -> unit Lwt.t) option)
+                           Asd_io_scheduler.t ->
                          DirectoryInfo.t ->
                          AsdMgmt.t ->
                          AsdStatistics.t ->
                          Capabilities.OsdCapabilities.capability counted_list ->
                          (req, res) Protocol.query ->
                          req ->
-                         (Llio2.WriteBuffer.t * (Net_fd.t ->
-                                                 unit Lwt.t)) Lwt.t
+                         (Llio2.WriteBuffer.t
+                          * (Net_fd.t -> unit Lwt.t) option)
+                           Lwt.t
   = fun kv io_sched dir_info mgmt stats capabilities q ->
 
     let open Protocol in
@@ -549,8 +551,8 @@ let execute_query : type req res.
     in
     let return'' ~cost (res, write_extra) =
       Lwt.return ((serialize_with_length res, write_extra), cost) in
-    let return ~cost res = return'' ~cost (res, fun _ -> Lwt.return_unit) in
-    let return' res = Lwt.return (serialize_with_length res, fun _ -> Lwt.return_unit) in
+    let return ~cost res = return'' ~cost (res, None) in
+    let return' res = Lwt.return (serialize_with_length res, None) in
     match q with
     | Range -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
       perform_read
@@ -666,19 +668,9 @@ let execute_query : type req res.
              keys
          in
 
-         return''
-           ~cost:(List.fold_left
-                    (fun acc ->
-                     function
-                     | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
-                     | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
-                    0
-                    res)
-           (res,
-            fun nfd ->
-            Lwt_list.iter_s
-              (fun (fnr, size) ->
+         let write_later nfd =
+           Lwt_list.iter_s
+             (fun (fnr, size) ->
                DirectoryInfo.with_blob_fd
                  dir_info fnr
                  (fun blob_fd ->
@@ -698,8 +690,20 @@ let execute_query : type req res.
                    in
                    Lwt.return_unit
                  )
-              )
-              (List.rev !write_laters)))
+             )
+             (List.rev !write_laters)
+         in
+
+         return''
+           ~cost:(List.fold_left
+                    (fun acc ->
+                     function
+                     | None           -> acc + 200
+                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
+                     | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
+                    0
+                    res)
+           (res, Some write_later))
         end
     | MultiExists -> fun (keys, prio) ->
                      perform_read
@@ -783,7 +787,7 @@ let execute_query : type req res.
                          Net_fd.write_all nfd (Bytes.create len) 0 len)
                         slices
                in
-               return'' ~cost (true, write_later))
+               return'' ~cost (true, Some write_later))
        end
     | Statistics -> fun clear ->
                     Asd_statistics.AsdStatistics.snapshot stats clear |> return'
@@ -855,7 +859,7 @@ let execute_update : type req res.
   Rocks_key_value_store.t ->
   release_fnr : (int64 -> unit) ->
   (Llio2.WriteBuffer.t * (Net_fd.t ->
-                          unit Lwt.t)) Asd_io_scheduler.t ->
+                          unit Lwt.t) option) Asd_io_scheduler.t ->
   DirectoryInfo.t ->
   mgmt: AsdMgmt.t ->
   get_next_fnr : (unit -> int64) ->
@@ -1241,8 +1245,6 @@ let check_asd_id kv asd_id =
     else failwith (Printf.sprintf "asd id mismatch: %s <> %s" asd_id asd_id')
 
 
-let done_writing (nfd:Net_fd.t) = Lwt.return_unit
-
 let asd_protocol
       ?cancel
       kv ~release_fnr
@@ -1259,9 +1261,7 @@ let asd_protocol
      *)
 
     let module Llio = Llio2.WriteBuffer in
-    let return_result
-          ?(write_extra=done_writing)
-          serializer res =
+    let return_result serializer res =
       let res_s =
         Llio.serialize_with_length'
           (Llio.pair_to
@@ -1269,7 +1269,7 @@ let asd_protocol
              serializer)
           (0, res)
       in
-      Lwt.return (res_s, write_extra)
+      Lwt.return (res_s, None)
     in
     let return_error error =
       let res =
@@ -1277,7 +1277,7 @@ let asd_protocol
           Protocol.Error.serialize
           error
       in
-      Lwt.return (res, done_writing)
+      Lwt.return (res, None)
     in
     Lwt.catch
       (fun () ->
@@ -1320,11 +1320,18 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    let () = Net_fd.cork nfd in
-    Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
-    write_extra nfd >>= fun () ->
-    let () = Net_fd.uncork nfd in
-    Lwt.return_unit
+    let write_res () =
+      Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos
+    in
+    match write_extra with
+    | None ->
+       write_res ()
+    | Some write_extra ->
+       let () = Net_fd.cork nfd in
+       write_res () >>= fun () ->
+       write_extra nfd >>= fun () ->
+       let () = Net_fd.uncork nfd in
+       Lwt.return_unit
   in
   let rec inner buffer =
     Net_fd.with_message_buffer_from
@@ -1798,6 +1805,7 @@ let run_server
   in
 
   let protocol nfd =
+    let () = Net_fd.uncork nfd in
     asd_protocol
       ?cancel
       db
