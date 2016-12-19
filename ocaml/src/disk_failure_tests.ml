@@ -64,7 +64,7 @@ let _easiest_upload () =
     (ref cfg)
     ~tls_config
     ~populate_osds_info_cache:true
-    ~upload_slack:0.2
+    ~upload_slack:1000.
     (fun alba_client ->
      alba_client # create_namespace ~namespace:"disk_failure_test" ~preset_name:None () >>= fun namespace_id ->
      Alba_test._wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
