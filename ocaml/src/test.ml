@@ -21,6 +21,7 @@ open OUnit
 let suite = "all" >:::[
     Prelude_test.suite;
     "Choose_test" >::: Choose_test.suite;
+    Encryption_test.suite;
     Nsm_protocol_test.suite;
     Nsm_model_test.suite;
     Albamgr_protocol_test.suite;

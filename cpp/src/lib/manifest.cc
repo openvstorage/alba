@@ -25,7 +25,8 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace llio {
 
-template <> void from(message &m, proxy_protocol::EncodingScheme &es) {
+using namespace proxy_protocol;
+template <> void from(message &m, EncodingScheme &es) {
   uint8_t version;
   from(m, version);
   if (version != 1) {
@@ -37,37 +38,110 @@ template <> void from(message &m, proxy_protocol::EncodingScheme &es) {
   from(m, es.w);
 }
 
-void from(message &m, std::unique_ptr<proxy_protocol::Compression> &p) {
+void from(message &m, std::unique_ptr<Compression> &p) {
   uint8_t type;
   from(m, type);
-  proxy_protocol::Compression *r;
+  Compression *r;
   switch (type) {
   case 1: {
-    r = new proxy_protocol::NoCompression();
+    r = new NoCompression();
   }; break;
   case 2: {
-    r = new proxy_protocol::SnappyCompression();
+    r = new SnappyCompression();
   }; break;
   case 3: {
-    r = new proxy_protocol::BZip2Compression();
+    r = new BZip2Compression();
   }; break;
-  default: { throw deserialisation_exception("unknown compression type"); };
+  case 4: {
+    r = new TestCompression();
+  }; break;
+  default: {
+      ALBA_LOG(WARNING, "unknown compression type " << (int)type);
+      throw deserialisation_exception("unknown compression type"); };
   }
   p.reset(r);
 }
 
-void from(message &m, std::unique_ptr<proxy_protocol::EncryptInfo> &p) {
+void from(message &m, chaining_mode_t &mode) {
   uint8_t type;
   from(m, type);
   switch (type) {
   case 1: {
-    p.reset(new proxy_protocol::NoEncryption());
+    mode = chaining_mode_t::CBC;
   }; break;
-  default: { throw deserialisation_exception("unknown encryption scheme)"); };
+  case 2: {
+    mode = chaining_mode_t::CTR;
+  }; break;
+  default: { throw deserialisation_exception("unknown chaining_mode"); };
   }
 }
 
-template <> void from(message &m, proxy_protocol::Manifest &mf) {
+void from(message &m, key_length_t &kl) {
+  uint8_t type;
+  from(m, type);
+  switch (type) {
+  case 1: {
+    kl = key_length_t::L256;
+  } break;
+  default: { throw deserialisation_exception("unknown key_length"); };
+  }
+}
+
+void from(message &m, proxy_protocol::algo_t &algo) {
+  uint8_t type;
+  from(m, type);
+  switch (type) {
+  case 1: {
+    algo = proxy_protocol::algo_t::AES;
+  }; break;
+  default: { throw deserialisation_exception("unknown algo"); };
+  }
+}
+void from(message &m, AlgoWithKey &awk) {
+
+  // ALBA_LOG(DEBUG, "pos = " << m.get_pos());
+  // alba::stuff::dump_buffer(std::cout, m.current(16), 16);
+
+  // AES   CTR  KEY_LENGTH  x length of key  key bytes
+  // 01    02   01         01 20 00 00 00    fa c8
+  from(m, awk.algo);
+  from(m, awk.mode);
+  from(m, awk.key_length);
+  uint8_t x;
+  from (m,x);
+  from(m, awk.key);
+  if (awk.key.size() != 32){
+      throw deserialisation_exception("key length != 32");
+  }
+}
+
+void from(message &m, std::unique_ptr<EncryptInfo> &p) {
+  uint8_t type;
+  from(m, type);
+  EncryptInfo *r;
+  switch (type) {
+  case 1: {
+    r = new NoEncryption();
+  }; break;
+  case 2: {
+    // comment for now until the serialisation has been cleared out
+
+    /* AlgoWithKey *awk = new AlgoWithKey();
+    from(m, *awk);
+    r = awk; */
+
+    throw deserialisation_exception("AlgoWithKey not yet supported");
+
+  }; break;
+  default: {
+      ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
+      throw deserialisation_exception("unknown encryption scheme)"); };
+  }
+  p.reset(r);
+}
+
+template <> void from2(message &m, Manifest &mf, bool& ok_to_continue) {
+  ok_to_continue = false;
   uint8_t version;
   from(m, version);
   if (version != 1) {
@@ -80,6 +154,7 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   std::string real;
   snappy::Uncompress(compressed.data(), compressed.size(), &real);
   std::vector<char> buffer(real.begin(), real.end());
+  ok_to_continue = true;
   message m2(buffer);
   from(m2, mf.name);
   from(m2, mf.object_id);
@@ -146,10 +221,30 @@ template <> void from(message &m, proxy_protocol::Manifest &mf) {
   from(m2, mf.timestamp);
 }
 
+template<>
+void from(message &m, Manifest &mf){
+  bool dont_care = false;
+  from2(m, mf, dont_care);
+}
+
+
 template <>
-void from(message &m, proxy_protocol::ManifestWithNamespaceId &mfid) {
-  from(m, (proxy_protocol::Manifest &)mfid);
-  from(m, mfid.namespace_id);
+void from2(message &m, ManifestWithNamespaceId &mfid, bool &ok_to_continue) {
+  try{
+    from2(m, (Manifest &)mfid, ok_to_continue);
+    from(m, mfid.namespace_id);
+  } catch(deserialisation_exception &e){
+    if(ok_to_continue){
+      from(m, mfid.namespace_id);
+    };
+    throw;
+  }
+}
+
+template <>
+void from(message &m, ManifestWithNamespaceId &mfid){
+  bool dont_care = false;
+  from2(m, mfid, dont_care);
 }
 }
 
@@ -171,10 +266,34 @@ std::ostream &operator<<(std::ostream &os, const compressor_t &compressor) {
     os << "SNAPPY";
     break;
   case compressor_t::BZIP2:
-    os << "BZIP2";
+    os << "BZIP2"; break;
+  case compressor_t::TEST:
+    os << "TEST"; break;
   };
   return os;
 }
+
+std::ostream &operator <<(std::ostream &os, const algo_t &algo){
+    switch(algo){
+    case algo_t::AES:{
+        os <<"AES";
+    }
+    };
+    return os;
+}
+
+std::ostream &operator <<(std::ostream &os, const chaining_mode_t &mode){
+    switch(mode){
+    case chaining_mode_t::CBC:{
+        os <<"CBC";
+    };break;
+    case chaining_mode_t::CTR:{
+        os << "CTR";
+    };break;
+    };
+    return os;
+}
+
 std::ostream &operator<<(std::ostream &os, const Compression &c) {
   c.print(os);
   return os;
@@ -185,6 +304,8 @@ std::ostream &operator<<(std::ostream &os, const encryption_t &encryption) {
   case encryption_t::NO_ENCRYPTION:
     os << "NO_ENCRYPTION";
     break;
+  case encryption_t::ALGO_WITH_KEY:
+    os << "ALGO_WITH_KEY";
   default:
     os << "?encryption?";
   };

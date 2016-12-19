@@ -1700,6 +1700,10 @@ module Test = struct
                             "preset_rora"
                             "./cfg/preset_no_compression.json"
     in
+    let () = _create_preset t_hdd
+                            "preset_ctr"
+                            "./cfg/preset_test.json"
+    in
     let cmd =
       ["cd";cfg.alba_home; "&&";
        "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";

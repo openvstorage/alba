@@ -567,3 +567,28 @@ TEST(proxy_client, apply_sequence) {
           .add_upload_fs("bar", "./ocaml/alba.native", nullptr);
   client->apply_sequence(namespace_, write_barrier, seq);
 }
+
+TEST(proxy_client, manifest_with_ctr){
+    config cfg;
+    auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+    std::string namespace_("manifest_with_ctr");
+    boost::optional<std::string> preset("preset_ctr");
+    client -> create_namespace(namespace_, preset);
+
+    auto write_barrier = proxy_client::write_barrier::F;
+    using namespace proxy_client::sequences;
+    using namespace std;
+    vector<shared_ptr<Assert>> asserts;
+    vector<shared_ptr<Update>> updates;
+
+    asserts.push_back(make_shared<AssertObjectDoesNotExist>("not there"));
+    auto update =make_shared<UpdateUploadObjectFromFile>("the_object",
+                                                         "./ocaml/alba.native",
+                                                         nullptr);
+    updates.push_back(update);
+    client -> apply_sequence(namespace_, write_barrier, asserts, updates);
+
+    // if we get here, it means we at least could process
+    // the response (containing a manifest with AES ctr encryption info)
+    // without exception
+}
