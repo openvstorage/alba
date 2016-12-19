@@ -534,7 +534,7 @@ let asd_range_validate_cmd =
 let osd_bench hosts port transport tls_config osd_id
               n_clients n
               value_size partial_fetch_size
-              power prefix
+              power prefix seeds
               scenarios verbose
   =
   let conn_info =
@@ -550,7 +550,7 @@ let osd_bench hosts port transport tls_config osd_id
           f)
        n_clients n
        value_size partial_fetch_size
-       power prefix
+       power prefix seeds
        scenarios)
 
 let osd_bench_cmd =
@@ -589,6 +589,7 @@ let osd_bench_cmd =
           $ partial_fetch_size 4096
           $ power 4
           $ prefix ""
+          $ seeds
           $ scenarios
           $ verbose
     )

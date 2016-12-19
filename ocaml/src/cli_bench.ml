@@ -68,11 +68,14 @@ let map_scenarios scenarios robust =
           ]
      else scenarios)
 
+
+
 let proxy_bench host port transport
                 n_clients (n:int) file_names (power:int)
                 prefix (slice_size:int) namespace_name
-                scenarios robust
+                scenarios robust (seeds:int list)
   =
+  let seeds = adjust_seeds n_clients seeds in
   lwt_cmd_line
     ~to_json:false ~verbose:false
     (fun () ->
@@ -81,13 +84,15 @@ let proxy_bench host port transport
         host port transport
         n_clients n
         file_names power prefix slice_size namespace_name
-        mapped
+        mapped seeds
     )
 
 let files =
   Arg.(value
        & opt_all non_dir_file []
        & info ["file"] ~doc:"file to upload, may be specified multiple times")
+
+
 
 let upload_slack =
   let doc = "after a successful upload, wait an extra factor $(docv) for laggards" in
@@ -104,6 +109,7 @@ let proxy_bench_cmd =
         $ namespace 0
         $ scenarios
         $ robust
+        $ seeds
   ),
   Term.info "proxy-bench" ~doc:"simple proxy benchmark"
 
@@ -111,7 +117,7 @@ let alba_bench alba_cfg_url tls_config
                n_clients n file_name power
                prefix client_file_prefix upload_slack
                slice_size namespace
-               scenarios robust
+               scenarios robust seeds
   =
   lwt_cmd_line
     ~to_json:false ~verbose:false
@@ -126,6 +132,7 @@ let alba_bench alba_cfg_url tls_config
         file_name power
         prefix client_file_prefix upload_slack
         slice_size namespace
+        seeds
         mapped
     )
 
@@ -143,7 +150,9 @@ let alba_bench_cmd =
         $ slice_size 4096
         $ namespace 0
         $ scenarios
-        $ robust),
+        $ robust
+        $ seeds
+  ),
   Term.info "alba-bench" ~doc:"simple alba benchmark"
 
 let cmds = [

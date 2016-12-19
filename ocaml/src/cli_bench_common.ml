@@ -70,3 +70,28 @@ let partial_fetch_size default =
     & opt int default
     & info ["v-partial";] ~doc
   )
+
+let seeds =
+  let open Arg in
+  value
+  & opt_all int []
+  & info ["seed"]
+         ~docv:"SEED"
+         ~doc:"starting seeds for random number generators for clients (may be repeated)"
+
+let adjust_seeds n_clients seeds =
+  let len = List.length seeds in
+  let remainder = n_clients - len in
+  if remainder > 0
+  then
+    let seeds_extra =
+      let rec loop acc i =
+        if i = remainder
+        then acc
+        else loop (42 :: acc) (i+1)
+      in
+      loop [] 0
+    in
+    seeds @ seeds_extra
+  else
+    seeds
