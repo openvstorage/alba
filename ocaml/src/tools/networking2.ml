@@ -33,14 +33,13 @@ exception ConnectTimeout
 
 let connect_with ip port transport ~tls_config =
 
-  (* TODO tcp keepalive for all client connections? *)
-
   let address = make_address ip port in
   let fd =
     Net_fd.socket
       (Unix.domain_of_sockaddr address) Unix.SOCK_STREAM 0
       transport tls_config
   in
+  let () = Net_fd.apply_keepalive Tcp_keepalive2.default fd in
 
   let (fdi:int) = Net_fd.identifier fd in
   Lwt_log.debug_f
