@@ -16,24 +16,24 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#include <boost/program_options/options_description.hpp>
-#include <boost/program_options/variables_map.hpp>
-#include <boost/program_options/parsers.hpp>
-#include <boost/log/trivial.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
+#include <boost/log/trivial.hpp>
 #include <boost/optional/optional_io.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
 
 #include <chrono>
 #include <ctime>
-#include <iomanip>
 #include <fstream>
+#include <iomanip>
 #include <thread>
 
-#include "stuff.h"
-#include "proxy_client.h"
 #include "alba_logger.h"
+#include "proxy_client.h"
 #include "statistics.h"
+#include "stuff.h"
 
 using std::string;
 using std::cout;
@@ -411,8 +411,7 @@ int main(int argc, const char *argv[]) {
         "", alba::proxy_client::include_first::T, boost::none,
         alba::proxy_client::include_last::T, -1);
 
-    cout << namespaces << endl
-         << has_more << endl;
+    cout << namespaces << endl << has_more << endl;
 
   } else if ("invalidate-cache" == command) {
     string ns = getRequiredStringArg(vm, "namespace");

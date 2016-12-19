@@ -18,9 +18,9 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 
+#include <functional>
 #include <iostream>
 #include <sstream>
-#include <functional>
 
 namespace alba {
 namespace logger {
@@ -29,8 +29,10 @@ enum class AlbaLogLevel { DEBUG, INFO, ERROR, WARNING };
 
 std::ostream &operator<<(std::ostream &os, const AlbaLogLevel);
 
-void setLogFunction(std::function<
-    std::function<void(AlbaLogLevel, std::string &)> *(AlbaLogLevel)> logFunc);
+void setLogFunction(
+    std::function<
+        std::function<void(AlbaLogLevel, std::string &)> *(AlbaLogLevel)>
+        logFunc);
 std::function<void(AlbaLogLevel, std::string &)> *getLogger(AlbaLogLevel);
 
 #define ALBA_LOG(level, message)                                               \

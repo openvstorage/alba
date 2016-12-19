@@ -56,8 +56,9 @@ void from(message &m, std::unique_ptr<Compression> &p) {
     r = new TestCompression();
   }; break;
   default: {
-      ALBA_LOG(WARNING, "unknown compression type " << (int)type);
-      throw deserialisation_exception("unknown compression type"); };
+    ALBA_LOG(WARNING, "unknown compression type " << (int)type);
+    throw deserialisation_exception("unknown compression type");
+  };
   }
   p.reset(r);
 }
@@ -108,10 +109,10 @@ void from(message &m, AlgoWithKey &awk) {
   from(m, awk.mode);
   from(m, awk.key_length);
   uint8_t x;
-  from (m,x);
+  from(m, x);
   from(m, awk.key);
-  if (awk.key.size() != 32){
-      throw deserialisation_exception("key length != 32");
+  if (awk.key.size() != 32) {
+    throw deserialisation_exception("key length != 32");
   }
 }
 
@@ -134,13 +135,14 @@ void from(message &m, std::unique_ptr<EncryptInfo> &p) {
 
   }; break;
   default: {
-      ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
-      throw deserialisation_exception("unknown encryption scheme)"); };
+    ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
+    throw deserialisation_exception("unknown encryption scheme)");
+  };
   }
   p.reset(r);
 }
 
-template <> void from2(message &m, Manifest &mf, bool& ok_to_continue) {
+template <> void from2(message &m, Manifest &mf, bool &ok_to_continue) {
   ok_to_continue = false;
   uint8_t version;
   from(m, version);
@@ -221,28 +223,25 @@ template <> void from2(message &m, Manifest &mf, bool& ok_to_continue) {
   from(m2, mf.timestamp);
 }
 
-template<>
-void from(message &m, Manifest &mf){
+template <> void from(message &m, Manifest &mf) {
   bool dont_care = false;
   from2(m, mf, dont_care);
 }
 
-
 template <>
 void from2(message &m, ManifestWithNamespaceId &mfid, bool &ok_to_continue) {
-  try{
+  try {
     from2(m, (Manifest &)mfid, ok_to_continue);
     from(m, mfid.namespace_id);
-  } catch(deserialisation_exception &e){
-    if(ok_to_continue){
+  } catch (deserialisation_exception &e) {
+    if (ok_to_continue) {
       from(m, mfid.namespace_id);
     };
     throw;
   }
 }
 
-template <>
-void from(message &m, ManifestWithNamespaceId &mfid){
+template <> void from(message &m, ManifestWithNamespaceId &mfid) {
   bool dont_care = false;
   from2(m, mfid, dont_care);
 }
@@ -266,32 +265,34 @@ std::ostream &operator<<(std::ostream &os, const compressor_t &compressor) {
     os << "SNAPPY";
     break;
   case compressor_t::BZIP2:
-    os << "BZIP2"; break;
+    os << "BZIP2";
+    break;
   case compressor_t::TEST:
-    os << "TEST"; break;
+    os << "TEST";
+    break;
   };
   return os;
 }
 
-std::ostream &operator <<(std::ostream &os, const algo_t &algo){
-    switch(algo){
-    case algo_t::AES:{
-        os <<"AES";
-    }
-    };
-    return os;
+std::ostream &operator<<(std::ostream &os, const algo_t &algo) {
+  switch (algo) {
+  case algo_t::AES: {
+    os << "AES";
+  }
+  };
+  return os;
 }
 
-std::ostream &operator <<(std::ostream &os, const chaining_mode_t &mode){
-    switch(mode){
-    case chaining_mode_t::CBC:{
-        os <<"CBC";
-    };break;
-    case chaining_mode_t::CTR:{
-        os << "CTR";
-    };break;
-    };
-    return os;
+std::ostream &operator<<(std::ostream &os, const chaining_mode_t &mode) {
+  switch (mode) {
+  case chaining_mode_t::CBC: {
+    os << "CBC";
+  }; break;
+  case chaining_mode_t::CTR: {
+    os << "CTR";
+  }; break;
+  };
+  return os;
 }
 
 std::ostream &operator<<(std::ostream &os, const Compression &c) {

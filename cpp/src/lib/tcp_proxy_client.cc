@@ -45,8 +45,8 @@ TCPProxy_client::TCPProxy_client(
 void TCPProxy_client::check_status(const char *function_name) {
   _expires_from_now(std::chrono::steady_clock::duration::max());
   if (not _status.is_ok()) {
-    ALBA_LOG(DEBUG, function_name
-                        << " received rc:" << (uint32_t)_status._return_code)
+    ALBA_LOG(DEBUG, function_name << " received rc:"
+                                  << (uint32_t)_status._return_code)
     throw proxy_exception(_status._return_code, _status._what);
   }
 }

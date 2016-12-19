@@ -15,11 +15,11 @@ in the <LICENSE.txt> file of the Open vStorage OSE distribution.
 Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
-#include "stuff.h"
 #include "osd_info.h"
-#include "llio.h"
-#include <iostream>
 #include "alba_logger.h"
+#include "llio.h"
+#include "stuff.h"
+#include <iostream>
 namespace alba {
 namespace llio {
 template <> void from(message &m, proxy_protocol::OsdInfo &info) {
@@ -66,7 +66,9 @@ template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {
 
     uint8_t tag;
     from(m, tag);
-    switch (tag) { case 1: { }; break; // for now, we don't care
+    switch (tag) {
+    case 1: {
+    }; break; // for now, we don't care
     case 2: {
     }; break;
     case 3: {

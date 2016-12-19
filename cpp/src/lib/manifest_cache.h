@@ -52,7 +52,8 @@ private:
 
   std::mutex _level1_mutex;
   std::map<std::string, std::pair<std::shared_ptr<manifest_cache>,
-                                  std::shared_ptr<std::mutex>>> _level1;
+                                  std::shared_ptr<std::mutex>>>
+      _level1;
 };
 }
 }
