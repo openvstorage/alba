@@ -27,9 +27,8 @@ module ReadBuffer = struct
 
     type 'a deserializer = t -> 'a
 
-    let make_buffer buf pos max_pos =
-      assert (pos <= max_pos);
-      { buf; pos; max_pos }
+    let make_buffer buf ~offset ~length =
+      { buf; pos = offset; max_pos = offset + length; }
 
     let advance_pos buf delta =
       let pos' = buf.pos + delta in
@@ -390,7 +389,7 @@ module NetFdReader = struct
       with_lwt_bytes
         fd len
         (fun buf ->
-         let b = ReadBuffer.make_buffer buf 0 (Lwt_bytes.length buf) in
+         let b = ReadBuffer.make_buffer buf ~offset:0 ~length:(Lwt_bytes.length buf) in
          f b)
 
     let from_buf fd len a_from =

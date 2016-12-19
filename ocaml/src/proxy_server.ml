@@ -606,12 +606,12 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              let msg = match payload with
                | Some x -> x
                | None -> Protocol.Error.show err in
-             Lwt_log.info_f "Returning %s error to client" msg
+             Lwt_log.error_f "Returning %s error to client" msg
              >>= fun () ->
              return_err_response ~msg err
           | Asd_protocol.Protocol.Error.Exn err ->
              let msg = Asd_protocol.Protocol.Error.show err in
-             Lwt_log.info_f
+             Lwt_log.error_f
                "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
                msg
              >>= fun () ->
@@ -641,12 +641,12 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                | Insufficient_fragments
                | Unknown_operation ->
                   let msg = Nsm_model.Err.show err in
-                  Lwt_log.info_f
+                  Lwt_log.error_f
                     "Unexpected Nsm_model.Err exception in proxy while handling request: %s" msg
                   >>= fun () ->
                   return_err_response ~msg Protocol.Error.Unknown
                | Overwrite_not_allowed ->
-                  Lwt_log.info_f
+                  Lwt_log.error_f
                     "Received Nsm_model.Err Overwrite_not_allowed exception in proxy while that should've already been handled earlier..." >>= fun () ->
                   return_err_response Protocol.Error.Unknown
              end
@@ -682,7 +682,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                | Progress_CAS_failed
                | Unknown_operation ->
                   let msg = Albamgr_protocol.Protocol.Error.show err in
-                  Lwt_log.info_f
+                  Lwt_log.error_f
                     "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"  msg
                   >>= fun () ->
                   return_err_response ~msg Protocol.Error.Unknown
@@ -690,7 +690,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           | Alba_client_errors.Error.Exn err ->
              begin
                let open Alba_client_errors.Error in
-               Lwt_log.info_f "Got error from alba client: %s" (show err) >>= fun () ->
+               Lwt_log.error_f "Got error from alba client: %s" (show err) >>= fun () ->
                return_err_response
                  (let open Protocol in
                   match err with
@@ -714,17 +714,18 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
     Lwt.return (error, !renderer)
   in
-  let rec inner () =
-    Llio2.NetFdReader.int_from nfd >>= fun len ->
-    Llio2.NetFdReader.with_buffer_from
-      nfd len
-      (fun buf ->
+  let rec inner buffer =
+    Net_fd.with_message_buffer_from
+      nfd buffer None
+      (fun (buf, offset, length) ->
+       let module L = Llio2.ReadBuffer in
+       let buf = L.make_buffer buf ~offset ~length in
        let code = Llio2.ReadBuffer.int_from buf in
        with_timing_lwt
          (fun () -> handle_request buf code)
        >>= fun (time_inner, (error, renderer)) ->
        log_request code error renderer time_inner) >>= fun () ->
-    inner ()
+    inner buffer
   in
   Llio2.NetFdReader.int32_from nfd >>= fun magic ->
   if magic = Protocol.magic
@@ -732,7 +733,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     begin
       Llio2.NetFdReader.int32_from nfd >>= fun version ->
       if version = Protocol.version
-      then inner ()
+      then
+        let buf = Lwt_bytes.create 1024 in
+        Lwt.finalize
+          (fun () -> inner buf)
+          (fun () ->
+            Lwt_bytes.unsafe_destroy buf;
+            Lwt.return_unit)
       else
         let err = Protocol.Error.ProtocolVersionMismatch
         and msg = Printf.sprintf

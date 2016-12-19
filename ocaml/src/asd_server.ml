@@ -1326,19 +1326,13 @@ let asd_protocol
     let () = Net_fd.uncork nfd in
     Lwt.return_unit
   in
-  let rec inner () =
-    (match cancel with
-     | None -> Llio2.NetFdReader.int_from nfd
-     | Some cancel ->
-        Lwt.pick
-          [ (Lwt_condition.wait cancel >>= fun () ->
-             Lwt.fail Lwt.Canceled);
-            Llio2.NetFdReader.int_from nfd; ])
-    >>= fun len ->
-    Llio2.NetFdReader.with_buffer_from
-      nfd len
-      (fun buf ->
-       let code = Llio2.ReadBuffer.int32_from buf in
+  let rec inner buffer =
+    Net_fd.with_message_buffer_from
+      nfd buffer cancel
+      (fun (buf, offset, length) ->
+       let module L = Llio2.ReadBuffer in
+       let buf = L.make_buffer buf ~offset ~length in
+       let code = L.int32_from buf in
        with_timing_lwt
          (fun () ->
            (match mgmt.AsdMgmt.slowness with
@@ -1359,7 +1353,7 @@ let asd_protocol
      then Lwt_log.info_f
      else Lwt_log.debug_f)
       "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
-    inner ()
+    inner buffer
   in
   Llio2.NetFdReader.raw_string_from nfd 4 >>= fun b0 ->
   (*Lwt_io.printlf "b0:%S%!" b0 >>= fun () -> *)
@@ -1399,7 +1393,13 @@ let asd_protocol
             >>= fun () ->
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()
-            | _ -> inner ()
+            | _ ->
+               let buf = Lwt_bytes.create 1024 in
+               Lwt.finalize
+                 (fun () -> inner buf)
+                 (fun () ->
+                   Lwt_bytes.unsafe_destroy buf;
+                   Lwt.return_unit)
           end
       end
   end

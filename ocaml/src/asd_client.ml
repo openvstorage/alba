@@ -36,7 +36,7 @@ class client (fd:Net_fd.t) id =
     Net_fd.read_all_lwt_bytes_exact fd buffer.WB.buf 0 size
     >>= fun () ->
     let module Llio = Llio2.ReadBuffer in
-    let res_buf = Llio.make_buffer buffer.WB.buf 0 size in
+    let res_buf = Llio.make_buffer buffer.WB.buf ~offset:0 ~length:size in
     match Llio.int_from res_buf with
     | 0 ->
        f (deserializer res_buf)

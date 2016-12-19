@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Prelude
+open Lwt_bytes2
 open Lwt.Infix
 
 type transport =
@@ -241,6 +243,84 @@ let read_all_lwt_bytes_exact nfd target offset length = match nfd with
      in
      Lwt_extra2._read_all read_to_target offset length
      >>= Lwt_extra2.expect_exact_length length
+
+let read_lwt_bytes_at_least nfd target ~offset ~max_length ~min_length =
+  match nfd with
+  | Plain fd -> Lwt_extra2.read_lwt_bytes_at_least fd target ~offset ~max_length ~min_length
+  | SSL _ssl ->
+     let socket = _ssl_get_socket _ssl in
+     Lwt_extra2._read_buffer_at_least
+       (Lwt_ssl.read_bytes socket target)
+       ~offset ~max_length ~min_length
+  | Rsocket socket ->
+     Lwt_extra2._read_buffer_at_least
+       (fun offset length -> Lwt_rsocket.Bytes.recv socket target offset length [])
+       ~offset ~max_length ~min_length
+
+
+let with_maybe_cancel cancel f =
+  match cancel with
+  | None -> f ()
+  | Some cancel ->
+     Lwt.pick
+       [ (Lwt_condition.wait cancel >>= fun () ->
+          Lwt.fail Lwt.Canceled);
+         f (); ]
+
+let with_message_buffer_from nfd buffer cancel f =
+  with_maybe_cancel
+    cancel
+    (fun () ->
+      read_lwt_bytes_at_least
+        nfd buffer
+        ~offset:0
+        ~max_length:(Lwt_bytes.length buffer)
+        ~min_length:4)
+  >>= fun read ->
+
+  let message_length = get32_prim' buffer 0 |> Int32.to_int in
+
+  let with_message_buffer f =
+    if message_length + 4 = read
+    then
+      (* read the message entirely, perfect *)
+      f (buffer, 4, message_length)
+    else
+      let message_bytes_read = read - 4 in
+
+      (* no pipelining of request messages is possible with
+       * this read strategy...
+       *)
+      assert (message_bytes_read <= message_length);
+
+      let with_sufficiently_large_buffer f =
+        if message_length < ((Lwt_bytes.length buffer) - 4)
+        then
+          f (buffer, 4)
+        else
+          let buf' = Lwt_bytes.create message_length in
+          Lwt_bytes.blit buffer 4 buf' 0 message_bytes_read;
+          Lwt.finalize
+            (fun () -> f (buf', 0))
+            (fun () ->
+              Lwt_bytes.unsafe_destroy buf';
+              Lwt.return_unit)
+      in
+
+      (* only got part of the message so far
+       * gather the message into a sufficiently large buffer
+       * (maybe blit, get the rest from nfd)
+       *)
+      with_sufficiently_large_buffer
+        (fun (buffer, offset) ->
+          read_all_lwt_bytes_exact
+            nfd buffer
+            (offset + message_bytes_read)
+            (message_length - message_bytes_read) >>= fun () ->
+          f (buffer, offset, message_length))
+  in
+
+  with_message_buffer f
 
 let cork = function
   | Plain fd ->
