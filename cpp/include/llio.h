@@ -175,6 +175,15 @@ template <typename T> void to(message_builder &mb, const T &) noexcept;
 
 template <typename T> void from(message &m, T &t);
 
+
+/*
+  ok_to_continue:
+    in case of a deserialization exception,
+    signal that the message can still be used to read the next value
+
+ */
+template <typename T> void from2(message &m, T &t, bool &ok_to_continue);
+
 template <typename T>
 void to(message_builder &mb, const std::vector<T> &ts) noexcept {
   uint32_t size = ts.size();

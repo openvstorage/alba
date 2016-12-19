@@ -296,21 +296,23 @@ void _read_object_infos(message &m, std::vector<object_info> &object_infos) {
     from(m, name);
     std::string future;
     from(m, future);
+    bool ok_to_continue = false;
     try {
       unique_ptr<ManifestWithNamespaceId> umf(new ManifestWithNamespaceId());
-      from(m, *umf);
+      from2(m, *umf, ok_to_continue);
       assert(name == umf->name);
       auto t = make_tuple(move(name), move(future), move(umf));
       object_infos.push_back(move(t));
     } catch (alba::llio::deserialisation_exception &e) {
-      ALBA_LOG(WARNING,
-               "skipping name="
-               << name
-               << " because of " <<
-               e.what());
-      // manifest is 'packed' but namespace id not:
-      namespace_t must_read;
-      from(m, must_read);
+      if(ok_to_continue){
+        ALBA_LOG(WARNING,
+                 "skipping name="
+                 << name
+                 << " because of " <<
+                 e.what());
+      } else{
+          throw;
+      }
     }
   }
 }

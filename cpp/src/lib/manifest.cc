@@ -140,7 +140,8 @@ void from(message &m, std::unique_ptr<EncryptInfo> &p) {
   p.reset(r);
 }
 
-template <> void from(message &m, Manifest &mf) {
+template <> void from2(message &m, Manifest &mf, bool& ok_to_continue) {
+  ok_to_continue = false;
   uint8_t version;
   from(m, version);
   if (version != 1) {
@@ -153,6 +154,7 @@ template <> void from(message &m, Manifest &mf) {
   std::string real;
   snappy::Uncompress(compressed.data(), compressed.size(), &real);
   std::vector<char> buffer(real.begin(), real.end());
+  ok_to_continue = true;
   message m2(buffer);
   from(m2, mf.name);
   from(m2, mf.object_id);
@@ -219,10 +221,30 @@ template <> void from(message &m, Manifest &mf) {
   from(m2, mf.timestamp);
 }
 
+template<>
+void from(message &m, Manifest &mf){
+  bool dont_care = false;
+  from2(m, mf, dont_care);
+}
+
+
 template <>
-void from(message &m, ManifestWithNamespaceId &mfid) {
-  from(m, (Manifest &)mfid);
-  from(m, mfid.namespace_id);
+void from2(message &m, ManifestWithNamespaceId &mfid, bool &ok_to_continue) {
+  try{
+    from2(m, (Manifest &)mfid, ok_to_continue);
+    from(m, mfid.namespace_id);
+  } catch(deserialisation_exception &e){
+    if(ok_to_continue){
+      from(m, mfid.namespace_id);
+    };
+    throw;
+  }
+}
+
+template <>
+void from(message &m, ManifestWithNamespaceId &mfid){
+  bool dont_care = false;
+  from2(m, mfid, dont_care);
 }
 }
 
