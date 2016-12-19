@@ -18,8 +18,8 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 
-#include <iostream>
 #include <boost/logic/tribool.hpp>
+#include <iostream>
 
 #define DECLARE_BOOLEAN_ENUM(name) enum class name : bool;
 

@@ -304,14 +304,11 @@ void _read_object_infos(message &m, std::vector<object_info> &object_infos) {
       auto t = make_tuple(move(name), move(future), move(umf));
       object_infos.push_back(move(t));
     } catch (alba::llio::deserialisation_exception &e) {
-      if(ok_to_continue){
-        ALBA_LOG(WARNING,
-                 "skipping name="
-                 << name
-                 << " because of " <<
-                 e.what());
-      } else{
-          throw;
+      if (ok_to_continue) {
+        ALBA_LOG(WARNING, "skipping name=" << name << " because of "
+                                           << e.what());
+      } else {
+        throw;
       }
     }
   }
@@ -338,10 +335,10 @@ void read_read_objects_slices2_response(
 
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>> &
-        asserts,
-    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>> &
-        updates) {
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
+        &asserts,
+    const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
+        &updates) {
   write_tag(mb, _APPLY_SEQUENCE);
   to(mb, namespace_);
   to(mb, write_barrier);

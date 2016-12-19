@@ -16,14 +16,14 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#include "gtest/gtest.h"
 #include "llio.h"
 #include "stuff.h"
+#include "gtest/gtest.h"
+#include <boost/log/trivial.hpp>
+#include <boost/optional.hpp>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <boost/optional.hpp>
-#include <boost/log/trivial.hpp>
-#include <sstream>
 
 TEST(llio, composition) {
   using namespace alba::llio;

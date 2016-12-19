@@ -20,9 +20,9 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "alba_common.h"
 #include <boost/optional.hpp>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace alba {
 namespace proxy_protocol {

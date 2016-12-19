@@ -18,10 +18,10 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 
-#include <iostream>
 #include "io.h"
-#include "stuff.h"
 #include "llio.h"
+#include "stuff.h"
+#include <iostream>
 
 namespace alba {
 #define SHA_SIZE 20

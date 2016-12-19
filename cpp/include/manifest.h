@@ -60,8 +60,8 @@ class BZip2Compression : public Compression {
 };
 
 class TestCompression : public Compression {
-    virtual compressor_t get_compressor() const { return compressor_t:: TEST;}
-    virtual void print(std::ostream & os) const { os << "TestCompression()";}
+  virtual compressor_t get_compressor() const { return compressor_t::TEST; }
+  virtual void print(std::ostream &os) const { os << "TestCompression()"; }
 };
 
 enum class encryption_t { NO_ENCRYPTION, ALGO_WITH_KEY };
@@ -154,6 +154,6 @@ std::ostream &operator<<(std::ostream &, const fragment_location_t &);
 std::ostream &operator<<(std::ostream &, const Manifest &);
 std::ostream &operator<<(std::ostream &, const ManifestWithNamespaceId &);
 std::ostream &operator<<(std::ostream &, const algo_t &);
-std::ostream &operator<<(std::ostream &, const chaining_mode_t& );
+std::ostream &operator<<(std::ostream &, const chaining_mode_t &);
 }
 }

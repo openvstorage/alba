@@ -18,13 +18,13 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 
-#include <stdint.h>
-#include <sys/stat.h>
-#include <string>
-#include <iostream>
-#include <vector>
-#include <memory>
 #include <boost/optional.hpp>
+#include <iostream>
+#include <memory>
+#include <stdint.h>
+#include <string>
+#include <sys/stat.h>
+#include <vector>
 
 namespace alba {
 namespace stuff {
