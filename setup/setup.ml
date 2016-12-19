@@ -49,6 +49,7 @@ module Config = struct
       alba_rdma : string option; (* ip of the rdma capable nic *)
       alba_rora : bool; (* use rora back door on ASDs *)
       alba_asd_log_level : string;
+      alba_proxy_log_level : string;
       alba_asd_base_paths :string list;
       local_nodeid_prefix : string;
       n_osds : int;
@@ -114,6 +115,7 @@ module Config = struct
         use_rora
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
+    and alba_proxy_log_level = env_or_default "ALBA_PROXY_LOG_LEVEL" "debug"
     and alba_asd_base_paths =
       env_or_default_generic
         (fun x -> Str.split (Str.regexp ",") x)  "ALBA_ASD_BASE_PATHS"
@@ -139,6 +141,7 @@ module Config = struct
       alba_rdma;
       alba_rora;
       alba_asd_log_level;
+      alba_proxy_log_level;
       alba_asd_base_paths;
       local_nodeid_prefix;
       n_osds;
@@ -480,12 +483,12 @@ module Proxy_cfg =
                 ?ip
                 ?transport
                 id abm_cfg_url base tls_client port
-                read_preference
+                read_preference log_level
       =
       Old
         { port = port + id;
           albamgr_cfg_file = abm_cfg_url;
-          log_level = "debug";
+          log_level;
           fragment_cache_dir  = base ^ "/fragment_cache";
           manifest_cache_size = 100 * 1000;
           fragment_cache_size = 100 * 1000 * 1000;
@@ -497,7 +500,7 @@ module Proxy_cfg =
              ?ip
              ?transport
              id albamgr_cfg_url base tls_client port
-             read_preference
+             read_preference log_level
       =
       let fragment_cache =
         match fragment_cache with
@@ -517,7 +520,7 @@ module Proxy_cfg =
           transport;
           port = port + id;
           albamgr_cfg_url;
-          log_level = "debug";
+          log_level;
           fragment_cache;
           manifest_cache_size = 100 * 1000;
           tls_client;
@@ -571,7 +574,7 @@ let suppress_tags tags = function
 
 class proxy ?fragment_cache ?ip ?transport
             id cfg alba_bin (abm_cfg_url:Url.t) etcd ~v06_proxy port
-            ~read_preference
+            ~read_preference ~log_level
   =
   let proxy_base = Printf.sprintf "%s/proxies/%02i" cfg.alba_base_path id in
   let tls_client = make_tls_client cfg in
@@ -580,7 +583,7 @@ class proxy ?fragment_cache ?ip ?transport
      then Proxy_cfg.make_06
      else Proxy_cfg.make)
       id abm_cfg_url proxy_base tls_client
-      port ?fragment_cache ?ip ?transport read_preference
+      port ?fragment_cache ?ip ?transport read_preference log_level
   in
   let config_persister, cfg_url =
     match etcd with
@@ -701,8 +704,6 @@ class proxy ?fragment_cache ?ip ?transport
   method cmd_line_with_capture_and_rc = proxy_cmd_line_with_capture_and_rc
   method cmd_line_with_capture = proxy_cmd_line_with_capture
   method cmd_line cmd = proxy_cmd_line cmd
-
-
 
 end
 
@@ -1121,7 +1122,8 @@ module Deployment = struct
                     0 cfg cfg.alba_bin
                     (abm # config_url) cfg.etcd ~v06_proxy:false
                     (base_port * 2 + 2000)
-                    ?fragment_cache ?transport ?ip ~read_preference
+                    ?fragment_cache ?transport ?ip
+                    ~read_preference ~log_level:cfg.alba_proxy_log_level
     in
     let make_maintenance id = new maintenance
                                   ?__retry_timeout
@@ -2344,6 +2346,7 @@ module Test = struct
                   (tx.abm # config_url)
                   tx.cfg.etcd ~v06_proxy:true
                   10_000 ~read_preference:[]
+                  ~log_level:tx.cfg.alba_proxy_log_level
             in
             {tx with proxy = old_proxy }
           else tx
@@ -2869,7 +2872,98 @@ module Test = struct
       rc suites
     end
 end
+module Bench = struct
+  let pread_bench ?(xml=false) ?filter ?dump t =
+    let namespace = "pread_bench" in
+    let sco_size = "32MB" in
+    let file = "/tmp/" ^ sco_size ^ ".bin" in
+    let slice_size = 4096 in
+    let power = 2 in
 
+    let n = 10_000 in
+    let the_preset = "pread_preset" in
+    let (_,t_hdd),(_,t_ssd) =
+      Test.setup_aaa
+        ~bump_ids:false
+        ~the_prefix:"my_prefix"
+        ~the_preset ()
+    in
+    let () = Test._create_preset
+               t_hdd
+               the_preset
+               "./cfg/preset_no_compression.json"
+    in
+    let () = Test._create_preset
+               t_ssd
+               the_preset
+               "./cfg/preset_no_compression.json"
+    in
+
+    let proxy = t_hdd.Deployment.proxy in
+    proxy # create_namespace namespace;
+
+    Shell.cmd' [
+        "dd";"if=/dev/urandom";
+        "of=" ^ file;
+        "bs=" ^ sco_size;
+        "count=1";
+      ];
+
+    Shell.cmd' [
+        t_hdd.Deployment.cfg.alba_bin;
+        "proxy-bench";
+        namespace;
+        "--scenario"; "writes";
+        "--file"; file;
+        "-n"; "100";
+        "--power"; string_of_int power;
+      ];
+    Shell.mkdir "bench_results";
+    let oc = open_out "bench_results/results.csv" in
+    let do_one p =
+      let pdir = Printf.sprintf "bench_results/%02i" p in
+      Shell.mkdir pdir;
+      Shell.cmd' [ "rm";"-f"; pdir ^ "/preads_*.txt"];
+      let alba = t.Deployment.cfg.alba_bin in
+
+      Shell.cmd'[
+          "bash -c";
+          "'";
+          Printf.sprintf "for(( x = 1; x <= %i; x++));" p;
+          "do";
+          alba;
+          "proxy-bench";
+          namespace;
+          "--scenario";"partial-reads";
+          "-n"; string_of_int n;
+          "--power"; string_of_int power;
+          "--file";file;
+          "--slice-size"; string_of_int slice_size;
+          Printf.sprintf "> %s/preads_${x}.txt" pdir;
+          "&";
+          "done;";
+          "wait";
+          "'"
+        ];
+
+      let rs =
+        Shell.cmd_with_capture [
+            "grep took";
+            pdir ^"/preads_*.txt";
+            "| cut -d '(' -f 2";
+            "| cut -d ' ' -f 1";
+            "| awk 'BEGIN{total=0}{total += $1}END{print total}'"
+          ]
+      in
+      let line = Printf.sprintf "%i;%i;%s\n" p slice_size rs in
+      let () = output_string oc line in
+      print_string line
+    in
+    let ps = [1;1;2;4;6;8;10;12;16;20;24;28;30;32] in
+    let () = List.iter do_one ps in
+    let () = close_out oc in
+    0
+end
 
 
 let process_cmd_line () =
@@ -2896,6 +2990,7 @@ let process_cmd_line () =
       "rora",            Test.rora, false;
       "recovery",        Test.recovery, true;
       "test_427",        Test.test_427, false;
+      "pread_bench",     Bench.pread_bench, false;
     ]
   in
   let print_suites () =
