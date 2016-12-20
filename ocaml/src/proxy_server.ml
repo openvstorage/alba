@@ -333,14 +333,21 @@ let log_request code error renderer time =
       details
       time
   else
-    let log = if time < 0.5
-              then Lwt_log.debug_f
-              else Lwt_log.info_f
+    let log_level =
+      if time < 0.5
+      then Lwt_log.Debug
+      else Lwt_log.Info
     in
-    log "Request %s %s took %f"
+    if log_level >= (Lwt_log.Section.level Lwt_log.Section.main)
+    then
+      Lwt_log.log_f
+        ~level:log_level
+        "Request %s %s took %f"
         (Protocol.code_to_txt code)
         details
         time
+    else
+      Lwt.return_unit
 
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
