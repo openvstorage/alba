@@ -161,7 +161,6 @@ let _ = dispatch &
                      A"-ccopt"; A("-I"^ gobjfs_home ^ "/include");
                   ]);
              flag ["ocaml"; "compile"; "ppx_lwt"] &
-               (*S [A "-ppx"; A "ppx_lwt -log -no-debug";];*)
                S [A "-ppx"; A "ppx_lwt -log";];
              flag ["link";"ocaml";]
                   (S[A"-cclib"; A"-lbz2"]);
