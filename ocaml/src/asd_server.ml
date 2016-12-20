@@ -270,11 +270,14 @@ module DirectoryInfo = struct
       )
     >>= fun (t_write, ()) ->
 
-    (if t_write > 0.5
-     then Lwt_log.info_f
-     else Lwt_log.debug_f)
-      "written blob %Li, took %f" fnr t_write
-
+    let log_level =
+      if t_write > 0.5
+      then Lwt_log.Info
+      else Lwt_log.Debug
+    in
+    if log_level >= (Lwt_log.Section.level Lwt_log.Section.main)
+    then Lwt_log.log_f ~level:log_level "written blob %Li, took %f" fnr t_write
+    else Lwt.return_unit
 end
 
 module Value = struct
@@ -1361,10 +1364,14 @@ let asd_protocol
     >>= fun (delta, code) ->
     Statistics_collection.Generic.new_delta stats code delta;
 
-    (if delta > 0.5
-     then Lwt_log.info_f
-     else Lwt_log.debug_f)
-      "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
+    let log_level =
+      if delta > 0.5
+      then Lwt_log.Info
+      else Lwt_log.Debug
+    in
+    (if log_level >= (Lwt_log.Section.level Lwt_log.Section.main)
+     then Lwt_log.log_f ~level:log_level "Request %s took %f" (Protocol.code_to_description code) delta
+     else Lwt.return_unit) >>= fun () ->
     inner buffer
   in
   Llio2.NetFdReader.raw_string_from nfd 4 >>= fun b0 ->

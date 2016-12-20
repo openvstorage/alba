@@ -272,13 +272,19 @@ let run t ~fsync ~fs_fd =
 
              Lwt.return_unit) >>= fun (t_fsyncs, ()) ->
 
-          let logger =
-            if t_fsyncs < 0.5 then Lwt_log.debug_f
-            else if t_fsyncs < 4.0 then Lwt_log.info_f
-            else Lwt_log.warning_f
+          let log_level =
+            if t_fsyncs < 0.5 then Lwt_log.Debug
+            else if t_fsyncs < 4.0 then Lwt_log.Info
+            else Lwt_log.Warning
           in
-          logger "writing blobs + syncing(%b) took %f for %i waiters, cost %i"
-                 fsync t_fsyncs waiters_len cost
+          if log_level >= (Lwt_log.Section.level Lwt_log.Section.main)
+          then
+            Lwt_log.log_f
+              ~level:log_level
+              "writing blobs + syncing(%b) took %f for %i waiters, cost %i"
+              fsync t_fsyncs waiters_len cost
+          else
+            Lwt.return_unit
         end
       else
         Lwt.return_unit
