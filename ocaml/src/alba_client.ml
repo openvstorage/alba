@@ -62,6 +62,7 @@ class alba_client (base_client : Alba_base_client.client)
     method create_namespace ~namespace ~preset_name ?nsm_host_id () =
       Alba_client_namespace.create_namespace
         mgr_access
+        nsm_host_access
         (base_client # get_preset_info)
         (base_client # deliver_messages_to_most_osds)
         (base_client # deliver_nsm_host_messages)
