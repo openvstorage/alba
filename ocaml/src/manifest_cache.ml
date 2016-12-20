@@ -22,15 +22,15 @@ open Cache
 
 module ManifestCache = struct
 
-    let deflate m =
-      serialize
-        ~buf_size:512
-        Nsm_model.Manifest.to_buffer m
+  let deflate m =
+    serialize
+      ~buf_size:512
+      Nsm_model.Manifest.to_buffer' m
 
-    let inflate deflated =
-      deserialize
-        Nsm_model.Manifest.from_buffer
-        deflated
+  let inflate deflated =
+    deserialize
+      Nsm_model.Manifest.from_buffer'
+      deflated
 
     type cache_stat = {
         mutable hit: int;

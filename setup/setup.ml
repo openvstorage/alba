@@ -2879,7 +2879,7 @@ end
 module Bench = struct
   let pread_bench ?(xml=false) ?filter ?dump t =
     let namespace = "pread_bench" in
-    let sco_size = "32MB" in
+    let sco_size = "5MB" in
     let file = "/tmp/" ^ sco_size ^ ".bin" in
     let slice_size = 4096 in
     let power = 2 in

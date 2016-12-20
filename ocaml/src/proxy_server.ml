@@ -47,22 +47,12 @@ let write_albamgr_cfg albamgr_cfg =
        ccfg
        (fun client -> client # set key value)
 
-let read_objects_slices
+let _read_objects_slices
       (alba_client : Alba_client.alba_client)
-      namespace objects_slices ~consistent_read =
-  let total_length =
-    List.fold_left
-      (fun acc (object_name, object_slices) ->
-       List.fold_left
-         (fun acc (_, slice_length) -> acc + slice_length)
-         acc
-         object_slices)
-      0
-      objects_slices
-  in
-  let res = Lwt_bytes.create total_length in
-  Lwt.finalize
-    (fun () ->
+      namespace objects_slices ~consistent_read
+      total_length res
+  =
+
      let _, objects_slices, n_slices, object_names =
        List.fold_left
          (fun (res_offset, acc, n_slices, object_names) (object_name, object_slices) ->
@@ -108,6 +98,7 @@ let read_objects_slices
        | Statistics.FromOsd _   -> incr fc_misses
      in
      logger n_slices total_length n_objects >>= fun () ->
+
      strategy
        (fun (object_name, object_slices) ->
         alba_client # download_object_slices
@@ -138,10 +129,44 @@ let read_objects_slices
      let mf_sources = List.map (fun (_,_,_,src, _) -> src) n_mf_src_s in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
-                 !fc_hits, !fc_misses, objects_infos))
-    (fun () ->
-     Lwt_bytes.unsafe_destroy res;
-     Lwt.return ())
+                 !fc_hits, !fc_misses, objects_infos)
+
+let read_objects_slices
+      (alba_client : Alba_client.alba_client)
+      namespace objects_slices ~consistent_read
+  =
+  let total_length =
+    List.fold_left
+      (fun acc (object_name, object_slices) ->
+        List.fold_left
+          (fun acc (_, slice_length) -> acc + slice_length)
+          acc
+          object_slices)
+      0
+      objects_slices
+  in
+  let with_buf =
+    match total_length with
+    | 4096 -> Buffer_pool.(with_buffer pool_4k)
+    | 8192 -> Buffer_pool.(with_buffer pool_8k)
+    | 16384 -> Buffer_pool.(with_buffer pool_16k)
+    | 32768 -> Buffer_pool.(with_buffer pool_32k)
+    | x ->
+       fun f ->
+       let res = Lwt_bytes.create total_length in
+       Lwt.finalize
+         (fun () ->
+           f res)
+         (fun () ->
+           Lwt_bytes.unsafe_destroy res;
+           Lwt.return ())
+  in
+  with_buf
+    (_read_objects_slices
+       alba_client namespace
+       objects_slices
+       ~consistent_read
+       total_length)
 
 
 let apply_sequence
@@ -717,9 +742,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
   let rec inner buffer =
     Net_fd.with_message_buffer_from
       nfd buffer None
-      (fun (buf, offset, length) ->
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
        let module L = Llio2.ReadBuffer in
-       let buf = L.make_buffer buf ~offset ~length in
+       let buf = L.make_buffer buffer ~offset ~length:message_length in
        let code = Llio2.ReadBuffer.int_from buf in
        with_timing_lwt
          (fun () -> handle_request buf code)
@@ -734,11 +760,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
       Llio2.NetFdReader.int32_from nfd >>= fun version ->
       if version = Protocol.version
       then
-        let buf = Lwt_bytes.create 1024 in
+        let buf = Lwt_bytes.create 1024 |> ref in
         Lwt.finalize
           (fun () -> inner buf)
           (fun () ->
-            Lwt_bytes.unsafe_destroy buf;
+            Lwt_bytes.unsafe_destroy !buf;
             Lwt.return_unit)
       else
         let err = Protocol.Error.ProtocolVersionMismatch

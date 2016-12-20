@@ -24,16 +24,25 @@ open Range_query_args
 
 
 class proxy_client fd =
+  let buffer = Lwt_bytes.create 1024 |> ref in
+
   let with_response tag_name deserializer f =
-    let module Llio = Llio2.NetFdReader in
-    Llio.int_from fd >>= fun size ->
-    Llio.with_buffer_from
-      fd size
-      (fun res_buf ->
+    Net_fd.with_message_buffer_from
+      fd buffer None
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
+
+       (* currently we don't expect any extra bytes here
+        * (to be returned for proxy operations that this client knows about)
+        *)
+       assert (extra_bytes = 0);
+
+       let module L = Llio2.ReadBuffer in
+       let res_buf = L.make_buffer buffer ~offset ~length:message_length in
 
        Lwt_log.debug_f
          "proxy client read response of size %i for %s"
-         size tag_name
+         message_length tag_name
        >>= fun () ->
 
        match Llio2.ReadBuffer.int_from res_buf with
