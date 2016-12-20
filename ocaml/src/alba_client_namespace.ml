@@ -20,6 +20,7 @@ open Lwt.Infix
 
 let create_namespace
       mgr_access
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
       get_preset_info
       deliver_messages_to_most_osds
       deliver_nsm_host_messages
@@ -88,7 +89,8 @@ let create_namespace
                else
                  begin
                    nsm_host_delivery_thread := None;
-                   Lwt.return ()
+                   nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
+                   Lwt.return_unit
                  end
              in
              nsm_host_delivery_thread := Some (inner ());
