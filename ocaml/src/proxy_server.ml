@@ -742,9 +742,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
   let rec inner buffer =
     Net_fd.with_message_buffer_from
       nfd buffer None
-      (fun (buf, offset, length) ->
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
        let module L = Llio2.ReadBuffer in
-       let buf = L.make_buffer buf ~offset ~length in
+       let buf = L.make_buffer buffer ~offset ~length:message_length in
        let code = Llio2.ReadBuffer.int_from buf in
        with_timing_lwt
          (fun () -> handle_request buf code)
@@ -759,11 +760,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
       Llio2.NetFdReader.int32_from nfd >>= fun version ->
       if version = Protocol.version
       then
-        let buf = Lwt_bytes.create 1024 in
+        let buf = Lwt_bytes.create 1024 |> ref in
         Lwt.finalize
           (fun () -> inner buf)
           (fun () ->
-            Lwt_bytes.unsafe_destroy buf;
+            Lwt_bytes.unsafe_destroy !buf;
             Lwt.return_unit)
       else
         let err = Protocol.Error.ProtocolVersionMismatch

@@ -24,27 +24,51 @@ open Asd_protocol
 open Protocol
 open Range_query_args
 
-module WB = Llio2.WriteBuffer
-
 class client (fd:Net_fd.t) id =
-  let buffer = WB.make ~length:200 in
+  let buffer = Lwt_bytes.create (4+5+4096) |> ref in
+  let buf_extra_offset = ref 0 in
+  let buf_extra_length = ref 0 in
+
+  let read_from_extra_bytes_or_fd_exact buf offset length =
+    let offset, length =
+      if !buf_extra_length > 0
+      then
+        begin
+          let bytes_to_blit = min length !buf_extra_length in
+          Lwt_bytes.blit !buffer !buf_extra_offset buf offset bytes_to_blit;
+          buf_extra_offset := !buf_extra_offset + bytes_to_blit;
+          buf_extra_length := !buf_extra_length - bytes_to_blit;
+          offset + bytes_to_blit, length - bytes_to_blit
+        end
+      else
+        offset, length
+    in
+    Net_fd.read_all_lwt_bytes_exact fd buf offset length
+  in
 
   let with_response deserializer f =
-    Llio2.NetFdReader.int_from fd >>= fun size ->
-    let () = WB.reset buffer in
-    let () = WB.ensure_space buffer size in
-    Net_fd.read_all_lwt_bytes_exact fd buffer.WB.buf 0 size
-    >>= fun () ->
-    let module Llio = Llio2.ReadBuffer in
-    let res_buf = Llio.make_buffer buffer.WB.buf ~offset:0 ~length:size in
-    match Llio.int_from res_buf with
-    | 0 ->
-       f (deserializer res_buf)
-    | err ->
-       let open Error in
-       let err' = deserialize' err res_buf in
-       Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
-       lwt_fail err'
+    Net_fd.with_message_buffer_from
+      fd buffer None
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
+
+        buf_extra_offset := offset + message_length;
+        buf_extra_length := extra_bytes;
+
+        let module L = Llio2.ReadBuffer in
+        let res_buf = L.make_buffer buffer ~offset ~length:message_length in
+
+        match L.int_from res_buf with
+        | 0 ->
+           f (deserializer res_buf)
+        | err ->
+           let open Error in
+           let err' = deserialize' err res_buf in
+           Lwt_log.debug_f "Exception in asd_client %s: %s" id (show err') >>= fun () ->
+           lwt_fail err'
+      ) >>= fun r ->
+    assert (!buf_extra_length = 0);
+    Lwt.return r
   in
   let do_request
         code
@@ -57,17 +81,22 @@ class client (fd:Net_fd.t) id =
       id description >>= fun () ->
     with_timing_lwt
       (fun () ->
-        let module Llio = WB in
-        let () = Llio.reset buffer in
+        let module Llio = Llio2.WriteBuffer in
+
+        let buffer' = Llio.({ buf = !buffer; pos = 0; }) in
         let buf =
           Llio.serialize_with_length'
-            ~buf:buffer
+            ~buf:buffer'
             (Llio.pair_to
                Llio.int32_to
                serialize_request)
             (code,
              request)
         in
+
+        (* serialize above may have created a new buf and unsafe destroyed the previous one *)
+        buffer := buffer'.Llio.buf;
+
         let () = Net_fd.cork fd in
         Net_fd.write_all_lwt_bytes fd buf.Llio.buf 0 buf.Llio.pos
         >>= fun () ->
@@ -170,7 +199,7 @@ class client (fd:Net_fd.t) id =
                      let bs = Lwt_bytes.create size in
                      Lwt.catch
                        (fun () ->
-                        Net_fd.read_all_lwt_bytes_exact fd bs 0 size >>= fun () ->
+                        read_from_extra_bytes_or_fd_exact bs 0 size >>= fun () ->
                         Lwt.return (Some (bs, cs)))
                        (fun exn ->
                         Lwt_bytes.unsafe_destroy bs;
@@ -202,10 +231,7 @@ class client (fd:Net_fd.t) id =
                 (* TODO could optimize the number of syscalls using readv *)
                 Lwt_list.iter_s
                   (fun (_, length, dest, destoff) ->
-                   Net_fd.read_all_lwt_bytes_exact
-                     fd
-                     dest destoff
-                     length)
+                   read_from_extra_bytes_or_fd_exact dest destoff length)
                   slices >>= fun () ->
                 Lwt.return_true)
 
@@ -322,7 +348,7 @@ class client (fd:Net_fd.t) id =
            (RangeQueryArgs.({first;finc;last;reverse;max}), verify_checksum, show_all, prio)
            Lwt.return
 
-    method dispose () = WB.dispose buffer
+    method dispose () = Lwt_bytes.unsafe_destroy !buffer
   end
 
 exception BadLongId of string * string
