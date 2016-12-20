@@ -32,5 +32,10 @@ let with_buffer t f =
     (fun () -> return_buffer t buffer;
                Lwt.return ())
 
-let default_buffer_pool = create ~buffer_size:4096
+let pool_4k = create ~buffer_size:4096
+let pool_8k = create ~buffer_size:8192
+let pool_16k = create ~buffer_size:16384
+let pool_32k = create ~buffer_size:32768
+
+let default_buffer_pool = pool_4k
 let osd_buffer_pool = create ~buffer_size:(768*1024)
