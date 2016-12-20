@@ -267,44 +267,65 @@ let with_maybe_cancel cancel f =
           Lwt.fail Lwt.Canceled);
          f (); ]
 
-let with_message_buffer_from nfd buffer cancel f =
+
+let with_message_buffer_from
+      nfd
+      buffer
+      ~max_buffer_size
+      cancel
+      f
+  =
+  let buf_length = Lwt_bytes.length !buffer in
   with_maybe_cancel
     cancel
     (fun () ->
       read_lwt_bytes_at_least
-        nfd buffer
+        nfd !buffer
         ~offset:0
-        ~max_length:(Lwt_bytes.length buffer)
+        ~max_length:buf_length
         ~min_length:4)
   >>= fun read ->
 
-  let message_length = get32_prim' buffer 0 |> Int32.to_int in
+  let message_length = get32_prim' !buffer 0 |> Int32.to_int in
+  let message_plus_header_length = message_length + 4 in
 
   let with_message_buffer f =
-    if message_length + 4 = read
+    if message_plus_header_length <= read
     then
-      (* read the message entirely, perfect *)
-      f (buffer, 4, message_length)
+      (* read the message entirely - and maybe then some - perfect *)
+      f
+        ~buffer:!buffer
+        ~offset:4
+        ~message_length
+        ~extra_bytes:(read - message_plus_header_length)
     else
       let message_bytes_read = read - 4 in
 
-      (* no pipelining of request messages is possible with
-       * this read strategy...
-       *)
-      assert (message_bytes_read <= message_length);
-
       let with_sufficiently_large_buffer f =
-        if message_length < ((Lwt_bytes.length buffer) - 4)
+        if message_plus_header_length <= buf_length
         then
-          f (buffer, 4)
+          f (!buffer, 4)
         else
-          let buf' = Lwt_bytes.create message_length in
-          Lwt_bytes.blit buffer 4 buf' 0 message_bytes_read;
-          Lwt.finalize
-            (fun () -> f (buf', 0))
-            (fun () ->
-              Lwt_bytes.unsafe_destroy buf';
-              Lwt.return_unit)
+          begin
+            let new_buf = Lwt_bytes.create message_plus_header_length in
+            Lwt_bytes.blit !buffer 4 new_buf 0 message_bytes_read;
+
+            if message_plus_header_length <= max_buffer_size
+            then
+              begin
+                Lwt_bytes.unsafe_destroy !buffer;
+                buffer := new_buf;
+                f (new_buf, 0)
+              end
+            else
+              begin
+                Lwt.finalize
+                  (fun () -> f (new_buf, 0))
+                  (fun () ->
+                    Lwt_bytes.unsafe_destroy new_buf;
+                    Lwt.return_unit)
+              end
+          end
       in
 
       (* only got part of the message so far
@@ -317,7 +338,11 @@ let with_message_buffer_from nfd buffer cancel f =
             nfd buffer
             (offset + message_bytes_read)
             (message_length - message_bytes_read) >>= fun () ->
-          f (buffer, offset, message_length))
+          f
+            ~buffer
+            ~offset
+            ~message_length
+            ~extra_bytes:0)
   in
 
   with_message_buffer f

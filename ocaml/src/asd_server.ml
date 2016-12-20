@@ -1329,9 +1329,14 @@ let asd_protocol
   let rec inner buffer =
     Net_fd.with_message_buffer_from
       nfd buffer cancel
-      (fun (buf, offset, length) ->
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
+
+       (* currently pipelining of requests is not supported *)
+       assert (extra_bytes = 0);
+
        let module L = Llio2.ReadBuffer in
-       let buf = L.make_buffer buf ~offset ~length in
+       let buf = L.make_buffer buffer ~offset ~length:message_length in
        let code = L.int32_from buf in
        with_timing_lwt
          (fun () ->
@@ -1394,11 +1399,11 @@ let asd_protocol
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()
             | _ ->
-               let buf = Lwt_bytes.create 1024 in
+               let buf = Lwt_bytes.create 1024 |> ref in
                Lwt.finalize
                  (fun () -> inner buf)
                  (fun () ->
-                   Lwt_bytes.unsafe_destroy buf;
+                   Lwt_bytes.unsafe_destroy !buf;
                    Lwt.return_unit)
           end
       end
