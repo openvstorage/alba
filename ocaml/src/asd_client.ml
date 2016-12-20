@@ -25,6 +25,8 @@ open Protocol
 open Range_query_args
 
 class client (fd:Net_fd.t) id =
+  let () = Net_fd.uncork fd in
+
   let buffer = Lwt_bytes.create (4+5+4096) |> ref in
   let buf_extra_offset = ref 0 in
   let buf_extra_length = ref 0 in
@@ -97,10 +99,8 @@ class client (fd:Net_fd.t) id =
         (* serialize above may have created a new buf and unsafe destroyed the previous one *)
         buffer := buffer'.Llio.buf;
 
-        let () = Net_fd.cork fd in
         Net_fd.write_all_lwt_bytes fd buf.Llio.buf 0 buf.Llio.pos
         >>= fun () ->
-        let () = Net_fd.uncork fd in
         with_response deserialize_response f)
     >>= fun (t, r) ->
     Lwt_log.debug_f "asd_client %s: %s took %f" id description t >>= fun () ->
