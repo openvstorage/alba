@@ -121,7 +121,7 @@ let is_valid t =
       List.for_all
         (fun (k, m, fragment_count, _) ->
           (k > 0)
-          && (k <= fragment_count)
+          && (k <= fragment_count) 
           && (fragment_count <= k + m)
         )
         t.policies

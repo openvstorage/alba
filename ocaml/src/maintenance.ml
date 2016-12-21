@@ -489,6 +489,7 @@ class client ?(retry_timeout = 60.)
              ~first ~finc:true ~last
              ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
+      let repaired_some = ref false in
       Lwt_log.debug_f
         "Decommissioning osd:%Li namespace_id:%Li first:%S ~reverse:%b cnt:%i, has_more:%b"
         osd_id namespace_id first reverse cnt has_more
@@ -530,7 +531,9 @@ class client ?(retry_timeout = 60.)
                         ~object_id:manifest.object_id
                         updated_locations
                         ~gc_epoch
-                        ~version_id:(manifest.version_id + 1))
+                        ~version_id:(manifest.version_id + 1) >>= fun () ->
+                 repaired_some := true;
+                 Lwt.return_unit)
                 (fun exn ->
                  let open Nsm_model.Manifest in
                  Lwt_log.info_f
@@ -539,7 +542,9 @@ class client ?(retry_timeout = 60.)
                    osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
                  Lwt_extra2.ignore_errors
                    ~logging:true
-                   (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest))
+                   (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest >>= fun () ->
+                              repaired_some := true;
+                              Lwt.return_unit))
              )
          else
            Lwt.catch
@@ -548,7 +553,9 @@ class client ?(retry_timeout = 60.)
                 ~namespace_id
                 ~manifest
                 ~problem_fragments:[]
-                ~problem_osds:(Int64Set.of_list [ osd_id ])
+                ~problem_osds:(Int64Set.of_list [ osd_id ]) >>= fun () ->
+              repaired_some := true;
+              Lwt.return_unit
              )
              (fun exn ->
               let open Nsm_model.Manifest in
@@ -558,12 +565,14 @@ class client ?(retry_timeout = 60.)
                 osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
               Lwt_extra2.ignore_errors
                 ~logging:true
-                (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest)
+                (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest >>= fun () ->
+                           repaired_some := true;
+                           Lwt.return_unit)
              )
         )
         manifests >>= fun () ->
 
-      if has_more && !should_repair
+      if has_more && !should_repair && !repaired_some
       then self # decommission_device ~deterministic ~namespace_id ~osd_id ()
       else Lwt.return ()
 
@@ -1233,6 +1242,8 @@ class client ?(retry_timeout = 60.)
                  compare_bucket_safety bucket1 bucket2)
       in
 
+      let repaired_some = ref false in
+
       let handle_bucket ((k, m, fragment_count, max_disks_per_node), job) =
         nsm # list_objects_by_policy
             ~k ~m
@@ -1362,12 +1373,18 @@ class client ?(retry_timeout = 60.)
           let wrap_rewrite name f =
             fun manifest ->
             Lwt.catch
-              (fun () -> f manifest)
+              (fun () -> f manifest >>= fun () ->
+                         repaired_some := true;
+                         Lwt.return_unit)
               (fun exn ->
                Lwt_log.info_f
                  ~exn
                  "%s for object failed, falling back to rewrite" name >>= fun () ->
-               rewrite manifest)
+               Lwt_extra2.ignore_errors
+                 ~logging:true
+                 (fun () -> rewrite manifest >>= fun () ->
+                            repaired_some := true;
+                            Lwt.return_unit))
           in
           match job with
           | `Rewrite ->
@@ -1379,17 +1396,21 @@ class client ?(retry_timeout = 60.)
         in
 
         Lwt_list.iter_s do_one objs >>= fun () ->
-        Lwt.return (cnt > 0)
+        Lwt.return_unit
       in
 
-      (match List.hd buckets with
-       | None ->
-          Lwt_log.debug_f "No buckets to repair by policy for namespace_id:%Li" namespace_id >>= fun () ->
-          Lwt.return_false
-       | Some x -> handle_bucket x)
-      >>= fun repaired_some ->
+      let rec loop_buckets = function
+        | [] ->
+           Lwt_log.debug_f "No (more) buckets to repair by policy for namespace_id:%Li" namespace_id
+        | bucket :: buckets ->
+           handle_bucket bucket >>= fun () ->
+           if !repaired_some
+           then Lwt.return_unit
+           else loop_buckets buckets
+      in
+      loop_buckets buckets >>= fun () ->
 
-      if repaired_some && filter namespace_id
+      if !repaired_some && filter namespace_id
       then self # repair_by_policy_namespace ~namespace_id
       else Lwt.return ()
 
