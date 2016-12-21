@@ -417,6 +417,72 @@ let test_choose_extra_bug2() =
   OUnit.assert_bool "too many osds on node" (count' < 4);
   ()
 
+let test_distribution_bug () =
+  let info = Hashtbl.create 47 in
+  Random.init 42;
+  let pop = 80 in
+  let rec fill i =
+      if i = pop
+      then ()
+      else
+        let device_id = Int64.of_int i in
+        let node_id = string_of_int (i lsr 1) in
+        let kind = Nsm_model.OsdInfo.Asd (
+                       (["127.0.0.1"], 8000 +i, false, false),
+                       "asd id distribution test " ^ (string_of_int i)
+                     )
+        in
+        let d_info =
+          Nsm_model.OsdInfo.make
+            ~node_id ~kind
+            ~decommissioned:false
+            ~other:""
+            ~total:479862915072L
+            ~used:0L
+            ~seen:[]
+            ~read:[]
+            ~write:[]
+            ~errors:[]
+            ~checksum_errors:0L
+        in
+        let () = Hashtbl.add info device_id d_info in
+        fill (i+1)
+  in
+  let () = fill 0 in
+  let distribution = Array.make pop 0 in
+  let spread = 10 in
+  let rec loop j =
+    if j = 1000
+    then ()
+    else
+      let r = Choose.choose_devices spread info in
+      let r' = List.map fst r in
+      let () = Printf.printf "%s\n%!" ([% show: int64 list] r') in
+      let all =
+        List.fold_left
+          (fun acc (did,_) -> Int64Set.add did acc)
+          Int64Set.empty r
+      in
+      let () = OUnit.assert_equal
+                 ~msg:"they all need to be different"
+                 (Int64Set.cardinal all) spread
+      in
+      let () =
+        Int64Set.iter
+          (fun i64 ->
+           let i = Int64.to_int i64 in
+           let c0 = distribution.(i) in
+           let () = distribution.(i) <- c0 + 1 in
+           ()
+          ) all
+      in
+      loop (j+1)
+  in
+  let () = loop 0 in
+  Printf.printf "%s\n" ([%show : int array] distribution )
+;;
+
+
 let suite =
   let open OUnit in
   ["choose" >:: test;
@@ -427,5 +493,5 @@ let suite =
    "bias1" >:: test_bias;
    "bias2" >:: test_bias2;
    "actually_rebalances" >:: test_actually_rebalances;
-
+   "distribution_bug" >:: test_distribution_bug;
   ]
