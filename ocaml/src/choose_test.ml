@@ -451,13 +451,13 @@ let test_distribution_bug () =
   let () = fill 0 in
   let distribution = Array.make pop 0 in
   let spread = 10 in
-  let rec loop j =
+  let rec loop results j =
     if j = 1000
-    then ()
+    then results
     else
       let r = Choose.choose_devices spread info in
       let r' = List.map fst r in
-      let () = Printf.printf "%s\n%!" ([% show: int64 list] r') in
+      (*let () = Printf.printf "%s\n%!" ([% show: int64 list] r') in*)
       let all =
         List.fold_left
           (fun acc (did,_) -> Int64Set.add did acc)
@@ -476,10 +476,29 @@ let test_distribution_bug () =
            ()
           ) all
       in
-      loop (j+1)
+      loop (r'::results) (j+1)
   in
-  let () = loop 0 in
-  Printf.printf "%s\n" ([%show : int array] distribution )
+  let results = loop [] 0 in
+  let () =
+    List.iter
+      (fun r ->
+        let r' = List.map (Printf.sprintf "%4Li") r in
+        let rs = String.concat ";" r' in
+        Printf.printf "%s\n" rs
+      )
+    results
+  in
+  let () =
+    Printf.printf "%s\n" ([%show : int array] distribution )
+  in
+  Array.iteri
+    (fun i c ->
+      let msg = Printf.sprintf "osd_id:%i off" i in
+      OUnit.assert_bool msg (c > 80 && c < 160) ;
+    )
+    distribution;
+
+
 ;;
 
 

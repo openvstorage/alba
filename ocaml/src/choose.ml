@@ -231,23 +231,42 @@ let build_initial_state info =
   state0
 
 let choose_extra_devices n info chosen =
+  assert (Hashtbl.length info >= n);
   let _state2s = [%show : int64 Inner.node_bag list] in
   let state0 = build_initial_state info in
-  assert (Hashtbl.length info >= n);
 
   let state1_u = List.fold_left Inner.choose_device_forced state0 chosen in
 
   (* sort bags, as choose_devices expects this *)
-  let state1 =
-    let count_of = function
+  let count_of = function
       | Inner.G(w,c,_):: _ -> c
       | _ -> failwith "count_of"
-    in
-    let compare_bags x y = count_of x - count_of y
-    in
-    List.sort compare_bags state1_u in
+  in
+  let state1 =
+    let compare_bags x y = count_of x - count_of y in
+    List.sort compare_bags state1_u
+  in
+  (* merge bags with same count *)
+  let state2 =
+    match state1 with
+  | [] -> failwith "merge?"
+  | bag0 :: bags ->
+     let rec loop acc current_bag current_count=
+       function
+       | [] -> List.rev (current_bag::acc)
+       | bag :: bags ->
+          let count = count_of bag in
+          if count = current_count
+          then
+            loop acc (current_bag @ bag) count bags
+          else
+            loop (current_bag :: acc) bag count bags
+     in
+     loop [] bag0 (count_of bag0) bags
+  in
+  (*let () = Printf.printf "state2:%s\n" (_state2s state2) in*)
 
-  let r_inner = Inner.choose_devices n state1 in
+  let r_inner = Inner.choose_devices n state2 in
   List.map
     (function
       | Inner.D (_, _, osd_id) ->
@@ -258,4 +277,5 @@ let choose_extra_devices n info chosen =
     r_inner
 
 let choose_devices n info : (Albamgr_protocol.Protocol.Osd.id * OsdInfo.t ) list =
+
   choose_extra_devices n info []
