@@ -522,6 +522,26 @@ let proxy_client_cfg_cmd =
         $ to_json),
   Term.info "proxy-client-cfg" ~doc:"what the proxy thinks the albamgr client config is"
 
+let extract_config url to_json verbose =
+  let t () =
+    Arakoon_config_url.retrieve url >>= fun txt ->
+    if to_json
+    then
+      let json = Yojson.Safe.from_string txt in
+      Lwt_io.printlf "%s" (Yojson.Safe.pretty_to_string json) >>= fun () ->
+      Lwt.return_unit
+    else
+      Lwt_io.printlf "%s" txt
+  in
+  lwt_cmd_line ~to_json ~verbose t
+
+let extract_config_cmd =
+  Term.(pure extract_config
+        $ alba_cfg_url
+        $ to_json
+        $ verbose
+  ),
+  Term.info "dev-extract-config" ~doc:"fetch and (pretty) print configuration"
 
 let cmds = [
   proxy_start_cmd;
@@ -538,4 +558,5 @@ let cmds = [
   proxy_osd_view_cmd;
   proxy_client_cfg_cmd;
   proxy_osd_info_cmd;
+  extract_config_cmd;
 ]
