@@ -55,6 +55,10 @@ module ReadBuffer = struct
         let res = a_from buf in
         assert (buffer_done buf);
         res
+    let maybe_from_buffer_no_assert a_from default buf =
+      if buffer_done buf
+      then default
+      else a_from buf
 
     let pair_from a_from b_from buf =
       let a = a_from buf in
