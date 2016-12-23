@@ -534,7 +534,7 @@ let asd_range_validate_cmd =
 let osd_bench hosts port transport tls_config osd_id
               n_clients n
               value_size partial_fetch_size
-              power prefix
+              power prefix seeds
               scenarios verbose
   =
   let conn_info =
@@ -550,7 +550,7 @@ let osd_bench hosts port transport tls_config osd_id
           f)
        n_clients n
        value_size partial_fetch_size
-       power prefix
+       power prefix seeds
        scenarios)
 
 let osd_bench_cmd =
@@ -589,6 +589,7 @@ let osd_bench_cmd =
           $ partial_fetch_size 4096
           $ power 4
           $ prefix ""
+          $ seeds
           $ scenarios
           $ verbose
     )
@@ -606,7 +607,9 @@ let asd_osd_info_from_kind k =
   | Asd (x, _) -> x
   | Kinetic _ | Alba _ | Alba2 _ | AlbaProxy _ -> assert false
 
-let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
+let asd_multistatistics long_ids to_json verbose cfg_file tls_config
+                        clear list_all
+  =
   begin
     let process_results results =
       if to_json
@@ -665,11 +668,14 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
           let open Nsm_model.OsdInfo in
           alba_client # mgr_access # list_all_claimed_osds >>= fun (_n, osds) ->
           let stat_osds =
-            List.filter
-              (fun (_,osd_info) ->
-                let k = osd_info.kind in
-                List.mem (get_long_id k) long_ids
-              ) osds
+            if list_all
+            then osds
+            else
+              List.filter
+                (fun (_,osd_info) ->
+                  let k = osd_info.kind in
+                  List.mem (get_long_id k) long_ids
+                ) osds
           in
 
           let needed_info =
@@ -712,6 +718,11 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config clear =
     lwt_cmd_line ~to_json ~verbose t
   end
 
+let list_all =
+  Arg.(value
+       & flag
+       & info ["all"] ~doc:"all claimed asds")
+
 let asd_multistatistics_cmd =
   let t = Term.(pure asd_multistatistics
                 $ long_ids
@@ -720,6 +731,7 @@ let asd_multistatistics_cmd =
                 $ alba_cfg_url
                 $ tls_config
                 $ clear
+                $ list_all
           )
   in
   let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in

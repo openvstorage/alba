@@ -17,8 +17,8 @@
 
 #include <boost/bimap.hpp>
 #include <boost/bimap/list_of.hpp>
-#include <boost/bimap/unordered_set_of.hpp>
 #include <boost/bimap/set_of.hpp>
+#include <boost/bimap/unordered_set_of.hpp>
 #include <boost/optional.hpp>
 /*
 nicked from volumedriver's LRUCacheToo, but

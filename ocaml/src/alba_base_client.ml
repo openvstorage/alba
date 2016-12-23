@@ -22,7 +22,6 @@ open Checksum
 open Lwt_bytes2
 open Alba_statistics
 open Fragment_cache
-open Alba_client_errors
 module Osd_sec = Osd
 open Nsm_host_access
 
@@ -65,7 +64,11 @@ class client
     osd_access # osds_to_osds_info_cache osds
   in
   let osd_msg_delivery_threads = Hashtbl.create 3 in
-  let preset_cache = new Alba_client_preset_cache.preset_cache mgr_access in
+  let preset_cache =
+    new Alba_client_preset_cache.preset_cache
+        mgr_access
+        nsm_host_access
+  in
   let get_preset_info = preset_cache # get in
   let manifest_cache = Manifest_cache.ManifestCache.make manifest_cache_size in
   let bad_fragment_callback
@@ -155,29 +158,16 @@ class client
         namespace
         input_file >>= fun () ->
 
-      Lwt.catch
-        (fun () ->
-          Object_reader.with_file_reader
-            ~use_fadvise
-            input_file
-            (self # upload_object
-                  ~namespace
-                  ~object_name
-                  ~checksum_o
-                  ~allow_overwrite
-                  ~object_id_hint:None
-                  ~epilogue_delay
-            )
-        )
-        (function
-          | Unix.Unix_error(Unix.ENOENT,_,y) ->
-             let open Error in failwith FileNotFound
-          | (Error.Exn e) as exn ->
-             Lwt_log.info_f ~exn "%s" (Error.show e) >>= fun () ->
-             Lwt.fail exn
-          | exn ->
-             Lwt_log.info_f ~exn "generic propagation ..." >>= fun () ->
-             Lwt.fail exn
+      Object_reader.with_file_reader
+        ~use_fadvise
+        input_file
+        (self # upload_object
+              ~namespace
+              ~object_name
+              ~checksum_o
+              ~allow_overwrite
+              ~object_id_hint:None
+              ~epilogue_delay
         )
 
     method upload_object_from_bytes
@@ -263,7 +253,7 @@ class client
        Alba_client_upload.upload_object'
          nsm_host_access osd_access
          manifest_cache
-         get_preset_info
+         preset_cache
          get_namespace_osds_info_cache
          ~namespace_id
          ~object_name

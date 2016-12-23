@@ -21,12 +21,12 @@ open Lwt.Infix
 open Cli_common
 open Cmdliner
 
-let alba_list_namespaces cfg_file tls_config to_json verbose =
+let alba_list_namespaces cfg_file tls_config to_json verbose attempts =
   let t () =
-    with_alba_client
-      cfg_file tls_config
+    with_albamgr_client
+      cfg_file tls_config ~attempts
       (fun client ->
-         client # mgr_access # list_all_namespaces >>= fun (cnt, namespaces) ->
+         client # list_all_namespaces >>= fun (cnt, namespaces) ->
          if to_json
          then begin
            let res =
@@ -49,7 +49,10 @@ let alba_list_namespaces_cmd =
   Term.(pure alba_list_namespaces
         $ alba_cfg_url
         $ tls_config
-        $ to_json $ verbose ),
+        $ to_json
+        $ verbose
+        $ attempts 1
+  ),
   Term.info "list-namespaces" ~doc:"list all namespaces"
 
 
@@ -101,10 +104,10 @@ let alba_list_namespaces_by_id_cmd =
   Term.info "list-namespaces-by-id"
             ~doc:"show id to name mapping"
 
-let recover_namespace cfg_file tls_config namespace nsm_host_id verbose =
+let recover_namespace cfg_file tls_config namespace nsm_host_id verbose attempts =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts:1 tls_config
+      cfg_file ~attempts tls_config
       (fun client ->
          client # recover_namespace ~namespace ~nsm_host_id)
   in
@@ -117,6 +120,7 @@ let recover_namespace_cmd =
         $ namespace 0
         $ nsm_host 1
         $ verbose
+        $ attempts 1
   ),
   Term.info
     "recover-namespace"
@@ -511,11 +515,11 @@ let alba_list_purging_osds_cmd =
     ~doc:"list osds that are not yet fully purged"
 
 
-let alba_list_participants cfg_file tls_config prefix verbose =
+let alba_list_participants cfg_file tls_config prefix verbose attempts =
   let t () =
     with_albamgr_client
       cfg_file tls_config
-      ~attempts:1
+      ~attempts
       (fun client ->
        client # get_participants ~prefix >>= fun (cnt, participants) ->
        Lwt_log.info_f
@@ -534,7 +538,9 @@ let alba_list_participants_cmd =
         $ alba_cfg_url
         $ tls_config
         $ prefix
-        $ verbose),
+        $ verbose
+        $ attempts 1
+  ),
   Term.info
     "list-participants"
     ~doc:"list participants"
@@ -579,6 +585,7 @@ let alba_list_work_cmd =
     "list-work"
     ~doc:"list outstanding work items"
 
+
 let alba_list_jobs cfg_file tls_config to_json verbose attempts =
   let t () =
     with_albamgr_client
@@ -616,10 +623,10 @@ let alba_list_jobs_cmd =
     "list-jobs"
     ~doc:"list job names"
 
-let alba_mark_work_items_completed cfg_file tls_config work_ids verbose =
+let alba_mark_work_items_completed cfg_file tls_config work_ids verbose attempts =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts:1 tls_config
+      cfg_file ~attempts tls_config
       (fun client ->
         Lwt_list.iter_s
           (fun work_id ->
@@ -639,7 +646,9 @@ let alba_mark_work_items_completed_cmd =
                & info []
                       ~docv:"WORK_IDS"
                       ~doc:"list of work ids")
-        $ verbose),
+        $ verbose
+        $ attempts 1
+  ),
   Term.info
     "dev-mark-work-items-completed"
     ~doc:"for dev/testing purposes only: mark work items as completed"
@@ -711,10 +720,10 @@ let alba_bump_next_namespace_id_cmd =
 
 let alba_add_iter_namespace_item
       cfg_file tls_config namespace name factor action
-      ~to_json ~verbose =
+      ~to_json ~verbose ~attempts =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts:1 tls_config
+      cfg_file ~attempts tls_config
       (fun client ->
        client # get_namespace ~namespace >>= function
        | None -> Lwt.fail_with ""
@@ -730,11 +739,11 @@ let alba_add_iter_namespace_item
   in
   lwt_cmd_line_unit ~to_json ~verbose t
 
-let alba_rewrite_namespace cfg_file tls_arg namespace name factor to_json verbose =
+let alba_rewrite_namespace cfg_file tls_arg namespace name factor to_json verbose attempts =
   alba_add_iter_namespace_item
     cfg_file tls_arg namespace name factor
     Albamgr_protocol.Protocol.Work.Rewrite
-    ~to_json ~verbose
+    ~to_json ~verbose ~attempts
 
 let job_name p =
   Arg.(required
@@ -756,6 +765,7 @@ let alba_rewrite_namespace_cmd =
         $ factor 1
         $ to_json
         $ verbose
+        $ attempts 1
   ),
   Term.info
     "rewrite-namespace"
@@ -779,14 +789,14 @@ let no_repair_osd_unavailable =
 let alba_verify_namespace
       cfg_file tls_config namespace name factor
       no_verify_checksum no_repair_osd_unavailable
-      to_json verbose
+      to_json verbose attempts
   =
   alba_add_iter_namespace_item
     cfg_file tls_config namespace name factor
     (let open Albamgr_protocol.Protocol.Work in
      Verify { checksum = not no_verify_checksum;
               repair_osd_unavailable = not no_repair_osd_unavailable; })
-    ~to_json ~verbose
+    ~to_json ~verbose ~attempts
 
 let alba_verify_namespace_cmd =
   Term.(pure alba_verify_namespace
@@ -799,21 +809,23 @@ let alba_verify_namespace_cmd =
         $ no_repair_osd_unavailable
         $ to_json
         $ verbose
+        $ attempts 1
   ),
   Term.info
     "verify-namespace"
     ~doc:"verify all objects in the specified namespace"
+
 
 let alba_verify_namespaces
       cfg_file tls_config
       (ns_names: (string * string) list)
       factor
       no_verify_checksum no_repair_osd_unavailable
-      to_json verbose
+      to_json verbose attempts
   =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts:1 tls_config
+      cfg_file ~attempts tls_config
       (fun client ->
         client # list_all_namespaces >>= fun (_,ns_infos) ->
         let ns_info_map =
@@ -865,7 +877,7 @@ let alba_verify_namespaces_cmd =
         $ factor 1
         $ no_verify_checksum $ no_repair_osd_unavailable
         $ to_json
-        $ verbose),
+        $ verbose $ attempts 1),
   Term.info
     "verify-namespaces"
     ~doc:"add more verify namespace jobs at once"
@@ -896,15 +908,18 @@ let alba_show_job_progress_cmd =
         $ alba_cfg_url
         $ tls_config
         $ job_name 0
-        $ to_json $ verbose),
+        $ to_json
+        $ verbose
+        $ attempts 1
+  ),
   Term.info
     "show-job-progress"
     ~doc:"show progress of a certain job"
 
-let alba_clear_job_progress cfg_file tls_config name to_json verbose =
+let alba_clear_job_progress cfg_file tls_config name to_json verbose attempts =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts:1 tls_config
+      cfg_file ~attempts tls_config
       (fun client ->
         client # get_progress_for_prefix name >>= fun (cnt, progresses) ->
         Lwt_list.iter_s
@@ -926,15 +941,16 @@ let alba_clear_job_progress_cmd =
         $ job_name 0
         $ to_json
         $ verbose
+        $ attempts 1
   ),
   Term.info
     "clear-job-progress"
     ~doc:"clear progress of a certain job"
 
-let alba_get_maintenance_config cfg_file tls_config to_json verbose =
+let alba_get_maintenance_config cfg_file tls_config to_json verbose attempts =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts:1 tls_config
+      cfg_file ~attempts tls_config
       (fun client ->
        client # get_maintenance_config >>= fun cfg ->
        if to_json
@@ -951,7 +967,10 @@ let alba_get_maintenance_config_cmd =
   Term.(pure alba_get_maintenance_config
         $ alba_cfg_url
         $ tls_config
-        $ to_json $ verbose),
+        $ to_json
+        $ verbose
+        $ attempts 1
+  ),
   Term.info "get-maintenance-config" ~doc:"get the maintenance config from the albamgr"
 
 let alba_update_maintenance_config
@@ -966,10 +985,11 @@ let alba_update_maintenance_config
       redis_lru_cache_eviction'
       to_json
       verbose
+      attempts
   =
   let t () =
     with_albamgr_client
-      cfg_file ~attempts:1 tls_config
+      cfg_file ~attempts tls_config
       (fun client ->
        client # update_maintenance_config
               Maintenance_config.Update.(
@@ -1050,10 +1070,11 @@ let alba_update_maintenance_config_cmd =
                       ~doc:"set lru cache eviction parameters (e.g. redis://127.0.0.1:6379/key_for_sorted_set)")
         $ to_json
         $ verbose
+        $ attempts 1
   ),
   Term.info "update-maintenance-config" ~doc:"update the maintenance config"
 
-let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
+let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose attempts =
   let t () =
     begin
       if allow_dirty
@@ -1070,7 +1091,7 @@ let alba_get_abm_client_config cfg_file tls_config allow_dirty verbose =
         end
       else
         with_albamgr_client
-          cfg_file ~attempts:1 tls_config
+          cfg_file ~attempts tls_config
           (fun client ->
            client # get_client_config)
     end >>= fun ccfg ->
@@ -1085,7 +1106,9 @@ let alba_get_abm_client_config_cmd =
         $ Arg.(value
                & flag
                & info ["allow-dirty"] ~doc:"allow fetching the config from a non slave node")
-        $ verbose),
+        $ verbose
+        $ attempts 1
+  ),
   Term.info "get-abm-client-config"
 
 let alba_update_abm_client_config cfg_url tls_config to_json verbose attempts =
@@ -1201,6 +1224,48 @@ let alba_delete_fragment_cmd =
   ),
   Term.info "dev-delete-fragment" ~doc:"remove a fragment of an object"
 
+
+let alba_get_presets_propagation_state
+      cfg_file tls_config
+      preset_names
+      include_all_presets
+      verbose
+      attempts
+  =
+  let t () =
+    with_albamgr_client
+      cfg_file tls_config
+      ~attempts
+      (fun client ->
+        (if include_all_presets
+         then client # list_all_presets ()
+              >|= snd
+              >|= List.map (fun (name, _, _, _) -> name)
+         else Lwt.return preset_names)
+        >>= fun preset_names ->
+
+        client # get_presets_propagation_state ~preset_names >>= fun prop_states ->
+
+        Lwt_log.info_f "prop_states = %s" ([%show : Preset.Propagation.t option list] prop_states)
+      )
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let alba_get_presets_propagation_state_cmd =
+  Term.(pure alba_get_presets_propagation_state
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(value
+               & opt (list string) []
+               & info [ "preset" ] ~docv:"PRESET" ~doc:"specify one or more presets")
+        $ Arg.(value
+               & flag
+               & info [ "all-presets" ] ~doc:"for all presets")
+        $ verbose
+        $ attempts 1
+  ),
+  Term.info "get-presets-propagation-state" ~doc:"gets the preset propagation state"
+
 let cmds = [
     alba_list_namespaces_cmd;
     alba_list_namespaces_by_id_cmd;
@@ -1241,4 +1306,6 @@ let cmds = [
     alba_bump_next_osd_id_cmd;
     alba_bump_next_namespace_id_cmd;
     alba_delete_fragment_cmd;
+
+    alba_get_presets_propagation_state_cmd;
   ]

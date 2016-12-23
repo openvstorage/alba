@@ -20,11 +20,11 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include <boost/log/trivial.hpp>
 #include <boost/program_options/options_description.hpp>
-#include <boost/program_options/variables_map.hpp>
 #include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
 
-#include <string>
 #include "alba_logger.h"
+#include <string>
 
 namespace po = boost::program_options;
 

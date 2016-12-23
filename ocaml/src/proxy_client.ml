@@ -24,21 +24,41 @@ open Range_query_args
 
 
 class proxy_client fd =
-  let with_response deserializer f =
-    let module Llio = Llio2.NetFdReader in
-    Llio.int_from fd >>= fun size ->
-    Llio.with_buffer_from
-      fd size
-      (fun res_buf ->
+  let buffer = Lwt_bytes.create 1024 |> ref in
+
+  let with_response tag_name deserializer f =
+    Net_fd.with_message_buffer_from
+      fd buffer None
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
+
+       (* currently we don't expect any extra bytes here
+        * (to be returned for proxy operations that this client knows about)
+        *)
+       assert (extra_bytes = 0);
+
+       let module L = Llio2.ReadBuffer in
+       let res_buf = L.make_buffer buffer ~offset ~length:message_length in
+
+       Lwt_log.debug_f
+         "proxy client read response of size %i for %s"
+         message_length tag_name
+       >>= fun () ->
+
        match Llio2.ReadBuffer.int_from res_buf with
        | 0 ->
           f (deserializer res_buf)
        | err ->
           let err_string = Llio2.ReadBuffer.string_from res_buf in
-          Lwt_log.debug_f "Proxy client received error from server: %s" err_string
-          >>= fun () -> Error.failwith ~payload:err_string (Error.int2err err))
+          Lwt_log.debug_f "Proxy client operation %s received error from server: %s"
+                          tag_name err_string
+          >>= fun () ->
+          Error.lwt_failwith ~payload:err_string (Error.int2err err))
   in
   let do_request code serialize_request request response_deserializer f =
+    let tag_name = code_to_txt code in
+    Lwt_log.debug_f "proxy_client: %s" tag_name >>= fun () ->
+
     let module Llio = Llio2.WriteBuffer in
     let buf =
       Llio.serialize_with_length'
@@ -53,7 +73,7 @@ class proxy_client fd =
       fd buf.Llio.buf 0 buf.Llio.pos
     >>= fun () ->
 
-    with_response response_deserializer f
+    with_response tag_name response_deserializer f
   in
   object(self)
     method private request' : type i o r. (i, o) request -> i -> (o -> r Lwt.t) -> r Lwt.t =

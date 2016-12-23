@@ -270,11 +270,14 @@ module DirectoryInfo = struct
       )
     >>= fun (t_write, ()) ->
 
-    (if t_write > 0.5
-     then Lwt_log.info_f
-     else Lwt_log.debug_f)
-      "written blob %Li, took %f" fnr t_write
-
+    let log_level =
+      if t_write > 0.5
+      then Lwt_log.Info
+      else Lwt_log.Debug
+    in
+    if log_level >= (Lwt_log.Section.level Lwt_log.Section.main)
+    then Lwt_log.log_f ~level:log_level "written blob %Li, took %f" fnr t_write
+    else Lwt.return_unit
 end
 
 module Value = struct
@@ -526,16 +529,18 @@ let _range_validate
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
-                         (Llio2.WriteBuffer.t * (Net_fd.t ->
-                                                 unit Lwt.t)) Asd_io_scheduler.t ->
+                         (Llio2.WriteBuffer.t
+                          * (Net_fd.t -> unit Lwt.t) option)
+                           Asd_io_scheduler.t ->
                          DirectoryInfo.t ->
                          AsdMgmt.t ->
                          AsdStatistics.t ->
                          Capabilities.OsdCapabilities.capability counted_list ->
                          (req, res) Protocol.query ->
                          req ->
-                         (Llio2.WriteBuffer.t * (Net_fd.t ->
-                                                 unit Lwt.t)) Lwt.t
+                         (Llio2.WriteBuffer.t
+                          * (Net_fd.t -> unit Lwt.t) option)
+                           Lwt.t
   = fun kv io_sched dir_info mgmt stats capabilities q ->
 
     let open Protocol in
@@ -549,8 +554,8 @@ let execute_query : type req res.
     in
     let return'' ~cost (res, write_extra) =
       Lwt.return ((serialize_with_length res, write_extra), cost) in
-    let return ~cost res = return'' ~cost (res, fun _ -> Lwt.return_unit) in
-    let return' res = Lwt.return (serialize_with_length res, fun _ -> Lwt.return_unit) in
+    let return ~cost res = return'' ~cost (res, None) in
+    let return' res = Lwt.return (serialize_with_length res, None) in
     match q with
     | Range -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
       perform_read
@@ -666,19 +671,9 @@ let execute_query : type req res.
              keys
          in
 
-         return''
-           ~cost:(List.fold_left
-                    (fun acc ->
-                     function
-                     | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
-                     | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
-                    0
-                    res)
-           (res,
-            fun nfd ->
-            Lwt_list.iter_s
-              (fun (fnr, size) ->
+         let write_later nfd =
+           Lwt_list.iter_s
+             (fun (fnr, size) ->
                DirectoryInfo.with_blob_fd
                  dir_info fnr
                  (fun blob_fd ->
@@ -698,8 +693,20 @@ let execute_query : type req res.
                    in
                    Lwt.return_unit
                  )
-              )
-              (List.rev !write_laters)))
+             )
+             (List.rev !write_laters)
+         in
+
+         return''
+           ~cost:(List.fold_left
+                    (fun acc ->
+                     function
+                     | None           -> acc + 200
+                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
+                     | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
+                    0
+                    res)
+           (res, Some write_later))
         end
     | MultiExists -> fun (keys, prio) ->
                      perform_read
@@ -783,7 +790,7 @@ let execute_query : type req res.
                          Net_fd.write_all nfd (Bytes.create len) 0 len)
                         slices
                in
-               return'' ~cost (true, write_later))
+               return'' ~cost (true, Some write_later))
        end
     | Statistics -> fun clear ->
                     Asd_statistics.AsdStatistics.snapshot stats clear |> return'
@@ -855,7 +862,7 @@ let execute_update : type req res.
   Rocks_key_value_store.t ->
   release_fnr : (int64 -> unit) ->
   (Llio2.WriteBuffer.t * (Net_fd.t ->
-                          unit Lwt.t)) Asd_io_scheduler.t ->
+                          unit Lwt.t) option) Asd_io_scheduler.t ->
   DirectoryInfo.t ->
   mgmt: AsdMgmt.t ->
   get_next_fnr : (unit -> int64) ->
@@ -1241,8 +1248,6 @@ let check_asd_id kv asd_id =
     else failwith (Printf.sprintf "asd id mismatch: %s <> %s" asd_id asd_id')
 
 
-let done_writing (nfd:Net_fd.t) = Lwt.return_unit
-
 let asd_protocol
       ?cancel
       kv ~release_fnr
@@ -1259,9 +1264,7 @@ let asd_protocol
      *)
 
     let module Llio = Llio2.WriteBuffer in
-    let return_result
-          ?(write_extra=done_writing)
-          serializer res =
+    let return_result serializer res =
       let res_s =
         Llio.serialize_with_length'
           (Llio.pair_to
@@ -1269,7 +1272,7 @@ let asd_protocol
              serializer)
           (0, res)
       in
-      Lwt.return (res_s, write_extra)
+      Lwt.return (res_s, None)
     in
     let return_error error =
       let res =
@@ -1277,7 +1280,7 @@ let asd_protocol
           Protocol.Error.serialize
           error
       in
-      Lwt.return (res, done_writing)
+      Lwt.return (res, None)
     in
     Lwt.catch
       (fun () ->
@@ -1320,25 +1323,31 @@ let asd_protocol
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
       ) >>= fun (res, write_extra) ->
-    let () = Net_fd.cork nfd in
-    Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
-    write_extra nfd >>= fun () ->
-    let () = Net_fd.uncork nfd in
-    Lwt.return_unit
+    let write_res () =
+      Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos
+    in
+    match write_extra with
+    | None ->
+       write_res ()
+    | Some write_extra ->
+       let () = Net_fd.cork nfd in
+       write_res () >>= fun () ->
+       write_extra nfd >>= fun () ->
+       let () = Net_fd.uncork nfd in
+       Lwt.return_unit
   in
-  let rec inner () =
-    (match cancel with
-     | None -> Llio2.NetFdReader.int_from nfd
-     | Some cancel ->
-        Lwt.pick
-          [ (Lwt_condition.wait cancel >>= fun () ->
-             Lwt.fail Lwt.Canceled);
-            Llio2.NetFdReader.int_from nfd; ])
-    >>= fun len ->
-    Llio2.NetFdReader.with_buffer_from
-      nfd len
-      (fun buf ->
-       let code = Llio2.ReadBuffer.int32_from buf in
+  let rec inner buffer =
+    Net_fd.with_message_buffer_from
+      nfd buffer cancel
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
+
+       (* currently pipelining of requests is not supported *)
+       assert (extra_bytes = 0);
+
+       let module L = Llio2.ReadBuffer in
+       let buf = L.make_buffer buffer ~offset ~length:message_length in
+       let code = L.int32_from buf in
        with_timing_lwt
          (fun () ->
            (match mgmt.AsdMgmt.slowness with
@@ -1355,11 +1364,15 @@ let asd_protocol
     >>= fun (delta, code) ->
     Statistics_collection.Generic.new_delta stats code delta;
 
-    (if delta > 0.5
-     then Lwt_log.info_f
-     else Lwt_log.debug_f)
-      "Request %s took %f" (Protocol.code_to_description code) delta >>= fun () ->
-    inner ()
+    let log_level =
+      if delta > 0.5
+      then Lwt_log.Info
+      else Lwt_log.Debug
+    in
+    (if log_level >= (Lwt_log.Section.level Lwt_log.Section.main)
+     then Lwt_log.log_f ~level:log_level "Request %s took %f" (Protocol.code_to_description code) delta
+     else Lwt.return_unit) >>= fun () ->
+    inner buffer
   in
   Llio2.NetFdReader.raw_string_from nfd 4 >>= fun b0 ->
   (*Lwt_io.printlf "b0:%S%!" b0 >>= fun () -> *)
@@ -1399,7 +1412,13 @@ let asd_protocol
             >>= fun () ->
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()
-            | _ -> inner ()
+            | _ ->
+               let buf = Lwt_bytes.create 1024 |> ref in
+               Lwt.finalize
+                 (fun () -> inner buf)
+                 (fun () ->
+                   Lwt_bytes.unsafe_destroy !buf;
+                   Lwt.return_unit)
           end
       end
   end
@@ -1800,6 +1819,7 @@ let run_server
   in
 
   let protocol nfd =
+    let () = Net_fd.uncork nfd in
     asd_protocol
       ?cancel
       db
@@ -1912,7 +1932,7 @@ let run_server
     Mem_stats.reporting_t
       ~section
       ~f:(fun () ->
-          Lwt_log.info_f
+          Lwt_log.error_f
             ~section "%s"
             (AsdStatistics.show_inner
                stats

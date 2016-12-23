@@ -584,7 +584,6 @@ let test_partial_download () =
   let t (client : Alba_client.alba_client) test_name fragment_encryption =
        let namespace = test_name in
 
-       let open Albamgr_protocol.Protocol in
        let preset_name = test_name in
        let preset' = Preset.({ _DEFAULT with
                                compression = Alba_compression.Compression.NoCompression;
@@ -839,7 +838,6 @@ let test_partial_download_bad_fragment () =
 let test_encryption () =
   test_with_alba_client
     (fun alba_client ->
-       let open Albamgr_protocol.Protocol in
        let namespace = "test_encryption" in
        let preset_name = "enc_preset" in
        let algo = Encryption.(AES (CBC, L256)) in
@@ -999,7 +997,6 @@ let test_change_osd_ip_port () =
     test_name ^ Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
 
   let t (client : Alba_client.alba_client) =
-       let open Albamgr_protocol.Protocol in
        let namespace = test_name in
        let object_name = "object_name" in
 
@@ -1115,7 +1112,6 @@ let test_repair_by_policy () =
   let test_name = "test_repair_by_policy" in
   test_with_alba_client
     (fun alba_client ->
-       let open Albamgr_protocol.Protocol in
 
        let preset_name = test_name in
        alba_client # mgr_access # create_preset
@@ -1235,7 +1231,7 @@ let test_missing_corrupted_fragment () =
        let preset_name = test_name in
        alba_client # mgr_access # create_preset
          preset_name
-         Albamgr_protocol.Protocol.Preset.({
+         Preset.({
              _DEFAULT with
              policies = [ (2,1,3,3); ];
            }) >>= fun () ->
@@ -1439,7 +1435,7 @@ let test_disk_churn () =
 
        let inner osd_ids =
          let preset =
-           Albamgr_protocol.Protocol.Preset.({
+           Preset.({
                _DEFAULT
                with
                  osds = Explicit osd_ids;
@@ -1684,8 +1680,6 @@ let test_replication () =
          Lwt.return ()
        in
 
-       let open Albamgr_protocol.Protocol in
-
        begin
          let preset_name = test_name in
 
@@ -1773,7 +1767,6 @@ let test_striping () =
        Lwt.return ()
      in
 
-     let open Albamgr_protocol.Protocol in
      inner
        (test_name ^ "_1")
        Preset.({ _DEFAULT with
@@ -1961,7 +1954,6 @@ let test_update_policies () =
     (fun alba_client ->
      let namespace = test_name in
      let preset_name = test_name in
-     let open Albamgr_protocol.Protocol in
      let preset =
        Preset.({ _DEFAULT with
                  policies = [ (2,1,2,3); ]; })
@@ -2033,7 +2025,6 @@ let test_stale_manifest_download () =
      let test_name = "test_stale_manifest_download" in
      let namespace = test_name in
 
-     let open Albamgr_protocol.Protocol in
      let preset_name = test_name in
      let preset' = Preset.({ _DEFAULT with
                              compression = Alba_compression.Compression.NoCompression;
@@ -2122,7 +2113,6 @@ let test_object_sizes () =
     (fun client ->
      let test_name = "test_object_sizes" in
      let preset_name = test_name in
-     let open Albamgr_protocol.Protocol in
      let preset' = Preset.({ _DEFAULT with
                              policies = [ (2,1,3,3); ];
                              fragment_size = 128; }) in
@@ -2157,7 +2147,6 @@ let test_retry_download () =
     (fun client ->
      let test_name = "test_retry_download" in
 
-     let open Albamgr_protocol.Protocol in
      let preset_name = test_name in
      let preset' = Preset.({ _DEFAULT with
                              policies = [ (2,1,3,3); ];
@@ -2251,7 +2240,7 @@ let test_list_objects_by_id () =
 
      let open Nsm_model in
      alba_client # get_base_client # upload_object_from_string
-                 ~epilogue_delay:None
+                 ~epilogue_delay:(Some 1.)
                  ~namespace
                  ~object_name:""
                  ~object_data:""
@@ -2273,11 +2262,131 @@ let test_list_objects_by_id () =
                   assert (objs = [ mf; ]);
                   Lwt.return ()))
 
+let test_preset_validation () =
+  let test_name = "test_preset_validation" in
+  let namespace = test_name in
+  test_with_alba_client
+    (fun alba_client ->
+      let preset_name = "default" in
+      alba_client # create_namespace
+                  ~preset_name:(Some preset_name)
+                  ~namespace () >>= fun namespace_id ->
+
+      wait_for_work alba_client >>= fun () ->
+
+      alba_client # mgr_access # get_preset_propagation_state ~preset_name >>= fun r ->
+      assert (r = None);
+
+      alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm_client ->
+
+      nsm_client # get_gc_epochs >>= fun gc_epochs ->
+      let gc_epoch = Nsm_model.GcEpochs.get_latest_valid gc_epochs |> Option.get_some in
+
+      let do_upload manifest =
+        nsm_client # put_object
+                   ~allow_overwrite:Nsm_model.Unconditionally
+                   ~gc_epoch
+                   ~manifest >>= fun _ ->
+        Lwt.return ()
+      in
+
+      let mf =
+        let open Nsm_model in
+        {
+          Manifest.name = test_name;
+          object_id = get_random_string 32;
+
+          storage_scheme = Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (5,4, W8)),
+                                                                 Compression.Snappy);
+          encrypt_info = EncryptInfo.NoEncryption;
+          fragment_locations = [ [ Some 0L, 0; Some 1L, 0; Some 2L, 0; Some 4L, 0; Some 5L, 0;
+                                   Some 6L, 0; Some 8L, 0; Some 9L, 0; None, 0;
+                                 ];
+                               ];
+          chunk_sizes = [];
+          size = 0L;
+          checksum = Checksum.NoChecksum;
+          fragment_checksums = [];
+          fragment_packed_sizes = [ [ 0; 0; 0; 0; 0; 0; 0; 0; 0; ]; ];
+          fragment_ctrs = [];
+          version_id = 0;
+          max_disks_per_node = 3;
+          timestamp = 0.;
+        } in
+
+      do_upload mf >>= fun () ->
+
+      let test_mf manifest err =
+        let manifest = { manifest with
+                         Nsm_model.Manifest.object_id = get_random_string 32;
+                         timestamp = Unix.gettimeofday ();
+                       }
+        in
+        Lwt.catch
+          (fun () ->
+            do_upload manifest >>= fun () ->
+            assert false)
+          (function
+           | Nsm_model.Err.Nsm_exn (err', _) ->
+              Lwt_log.debug_f "Got error %s" ([%show : Nsm_model.Err.t] err') >>= fun () ->
+              assert (err' = err);
+              Lwt.return ()
+           | exn ->
+              Lwt.fail exn)
+      in
+
+      test_mf
+        { mf with
+          Nsm_model.Manifest.storage_scheme =
+            Nsm_model.Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (1,2, W8)),
+                                                            Alba_compression.Compression.Snappy);
+        }
+        Nsm_model.Err.Invalid_bucket >>= fun () ->
+
+      test_mf
+        { mf with
+          Nsm_model.Manifest.storage_scheme =
+            Nsm_model.Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (5,4, W8)),
+                                                            Alba_compression.Compression.Bzip2);
+        }
+        Nsm_model.Err.Preset_violated >>= fun () ->
+
+      let test_update_manifest updated_object_locations err =
+        Lwt.catch
+          (fun () ->
+            let open Nsm_model.Manifest in
+            nsm_client # update_manifest
+                       ~object_name:mf.name
+                       ~object_id:mf.object_id (* TODO wrong *)
+                       updated_object_locations
+                       ~gc_epoch
+                       ~version_id:1 >>= fun () ->
+            Lwt.fail_with "arrr update_manifest didn't fail!"
+          )
+          (function
+           | Nsm_model.Err.Nsm_exn (err', _) ->
+              Lwt_log.debug_f "Got error %s" ([%show : Nsm_model.Err.t] err') >>= fun () ->
+              assert (err' = err);
+              Lwt.return ()
+           | exn ->
+              Lwt.fail exn)
+      in
+
+      test_update_manifest
+        [ 0, 0, Some 7L, None, None ]
+        Nsm_model.Err.Invalid_bucket >>= fun () ->
+
+      test_update_manifest
+        [ 0, 0, Some 1L, None, None ]
+        Nsm_model.Err.Invalid_fragment_spread >>= fun () ->
+
+      Lwt.return ())
+
+
 let test_upload_epilogue () =
   test_with_alba_client
     (fun alba_client ->
       let open Nsm_model in
-      let open Albamgr_protocol.Protocol in
       let test_name = "test_upload_epilogue" in
       let namespace = test_name in
       let preset_name = test_name in
@@ -2398,5 +2507,6 @@ let suite = "alba_test" >:::[
     "test_object_sizes" >:: test_object_sizes;
     "test_retry_download" >:: test_retry_download;
     "test_list_objects_by_id" >:: test_list_objects_by_id;
+    "test_preset_validation" >:: test_preset_validation;
     "test_upload_epilogue" >:: test_upload_epilogue;
   ]

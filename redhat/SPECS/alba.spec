@@ -2,7 +2,7 @@
 
 Summary: Alba
 Name: alba
-Version: 1.2.4
+Version: 1.3.1
 Release: 1%{?dist}
 License: Proprietary license
 ExclusiveArch: x86_64
@@ -48,6 +48,10 @@ rm /etc/ld.so.conf.d/alba-x86_64.conf
 /sbin/ldconfig
 
 %changelog
+* Wed Dec 21 2016 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 1.3.1
+- Create Alba 1.3.1 RPM package
+* Mon Dec 19 2016 Romain Slootmaekers <romain.slootmaekers@openvstorage.com> - 1.3.0
+- Create Alba 1.3.0 RPM package
 * Thu Dec 08 2016 Jan Doms <jan.doms@gmail.com> - 1.2.4
 - Create Alba 1.2.4 RPM package
 * Tue Dec 06 2016 Jan Doms <jan.doms@gmail.com> - 1.2.3

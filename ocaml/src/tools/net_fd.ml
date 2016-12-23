@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open Prelude
+open Lwt_bytes2
 open Lwt.Infix
 
 type transport =
@@ -241,6 +243,109 @@ let read_all_lwt_bytes_exact nfd target offset length = match nfd with
      in
      Lwt_extra2._read_all read_to_target offset length
      >>= Lwt_extra2.expect_exact_length length
+
+let read_lwt_bytes_at_least nfd target ~offset ~max_length ~min_length =
+  match nfd with
+  | Plain fd -> Lwt_extra2.read_lwt_bytes_at_least fd target ~offset ~max_length ~min_length
+  | SSL _ssl ->
+     let socket = _ssl_get_socket _ssl in
+     Lwt_extra2._read_buffer_at_least
+       (Lwt_ssl.read_bytes socket target)
+       ~offset ~max_length ~min_length
+  | Rsocket socket ->
+     Lwt_extra2._read_buffer_at_least
+       (fun offset length -> Lwt_rsocket.Bytes.recv socket target offset length [])
+       ~offset ~max_length ~min_length
+
+
+let with_maybe_cancel cancel f =
+  match cancel with
+  | None -> f ()
+  | Some cancel ->
+     Lwt.pick
+       [ (Lwt_condition.wait cancel >>= fun () ->
+          Lwt.fail Lwt.Canceled);
+         f (); ]
+
+
+let with_message_buffer_from
+      nfd
+      buffer
+      ~max_buffer_size
+      cancel
+      f
+  =
+  let buf_length = Lwt_bytes.length !buffer in
+  with_maybe_cancel
+    cancel
+    (fun () ->
+      read_lwt_bytes_at_least
+        nfd !buffer
+        ~offset:0
+        ~max_length:buf_length
+        ~min_length:4)
+  >>= fun read ->
+
+  let message_length = get32_prim' !buffer 0 |> Int32.to_int in
+  let message_plus_header_length = message_length + 4 in
+
+  let with_message_buffer f =
+    if message_plus_header_length <= read
+    then
+      (* read the message entirely - and maybe then some - perfect *)
+      f
+        ~buffer:!buffer
+        ~offset:4
+        ~message_length
+        ~extra_bytes:(read - message_plus_header_length)
+    else
+      let message_bytes_read = read - 4 in
+
+      let with_sufficiently_large_buffer f =
+        if message_plus_header_length <= buf_length
+        then
+          f (!buffer, 4)
+        else
+          begin
+            let new_buf = Lwt_bytes.create message_plus_header_length in
+            Lwt_bytes.blit !buffer 4 new_buf 0 message_bytes_read;
+
+            if message_plus_header_length <= max_buffer_size
+            then
+              begin
+                Lwt_bytes.unsafe_destroy !buffer;
+                buffer := new_buf;
+                f (new_buf, 0)
+              end
+            else
+              begin
+                Lwt.finalize
+                  (fun () -> f (new_buf, 0))
+                  (fun () ->
+                    Lwt_bytes.unsafe_destroy new_buf;
+                    Lwt.return_unit)
+              end
+          end
+      in
+
+      (* only got part of the message so far
+       * gather the message into a sufficiently large buffer
+       * (maybe blit, get the rest from nfd)
+       *)
+      with_sufficiently_large_buffer
+        (fun (buffer, offset) ->
+          read_all_lwt_bytes_exact
+            nfd buffer
+            (offset + message_bytes_read)
+            (message_length - message_bytes_read) >>= fun () ->
+          f
+            ~buffer
+            ~offset
+            ~message_length
+            ~extra_bytes:0)
+  in
+
+  with_message_buffer f
 
 let cork = function
   | Plain fd ->

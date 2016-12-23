@@ -18,12 +18,12 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 
-#include <iostream>
-#include <vector>
-#include <stdint.h>
-#include <memory>
-#include "llio.h"
 #include "alba_logger.h"
+#include "llio.h"
+#include <iostream>
+#include <memory>
+#include <stdint.h>
+#include <vector>
 
 namespace alba {
 

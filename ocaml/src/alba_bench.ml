@@ -70,7 +70,7 @@ let do_scenarios
       albamgr_cfg
       n_clients n
       file_name power prefix client_file_prefix upload_slack
-      slice_size namespace
+      slice_size namespace (seeds:int list)
       scenarios =
   let period = period_of_power power in
   Alba_client2.with_client
@@ -104,6 +104,7 @@ let do_scenarios
               let n_per_client = n / n_clients in
               Lwt_list.iter_p
                 (fun (i,oc) ->
+                  let seed = List.nth seeds i |> Option.get_some in
                   let progress = make_progress step in
                   scenario
                     ~oc
@@ -111,7 +112,8 @@ let do_scenarios
                     progress
                     n_per_client
                     file_name
-                    period
+                    ~seed
+                    ~period
                     (Printf.sprintf "%s_%i" prefix i)
                     slice_size
                     namespace)

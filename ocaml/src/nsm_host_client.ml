@@ -164,6 +164,9 @@ class client (client : basic_client) =
            (List.map
               (fun id -> id, ())
               namespace_ids)
+
+    method update_presets req =
+      client # update (NsmsUpdate Nsm_protocol.Protocol.UpdatePreset) req
   end
 
 let wrap_around (client:Arakoon_client.client) =

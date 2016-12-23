@@ -47,22 +47,12 @@ let write_albamgr_cfg albamgr_cfg =
        ccfg
        (fun client -> client # set key value)
 
-let read_objects_slices
+let _read_objects_slices
       (alba_client : Alba_client.alba_client)
-      namespace objects_slices ~consistent_read =
-  let total_length =
-    List.fold_left
-      (fun acc (object_name, object_slices) ->
-       List.fold_left
-         (fun acc (_, slice_length) -> acc + slice_length)
-         acc
-         object_slices)
-      0
-      objects_slices
-  in
-  let res = Lwt_bytes.create total_length in
-  Lwt.finalize
-    (fun () ->
+      namespace objects_slices ~consistent_read
+      total_length res
+  =
+
      let _, objects_slices, n_slices, object_names =
        List.fold_left
          (fun (res_offset, acc, n_slices, object_names) (object_name, object_slices) ->
@@ -108,6 +98,7 @@ let read_objects_slices
        | Statistics.FromOsd _   -> incr fc_misses
      in
      logger n_slices total_length n_objects >>= fun () ->
+
      strategy
        (fun (object_name, object_slices) ->
         alba_client # download_object_slices
@@ -138,10 +129,44 @@ let read_objects_slices
      let mf_sources = List.map (fun (_,_,_,src, _) -> src) n_mf_src_s in
      Lwt.return (Lwt_bytes.to_string res,
                  n_slices, n_objects, mf_sources,
-                 !fc_hits, !fc_misses, objects_infos))
-    (fun () ->
-     Lwt_bytes.unsafe_destroy res;
-     Lwt.return ())
+                 !fc_hits, !fc_misses, objects_infos)
+
+let read_objects_slices
+      (alba_client : Alba_client.alba_client)
+      namespace objects_slices ~consistent_read
+  =
+  let total_length =
+    List.fold_left
+      (fun acc (object_name, object_slices) ->
+        List.fold_left
+          (fun acc (_, slice_length) -> acc + slice_length)
+          acc
+          object_slices)
+      0
+      objects_slices
+  in
+  let with_buf =
+    match total_length with
+    | 4096 -> Buffer_pool.(with_buffer pool_4k)
+    | 8192 -> Buffer_pool.(with_buffer pool_8k)
+    | 16384 -> Buffer_pool.(with_buffer pool_16k)
+    | 32768 -> Buffer_pool.(with_buffer pool_32k)
+    | x ->
+       fun f ->
+       let res = Lwt_bytes.create total_length in
+       Lwt.finalize
+         (fun () ->
+           f res)
+         (fun () ->
+           Lwt_bytes.unsafe_destroy res;
+           Lwt.return ())
+  in
+  with_buf
+    (_read_objects_slices
+       alba_client namespace
+       objects_slices
+       ~consistent_read
+       total_length)
 
 
 let apply_sequence
@@ -298,14 +323,31 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S)" ([%show : Namespace.name * object_name list] args)
   | GetAlbaId       -> fun () -> "()"
 
-let log_request code maybe_renderer time =
-  let log = if time < 0.5 then  Lwt_log.debug_f else Lwt_log.info_f in
-  let details =
-    match maybe_renderer with
-    | None -> ""
-    | Some renderer -> renderer ()
-  in
-  log "Request %s %s took %f" (Protocol.code_to_txt code) details time
+let log_request code error renderer time =
+  let details = renderer () in
+  if error
+  then
+    Lwt_log.error_f
+      "Request %s %s errored and took %f"
+      (Protocol.code_to_txt code)
+      details
+      time
+  else
+    let log_level =
+      if time < 0.5
+      then Lwt_log.Debug
+      else Lwt_log.Info
+    in
+    if log_level >= (Lwt_log.Section.level Lwt_log.Section.main)
+    then
+      Lwt_log.log_f
+        ~level:log_level
+        "Request %s %s took %f"
+        (Protocol.code_to_txt code)
+        details
+        time
+    else
+      Lwt.return_unit
 
 
 let proxy_protocol (alba_client : Alba_client.alba_client)
@@ -561,154 +603,162 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          (match msg with
           | None -> Protocol.Error.show err
           | Some msg -> msg)) in
-    Lwt.return (res_s, None)
+    Lwt.return res_s
   in
-  let handle_request buf code : (unit -> string) option Lwt.t =
+  let default_renderer () = "(request could not be parsed)" in
+  let handle_request buf code : (bool * (unit -> string)) Lwt.t =
+    Lwt_log.debug_f "Proxy_server: got command with code %i" code >>= fun () ->
+    let return_err_response ?msg err =
+      return_err_response ?msg err >>= fun res ->
+      Lwt.return (true, res)
+    in
+    let renderer = ref default_renderer in
     Lwt.catch
       (fun () ->
-         match Protocol.code_to_command code with
-         | Protocol.Wrap r ->
-           let req =
-             try Deser.from_buffer (Protocol.deser_request_i r) buf
-             with exn ->
-               Lwt_log.ign_error ~exn "error during deserializing proxy request";
-               raise exn
-           in
+        match Protocol.code_to_command code with
+        | Protocol.Wrap r ->
+           (try Deser.from_buffer (Protocol.deser_request_i r) buf |> Lwt.return
+            with exn ->
+              Lwt_log.error ~exn "error while deserializing proxy request" >>= fun () ->
+              Lwt.fail exn) >>= fun req ->
+
+           renderer := (fun () -> render_request_args r req);
+
            execute_request r stats req >>= fun res ->
-           Lwt.return (Llio.serialize_with_length'
+           Lwt.return (false,
+                       Llio.serialize_with_length'
                          (Llio.pair_to
                             Llio.int_to
                             (snd (Protocol.deser_request_o r)))
-                         (0, res),
-                       let renderer () = render_request_args r req in
-                       Some renderer))
-      (function
-        | End_of_file as e ->
-          Lwt.fail e
-        | Protocol.Error.Exn (err, payload) ->
-           let msg = match payload with
-             | Some x -> x
-             | None -> Protocol.Error.show err in
-           Lwt_log.info_f "Returning %s error to client" msg
-           >>= fun () ->
-           return_err_response ~msg err
-        | Asd_protocol.Protocol.Error.Exn err ->
-           let msg = Asd_protocol.Protocol.Error.show err in
-           Lwt_log.info_f
-             "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
-             msg
-           >>= fun () ->
-           return_err_response ~msg Protocol.Error.Unknown
-        | Nsm_model.Err.Nsm_exn (err, payload) ->
-          begin
-            let open Nsm_model.Err in
-            match err with
-            | Object_not_found ->
-              return_err_response Protocol.Error.ObjectDoesNotExist
-            | Assert_failed ->
-              return_err_response ~msg:payload Protocol.Error.AssertFailed
-            | Namespace_id_not_found
-            | Unknown
-            | Invalid_gc_epoch
-            | Non_unique_object_id
-            | Not_master
-            | Inconsistent_read
-            | InvalidVersionId
-            | Old_plugin_version
-            | Old_timestamp
-            | Invalid_fragment_spread
-            | Inactive_osd
-            | Too_many_disks_per_node
-            | Insufficient_fragments
-            | Unknown_operation ->
-               let msg = Nsm_model.Err.show err in
-               Lwt_log.info_f
-                 "Unexpected Nsm_model.Err exception in proxy while handling request: %s" msg
-               >>= fun () ->
-               return_err_response ~msg Protocol.Error.Unknown
-            | Overwrite_not_allowed ->
-              Lwt_log.info_f
-                "Received Nsm_model.Err Overwrite_not_allowed exception in proxy while that should've already been handled earlier..." >>= fun () ->
-              return_err_response Protocol.Error.Unknown
-          end
-        | Albamgr_protocol.Protocol.Error.Albamgr_exn (err, _) ->
-          begin
-            let open Albamgr_protocol.Protocol.Error in
-            match err with
-            | Namespace_already_exists ->
-              return_err_response Protocol.Error.NamespaceAlreadyExists
-            | Namespace_does_not_exist ->
-              return_err_response Protocol.Error.NamespaceDoesNotExist
-            | Preset_does_not_exist ->
-               return_err_response Protocol.Error.PresetDoesNotExist
-            | Bad_argument ->
-               return_err_response Protocol.Error.BadArgument
-            | Unknown
-            | Osd_already_exists
-            | Nsm_host_already_exists
-            | Nsm_host_unknown
-            | Nsm_host_not_lost
-            | Osd_already_linked_to_namespace
-            | Not_master
-            | Inconsistent_read
-            | Old_plugin_version
-            | Preset_already_exists
-            | Preset_cant_delete_default
-            | Preset_cant_delete_in_use
-            | Invalid_preset
-            | Osd_already_claimed
-            | Osd_unknown
-            | Osd_info_mismatch
-            | Osd_already_decommissioned
-            | Claim_lease_mismatch
-            | Progress_does_not_exist
-            | Progress_CAS_failed
-            | Unknown_operation ->
-               let msg = Albamgr_protocol.Protocol.Error.show err in
-               Lwt_log.info_f
-                 "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"  msg
-               >>= fun () ->
-               return_err_response ~msg Protocol.Error.Unknown
-          end
-        | Alba_client_errors.Error.Exn err ->
-          begin
-            let open Alba_client_errors.Error in
-            Lwt_log.info_f "Got error from alba client: %s" (show err) >>= fun () ->
-            return_err_response
-              (let open Protocol in
+                         (0, res)))
+         (function
+          | End_of_file as e ->
+             Lwt.fail e
+          | Protocol.Error.Exn (err, payload) ->
+             let msg = match payload with
+               | Some x -> x
+               | None -> Protocol.Error.show err in
+             Lwt_log.error_f "Returning %s error to client" msg
+             >>= fun () ->
+             return_err_response ~msg err
+          | Asd_protocol.Protocol.Error.Exn err ->
+             let msg = Asd_protocol.Protocol.Error.show err in
+             Lwt_log.error_f
+               "Unexpected Asd_protocol.Protocol.Error exception in proxy while handling request: %s"
+               msg
+             >>= fun () ->
+             return_err_response ~msg Protocol.Error.Unknown
+          | Nsm_model.Err.Nsm_exn (err, payload) ->
+             begin
+               let open Nsm_model.Err in
                match err with
-               | ChecksumMismatch -> Error.ChecksumMismatch
-               | ChecksumAlgoNotAllowed -> Error.ChecksumAlgoNotAllowed
-               | BadSliceLength -> Error.BadSliceLength
-               | OverlappingSlices -> Error.OverlappingSlices
-               | SliceOutsideObject -> Error.SliceOutsideObject
-               | FileNotFound -> Error.FileNotFound
-               | NoSatisfiablePolicy -> Error.NoSatisfiablePolicy
-               | NamespaceDoesNotExist -> Error.NamespaceDoesNotExist
-               | NotEnoughFragments -> Error.Unknown
-              )
-          end
-        | exn ->
-           Lwt_log.info_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
-           let msg = Printexc.to_string exn in
-           return_err_response ~msg Protocol.Error.Unknown)
+               | Object_not_found ->
+                  return_err_response Protocol.Error.ObjectDoesNotExist
+               | Assert_failed ->
+                  return_err_response ~msg:payload Protocol.Error.AssertFailed
+               | Namespace_id_not_found
+               | Unknown
+               | Invalid_gc_epoch
+               | Non_unique_object_id
+               | Not_master
+               | Inconsistent_read
+               | InvalidVersionId
+               | Old_plugin_version
+               | Old_timestamp
+               | Invalid_fragment_spread
+               | Inactive_osd
+               | Invalid_bucket
+               | Preset_violated
+               | Too_many_disks_per_node
+               | Insufficient_fragments
+               | Unknown_operation ->
+                  let msg = Nsm_model.Err.show err in
+                  Lwt_log.error_f
+                    "Unexpected Nsm_model.Err exception in proxy while handling request: %s" msg
+                  >>= fun () ->
+                  return_err_response ~msg Protocol.Error.Unknown
+               | Overwrite_not_allowed ->
+                  Lwt_log.error_f
+                    "Received Nsm_model.Err Overwrite_not_allowed exception in proxy while that should've already been handled earlier..." >>= fun () ->
+                  return_err_response Protocol.Error.Unknown
+             end
+          | Albamgr_protocol.Protocol.Error.Albamgr_exn (err, _) ->
+             begin
+               let open Albamgr_protocol.Protocol.Error in
+               match err with
+               | Namespace_already_exists ->
+                  return_err_response Protocol.Error.NamespaceAlreadyExists
+               | Namespace_does_not_exist ->
+                  return_err_response Protocol.Error.NamespaceDoesNotExist
+               | Preset_does_not_exist ->
+                  return_err_response Protocol.Error.PresetDoesNotExist
+               | Unknown
+               | Osd_already_exists
+               | Nsm_host_already_exists
+               | Nsm_host_unknown
+               | Nsm_host_not_lost
+               | Osd_already_linked_to_namespace
+               | Not_master
+               | Inconsistent_read
+               | Old_plugin_version
+               | Preset_already_exists
+               | Preset_cant_delete_default
+               | Preset_cant_delete_in_use
+               | Invalid_preset
+               | Osd_already_claimed
+               | Osd_unknown
+               | Osd_info_mismatch
+               | Osd_already_decommissioned
+               | Claim_lease_mismatch
+               | Progress_does_not_exist
+               | Progress_CAS_failed
+               | Unknown_operation ->
+                  let msg = Albamgr_protocol.Protocol.Error.show err in
+                  Lwt_log.error_f
+                    "Unexpected Albamgr_protocol.Protocol.Err exception in proxy while handling request: %s"  msg
+                  >>= fun () ->
+                  return_err_response ~msg Protocol.Error.Unknown
+             end
+          | Alba_client_errors.Error.Exn err ->
+             begin
+               let open Alba_client_errors.Error in
+               Lwt_log.error_f "Got error from alba client: %s" (show err) >>= fun () ->
+               return_err_response
+                 (let open Protocol in
+                  match err with
+                  | ChecksumMismatch -> Error.ChecksumMismatch
+                  | ChecksumAlgoNotAllowed -> Error.ChecksumAlgoNotAllowed
+                  | BadSliceLength -> Error.BadSliceLength
+                  | OverlappingSlices -> Error.OverlappingSlices
+                  | SliceOutsideObject -> Error.SliceOutsideObject
+                  | FileNotFound -> Error.FileNotFound
+                  | NoSatisfiablePolicy -> Error.NoSatisfiablePolicy
+                  | NamespaceDoesNotExist -> Error.NamespaceDoesNotExist
+                  | NotEnoughFragments -> Error.Unknown
+                 )
+             end
+          | exn ->
+             Lwt_log.error_f ~exn "Unexpected exception in proxy while handling request" >>= fun () ->
+             let msg = Printexc.to_string exn in
+             return_err_response ~msg Protocol.Error.Unknown)
 
-    >>= fun (res, maybe_renderer) ->
+    >>= fun (error, res) ->
     Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
-    Lwt.return maybe_renderer
-
+    Lwt.return (error, !renderer)
   in
-  let rec inner () =
-    Llio2.NetFdReader.int_from nfd >>= fun len ->
-    Llio2.NetFdReader.with_buffer_from
-      nfd len
-      (fun buf ->
+  let rec inner buffer =
+    Net_fd.with_message_buffer_from
+      nfd buffer None
+      ~max_buffer_size:16500
+      (fun ~buffer ~offset ~message_length ~extra_bytes ->
+       let module L = Llio2.ReadBuffer in
+       let buf = L.make_buffer buffer ~offset ~length:message_length in
        let code = Llio2.ReadBuffer.int_from buf in
        with_timing_lwt
          (fun () -> handle_request buf code)
-       >>= fun (time_inner, maybe_renderer) ->
-       log_request code maybe_renderer time_inner) >>= fun () ->
-    inner ()
+       >>= fun (time_inner, (error, renderer)) ->
+       log_request code error renderer time_inner) >>= fun () ->
+    inner buffer
   in
   Llio2.NetFdReader.int32_from nfd >>= fun magic ->
   if magic = Protocol.magic
@@ -716,14 +766,20 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     begin
       Llio2.NetFdReader.int32_from nfd >>= fun version ->
       if version = Protocol.version
-      then inner ()
+      then
+        let buf = Lwt_bytes.create 1024 |> ref in
+        Lwt.finalize
+          (fun () -> inner buf)
+          (fun () ->
+            Lwt_bytes.unsafe_destroy !buf;
+            Lwt.return_unit)
       else
         let err = Protocol.Error.ProtocolVersionMismatch
         and msg = Printf.sprintf
                     "protocol version: (server) %li <> %li (client)"
                     Protocol.version version
         in
-        return_err_response ~msg err >>= fun (res, _) ->
+        return_err_response ~msg err >>= fun res ->
         Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos
     end
   else Lwt.return ()

@@ -24,10 +24,9 @@ let ignore_errors ?(logging=false) f =
     (function
       | Lwt.Canceled -> Lwt.fail Lwt.Canceled
       | exn ->
-         (if logging
-          then Lwt_log.info
-          else Lwt_log.debug)
-           ~exn "ignoring")
+         if logging
+         then Lwt_log.info ~exn "ignoring"
+         else Lwt_log.debug ~exn "ignoring")
 
 let with_timeout ~msg (timeout:float) f =
   Lwt.catch
@@ -198,6 +197,26 @@ let read_all fd target offset length =
 
 let read_all_exact fd target offset length =
   read_all fd target offset length >>= expect_exact_length length
+
+
+let _read_buffer_at_least read_to_target ~offset ~max_length ~min_length =
+  let rec inner total_read =
+    read_to_target
+      (offset + total_read)
+      (max_length - total_read)
+    >>= function
+    | 0 -> Lwt.fail End_of_file
+    | read ->
+       let total_read =  total_read + read in
+       if total_read >= min_length
+       then Lwt.return total_read
+       else inner total_read
+  in
+  inner 0
+
+let read_lwt_bytes_at_least fd target = _read_buffer_at_least (Lwt_bytes.read fd target)
+let read_bytes_at_least fd target = _read_buffer_at_least (Lwt_unix.read fd target)
+
 
 let _write_all write_from_source offset length =
   let rec inner offset todo =

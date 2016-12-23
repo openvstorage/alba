@@ -198,12 +198,44 @@ class nsm_host_access
       Lwt.return (ns_info, osds, gc_epochs)
     end
   in
+  let next_id = ref 0L in
+  let lock = Lwt_mutex.create () in
   let get_namespace_info ~namespace_id =
     try Lwt.return (Hashtbl.find namespace_id_to_info_cache namespace_id)
     with Not_found ->
-      mgr # get_namespace_by_id ~namespace_id
-      >>= fun (_,namespace_name, namespace_info) ->
-      maybe_update_namespace_info ~namespace_id namespace_info
+      (* get namespace info in a batched manner *)
+      let rec inner () =
+        mgr # list_namespaces_by_id
+            ~first:!next_id ~finc:true ~last:None
+            ~max:100
+        >>= fun ((cnt, namespaces), has_more) ->
+        Lwt_list.iter_s
+          (fun (namespace_id, _, namespace_info) ->
+            next_id := namespace_id;
+            Lwt_extra2.ignore_errors
+              (fun () ->
+                maybe_update_namespace_info ~namespace_id namespace_info >>= fun _ ->
+                Lwt.return ()) >>= fun () ->
+            Lwt.return ())
+          namespaces >>= fun () ->
+        if has_more
+        then inner ()
+        else Lwt.return_unit
+      in
+      Lwt_mutex.with_lock
+        lock
+        (fun () ->
+          if namespace_id >= !next_id
+          then inner ()
+          else Lwt.return_unit)
+      >>= fun () ->
+
+      try Lwt.return (Hashtbl.find namespace_id_to_info_cache namespace_id)
+      with Not_found ->
+        (* fallback to old code in case item was cleared from cache *)
+        mgr # get_namespace_by_id ~namespace_id
+        >>= fun (_,namespace_name, namespace_info) ->
+        maybe_update_namespace_info ~namespace_id namespace_info
   in
   let get_gc_epoch ~namespace_id =
     get_namespace_info ~namespace_id >>= fun (_, _, gc_epochs) ->

@@ -81,10 +81,12 @@ class client ?(retry_timeout = 60.)
              (alba_client : Alba_base_client.client)
   =
   let tls_config = alba_client # tls_config in
+  let mgr_access = alba_client # mgr_access in
+  let nsm_host_access = alba_client # nsm_host_access in
   let coordinator =
     let open Maintenance_coordination in
     make_maintenance_coordinator
-      (alba_client # mgr_access)
+      mgr_access
       ~lease_name:maintenance_lease_name
       ~lease_timeout:maintenance_lease_timeout
       ~registration_prefix:maintenance_registration_prefix
@@ -185,7 +187,7 @@ class client ?(retry_timeout = 60.)
       Lwt_extra2.run_forever
         "refresh_maintenance_config"
         (fun () ->
-         alba_client # mgr_access # get_maintenance_config >>= fun cfg ->
+         mgr_access # get_maintenance_config >>= fun cfg ->
          maintenance_config <- cfg;
          Lwt.return_unit)
         retry_timeout
@@ -193,7 +195,7 @@ class client ?(retry_timeout = 60.)
     val purging_osds = Hashtbl.create 3
     method refresh_purging_osds ?(once = false) () : unit Lwt.t =
       let inner () =
-        alba_client # mgr_access # list_all_purging_osds >>= fun (_, purging_osds') ->
+        mgr_access # list_all_purging_osds >>= fun (_, purging_osds') ->
         List.iter
           (fun osd_id -> Hashtbl.add purging_osds osd_id ())
           purging_osds';
@@ -234,7 +236,7 @@ class client ?(retry_timeout = 60.)
          if maintenance_config.Maintenance_config.enable_auto_repair
          then
            begin
-             alba_client # mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
+             mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
 
              (* failure detecting already decommissioned osds isn't that useful *)
              let osds =
@@ -339,7 +341,7 @@ class client ?(retry_timeout = 60.)
       alba_client # get_ns_preset_info ~namespace_id
       >>= fun preset ->
 
-      alba_client # nsm_host_access # get_gc_epoch ~namespace_id
+      nsm_host_access # get_gc_epoch ~namespace_id
       >>= fun gc_epoch ->
 
       let enc = manifest.encrypt_info in
@@ -495,7 +497,7 @@ class client ?(retry_timeout = 60.)
         (fun manifest ->
          if Hashtbl.mem purging_osds osd_id
          then
-           alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
+           nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
            alba_client # with_nsm_client'
              ~namespace_id
              (fun client ->
@@ -571,7 +573,7 @@ class client ?(retry_timeout = 60.)
       let rec inner () =
         Lwt.catch
           (fun () ->
-            alba_client # mgr_access # list_all_osd_namespaces ~osd_id >>= fun (_, namespaces) ->
+            mgr_access # list_all_osd_namespaces ~osd_id >>= fun (_, namespaces) ->
 
             List.iter
               (fun namespace_id ->
@@ -616,7 +618,7 @@ class client ?(retry_timeout = 60.)
     method repair_osds : unit Lwt.t =
       let threads = Hashtbl.create 3 in
       let rec inner () =
-        alba_client # mgr_access # list_all_decommissioning_osds >>= fun (_, osds) ->
+        mgr_access # list_all_decommissioning_osds >>= fun (_, osds) ->
 
         let ensure_repair_thread osd_id =
           if not (Hashtbl.mem threads osd_id)
@@ -711,7 +713,7 @@ class client ?(retry_timeout = 60.)
       if once
       then
         begin
-          alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, devices, _) ->
+          nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, devices, _) ->
 
           Lwt_list.iter_p
             (fun osd_id ->
@@ -728,7 +730,7 @@ class client ?(retry_timeout = 60.)
             (if filter namespace_id
              then
                begin
-                 alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
+                 nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
                  List.iter
                    (fun osd_id ->
                     if not (Hashtbl.mem threads osd_id)
@@ -860,7 +862,7 @@ class client ?(retry_timeout = 60.)
 
       let bump_epoch () =
         let open Nsm_model in
-        alba_client # nsm_host_access # get_namespace_info ~namespace_id
+        nsm_host_access # get_namespace_info ~namespace_id
         >>= fun (_, _, gc_epochs) ->
 
         match GcEpochs.get_latest_valid gc_epochs with
@@ -902,7 +904,7 @@ class client ?(retry_timeout = 60.)
           bump_epoch () >>= function
           | None -> Lwt.return ()
           | Some latest_gc_epoch ->
-            alba_client # nsm_host_access # get_namespace_info ~namespace_id
+            nsm_host_access # get_namespace_info ~namespace_id
             >>= fun (_, devices, _) ->
             Lwt_list.iter_p
               (fun osd_id ->
@@ -921,7 +923,7 @@ class client ?(retry_timeout = 60.)
                (if filter namespace_id
                 then
                   begin
-                    alba_client # nsm_host_access # get_namespace_info ~namespace_id
+                    nsm_host_access # get_namespace_info ~namespace_id
                     >>= fun (_, devices, _) ->
                     List.iter
                       (fun osd_id ->
@@ -958,7 +960,7 @@ class client ?(retry_timeout = 60.)
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
       alba_client # get_namespace_osds_info_cache ~namespace_id
       >>= fun osd_info_cache ->
-      let open Albamgr_protocol.Protocol.Preset in
+      let open Preset in
       let policies = preset.policies in
       let best = Alba_client_common.get_best_policy_exn policies osd_info_cache in
       let (best_k, best_m, _, _), _, _ = best in
@@ -986,7 +988,7 @@ class client ?(retry_timeout = 60.)
       if (current_k,current_m) = (best_k,best_m)
       then
         begin
-          alba_client # nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
+          nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
           Lwt.catch
             (fun () ->
              _timed_repair_object_generic_and_update_manifest
@@ -1124,10 +1126,7 @@ class client ?(retry_timeout = 60.)
     method repair_by_policy_namespace' ~namespace_id =
 
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
-      let policies =
-        let open Albamgr_protocol.Protocol.Preset in
-        preset.policies
-      in
+      let policies = preset.Preset.policies in
       alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache ->
 
       let ((best_k, best_m, _, _) as best_policy),
@@ -1149,7 +1148,7 @@ class client ?(retry_timeout = 60.)
        * 2) rebalance based on max_disks_per_node, until all are maximally spread
        *)
 
-      alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
+      nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
 
       nsm # get_stats >>= fun stats ->
       let (_, bucket_count) = stats.Nsm_model.NamespaceStats.bucket_count in
@@ -1425,7 +1424,7 @@ class client ?(retry_timeout = 60.)
       let namespace_exists ~namespace_id =
             Lwt.catch
               (fun () ->
-               alba_client # mgr_access # get_namespace_by_id ~namespace_id
+               mgr_access # get_namespace_by_id ~namespace_id
                >>= fun _r ->
                Lwt.return_true
               )
@@ -1438,7 +1437,7 @@ class client ?(retry_timeout = 60.)
       in
       match work_item with
       | CleanupNsmHostNamespace (nsm_host_id, namespace_id) ->
-        let nsm_client = alba_client # nsm_host_access # get ~nsm_host_id in
+        let nsm_client = nsm_host_access # get ~nsm_host_id in
         let rec inner () =
           nsm_client # cleanup_for_namespace ~namespace_id >>= fun cnt ->
           Lwt_log.debug_f
@@ -1513,7 +1512,7 @@ class client ?(retry_timeout = 60.)
         wait_until
           (Printf.sprintf "WaitUntilDecommissioned osd_id=%Li" osd_id)
           (fun () ->
-             alba_client # mgr_access # list_osd_namespaces
+             mgr_access # list_osd_namespaces
                ~osd_id
                ~first:0L ~finc:true ~last:None ~reverse:false ~max:1
              >>= fun ((cnt, _), _) ->
@@ -1611,8 +1610,7 @@ class client ?(retry_timeout = 60.)
              in
              let update_progress_and_maybe_continue new_p has_more =
                let po = Some new_p in
-               alba_client # mgr_access # update_progress
-                           name p po >>= fun () ->
+               mgr_access # update_progress name p po >>= fun () ->
 
                if not (filter work_id)
                then Lwt.fail NotMyTask
@@ -1709,11 +1707,13 @@ class client ?(retry_timeout = 60.)
              | _, Work.Verify _ ->
                 Lwt.fail_with "badly set up IterNamespace task!"
         in
-        alba_client # mgr_access # get_progress name >>= fun po ->
+        mgr_access # get_progress name >>= fun po ->
         inner po
       | IterNamespace _ ->
         (* the logic for this task is on the albamgr (server) side *)
         Lwt.return ()
+      | PropagatePreset preset_name ->
+         alba_client # get_preset_cache # refresh ~preset_name
 
 
     val mutable next_work_item = 0L
@@ -1737,7 +1737,7 @@ class client ?(retry_timeout = 60.)
                          (Work.show work_item) >>= fun () ->
 
                        self # handle_work_item work_item work_id >>= fun () ->
-                       alba_client # mgr_access # mark_work_completed ~work_id
+                       mgr_access # mark_work_completed ~work_id
                      end
                    else
                      Lwt.return_unit)
@@ -1804,7 +1804,7 @@ class client ?(retry_timeout = 60.)
     coordinator # add_on_position_changed (fun () -> next_work_item <- 0L);
 
     let rec inner () =
-      alba_client # mgr_access # get_work
+      mgr_access # get_work
                   ~first:next_work_item ~finc:true
                   ~last:None ~max:100 ~reverse:false
       >>= fun ((cnt, work_items), has_more) ->
@@ -1881,14 +1881,14 @@ class client ?(retry_timeout = 60.)
            | `Retry ->
               Lwt_extra2.sleep_approx retry_timeout >>= fun () ->
               Lwt.catch
-                (fun () -> alba_client # mgr_access # get_namespace ~namespace)
+                (fun () -> mgr_access # get_namespace ~namespace)
                 (fun exn ->  Lwt.return current)
               >>= wait_until_ns_active
          in
          let current = Some (namespace, namespace_info) in
          wait_until_ns_active current >>= fun ns_info ->
 
-         alba_client # nsm_host_access # maybe_update_namespace_info
+         nsm_host_access # maybe_update_namespace_info
            ~namespace_id
            ns_info >>= fun _ ->
 
@@ -1942,7 +1942,7 @@ class client ?(retry_timeout = 60.)
     let rec inner () =
       Lwt.catch
         (fun () ->
-           alba_client # mgr_access # list_namespaces_by_id
+           mgr_access # list_namespaces_by_id
              ~first:!next_id ~finc:true ~last:None
              ~max:100
            >>= fun ((cnt, namespaces), has_more) ->
@@ -1971,8 +1971,8 @@ class client ?(retry_timeout = 60.)
   method deliver_all_messages ?(is_master= fun () -> true) () : unit Lwt.t =
     Alba_client_message_delivery.deliver_all_messages
       is_master
-      (alba_client # mgr_access)
-      (alba_client # nsm_host_access)
+      mgr_access
+      nsm_host_access
       osd_access
 
   method cache_eviction () : unit Lwt.t =
@@ -1991,7 +1991,7 @@ class client ?(retry_timeout = 60.)
     let rec get_redis_lru_cache_eviction () =
       Lwt.catch
         (fun () ->
-         alba_client # mgr_access # get_maintenance_config >>= fun r ->
+         mgr_access # get_maintenance_config >>= fun r ->
          Lwt.return (`Success r.Maintenance_config.redis_lru_cache_eviction))
         (fun exn ->
          Lwt.return `Retry) >>= function
@@ -2068,7 +2068,7 @@ class client ?(retry_timeout = 60.)
                  let prefixes = get_prefixes () in
                  Lwt_list.map_p
                    (fun prefix ->
-                    alba_client # mgr_access # list_all_namespaces_with_prefix prefix)
+                    mgr_access # list_all_namespaces_with_prefix prefix)
                    prefixes >>= fun namespaces ->
                  let namespaces =
                    List.fold_left
@@ -2083,7 +2083,7 @@ class client ?(retry_timeout = 60.)
                    begin
                      let (namespace, ns_info) = List.nth_exn namespaces (Random.int length) in
                      let namespace_id = ns_info.Albamgr_protocol.Protocol.Namespace.id in
-                     alba_client # nsm_host_access # get_nsm_by_id ~namespace_id
+                     nsm_host_access # get_nsm_by_id ~namespace_id
                      >>= fun nsm_client ->
                      let first, last, reverse = make_first_last_reverse () in
                      nsm_client # list_objects_by_id
@@ -2204,7 +2204,7 @@ class client ?(retry_timeout = 60.)
                  "Failed to refresh abm_cfg for osd %Li" osd_id >>= fun () ->
                Lwt.return_none))
       >>= fun updates ->
-      alba_client # mgr_access # update_osds updates
+      mgr_access # update_osds updates
     in
     Lwt_extra2.run_forever
       "refresh_alba_osd_cfg"

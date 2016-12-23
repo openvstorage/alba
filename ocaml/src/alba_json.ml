@@ -246,7 +246,7 @@ end
 
 module Preset = struct
 
-  type osds = Albamgr_protocol.Protocol.Preset.osds =
+  type osds = Preset.osds =
     | All      [@name "all"]
     | Explicit of int64 list [@name "explicit"]
   [@@deriving yojson]
@@ -304,7 +304,7 @@ module Preset = struct
   type t_list = t list [@@deriving yojson]
 
   let make (name, preset, is_default, in_use) =
-    let open Albamgr_protocol.Protocol.Preset in
+    let open Preset in
     { name;
       policies = preset.policies;
       is_default;
@@ -338,7 +338,7 @@ module Preset = struct
       fragment_checksum; fragment_encryption;
     }
     =
-    let open Albamgr_protocol.Protocol.Preset in
+    let open Preset in
     let open Lwt.Infix in
 
     (let open Encryption in
