@@ -330,18 +330,14 @@ let add_work_items (db : read_user_db) ?(check=true) work_items =
       )
       ([],StringSet.empty) (List.rev work_items)
   in
-  let updates = [
-      Log_plugin.make_update_x64_with_secondary
-        ~next_id_key:Keys.Work.next_id
-        ~log_prefix:Keys.Work.prefix
-        ~msgs:(List.map
-                 (serialize Protocol.Work.to_buffer)
-                 work_items)
-        ~secondary_prefix:Keys.Work.job_name_prefix
-        ~secondary
-    ]
-  in
-  updates
+  Log_plugin.make_update_x64_with_secondary
+    ~next_id_key:Keys.Work.next_id
+    ~log_prefix:Keys.Work.prefix
+    ~msgs:(List.map
+             (serialize Protocol.Work.to_buffer)
+             work_items)
+    ~secondary_prefix:Keys.Work.job_name_prefix
+    ~secondary
 
 
 let add_msgs : type dest msg.
@@ -493,13 +489,14 @@ let upds_for_delivered_msg
                 List.fold_left
                   (fun acc osd_id ->
                    let upds =
-                     Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
-                                     None) ::
-                       Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
-                                       None) ::
-                         add_work_items
-                           db
-                           [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
+                     [Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
+                                      None);
+                      Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
+                                       None);
+                      add_work_items
+                        db
+                        [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
+                     ]
                    in
                    upds::acc)
                   []
@@ -507,7 +504,7 @@ let upds_for_delivered_msg
               in
 
               List.concat
-                [ add_work_item;
+                [ [add_work_item];
                   List.concat cleanup_osds;
                   delete_ns_info;
                   [ delete_preset_used_by_ns; ]; ]
@@ -544,16 +541,15 @@ let upds_for_delivered_msg
            | LinkOsd _ -> []
            | UnlinkOsd osd_id ->
               let add_work_item =
-                add_work_items db
-                  [ Work.WaitUntilRepaired (osd_id, namespace_id) ]  in
-
-              List.concat
-                [ update_namespace_link
-                    ~namespace_id ~osd_id
-                    Osd.NamespaceLink.Decommissioning
-                    Osd.NamespaceLink.Repairing;
-                  add_work_item
-                ]
+                add_work_items
+                  db
+                  [ Work.WaitUntilRepaired (osd_id, namespace_id) ]
+              in
+              add_work_item::
+                update_namespace_link
+                  ~namespace_id ~osd_id
+                  Osd.NamespaceLink.Decommissioning
+                  Osd.NamespaceLink.Repairing
          end
     end
   | Msg_log.Osd -> begin
@@ -573,9 +569,10 @@ let upds_for_delivered_msg
                add_work_items db
                  [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
              in
-             Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None)
-             :: Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None)
-             :: add_work_items
+             [Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None);
+              Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None);
+              add_work_items
+             ]
            end
          else
            begin
@@ -1179,8 +1176,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       in
 
       let add_to_decommissioned_osds = Update.Set (Keys.Osd.decommissioning ~osd_id, "") in
-      let add_work_item = add_work_items db
-                                         [ Work.WaitUntilDecommissioned osd_id ]
+      let add_work_item =
+        add_work_items
+          db
+          [ Work.WaitUntilDecommissioned osd_id ]
       in
 
       let upd_namespace_links =
@@ -1198,8 +1197,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       in
 
       let upds = List.concat [
-          add_work_item;
-          [ add_to_decommissioned_osds; ];
+          [add_work_item];
+          [add_to_decommissioned_osds] ;
           List.flatten unlink_from_namespaces;
           upd_namespace_links;
           upd_info;
@@ -1604,7 +1603,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                     msg_id))) ]
     | AddWork ->
        fun (_cnt, work) ->
-       let updates = add_work_items db ~check:true work in
+       let updates = [add_work_items db ~check:true work] in
        return_upds updates
     | MarkWorkCompleted -> fun id ->
       let work_key = Keys.Work.prefix ^ serialize x_int64_be_to id in
@@ -1657,7 +1656,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
             let add_work_items = add_work_items db (List.map fst items) in
             let update_progress = List.map snd items in
-            List.rev_append add_work_items update_progress
+            add_work_items :: update_progress
           | WaitUntilRepaired (osd_id, namespace_id) ->
             let add_work =
               add_work_items
@@ -1671,8 +1670,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               [ Update.Replace (key1, None);
                 Update.Replace (key2, None); ]
             in
-            List.concat [ add_work;
-                          deletes; ]
+            add_work :: deletes
           | WaitUntilDecommissioned osd_id ->
              begin
                let remove_x = Update.Replace (Keys.Osd.decommissioning ~osd_id, None); in
