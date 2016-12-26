@@ -1175,7 +1175,9 @@ let test_repair_by_policy () =
        with_maintenance_client
          alba_client
          (fun maintenance_client ->
-          maintenance_client # repair_by_policy_namespace ~namespace_id)
+           maintenance_client # repair_by_policy_namespace'
+                              ~skip_recent:false
+                              ~namespace_id ())
        >>= fun () ->
 
        alba_client # get_object_manifest
@@ -2003,7 +2005,9 @@ let test_update_policies () =
      with_maintenance_client
        alba_client
        (fun maintenance_client ->
-        maintenance_client # repair_by_policy_namespace ~namespace_id)
+         maintenance_client # repair_by_policy_namespace'
+                            ~skip_recent:false
+                            ~namespace_id ())
      >>= fun () ->
 
      alba_client # get_object_manifest

@@ -1129,10 +1129,10 @@ class client ?(retry_timeout = 60.)
 
     method repair_by_policy_namespace ~namespace_id =
       if filter namespace_id
-      then self # repair_by_policy_namespace' ~namespace_id
+      then self # repair_by_policy_namespace' ~namespace_id ()
       else Lwt.return ()
 
-    method repair_by_policy_namespace' ~namespace_id =
+    method repair_by_policy_namespace' ?(skip_recent=true) ~namespace_id () =
 
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
       let policies = preset.Preset.policies in
@@ -1401,7 +1401,7 @@ class client ?(retry_timeout = 60.)
           (* filter out recent object uploads to avoid repairing objects
            * that are still being written out lazily
            *)
-          if is_recent mf.Nsm_model.Manifest.timestamp
+          if skip_recent && is_recent mf.Nsm_model.Manifest.timestamp
           then Lwt.return_unit
           else f mf
         in
