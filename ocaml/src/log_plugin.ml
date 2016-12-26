@@ -80,6 +80,14 @@ let user_function_x64_sec
              | None -> store_item ()
              | Some secondary  ->
                 let sec_key = secondary_prefix ^ secondary in
+                let () =
+                  if user_db # exists sec_key
+                  then
+                    failwith
+                    (Printf.sprintf
+                       "secondary index: key %S exists"
+                       sec_key)
+                in
                 let () = user_db # put sec_key (Some key) in
                 store_item ()
            end;
