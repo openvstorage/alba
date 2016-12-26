@@ -210,6 +210,12 @@ let test_unknown_operation () =
      client # get_version >>= fun _ ->
      Lwt.return ())
 
+let test_osd_view () =
+  test_with_proxy_client
+    (fun client ->
+      client # osd_view >>= fun (claim, state_info) ->
+      Lwt.return_unit)
+
 open OUnit
 
 let suite = "proxy_test" >:::[
@@ -219,4 +225,5 @@ let suite = "proxy_test" >:::[
     "test_read" >:: test_read;
     "test_protocol_version" >:: test_protocol_version;
     "test_unknown_operation" >:: test_unknown_operation;
+    "test_osd_view" >:: test_osd_view;
   ]
