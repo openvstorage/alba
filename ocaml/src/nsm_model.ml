@@ -2021,11 +2021,20 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           ~validate:false
       in
       let fragment_count_updated, max_disks_per_node_updated =
+        let all_fragment_updates_are_removes =
+          List.for_all
+            (fun (_, _, osd_id_o, _, _) -> osd_id_o = None)
+            new_fragments
+        in
         get_min_fragment_count_and_max_disks_per_node
           kv
           ~k ~m
           updated_manifest.fragment_locations
-          ~validate:true
+          (* registering that a fragment was permanently lost
+           * should always be possible, even if it violates the
+           * policy.
+           *)
+          ~validate:(not all_fragment_updates_are_removes)
       in
       if fragment_count_old     <> fragment_count_updated ||
          max_disks_per_node_old <> max_disks_per_node_updated
