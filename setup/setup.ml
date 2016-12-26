@@ -1526,6 +1526,10 @@ module Deployment = struct
     let cmd0 = ["verify-namespace"; namespace; job_name] in
     cmd0 |> _alba_with_cfg t
 
+  let rewrite_namespace t namespace job_name =
+    let cmd0 = ["rewrite-namespace"; namespace; job_name] in
+    cmd0 |> _alba_with_cfg t
+
   let verify_namespaces t ns_names =
     "verify-namespaces" :: "--namespaces" :: ns_names
     |> _alba_with_cfg t
@@ -2757,16 +2761,16 @@ module Test = struct
     let test () =
       Deployment.stop_maintenance t;
       let ns = "demo" in
-      let job_name i = Printf.sprintf "verify:%s:%02i" ns i in
+      let vn_name i = Printf.sprintf "verify:%s:%02i" ns i in
+      let rw_name i = Printf.sprintf "rewrite:%s:%02i" ns i in
+
       let () =
         let rec loop n =
-          if n = 100
+          if n = 50
           then ()
           else
-            let jn = job_name n in
-            let () = Deployment.verify_namespace
-                       t ns jn
-            in
+            let () = Deployment.verify_namespace  t ns (vn_name n) in
+            let () = Deployment.rewrite_namespace t ns (rw_name n) in
             loop (n+1)
         in
         loop 0
@@ -2805,16 +2809,21 @@ module Test = struct
         wait_for_condition 200 msg f
       in
       wait_for_maintenance ();
-      let job = job_name 50 in
-      let progress = Deployment.job_progress t job in
-      print_endline progress;
+      let job_0 = vn_name 40 in
+      let job_1 = rw_name 40 in
+      let progress_0 = Deployment.job_progress t job_0 in
+      let progress_1 = Deployment.job_progress t job_1 in
+      print_endline progress_0;
+      print_endline progress_1;
 
       (* TODO: need an assert on progress ? *)
 
-      Deployment.clear_job_progress t job;
+      Deployment.clear_job_progress t job_0;
+      Deployment.clear_job_progress t job_1;
       let jobs = Deployment.list_jobs t in
-      assert (100 = List.length jobs);
-      assert (not (List.mem job jobs) );
+      assert (99 = List.length jobs);
+      assert (not (List.mem job_0 jobs) );
+      assert (not (List.mem job_1 jobs) );
       let () = Shell._print ">>>>> end of job_crud" in
       JUnit.Ok
     in

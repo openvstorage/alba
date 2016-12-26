@@ -321,7 +321,7 @@ let add_work_items (db : read_user_db) work_items =
     List.fold_left
       (fun (acc,names) item ->
         match item with
-        | W.IterNamespace (W.Verify _, nsid, name, cnt) ->
+        | W.IterNamespace (_, _, name, _) ->
           let key = Keys.Work.job_name_prefix ^ name in
           if StringSet.mem name names || db # exists key
           then
@@ -732,10 +732,10 @@ let ensure_job_name_index db backend =
             let v = W.from_buffer buffer in
 
             match v with
-            | W.IterNamespace (W.Verify _, _, name, _) ->
+            | W.IterNamespace (_, _, name, _) ->
                begin
                  Lwt_log.ign_debug_f
-                   "fold_range:%S ->     Verify name=%S"
+                   "fold_range:%S -> name=%S"
                    item_key name;
                  let acc' = (item_key, name) :: acc in
                  let count' = count + 1 in
