@@ -712,6 +712,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                | Claim_lease_mismatch
                | Progress_does_not_exist
                | Progress_CAS_failed
+               | Bad_argument
                | Unknown_operation ->
                   let msg = Albamgr_protocol.Protocol.Error.show err in
                   Lwt_log.error_f
