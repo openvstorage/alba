@@ -1369,7 +1369,10 @@ class client ?(retry_timeout = 60.)
           Lwt.return ()
         in
 
-        let do_one =
+        let t0 = Unix.gettimeofday () in
+        let is_recent t = (t0 -. 60.) < t && t < (t0 +. 60.) in
+
+        let do_one mf =
           let wrap_rewrite name f =
             fun manifest ->
             Lwt.catch
@@ -1386,13 +1389,21 @@ class client ?(retry_timeout = 60.)
                             repaired_some := true;
                             Lwt.return_unit))
           in
-          match job with
-          | `Rewrite ->
-             rewrite
-          | `Regenerate ->
-             wrap_rewrite "Regenerate" regenerate
-          | `Rebalance ->
-             wrap_rewrite "Rebalance" rebalance
+          let f = match job with
+            | `Rewrite ->
+               rewrite
+            | `Regenerate ->
+               wrap_rewrite "Regenerate" regenerate
+            | `Rebalance ->
+               wrap_rewrite "Rebalance" rebalance
+          in
+
+          (* filter out recent object uploads to avoid repairing objects
+           * that are still being written out lazily
+           *)
+          if is_recent mf.Nsm_model.Manifest.timestamp
+          then Lwt.return_unit
+          else f mf
         in
 
         Lwt_list.iter_s do_one objs >>= fun () ->
