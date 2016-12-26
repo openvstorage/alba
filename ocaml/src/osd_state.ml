@@ -149,7 +149,7 @@ let from_buffer buf =
   let used = Llio.option_from Llio.int64_from buf in
   let total = Llio.option_from Llio.int64_from buf in
   let checksum_errors =
-    Llio.maybe_from_buffer_no_assert
+    Llio.maybe_from_buffer
       (Llio.option_from Llio.int64_from) None
       buf
   in
