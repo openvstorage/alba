@@ -315,7 +315,7 @@ let get_namespace_osds
      (osd_id, state))
 
 
-let add_work_items (db : read_user_db) ?(check=true) work_items =
+let add_work_items (db : read_user_db) work_items =
   let module W = Protocol.Work in
   let secondary,_ =
     List.fold_left
@@ -699,7 +699,7 @@ let ensure_alba_id db backend =
   | Some id ->
      Lwt.return id
 
-let ensure_index db backend =
+let ensure_job_name_index db backend =
   let have = db # get Keys.have_job_name_index in
   begin
   match have with
@@ -773,10 +773,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
   Llio.output_int32 oc 0l >>= fun () ->
 
-  (* ensure we have an alba_id *)
-
   ensure_alba_id db backend >>= fun alba_id ->
-  ensure_index   db backend >>= fun () ->
+  ensure_job_name_index db backend >>= fun () ->
 
   let () = maybe_activate_reporting () in
 
@@ -1732,7 +1730,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                     msg_id))) ]
     | AddWork ->
        fun (_cnt, work) ->
-       let updates = [add_work_items db ~check:true work] in
+       let updates = [add_work_items db work] in
        return_upds updates
     | MarkWorkCompleted -> fun id ->
       let work_key = Keys.Work.prefix ^ serialize x_int64_be_to id in
