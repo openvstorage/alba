@@ -31,13 +31,9 @@ using llio::message_builder;
 TCP_transport::TCP_transport(
     const string &ip, const string &port,
     const std::chrono::steady_clock::duration &timeout) {
-  ALBA_LOG(INFO, "TCPProxy_client(" << ip << ", " << port << ")");
+  ALBA_LOG(INFO, "TCP_transport(" << ip << ", " << port << ")");
   this->expires_from_now(timeout);
   _stream.connect(ip, port);
-  int32_t magic{1148837403};
-  int32_t version{1};
-  _stream.write((const char *)(&magic), 4);
-  _stream.write((const char *)(&version), 4);
   _stream.expires_at(boost::posix_time::max_date_time);
 }
 
@@ -47,11 +43,18 @@ void TCP_transport::expires_from_now(
       std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count()));
 }
 
-void TCP_transport::output(message_builder &mb) { mb.output(_stream); }
-
-message TCP_transport::input() {
-  message response(_stream);
-  return response;
+void TCP_transport::write_exact(const char *buf, int len) {
+  _stream.write(buf, len);
+  _stream.flush();
+  if (!_stream.good()) {
+    throw transport_exception("invalid outputstream");
+  }
+}
+void TCP_transport::read_exact(char *buf, int len) {
+  _stream.read(buf, len);
+  if (!_stream.good()) {
+    throw transport_exception("invalid inputstream");
+  }
 }
 }
 }

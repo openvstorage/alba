@@ -43,7 +43,7 @@ struct asd_exception : std::exception {
 class Asd_client {
 public:
   static Asd_client make_client(std::unique_ptr<transport::Transport> &&,
-                                string long_id,
+                                boost::optional<string> long_id,
                                 const std::chrono::steady_clock::duration &);
 
   void partial_get(string &, vector<slice> &);

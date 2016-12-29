@@ -56,7 +56,7 @@ struct slice {
 static string _MAGIC = "aLbA";
 static uint32_t _VERSION = 1;
 
-void make_prologue(message_builder &mb, string long_id);
+void make_prologue(message_builder &mb, boost::optional<string> long_id);
 
 void write_partial_get_request(message_builder &mb, string &key,
                                vector<slice> &slices);

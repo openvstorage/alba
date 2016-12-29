@@ -29,10 +29,10 @@ using llio::message;
 using llio::to;
 using llio::from;
 
-void make_prologue(message_builder &mb, string long_id) {
+void make_prologue(message_builder &mb, boost::optional<string> long_id) {
   mb.add_raw(_MAGIC.data(), _MAGIC.length());
-  to(mb, _VERSION);
-  to(mb, boost::optional<string>(long_id));
+  to<uint32_t>(mb, _VERSION);
+  to(mb, long_id);
 }
 
 void write_partial_get_request(message_builder &mb, string &key,

@@ -30,7 +30,7 @@ Asd_client::Asd_client(const std::chrono::steady_clock::duration &timeout,
 
 Asd_client
 Asd_client::make_client(std::unique_ptr<transport::Transport> &&transport,
-                        string long_id,
+                        boost::optional<string> long_id,
                         const std::chrono::steady_clock::duration &timeout) {
   message_builder mb;
   asd_protocol::make_prologue(mb, long_id);
@@ -51,8 +51,10 @@ Asd_client::make_client(std::unique_ptr<transport::Transport> &&transport,
   transport->read_exact(buf.data(), length);
   string long_id2(buf.data(), length);
 
-  if (long_id != long_id2) {
-    throw asd_exception("wrong asd on the other side");
+  if (long_id != boost::none) {
+    if (*long_id != long_id2) {
+      throw asd_exception("wrong asd on the other side");
+    }
   }
 
   return Asd_client(timeout, std::move(transport));
