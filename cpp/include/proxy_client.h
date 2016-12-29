@@ -22,6 +22,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "proxy_protocol.h"
 #include "proxy_sequences.h"
 #include "statistics.h"
+#include "transport.h"
+
 #include <boost/asio.hpp>
 #include <chrono>
 #include <iosfwd>
@@ -146,18 +148,12 @@ public:
   virtual void osd_info2(osd_maps_t &result) = 0;
 };
 
-enum class Transport { tcp, rdma };
-
-std::ostream &operator<<(std::ostream &, Transport);
-
-std::istream &operator>>(std::istream &, Transport &);
-
 /* factory method: gets the correct client for a particular transport
  */
 std::unique_ptr<Proxy_client>
 make_proxy_client(const std::string &ip, const std::string &port,
                   const std::chrono::steady_clock::duration &timeout,
-                  const Transport &transport,
+                  const transport::Kind &transport,
                   const boost::optional<RoraConfig> &rora = boost::none);
 
 std::ostream &operator<<(std::ostream &, const RoraConfig &);

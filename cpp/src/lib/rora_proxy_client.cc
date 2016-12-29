@@ -18,6 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include "rora_proxy_client.h"
 #include "alba_logger.h"
+#include "asd_client.h"
 #include "manifest.h"
 #include "manifest_cache.h"
 #include "osd_access.h"

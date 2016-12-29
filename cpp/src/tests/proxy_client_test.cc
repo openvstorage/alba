@@ -20,7 +20,6 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "alba_logger.h"
 #include "manifest.h"
 #include "gtest/gtest.h"
-#include "gtest/gtest.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/log/trivial.hpp>
@@ -44,6 +43,7 @@ string env_or_default(const std::string &name, const std::string &def) {
 
 auto TIMEOUT = std::chrono::seconds(20);
 using alba::proxy_client::Proxy_client;
+using alba::proxy_client::make_proxy_client;
 using namespace alba;
 
 struct config_exception : std::exception {
@@ -57,12 +57,12 @@ struct config {
   config() {
     PORT = env_or_default("ALBA_PROXY_PORT", "10000");
     HOST = env_or_default("ALBA_PROXY_IP", "127.0.0.1");
-    TRANSPORT = alba::proxy_client::Transport::tcp;
+    TRANSPORT = alba::transport::Kind::tcp;
     string transport = env_or_default("ALBA_PROXY_TRANSPORT", "tcp");
     boost::algorithm::to_lower(transport);
 
     if (transport == "rdma") {
-      TRANSPORT = alba::proxy_client::Transport::rdma;
+      TRANSPORT = alba::transport::Kind::rdma;
     }
     NAMESPACE = "demo";
   }
@@ -70,7 +70,7 @@ struct config {
   string PORT;
   string HOST;
   string NAMESPACE;
-  alba::proxy_client::Transport TRANSPORT;
+  alba::transport::Kind TRANSPORT;
 };
 
 TEST(proxy_client, list_objects) {

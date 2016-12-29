@@ -86,7 +86,7 @@ using namespace alba::proxy_client;
 
 void proxy_get_version(const string &host, const string &port,
                        const std::chrono::steady_clock::duration &timeout,
-                       const Transport &transport) {
+                       const alba::transport::Kind &transport) {
   auto client = make_proxy_client(host, port, timeout, transport);
   auto version = client->get_proxy_version();
 
@@ -162,7 +162,7 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
 
 void partial_read_benchmark(const string &host, const string &port,
                             const std::chrono::steady_clock::duration &timeout,
-                            const Transport &transport,
+                            const alba::transport::Kind &transport,
                             const string &namespace_, const string &file_name,
                             const int n, const int n_clients,
                             const boost::optional<RoraConfig> &rora_config,
@@ -307,12 +307,12 @@ int main(int argc, const char *argv[]) {
                                      logging::trivial::debug);
   };
   auto timeout = std::chrono::seconds(5);
-  Transport transport(Transport::tcp);
+  alba::transport::Kind transport(alba::transport::Kind::tcp);
 
   if (vm.count("transport")) {
     string transport_s = vm["transport"].as<string>();
     if (transport_s == "rdma") {
-      transport = Transport::rdma;
+      transport = alba::transport::Kind::rdma;
     } else {
       assert(transport_s == "tcp");
     }

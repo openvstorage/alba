@@ -34,7 +34,8 @@ _OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            proxy_sequences.o \
            io.o proxy_client.o generic_proxy_client.o \
 	   tcp_proxy_client.o rdma_proxy_client.o rora_proxy_client.o \
-	   osd_info.o manifest_cache.o osd_access.o statistics.o
+	   osd_info.o manifest_cache.o osd_access.o statistics.o \
+	   asd_client.o asd_protocol.o rdma_transport.o tcp_transport.o transport.o
 
 OBJECTS = $(patsubst %,src/lib/%,$(_OBJECTS))
 
@@ -88,5 +89,5 @@ clean:
 	rm -rf ./bin/*
 
 format:
-	find -name "*.cc" | xargs clang-format -i
-	find -name "*.h"  | xargs clang-format -i
+	find -name "*.cc" | xargs clang-format-3.8 -i
+	find -name "*.h"  | xargs clang-format-3.8 -i
