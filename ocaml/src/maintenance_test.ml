@@ -363,7 +363,7 @@ let test_repair_orange () =
        with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace' ~namespace_id)
+          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
        >>= fun () ->
 
        alba_client # get_object_manifest
@@ -434,7 +434,7 @@ let test_repair_orange2 () =
        with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace ~namespace_id)
+          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
        >>= fun () ->
 
        alba_client # get_object_manifest
@@ -536,7 +536,7 @@ let test_rebalance_node_spread () =
      with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace ~namespace_id)
+          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
        >>= fun () ->
 
      get_buckets () >>= fun r ->
@@ -977,7 +977,7 @@ let test_repair_evolved_compressor () =
        with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace ~namespace_id)
+          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
        >>= fun () ->
 
        alba_client # get_object_manifest

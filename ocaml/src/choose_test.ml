@@ -229,6 +229,22 @@ let test_bias2 () =
     )
     counts
 
+let test_bias3 () =
+  let weights = [-0.7;0.05;0.01] in
+  let items   = [0;1;2] in
+  let xws = List.combine items weights in
+  let pick () =
+    let xw0, _ = Inner.take_biased snd xws in
+    xw0
+  in
+  let rec loop i =
+    if i = 0 then ()
+    else
+      let _ = pick () in
+      loop (i-1)
+  in
+  loop 50_000
+
 let test_actually_rebalances () =
   let open Inner in
   let () = Random.init 42 in
@@ -511,6 +527,7 @@ let suite =
    "choose_forced" >:: choose_forced;
    "bias1" >:: test_bias;
    "bias2" >:: test_bias2;
+   "bias3" >:: test_bias3;
    "actually_rebalances" >:: test_actually_rebalances;
    "distribution_bug" >:: test_distribution_bug;
   ]
