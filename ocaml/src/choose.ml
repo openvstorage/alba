@@ -52,12 +52,13 @@ module Inner = struct
       let n = Random.float total in
       let rec loop cw sx xs =
         match xs with
+        | [] -> failwith "take_biased on empty list"
+        | [x] -> x, List.rev sx (* don't fail with negative weights *)
         | x ::  xt ->
            let w = weight_of x in
            if n < cw +. w
            then x, List.rev_append sx xt
            else loop (cw +. w) (x :: sx) xt
-        | _ -> failwith "can't happen"
       in
       loop 0.0 [] xs
 
