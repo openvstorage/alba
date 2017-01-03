@@ -29,6 +29,7 @@
 BOOLEAN_ENUM(ForceNewConnection)
 
 namespace alba {
+namespace asd {
 
 using asd_client::Asd_client;
 
@@ -71,4 +72,20 @@ private:
 
   void release_connection_(Asd_client *);
 };
+
+class ConnectionPools {
+public:
+  ConnectionPool *get_connection_pool(const proxy_protocol::OsdInfo &);
+
+  ~ConnectionPools();
+
+  ConnectionPools(const ConnectionPools &) = delete;
+
+  ConnectionPools &operator=(const ConnectionPools &) = delete;
+
+private:
+  mutable alba::spinlock::SpinLock lock_;
+  std::map<std::string, ConnectionPool *> connection_pools_;
+};
+}
 }

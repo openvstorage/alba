@@ -29,6 +29,7 @@
 #include <boost/thread/lock_guard.hpp>
 
 namespace alba {
+namespace asd {
 
 using alba::proxy_protocol::OsdInfo;
 
@@ -64,7 +65,11 @@ void ConnectionPool::clear_(Connections &conns) {
 }
 
 std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
-  throw "TODO should make asd client here";
+  auto duration = std::chrono::seconds(5);
+  std::unique_ptr<transport::Transport> transport(new transport::TCP_transport(
+      config_->ips[0], std::to_string(config_->port), duration));
+  std::unique_ptr<Asd_client> c(new Asd_client(duration, std::move(transport)));
+  return c;
 }
 
 void ConnectionPool::release_connection_(Asd_client *conn) {
@@ -85,20 +90,13 @@ ConnectionPool::get_connection(ForceNewConnection force_new) {
 
   if (force_new == ForceNewConnection::F) {
     LOCK();
-    auto duration = std::chrono::seconds(5);
-    std::unique_ptr<transport::Transport> transport(
-        new transport::TCP_transport(config_->ips[0],
-                                     std::to_string(config_->port), duration));
-    std::unique_ptr<Asd_client> c(new Asd_client(duration, std::move(transport)));
-    conn.reset();
+    conn = pop_(connections_);
   }
 
   if (not conn) {
-    // conn = BackendConnectionInterfacePtr(make_one_().release(), d);
-    LOCK();
+    conn = make_one_();
   }
 
-  // TODO  ASSERT(conn);
   return conn;
 }
 
@@ -134,5 +132,32 @@ void ConnectionPool::capacity(size_t cap) {
 
   ALBA_LOG(INFO, *config_ << ": updated capacity from " << cap << " to "
                           << capacity());
+}
+
+ConnectionPool *
+ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info) {
+  {
+    LOCK();
+    auto it = connection_pools_.find(osd_info.long_id);
+    if (it == connection_pools_.end()) {
+      ALBA_LOG(INFO, "asd ConnenctionPools adding ConnectionPool for "
+                         << osd_info.long_id);
+      proxy_protocol::OsdInfo *osd_info_copy =
+          new proxy_protocol::OsdInfo(osd_info);
+
+      auto p = new ConnectionPool(
+          std::unique_ptr<proxy_protocol::OsdInfo>(osd_info_copy), 5);
+      connection_pools_[osd_info.long_id] = p;
+      it = connection_pools_.find(osd_info.long_id);
+    }
+    return it->second;
+  }
+}
+
+ConnectionPools::~ConnectionPools() {
+  for (auto &kv : connection_pools_) {
+    delete kv.second;
+  }
+}
 }
 }
