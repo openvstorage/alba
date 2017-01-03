@@ -52,6 +52,8 @@ void Asd_client::init(boost::optional<string> long_id) {
 
   if (long_id != boost::none) {
     if (*long_id != long_id2) {
+      ALBA_LOG(INFO, "expected asd with id " << *long_id << " but found "
+                                             << long_id2 << " instead");
       throw asd_exception("wrong asd on the other side");
     }
   }

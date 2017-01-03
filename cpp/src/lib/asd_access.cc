@@ -69,6 +69,8 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
   std::unique_ptr<transport::Transport> transport(new transport::TCP_transport(
       config_->ips[0], std::to_string(config_->port), duration));
   std::unique_ptr<Asd_client> c(new Asd_client(duration, std::move(transport)));
+  //ALBA_LOG(INFO, "info: " << config_->long_id << ", " << *config_);
+  c->init(boost::none); // TODO config_->long_id);
   return c;
 }
 
