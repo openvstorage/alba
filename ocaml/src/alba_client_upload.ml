@@ -893,7 +893,7 @@ let _upload_with_retry
         | _ ->
            Lwt.return ()
       end >>= fun () ->
-      Lwt_log.debug_f "Exception during %s, retrying once" (Lazy.force message) >>= fun () ->
+      Lwt_log.debug_f ~exn "Exception during %s, retrying once" (Lazy.force message) >>= fun () ->
       do_upload timestamp
     )
 

@@ -37,17 +37,14 @@ using alba::asd_protocol::slice;
 using alba::asd_client::Asd_client;
 
 TEST(asd_client, partial_read) {
-  // der meerdere na elkaar doen! (om te zien of client niet in fucked state
-  // komt
-
   string ip = getenv("ALBA_ASD_IP");
   string port = "8000";
 
   auto transport = std::unique_ptr<Transport>(
       new TCP_transport(ip, port, std::chrono::seconds(1)));
 
-  Asd_client asd = Asd_client::make_client(std::move(transport), boost::none,
-                                           std::chrono::seconds(1));
+  Asd_client asd = Asd_client(std::chrono::seconds(1), std::move(transport));
+  asd.init(boost::none);
 
   slice slice1;
   byte target[50];

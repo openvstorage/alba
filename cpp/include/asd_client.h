@@ -22,6 +22,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "transport.h"
 
 #include <boost/asio.hpp>
+#include <boost/intrusive/slist.hpp>
 #include <chrono>
 #include <vector>
 
@@ -40,18 +41,16 @@ struct asd_exception : std::exception {
   virtual const char *what() const noexcept { return _what.c_str(); }
 };
 
-class Asd_client {
+class Asd_client : public boost::intrusive::slist_base_hook<> {
 public:
-  static Asd_client make_client(std::unique_ptr<transport::Transport> &&,
-                                boost::optional<string> long_id,
-                                const std::chrono::steady_clock::duration &);
+  Asd_client(const std::chrono::steady_clock::duration &,
+             std::unique_ptr<transport::Transport> &&);
+
+  void init(boost::optional<string> long_id);
 
   void partial_get(string &, vector<slice> &);
 
 private:
-  Asd_client(const std::chrono::steady_clock::duration &,
-             std::unique_ptr<transport::Transport> &&);
-
   asd_protocol::Status _status;
   std::unique_ptr<transport::Transport> _transport;
   const std::chrono::steady_clock::duration _timeout;

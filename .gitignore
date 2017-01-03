@@ -32,6 +32,8 @@
 /cpp/automake_client/.libs/
 /cpp/lib/
 /cpp/gtestresults.xml
+/cpp/src/lib/.deps/
+/cpp/src/lib/.dirstamp
 /ocaml/_build/
 /ocaml/*.native
 /ocaml/*.byte

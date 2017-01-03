@@ -28,27 +28,26 @@ Asd_client::Asd_client(const std::chrono::steady_clock::duration &timeout,
                        std::unique_ptr<transport::Transport> &&transport)
     : _transport(transport.release()), _timeout(timeout) {}
 
-Asd_client
-Asd_client::make_client(std::unique_ptr<transport::Transport> &&transport,
-                        boost::optional<string> long_id,
-                        const std::chrono::steady_clock::duration &timeout) {
+void Asd_client::init(boost::optional<string> long_id) {
+  _transport->expires_from_now(_timeout);
+
   message_builder mb;
   asd_protocol::make_prologue(mb, long_id);
   string prologue = mb.as_string();
-  transport->write_exact(&(prologue.data())[4], prologue.length() - 4);
+  _transport->write_exact(&(prologue.data())[4], prologue.length() - 4);
 
   uint32_t rc;
-  transport->read_exact((char *)&rc, 4);
+  _transport->read_exact((char *)&rc, 4);
 
   if (rc != 0) {
     throw asd_exception("error during asd prologue");
   }
 
   uint32_t length;
-  transport->read_exact((char *)&length, 4);
+  _transport->read_exact((char *)&length, 4);
 
   std::vector<char> buf(length);
-  transport->read_exact(buf.data(), length);
+  _transport->read_exact(buf.data(), length);
   string long_id2(buf.data(), length);
 
   if (long_id != boost::none) {
@@ -56,8 +55,6 @@ Asd_client::make_client(std::unique_ptr<transport::Transport> &&transport,
       throw asd_exception("wrong asd on the other side");
     }
   }
-
-  return Asd_client(timeout, std::move(transport));
 }
 
 void Asd_client::partial_get(string &key, vector<slice> &slices) {
