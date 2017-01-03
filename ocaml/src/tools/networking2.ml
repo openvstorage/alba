@@ -18,9 +18,16 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Lwt.Infix
 
-let make_address ip port =
-  let ha = Unix.inet_addr_of_string ip in
-  Unix.ADDR_INET (ha,port)
+let make_uds n p = Printf.sprintf "%s_%04i" n p
+
+let make_address ip port transport=
+  match transport with
+  | Net_fd.TCP | Net_fd.RDMA ->
+     let ha = Unix.inet_addr_of_string ip in
+     Unix.ADDR_INET (ha,port)
+  | Net_fd.UNIX ->
+     let name = make_uds ip port in
+     Unix.ADDR_UNIX name
 
 let string_of_address = function
   | Unix.ADDR_INET(addr, port) ->
@@ -33,7 +40,7 @@ exception ConnectTimeout
 
 let connect_with ip port transport ~tls_config =
 
-  let address = make_address ip port in
+  let address = make_address ip port transport in
   let fd =
     Net_fd.socket
       (Unix.domain_of_sockaddr address) Unix.SOCK_STREAM 0
@@ -279,14 +286,29 @@ let make_server
        Net_fd.close listening_socket)
   in
   let addresses =
-    List.map
-      (fun addr -> Unix.ADDR_INET (addr, port))
-      (if hosts = []
-       then [ Unix.inet6_addr_any ]
-       else
-         List.map
-           (fun host -> Unix.inet_addr_of_string host)
-           hosts)
+    match transport with
+    | Net_fd.TCP | Net_fd.RDMA ->
+       List.map
+         (fun addr -> Unix.ADDR_INET (addr, port))
+         (if hosts = []
+          then [ Unix.inet6_addr_any ]
+          else
+            List.map
+              (fun host -> Unix.inet_addr_of_string host)
+              hosts)
+    | Net_fd.UNIX ->
+       let names =
+         if hosts = []
+         then failwith "Unix transport needs name"
+         else hosts
+       in
+       List.map
+         (fun name ->
+           let name' = make_uds name port in
+           let () = try Unix.unlink name' with _ -> () in
+           Unix.ADDR_UNIX name')
+       names
+
   in
   let addr_sl = List.map string_of_address addresses in
   let addr_ss = String.concat ";" addr_sl in

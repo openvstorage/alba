@@ -374,7 +374,7 @@ module Net_fd = struct
    *)
   let sendfile_all ~fd_in ~offset ~(fd_out:t) size =
     match fd_out with
-    | Plain fd ->
+    | Plain fd | Uds fd ->
        Fsutil.sendfile_all
          ~wait_readable:false
          ~wait_writeable:true
@@ -1917,6 +1917,7 @@ let run_server
            match transport with
            | Net_fd.TCP  -> None
            | Net_fd.RDMA -> Some true
+           | Net_fd.UNIX -> None
          in
          Discovery.multicast
            asd_id node_id

@@ -95,7 +95,8 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          match cfg.transport with
          | "tcp" -> Net_fd.TCP
          | "rdma" -> Net_fd.RDMA
-         | _ -> failwith "transport should be 'tcp' or 'rdma'"
+         | "unix" -> Net_fd.UNIX
+         | _ -> failwith "transport should be 'tcp', 'rdma', or 'unix'"
        and log_level = cfg.log_level
        and
          manifest_cache_size,

@@ -23,6 +23,7 @@ open Lwt.Infix
 type transport =
   | TCP
   | RDMA
+  | UNIX
     [@@deriving show]
 
 type _ssl =
@@ -47,15 +48,16 @@ type t =
   | Plain of Lwt_unix.file_descr
   | SSL of _ssl_state
   | Rsocket of Lwt_rsocket.lwt_rsocket
+  | Uds of Lwt_unix.file_descr
 
 let identifier = function
   | Plain fd   -> Lwt_extra2.lwt_unix_fd_to_fd fd
   | SSL _ssl   ->
      let fd = _ssl_get_fd _ssl in
      Lwt_extra2.lwt_unix_fd_to_fd fd
-  | Rsocket fd -> Lwt_rsocket.identifier fd 
+  | Rsocket fd -> Lwt_rsocket.identifier fd
+  | Uds fd     -> Lwt_extra2.lwt_unix_fd_to_fd fd
 
-                 
 let socket domain typ x transport (tls:Tls.t option) =
   match transport with
   | TCP ->
@@ -68,10 +70,13 @@ let socket domain typ x transport (tls:Tls.t option) =
         let fd = Lwt_unix.socket domain typ x in
         let state = Config (fd,tls) in
         SSL { state }
-     end 
+     end
   | RDMA ->
      let socket = Lwt_rsocket.socket domain typ x in
      Rsocket socket
+  | UNIX ->
+     let socket = Lwt_unix.socket domain typ x in
+     Uds socket
 
 let setsockopt nfd option value =
   match nfd with
@@ -80,6 +85,7 @@ let setsockopt nfd option value =
      let fd = _ssl_get_fd _ssl in
      Lwt_unix.setsockopt fd option value
   | Rsocket fd -> Lwt_rsocket.setsockopt fd option value
+  | Uds fd -> ()
 
 let bind nfd sa =
   match nfd with
@@ -88,6 +94,7 @@ let bind nfd sa =
      let fd = _ssl_get_fd _ssl in
      Lwt_unix.bind fd sa
   | Rsocket fd -> Lwt_rsocket.bind fd sa
+  | Uds fd -> Lwt_unix.bind fd sa
 
 let listen nfd n =
   match nfd with
@@ -99,6 +106,7 @@ let listen nfd n =
      let _ = Ssl.embed_socket ufd in
      ()
   | Rsocket fd -> Lwt_rsocket.listen fd n
+  | Uds fd -> Lwt_unix.listen fd n
 
 let accept = function
   | Plain fd ->
@@ -122,6 +130,9 @@ let accept = function
   | Rsocket fd ->
      Lwt_rsocket.accept fd >>= fun (cl_fd,cl_sa) ->
      Lwt.return (Some (Rsocket cl_fd, cl_sa))
+  | Uds fd ->
+     Lwt_unix.accept fd >>= fun (cl_fd, cl_sa) ->
+     Lwt.return (Some (Uds cl_fd, cl_sa))
 
 let apply_keepalive tcp_keepalive = function
   | Plain fd   -> Tcp_keepalive.apply fd tcp_keepalive
@@ -129,6 +140,7 @@ let apply_keepalive tcp_keepalive = function
      let fd = _ssl_get_fd _ssl in
      Tcp_keepalive.apply fd tcp_keepalive
   | Rsocket fd -> ()
+  | Uds fd -> ()
 
 let connect fd address = match fd with
   | Plain fd   -> Lwt_unix.connect fd address
@@ -141,26 +153,30 @@ let connect fd address = match fd with
           Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
           let state' = failwith "todo" in
           _ssl.state <- state';
-          Lwt.return_unit                     
+          Lwt.return_unit
        | Using _ -> failwith "already connected"
-  (* 
+  (*
     Lwt_unix.connect fd address >>= fun () ->
-    Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s -> 
-    let r = Net_fd.wrap_ssl lwt_s in 
+    Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
+    let r = Net_fd.wrap_ssl lwt_s in
    *)
      end
   | Rsocket fd ->
      Lwt_log.debug_f "Rsocket.connect"
      >>= fun () ->
      Lwt_rsocket.connect fd address
+  | Uds fd ->
+     Lwt_log.debug_f "Uds connect" >>= fun () ->
+     Lwt_unix.connect fd address
 
 let close = function
   | Plain socket   -> Lwt_unix.close socket
   | SSL _ssl       -> Lwt_ssl.close (_ssl |> _ssl_get_socket)
   | Rsocket socket -> Lwt_rsocket.close socket
+  | Uds socket     -> Lwt_unix.close socket
 
 let to_connection ~in_buffer ~out_buffer = function
-  | Plain fd ->
+  | Plain fd | Uds fd ->
      let ic = Lwt_io.of_fd ~buffer:in_buffer ~mode:Lwt_io.input fd
      and oc = Lwt_io.of_fd ~buffer:out_buffer ~mode:Lwt_io.output fd in
      (ic, oc)
@@ -172,7 +188,7 @@ let to_connection ~in_buffer ~out_buffer = function
   | Rsocket socket -> failwith "todo: to_connection (Rsocket rsocket) "
 
 let make_ic ~buffer = function
-  | Plain fd       -> Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd
+  | Plain fd |Uds fd -> Lwt_io.of_fd ~buffer ~mode:Lwt_io.input fd
   | SSL _ssl       -> Lwt_ssl.in_channel_of_descr ~buffer (_ssl_get_socket _ssl)
   | Rsocket socket -> failwith "make_ic rsocket"
 
@@ -181,18 +197,19 @@ let write_all_ssl socket bytes offset length =
   Lwt_extra2._write_all write_from_source offset length
 
 let write_all nfd bytes offset length = match nfd with
-  | Plain fd       -> Lwt_extra2.write_all fd bytes offset length
+  | Plain fd | Uds fd -> Lwt_extra2.write_all fd bytes offset length
   | SSL _ssl       -> write_all_ssl (_ssl_get_socket _ssl) bytes offset length
   | Rsocket socket ->
      let write_from_source offset todo =
        Lwt_rsocket.send socket bytes offset todo []
      in
      Lwt_extra2._write_all write_from_source offset length
-                           
+
+
 let write_all' nfd bytes = write_all nfd bytes 0 (Bytes.length bytes)
 
 let write_all_lwt_bytes nfd bs offset length = match nfd with
-  | Plain fd -> Lwt_extra2.write_all_lwt_bytes fd bs offset length
+  | Plain fd | Uds fd -> Lwt_extra2.write_all_lwt_bytes fd bs offset length
   | SSL _ssl ->
      let socket = _ssl_get_socket _ssl in
      Lwt_extra2._write_all
@@ -203,9 +220,9 @@ let write_all_lwt_bytes nfd bs offset length = match nfd with
        Lwt_rsocket.Bytes.send socket bs offset todo []
      in
      Lwt_extra2._write_all write_from_source offset length
-                           
+
 let read_all nfd target offset length = match nfd with
-  | Plain fd -> Lwt_extra2.read_all fd target offset length
+  | Plain fd | Uds fd -> Lwt_extra2.read_all fd target offset length
   | SSL _ssl ->
      let socket = _ssl_get_socket _ssl in
      let read_to_target = Lwt_ssl.read socket target in
@@ -225,7 +242,7 @@ let read_all_exact nfd target offset length =
   >>= Lwt_extra2.expect_exact_length length
 
 let read_all_lwt_bytes_exact nfd target offset length = match nfd with
-  | Plain fd -> Lwt_extra2.read_all_lwt_bytes_exact fd target offset length
+  | Plain fd | Uds fd -> Lwt_extra2.read_all_lwt_bytes_exact fd target offset length
   | SSL _ssl ->
      let socket = _ssl_get_socket _ssl in
      Lwt_extra2._read_all
@@ -246,7 +263,7 @@ let read_all_lwt_bytes_exact nfd target offset length = match nfd with
 
 let read_lwt_bytes_at_least nfd target ~offset ~max_length ~min_length =
   match nfd with
-  | Plain fd -> Lwt_extra2.read_lwt_bytes_at_least fd target ~offset ~max_length ~min_length
+  | Plain fd | Uds fd -> Lwt_extra2.read_lwt_bytes_at_least fd target ~offset ~max_length ~min_length
   | SSL _ssl ->
      let socket = _ssl_get_socket _ssl in
      Lwt_extra2._read_buffer_at_least
@@ -349,14 +366,15 @@ let with_message_buffer_from
 
 let cork = function
   | Plain fd ->
-     Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false 
+     Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false
   | SSL _ssl ->
      let fd = _ssl_get_fd _ssl in
      Lwt_unix.setsockopt
        fd
-       Lwt_unix.TCP_NODELAY false 
+       Lwt_unix.TCP_NODELAY false
   | Rsocket fd  ->
-     Lwt_rsocket.setsockopt fd Lwt_unix.TCP_NODELAY false    
+     Lwt_rsocket.setsockopt fd Lwt_unix.TCP_NODELAY false
+  | Uds fd -> ()
 
 let uncork = function
   | Plain fd   ->
@@ -368,5 +386,4 @@ let uncork = function
        Lwt_unix.TCP_NODELAY true
   | Rsocket socket ->
      Lwt_rsocket.setsockopt socket Lwt_unix.TCP_NODELAY true
-  
-      
+  | Uds fd -> ()

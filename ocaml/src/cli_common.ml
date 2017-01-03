@@ -272,6 +272,7 @@ let transport =
     let parser x = match String.lowercase_ascii x with
       | "tcp"  -> `Ok Net_fd.TCP
       | "rdma" -> `Ok Net_fd.RDMA
+      | "unix" -> `Ok Net_fd.UNIX
       | x      ->
          let msg =
            Printf.sprintf "%S is not a transport. Specify either \"tcp\" or \"rdma\"." x
@@ -287,7 +288,7 @@ let transport =
        & opt tr Net_fd.TCP
        & info ["t";"transport"]
               ~docv:"TRANSPORT"
-              ~doc:"either `tcp` or `rdma`"
+              ~doc:"either `tcp`, `rdma`, or 'unix'"
   )
 
 let namespace p =

@@ -308,6 +308,7 @@ let get_kind buffer_pool (conn_info:Networking2.conn_info) =
       match conn_info.transport with
       | Net_fd.TCP  -> false
       | Net_fd.RDMA -> true
+      | Net_fd.UNIX -> false
     in
     (conn_info.ips, conn_info.port, use_tls, use_rdma)
   in
