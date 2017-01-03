@@ -117,7 +117,7 @@ int OsdAccess::read_osds_slices(
     osd_t osd = item.first;
     auto &osd_slices = item.second;
     // TODO this could be done in parallel
-    rc = _read_osd_slices(osd, osd_slices);
+    rc = _read_osd_slices_asd_direct_path(osd, osd_slices);
     if (rc) {
       break;
     }
@@ -125,8 +125,35 @@ int OsdAccess::read_osds_slices(
   return rc;
 }
 
+int OsdAccess::_read_osd_slices_asd_direct_path(
+    osd_t osd, std::vector<asd_slice> &slices) {
+  auto maybe_ic = _find_osd(osd);
+  if (nullptr == maybe_ic) {
+    ALBA_LOG(WARNING, "have context, but no info?");
+    return -1;
+  }
+  auto p = asd_connection_pools.get_connection_pool(maybe_ic->first);
+  auto connection = p->get_connection();
+
+  try {
+    // TODO 1 batch call...
+    for (auto &slice_ : slices) {
+      alba::asd_protocol::slice slice__;
+      slice__.offset = slice_.offset;
+      slice__.length = slice_.len;
+      slice__.target = slice_.target;
+      std::vector<alba::asd_protocol::slice> slices_{slice__};
+      connection->partial_get(slice_.key, slices_);
+    }
+    p->release_connection(connection.release());
+    return 0;
+  } catch (...) {
+    return -1;
+  }
+}
+
 using namespace gobjfs::xio;
-int OsdAccess::_read_osd_slices(osd_t osd, std::vector<asd_slice> &slices) {
+int OsdAccess::_read_osd_slices_xio(osd_t osd, std::vector<asd_slice> &slices) {
 
   ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices(" << osd << ")");
 

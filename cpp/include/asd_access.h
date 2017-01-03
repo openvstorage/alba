@@ -55,6 +55,8 @@ public:
 
   size_t size() const;
 
+  void release_connection(Asd_client *);
+
 private:
   mutable alba::spinlock::SpinLock lock_;
 
@@ -69,8 +71,6 @@ private:
   static std::unique_ptr<Asd_client> pop_(Connections &);
 
   static void clear_(Connections &);
-
-  void release_connection_(Asd_client *);
 };
 
 class ConnectionPools {
@@ -78,6 +78,8 @@ public:
   ConnectionPool *get_connection_pool(const proxy_protocol::OsdInfo &);
 
   ~ConnectionPools();
+
+  ConnectionPools() {}
 
   ConnectionPools(const ConnectionPools &) = delete;
 

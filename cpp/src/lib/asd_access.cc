@@ -72,7 +72,7 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
   return c;
 }
 
-void ConnectionPool::release_connection_(Asd_client *conn) {
+void ConnectionPool::release_connection(Asd_client *conn) {
   if (conn) {
     LOCK();
     if (connections_.size() < capacity_) {
