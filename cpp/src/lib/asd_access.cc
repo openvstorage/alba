@@ -36,11 +36,6 @@ ConnectionPool::ConnectionPool(std::unique_ptr<OsdInfo> config, size_t capacity)
 
 ConnectionPool::~ConnectionPool() { clear_(connections_); }
 
-std::shared_ptr<ConnectionPool>
-ConnectionPool::create(std::unique_ptr<OsdInfo> config, size_t capacity) {
-  return std::make_shared<ConnectionPool>(std::move(config), capacity);
-}
-
 std::unique_ptr<Asd_client> ConnectionPool::pop_(Connections &conns) {
   std::unique_ptr<Asd_client> c;
   if (not conns.empty()) {

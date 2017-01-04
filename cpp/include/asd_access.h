@@ -35,9 +35,6 @@ using asd_client::Asd_client;
 
 class ConnectionPool {
 public:
-  static std::shared_ptr<ConnectionPool>
-  create(std::unique_ptr<proxy_protocol::OsdInfo>, size_t capacity);
-
   ConnectionPool(std::unique_ptr<proxy_protocol::OsdInfo>, size_t);
 
   ~ConnectionPool();
