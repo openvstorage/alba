@@ -233,8 +233,8 @@ module Update = struct
 end
 
 module AsdMgmt = struct
-    type t = { mutable latest_disk_usage : int64;
-               capacity : int64 ref;
+    type t = { mutable _latest_disk_usage : int64;
+               _capacity : int64 ref;
                limit : int64;
                mutable full : bool; (* override *)
                mutable slowness : (float * float) option
@@ -246,14 +246,15 @@ module AsdMgmt = struct
           ~latest_disk_usage
           ~capacity
           ~limit
-      = { latest_disk_usage; capacity;
+      = { _latest_disk_usage = latest_disk_usage;
+          _capacity = capacity;
           limit;
           full=false;
           slowness = None;
         }
 
     let updates_allowed t (updates:Update.t list) =
-      let (used, cap) = t.latest_disk_usage, t.capacity in
+      let (used, cap) = t._latest_disk_usage, t._capacity in
       Lwt_log.ign_debug_f "updates_allowed?(used:%Li,cap:%Li) full:%b"
                           used !cap t.full;
       let check_this_update () =
@@ -282,6 +283,16 @@ module AsdMgmt = struct
     let set_full t b = t.full <- b
 
     let set_slowness t s = t.slowness <- s
+
+    let get_latest_disk_usage t = t._latest_disk_usage
+
+    let update_latest_disk_usage t delta =
+      let new_usage = Int64.add t._latest_disk_usage delta in
+      if new_usage < 0L then exit 666;
+      let () = t._latest_disk_usage <- new_usage in
+      new_usage
+
+    let get_capacity t : int64 = !(t._capacity)
 end
 
 module Protocol = struct

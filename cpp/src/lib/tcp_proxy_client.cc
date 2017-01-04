@@ -35,6 +35,10 @@ TCPProxy_client::TCPProxy_client(
   ALBA_LOG(INFO, "TCPProxy_client(" << ip << ", " << port << ")");
   _expires_from_now(timeout);
   _stream.connect(ip, port);
+
+  const boost::asio::ip::tcp::no_delay option(true);
+  _stream.rdbuf()->set_option(option);
+
   int32_t magic{1148837403};
   int32_t version{1};
   _stream.write((const char *)(&magic), 4);

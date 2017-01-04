@@ -798,8 +798,9 @@ let execute_query : type req res.
                     return' Alba_version.summary
     | GetDiskUsage ->
        fun () ->
-       let open AsdMgmt in
-       return' (mgmt.latest_disk_usage, !(mgmt.capacity))
+       let ldu = AsdMgmt.get_latest_disk_usage mgmt in
+       let cap = AsdMgmt.get_capacity mgmt in
+       return' (ldu, cap)
     | Capabilities ->
        fun () ->
        return' capabilities
@@ -1156,14 +1157,14 @@ let execute_update : type req res.
                  immediate_updates in
 
              let () =
-               let open Asd_protocol.AsdMgmt in
-               mgmt.latest_disk_usage <- Int64.add
-                                           mgmt.latest_disk_usage
-                                           (Int64.of_int size_delta);
+               let ldu = AsdMgmt.update_latest_disk_usage
+                           mgmt
+                           (Int64.of_int size_delta)
+               in
                WriteBatch.put_string
                  wb
                  Keys.disk_usage
-                 (serialize Llio.int64_to mgmt.latest_disk_usage);
+                 (serialize Llio.int64_to ldu);
              in
 
              Rocks.write kv ~opts:wo_no_sync wb;
@@ -1907,10 +1908,10 @@ let run_server
        in
        let mcast_t () =
          let disk_usage () =
-           let open Asd_protocol.AsdMgmt in
-           Lwt.return
-             (mgmt.latest_disk_usage,
-              !(mgmt.capacity))
+           let ldu = AsdMgmt.get_latest_disk_usage mgmt
+           and cap = AsdMgmt.get_capacity mgmt
+           in
+           Lwt.return (ldu, cap)
          in
          let useRdma =
            match transport with
@@ -1930,7 +1931,7 @@ let run_server
     Mem_stats.reporting_t
       ~section
       ~f:(fun () ->
-          Lwt_log.error_f
+          Lwt_log.info_f
             ~section "%s"
             (AsdStatistics.show_inner
                stats
