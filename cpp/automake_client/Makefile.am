@@ -24,7 +24,14 @@ libalbaproxy_la_SOURCES = \
 	../src/lib/rdma_proxy_client.cc \
 	../src/lib/rora_proxy_client.cc \
 	../src/lib/stuff.cc \
-	../src/lib/tcp_proxy_client.cc
+	../src/lib/tcp_proxy_client.cc \
+	../src/lib/asd_access.cc \
+	../src/lib/asd_client.cc \
+	../src/lib/asd_protocol.cc \
+	../src/lib/rdma_transport.cc \
+	../src/lib/spinlock.cc \
+	../src/lib/tcp_transport.cc \
+	../src/lib/transport.cc
 
 albadir = $(includedir)/alba
 
@@ -44,4 +51,12 @@ alba_HEADERS = \
 	../include/proxy_protocol.h \
 	../include/rdma_proxy_client.h \
 	../include/stuff.h \
-	../include/tcp_proxy_client.h
+	../include/tcp_proxy_client.h \
+	../include/asd_access.h \
+	../include/asd_client.h \
+	../include/asd_protocol.h \
+	../include/rdma_transport.h \
+	../include/spinlock.h \
+	../include/tcp_transport.h \
+	../include/transport.h
+
