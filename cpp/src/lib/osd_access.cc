@@ -145,7 +145,7 @@ int OsdAccess::_read_osd_slices_asd_direct_path(
       std::vector<alba::asd_protocol::slice> slices_{slice__};
       connection->partial_get(slice_.key, slices_);
     }
-    p->release_connection(connection.release());
+    p->release_connection(std::move(connection));
     return 0;
   } catch (std::exception &e) {
     ALBA_LOG(INFO, "exception in _read_osd_slices_asd_direct_path for osd "

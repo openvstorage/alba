@@ -29,6 +29,9 @@ using llio::message;
 using llio::to;
 using llio::from;
 
+const string _MAGIC = "aLbA";
+const uint32_t _VERSION = 1;
+
 void make_prologue(message_builder &mb, boost::optional<string> long_id) {
   mb.add_raw(_MAGIC.data(), _MAGIC.length());
   to<uint32_t>(mb, _VERSION);

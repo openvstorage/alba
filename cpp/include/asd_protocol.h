@@ -53,8 +53,8 @@ struct slice {
   byte *target;
 };
 
-static string _MAGIC = "aLbA";
-static uint32_t _VERSION = 1;
+extern const string _MAGIC;
+extern const uint32_t _VERSION;
 
 void make_prologue(message_builder &mb, boost::optional<string> long_id);
 

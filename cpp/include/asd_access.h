@@ -55,7 +55,7 @@ public:
 
   size_t size() const;
 
-  void release_connection(Asd_client *);
+  void release_connection(std::unique_ptr<Asd_client>);
 
 private:
   mutable alba::spinlock::SpinLock lock_;
@@ -79,7 +79,7 @@ public:
 
   ~ConnectionPools();
 
-  ConnectionPools() {}
+  ConnectionPools() = default;
 
   ConnectionPools(const ConnectionPools &) = delete;
 

@@ -74,9 +74,5 @@ void SpinLock::unlock() {
     throw spinlock_exception("Failed to unlock spinlock");
   }
 }
-
-ScopedSpinLock::ScopedSpinLock(SpinLock &sl) : sl_(sl) { sl_.lock(); }
-
-ScopedSpinLock::~ScopedSpinLock() { sl_.unlock(); }
 }
 }
