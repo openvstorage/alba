@@ -74,8 +74,6 @@ class ConnectionPools {
 public:
   ConnectionPool *get_connection_pool(const proxy_protocol::OsdInfo &);
 
-  ~ConnectionPools();
-
   ConnectionPools() = default;
 
   ConnectionPools(const ConnectionPools &) = delete;
@@ -84,7 +82,7 @@ public:
 
 private:
   mutable alba::spinlock::SpinLock lock_;
-  std::map<std::string, ConnectionPool *> connection_pools_;
+  std::map<std::string, std::unique_ptr<ConnectionPool>> connection_pools_;
 };
 }
 }
