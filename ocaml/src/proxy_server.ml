@@ -607,7 +607,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
   in
   let default_renderer () = "(request could not be parsed)" in
   let handle_request buf code : (bool * (unit -> string)) Lwt.t =
-    Lwt_log.debug_f "Proxy_server: got command with code %i" code >>= fun () ->
+    Lwt_log.debug_f "Proxy_server: got command %s" (Protocol.code_to_txt code) >>= fun () ->
     let return_err_response ?msg err =
       return_err_response ?msg err >>= fun res ->
       Lwt.return (true, res)

@@ -463,7 +463,7 @@ class client
 
       Lwt_log.debug_f
         ~section:Statistics.section
-        "Download object %s with timings %s"
+        "Download object %S with timings %s"
         object_name (Statistics.show_object_download t_object) >>= fun () ->
 
       if checksum <> checksum2
