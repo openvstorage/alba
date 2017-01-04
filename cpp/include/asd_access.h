@@ -26,10 +26,10 @@
 #include "asd_client.h"
 #include "osd_info.h"
 
-BOOLEAN_ENUM(ForceNewConnection)
-
 namespace alba {
 namespace asd {
+
+BOOLEAN_ENUM(ForceNewConnection);
 
 using asd_client::Asd_client;
 
