@@ -25,10 +25,13 @@ using llio::message_builder;
 using llio::message;
 
 Asd_client::Asd_client(const std::chrono::steady_clock::duration &timeout,
-                       std::unique_ptr<transport::Transport> &&transport)
-    : _transport(transport.release()), _timeout(timeout) {}
+                       std::unique_ptr<transport::Transport> &&transport,
+                       boost::optional<string> long_id)
+    : _transport(transport.release()), _timeout(timeout) {
+  init_(long_id);
+}
 
-void Asd_client::init(boost::optional<string> long_id) {
+void Asd_client::init_(boost::optional<string> long_id) {
   _transport->expires_from_now(_timeout);
 
   message_builder mb;

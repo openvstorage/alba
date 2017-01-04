@@ -44,13 +44,14 @@ struct asd_exception : std::exception {
 class Asd_client : public boost::intrusive::slist_base_hook<> {
 public:
   Asd_client(const std::chrono::steady_clock::duration &,
-             std::unique_ptr<transport::Transport> &&);
-
-  void init(boost::optional<string> long_id);
+             std::unique_ptr<transport::Transport> &&,
+             boost::optional<string> long_id);
 
   void partial_get(string &, vector<slice> &);
 
 private:
+  void init_(boost::optional<string> long_id);
+
   asd_protocol::Status _status;
   std::unique_ptr<transport::Transport> _transport;
   const std::chrono::steady_clock::duration _timeout;

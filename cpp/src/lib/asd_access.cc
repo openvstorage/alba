@@ -71,8 +71,7 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
         std::unique_ptr<transport::Transport>(new transport::TCP_transport(
             config_->ips[0], std::to_string(config_->port), duration));
   }
-  std::unique_ptr<Asd_client> c(new Asd_client(duration, std::move(transport)));
-  c->init(config_->long_id);
+  std::unique_ptr<Asd_client> c(new Asd_client(duration, std::move(transport), config_->long_id));
   return c;
 }
 
