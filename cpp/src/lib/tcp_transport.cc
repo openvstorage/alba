@@ -34,6 +34,10 @@ TCP_transport::TCP_transport(
   ALBA_LOG(INFO, "TCP_transport(" << ip << ", " << port << ")");
   this->expires_from_now(timeout);
   _stream.connect(ip, port);
+
+  const boost::asio::ip::tcp::no_delay option(true);
+  _stream.rdbuf()->set_option(option);
+
   _stream.expires_at(boost::posix_time::max_date_time);
 }
 
