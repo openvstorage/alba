@@ -135,8 +135,8 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     auto &asd_slices = item.second;
-    std::cout << "asd_slices.size()=" << asd_slices.size();
-    std::cout << osd << ": [";
+    std::cout << "asd_slices.size()=" << asd_slices.size() << ", osd=" << osd
+              << ": [";
     for (auto &asd_slice : asd_slices) {
 
       void *p = asd_slice.target;

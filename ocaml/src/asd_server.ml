@@ -719,7 +719,7 @@ let execute_query : type req res.
     | PartialGet ->
        fun (key, slices, prio) ->
        begin
-         Lwt_log.debug_f "PartialGet for %s" (Slice.show key) >>= fun () ->
+         Lwt_log.debug_f "PartialGet for %s (%s)" (Slice.show key) ([%show : (int * int) list] slices) >>= fun () ->
          match get_value_option kv key with
          | None -> return' false
          | Some (_cs, blob) ->
