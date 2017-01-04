@@ -348,7 +348,18 @@ void RoraProxy_client::read_objects_slices(
     const consistent_read consistent_read_,
     alba::statistics::RoraCounter &cntr) {
 
-  if (consistent_read_ == consistent_read::T) {
+  bool use_slow_path = (consistent_read_ == consistent_read::T);
+  if (_fast_path_failures > 30) {
+    if (duration_cast<seconds>(steady_clock::now() - _failure_time).count() >
+        120) {
+      // try to start using fast path again after 2 minutes
+      _fast_path_failures = 0;
+    } else {
+      use_slow_path = true;
+    }
+  }
+
+  if (use_slow_path) {
     std::vector<object_info> object_infos;
     _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
                                     object_infos, cntr);
@@ -379,11 +390,16 @@ void RoraProxy_client::read_objects_slices(
     ALBA_LOG(DEBUG, "_short_path result => " << result_front);
 
     if (result_front) {
+      _failure_time = std::chrono::steady_clock::now();
+      _fast_path_failures++;
       via_proxy.clear();
       for (auto &s : slices) {
         via_proxy.push_back(s);
       }
     } else {
+      if (_fast_path_failures > 0) {
+        _fast_path_failures--;
+      }
       cntr.fast_path += short_path.size();
     }
 
