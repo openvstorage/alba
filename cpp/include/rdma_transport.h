@@ -32,14 +32,11 @@ public:
   void write_exact(const char *buf, int len) override;
   void read_exact(char *buf, int len) override;
 
-  static RDMA_transport
-  make(const std::string &ip, const std::string &port,
-       const std::chrono::steady_clock::duration &timeout);
+  RDMA_transport(const std::string &ip, const std::string &port,
+                 const std::chrono::steady_clock::duration &timeout);
 
 private:
   int _socket;
-
-  RDMA_transport(int socket);
 
   std::chrono::steady_clock::time_point _deadline;
 };

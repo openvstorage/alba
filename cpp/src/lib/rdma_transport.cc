@@ -26,8 +26,6 @@ namespace transport {
 using std::string;
 using llio::message;
 
-RDMA_transport::RDMA_transport(int socket) : _socket(socket) {}
-
 std::string _build_msg(const std::string &prefix) {
   int _errno = errno;
   std::ostringstream ss;
@@ -138,9 +136,9 @@ void RDMA_transport::read_exact(char *buf, const int len) {
           0);
 }
 
-RDMA_transport
-RDMA_transport::make(const string &ip, const string &port,
-                     const std::chrono::steady_clock::duration &timeout) {
+RDMA_transport::RDMA_transport(
+    const string &ip, const string &port,
+    const std::chrono::steady_clock::duration &timeout) {
 
   ALBA_LOG(INFO, "RDMA_transport(" << ip << ", " << port << ")");
 
@@ -191,7 +189,7 @@ RDMA_transport::make(const string &ip, const string &port,
     }
   }
 
-  return RDMA_transport(socket);
+  _socket = socket;
 }
 
 void RDMA_transport::expires_from_now(

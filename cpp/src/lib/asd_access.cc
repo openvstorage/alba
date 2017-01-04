@@ -13,15 +13,8 @@
 // Open vStorage is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY of any kind.
 
-// #include "AlbaConfig.h"
-// #include "Alba_Connection.h"
-// #include "BackendConfig.h"
 #include "asd_access.h"
-// #include "LocalConfig.h"
-// #include "Local_Connection.h"
-// #include "S3Config.h"
-// #include "S3_Connection.h"
-
+#include "rdma_transport.h"
 #include "tcp_transport.h"
 
 #include <iostream>
@@ -66,11 +59,20 @@ void ConnectionPool::clear_(Connections &conns) {
 
 std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
   auto duration = std::chrono::seconds(5);
-  std::unique_ptr<transport::Transport> transport(new transport::TCP_transport(
-      config_->ips[0], std::to_string(config_->port), duration));
+
+  std::unique_ptr<transport::Transport> transport;
+  if (config_->use_rdma) {
+    ;
+    transport =
+        std::unique_ptr<transport::Transport>(new transport::RDMA_transport(
+            config_->ips[0], std::to_string(config_->port), duration));
+  } else {
+    transport =
+        std::unique_ptr<transport::Transport>(new transport::TCP_transport(
+            config_->ips[0], std::to_string(config_->port), duration));
+  }
   std::unique_ptr<Asd_client> c(new Asd_client(duration, std::move(transport)));
-  //ALBA_LOG(INFO, "info: " << config_->long_id << ", " << *config_);
-  c->init(boost::none); // TODO config_->long_id);
+  c->init(config_->long_id);
   return c;
 }
 
