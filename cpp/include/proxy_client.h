@@ -43,11 +43,14 @@ struct proxy_exception : std::exception {
 };
 
 struct RoraConfig {
-  RoraConfig(const size_t size = 10000, const bool null_io = false)
-      : manifest_cache_size(size), use_null_io(null_io) {}
+  RoraConfig(const size_t size = 10000, const bool null_io = false,
+             const int asd_connection_pool_size = 5)
+      : manifest_cache_size(size), use_null_io(null_io),
+        asd_connection_pool_size(asd_connection_pool_size) {}
 
   size_t manifest_cache_size;
   bool use_null_io;
+  int asd_connection_pool_size;
 };
 
 BOOLEAN_ENUM(has_more)

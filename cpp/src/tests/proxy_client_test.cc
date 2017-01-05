@@ -277,7 +277,7 @@ TEST(proxy_client, test_osd_info2) {
   EXPECT_EQ(result.size(), 2);
   EXPECT_EQ(alba_ids.size(), 2);
 
-  auto &osd_access = alba::proxy_client::OsdAccess::getInstance();
+  auto &osd_access = alba::proxy_client::OsdAccess::getInstance(5);
   osd_access.update(*client);
 
   osd_map_t &m = std::get<1>(result[1]);

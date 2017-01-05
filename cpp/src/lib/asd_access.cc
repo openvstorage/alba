@@ -132,7 +132,8 @@ void ConnectionPool::capacity(size_t cap) {
 }
 
 ConnectionPool *
-ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info) {
+ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info,
+                                     int connection_pool_size) {
   LOCK();
   auto it = connection_pools_.find(osd_info.long_id);
   if (it == connection_pools_.end()) {
@@ -144,7 +145,8 @@ ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info) {
     connection_pools_.emplace(
         osd_info.long_id,
         std::unique_ptr<ConnectionPool>(new ConnectionPool(
-            std::unique_ptr<proxy_protocol::OsdInfo>(osd_info_copy), 5)));
+            std::unique_ptr<proxy_protocol::OsdInfo>(osd_info_copy),
+            connection_pool_size)));
     it = connection_pools_.find(osd_info.long_id);
   }
   return it->second.get();

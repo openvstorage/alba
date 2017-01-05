@@ -72,7 +72,8 @@ private:
 
 class ConnectionPools {
 public:
-  ConnectionPool *get_connection_pool(const proxy_protocol::OsdInfo &);
+  ConnectionPool *get_connection_pool(const proxy_protocol::OsdInfo &,
+                                      int connection_pool_size);
 
   ConnectionPools() = default;
 

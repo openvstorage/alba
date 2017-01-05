@@ -25,8 +25,8 @@
 namespace alba {
 namespace proxy_client {
 
-OsdAccess &OsdAccess::getInstance() {
-  static OsdAccess instance;
+OsdAccess &OsdAccess::getInstance(int connection_pool_size) {
+  static OsdAccess instance(connection_pool_size);
   return instance;
 }
 
@@ -132,7 +132,8 @@ int OsdAccess::_read_osd_slices_asd_direct_path(
     ALBA_LOG(WARNING, "have context, but no info?");
     return -1;
   }
-  auto p = asd_connection_pools.get_connection_pool(maybe_ic->first);
+  auto p = asd_connection_pools.get_connection_pool(maybe_ic->first,
+                                                    _connection_pool_size);
   auto connection = p->get_connection();
 
   try {

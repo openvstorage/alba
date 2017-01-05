@@ -108,6 +108,8 @@ private:
 
   int _fast_path_failures;
   steady_clock::time_point _failure_time;
+
+  int _asd_connection_pool_size;
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,
