@@ -665,8 +665,8 @@ let store_manifest_epilogue
   let object_name = manifest.Nsm_model.Manifest.name in
   Lwt_log.ign_debug_f
     ~section:Statistics.section
-    "Uploaded object %S with the following timings: %s"
-    object_name (Statistics.show_object_upload t_object);
+    "Uploaded object %S in namespace %Li with the following timings: %s"
+    object_name namespace_id (Statistics.show_object_upload t_object);
 
   let open Manifest_cache in
   ManifestCache.add

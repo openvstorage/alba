@@ -2566,7 +2566,7 @@ module Test = struct
                "--node-id"; "x";
                "--prefix"; "alba_osd_prefix";
                "--preset"; "default";
-               "--to-json";
+               "--to-json"; "--verbose";
              ]
       in
       _alba_cmd_line
@@ -2685,13 +2685,13 @@ module Test = struct
 
     0
 
-  let test_427 ?xml ?filter ?dump _ =
+  let stress2 ?xml ?filter ?dump _ =
     let cfg_global, t_global, _, _ = setup_global_backend () in
 
     let proxy = t_global.proxy in
 
     let rec inner = function
-      | 100 -> ()
+      | 1_000 -> ()
       | n ->
          let namespace = Printf.sprintf "ns_%i" n in
          let objname = "obj" in
@@ -2980,6 +2980,7 @@ let process_cmd_line () =
       "voldrv_tests",    Test.voldrv_tests, true;
       "disk_failures",   Test.disk_failures, true;
       "stress",          Test.stress,true;
+      "stress2",         Test.stress2, false;
       "asd_start",       Test.asd_start,true;
       "everything_else", Test.everything_else, true;
       "compat",          Test.compat, false;
@@ -2993,7 +2994,6 @@ let process_cmd_line () =
       "asd_transport_combos", Test.asd_transport_combos, false;
       "rora",            Test.rora, false;
       "recovery",        Test.recovery, true;
-      "test_427",        Test.test_427, false;
       "pread_bench",     Bench.pread_bench, false;
     ]
   in
