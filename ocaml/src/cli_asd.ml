@@ -537,6 +537,7 @@ let osd_bench hosts port transport tls_config osd_id
               power prefix seeds
               scenarios verbose
   =
+  let seeds = adjust_seeds n_clients seeds in
   let conn_info =
     Networking2.make_conn_info hosts port ~transport tls_config
   in
