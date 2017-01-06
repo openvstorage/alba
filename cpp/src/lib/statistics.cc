@@ -24,10 +24,8 @@ namespace statistics {
 
 Statistics::Statistics()
     : _n_samples(0), _min_dur{1000000000.0}, _max_dur{0.0}, _avg(0.0),
-      _borders{100, 125, 150, 175, 200, 225, 250,
-               300, 350, 400, 800,
-               1000,2000, 4000,8000,
-               1000000000.0},
+      _borders{100, 125, 150, 175,  200,  225,  250,  300,
+               350, 400, 800, 1000, 2000, 4000, 8000, 1000000000.0},
       _dur_buckets(_borders.size()) {
   _last_index = _borders.size() - 1;
 }
