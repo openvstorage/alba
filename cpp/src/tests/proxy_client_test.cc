@@ -340,7 +340,7 @@ void _generic_partial_read_test(
     client->invalidate_cache(actual_namespace);
   }
   ALBA_LOG(INFO, "doing partial read");
-  alba::statistics::RoraCounter cntr{0, 0};
+  alba::statistics::RoraCounter cntr;
   client->read_objects_slices(actual_namespace, objects_slices,
                               proxy_client::consistent_read::F, cntr);
 
@@ -461,7 +461,7 @@ TEST(proxy_client, test_partial_reads) {
   client->write_object_fs(namespace_, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
   client->invalidate_cache(namespace_);
-  alba::statistics::RoraCounter cntr{0, 0};
+  alba::statistics::RoraCounter cntr;
   for (int i = 0; i < 8; i++) {
     SliceDescriptor sd{&buf[0], 0, 4096};
     std::vector<SliceDescriptor> slices{sd};

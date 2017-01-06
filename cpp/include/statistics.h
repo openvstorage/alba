@@ -29,6 +29,9 @@ using namespace std::chrono;
 struct RoraCounter {
   uint64_t fast_path;
   uint64_t slow_path;
+
+  RoraCounter() : fast_path(0L), slow_path(0L) {}
+
 };
 
 struct Statistics {
