@@ -1698,9 +1698,10 @@ module Test = struct
     let host, transport = _get_ip_transport cfg
     and port = "10000"
     in
+    (* preset for the main backend can have compression/encryption *)
     let () = _create_preset t_hdd
                             "preset_rora"
-                            "./cfg/preset_no_compression.json"
+                            "./cfg/preset.json"
     in
     let () = _create_preset t_ssd
                             "preset_rora"

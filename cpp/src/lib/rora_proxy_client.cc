@@ -67,16 +67,6 @@ std::tuple<std::vector<string>, has_more> RoraProxy_client::list_namespaces(
                                     max, reverse_);
 }
 
-void _maybe_add_to_manifest_cache(const string &namespace_,
-                                  const string &alba_id,
-                                  std::shared_ptr<ManifestWithNamespaceId> mf) {
-  using alba::stuff::operator<<;
-  if (compressor_t::NO_COMPRESSION == mf->compression->get_compressor() &&
-      encryption_t::NO_ENCRYPTION == mf->encrypt_info->get_encryption()) {
-    ManifestCache::getInstance().add(namespace_, alba_id, std::move(mf));
-  }
-}
-
 void RoraProxy_client::write_object_fs(const string &namespace_,
                                        const string &object_name,
                                        const string &input_file,
@@ -213,6 +203,10 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.fragment_location = p;
   l.offset = pos_in_fragment;
   l.length = std::min(len, fragment_length - pos_in_fragment);
+  l.uses_compression =
+      mf.compression->get_compressor() != compressor_t::NO_COMPRESSION;
+  l.uses_encryption =
+      mf.encrypt_info->get_encryption() != encryption_t::NO_ENCRYPTION;
   return l;
 }
 
@@ -352,7 +346,8 @@ void RoraProxy_client::_process(std::vector<object_info> &object_infos,
       alba_id = OsdAccess::getInstance(_asd_connection_pool_size)
                     .get_alba_levels(*this)[0];
     }
-    _maybe_add_to_manifest_cache(namespace_, alba_id, manifest_cache_entry_);
+    ManifestCache::getInstance().add(namespace_, alba_id,
+                                     std::move(manifest_cache_entry_));
   }
 }
 
@@ -389,8 +384,11 @@ void RoraProxy_client::read_objects_slices(
       if (locations == boost::none ||
           std::any_of(locations->begin(), locations->end(),
                       [](std::pair<byte *, Location> &l) {
-                        return std::get<1>(l).fragment_location.first ==
-                               boost::none;
+                        auto location = std::get<1>(l);
+                        return location.fragment_location.first ==
+                                   boost::none ||
+                               location.uses_compression ||
+                               location.uses_encryption;
                       })) {
         via_proxy.push_back(object_slices);
       } else {

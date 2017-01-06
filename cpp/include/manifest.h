@@ -112,6 +112,11 @@ struct Location {
   uint32_t offset;
   uint32_t length;
   fragment_location_t fragment_location;
+
+  bool uses_compression;
+  // should be more fine grained about encryption when we want to support rora
+  // for CTR mode encryption
+  bool uses_encryption;
 };
 
 struct Manifest {
