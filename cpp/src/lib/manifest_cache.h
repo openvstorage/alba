@@ -29,11 +29,11 @@ namespace proxy_client {
 
 using namespace proxy_protocol;
 typedef std::shared_ptr<ManifestWithNamespaceId> manifest_cache_entry;
-typedef ovs::LRUCacheToo<std::string, manifest_cache_entry> manifest_cache;
+typedef ovs::SafeLRUCache<std::string, manifest_cache_entry> manifest_cache;
 class ManifestCache {
 public:
   static ManifestCache &getInstance();
-  static void set_capacity(size_t capacity);
+  void set_capacity(size_t capacity);
 
   ManifestCache(ManifestCache const &) = delete;
   void operator=(ManifestCache const &) = delete;

@@ -19,14 +19,13 @@
 
 #include <iostream>
 
-#include <boost/thread/lock_guard.hpp>
+#include <mutex>
 
 namespace alba {
 namespace asd {
 
 using alba::proxy_protocol::OsdInfo;
 
-#define LOCK() boost::lock_guard<decltype(lock_)> lg__(lock_)
 
 ConnectionPool::ConnectionPool(std::unique_ptr<OsdInfo> config, size_t capacity)
     : config_(std::move(config)), capacity_(capacity) {
@@ -73,7 +72,7 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
 
 void ConnectionPool::release_connection(std::unique_ptr<Asd_client> conn) {
   if (conn) {
-    LOCK();
+      std::lock_guard<std::mutex> lock(_mutex);
     if (connections_.size() < capacity_) {
       connections_.push_front(*conn.release());
       return;
@@ -86,7 +85,7 @@ ConnectionPool::get_connection(ForceNewConnection force_new) {
   std::unique_ptr<Asd_client> conn;
 
   if (force_new == ForceNewConnection::F) {
-    LOCK();
+      std::lock_guard<std::mutex> lock(_mutex);
     conn = pop_(connections_);
   }
 
@@ -98,12 +97,12 @@ ConnectionPool::get_connection(ForceNewConnection force_new) {
 }
 
 size_t ConnectionPool::size() const {
-  LOCK();
+  std::lock_guard<std::mutex> lock(_mutex);
   return connections_.size();
 }
 
 size_t ConnectionPool::capacity() const {
-  LOCK();
+  std::lock_guard<std::mutex> lock(_mutex);
   return capacity_;
 }
 
@@ -111,7 +110,7 @@ void ConnectionPool::capacity(size_t cap) {
   Connections tmp;
 
   {
-    LOCK();
+    std::lock_guard<std::mutex> lock(_mutex);
 
     std::swap(capacity_, cap);
     if (connections_.size() > capacity_) {
@@ -134,7 +133,7 @@ void ConnectionPool::capacity(size_t cap) {
 ConnectionPool *
 ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info,
                                      int connection_pool_size) {
-  LOCK();
+  std::lock_guard<std::mutex> lock(_mutex);
   auto it = connection_pools_.find(osd_info.long_id);
   if (it == connection_pools_.end()) {
     ALBA_LOG(INFO, "asd ConnenctionPools adding ConnectionPool for "

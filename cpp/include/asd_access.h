@@ -21,7 +21,7 @@
 #include <boost/intrusive/slist.hpp>
 
 #include "boolean_enum.h"
-#include "spinlock.h"
+#include <mutex>
 
 #include "asd_client.h"
 #include "osd_info.h"
@@ -55,7 +55,7 @@ public:
   void release_connection(std::unique_ptr<Asd_client>);
 
 private:
-  mutable alba::spinlock::SpinLock lock_;
+  mutable std::mutex _mutex;
 
   using Connections = boost::intrusive::slist<Asd_client>;
   Connections connections_;
@@ -82,7 +82,7 @@ public:
   ConnectionPools &operator=(const ConnectionPools &) = delete;
 
 private:
-  mutable alba::spinlock::SpinLock lock_;
+  mutable std::mutex _mutex;
   std::map<std::string, std::unique_ptr<ConnectionPool>> connection_pools_;
 };
 }
