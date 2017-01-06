@@ -1929,21 +1929,33 @@ let test_master_switch () =
        in
        loop [] 20
      in
-     let use_pool () =
-       Lwt_list.map_p
-         (alba_client # mgr_access # list_all_nsm_hosts)
+     let use_pool_alba_client () =
+       Lwt_list.iter_p
+         (fun () ->
+           alba_client # mgr_access # list_all_nsm_hosts () >>= fun _ ->
+           Lwt.return ())
          units
-       >>= fun _ ->
-       Lwt.return ()
+     in
+     let use_pool_proxy () =
+       Lwt_list.iter_p
+         (fun () ->
+           Proxy_test.with_proxy_client
+             (fun p ->
+               p # list_namespaces ~first:"" ~finc:true ~last:None ~max:1 ~reverse:false >>= fun _ ->
+               Lwt.return ())
+         )
+         units
+     in
+     let use_pool () =
+       Lwt.join
+         [ Lwt_extra2.ignore_errors use_pool_alba_client;
+           Lwt_extra2.ignore_errors use_pool_proxy; ]
      in
 
      use_pool () >>= fun () ->
      drop_master ccfg tls_config >>= fun () ->
 
-     Lwt_extra2.ignore_errors
-       ~logging:true
-       (fun () -> use_pool () )
-     >>= fun ()->
+     use_pool () >>= fun () ->
 
      alba_client # mgr_access # list_all_nsm_hosts ()
      >>= fun (n, nsm_hosts) ->
