@@ -34,6 +34,16 @@ RoraProxy_client::RoraProxy_client(
       _asd_connection_pool_size(rora_config.asd_connection_pool_size) {
   ALBA_LOG(INFO, "RoraProxy_client(...)");
   ManifestCache::set_capacity(rora_config.manifest_cache_size);
+  try {
+    _has_local_fragment_cache = _delegate->has_local_fragment_cache();
+  } catch (alba::proxy_client::proxy_exception &e) {
+    if (e._return_code ==
+        alba::proxy_protocol::return_code::UNKNOWN_OPERATION) {
+      _has_local_fragment_cache = false;
+    } else {
+      throw e;
+    }
+  }
 }
 
 bool RoraProxy_client::namespace_exists(const string &name) {
@@ -322,7 +332,8 @@ int RoraProxy_client::_short_path(
   if (_use_null_io) {
     return 0;
   } else {
-    return OsdAccess::getInstance(_asd_connection_pool_size).read_osds_slices(per_osd);
+    return OsdAccess::getInstance(_asd_connection_pool_size)
+        .read_osds_slices(per_osd);
   }
 }
 
@@ -338,7 +349,8 @@ void RoraProxy_client::_process(std::vector<object_info> &object_infos,
             std::get<2>(object_info).release());
     string alba_id = std::get<1>(object_info);
     if (alba_id == "") {
-      alba_id = OsdAccess::getInstance(_asd_connection_pool_size).get_alba_levels(*this)[0];
+      alba_id = OsdAccess::getInstance(_asd_connection_pool_size)
+                    .get_alba_levels(*this)[0];
     }
     _maybe_add_to_manifest_cache(namespace_, alba_id, manifest_cache_entry_);
   }
@@ -349,7 +361,8 @@ void RoraProxy_client::read_objects_slices(
     const consistent_read consistent_read_,
     alba::statistics::RoraCounter &cntr) {
 
-  bool use_slow_path = (consistent_read_ == consistent_read::T);
+  bool use_slow_path =
+      (consistent_read_ == consistent_read::T) && _has_local_fragment_cache;
   if (_fast_path_failures > 30) {
     if (duration_cast<seconds>(steady_clock::now() - _failure_time).count() >
         120) {
@@ -368,7 +381,8 @@ void RoraProxy_client::read_objects_slices(
   } else {
     std::vector<std::pair<byte *, Location>> short_path;
     std::vector<ObjectSlices> via_proxy;
-    auto alba_levels = OsdAccess::getInstance(_asd_connection_pool_size).get_alba_levels(*this);
+    auto alba_levels = OsdAccess::getInstance(_asd_connection_pool_size)
+                           .get_alba_levels(*this);
     for (auto &object_slices : slices) {
       auto locations =
           _resolve_one_many_levels(alba_levels, 0, namespace_, object_slices);

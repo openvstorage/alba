@@ -49,7 +49,8 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   from(inner, info.long_id);
   from(inner, info.node_id);
   /*
-TODO could someday also deserialize the following properties (if they would be useful here):
+TODO could someday also deserialize the following properties (if they would be
+useful here):
 decommissioned
 other
 total

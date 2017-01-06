@@ -106,6 +106,8 @@ public:
 
   virtual void osd_info2(osd_maps_t &result);
 
+  virtual bool has_local_fragment_cache();
+
   GenericProxy_client(const std::chrono::steady_clock::duration &timeout);
 
   virtual ~GenericProxy_client(){};

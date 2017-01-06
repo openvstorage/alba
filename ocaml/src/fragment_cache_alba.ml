@@ -315,4 +315,5 @@ class alba_cache
     method close () = closer ()
 
     method osd_infos () = client # osd_infos
+    method has_local_fragment_cache = client # has_local_fragment_cache
   end

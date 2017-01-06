@@ -322,6 +322,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | MultiExists     -> fun args ->
                        Printf.sprintf "(%S)" ([%show : Namespace.name * object_name list] args)
   | GetAlbaId       -> fun () -> "()"
+  | HasLocalFragmentCache -> fun () -> "()"
 
 let log_request code error renderer time =
   let details = renderer () in
@@ -591,6 +592,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats () -> alba_client # osd_infos
     | GetAlbaId ->
        fun stats () -> alba_client # get_alba_id
+    | HasLocalFragmentCache ->
+       fun stats () -> alba_client # has_local_fragment_cache |> Lwt.return
   in
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =

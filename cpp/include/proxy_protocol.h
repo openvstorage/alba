@@ -190,5 +190,8 @@ void read_osd_info_response(message &m, Status &status, osd_map_t &result);
 void write_osd_info2_request(message_builder &mb);
 
 void read_osd_info2_response(message &m, Status &status, osd_maps_t &result);
+
+void write_has_local_fragment_cache_request(message_builder &mb);
+void read_has_local_fragment_cache_response(message &m, Status &status, bool &);
 }
 }

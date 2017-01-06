@@ -46,6 +46,7 @@ class virtual cache = object(self)
                              Capabilities.OsdCapabilities.t))
                            counted_list)
                         counted_list Lwt.t
+    method virtual has_local_fragment_cache : bool
 end
 
 class no_cache = object(self)
@@ -56,6 +57,7 @@ class no_cache = object(self)
     method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
     method osd_infos ()           = Lwt.return (0, [])
+    method has_local_fragment_cache = false
 end
 
 let ser64 x=
@@ -1109,6 +1111,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
     method get_root = root
 
     method osd_infos () = Lwt.return (0, [])
+    method has_local_fragment_cache = true
 end
 
 let safe_create root

@@ -43,7 +43,8 @@ TEST(asd_client, partial_read) {
   auto transport = std::unique_ptr<Transport>(
       new TCP_transport(ip, port, std::chrono::seconds(1)));
 
-  Asd_client asd = Asd_client(std::chrono::seconds(1), std::move(transport), boost::none);
+  Asd_client asd =
+      Asd_client(std::chrono::seconds(1), std::move(transport), boost::none);
 
   slice slice1;
   byte target[50];

@@ -70,6 +70,8 @@ class alba_client (base_client : Alba_base_client.client)
 
     method upload_object_from_file = base_client # upload_object_from_file
 
+    method has_local_fragment_cache = base_client # get_fragment_cache # has_local_fragment_cache
+
     method osd_infos =
       alba_id_t >>= fun alba_id ->
       let my_entry = (alba_id, osd_access # osd_infos) in

@@ -106,6 +106,8 @@ private:
 
   bool _use_null_io;
 
+  bool _has_local_fragment_cache;
+
   int _fast_path_failures;
   steady_clock::time_point _failure_time;
 
