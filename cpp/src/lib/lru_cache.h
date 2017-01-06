@@ -22,7 +22,7 @@
 #include <boost/optional.hpp>
 #include <mutex>
 /*
-nicked from volumedriver's UnsafeLRUCache, but
+nicked from volumedriver's LRUCacheToo, but
 
 - changed namespace
 - removed VERIFY & logging
