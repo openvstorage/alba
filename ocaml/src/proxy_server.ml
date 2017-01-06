@@ -888,8 +888,7 @@ let run_server hosts port ~transport
          ~upload_slack
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());
-              (alba_client # osd_access # propagate_osd_info ());
+            [ (alba_client # osd_access # propagate_osd_info ());
               (refresh_albamgr_cfg
                  ~loop:true
                  albamgr_client_cfg
