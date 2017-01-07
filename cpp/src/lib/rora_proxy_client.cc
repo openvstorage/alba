@@ -33,7 +33,8 @@ RoraProxy_client::RoraProxy_client(
     : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io),
       _asd_connection_pool_size(rora_config.asd_connection_pool_size) {
   ALBA_LOG(INFO, "RoraProxy_client(...)");
-  ManifestCache::set_capacity(rora_config.manifest_cache_size);
+  ManifestCache::getInstance().set_capacity(rora_config.manifest_cache_size);
+  _fast_path_failures = 0;
   try {
     _has_local_fragment_cache = _delegate->has_local_fragment_cache();
   } catch (alba::proxy_client::proxy_exception &e) {

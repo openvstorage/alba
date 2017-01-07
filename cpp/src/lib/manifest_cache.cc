@@ -28,8 +28,8 @@ ManifestCache &ManifestCache::getInstance() {
   return instance;
 }
 
-static size_t _manifest_cache_capacity = 10000;
 void ManifestCache::set_capacity(size_t capacity) {
+  std::lock_guard<std::mutex> lock(_level1_mutex);
   _manifest_cache_capacity = capacity;
 }
 
@@ -68,11 +68,7 @@ void ManifestCache::add(string namespace_, string alba_id,
   }
 
   manifest_cache &manifest_cache = *mcp;
-  std::mutex &m = *mp;
-  {
-    std::lock_guard<std::mutex> lock(m);
-    manifest_cache.insert(make_key(alba_id, mfp->name), std::move(mfp));
-  }
+  manifest_cache.insert(make_key(alba_id, mfp->name), std::move(mfp));
 }
 
 manifest_cache_entry ManifestCache::find(const string &namespace_,

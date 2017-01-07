@@ -19,14 +19,14 @@
 
 #include <iostream>
 
-#include <boost/thread/lock_guard.hpp>
+#include <mutex>
 
 namespace alba {
 namespace asd {
 
 using alba::proxy_protocol::OsdInfo;
 
-#define LOCK() boost::lock_guard<decltype(lock_)> lg__(lock_)
+#define LOCK() std::lock_guard<std::mutex> lock(_mutex)
 
 ConnectionPool::ConnectionPool(std::unique_ptr<OsdInfo> config, size_t capacity)
     : config_(std::move(config)), capacity_(capacity) {
