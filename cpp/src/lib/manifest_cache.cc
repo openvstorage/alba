@@ -28,7 +28,6 @@ ManifestCache &ManifestCache::getInstance() {
   return instance;
 }
 
-static size_t _manifest_cache_capacity = 10000;
 void ManifestCache::set_capacity(size_t capacity) {
   std::lock_guard<std::mutex> lock(_level1_mutex);
   _manifest_cache_capacity = capacity;

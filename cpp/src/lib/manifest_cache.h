@@ -49,7 +49,7 @@ public:
 
 private:
   ManifestCache() {}
-
+  size_t _manifest_cache_capacity = 10000;
   std::mutex _level1_mutex;
   std::map<std::string, std::pair<std::shared_ptr<manifest_cache>,
                                   std::shared_ptr<std::mutex>>>
