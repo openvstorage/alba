@@ -21,6 +21,7 @@ open Lwt.Infix
 
 let test_with_kvs_client test_name f =
   let t () =
+    Lwt_log.debug_f "Starting proxy_osd_test %s" test_name >>= fun () ->
     let ip, port, transport =
       let open Proxy_test in
       _IP, _PORT, _TRANSPORT

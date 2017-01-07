@@ -54,8 +54,9 @@ module Pool = struct
       Lwt_pool2.create
         size
         ~check:(fun _ exn ->
-            (* TODO some exns shouldn't invalidate the connection *)
-            false)
+          (* TODO some exns shouldn't invalidate the connection *)
+          Lwt_log.ign_debug_f ~exn "Throwing an abm connection away after an exception";
+          false)
         ~factory
         ~cleanup:(fun (_, closer) -> closer ())
 

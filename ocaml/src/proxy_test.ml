@@ -28,13 +28,13 @@ let _IP,_PORT,_TRANSPORT =
     ("127.0.0.1", 10_000, Net_fd.TCP)
 
                    
+let with_proxy_client f =
+  Proxy_client.with_client
+    _IP _PORT _TRANSPORT
+    f
+
 let test_with_proxy_client f =
-  let t =
-    Proxy_client.with_client
-      _IP _PORT _TRANSPORT
-      f
-  in
-  Lwt_main.run t
+  Lwt_main.run (with_proxy_client f)
 
 let assert_proxy_error f err =
   Lwt.catch
