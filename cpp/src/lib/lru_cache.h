@@ -41,7 +41,7 @@ template <typename K, typename V,
           template <typename...> class Set = boost::bimaps::unordered_set_of>
 class UnsafeLRUCache {
 public:
-  UnsafeLRUCache ( // const std::string& name,
+  UnsafeLRUCache( // const std::string& name,
       size_t capacity)
       : capacity_(capacity) {
     if (capacity_ == 0) {
@@ -105,24 +105,23 @@ private:
 };
 
 template <typename K, typename V,
-    template <typename...> class Set = boost::bimaps::unordered_set_of>
+          template <typename...> class Set = boost::bimaps::unordered_set_of>
 
-class SafeLRUCache{
+class SafeLRUCache {
 public:
-    SafeLRUCache(size_t capacity) : _cache(capacity){}
-    void insert(const K &k, const V &v){
-        std::lock_guard<std::mutex> lock(_mutex);
-        _cache.insert(k,v);
-    }
+  SafeLRUCache(size_t capacity) : _cache(capacity) {}
+  void insert(const K &k, const V &v) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _cache.insert(k, v);
+  }
 
-    boost::optional<V> find(const K &k) {
-        std::lock_guard<std::mutex> lock(_mutex);
-        return _cache.find(k);
-    }
+  boost::optional<V> find(const K &k) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _cache.find(k);
+  }
 
 private:
-    UnsafeLRUCache<K,V> _cache;
-    std::mutex _mutex;
-
+  UnsafeLRUCache<K, V> _cache;
+  std::mutex _mutex;
 };
 }
