@@ -32,8 +32,7 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace asd {
 
-BOOLEAN_ENUM(ForceNewConnection);
-
+using namespace std::chrono;
 using asd_client::Asd_client;
 
 class ConnectionPool {
@@ -46,8 +45,7 @@ public:
 
   ConnectionPool &operator=(const ConnectionPool &) = delete;
 
-  std::unique_ptr<Asd_client>
-  get_connection(const ForceNewConnection = ForceNewConnection::F);
+  std::unique_ptr<Asd_client> get_connection();
 
   void capacity(const size_t);
 
@@ -71,6 +69,9 @@ private:
   static std::unique_ptr<Asd_client> pop_(Connections &);
 
   static void clear_(Connections &);
+
+  int _fast_path_failures;
+  steady_clock::time_point _failure_time;
 };
 
 class ConnectionPools {

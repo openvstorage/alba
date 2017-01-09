@@ -405,7 +405,10 @@ void RoraProxy_client::read_objects_slices(
 
     if (result_front) {
       _failure_time = std::chrono::steady_clock::now();
-      _fast_path_failures++;
+      if (result_front != -2) {
+        // disqualified osds shouldn't result in disqualifying the fast path
+        _fast_path_failures++;
+      }
       via_proxy.clear();
       for (auto &s : slices) {
         via_proxy.push_back(s);

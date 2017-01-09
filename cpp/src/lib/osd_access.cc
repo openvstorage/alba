@@ -136,22 +136,27 @@ int OsdAccess::_read_osd_slices_asd_direct_path(
                                                     _connection_pool_size);
   auto connection = p->get_connection();
 
-  try {
-    // TODO 1 batch call...
-    for (auto &slice_ : slices) {
-      alba::asd_protocol::slice slice__;
-      slice__.offset = slice_.offset;
-      slice__.length = slice_.len;
-      slice__.target = slice_.target;
-      std::vector<alba::asd_protocol::slice> slices_{slice__};
-      connection->partial_get(slice_.key, slices_);
+  if (connection) {
+    try {
+      // TODO 1 batch call...
+      for (auto &slice_ : slices) {
+        alba::asd_protocol::slice slice__;
+        slice__.offset = slice_.offset;
+        slice__.length = slice_.len;
+        slice__.target = slice_.target;
+        std::vector<alba::asd_protocol::slice> slices_{slice__};
+        connection->partial_get(slice_.key, slices_);
+      }
+      p->release_connection(std::move(connection));
+      return 0;
+    } catch (std::exception &e) {
+      ALBA_LOG(INFO, "exception in _read_osd_slices_asd_direct_path for osd "
+                         << osd << " " << e.what());
+      return -1;
     }
-    p->release_connection(std::move(connection));
-    return 0;
-  } catch (std::exception &e) {
-    ALBA_LOG(INFO, "exception in _read_osd_slices_asd_direct_path for osd "
-                       << osd << " " << e.what());
-    return -1;
+  } else {
+    // asd was disqualified
+    return -2;
   }
 }
 

@@ -75,21 +75,32 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
 }
 
 void ConnectionPool::release_connection(std::unique_ptr<Asd_client> conn) {
+  LOCK();
   if (conn) {
-    LOCK();
+    if (_fast_path_failures > 0) {
+      _fast_path_failures--;
+    }
     if (connections_.size() < capacity_) {
       connections_.push_front(*conn.release());
       return;
     }
+  } else {
+    _failure_time = std::chrono::steady_clock::now();
+    _fast_path_failures++;
   }
 }
 
-std::unique_ptr<Asd_client>
-ConnectionPool::get_connection(ForceNewConnection force_new) {
+std::unique_ptr<Asd_client> ConnectionPool::get_connection() {
   std::unique_ptr<Asd_client> conn;
 
-  if (force_new == ForceNewConnection::F) {
+  {
     LOCK();
+    if (_fast_path_failures >= 15) {
+      if (duration_cast<seconds>(steady_clock::now() - _failure_time).count() <
+          120) {
+        return std::unique_ptr<Asd_client>(nullptr);
+      }
+    }
     conn = pop_(connections_);
   }
 
