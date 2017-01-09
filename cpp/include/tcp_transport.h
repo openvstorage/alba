@@ -29,9 +29,9 @@ public:
   void write_exact(const char *buf, int len) override;
   void read_exact(char *buf, int len) override;
 
+  void expires_from_now(const std::chrono::steady_clock::duration &timeout) override;
 private:
   boost::asio::ip::tcp::iostream _stream;
-  void expires_from_now(const std::chrono::steady_clock::duration &timeout);
   void output(llio::message_builder &mb);
   llio::message input();
 };
