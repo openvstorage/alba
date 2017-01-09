@@ -31,7 +31,7 @@ let get_id_for_key key =
     close hd;
     res
   in
-  Nsm_model.EncryptInfo.KeySha1 id
+  Nsm_model.EncryptInfo.KeySha256 id
 
 let from_encryption =
   let open Encryption in
