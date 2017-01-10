@@ -100,7 +100,8 @@ RUN eval `${opam_env}` && \
         core.114.05+21 \
         redis.0.3.3 \
         uri.1.9.2 \
-        result
+        result \
+        ezxmlm
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue

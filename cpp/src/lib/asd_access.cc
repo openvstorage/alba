@@ -77,9 +77,7 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
 void ConnectionPool::release_connection(std::unique_ptr<Asd_client> conn) {
   LOCK();
   if (conn) {
-    if (_fast_path_failures > 0) {
-      _fast_path_failures--;
-    }
+    _fast_path_failures = 0;
     if (connections_.size() < capacity_) {
       connections_.push_front(*conn.release());
       return;
