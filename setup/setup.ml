@@ -647,6 +647,7 @@ class proxy ?fragment_cache ?ip ?transport
   method proxy_cfg = p_cfg
 
   method log_file = Printf.sprintf "%s/proxy.out" proxy_base
+  method port = port
 
   method start_cmd = [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
   method start =
@@ -1689,48 +1690,166 @@ module Test = struct
     Deployment.setup ~bump_ids t_hdd;
     (cfg_hdd, t_hdd), (cfg_ssd, t_ssd)
 
+
+  let setup_global_backend () =
+    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
+    Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
+
+    let make_backend ?__retry_timeout ?(kill=false) ?n_osds name ~base_port =
+      let cfg =
+        Config.make
+          ?n_osds
+          ~workspace:(Printf.sprintf
+                        "%s/tmp/alba_%s"
+                        workspace name) ()
+      in
+      let t = Deployment.make_default ?__retry_timeout ~cfg ~base_port () in
+      if kill then Deployment.kill t;
+      Deployment.setup t;
+      cfg, t
+    in
+
+    let _, t_local1 = make_backend "local_1" ~base_port:4000 ~kill:true in
+    let _, t_local2 = make_backend "local_2"~base_port:5001 in
+    let _, t_local3 = make_backend "local_3"~base_port:6002 in
+    let _, t_local4 = make_backend "local_4"~base_port:7003 in
+
+    let cfg_global, t_global = make_backend "global"
+                                            ~base_port:7503 ~n_osds:0
+                                            ~__retry_timeout:10.
+    in
+
+    let add_backend_as_osd t_local kind =
+      let () =
+        match kind with
+        | `AlbaOsd ->
+           _alba_cmd_line
+             [ "add-osd";
+               "--config"; t_global.abm # config_url |> Url.canonical;
+               "--alba-osd-config-url"; t_local.abm # config_url |> Url.canonical;
+               "--node-id"; "x";
+               "--prefix"; "alba_osd_prefix";
+               "--preset"; "default";
+               "--to-json";
+             ]
+        | `ProxyOsd ->
+           _alba_cmd_line
+             [ "add-osd";
+               "--config"; t_global.abm # config_url |> Url.canonical;
+               "--endpoint"; Printf.sprintf "tCp://localhost:%i" (t_local.proxy # proxy_cfg
+                                                                  |> Proxy_cfg.port);
+               "--node-id"; "x";
+               "--prefix"; "alba_osd_prefix";
+               "--preset"; "default";
+               "--to-json"; "--verbose";
+             ]
+      in
+      _alba_cmd_line
+        [ "claim-osd";
+          "--config"; t_global.abm # config_url |> Url.canonical;
+          "--long-id"; get_alba_id t_local; ]
+    in
+    add_backend_as_osd t_local1 `AlbaOsd;
+    add_backend_as_osd t_local2 `AlbaOsd;
+    add_backend_as_osd t_local3 `ProxyOsd;
+    add_backend_as_osd t_local4 `ProxyOsd;
+    Deployment.deliver_messages t_global;
+
+    cfg_global, t_global,
+    [ t_local1; t_local2; t_local3; t_local4; ],
+    add_backend_as_osd
+
   let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
-    let (_, t_hdd), (_, t_ssd) = setup_aaa ~bump_ids:true ~the_preset:"preset_rora" () in
+    let make_cmd deployment filter result_file =
+      let cfg = deployment.cfg in
+      let host, transport = _get_ip_transport cfg
+      and port = deployment.proxy # port
+      in
+      let cmd =
+        ["cd";cfg.alba_home; "&&";
+         "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
+         Printf.sprintf "ALBA_PROXY_IP=%s" host;
+         Printf.sprintf "ALBA_PROXY_PORT=%i" port;
+         Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
+         Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
+        ]
+      in
+      let cmd =
+        if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
+        then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
+        else cmd @ [ "./cpp/bin/unit_tests.out" ]
+      in
+      let cmd2 = if xml
+                 then cmd @ ["--gtest_output=xml:" ^ result_file ]
+                 else cmd
+      in
+      let cmd3 = match filter with
+        | None -> cmd2
+        | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
+      in
+      cmd3 |> String.concat " "
+    in
+    let run_aaa () =
+      let (_, t_hdd), (_, t_ssd) = setup_aaa ~bump_ids:true ~the_preset:"preset_rora" () in
 
-    t_hdd.Deployment.osds.(0) # set "key1" (String.make 100 'a');
+      t_hdd.Deployment.osds.(0) # set "key1" (String.make 100 'a');
 
-    let cfg = t_hdd.Deployment.cfg in
-    let host, transport = _get_ip_transport cfg
-    and port = "10000"
+      (* preset for the main backend can have compression/encryption *)
+      let () = _create_preset t_hdd
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let () = _create_preset t_ssd
+                              "preset_rora"
+                              "./cfg/preset_no_compression.json"
+      in
+      let () = _create_preset t_hdd
+                              "preset_ctr"
+                              "./cfg/preset_test.json"
+      in
+
+      let cmd = make_cmd t_hdd None "testresults_aaa.xml" in
+      let rc = cmd |> Shell.cmd_with_rc in
+      Deployment.kill t_hdd;
+      Deployment.kill t_ssd;
+      rc
     in
-    (* preset for the main backend can have compression/encryption *)
-    let () = _create_preset t_hdd
-                            "preset_rora"
-                            "./cfg/preset.json"
+    let t_nil  = Deployment.make_default () in
+    let filter = "proxy_client.test_partial_read*" in
+    let run_nil () =
+      Deployment.setup t_nil;
+      let () = _create_preset t_nil
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let cmd = make_cmd t_nil (Some filter) "testresults_nil.xml" in
+      let rc = cmd |> Shell.cmd_with_rc in
+      Deployment.kill t_nil;
+      rc
     in
-    let () = _create_preset t_ssd
-                            "preset_rora"
-                            "./cfg/preset_no_compression.json"
+
+    let run_global () =
+      let _,t_global, _, _ =
+        setup_global_backend ()
+      in
+      let () = _create_preset t_global
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let cmd = make_cmd t_global (Some filter) "testresults_global.xml" in
+      let rc = cmd |> Shell.cmd_with_rc in
+      rc
     in
-    let () = _create_preset t_hdd
-                            "preset_ctr"
-                            "./cfg/preset_test.json"
+    let rc_aaa = run_aaa () in
+    let rc_nil = run_nil() in
+    let rc_global = run_global ()  in
+    let (rc:int) =
+      rc_aaa
+      lor rc_nil
+      lor rc_global
     in
-    let cmd =
-      ["cd";cfg.alba_home; "&&";
-       "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
-       Printf.sprintf "ALBA_PROXY_IP=%s" host;
-       Printf.sprintf "ALBA_PROXY_PORT=%s" port;
-       Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
-       Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
-      ]
-    in
-    let cmd =
-      if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
-      then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
-      else cmd @ [ "./cpp/bin/unit_tests.out" ]
-    in
-    let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml" ] else cmd in
-    let cmd3 = match filter with
-      | None -> cmd2
-      | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
-    in
-    cmd3 |> String.concat " " |> Shell.cmd_with_rc
+    rc
+
 
   let stress ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let t0 = Unix.gettimeofday() in

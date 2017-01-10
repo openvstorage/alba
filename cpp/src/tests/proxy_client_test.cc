@@ -491,8 +491,8 @@ TEST(proxy_client, manifest_cache_eviction) {
   }
 }
 
-TEST(proxy_client, rora_fc_partial_read_trivial) {
-  std::string namespace_("rora_fc_partial_read_trivial");
+TEST(proxy_client,test_partial_read_fc) {
+  std::string namespace_("test_partial_read_fc");
   std::ostringstream sos;
   sos << "with_manifest" << std::rand();
   string name = sos.str();
