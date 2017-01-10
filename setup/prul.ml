@@ -177,3 +177,46 @@ class type component =
     method start : unit
     method stop  : unit
   end
+
+let merge_result_xmls input_files output_file =
+  let open Ezxmlm in
+  let dtd = ref None in
+  let (tests, failures, disabled, errors, timestamp, time, testsuite_members) =
+    List.fold_left
+      (fun (tests, failures, disabled, errors, timestamp, time, testsuite_members) input_file ->
+        let dtd', xml = from_channel (open_in input_file) in
+        dtd := Some dtd';
+        let testsuites_attrs, testsuites = member_with_attr "testsuites" xml in
+
+        let testsuite_members =
+          List.append
+            testsuites
+            testsuite_members
+        in
+
+        let timestamp = get_attr "timestamp" testsuites_attrs in
+        let time = time +. (get_attr "time" testsuites_attrs |> float_of_string) in
+        let tests = tests + (get_attr "tests" testsuites_attrs |> int_of_string) in
+        let failures = failures + (get_attr "failures" testsuites_attrs |> int_of_string) in
+        let disabled = disabled + (get_attr "disabled" testsuites_attrs |> int_of_string) in
+        let errors = errors + (get_attr "errors" testsuites_attrs |> int_of_string) in
+        tests, failures, disabled, errors, timestamp, time, testsuite_members)
+      (0, 0, 0, 0, "", 0., [])
+      input_files
+  in
+  let attrs = [ ("", "tests"), string_of_int tests;
+                ("", "failures"), string_of_int failures;
+                ("", "disabled"), string_of_int disabled;
+                ("", "errors"), string_of_int errors;
+                ("", "timestamp"), timestamp;
+                ("", "time"), string_of_float time;
+              ]
+  in
+  to_channel
+    (open_out output_file)
+    (match !dtd with
+     | None -> assert false
+     | Some x -> x)
+    [ (make_tag
+         "testsuites"
+         (attrs, testsuite_members)); ]
