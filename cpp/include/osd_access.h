@@ -58,7 +58,7 @@ public:
   void operator=(OsdAccess const &) = delete;
   bool osd_is_unknown(osd_t);
 
-  void update(Proxy_client &client);
+  bool update(Proxy_client &client);
 
   int read_osds_slices(std::map<osd_t, std::vector<asd_slice>> &);
 

@@ -148,6 +148,10 @@ void ConnectionPool::capacity(size_t cap) {
 ConnectionPool *
 ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info,
                                      int connection_pool_size) {
+  if (!osd_info.kind_asd) {
+    return nullptr;
+  }
+
   LOCK();
   auto it = connection_pools_.find(osd_info.long_id);
   if (it == connection_pools_.end()) {

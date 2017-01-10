@@ -345,7 +345,8 @@ void RoraProxy_client::_process(std::vector<object_info> &object_infos,
     string alba_id = std::get<1>(object_info);
     if (alba_id == "") {
       alba_id = OsdAccess::getInstance(_asd_connection_pool_size)
-                    .get_alba_levels(*this)[0];
+                    .get_alba_levels(*this)
+                    .at(0);
     }
     ManifestCache::getInstance().add(namespace_, alba_id,
                                      std::move(manifest_cache_entry_));
