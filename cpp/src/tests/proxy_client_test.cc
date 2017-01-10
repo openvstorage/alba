@@ -357,12 +357,16 @@ void _generic_partial_read_test(
 
   std::cout << "slow_path=" << cntr.slow_path
             << ", fast_path=" << cntr.fast_path << std::endl;
-  if (clear_before_read) {
-    EXPECT_TRUE(cntr.slow_path > 0);
-    EXPECT_EQ(cntr.fast_path, 0);
-  } else {
-    EXPECT_EQ(cntr.slow_path, 0);
-    EXPECT_TRUE(cntr.fast_path > 0);
+  std::string slow_allowed_s = env_or_default("ALBA_TEST_SLOW_ALLOWED", "false");
+  bool slow_allowed = "true" == slow_allowed_s;
+  if (!slow_allowed){
+      if (clear_before_read) {
+          EXPECT_TRUE(cntr.slow_path > 0);
+          EXPECT_EQ(cntr.fast_path, 0);
+      } else {
+          EXPECT_EQ(cntr.slow_path, 0);
+          EXPECT_TRUE(cntr.fast_path > 0);
+      }
   }
 }
 

@@ -1760,13 +1760,14 @@ module Test = struct
     add_backend_as_osd
 
   let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
-    let make_cmd deployment filter result_file =
+    let make_cmd ?(prep_env="") deployment filter result_file =
       let cfg = deployment.cfg in
       let host, transport = _get_ip_transport cfg
       and port = deployment.proxy # port
       in
       let cmd =
         ["cd";cfg.alba_home; "&&";
+         prep_env;
          "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
          Printf.sprintf "ALBA_PROXY_IP=%s" host;
          Printf.sprintf "ALBA_PROXY_PORT=%i" port;
@@ -1816,13 +1817,18 @@ module Test = struct
     in
     let t_nil  = Deployment.make_default () in
     let filter = "proxy_client.test_partial_read*" in
+
     let run_nil () =
       Deployment.setup t_nil;
       let () = _create_preset t_nil
                               "preset_rora"
                               "./cfg/preset.json"
       in
-      let cmd = make_cmd t_nil (Some filter) "testresults_nil.xml" in
+      let cmd =
+        make_cmd
+          ~prep_env:"ALBA_TEST_SLOW_ALLOWED=true"
+          t_nil (Some filter) "testresults_nil.xml"
+      in
       let rc = cmd |> Shell.cmd_with_rc in
       Deployment.kill t_nil;
       rc
@@ -1836,7 +1842,11 @@ module Test = struct
                               "preset_rora"
                               "./cfg/preset.json"
       in
-      let cmd = make_cmd t_global (Some filter) "testresults_global.xml" in
+      let cmd =
+        make_cmd
+          ~prep_env:"ALBA_TEST_SLOW_ALLOWED=true"
+          t_global (Some filter) "testresults_global.xml"
+      in
       let rc = cmd |> Shell.cmd_with_rc in
       rc
     in
@@ -1847,6 +1857,11 @@ module Test = struct
       rc_aaa
       lor rc_nil
       lor rc_global
+    in
+    let () = Prul.merge_result_xmls [("testresults_aaa.xml", "aaa");
+                                     ("testresults_nil.xml", "nil");
+                                     ("testresults_global.xml", "global");
+                                    ] "testresults.xml"
     in
     rc
 
