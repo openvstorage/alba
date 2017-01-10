@@ -1661,7 +1661,10 @@ module Test = struct
   let setup_aaa ~bump_ids ?(the_prefix="my_prefix") ?(the_preset="default") () =
     (* alba accelerated alba *)
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
-    let cfg_ssd = Config.make ~use_rora:true ~workspace:(workspace ^ "/tmp/alba_ssd") () in
+    let cfg_ssd = Config.make
+                    ~use_rora:false (* no rora for now, as it doesn't work anyway *)
+                    ~workspace:(workspace ^ "/tmp/alba_ssd") ()
+    in
     let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:6000 () in
     Deployment.kill t_ssd;
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
@@ -1688,13 +1691,17 @@ module Test = struct
 
   let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
     let (_, t_hdd), (_, t_ssd) = setup_aaa ~bump_ids:true ~the_preset:"preset_rora" () in
+
+    t_hdd.Deployment.osds.(0) # set "key1" (String.make 100 'a');
+
     let cfg = t_hdd.Deployment.cfg in
     let host, transport = _get_ip_transport cfg
     and port = "10000"
     in
+    (* preset for the main backend can have compression/encryption *)
     let () = _create_preset t_hdd
                             "preset_rora"
-                            "./cfg/preset_no_compression.json"
+                            "./cfg/preset.json"
     in
     let () = _create_preset t_ssd
                             "preset_rora"
@@ -1710,6 +1717,7 @@ module Test = struct
        Printf.sprintf "ALBA_PROXY_IP=%s" host;
        Printf.sprintf "ALBA_PROXY_PORT=%s" port;
        Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
+       Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
       ]
     in
     let cmd =

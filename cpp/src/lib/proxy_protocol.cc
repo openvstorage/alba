@@ -41,6 +41,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _READ_OBJECTS_SLICES2 23
 #define _APPLY_SEQUENCE 24
 #define _OSD_INFO2 28
+#define _HAS_LOCAL_FRAGMENT_CACHE 31
 
 namespace alba {
 namespace proxy_protocol {
@@ -452,6 +453,18 @@ void read_osd_info2_response(message &m, Status &status, osd_maps_t &result) {
       auto entry = std::make_pair(std::move(alba_id), std::move(infos));
       result[i] = std::move(entry);
     }
+  }
+}
+
+void write_has_local_fragment_cache_request(message_builder &mb) {
+  write_tag(mb, _HAS_LOCAL_FRAGMENT_CACHE);
+}
+
+void read_has_local_fragment_cache_response(message &m, Status &status,
+                                            bool &result) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    from(m, result);
   }
 }
 

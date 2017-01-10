@@ -480,6 +480,7 @@ module Protocol = struct
                       request
     | MultiExists : (Namespace.name * object_name list, bool list) request
     | GetAlbaId : (unit, alba_id) request
+    | HasLocalFragmentCache : (unit, bool) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -509,6 +510,7 @@ module Protocol = struct
                       28, Wrap OsdInfo2, "OsdInfo2";
                       29, Wrap GetAlbaId, "GetAlbaId";
                       30, Wrap ListNamespaces2, "ListNamespaces2";
+                      31, Wrap HasLocalFragmentCache, "HasLocalFragmentCache";
                     ]
 
   module Error = struct
@@ -655,6 +657,8 @@ module Protocol = struct
          (Deser.list Deser.string)
     | GetAlbaId ->
        Deser.unit
+    | HasLocalFragmentCache ->
+       Deser.unit
 
   let deser_request_o : type i o. (i, o) request -> o Deser.t = function
     | ListNamespaces -> Deser.counted_list_more Deser.string
@@ -730,4 +734,6 @@ module Protocol = struct
        Deser.list Deser.bool
     | GetAlbaId ->
        Deser.string
+    | HasLocalFragmentCache ->
+       Deser.bool
 end

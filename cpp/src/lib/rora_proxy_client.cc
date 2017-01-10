@@ -18,6 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include "rora_proxy_client.h"
 #include "alba_logger.h"
+#include "asd_client.h"
 #include "manifest.h"
 #include "manifest_cache.h"
 #include "osd_access.h"
@@ -29,9 +30,21 @@ using std::string;
 RoraProxy_client::RoraProxy_client(
     std::unique_ptr<GenericProxy_client> delegate,
     const RoraConfig &rora_config)
-    : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io) {
+    : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io),
+      _asd_connection_pool_size(rora_config.asd_connection_pool_size) {
   ALBA_LOG(INFO, "RoraProxy_client(...)");
-  ManifestCache::set_capacity(rora_config.manifest_cache_size);
+  ManifestCache::getInstance().set_capacity(rora_config.manifest_cache_size);
+  _fast_path_failures = 0;
+  try {
+    _has_local_fragment_cache = _delegate->has_local_fragment_cache();
+  } catch (alba::proxy_client::proxy_exception &e) {
+    if (e._return_code ==
+        alba::proxy_protocol::return_code::UNKNOWN_OPERATION) {
+      _has_local_fragment_cache = false;
+    } else {
+      throw e;
+    }
+  }
 }
 
 bool RoraProxy_client::namespace_exists(const string &name) {
@@ -53,16 +66,6 @@ std::tuple<std::vector<string>, has_more> RoraProxy_client::list_namespaces(
     const int max, const reverse reverse_) {
   return _delegate->list_namespaces(first, include_first_, last, include_last_,
                                     max, reverse_);
-}
-
-void _maybe_add_to_manifest_cache(const string &namespace_,
-                                  const string &alba_id,
-                                  std::shared_ptr<ManifestWithNamespaceId> mf) {
-  using alba::stuff::operator<<;
-  if (compressor_t::NO_COMPRESSION == mf->compression->get_compressor() &&
-      encryption_t::NO_ENCRYPTION == mf->encrypt_info->get_encryption()) {
-    ManifestCache::getInstance().add(namespace_, alba_id, std::move(mf));
-  }
 }
 
 void RoraProxy_client::write_object_fs(const string &namespace_,
@@ -134,8 +137,8 @@ void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     auto &asd_slices = item.second;
-    std::cout << "asd_slices.size()=" << asd_slices.size();
-    std::cout << osd << ": [";
+    std::cout << "asd_slices.size()=" << asd_slices.size() << ", osd=" << osd
+              << ": [";
     for (auto &asd_slice : asd_slices) {
 
       void *p = asd_slice.target;
@@ -151,7 +154,7 @@ void RoraProxy_client::_maybe_update_osd_infos(
 
   ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos(_)");
   bool ok = true;
-  auto &access = OsdAccess::getInstance();
+  auto &access = OsdAccess::getInstance(_asd_connection_pool_size);
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     if (access.osd_is_unknown(osd)) {
@@ -201,6 +204,10 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.fragment_location = p;
   l.offset = pos_in_fragment;
   l.length = std::min(len, fragment_length - pos_in_fragment);
+  l.uses_compression =
+      mf.compression->get_compressor() != compressor_t::NO_COMPRESSION;
+  l.uses_encryption =
+      mf.encrypt_info->get_encryption() != encryption_t::NO_ENCRYPTION;
   return l;
 }
 
@@ -320,7 +327,8 @@ int RoraProxy_client::_short_path(
   if (_use_null_io) {
     return 0;
   } else {
-    return OsdAccess::getInstance().read_osds_slices(per_osd);
+    return OsdAccess::getInstance(_asd_connection_pool_size)
+        .read_osds_slices(per_osd);
   }
 }
 
@@ -336,9 +344,11 @@ void RoraProxy_client::_process(std::vector<object_info> &object_infos,
             std::get<2>(object_info).release());
     string alba_id = std::get<1>(object_info);
     if (alba_id == "") {
-      alba_id = OsdAccess::getInstance().get_alba_levels(*this)[0];
+      alba_id = OsdAccess::getInstance(_asd_connection_pool_size)
+                    .get_alba_levels(*this)[0];
     }
-    _maybe_add_to_manifest_cache(namespace_, alba_id, manifest_cache_entry_);
+    ManifestCache::getInstance().add(namespace_, alba_id,
+                                     std::move(manifest_cache_entry_));
   }
 }
 
@@ -347,7 +357,19 @@ void RoraProxy_client::read_objects_slices(
     const consistent_read consistent_read_,
     alba::statistics::RoraCounter &cntr) {
 
-  if (consistent_read_ == consistent_read::T) {
+  bool use_slow_path =
+      (consistent_read_ == consistent_read::T) && _has_local_fragment_cache;
+  if (_fast_path_failures > 30) {
+    if (duration_cast<seconds>(steady_clock::now() - _failure_time).count() >
+        120) {
+      // try to start using fast path again after 2 minutes
+      _fast_path_failures = 0;
+    } else {
+      use_slow_path = true;
+    }
+  }
+
+  if (use_slow_path) {
     std::vector<object_info> object_infos;
     _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
                                     object_infos, cntr);
@@ -355,15 +377,19 @@ void RoraProxy_client::read_objects_slices(
   } else {
     std::vector<std::pair<byte *, Location>> short_path;
     std::vector<ObjectSlices> via_proxy;
-    auto alba_levels = OsdAccess::getInstance().get_alba_levels(*this);
+    auto alba_levels = OsdAccess::getInstance(_asd_connection_pool_size)
+                           .get_alba_levels(*this);
     for (auto &object_slices : slices) {
       auto locations =
           _resolve_one_many_levels(alba_levels, 0, namespace_, object_slices);
       if (locations == boost::none ||
           std::any_of(locations->begin(), locations->end(),
                       [](std::pair<byte *, Location> &l) {
-                        return std::get<1>(l).fragment_location.first ==
-                               boost::none;
+                        auto location = std::get<1>(l);
+                        return location.fragment_location.first ==
+                                   boost::none ||
+                               location.uses_compression ||
+                               location.uses_encryption;
                       })) {
         via_proxy.push_back(object_slices);
       } else {
@@ -378,11 +404,19 @@ void RoraProxy_client::read_objects_slices(
     ALBA_LOG(DEBUG, "_short_path result => " << result_front);
 
     if (result_front) {
+      _failure_time = std::chrono::steady_clock::now();
+      if (result_front != -2) {
+        // disqualified osds shouldn't result in disqualifying the fast path
+        _fast_path_failures++;
+      }
       via_proxy.clear();
       for (auto &s : slices) {
         via_proxy.push_back(s);
       }
     } else {
+      if (_fast_path_failures > 0) {
+        _fast_path_failures--;
+      }
       cntr.fast_path += short_path.size();
     }
 

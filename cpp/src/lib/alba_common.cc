@@ -37,7 +37,7 @@ template <> void from(message &m, x_uint64_t &t) {
 
 void to_be(alba::llio::message_builder &mb, const x_uint64_t &t) {
   if (t.i < max_int32) {
-    alba::llio::to_be(mb, t.i);
+    alba::llio::to_be(mb, (uint32_t)t.i);
   } else {
     alba::llio::to_be(mb, (uint32_t)max_int32);
     alba::llio::to_be(mb, t.i);

@@ -118,9 +118,10 @@ let alba_bench alba_cfg_url tls_config
                prefix client_file_prefix upload_slack
                slice_size namespace
                scenarios robust seeds
+               verbose
   =
   lwt_cmd_line
-    ~to_json:false ~verbose:false
+    ~to_json:false ~verbose
     (fun () ->
       let open Lwt.Infix in
       let mapped = map_scenarios scenarios robust in
@@ -152,6 +153,7 @@ let alba_bench_cmd =
         $ scenarios
         $ robust
         $ seeds
+        $ verbose
   ),
   Term.info "alba-bench" ~doc:"simple alba benchmark"
 

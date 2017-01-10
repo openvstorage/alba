@@ -35,14 +35,14 @@ namespace proxy_client {
 std::unique_ptr<GenericProxy_client>
 _make_proxy_client(const std::string &ip, const std::string &port,
                    const std::chrono::steady_clock::duration &timeout,
-                   const Transport &transport) {
+                   const transport::Kind &transport) {
   GenericProxy_client *r = nullptr;
 
   switch (transport) {
-  case Transport::tcp: {
+  case transport::Kind::tcp: {
     r = new TCPProxy_client(ip, port, timeout);
   }; break;
-  case Transport::rdma: {
+  case transport::Kind::rdma: {
     r = new RDMAProxy_client(ip, port, timeout);
   }; break;
   }
@@ -53,7 +53,7 @@ _make_proxy_client(const std::string &ip, const std::string &port,
 std::unique_ptr<Proxy_client>
 make_proxy_client(const std::string &ip, const std::string &port,
                   const std::chrono::steady_clock::duration &timeout,
-                  const Transport &transport,
+                  const transport::Kind &transport,
                   const boost::optional<RoraConfig> &rora_config) {
 
   std::unique_ptr<GenericProxy_client> inner_client =
@@ -72,33 +72,6 @@ void Proxy_client::apply_sequence(const std::string &namespace_,
                                   const write_barrier write_barrier,
                                   const sequences::Sequence &seq) {
   this->apply_sequence(namespace_, write_barrier, seq._asserts, seq._updates);
-}
-
-std::ostream &operator<<(std::ostream &os, Transport t) {
-  switch (t) {
-  case Transport::tcp:
-    os << "TCP";
-    break;
-  case Transport::rdma:
-    os << "RDMA";
-    break;
-  }
-
-  return os;
-}
-
-std::istream &operator>>(std::istream &is, Transport &t) {
-  std::string s;
-  is >> s;
-  if (s == "TCP") {
-    t = Transport::tcp;
-  } else if (s == "RDMA") {
-    t = Transport::rdma;
-  } else {
-    is.setstate(std::ios_base::failbit);
-  }
-
-  return is;
 }
 
 std::ostream &operator<<(std::ostream &os, const RoraConfig &cfg) {

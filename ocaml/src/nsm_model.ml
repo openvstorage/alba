@@ -476,11 +476,11 @@ module EncryptInfo = struct
   open Encryption
 
   type key_identification =
-    | KeySha1 of string
+    | KeySha256 of string
   [@@deriving show]
 
   let id_to_buffer buf = function
-    | KeySha1 id ->
+    | KeySha256 id ->
       Llio.int8_to buf 1;
       Llio.string_to buf id
 
@@ -488,7 +488,7 @@ module EncryptInfo = struct
     let k = Llio.int8_from buf in
     if k <> 1
     then raise_bad_tag "EncryptInfo.key_identification" k;
-    KeySha1 (Llio.string_from buf)
+    KeySha256 (Llio.string_from buf)
 
   type t =
     | NoEncryption

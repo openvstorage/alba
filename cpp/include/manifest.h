@@ -64,7 +64,7 @@ class TestCompression : public Compression {
   virtual void print(std::ostream &os) const { os << "TestCompression()"; }
 };
 
-enum class encryption_t { NO_ENCRYPTION, ALGO_WITH_KEY };
+enum class encryption_t { NO_ENCRYPTION, ENCRYPTED };
 
 class EncryptInfo {
 public:
@@ -86,18 +86,32 @@ enum class algo_t { AES };
 enum class chaining_mode_t { CBC, CTR };
 enum class key_length_t { L256 };
 
-class AlgoWithKey : public EncryptInfo {
+class Encrypted : public EncryptInfo {
+  /* | Encrypted of Encryption.algo * key_identification */
+
+  /* type algo = */
+  /*   | AES of chaining_mode * key_length */
+  /* type chaining_mode = */
+  /*   | CBC */
+  /*   | CTR */
+  /* type key_length = */
+  /*   | L256 */
+
+  /* type key_identification = */
+  /*   | KeySha256 of string */
+
   virtual encryption_t get_encryption() const {
-    return encryption_t::ALGO_WITH_KEY;
+    return encryption_t::ENCRYPTED;
   }
 
-  virtual void print(std::ostream &os) const { os << "AlgoWithKey()"; }
+  virtual void print(std::ostream &os) const { os << "Encrypted()"; }
 
 public:
   algo_t algo = algo_t::AES;
   chaining_mode_t mode = chaining_mode_t::CTR;
   key_length_t key_length = key_length_t::L256;
-  std::string key;
+
+  std::string key_identification;
 };
 
 typedef std::pair<boost::optional<osd_t>, uint32_t> fragment_location_t;
@@ -112,6 +126,11 @@ struct Location {
   uint32_t offset;
   uint32_t length;
   fragment_location_t fragment_location;
+
+  bool uses_compression;
+  // should be more fine grained about encryption when we want to support rora
+  // for CTR mode encryption
+  bool uses_encryption;
 };
 
 struct Manifest {

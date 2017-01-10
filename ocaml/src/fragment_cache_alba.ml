@@ -265,7 +265,8 @@ class alba_cache
             | None -> Lwt.return (false, [])
             | Some (mf, namespace_id, _, mfs) ->
                lru_track ~namespace ~object_name;
-               let mfs = (mf, namespace_id, "") :: mfs in
+               client # get_alba_id >>= fun alba_id ->
+               let mfs = (mf, namespace_id, alba_id) :: mfs in
                Lwt.return (true, mfs)))
         (fun exn ->
          Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup2" >>= fun () ->
@@ -315,4 +316,5 @@ class alba_cache
     method close () = closer ()
 
     method osd_infos () = client # osd_infos
+    method has_local_fragment_cache = client # has_local_fragment_cache
   end

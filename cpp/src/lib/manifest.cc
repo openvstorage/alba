@@ -98,7 +98,7 @@ void from(message &m, proxy_protocol::algo_t &algo) {
   default: { throw deserialisation_exception("unknown algo"); };
   }
 }
-void from(message &m, AlgoWithKey &awk) {
+void from(message &m, Encrypted &awk) {
 
   // ALBA_LOG(DEBUG, "pos = " << m.get_pos());
   // alba::stuff::dump_buffer(std::cout, m.current(16), 16);
@@ -108,10 +108,13 @@ void from(message &m, AlgoWithKey &awk) {
   from(m, awk.algo);
   from(m, awk.mode);
   from(m, awk.key_length);
-  uint8_t x;
-  from(m, x);
-  from(m, awk.key);
-  if (awk.key.size() != 32) {
+
+  // key_identification
+  uint8_t tag;
+  from(m, tag);
+  assert(tag == 1); // KeySha256
+  from(m, awk.key_identification);
+  if (awk.key_identification.size() != 32) {
     throw deserialisation_exception("key length != 32");
   }
 }
@@ -125,14 +128,9 @@ void from(message &m, std::unique_ptr<EncryptInfo> &p) {
     r = new NoEncryption();
   }; break;
   case 2: {
-    // comment for now until the serialisation has been cleared out
-
-    /* AlgoWithKey *awk = new AlgoWithKey();
+    Encrypted *awk = new Encrypted();
     from(m, *awk);
-    r = awk; */
-
-    throw deserialisation_exception("AlgoWithKey not yet supported");
-
+    r = awk;
   }; break;
   default: {
     ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
@@ -305,8 +303,8 @@ std::ostream &operator<<(std::ostream &os, const encryption_t &encryption) {
   case encryption_t::NO_ENCRYPTION:
     os << "NO_ENCRYPTION";
     break;
-  case encryption_t::ALGO_WITH_KEY:
-    os << "ALGO_WITH_KEY";
+  case encryption_t::ENCRYPTED:
+    os << "ENCRYPTED";
   default:
     os << "?encryption?";
   };

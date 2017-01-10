@@ -719,7 +719,7 @@ let execute_query : type req res.
     | PartialGet ->
        fun (key, slices, prio) ->
        begin
-         Lwt_log.debug_f "PartialGet for %s" (Slice.show key) >>= fun () ->
+         Lwt_log.debug_f "PartialGet for %s (%s)" (Slice.show key) ([%show : (int * int) list] slices) >>= fun () ->
          match get_value_option kv key with
          | None -> return' false
          | Some (_cs, blob) ->
@@ -1379,7 +1379,7 @@ let asd_protocol
   (*Lwt_io.printlf "b0:%S%!" b0 >>= fun () -> *)
   begin
     if b0 <> Asd_protocol._MAGIC
-    then Lwt.fail_with "protocol error: no magic"
+    then Lwt.fail_with (Printf.sprintf "protocol error: no magic (%S)" b0)
     else
       begin
         Llio2.NetFdReader.int32_from nfd >>= fun version ->

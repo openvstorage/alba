@@ -367,5 +367,19 @@ void GenericProxy_client::osd_info2(osd_maps_t &result) {
   message response = _input();
   proxy_protocol::read_osd_info2_response(response, _status, result);
 }
+
+bool GenericProxy_client::has_local_fragment_cache() {
+  _expires_from_now(_timeout);
+  message_builder mb;
+
+  proxy_protocol::write_has_local_fragment_cache_request(mb);
+  _output(mb);
+  message response = _input();
+  bool result;
+  proxy_protocol::read_has_local_fragment_cache_response(response, _status,
+                                                         result);
+  check_status(__PRETTY_FUNCTION__);
+  return result;
+}
 }
 }

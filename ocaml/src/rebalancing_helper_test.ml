@@ -75,7 +75,7 @@ let test_check_move () =
       encrypt_info = Nsm_model.EncryptInfo.Encrypted (
                          Encryption.Encryption.AES (Encryption.Encryption.CBC,
                                                     Encryption.Encryption.L256),
-                         (Nsm_model.EncryptInfo.KeySha1 "xxx"));
+                         (Nsm_model.EncryptInfo.KeySha256 "xxx"));
       chunk_sizes = [39552];
       size = 39552L;
       checksum = Checksum.NoChecksum;

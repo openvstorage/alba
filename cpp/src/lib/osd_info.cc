@@ -20,8 +20,10 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "llio.h"
 #include "stuff.h"
 #include <iostream>
+
 namespace alba {
 namespace llio {
+
 template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   uint8_t version;
   from(m, version);
@@ -44,6 +46,21 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   from(inner, info.port);
   from(inner, info.use_tls);
   from(inner, info.use_rdma);
+  from(inner, info.long_id);
+  from(inner, info.node_id);
+  /*
+TODO could someday also deserialize the following properties (if they would be
+useful here):
+decommissioned
+other
+total
+used
+seen
+read
+write
+errors
+checksum_errors
+*/
 }
 
 template <> void from(message &m, proxy_protocol::OsdCapabilities &caps) {

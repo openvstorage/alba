@@ -18,6 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #pragma once
 #include "alba_common.h"
+#include "asd_access.h"
 #include "osd_info.h"
 #include "proxy_client.h"
 #include <condition_variable>
@@ -51,7 +52,7 @@ using namespace proxy_protocol;
 
 class OsdAccess {
 public:
-  static OsdAccess &getInstance();
+  static OsdAccess &getInstance(int connection_pool_size);
 
   OsdAccess(OsdAccess const &) = delete;
   void operator=(OsdAccess const &) = delete;
@@ -64,7 +65,11 @@ public:
   std::vector<alba_id_t> get_alba_levels(Proxy_client &client);
 
 private:
-  OsdAccess() : _filling(false) {}
+  OsdAccess(int connection_pool_size)
+      : _connection_pool_size(connection_pool_size), _filling(false) {}
+
+  int _connection_pool_size;
+
   std::mutex _osd_maps_mutex;
   osd_maps_t _osd_maps;
   std::vector<alba_id_t> _alba_levels; // TODO should invalidate some things
@@ -75,7 +80,11 @@ private:
 
   std::shared_ptr<info_caps> _find_osd(osd_t);
 
-  int _read_osd_slices(osd_t, std::vector<asd_slice> &);
+  int _read_osd_slices_asd_direct_path(osd_t osd,
+                                       std::vector<asd_slice> &slices);
+  asd::ConnectionPools asd_connection_pools;
+
+  int _read_osd_slices_xio(osd_t, std::vector<asd_slice> &);
   std::shared_ptr<gobjfs::xio::client_ctx> _find_ctx(osd_t);
   void _set_ctx(osd_t, std::shared_ptr<gobjfs::xio::client_ctx>);
   void _remove_ctx(osd_t);
