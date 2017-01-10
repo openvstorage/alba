@@ -511,7 +511,7 @@ TEST(proxy_client,test_partial_read_fc) {
   std::vector<ObjectSlices> objects_slices{object_slices};
   string file_name("./ocaml/alba.native");
   config cfg;
-  cfg.PORT = "10000";
+
   _generic_partial_read_test(cfg, namespace_, name, objects_slices, file_name,
                              false);
 }
