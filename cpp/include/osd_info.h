@@ -28,6 +28,7 @@ namespace alba {
 namespace proxy_protocol {
 
 struct OsdInfo {
+  bool kind_asd = false;
   std::string long_id;
   std::vector<std::string> ips;
   uint32_t port;

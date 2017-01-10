@@ -39,9 +39,10 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   uint8_t kind;
   from(inner, kind);
   if (kind != 1) {
-    throw deserialisation_exception(
-        "unexpected kind while deserializing OsdInfo");
+    info.kind_asd = false;
+    return;
   }
+  info.kind_asd = true;
   from(inner, info.ips);
   from(inner, info.port);
   from(inner, info.use_tls);

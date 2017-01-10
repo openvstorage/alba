@@ -73,7 +73,8 @@ void OsdAccess::_remove_ctx(osd_t osd) {
   _osd_ctx.erase(osd);
 }
 
-void OsdAccess::update(Proxy_client &client) {
+bool OsdAccess::update(Proxy_client &client) {
+  bool result = true;
   if (!_filling.load()) {
     ALBA_LOG(INFO, "OsdAccess::update:: filling up");
     std::lock_guard<std::mutex> f_lock(_filling_mutex);
@@ -92,6 +93,7 @@ void OsdAccess::update(Proxy_client &client) {
       } catch (std::exception &e) {
         ALBA_LOG(INFO,
                  "OSDAccess::update: exception while filling up: " << e.what());
+        result = false;
       }
       _filling.store(false);
       _filling_cond.notify_all();
@@ -100,11 +102,15 @@ void OsdAccess::update(Proxy_client &client) {
     std::unique_lock<std::mutex> lock(_filling_mutex);
     _filling_cond.wait(lock, [this] { return (this->_filling.load()); });
   }
+  return result;
 }
 
 std::vector<alba_id_t> OsdAccess::get_alba_levels(Proxy_client &client) {
   if (_alba_levels.size() == 0) {
-    this->update(client);
+    if (!this->update(client)) {
+      throw osd_access_exception(
+          -1, "initial update of osd infos in osd_access failed");
+    }
   }
   return _alba_levels;
 }
@@ -134,6 +140,9 @@ int OsdAccess::_read_osd_slices_asd_direct_path(
   }
   auto p = asd_connection_pools.get_connection_pool(maybe_ic->first,
                                                     _connection_pool_size);
+  if (nullptr == p) {
+    return -1;
+  }
   auto connection = p->get_connection();
 
   if (connection) {
