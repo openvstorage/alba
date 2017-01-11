@@ -189,6 +189,7 @@ let rewrite_object
                   ~checksum_o
                   ~allow_overwrite
                   ~object_id_hint
+                  ~timestamp:manifest.Manifest.timestamp
       >>= fun _ ->
      Lwt.return ())
     (let open Nsm_model.Err in
