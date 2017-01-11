@@ -178,16 +178,32 @@ class type component =
     method stop  : unit
   end
 
-let merge_result_xmls input_files output_file =
+let merge_result_xmls input output_file =
   let open Ezxmlm in
   let dtd = ref None in
   let (tests, failures, disabled, errors, timestamp, time, testsuite_members) =
     List.fold_left
-      (fun (tests, failures, disabled, errors, timestamp, time, testsuite_members) input_file ->
+      (fun (tests, failures, disabled, errors, timestamp, time, testsuite_members)
+           (input_file, suite_prefix) ->
         let dtd', xml = from_channel (open_in input_file) in
         dtd := Some dtd';
         let testsuites_attrs, testsuites = member_with_attr "testsuites" xml in
-
+        let testsuites =
+          filter_map
+            ~tag:"testsuite"
+            ~f:(fun attrs ns ->
+              let attrs' =
+                List.map
+                  (fun attr ->
+                    let ((n0,n1),v) = attr in
+                    match n1 with
+                    | "name" -> (n0,n1), suite_prefix ^ "_" ^  v
+                    | _ -> attr)
+                  attrs
+              in
+              [make_tag "testsuite" (attrs', ns)])
+          testsuites
+        in
         let testsuite_members =
           List.append
             testsuites
@@ -202,7 +218,7 @@ let merge_result_xmls input_files output_file =
         let errors = errors + (get_attr "errors" testsuites_attrs |> int_of_string) in
         tests, failures, disabled, errors, timestamp, time, testsuite_members)
       (0, 0, 0, 0, "", 0., [])
-      input_files
+      input
   in
   let attrs = [ ("", "tests"), string_of_int tests;
                 ("", "failures"), string_of_int failures;
