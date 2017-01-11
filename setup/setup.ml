@@ -1691,11 +1691,17 @@ module Test = struct
     (cfg_hdd, t_hdd), (cfg_ssd, t_ssd)
 
 
-  let setup_global_backend () =
+  let setup_global_backend ?(accelerated=false) () =
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
 
-    let make_backend ?__retry_timeout ?(kill=false) ?n_osds name ~base_port =
+    let make_backend
+          ?__retry_timeout
+          ?(kill=false)
+          ?(fc_config = Proxy_cfg.None')
+          ?n_osds name
+
+          ~base_port =
       let cfg =
         Config.make
           ?n_osds
@@ -1703,20 +1709,47 @@ module Test = struct
                         "%s/tmp/alba_%s"
                         workspace name) ()
       in
-      let t = Deployment.make_default ?__retry_timeout ~cfg ~base_port () in
+      let t = Deployment.make_default
+            ~fragment_cache:fc_config
+            ?__retry_timeout ~cfg ~base_port ()
+      in
       if kill then Deployment.kill t;
       Deployment.setup t;
       cfg, t
     in
 
     let _, t_local1 = make_backend "local_1" ~base_port:4000 ~kill:true in
-    let _, t_local2 = make_backend "local_2"~base_port:5001 in
-    let _, t_local3 = make_backend "local_3"~base_port:6002 in
-    let _, t_local4 = make_backend "local_4"~base_port:7003 in
+    let _, t_local2 = make_backend "local_2" ~base_port:5001 in
+    let _, t_local3 = make_backend "local_3" ~base_port:6002 in
+    let _, t_local4 = make_backend "local_4" ~base_port:7003 in
+    let fc_config =
+      let open Proxy_cfg in
+      if accelerated
+      then
+        let _, t_cache = make_backend "cache" ~base_port:8004 in
+        let preset_name = "preset_rora" in
+        let () = _create_preset
+                   t_cache
+                   preset_name
+                   "./cfg/preset_no_compression.json"
+        in
 
-    let cfg_global, t_global = make_backend "global"
-                                            ~base_port:7503 ~n_osds:0
-                                            ~__retry_timeout:10.
+        Alba {
+            albamgr_cfg_url = Url.canonical (t_cache.abm # config_url);
+            bucket_strategy = OneOnOne { prefix = "xxx";
+                                         preset = preset_name; };
+            manifest_cache_size = 1_000_000;
+            cache_on_read_ = true;
+            cache_on_write_ = true;
+          }
+      else None'
+    in
+
+    let cfg_global, t_global =
+      make_backend "global"
+                   ~fc_config
+                   ~base_port:7503 ~n_osds:0
+                   ~__retry_timeout:10.
     in
 
     let add_backend_as_osd t_local kind =
@@ -1856,7 +1889,7 @@ module Test = struct
       rc, kill
     in
     let run_global () =
-      let _,t_global, _, _ =
+      let _,t_global, t_locals, _ =
         setup_global_backend ()
       in
       let () = _create_preset t_global
@@ -1870,7 +1903,27 @@ module Test = struct
       in
       let rc = cmd |> Shell.cmd_with_rc in
       let kill () =
-        Deployment.kill t_global
+        Deployment.kill t_global;
+        List.iter Deployment.kill t_locals
+      in
+      rc, kill
+    in
+    let run_global_aaa () =
+      let cfg_global,t_global, tlocals, add_backend_asd_os =
+        setup_global_backend ~accelerated:true ()
+      in
+      let () = _create_preset t_global
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let cmd =
+        make_cmd
+          t_global filter "testresults_global_aaa.xml"
+      in
+      let rc = cmd |> Shell.cmd_with_rc in
+      let kill () =
+        Deployment.kill t_global;
+        List.iter Deployment.kill tlocals
       in
       rc, kill
     in
@@ -1878,6 +1931,7 @@ module Test = struct
                  run_nil;
                  run_nil_nofc;
                  run_global;
+                 run_global_aaa;
                 ]
     in
     let rc,_kill =
@@ -1894,6 +1948,7 @@ module Test = struct
                                      ("testresults_nil.xml", "nil");
                                      ("testresults_nil_nofc.xml", "nil_nofc");
                                      ("testresults_global.xml", "global");
+                                     ("testresults_global_aaa.xml", "global_aaa");
                                     ] "testresults.xml"
     in
 
