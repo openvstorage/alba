@@ -52,20 +52,30 @@ let connect_with ip port transport ~tls_config =
   in
   match Tls.to_client_context tls_config with
   | None ->
-     Lwt.catch
-       (fun () ->
-        Lwt.pick
-          [ (Lwt_unix.sleep 1. >>= fun () ->
-             Lwt_log.debug_f
-               "timeout while connecting to fd=%i ip=%s port=%i"
-               fdi ip port >>= fun () ->
-             Lwt.fail ConnectTimeout);
-            (Net_fd.connect fd address >>= fun () ->
-             Lwt.return (fd , closer)); ]
-       )
-       (fun exn ->
-        closer () >>= fun () ->
-        Lwt.fail exn)
+     let finished = ref false in
+     Lwt.choose
+       [ begin
+           Lwt_unix.sleep 1. >>= fun () ->
+           if !finished
+           then Lwt.return_unit
+           else
+             begin
+               finished := true;
+               Lwt_log.debug_f
+                 "timeout while connecting to fd=%i ip=%s port=%i"
+                 fdi ip port >>= fun () ->
+               Lwt.fail ConnectTimeout
+             end
+         end;
+         begin
+           Net_fd.connect fd address >>= fun () ->
+           if !finished
+           then closer () |> Lwt.ignore_result
+           else finished := true;
+           Lwt.return_unit
+         end;
+       ] >>= fun () ->
+     Lwt.return (fd , closer)
   | Some ctx ->
      begin
        Lwt.catch

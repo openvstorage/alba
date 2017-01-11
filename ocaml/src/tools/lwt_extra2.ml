@@ -357,9 +357,9 @@ let first_n ~count ~slack f items ~test =
              items
   in
 
-  Lwt.pick [CountDownLatch.await success;
-            CountDownLatch.await failures;
-           ]
+  Lwt.choose [CountDownLatch.await success;
+              CountDownLatch.await failures;
+             ]
   >>= fun () ->
   let t1 = Unix.gettimeofday() in
   let so_far = t1 -. t0 in
