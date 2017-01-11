@@ -828,9 +828,9 @@ let _upload_with_retry
       (preset_cache : Alba_client_preset_cache.preset_cache)
       ~namespace_id
       do_upload
+      ?(timestamp = Unix.gettimeofday ())
       (message : string lazy_t)
   =
-  let timestamp = Unix.gettimeofday () in
   Lwt.catch
     (fun () -> do_upload timestamp)
     (fun exn ->
@@ -912,6 +912,7 @@ let upload_object'
       ~object_id_hint
       ~fragment_cache
       ~cache_on_write
+      ?timestamp
       ~upload_slack
   =
 
@@ -945,4 +946,5 @@ let upload_object'
     preset_cache
     ~namespace_id
     do_upload
+    ?timestamp
     (lazy (Printf.sprintf "Upload of %S" object_name))

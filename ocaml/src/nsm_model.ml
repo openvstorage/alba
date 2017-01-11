@@ -1560,7 +1560,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          let upds, old_manifest = cleanup_for_object_id kv old_object_id in
 
          let old_timestamp = old_manifest.Manifest.timestamp in
-         if manifest.Manifest.timestamp <= old_timestamp
+         if manifest.Manifest.timestamp < old_timestamp
          then Err.(failwith ~payload:(serialize Llio.float_to old_timestamp) Old_timestamp);
 
          let logical_delta = Int64.sub manifest.size old_manifest.size in
