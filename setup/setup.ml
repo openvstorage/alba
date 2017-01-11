@@ -2241,6 +2241,18 @@ module Test = struct
       in
       maybe_copy (three_nodes # config_url);
       maintenance # signal "USR1";
+
+      (* burn through stale albamgr connections in the proxy *)
+      let rec loop = function
+        | 0 -> ()
+        | n -> let () =
+                 try t.proxy # list_namespaces |> ignore
+                 with _ -> ()
+               in
+               loop (n - 1)
+      in
+      loop 10;
+
       wait_for 120;
       let c = n_nodes_in_config () in
       assert (c = 3);
