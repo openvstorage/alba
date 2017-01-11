@@ -2254,6 +2254,8 @@ let test_list_objects_by_id () =
                  ~preset_name:None
                  ~namespace () >>= fun namespace_id ->
 
+     _wait_for_osds alba_client namespace_id >>= fun () ->
+
      let open Nsm_model in
      alba_client # get_base_client # upload_object_from_string
                  ~epilogue_delay:(Some 10.)
@@ -2275,7 +2277,8 @@ let test_list_objects_by_id () =
                          ~max:100 ~reverse:false >>= fun ((cnt, objs), has_more) ->
                   assert (not has_more);
                   assert (cnt = 1);
-                  assert (objs = [ mf; ]);
+                  OUnit.assert_equal ~printer:[%show : Manifest.t list]
+                                     objs [ mf; ];
                   Lwt.return ()))
 
 let test_preset_validation () =
