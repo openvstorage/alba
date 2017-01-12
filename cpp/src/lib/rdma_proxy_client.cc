@@ -216,8 +216,9 @@ RDMAProxy_client::RDMAProxy_client(
   _really_write((const char *)(&version), sizeof(int32_t));
 }
 
-void RDMAProxy_client::_output(llio::message_builder &mb) {
-  mb.output_using(_writer);
+void RDMAProxy_client::_output() {
+  _mb.output_using(_writer);
+  _mb.reset();
 }
 
 message RDMAProxy_client::_input() {

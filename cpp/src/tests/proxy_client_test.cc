@@ -89,7 +89,7 @@ TEST(proxy_client, list_objects) {
 
   auto objects = std::get<0>(res);
   auto has_more = std::get<1>(res);
-  cout << "received" << objects.size() << " objects" << endl;
+  cout << "received " << objects.size() << " objects" << endl;
   cout << "[ ";
   for (auto &object : objects) {
     cout << object << ",\n";

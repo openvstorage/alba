@@ -17,6 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "asd_client.h"
+#include <thread>
 
 namespace alba {
 namespace asd_client {
@@ -65,10 +66,9 @@ void Asd_client::init_(boost::optional<string> long_id) {
 void Asd_client::partial_get(string &key, vector<slice> &slices) {
   _transport->expires_from_now(_timeout);
 
-  message_builder mb;
-  asd_protocol::write_partial_get_request(mb, key, slices);
-  _transport->output(mb);
-
+  asd_protocol::write_partial_get_request(_mb, key, slices);
+  _transport->output(_mb);
+  _mb.reset();
   message response = _transport->read_message();
   bool success;
   asd_protocol::read_partial_get_response(response, _status, success);

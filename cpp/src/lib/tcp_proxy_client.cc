@@ -38,7 +38,6 @@ TCPProxy_client::TCPProxy_client(
 
   const boost::asio::ip::tcp::no_delay option(true);
   _stream.rdbuf()->set_option(option);
-
   int32_t magic{1148837403};
   int32_t version{1};
   _stream.write((const char *)(&magic), 4);
@@ -61,7 +60,10 @@ void TCPProxy_client::_expires_from_now(
       std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count()));
 }
 
-void TCPProxy_client::_output(message_builder &mb) { mb.output(_stream); }
+void TCPProxy_client::_output() {
+    _mb.output(_stream);
+    _mb.reset();
+}
 
 message TCPProxy_client::_input() {
   message response(_stream);

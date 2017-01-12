@@ -55,6 +55,7 @@ private:
   asd_protocol::Status _status;
   std::unique_ptr<transport::Transport> _transport;
   const std::chrono::steady_clock::duration _timeout;
+  llio::message_builder _mb;
 };
 }
 }

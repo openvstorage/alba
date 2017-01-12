@@ -30,7 +30,7 @@ private:
   void check_status(const char *function_name);
   boost::asio::ip::tcp::iostream _stream;
   void _expires_from_now(const std::chrono::steady_clock::duration &timeout);
-  void _output(llio::message_builder &mb);
+  void _output();
   llio::message _input();
 };
 }

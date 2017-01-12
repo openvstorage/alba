@@ -24,7 +24,9 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <string.h>
 #include <vector>
+#include "stuff.h"
 
 namespace alba {
 namespace llio {
@@ -126,25 +128,22 @@ private:
   size_t _size;
 };
 
+#define _SIZE0 32
 class message_builder {
 public:
-  message_builder() : _buffer() {
-    const uint32_t size_res = 0x77777777;
-    const char *size_resp = (const char *)(&size_res);
-    _buffer.write(size_resp, 4);
+message_builder() : _size(_SIZE0), _buffer{new char[_SIZE0]}, _pos(4) {
+        // keep valgrind happy:
+        uint32_t* p = (uint32_t*)_buffer;
+        p[0] = 0;
   }
 
   void output_using(
       /*void (*writer) (const char* buffer,  const int len)*/
       std::function<void(const char *, const int)> writer) {
-    const std::string bs = _buffer.str();
-    uint32_t bs_size = bs.size();
-    uint32_t size = bs_size - 4;
-    const char *data = bs.data();
-    // DIRTY: "trust me, I know what I'm doing (TM)"
-    uint32_t *data_mut = (uint32_t *)data;
-    data_mut[0] = size;
-    writer(data, bs_size);
+    uint32_t size = _pos - 4;
+    uint32_t* p = (uint32_t*) _buffer;
+    p[0] = size;
+    writer(_buffer, _pos);
   }
 
   void output(std::ostream &os) {
@@ -157,8 +156,21 @@ public:
     }
   }
 
-  void add_raw(const char *b, uint32_t size) noexcept {
-    _buffer.write(b, size);
+  void add_raw(const char *b, uint32_t len) noexcept {
+      uint free = _size - _pos;
+      if(free < len){
+          uint new_size = _size + std::max (len, _size);
+          ALBA_LOG(DEBUG, free << " < " << len
+                   << " => grow from " << _size
+                   << " to " << new_size);
+          char* new_buffer = new char[new_size];
+          memcpy(new_buffer,_buffer, _pos);
+          _size = new_size;
+          delete [] _buffer;
+          _buffer = new_buffer;
+      }
+      memcpy(&_buffer[_pos], b, len);
+      _pos += len;
   }
 
   void add_type(const uint8_t i) noexcept {
@@ -166,10 +178,22 @@ public:
     add_raw(ip, 1);
   }
 
-  std::string as_string() noexcept { return _buffer.str(); }
+  std::string as_string() noexcept {
+      return std::string(_buffer, _pos);
+  }
+
+  void reset() noexcept {
+      _pos = 4;
+  }
+
+  ~message_builder(){
+      delete [] _buffer;
+  }
 
 private:
-  std::ostringstream _buffer;
+  uint32_t _size;
+  char* _buffer;
+  uint32_t _pos = 0;
 };
 
 template <typename T> void to(message_builder &mb, const T &) noexcept;

@@ -42,7 +42,7 @@ private:
   void _expires_from_now(const std::chrono::steady_clock::duration &timeout);
   std::chrono::steady_clock::time_point _deadline;
 
-  void _output(llio::message_builder &mb);
+  void _output();
   llio::message _input();
 };
 }
