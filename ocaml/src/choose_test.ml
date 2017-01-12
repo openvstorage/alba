@@ -433,38 +433,63 @@ let test_choose_extra_bug2() =
   OUnit.assert_bool "too many osds on node" (count' < 4);
   ()
 
-let test_distribution_bug () =
+let fill pop
+         ~make_device_id
+         ~make_node_id
+         ~make_long_id
+         ~make_total
+         ~make_used
+  =
   let info = Hashtbl.create 47 in
   Random.init 42;
-  let pop = 80 in
-  let rec fill i =
-      if i = pop
-      then ()
-      else
-        let device_id = Int64.of_int i in
-        let node_id = string_of_int (i lsr 1) in
-        let kind = Nsm_model.OsdInfo.Asd (
-                       (["127.0.0.1"], 8000 +i, false, false),
-                       "asd id distribution test " ^ (string_of_int i)
-                     )
-        in
-        let d_info =
-          Nsm_model.OsdInfo.make
-            ~node_id ~kind
-            ~decommissioned:false
-            ~other:""
-            ~total:479862915072L
-            ~used:0L
-            ~seen:[]
-            ~read:[]
-            ~write:[]
-            ~errors:[]
-            ~checksum_errors:0L
-        in
-        let () = Hashtbl.add info device_id d_info in
-        fill (i+1)
+  let rec _inner i =
+    if i = pop
+    then ()
+    else
+      let device_id = make_device_id i in
+      let node_id = make_node_id i in
+      let long_id = make_long_id i in
+      let total = make_total i in
+      let used = make_used i in
+      let kind = Nsm_model.OsdInfo.Asd (
+                     (["127.0.0.1"], 8000 +i, false, false),
+                     long_id
+                   )
+      in
+      let d_info =
+        Nsm_model.OsdInfo.make
+          ~node_id ~kind
+          ~decommissioned:false
+          ~other:""
+          ~total
+          ~used
+          ~seen:[]
+          ~read:[]
+          ~write:[]
+          ~errors:[]
+          ~checksum_errors:0L
+      in
+      let () = Hashtbl.add info device_id d_info in
+      _inner (i+1)
   in
-  let () = fill 0 in
+  let () = _inner 0 in
+  info
+
+let test_distribution_bug () =
+  let pop = 80 in
+  let make_device_id i = Int64.of_int i in
+  let make_node_id i = string_of_int (i lsr 1) in
+  let make_long_id i = "asd id distribution test " ^ (string_of_int i) in
+  let make_total i = 479862915072L in
+  let make_used i = 0L in
+  let info =
+    fill pop
+         ~make_device_id
+         ~make_node_id
+         ~make_long_id
+         ~make_total
+         ~make_used
+  in
   let distribution = Array.make pop 0 in
   let spread = 10 in
   let rec loop results j =
@@ -512,11 +537,74 @@ let test_distribution_bug () =
       let msg = Printf.sprintf "osd_id:%i off" i in
       OUnit.assert_bool msg (c > 80 && c < 160) ;
     )
-    distribution;
+    distribution
 
 
-;;
-
+let test_balance_asymmetrical_setup() =
+  let make_device_id i = Int64.of_int i in
+  let make_node_id i =
+    if i < 16
+    then "big"
+    else if i < 24 then "small0"
+    else "small1"
+  in
+  let make_long_id i = Printf.sprintf "assym_%i" i in
+  let total = 50_000L in
+  let make_total i = total in
+  let make_used i = 0L in
+  let pop = 32 in
+  let info =
+    fill
+      pop
+      ~make_device_id ~make_node_id
+      ~make_long_id ~make_total
+      ~make_used
+  in
+  let distribution = Array.make pop 0 in
+  let spread = 10 in
+  let open Nsm_model.OsdInfo in
+  let rec loop j =
+    if j = 110_000
+    then ()
+    else let r = Choose.choose_devices spread info in
+         let () =
+           List.iter
+             (fun (did, osd_info) ->
+               let i = Int64.to_int did in
+               let used = osd_info.used in
+               let osd_info' = { osd_info with used = Int64.succ used} in
+               let () = Hashtbl.replace info did osd_info' in
+               let c0 = distribution.(i) in
+               let () = distribution.(i) <- c0 + 1 in
+               ()
+             )
+           r
+         in
+         loop (j+1)
+  in
+  let () = loop 0 in
+  let fill_rates =
+    let ft = Int64.to_float total in
+    Array.map (fun c -> float c /. ft) distribution
+  in
+  let () = Array.iteri
+    (fun i fr->
+      let () = if i = 16 || i = 24 then Printf.printf "\n%!" in
+      Printf.printf "%0.4f\t" fr
+    )
+    fill_rates
+  in
+  let ()= print_newline () in
+  let () =
+    Array.iteri
+      (fun i fr ->
+        let lo = 0.50 in
+        let hi = 0.90 in
+        OUnit.assert_bool (Printf.sprintf "%i: lo=%f < %f " i lo fr) (lo < fr);
+        OUnit.assert_bool (Printf.sprintf "%i: %f < hi=%f " i fr hi) (fr < hi);
+      ) fill_rates
+  in
+  ()
 
 let suite =
   let open OUnit in
@@ -530,4 +618,5 @@ let suite =
    "bias3" >:: test_bias3;
    "actually_rebalances" >:: test_actually_rebalances;
    "distribution_bug" >:: test_distribution_bug;
+   "test_balance_asymmetrical_setup" >:: test_balance_asymmetrical_setup;
   ]
