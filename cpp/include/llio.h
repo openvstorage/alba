@@ -59,14 +59,13 @@ void check_stream(const std::istream &is);
 
 class message {
 public:
-  message(std::function<void(char *, const int)> reader) {
+  template<typename R>
+  static message from_reader(R&& reader) {
     uint32_t size;
     reader((char *)&size, sizeof(uint32_t));
-    _buffer.resize(size);
-    reader(_buffer.data(), size);
-    _pos = 0;
-    _initial_offset = 0;
-    _size = size;
+    message m(size);
+    reader(m._buffer.data(), size);
+    return m;
   }
 
   message(std::istream &is) {
@@ -84,8 +83,7 @@ public:
   message(std::vector<char> &buffer) : message(buffer, 0, buffer.size()) {}
 
   message(std::vector<char> &buffer, size_t offset, size_t size) {
-    // avoid copy assignment:
-    std::swap(_buffer,buffer);
+    _buffer = buffer;// this copies.
     _initial_offset = offset;
     _pos = offset;
     _size = size;
@@ -127,6 +125,13 @@ private:
   size_t _pos;
   size_t _initial_offset;
   size_t _size;
+
+  message(const size_t size){
+      _pos = 0;
+      _size = size;
+      _initial_offset = 0;
+      _buffer.resize(size);
+  }
 };
 
 class message_builder {
@@ -137,9 +142,8 @@ message_builder() : _size(_SIZE0), _buffer{new char[_SIZE0]}, _pos(4) {
         p[0] = 0;
   }
 
-  void output_using(
-      /*void (*writer) (const char* buffer,  const int len)*/
-      std::function<void(const char *, const int)> writer) {
+  template<typename W>
+  void output_using(W&& writer) {
     uint32_t size = _pos - 4;
     uint32_t* p = (uint32_t*) _buffer;
     p[0] = size;

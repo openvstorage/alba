@@ -222,9 +222,8 @@ void RDMAProxy_client::_output() {
 }
 
 message RDMAProxy_client::_input() {
-  message response(
+    return message::from_reader(
       [&](char *buffer, const int len) -> void { _really_read(buffer, len); });
-  return response;
 }
 
 void RDMAProxy_client::_expires_from_now(
