@@ -84,7 +84,8 @@ public:
   message(std::vector<char> &buffer) : message(buffer, 0, buffer.size()) {}
 
   message(std::vector<char> &buffer, size_t offset, size_t size) {
-    _buffer = buffer;
+    // avoid copy assignment:
+    std::swap(_buffer,buffer);
     _initial_offset = offset;
     _pos = offset;
     _size = size;
