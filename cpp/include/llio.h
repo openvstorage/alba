@@ -129,7 +129,6 @@ private:
   size_t _size;
 };
 
-#define _SIZE0 32
 class message_builder {
 public:
 message_builder() : _size(_SIZE0), _buffer{new char[_SIZE0]}, _pos(4) {
@@ -195,6 +194,7 @@ private:
   uint32_t _size;
   char* _buffer;
   uint32_t _pos = 0;
+  static const uint32_t _SIZE0 = 32;
 };
 
 template <typename T> void to(message_builder &mb, const T &) noexcept;
