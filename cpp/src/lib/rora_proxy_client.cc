@@ -111,25 +111,27 @@ std::tuple<std::vector<string>, has_more> RoraProxy_client::list_objects(
                                  include_last_, max, reverse_);
 }
 
-string fragment_key(const namespace_t namespace_id, const string &object_id,
-                    uint32_t version_id, uint32_t chunk_id,
-                    uint32_t fragment_id) {
-  llio::message_builder mb;
+string RoraProxy_client:: _fragment_key(
+    const namespace_t namespace_id,
+    const string &object_id,
+    uint32_t version_id, uint32_t chunk_id,
+    uint32_t fragment_id) {
   char instance_content_prefix = 'p';
-  mb.add_raw(&instance_content_prefix, 1);
+  _fkb.add_raw(&instance_content_prefix, 1);
   uint32_t zero = 0;
-  to(mb, zero);
+  to(_fkb, zero);
   char namespace_char = 'n';
-  mb.add_raw(&namespace_char, 1);
-  alba::to_be(mb, namespace_id);
+  _fkb.add_raw(&namespace_char, 1);
+  alba::to_be(_fkb, namespace_id);
   char prefix = 'o';
-  mb.add_raw(&prefix, 1);
-  to(mb, object_id);
-  to(mb, chunk_id);
-  to(mb, fragment_id);
-  to(mb, version_id);
-  string r = mb.as_string();
-  return r.substr(4, r.size() - 4);
+  _fkb.add_raw(&prefix, 1);
+  to(_fkb, object_id);
+  to(_fkb, chunk_id);
+  to(_fkb, fragment_id);
+  to(_fkb, version_id);
+  string r = _fkb.as_string_no_size();
+  _fkb.reset();
+  return r;
 }
 
 void _dump(std::map<osd_t, std::vector<asd_slice>> &per_osd) {
@@ -307,8 +309,8 @@ int RoraProxy_client::_short_path(
     slice.offset = l.offset;
     slice.len = l.length;
     slice.target = target;
-    string key = fragment_key(l.namespace_id, l.object_id, version_id,
-                              l.chunk_id, l.fragment_id);
+    string key = _fragment_key(l.namespace_id, l.object_id, version_id,
+                               l.chunk_id, l.fragment_id);
     slice.key = key;
 
     auto it = per_osd.find(osd_id);

@@ -112,9 +112,15 @@ private:
   steady_clock::time_point _failure_time;
 
   int _asd_connection_pool_size;
+
+  message_builder _fkb;
+  string _fragment_key(const namespace_t namespace_id, const string &object_id,
+                       uint32_t version_id, uint32_t chunk_id,
+                       uint32_t fragment_id);
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,
                          uint32_t chunk_id, uint32_t fragment_id);
+
 }
 }

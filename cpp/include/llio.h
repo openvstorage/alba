@@ -132,7 +132,11 @@ private:
       _initial_offset = 0;
       _buffer.resize(size);
   }
+  friend std::ostream & operator<<(std::ostream &, const message &);
 };
+
+std::ostream &operator<<(std::ostream &, const message&);
+
 
 class message_builder {
 public:
@@ -140,6 +144,7 @@ message_builder() : _size(_SIZE0), _buffer{new char[_SIZE0]}, _pos(4) {
         // keep valgrind happy:
         uint32_t* p = (uint32_t*)_buffer;
         p[0] = 0;
+
   }
 
   template<typename W>
@@ -184,6 +189,10 @@ message_builder() : _size(_SIZE0), _buffer{new char[_SIZE0]}, _pos(4) {
 
   std::string as_string() noexcept {
       return std::string(_buffer, _pos);
+  }
+
+  std::string as_string_no_size() noexcept {
+      return std::string(&_buffer[4], _pos - 4);
   }
 
   void reset() noexcept {
