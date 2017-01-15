@@ -32,9 +32,7 @@ using alba::proxy_protocol::OsdInfo;
 #define LOCK() std::lock_guard<std::mutex> lock(_mutex)
 
 ConnectionPool::ConnectionPool(std::unique_ptr<OsdInfo> config, size_t capacity)
-    : config_(std::move(config)),
-      capacity_(capacity),
-      _fast_path_failures(0) {
+    : config_(std::move(config)), capacity_(capacity), _fast_path_failures(0) {
   ALBA_LOG(INFO, "Created pool for asd client " << *config_ << ", capacity "
                                                 << capacity);
 }

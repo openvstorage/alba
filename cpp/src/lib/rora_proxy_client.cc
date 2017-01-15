@@ -111,11 +111,10 @@ std::tuple<std::vector<string>, has_more> RoraProxy_client::list_objects(
                                  include_last_, max, reverse_);
 }
 
-string RoraProxy_client:: _fragment_key(
-    const namespace_t namespace_id,
-    const string &object_id,
-    uint32_t version_id, uint32_t chunk_id,
-    uint32_t fragment_id) {
+string RoraProxy_client::_fragment_key(const namespace_t namespace_id,
+                                       const string &object_id,
+                                       uint32_t version_id, uint32_t chunk_id,
+                                       uint32_t fragment_id) {
   char instance_content_prefix = 'p';
   _fkb.add_raw(&instance_content_prefix, 1);
   uint32_t zero = 0;

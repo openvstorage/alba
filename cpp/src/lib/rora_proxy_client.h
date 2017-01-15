@@ -121,6 +121,5 @@ private:
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,
                          uint32_t chunk_id, uint32_t fragment_id);
-
 }
 }

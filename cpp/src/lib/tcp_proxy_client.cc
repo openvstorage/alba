@@ -61,12 +61,14 @@ void TCPProxy_client::_expires_from_now(
 }
 
 void TCPProxy_client::_output() {
-    _mb.output(_stream);
-    _mb.reset();
+  _mb.output(_stream);
+  _mb.reset();
 }
 
 message TCPProxy_client::_input() {
-  message response(_stream);
+  auto buffer = llio::message_buffer::from_istream(_stream);
+  message response(buffer);
+
   return response;
 }
 }

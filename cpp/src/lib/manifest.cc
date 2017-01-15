@@ -153,7 +153,7 @@ template <> void from2(message &m, Manifest &mf, bool &ok_to_continue) {
 
   std::string real;
   snappy::Uncompress(compressed.data(), compressed.size(), &real);
-  std::vector<char> buffer(real.begin(), real.end());
+  auto buffer = message_buffer::from_string(real);
   ok_to_continue = true;
   message m2(buffer);
   from(m2, mf.name);

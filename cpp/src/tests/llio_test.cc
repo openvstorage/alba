@@ -45,7 +45,9 @@ TEST(llio, composition) {
 
   std::istringstream sis(contents);
   std::vector<boost::optional<std::pair<std::string, bool>>> ys;
-  message m(sis);
+  auto buffer = message_buffer::from_istream(sis);
+
+  message m(buffer);
   from(m, ys);
   EXPECT_EQ(xs.size(), ys.size());
   auto y0 = ys[0];

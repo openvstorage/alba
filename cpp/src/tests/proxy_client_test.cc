@@ -221,8 +221,8 @@ TEST(proxy_client, manifest) {
   std::cout << "size:" << size << std::endl;
 
   ManifestWithNamespaceId mf;
-  std::vector<char> v(data.begin(), data.end());
-  llio::message m(v);
+  auto mb = llio::message_buffer::from_string(data);
+  llio::message m(mb);
   from(m, mf);
 
   std::cout << mf << std::endl;
@@ -357,16 +357,17 @@ void _generic_partial_read_test(
 
   std::cout << "slow_path=" << cntr.slow_path
             << ", fast_path=" << cntr.fast_path << std::endl;
-  std::string slow_allowed_s = env_or_default("ALBA_TEST_SLOW_ALLOWED", "false");
+  std::string slow_allowed_s =
+      env_or_default("ALBA_TEST_SLOW_ALLOWED", "false");
   bool slow_allowed = "true" == slow_allowed_s;
-  if (!slow_allowed){
-      if (clear_before_read) {
-          EXPECT_TRUE(cntr.slow_path > 0);
-          EXPECT_EQ(cntr.fast_path, 0);
-      } else {
-          EXPECT_EQ(cntr.slow_path, 0);
-          EXPECT_TRUE(cntr.fast_path > 0);
-      }
+  if (!slow_allowed) {
+    if (clear_before_read) {
+      EXPECT_TRUE(cntr.slow_path > 0);
+      EXPECT_EQ(cntr.fast_path, 0);
+    } else {
+      EXPECT_EQ(cntr.slow_path, 0);
+      EXPECT_TRUE(cntr.fast_path > 0);
+    }
   }
 }
 
@@ -495,7 +496,7 @@ TEST(proxy_client, manifest_cache_eviction) {
   }
 }
 
-TEST(proxy_client,test_partial_read_fc) {
+TEST(proxy_client, test_partial_read_fc) {
   std::string namespace_("test_partial_read_fc");
   std::ostringstream sos;
   sos << "with_manifest" << std::rand();

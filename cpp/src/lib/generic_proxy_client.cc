@@ -110,8 +110,8 @@ void GenericProxy_client::write_object_fs(const string &namespace_,
   _expires_from_now(_timeout);
 
   proxy_protocol::write_write_object_fs_request(
-      _mb, namespace_, object_name, input_file, BooleanEnumTrue(allow_overwrite),
-      checksum);
+      _mb, namespace_, object_name, input_file,
+      BooleanEnumTrue(allow_overwrite), checksum);
   _output();
 
   message response = _input();
@@ -161,8 +161,8 @@ tuple<vector<string>, has_more> GenericProxy_client::list_objects(
   _expires_from_now(_timeout);
 
   proxy_protocol::write_list_objects_request(
-      _mb, namespace_, first, BooleanEnumTrue(finc), last, BooleanEnumTrue(linc),
-      max, BooleanEnumTrue(reverse));
+      _mb, namespace_, first, BooleanEnumTrue(finc), last,
+      BooleanEnumTrue(linc), max, BooleanEnumTrue(reverse));
   _output();
 
   message response = _input();
@@ -210,7 +210,6 @@ void GenericProxy_client::read_objects_slices2(
   }
   _expires_from_now(_timeout);
 
-
   proxy_protocol::write_read_objects_slices2_request(
       _mb, namespace_, slices, BooleanEnumTrue(consistent_read));
   _output();
@@ -230,8 +229,8 @@ void GenericProxy_client::write_object_fs2(
   _expires_from_now(_timeout);
 
   proxy_protocol::write_write_object_fs2_request(
-      _mb, namespace_, object_name, input_file, BooleanEnumTrue(allow_overwrite),
-      checksum);
+      _mb, namespace_, object_name, input_file,
+      BooleanEnumTrue(allow_overwrite), checksum);
   _output();
 
   message response = _input();
@@ -272,7 +271,6 @@ void GenericProxy_client::apply_sequence_(
     const vector<std::shared_ptr<sequences::Update>> &updates,
     std::vector<proxy_protocol::object_info> &object_infos) {
   _expires_from_now(_timeout);
-
 
   proxy_protocol::write_apply_sequence_request(
       _mb, namespace_, BooleanEnumTrue(write_barrier), asserts, updates);
@@ -357,7 +355,6 @@ void GenericProxy_client::osd_info2(osd_maps_t &result) {
 
 bool GenericProxy_client::has_local_fragment_cache() {
   _expires_from_now(_timeout);
-
 
   proxy_protocol::write_has_local_fragment_cache_request(_mb);
   _output();

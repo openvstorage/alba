@@ -222,8 +222,9 @@ void RDMAProxy_client::_output() {
 }
 
 message RDMAProxy_client::_input() {
-    return message::from_reader(
+  auto mb = llio::message_buffer::from_reader(
       [&](char *buffer, const int len) -> void { _really_read(buffer, len); });
+  return message(mb);
 }
 
 void RDMAProxy_client::_expires_from_now(
