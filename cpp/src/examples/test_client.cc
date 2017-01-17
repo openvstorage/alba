@@ -307,10 +307,14 @@ int main(int argc, const char *argv[]) {
           "pattern for partial read benchmark: fixed | random | stride "
           "(default = fixed)")(
           "invalidate-cache", po::value<bool>()->default_value(true),
-          "invalidate cache between upload and partial reads")(
+          "invalidate cache between upload and partial reads")
+      (
           "focus", po::value<bool>()->default_value(false),
           "if set, all rora partial reads come from the "
-          "same object, and hit the same ASD");
+          "same object, and hit the same ASD")
+      ("asd-pool-size", po::value<uint32_t>() -> default_value(5),
+       "config for partial read benchmark")
+      ;
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -482,7 +486,9 @@ int main(int argc, const char *argv[]) {
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
     uint32_t n_clients = getRequiredArg<uint32_t>(vm, "n-clients");
     bool use_rora = getRequiredArg<bool>(vm, "use-rora");
-    boost::optional<RoraConfig> rora_config = RoraConfig(10000, false, 10);
+    uint32_t asd_pool_size = getRequiredArg<uint32_t>(vm, "asd-pool-size");
+    boost::optional<RoraConfig> rora_config =
+        RoraConfig(10000, false, asd_pool_size);
     ALBA_LOG(INFO, "config = " << *rora_config);
     uint32_t block_size = getRequiredArg<uint32_t>(vm, "block-size");
     bool focus = getRequiredArg<bool>(vm, "focus");

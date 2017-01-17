@@ -103,7 +103,6 @@ std::unique_ptr<Asd_client> ConnectionPool::get_connection() {
   }
 
   if (not conn) {
-      ALBA_LOG(INFO, "BUG: decided to make one");
     conn = make_one_();
   }
 
