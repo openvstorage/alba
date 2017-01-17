@@ -32,7 +32,8 @@ RoraProxy_client::RoraProxy_client(
     const RoraConfig &rora_config)
     : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io),
       _asd_connection_pool_size(rora_config.asd_connection_pool_size) {
-  ALBA_LOG(INFO, "RoraProxy_client(...)");
+    ALBA_LOG(INFO, "RoraProxy_client( _asd_connection_pool_size = "
+             << _asd_connection_pool_size << " ...)");
   ManifestCache::getInstance().set_capacity(rora_config.manifest_cache_size);
   _fast_path_failures = 0;
   try {

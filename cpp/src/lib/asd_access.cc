@@ -60,7 +60,6 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
 
   std::unique_ptr<transport::Transport> transport;
   if (config_->use_rdma) {
-    ;
     transport =
         std::unique_ptr<transport::Transport>(new transport::RDMA_transport(
             config_->ips[0], std::to_string(config_->port), duration));
@@ -78,7 +77,8 @@ void ConnectionPool::release_connection(std::unique_ptr<Asd_client> conn) {
   LOCK();
   if (conn) {
     _fast_path_failures = 0;
-    if (connections_.size() < capacity_) {
+    auto current_size = connections_.size();
+    if (current_size < capacity_) {
       connections_.push_front(*conn.release());
       return;
     }
@@ -103,6 +103,7 @@ std::unique_ptr<Asd_client> ConnectionPool::get_connection() {
   }
 
   if (not conn) {
+      ALBA_LOG(INFO, "BUG: decided to make one");
     conn = make_one_();
   }
 
@@ -154,7 +155,7 @@ ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info,
   auto it = connection_pools_.find(osd_info.long_id);
   if (it == connection_pools_.end()) {
     ALBA_LOG(INFO, "asd ConnenctionPools adding ConnectionPool for "
-                       << osd_info.long_id);
+             << osd_info.long_id);
     proxy_protocol::OsdInfo *osd_info_copy =
         new proxy_protocol::OsdInfo(osd_info);
 

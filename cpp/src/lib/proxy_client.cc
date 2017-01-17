@@ -63,6 +63,8 @@ make_proxy_client(const std::string &ip, const std::string &port,
     // work around g++ 4.[8|9] bug:
     return std::unique_ptr<Proxy_client>(inner_client.release());
   } else {
+      ALBA_LOG(INFO, "make_proxy_client( rora_config="
+               << *rora_config << " )");
     return std::unique_ptr<Proxy_client>(
         new RoraProxy_client(std::move(inner_client), *rora_config));
   }
@@ -76,7 +78,9 @@ void Proxy_client::apply_sequence(const std::string &namespace_,
 
 std::ostream &operator<<(std::ostream &os, const RoraConfig &cfg) {
   os << "RoraConfig{"
-     << "manifest_cache_size=" << cfg.manifest_cache_size << "}";
+     << " manifest_cache_size= " << cfg.manifest_cache_size
+     << ", asd_connection_pool_size= " << cfg.asd_connection_pool_size
+     << " }";
   return os;
 }
 }
