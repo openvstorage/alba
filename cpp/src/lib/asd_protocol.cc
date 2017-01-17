@@ -64,5 +64,41 @@ void read_partial_get_response(message &m, Status &status, bool &success) {
 
   from(m, success);
 }
+
+void write_set_slowness_request(message_builder &mb, const slowness_t& slowness){
+  to<uint32_t>(mb, SLOWNESS);
+  //to<slowness_t>(mb, slowness);
+  if (boost::none == slowness){
+      to(mb, false);
+  }else{
+      to(mb, true);
+      to(mb, *slowness);
+  }
+
+
+}
+
+
+void read_set_slowness_response(message &m, Status& status){
+  read_status(m, status);
+}
+
+
+void write_get_version_request(message_builder &mb) {
+    to<uint32_t>(mb, GET_VERSION);
+}
+
+void read_get_version_response(message &m, Status &status, int32_t &major,
+                                     int32_t &minor, int32_t &patch,
+                                     std::string &hash) {
+  read_status(m, status);
+  if (status.is_ok()) {
+      from(m, major);
+      from(m, minor);
+      from(m, patch);
+      from(m, hash);
+  }
+}
+
 }
 }

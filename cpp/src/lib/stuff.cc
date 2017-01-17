@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "stuff.h"
 #include <exception>
 #include <iomanip>
+#include <sys/time.h>
 
 namespace alba {
 namespace stuff {
@@ -69,5 +70,13 @@ void dump_data(std::ostream &os, char **rows, int k, int block_size) {
     os << std::endl;
   }
 }
+
+double stamp() {
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    double t0 = tp.tv_sec + (double)tp.tv_usec / 1e6;
+    return t0;
+}
+
 }
 }
