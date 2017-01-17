@@ -94,20 +94,21 @@ TEST(asd_client, timeouts){
 
     alba::asd_protocol::slowness_t fast{boost::none};
     asd -> set_slowness(fast);
+    ALBA_LOG(DEBUG, "asd should be fast again");
     auto r0 = asd -> get_version();
     _dump_version(r0);
-
-
+    r0 = asd -> get_version();
+    _dump_version(r0);
     auto s0 = std::make_pair<double,double>(20.0, 1.0);
     auto slowness = alba::asd_protocol::slowness_t{s0};
     asd -> set_slowness(slowness);
+    ALBA_LOG(DEBUG, "asd should be too slow for me");
     double t0 = alba::stuff::stamp();
     double delta;
     try{
         ALBA_LOG(INFO, "this should take a while... and fail");
         auto r = asd -> get_version();
         _dump_version(r);
-        asd -> set_slowness(fast);
         EXPECT_EQ(true, false);
     } catch(std::exception & e){
         ALBA_LOG(INFO, e.what());
@@ -117,7 +118,8 @@ TEST(asd_client, timeouts){
         std::cout << "delta:" << delta << std::endl;
         EXPECT_NEAR(delta, (double) timeout_s, 0.5);
     }
-
+    // clean up
+    make_client(timeout) -> set_slowness(fast);
 
 
 }

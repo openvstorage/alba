@@ -1337,6 +1337,10 @@ let asd_protocol
        let () = Net_fd.uncork nfd in
        Lwt.return_unit
   in
+  let _SLOWNESS_CODE =
+    let open Protocol in
+    command_to_code (Wrap_update Slowness)
+  in
   let rec inner buffer =
     Net_fd.with_message_buffer_from
       nfd buffer cancel
@@ -1353,6 +1357,9 @@ let asd_protocol
          (fun () ->
            (match mgmt.AsdMgmt.slowness with
             | None -> Lwt.return_unit
+            | Some (_,_) when code = _SLOWNESS_CODE ->
+               (* this should be fast, regardless *)
+               Lwt.return_unit
             | Some (fixed, variable) ->
                begin
                  let delay = fixed +. Random.float variable in
