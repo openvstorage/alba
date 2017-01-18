@@ -864,13 +864,17 @@ let make_asd_config
 
 
 
-class asd ?write_blobs ?transport ~ip
+class asd ?(use_fadvise = true)
+          ?(use_fallocate = true)
+          ?write_blobs ?transport ~ip
           ?rora_ips ~use_rora ?rora_transport
           node_id asd_id alba_bin arakoon_path home
           ~(port:int) ~etcd tls ~log_level
   =
   let use_tls = tls <> None in
   let asd_cfg = make_asd_config
+                  ~use_fadvise
+                  ~use_fallocate
                   ?write_blobs ?transport ~ip
                   node_id asd_id home ~port tls
                   ~use_rora ?rora_ips ~rora_transport
@@ -973,6 +977,10 @@ class asd ?write_blobs ?transport ~ip
 
     method get_statistics =
       let cmd = self # build_remote_cli ["asd-statistics"] in
+      cmd |> Shell.cmd_with_capture
+
+    method get_disk_usage =
+      let cmd = self # build_remote_cli ["asd-disk-usage"] ~json:false in
       cmd |> Shell.cmd_with_capture
 
     method set k v =
@@ -3144,6 +3152,90 @@ module Bench = struct
     0
 end
 
+module ASDBorder = struct
+  let enospc ?(xml = false) ?filter ?dump (t:Deployment.t) =
+    let start = t.Deployment.cfg.alba_base_path in
+    let fn = Printf.sprintf "%s/asd_dev" start in
+    let mount_point = Printf.sprintf "%s/asd_mnt" start in
+    let user = Shell.cmd_with_capture ["whoami"] in
+    let setup () =
+      Shell.mkdir start;
+      [ "truncate";"--size=2500M"; fn;] |> Shell.cmd';
+      [ "mke2fs"; "-t ext4"; "-F"; fn] |> Shell.cmd';
+      Shell.mkdir mount_point;
+      ["sudo"; "mount"; "-o"; "loop,async"; fn; mount_point] |> Shell.cmd';
+      ["sudo"; "chown"; "-R"; user ^":" ^ user; mount_point ^ "/." ]
+      |> Shell.cmd';
+
+    in
+    let teardown () = ["sudo"; "umount"; mount_point] |> Shell.cmd' in
+    let wrapper test =
+      setup ();
+      let rc =
+        try
+          test (); 0
+        with e ->
+          Printf.printf "%s\n%!" (Printexc.to_string e);
+          1;
+      in
+      let () = teardown () in
+      rc
+    in
+    let cfg = t.Deployment.cfg in
+    let test () =
+      let ip = cfg.ip
+      and node_id = "ASDBorder"
+      and asd_id = "enospc"
+      and log_level = "debug"
+      and port = 7999 in
+      let asd =
+        new asd
+            ~use_fallocate:true (* ext4 supports this *)
+            ~ip node_id asd_id
+            cfg.alba_bin "xxx"
+            mount_point
+            ~port ~etcd:None ~log_level
+            ~use_rora:false None
+      in
+      let ip_v =
+        match ip with
+        | None -> local_ip_address()
+        | Some ip -> ip
+      in
+      let n = 2270 in (* 2270 is ok, 2271 dies with enospc *)
+      let _deletes () =
+        [cfg.alba_bin; "osd-bench";
+         "-h"; ip_v ;"-p"; string_of_int port;
+         "--scenario";"deletes"; "-n"; string_of_int n; "-v"; "1_000_000"
+        ] |> Shell.cmd' ~ignore_rc:true;
+      in
+      asd # persist_config;
+      asd # start;
+      [cfg.alba_bin; "osd-bench";
+          "-h"; ip_v ;"-p"; string_of_int port;
+          "--scenario";"sets"; "-n"; string_of_int n; "-v"; "1_000_000"
+      ] |> Shell.cmd' ~ignore_rc:true;
+      ["df -h"; mount_point] |> Shell.cmd';
+      ["du -h"; mount_point] |> Shell.cmd' ~ignore_rc:true;
+      ["ls -hlRs"; mount_point ^"/db"] |> Shell.cmd';
+      (* let () = _deletes () in *)
+      Printf.printf "du=%s\n%!" (asd # get_disk_usage);
+      Printf.printf "stats=%s\n%!" (asd # get_statistics);
+      ["du -h"; mount_point] |> Shell.cmd' ~ignore_rc:true;
+
+      [cfg.alba_bin; "osd-bench";
+          "-h"; ip_v ;"-p"; string_of_int port;
+          "--scenario";"sets"; "-n"; "10"; "-v"; "1_000_000";
+          "--prefix kaboom"
+      ] |> Shell.cmd' ~ignore_rc:true;
+
+      asd # stop;
+      ["tail -n 30" ; mount_point ^"/" ^ asd_id ^ ".out"] |> Shell.cmd';
+      Unix.sleep 8;
+    in
+    wrapper test
+
+end
 
 let process_cmd_line () =
   let cmd_len = Array.length Sys.argv in
@@ -3170,6 +3262,7 @@ let process_cmd_line () =
       "rora",            Test.rora, false;
       "recovery",        Test.recovery, true;
       "pread_bench",     Bench.pread_bench, false;
+      "enospc",          ASDBorder.enospc, false;
     ]
   in
   let print_suites () =
