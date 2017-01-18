@@ -53,6 +53,7 @@ let test () =
             ~write:[]
             ~errors:[]
             ~checksum_errors:0L
+            ~claimed_since:None
         in
         let () = Hashtbl.add info device_id d_info in
         fill (i+1)
@@ -111,6 +112,7 @@ let choose_bug () =
           ~write:[]
           ~errors:[]
           ~checksum_errors:0L
+          ~claimed_since:None
       in
       let () = Hashtbl.add info device_id d_info in
       fill (i+1)
@@ -147,7 +149,7 @@ let choose_forced () =
             ~seen:[]
             ~read:[]
             ~write:[]
-            ~errors:[] ~checksum_errors:0L
+            ~errors:[] ~checksum_errors:0L ~claimed_since:None
         in
         let () = Hashtbl.add info osd_id d_info in
         fill (i+1)
@@ -368,6 +370,7 @@ let setup_explicit_info info_list =
            ~write:[]
            ~errors:[]
            ~checksum_errors:0L
+         ~claimed_since:None
        in
        Hashtbl.add info osd_id d_info) info_list
   in
@@ -460,6 +463,7 @@ let test_distribution_bug () =
             ~write:[]
             ~errors:[]
             ~checksum_errors:0L
+            ~claimed_since:None
         in
         let () = Hashtbl.add info device_id d_info in
         fill (i+1)

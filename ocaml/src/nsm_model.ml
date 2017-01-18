@@ -97,6 +97,7 @@ module OsdInfo = struct
     write : timestamp list;
     errors : (timestamp * string) list;
     checksum_errors : int64;
+    claimed_since : timestamp option;
   }
   [@@deriving show, yojson]
 
@@ -106,12 +107,14 @@ module OsdInfo = struct
       ~total ~used
       ~seen ~read ~write ~errors
       ~checksum_errors
+      ~claimed_since
     =
     { kind; node_id;
       decommissioned; other;
       total; used;
       seen; read; write; errors;
       checksum_errors;
+      claimed_since;
     }
 
   let _check_rdma = function
@@ -228,6 +231,7 @@ module OsdInfo = struct
         total; used;
         seen; read; write; errors;
         checksum_errors;
+        claimed_since
       }
     =
     let ser_version = 3 in
@@ -255,7 +259,9 @@ module OsdInfo = struct
            Llio.string_to)
         buf
         errors;
-      Llio.int64_to buf checksum_errors
+      Llio.int64_to buf checksum_errors;
+      Llio.option_to Llio.float_to buf claimed_since
+
     in
     Llio.string_to final_buf (Buffer.contents buf)
 
@@ -310,6 +316,7 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors;
       checksum_errors = 0L;
+      claimed_since = None;
     }
 
   let _from_buffer2 orig_buf =
@@ -358,6 +365,7 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors;
       checksum_errors = 0L;
+      claimed_since = None;
     }
 
   let _from_buffer3 orig_buf =
@@ -417,10 +425,13 @@ module OsdInfo = struct
            Llio.string_from)
         buf in
     let checksum_errors = maybe_from_buffer Llio.int64_from 0L buf in
+    let claimed_since = maybe_from_buffer
+                          (Llio.option_from Llio.float_from) None buf in
     { kind; node_id; decommissioned; other;
       total; used;
       seen; read; write; errors;
       checksum_errors;
+      claimed_since;
     }
 
 

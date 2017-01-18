@@ -55,7 +55,7 @@ let test_check_move () =
                  ~total
                  ~used
                  ~seen:[] ~read:[] ~write:[]
-                 ~errors:[] ~checksum_errors:0L
+                 ~errors:[] ~checksum_errors:0L ~claimed_since:None
   in
   let () = Array.iteri
              (fun osd_id used ->
