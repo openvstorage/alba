@@ -753,6 +753,7 @@ class maintenance
          let oc = open_out m_cfg_file in
          let json = maintenance_cfg_to_yojson cfg in
          Yojson.Safe.pretty_to_channel oc json;
+         output_char oc '\n';
          close_out oc
        in
        persister, url
@@ -767,8 +768,11 @@ class maintenance
 
        persister, url
   in
-  object
+  let out = Printf.sprintf "%s/maintenance.out" maintenance_base in
+  object (self)
     method abm_config_url : Url.t = maintenance_abm_cfg_url
+
+    method cfg_url :Url.t = cfg_url
 
     method write_config_file : unit =
       "mkdir -p " ^ maintenance_base |> Shell.cmd;
@@ -784,18 +788,24 @@ class maintenance
       in
       config_persister m_cfg
 
-    method start =
-      let out = Printf.sprintf "%s/maintenance.out" maintenance_base in
+    method private start_line =
       [cfg.alba_bin; "maintenance"; "--config"; Url.canonical cfg_url]
+
+    method start =
+      self # start_line
       |> Shell.detach ~out
 
     method signal s=
-      let pid_line = ["pgrep -a alba"; "| grep 'maintenance' " ]
-                     |> Shell.cmd_with_capture
+      let start_line_s = String.concat " " self # start_line in
+      let pid_line = [
+          Printf.sprintf "pgrep -f '%s'" start_line_s
+        ] |> Shell.cmd_with_capture
       in
       let pid = Scanf.sscanf pid_line " %i " (fun i -> i) in
       Printf.sprintf "kill -s %s %i" s pid |> Shell.cmd
 
+    method stop =
+      self # signal "15"
 
 end
 
@@ -1012,6 +1022,19 @@ class etcd host port home =
       Printf.sprintf "fuser -k -n tcp %i" port
       |> Shell.cmd ~ignore_rc:true
   end
+
+let rec wait_for_condition i msg f =
+  if f ()
+  then ()
+  else if i = 0
+  then failwith (Printf.sprintf "%s: took too long!" msg)
+  else
+    begin
+      Printf.printf "%i\n%!" i;
+      Unix.sleep 1;
+      wait_for_condition (i - 1) msg f
+    end
+
 
 module Deployment = struct
   type t = {
@@ -1275,7 +1298,11 @@ module Deployment = struct
       (fun asd -> asd # start)
       t.osds
 
+  let stop_maintenance t =
+    List.iter (fun m -> m # stop) t.maintenance_processes
 
+  let start_maintenance t =
+    List.iter (fun m -> m # start) t.maintenance_processes
 
 
   let list_namespaces t  =
@@ -1504,8 +1531,35 @@ module Deployment = struct
         "--verbose";
     ] @ extra |> _alba_with_cfg t
 
-  let verify_namespace t namespace job_name=
-    _alba_with_cfg t ["verify-namespace"; namespace; job_name]
+  let verify_namespace t namespace job_name =
+    let cmd0 = ["verify-namespace"; namespace; job_name] in
+    cmd0 |> _alba_with_cfg t
+
+  let rewrite_namespace t namespace job_name =
+    let cmd0 = ["rewrite-namespace"; namespace; job_name] in
+    cmd0 |> _alba_with_cfg t
+
+  let verify_namespaces t ns_names =
+    "verify-namespaces" :: "--namespaces" :: ns_names
+    |> _alba_with_cfg t
+
+  let list_jobs t =
+    _mk_cmd t ["list-jobs"; "--to-json"]
+    |> Shell.cmd_with_capture
+    |> Yojson.Safe.from_string
+    |> Yojson.Safe.Util.member "result"
+    |> Yojson.Safe.Util.to_list
+    |> List.map Yojson.Safe.Util.to_string
+
+  let job_progress t job_name =
+    _mk_cmd t ["show-job-progress"; job_name]
+    |> Shell.cmd_with_capture
+
+  let clear_job_progress t job_name =
+    _alba_with_cfg t ["clear-job-progress"; job_name]
+
+  let list_work t =
+    _mk_cmd t ["list-work"] |> Shell.cmd_with_capture
 
 end
 
@@ -1991,6 +2045,29 @@ module Test = struct
     in
     rc suites
 
+  let run_test_as_suite test level0 level1 test_name xml dump =
+    begin
+      let open JUnit in
+      let t0 = Unix.gettimeofday() in
+      let result =
+        try test ()
+        with exn -> JUnit.Err (Printexc.to_string exn)
+      in
+      let t1 = Unix.gettimeofday() in
+      let time = t1 -. t0 in
+      let testcase =
+        make_testcase level1 test_name  time
+                      result
+      in
+      let suite = make_suite level0 [testcase] time in
+      let suites = [suite] in
+      let () =
+        if xml
+        then dump_xml suites "testresults.xml"
+        else dump suites
+      in
+      rc suites
+    end
 
   let ocaml ?(xml=false) ?filter ?dump t =
     begin
@@ -2615,6 +2692,9 @@ module Test = struct
       Shell.cmd "pkill alba" ~ignore_rc:true;
       Shell.cmd "pkill arakoon" ~ignore_rc:true;
 
+      Shell.cmd "pgrep -a alba" ~ignore_rc:true;
+      Shell.cmd "pgrep -a arakoon" ~ignore_rc:true;
+
       t.abm # persist_config;
       t.abm # start;
 
@@ -2643,9 +2723,11 @@ module Test = struct
       List.iter
         (fun maintenance ->
           maintenance # write_config_file;
-          maintenance # start)
+          ["cat" ; (maintenance # cfg_url |> Url.canonical)] |> Shell.cmd';
+          maintenance # start;
+        )
         t.maintenance_processes;
-
+      Unix.sleep 5;
       Deployment.nsm_host_register t;
       Deployment.setup_osds t;
       Deployment.claim_local_osds t t.cfg.n_osds;
@@ -2803,20 +2885,9 @@ module Test = struct
         | _ -> assert false
     end;
 
-    let rec wait_for_condition i msg f =
-      if f ()
-      then ()
-      else if i = 0
-      then failwith (Printf.sprintf "%s: took too long!" msg)
-      else
-        begin
-          Printf.printf "%i\n%!" i;
-          Unix.sleep 1;
-          wait_for_condition (i - 1) msg f
-        end
-    in
 
-    let wait_for_lazy_write () =
+
+    let wait_for_lazy_write ?(delay=10)() =
       let msg = "Lazy write took too long" in
       let f () =
         let show_namespace_1 = show_namespace t_global "demo" in
@@ -2826,7 +2897,7 @@ module Test = struct
                    show_namespace_1.bucket_count);
         show_namespace_1.bucket_count = [ (2,2,4,4), 3; ]
       in
-      wait_for_condition 5 msg f
+      wait_for_condition delay msg f
     in
     wait_for_lazy_write ();
 
@@ -2868,6 +2939,83 @@ module Test = struct
 
     0
 
+
+  let job_crud ?(xml=false) ?filter ?dump t =
+    let () = Shell._print ">>>>> start of job_crud" in
+    let test () =
+      Deployment.stop_maintenance t;
+      let ns = "demo" in
+      let vn_name i = Printf.sprintf "verify:%s:%02i" ns i in
+      let rw_name i = Printf.sprintf "rewrite:%s:%02i" ns i in
+
+      let () =
+        let rec loop n =
+          if n = 50
+          then ()
+          else
+            let () = Deployment.verify_namespace  t ns (vn_name n) in
+            let () = Deployment.rewrite_namespace t ns (rw_name n) in
+            loop (n+1)
+        in
+        loop 0
+      in
+      let expect_failure f =
+        let ok =
+          try f (); false
+          with _ -> true
+        in
+        assert ok
+      in
+      let () =
+        let add () =
+          Deployment.verify_namespace
+            t ns "there_can_be_only_one"
+        in
+        add ();
+        expect_failure add;
+        expect_failure
+          (fun () ->Deployment.verify_namespaces t ["demo,bad;demo,bad"])
+      in
+      let () =
+        let x = Deployment.list_jobs t in
+        let n_jobs = List.length x in
+        assert (101 = n_jobs)
+      in
+      let () = Deployment.start_maintenance t in
+      let wait_for_maintenance () =
+        let msg = "wait for maintenance" in
+        let f () =
+          let work = Deployment.list_work t in
+          let len_work = String.length work in
+          let () = Printf.printf "=>%i%!\n" len_work in
+          len_work < 55
+        in
+        wait_for_condition 200 msg f
+      in
+      wait_for_maintenance ();
+      let job_0 = vn_name 40 in
+      let job_1 = rw_name 40 in
+      let progress_0 = Deployment.job_progress t job_0 in
+      let progress_1 = Deployment.job_progress t job_1 in
+      print_endline progress_0;
+      print_endline progress_1;
+
+      (* TODO: need an assert on progress ? *)
+
+      Deployment.clear_job_progress t job_0;
+      Deployment.clear_job_progress t job_1;
+      let jobs = Deployment.list_jobs t in
+      assert (99 = List.length jobs);
+      assert (not (List.mem job_0 jobs) );
+      assert (not (List.mem job_1 jobs) );
+      let () = Shell._print ">>>>> end of job_crud" in
+      JUnit.Ok
+    in
+    run_test_as_suite
+      test
+      "job_crud_suite" "list_jobs" "test"
+      xml dump
+
   let stress2 ?xml ?filter ?dump _ =
     let cfg_global, t_global, _, _ = setup_global_backend () in
 
@@ -2904,6 +3052,7 @@ module Test = struct
       [ big_object;
         cli;
         arakoon_changes;
+        transform job_crud "job_crud";
         transform aaa "aaa";
         transform alba_as_osd "alba_as_osd";
       ]
@@ -2940,7 +3089,6 @@ module Test = struct
     0
 
   let recovery ?(xml=false) ?filter ?dump t =
-    let t0 = Unix.gettimeofday() in
     let test () =
       let preset_name = "preset_recovery" in
       let () =
@@ -3036,28 +3184,12 @@ module Test = struct
         then JUnit.Ok
         else JUnit.Err "checksums differ"
     in
-    begin
-      let open JUnit in
+    run_test_as_suite
+      test
+      "recovery suite" "nsm_recovery" "recover_one_object"
+      xml dump
 
-      let result =
-        try test ()
-        with exn -> JUnit.Err (Printexc.to_string exn)
-      in
-      let t1 = Unix.gettimeofday() in
-      let time = t1 -. t0 in
-      let testcase =
-        make_testcase "nsm_recovery" "recover_one_object" time
-                      result
-      in
-      let suite = make_suite "recovery suite" [testcase] time in
-      let suites = [suite] in
-      let () =
-        if xml
-        then dump_xml suites "testresults.xml"
-        else dump suites
-      in
-      rc suites
-    end
+
 end
 module Bench = struct
   let pread_bench ?(xml=false) ?filter ?dump t =
@@ -3261,6 +3393,7 @@ let process_cmd_line () =
       "asd_transport_combos", Test.asd_transport_combos, false;
       "rora",            Test.rora, false;
       "recovery",        Test.recovery, true;
+      "job_crud",        Test.job_crud, true;
       "pread_bench",     Bench.pread_bench, false;
       "enospc",          ASDBorder.enospc, false;
     ]

@@ -1780,12 +1780,14 @@ let run_server
            ~first:(Keys.key_with_public_prefix (Slice.wrap_string "")) ~finc:true
            ~last:Keys.public_key_next_prefix
            ~reverse:false ~max:(-1)
-           (fun cur _ _ acc ->
+           (fun cur _ (cnt,acc) ->
             let _cs, value = deserialize
                                Value.from_buffer
                                (Rocks_key_value_store.cur_get_value cur) in
             let size = Value.get_size value in
-            Int64.(add acc (of_int size))
+            let cnt' = cnt + 1 in
+            let acc' = Int64.(add acc (of_int size)) in
+            cnt',acc'
            )
            0L
        in

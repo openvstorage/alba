@@ -414,3 +414,9 @@ module Checksum = struct
     [@@deriving yojson]
 
 end
+
+module Progress = struct
+  type t = Albamgr_protocol.Protocol.Progress.t [@@ deriving yojson]
+
+  type progresses = (int * t) list [@@deriving yojson]
+end

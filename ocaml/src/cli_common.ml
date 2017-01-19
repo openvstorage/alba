@@ -104,10 +104,10 @@ let exn_to_string_code = function
     let open Nsm_model.Err in
     "nsm_exn", err2int e,
     Printf.sprintf "Namespace manager exception: %s" (show e)
-  | Albamgr_protocol.Protocol.Error.Albamgr_exn (e, _) ->
+  | Albamgr_protocol.Protocol.Error.Albamgr_exn (e, msg) ->
     let open Albamgr_protocol.Protocol.Error in
     "albamgr_exn", err2int e,
-    Printf.sprintf "Albamgr exception: %s" (show e)
+    Printf.sprintf "Albamgr exception(%s,%s)" (show e) msg
   | Proxy_protocol.Protocol.Error.Exn (e, _) ->
     let open Proxy_protocol.Protocol.Error in
     "proxy_exn", err2int e,

@@ -477,11 +477,11 @@ module Protocol = struct
     type verify_params = {
         checksum : bool;
         repair_osd_unavailable : bool;
-      } [@@deriving show]
+      } [@@deriving show, yojson]
     type action =
       | Rewrite
       | Verify of verify_params
-    [@@deriving show]
+    [@@deriving show, yojson]
     let action_to_buffer buf = function
       | Rewrite -> Llio.int8_to buf 1
       | Verify { checksum; repair_osd_unavailable; } ->
@@ -660,7 +660,7 @@ module Protocol = struct
     type base = {
         count : int64;
         next : string option;
-      } [@@deriving show]
+      } [@@deriving show, yojson]
     let base_to_buffer buf { count; next; } =
       Llio.int64_to buf count;
       Llio.string_option_to buf next
@@ -673,7 +673,7 @@ module Protocol = struct
         fragments_detected_missing  : int64;
         fragments_osd_unavailable   : int64;
         fragments_checksum_mismatch : int64;
-    } [@@deriving show]
+    } [@@deriving show, yojson]
     let verify_params_to_buffer
           buf
           { fragments_detected_missing;
@@ -693,7 +693,7 @@ module Protocol = struct
     type t =
       | Rewrite of base
       | Verify of base * verify_params
-    [@@deriving show]
+    [@@deriving show, yojson]
 
     let to_buffer buf = function
       | Rewrite b ->
@@ -794,6 +794,7 @@ module Protocol = struct
     | GetProgressForPrefix : (string, (int * Progress.t) counted_list) query
     | GetMaintenanceConfig : (unit, Maintenance_config.t) query
     | ListPurgingOsds : (Osd.id RangeQueryArgs.t, Osd.id counted_list_more) query
+    | ListJobs : (String.t RangeQueryArgs.t, string counted_list_more) query
 
   type ('i, 'o) update =
     | AddNsmHost : (Nsm_host.id * Nsm_host.t, unit) update
@@ -871,6 +872,7 @@ module Protocol = struct
     | GetProgressForPrefix -> Llio.string_from
     | GetMaintenanceConfig -> Llio.unit_from
     | ListPurgingOsds -> RangeQueryArgs.from_buffer x_int64_from
+    | ListJobs -> RangeQueryArgs.from_buffer Llio.string_from
 
   let write_query_i : type i o. (i, o) query -> i Llio.serializer = function
     | ListNsmHosts -> RangeQueryArgs.to_buffer Llio.string_to
@@ -911,6 +913,7 @@ module Protocol = struct
     | GetProgressForPrefix -> Llio.string_to
     | GetMaintenanceConfig -> Llio.unit_to
     | ListPurgingOsds -> RangeQueryArgs.to_buffer x_int64_to
+    | ListJobs -> RangeQueryArgs.to_buffer Llio.string_to
 
   let read_query_o : type i o. (i, o) query -> o Llio.deserializer = function
     | ListNsmHosts ->
@@ -1026,6 +1029,7 @@ module Protocol = struct
             Progress.from_buffer)
     | GetMaintenanceConfig -> Maintenance_config.from_buffer
     | ListPurgingOsds -> counted_list_more_from x_int64_from
+    | ListJobs -> counted_list_more_from Llio.string_from
 
   let write_query_o : type i o. (i, o) query -> o Llio.serializer = function
     | ListNsmHosts ->
@@ -1142,6 +1146,7 @@ module Protocol = struct
            Progress.to_buffer)
     | GetMaintenanceConfig -> Maintenance_config.to_buffer
     | ListPurgingOsds -> counted_list_more_to x_int64_to
+    | ListJobs -> counted_list_more_to Llio.string_to
 
   let read_update_i : type i o. (i, o) update -> i Llio.deserializer = function
     | AddNsmHost -> Llio.pair_from Llio.string_from Nsm_host.from_buffer
@@ -1181,7 +1186,8 @@ module Protocol = struct
         Llio.string_from
     | MarkMsgDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
     | MarkMsgsDelivered t -> Llio.pair_from (Msg_log.dest_from_buffer t) x_int64_from
-    | AddWork -> Llio.counted_list_from Work.from_buffer
+    | AddWork ->
+       Llio.counted_list_from Work.from_buffer
     | MarkWorkCompleted -> x_int64_from
     | CreatePreset -> Llio.pair_from Llio.string_from Preset.from_buffer
     | DeletePreset -> Llio.string_from
@@ -1454,11 +1460,11 @@ module Protocol = struct
                       Wrap_u BumpNextWorkItemId, 85l, "BumpNextWorkItemId";
                       Wrap_u BumpNextOsdId, 86l, "BumpNextOsdId";
                       Wrap_u BumpNextNamespaceId, 87l, "BumpNextNamespaceId";
-
                       Wrap_q ListPresets2, 90l, "ListPresets2";
                       Wrap_q ListPresetNamespaces, 91l, "ListPresetNamespaces";
                       Wrap_q GetPresetsPropagationState, 92l, "GetPresetsPropagationState";
                       Wrap_u UpdatePresetPropagationState, 93l, "UpdatePresetPropagationState";
+                      Wrap_q ListJobs, 95l, "ListJobs";
                     ]
 
 
@@ -1495,6 +1501,7 @@ module Protocol = struct
 
       | Progress_does_not_exist         [@value 30]
       | Progress_CAS_failed             [@value 31]
+      | Bad_argument                    [@value 32]
     [@@deriving show, enum]
 
     exception Albamgr_exn of t * string

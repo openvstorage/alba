@@ -413,6 +413,10 @@ object(self)
         GetWorkParams.({ first; finc; last;
                          max; reverse; })
 
+    method list_jobs ~first ~finc ~last ~max ~reverse =
+      client # query
+             ListJobs (RangeQueryArgs.{ first; finc ; last ; reverse; max })
+
     method mark_work_completed ~work_id =
       client # update MarkWorkCompleted work_id
 
@@ -618,10 +622,12 @@ class single_connection_client (ic, oc) =
     | 0 ->
       Lwt.return (deserializer res_buf)
     | ierr ->
-      let err = Error.int2err ierr in
-      Lwt_log.debug_f "albamgr operation failed: %i %s" ierr (Error.show err)
+       let err = Error.int2err ierr in
+       let payload = Llio.string_from res_buf in
+       Lwt_log.debug_f
+         "albamgr operation failed: %i %s:%s"
+         ierr (Error.show err) payload
       >>= fun () ->
-      let payload = Llio.string_from res_buf in
       Lwt.fail (Error.Albamgr_exn (err, payload))
   in
   let do_request tag serialize_request deserialize_response =
