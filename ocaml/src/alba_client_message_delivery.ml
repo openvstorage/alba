@@ -131,6 +131,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
     msgs
 
 let deliver_osd_messages mgr_access nsm_host_access osd_access ~osd_id =
+  Lwt_log.debug_f "Delivering osd messages for %Li" osd_id >>= fun () ->
   Alba_client_message_delivery_base.deliver_messages
     mgr_access
     Albamgr_protocol.Protocol.Msg_log.Osd
@@ -138,6 +139,7 @@ let deliver_osd_messages mgr_access nsm_host_access osd_access ~osd_id =
     (_deliver_osd_messages osd_access ~osd_id)
 
 let deliver_nsm_host_messages mgr_access nsm_host_access osd_access ~nsm_host_id =
+  Lwt_log.debug_f "Delivering nsm host messages for %s" nsm_host_id >>= fun () ->
   nsm_host_access # get_nsm_host_info ~nsm_host_id >>= fun nsm_host_info ->
   let open Albamgr_protocol.Protocol in
   Alba_client_message_delivery_base.deliver_messages
@@ -201,10 +203,13 @@ let deliver_messages_to_most_osds
          Lwt_extra2.ignore_errors
            (fun () ->
             (if Hashtbl.mem osd_msg_delivery_threads osd_id
-             then begin
+             then
+               begin
                  Hashtbl.replace osd_msg_delivery_threads osd_id `Extend;
                  Lwt.return ()
-               end else begin
+               end
+             else
+               begin
                  let rec inner f =
                    Hashtbl.replace osd_msg_delivery_threads osd_id `Busy;
                    Lwt.finalize
@@ -230,13 +235,17 @@ let deliver_messages_to_most_osds
                     if get_best_policy
                          preset.Preset.policies
                          osds_info_cache = None
-                    then Lwt.return ()
-                    else begin
+                    then
+                      Lwt.return ()
+                    else
+                      begin
                         if not !finished
-                        then begin
+                        then
+                          begin
                             finished := true;
                             Lwt_mvar.put mvar ()
-                          end else
+                          end
+                        else
                           Lwt.return ()
                       end
                    )

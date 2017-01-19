@@ -4,6 +4,7 @@
 #require "str";;
 #require "ppx_deriving_yojson";;
 #require "ppx_deriving.show";;
+#require "ezxmlm";;
 #directory "./_build";;
 #load "prul.cmo";;
 

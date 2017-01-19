@@ -51,6 +51,7 @@ module Osd = struct
     write : timestamp list;
     errors : (timestamp * string) list;
     checksum_errors : int64;
+    claimed_since : timestamp option;
     }
   [@@deriving yojson]
 
@@ -63,6 +64,7 @@ module Osd = struct
         total; used;
         seen; read; write;
         errors; checksum_errors;
+        claimed_since;
       } =
     let id, alba_id =
       let open Osd.ClaimInfo in
@@ -118,6 +120,7 @@ module Osd = struct
       total; used;
       seen; read; write; errors;
       checksum_errors;
+      claimed_since;
     }
 end
 

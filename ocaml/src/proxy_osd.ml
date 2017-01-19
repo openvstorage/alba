@@ -51,6 +51,7 @@ class multi_proxy_pool
         ~transport
         ~size =
   let fuse = ref false in
+  let initial_resolve_t, initial_resolve_waiter = Lwt.wait () in
 
   let active_pools : (Net_fd.transport * string * int, simple_proxy_pool) Hashtbl.t = Hashtbl.create 3 in
   let disqualified_endpoints_requalify_threads = Hashtbl.create 3 in
@@ -65,11 +66,13 @@ class multi_proxy_pool
            if cnt = 1
            then Lwt.fail_with "no proxies available"
            else
-             (Hashtbl.values disqualified_endpoints_requalify_threads
-              |> List.map fst
-              |> fun ts ->
-                 Lwt.choose (Lwt_unix.sleep 2. :: ts)) >>= fun () ->
-             inner (cnt + 1)
+             begin
+               initial_resolve_t >>= fun () ->
+               (Hashtbl.values disqualified_endpoints_requalify_threads
+                |> List.map fst
+                |> Lwt.choose) >>= fun () ->
+               inner (cnt + 1)
+             end
         | Some (endpoint, pp) ->
            pp # with_client ~namespace
               (fun client ->
@@ -123,11 +126,16 @@ class multi_proxy_pool
           Lwt.return `TryAgain)
       >>= function
       | `Done ->
+         Hashtbl.remove disqualified_endpoints_requalify_threads endpoint;
          Hashtbl.add active_pools endpoint pp;
          Lwt_log.debug_f "(re)qualified proxy %s://%s:%i" ([%show : Net_fd.transport] transport) ip port
       | `TryAgain ->
          if !fuse
-         then Lwt.return ()
+         then
+           begin
+             Hashtbl.remove disqualified_endpoints_requalify_threads endpoint;
+             Lwt.return ()
+           end
          else
            begin
              Lwt_extra2.sleep_approx 60. >>= fun () ->
@@ -135,10 +143,7 @@ class multi_proxy_pool
            end
     in
     let t = t () in
-    Hashtbl.add disqualified_endpoints_requalify_threads endpoint (t, fuse);
-    Lwt.ignore_result (t >>= fun () ->
-                       Hashtbl.remove disqualified_endpoints_requalify_threads endpoint;
-                       Lwt.return ())
+    Hashtbl.add disqualified_endpoints_requalify_threads endpoint (t, fuse)
   in
 
   let () =
@@ -206,6 +211,9 @@ class multi_proxy_pool
           List.iter
             (fun endpoint -> (Hashtbl.find disqualified_endpoints_requalify_threads endpoint |> snd) := true)
             disqualified_to_remove;
+
+          if Lwt.is_sleeping initial_resolve_t
+          then Lwt.wakeup initial_resolve_waiter ();
 
           Lwt_extra2.sleep_approx 60. >>= fun () ->
           inner ()

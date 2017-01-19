@@ -22,6 +22,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "proxy_protocol.h"
 #include "proxy_sequences.h"
 #include "statistics.h"
+#include "transport.h"
+
 #include <boost/asio.hpp>
 #include <chrono>
 #include <iosfwd>
@@ -41,11 +43,14 @@ struct proxy_exception : std::exception {
 };
 
 struct RoraConfig {
-  RoraConfig(const size_t size = 10000, const bool null_io = false)
-      : manifest_cache_size(size), use_null_io(null_io) {}
+  RoraConfig(const size_t size = 10000, const bool null_io = false,
+             const int asd_connection_pool_size = 5)
+      : manifest_cache_size(size), use_null_io(null_io),
+        asd_connection_pool_size(asd_connection_pool_size) {}
 
   size_t manifest_cache_size;
   bool use_null_io;
+  int asd_connection_pool_size;
 };
 
 BOOLEAN_ENUM(has_more)
@@ -146,11 +151,10 @@ public:
   virtual void osd_info2(osd_maps_t &result) = 0;
 };
 
-enum class Transport { tcp, rdma };
-
-std::ostream &operator<<(std::ostream &, Transport);
-
-std::istream &operator>>(std::istream &, Transport &);
+/* API backward compatibility:
+ * versions =< 1.3.2 had a Transport definition here.
+ */
+using Transport = alba::transport::Kind;
 
 /* factory method: gets the correct client for a particular transport
  */

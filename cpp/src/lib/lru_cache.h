@@ -20,6 +20,7 @@
 #include <boost/bimap/set_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 #include <boost/optional.hpp>
+#include <mutex>
 /*
 nicked from volumedriver's LRUCacheToo, but
 
@@ -27,6 +28,8 @@ nicked from volumedriver's LRUCacheToo, but
 - removed VERIFY & logging
 - removed name attribute
 - removed include sandwich and replaced with #pragma once
+- changed the name
+- added a safe version
 */
 namespace ovs {
 
@@ -36,21 +39,21 @@ namespace ovs {
 // Better naming suggestions / ideas for unification welcome.
 template <typename K, typename V,
           template <typename...> class Set = boost::bimaps::unordered_set_of>
-class LRUCacheToo {
+class UnsafeLRUCache {
 public:
-  LRUCacheToo( // const std::string& name,
+  UnsafeLRUCache( // const std::string& name,
       size_t capacity)
       : capacity_(capacity) {
     if (capacity_ == 0) {
-      throw std::logic_error("LRUCache capacity should be > 0");
+      throw std::logic_error("UnsafeLRUCache capacity should be > 0");
     }
   }
 
-  ~LRUCacheToo() = default;
+  ~UnsafeLRUCache() = default;
 
-  LRUCacheToo(const LRUCacheToo &) = delete;
+  UnsafeLRUCache(const UnsafeLRUCache &) = delete;
 
-  LRUCacheToo &operator=(const LRUCacheToo &) = delete;
+  UnsafeLRUCache &operator=(const UnsafeLRUCache &) = delete;
 
   boost::optional<V> find(const K &k) {
     auto it = bimap_.left.find(k);
@@ -99,5 +102,26 @@ private:
   using Bimap = boost::bimaps::bimap<Set<K>, boost::bimaps::list_of<V>>;
   Bimap bimap_;
   const size_t capacity_;
+};
+
+template <typename K, typename V,
+          template <typename...> class Set = boost::bimaps::unordered_set_of>
+
+class SafeLRUCache {
+public:
+  SafeLRUCache(size_t capacity) : _cache(capacity) {}
+  void insert(const K &k, const V &v) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _cache.insert(k, v);
+  }
+
+  boost::optional<V> find(const K &k) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _cache.find(k);
+  }
+
+private:
+  UnsafeLRUCache<K, V> _cache;
+  std::mutex _mutex;
 };
 }

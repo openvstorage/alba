@@ -647,6 +647,7 @@ class proxy ?fragment_cache ?ip ?transport
   method proxy_cfg = p_cfg
 
   method log_file = Printf.sprintf "%s/proxy.out" proxy_base
+  method port = port
 
   method start_cmd = [alba_bin; "proxy-start"; "--config"; Url.canonical cfg_url]
   method start =
@@ -873,13 +874,17 @@ let make_asd_config
 
 
 
-class asd ?write_blobs ?transport ~ip
+class asd ?(use_fadvise = true)
+          ?(use_fallocate = true)
+          ?write_blobs ?transport ~ip
           ?rora_ips ~use_rora ?rora_transport
           node_id asd_id alba_bin arakoon_path home
           ~(port:int) ~etcd tls ~log_level
   =
   let use_tls = tls <> None in
   let asd_cfg = make_asd_config
+                  ~use_fadvise
+                  ~use_fallocate
                   ?write_blobs ?transport ~ip
                   node_id asd_id home ~port tls
                   ~use_rora ?rora_ips ~rora_transport
@@ -982,6 +987,10 @@ class asd ?write_blobs ?transport ~ip
 
     method get_statistics =
       let cmd = self # build_remote_cli ["asd-statistics"] in
+      cmd |> Shell.cmd_with_capture
+
+    method get_disk_usage =
+      let cmd = self # build_remote_cli ["asd-disk-usage"] ~json:false in
       cmd |> Shell.cmd_with_capture
 
     method set k v =
@@ -1715,7 +1724,10 @@ module Test = struct
   let setup_aaa ~bump_ids ?(the_prefix="my_prefix") ?(the_preset="default") () =
     (* alba accelerated alba *)
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
-    let cfg_ssd = Config.make ~use_rora:true ~workspace:(workspace ^ "/tmp/alba_ssd") () in
+    let cfg_ssd = Config.make
+                    ~use_rora:false (* no rora for now, as it doesn't work anyway *)
+                    ~workspace:(workspace ^ "/tmp/alba_ssd") ()
+    in
     let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:6000 () in
     Deployment.kill t_ssd;
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
@@ -1740,43 +1752,270 @@ module Test = struct
     Deployment.setup ~bump_ids t_hdd;
     (cfg_hdd, t_hdd), (cfg_ssd, t_ssd)
 
+
+  let setup_global_backend ?(accelerated=false) () =
+    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
+    Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
+
+    let make_backend
+          ?__retry_timeout
+          ?(kill=false)
+          ?(fc_config = Proxy_cfg.None')
+          ?n_osds name
+
+          ~base_port =
+      let cfg =
+        Config.make
+          ?n_osds
+          ~workspace:(Printf.sprintf
+                        "%s/tmp/alba_%s"
+                        workspace name) ()
+      in
+      let t = Deployment.make_default
+            ~fragment_cache:fc_config
+            ?__retry_timeout ~cfg ~base_port ()
+      in
+      if kill then Deployment.kill t;
+      Deployment.setup t;
+      cfg, t
+    in
+
+    let _, t_local1 = make_backend "local_1" ~base_port:4000 ~kill:true in
+    let _, t_local2 = make_backend "local_2" ~base_port:5001 in
+    let _, t_local3 = make_backend "local_3" ~base_port:6002 in
+    let _, t_local4 = make_backend "local_4" ~base_port:7003 in
+    let fc_config =
+      let open Proxy_cfg in
+      if accelerated
+      then
+        let _, t_cache = make_backend "cache" ~base_port:8004 in
+        let preset_name = "preset_rora" in
+        let () = _create_preset
+                   t_cache
+                   preset_name
+                   "./cfg/preset_no_compression.json"
+        in
+
+        Alba {
+            albamgr_cfg_url = Url.canonical (t_cache.abm # config_url);
+            bucket_strategy = OneOnOne { prefix = "xxx";
+                                         preset = preset_name; };
+            manifest_cache_size = 1_000_000;
+            cache_on_read_ = true;
+            cache_on_write_ = true;
+          }
+      else None'
+    in
+
+    let cfg_global, t_global =
+      make_backend "global"
+                   ~fc_config
+                   ~base_port:7503 ~n_osds:0
+                   ~__retry_timeout:10.
+    in
+
+    let add_backend_as_osd t_local kind =
+      let () =
+        match kind with
+        | `AlbaOsd ->
+           _alba_cmd_line
+             [ "add-osd";
+               "--config"; t_global.abm # config_url |> Url.canonical;
+               "--alba-osd-config-url"; t_local.abm # config_url |> Url.canonical;
+               "--node-id"; "x";
+               "--prefix"; "alba_osd_prefix";
+               "--preset"; "default";
+               "--to-json";
+             ]
+        | `ProxyOsd ->
+           _alba_cmd_line
+             [ "add-osd";
+               "--config"; t_global.abm # config_url |> Url.canonical;
+               "--endpoint"; Printf.sprintf "tCp://localhost:%i" (t_local.proxy # proxy_cfg
+                                                                  |> Proxy_cfg.port);
+               "--node-id"; "x";
+               "--prefix"; "alba_osd_prefix";
+               "--preset"; "default";
+               "--to-json"; "--verbose";
+             ]
+      in
+      _alba_cmd_line
+        [ "claim-osd";
+          "--config"; t_global.abm # config_url |> Url.canonical;
+          "--long-id"; get_alba_id t_local; ]
+    in
+    add_backend_as_osd t_local1 `AlbaOsd;
+    add_backend_as_osd t_local2 `AlbaOsd;
+    add_backend_as_osd t_local3 `ProxyOsd;
+    add_backend_as_osd t_local4 `ProxyOsd;
+    Deployment.deliver_messages t_global;
+
+    cfg_global, t_global,
+    [ t_local1; t_local2; t_local3; t_local4; ],
+    add_backend_as_osd
+
   let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
-    let (_, t_hdd), (_, t_ssd) = setup_aaa ~bump_ids:true ~the_preset:"preset_rora" () in
-    let cfg = t_hdd.Deployment.cfg in
-    let host, transport = _get_ip_transport cfg
-    and port = "10000"
+    let make_cmd ?(prep_env="") deployment filter result_file =
+      let cfg = deployment.cfg in
+      let host, transport = _get_ip_transport cfg
+      and port = deployment.proxy # port
+      in
+      let cmd =
+        ["cd";cfg.alba_home; "&&";
+         prep_env;
+         "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
+         Printf.sprintf "ALBA_PROXY_IP=%s" host;
+         Printf.sprintf "ALBA_PROXY_PORT=%i" port;
+         Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
+         Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
+        ]
+      in
+      let cmd =
+        if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
+        then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
+        else cmd @ [ "./cpp/bin/unit_tests.out" ]
+      in
+      let cmd2 = if xml
+                 then cmd @ ["--gtest_output=xml:" ^ result_file ]
+                 else cmd
+      in
+      let cmd3 = match filter with
+        | None -> cmd2
+        | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
+      in
+      cmd3 |> String.concat " "
     in
-    let () = _create_preset t_hdd
-                            "preset_rora"
-                            "./cfg/preset_no_compression.json"
+    let run_aaa () =
+      let (_, t_hdd), (_, t_ssd) = setup_aaa ~bump_ids:true ~the_preset:"preset_rora" () in
+
+      t_hdd.Deployment.osds.(0) # set "key1" (String.make 100 'a');
+
+      (* preset for the main backend can have compression/encryption *)
+      let () = _create_preset t_hdd
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let () = _create_preset t_ssd
+                              "preset_rora"
+                              "./cfg/preset_no_compression.json"
+      in
+      let () = _create_preset t_hdd
+                              "preset_ctr"
+                              "./cfg/preset_test.json"
+      in
+
+      let cmd = make_cmd t_hdd None "testresults_aaa.xml" in
+      let rc = cmd |> Shell.cmd_with_rc in
+      let kill () =
+        Deployment.kill t_hdd;
+        Deployment.kill t_ssd
+      in
+      rc, kill
     in
-    let () = _create_preset t_ssd
-                            "preset_rora"
-                            "./cfg/preset_no_compression.json"
+
+    let filter = Some "proxy_client.test_partial_read*" in
+
+    let run_nil () =
+      let t  = Deployment.make_default () in
+      Deployment.setup t;
+      let () = _create_preset t
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let cmd =
+        make_cmd
+          ~prep_env:"ALBA_TEST_SLOW_ALLOWED=true"
+          t filter "testresults_nil.xml"
+      in
+      let rc = cmd |> Shell.cmd_with_rc in
+      let kill ()= Deployment.kill t in
+      rc, kill
     in
-    let () = _create_preset t_hdd
-                            "preset_ctr"
-                            "./cfg/preset_test.json"
+    let run_nil_nofc () =
+      let t = Deployment.make_default
+                ~fragment_cache:Proxy_cfg.None' ()
+      in
+      Deployment.kill t;
+      Deployment.setup t;
+      let () = _create_preset
+                 t
+                 "preset_rora"
+                 "./cfg/preset_no_compression.json"
+      in
+      let cmd =
+        make_cmd
+          t filter "testresults_nil_nofc.xml"
+      in
+      let rc = cmd |> Shell.cmd_with_rc in
+      let kill ()= Deployment.kill t in
+      rc, kill
     in
-    let cmd =
-      ["cd";cfg.alba_home; "&&";
-       "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
-       Printf.sprintf "ALBA_PROXY_IP=%s" host;
-       Printf.sprintf "ALBA_PROXY_PORT=%s" port;
-       Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
-      ]
+    let run_global () =
+      let _,t_global, t_locals, _ =
+        setup_global_backend ()
+      in
+      let () = _create_preset t_global
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let cmd =
+        make_cmd
+          ~prep_env:"ALBA_TEST_SLOW_ALLOWED=true"
+          t_global filter "testresults_global.xml"
+      in
+      let rc = cmd |> Shell.cmd_with_rc in
+      let kill () =
+        Deployment.kill t_global;
+        List.iter Deployment.kill t_locals
+      in
+      rc, kill
     in
-    let cmd =
-      if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
-      then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
-      else cmd @ [ "./cpp/bin/unit_tests.out" ]
+    let run_global_aaa () =
+      let cfg_global,t_global, tlocals, add_backend_asd_os =
+        setup_global_backend ~accelerated:true ()
+      in
+      let () = _create_preset t_global
+                              "preset_rora"
+                              "./cfg/preset.json"
+      in
+      let cmd =
+        make_cmd
+          t_global filter "testresults_global_aaa.xml"
+      in
+      let rc = cmd |> Shell.cmd_with_rc in
+      let kill () =
+        Deployment.kill t_global;
+        List.iter Deployment.kill tlocals
+      in
+      rc, kill
     in
-    let cmd2 = if xml then cmd @ ["--gtest_output=xml:testresults.xml" ] else cmd in
-    let cmd3 = match filter with
-      | None -> cmd2
-      | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
+    let tests = [run_aaa;
+                 run_nil;
+                 run_nil_nofc;
+                 run_global;
+                 run_global_aaa;
+                ]
     in
-    cmd3 |> String.concat " " |> Shell.cmd_with_rc
+    let rc,_kill =
+      List.fold_left
+        (fun (rc,kill) test ->
+          let () = kill () in
+          let trc, next_kill = test () in
+          let next_rc = rc lor trc in
+          next_rc, next_kill
+        )
+        (0,fun () -> ()) tests
+    in
+    let () = Prul.merge_result_xmls [("testresults_aaa.xml", "aaa");
+                                     ("testresults_nil.xml", "nil");
+                                     ("testresults_nil_nofc.xml", "nil_nofc");
+                                     ("testresults_global.xml", "global");
+                                     ("testresults_global_aaa.xml", "global_aaa");
+                                    ] "testresults.xml"
+    in
+
+    rc
+
 
   let stress ?(xml=false) ?filter ?dump (t:Deployment.t) =
     let t0 = Unix.gettimeofday() in
@@ -2310,6 +2549,18 @@ module Test = struct
       in
       maybe_copy (three_nodes # config_url);
       maintenance # signal "USR1";
+
+      (* burn through stale albamgr connections in the proxy *)
+      let rec loop = function
+        | 0 -> ()
+        | n -> let () =
+                 try t.proxy # list_namespaces |> ignore
+                 with _ -> ()
+               in
+               loop (n - 1)
+      in
+      loop 10;
+
       wait_for 120;
       let c = n_nodes_in_config () in
       assert (c = 3);
@@ -2598,74 +2849,6 @@ module Test = struct
 
     0
 
-  let setup_global_backend () =
-    let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
-    Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
-
-    let make_backend ?__retry_timeout ?(kill=false) ?n_osds name ~base_port =
-      let cfg =
-        Config.make
-          ?n_osds
-          ~workspace:(Printf.sprintf
-                        "%s/tmp/alba_%s"
-                        workspace name) ()
-      in
-      let t = Deployment.make_default ?__retry_timeout ~cfg ~base_port () in
-      if kill then Deployment.kill t;
-      Deployment.setup t;
-      cfg, t
-    in
-
-    let _, t_local1 = make_backend "local_1" ~base_port:4000 ~kill:true in
-    let _, t_local2 = make_backend "local_2"~base_port:5001 in
-    let _, t_local3 = make_backend "local_3"~base_port:6002 in
-    let _, t_local4 = make_backend "local_4"~base_port:7003 in
-
-    let cfg_global, t_global = make_backend "global"
-                                            ~base_port:7503 ~n_osds:0
-                                            ~__retry_timeout:10.
-    in
-
-    let add_backend_as_osd t_local kind =
-      let () =
-        match kind with
-        | `AlbaOsd ->
-           _alba_cmd_line
-             [ "add-osd";
-               "--config"; t_global.abm # config_url |> Url.canonical;
-               "--alba-osd-config-url"; t_local.abm # config_url |> Url.canonical;
-               "--node-id"; "x";
-               "--prefix"; "alba_osd_prefix";
-               "--preset"; "default";
-               "--to-json";
-             ]
-        | `ProxyOsd ->
-           _alba_cmd_line
-             [ "add-osd";
-               "--config"; t_global.abm # config_url |> Url.canonical;
-               "--endpoint"; Printf.sprintf "tCp://localhost:%i" (t_local.proxy # proxy_cfg
-                                                                  |> Proxy_cfg.port);
-               "--node-id"; "x";
-               "--prefix"; "alba_osd_prefix";
-               "--preset"; "default";
-               "--to-json";
-             ]
-      in
-      _alba_cmd_line
-        [ "claim-osd";
-          "--config"; t_global.abm # config_url |> Url.canonical;
-          "--long-id"; get_alba_id t_local; ]
-    in
-    add_backend_as_osd t_local1 `AlbaOsd;
-    add_backend_as_osd t_local2 `AlbaOsd;
-    add_backend_as_osd t_local3 `ProxyOsd;
-    add_backend_as_osd t_local4 `ProxyOsd;
-    Deployment.deliver_messages t_global;
-
-    cfg_global, t_global,
-    [ t_local1; t_local2; t_local3; t_local4; ],
-    add_backend_as_osd
-
   let alba_as_osd ?xml ?filter ?dump _t =
     let cfg_global, t_global, t_locals, add_backend_as_osd =
       setup_global_backend ()
@@ -2756,6 +2939,7 @@ module Test = struct
 
     0
 
+
   let job_crud ?(xml=false) ?filter ?dump t =
     let () = Shell._print ">>>>> start of job_crud" in
     let test () =
@@ -2832,13 +3016,13 @@ module Test = struct
       "job_crud_suite" "list_jobs" "test"
       xml dump
 
-  let test_427 ?xml ?filter ?dump _ =
+  let stress2 ?xml ?filter ?dump _ =
     let cfg_global, t_global, _, _ = setup_global_backend () in
 
     let proxy = t_global.proxy in
 
     let rec inner = function
-      | 100 -> ()
+      | 1_000 -> ()
       | n ->
          let namespace = Printf.sprintf "ns_%i" n in
          let objname = "obj" in
@@ -3100,6 +3284,90 @@ module Bench = struct
     0
 end
 
+module ASDBorder = struct
+  let enospc ?(xml = false) ?filter ?dump (t:Deployment.t) =
+    let start = t.Deployment.cfg.alba_base_path in
+    let fn = Printf.sprintf "%s/asd_dev" start in
+    let mount_point = Printf.sprintf "%s/asd_mnt" start in
+    let user = Shell.cmd_with_capture ["whoami"] in
+    let setup () =
+      Shell.mkdir start;
+      [ "truncate";"--size=2500M"; fn;] |> Shell.cmd';
+      [ "mke2fs"; "-t ext4"; "-F"; fn] |> Shell.cmd';
+      Shell.mkdir mount_point;
+      ["sudo"; "mount"; "-o"; "loop,async"; fn; mount_point] |> Shell.cmd';
+      ["sudo"; "chown"; "-R"; user ^":" ^ user; mount_point ^ "/." ]
+      |> Shell.cmd';
+
+    in
+    let teardown () = ["sudo"; "umount"; mount_point] |> Shell.cmd' in
+    let wrapper test =
+      setup ();
+      let rc =
+        try
+          test (); 0
+        with e ->
+          Printf.printf "%s\n%!" (Printexc.to_string e);
+          1;
+      in
+      let () = teardown () in
+      rc
+    in
+    let cfg = t.Deployment.cfg in
+    let test () =
+      let ip = cfg.ip
+      and node_id = "ASDBorder"
+      and asd_id = "enospc"
+      and log_level = "debug"
+      and port = 7999 in
+      let asd =
+        new asd
+            ~use_fallocate:true (* ext4 supports this *)
+            ~ip node_id asd_id
+            cfg.alba_bin "xxx"
+            mount_point
+            ~port ~etcd:None ~log_level
+            ~use_rora:false None
+      in
+      let ip_v =
+        match ip with
+        | None -> local_ip_address()
+        | Some ip -> ip
+      in
+      let n = 2270 in (* 2270 is ok, 2271 dies with enospc *)
+      let _deletes () =
+        [cfg.alba_bin; "osd-bench";
+         "-h"; ip_v ;"-p"; string_of_int port;
+         "--scenario";"deletes"; "-n"; string_of_int n; "-v"; "1_000_000"
+        ] |> Shell.cmd' ~ignore_rc:true;
+      in
+      asd # persist_config;
+      asd # start;
+      [cfg.alba_bin; "osd-bench";
+          "-h"; ip_v ;"-p"; string_of_int port;
+          "--scenario";"sets"; "-n"; string_of_int n; "-v"; "1_000_000"
+      ] |> Shell.cmd' ~ignore_rc:true;
+      ["df -h"; mount_point] |> Shell.cmd';
+      ["du -h"; mount_point] |> Shell.cmd' ~ignore_rc:true;
+      ["ls -hlRs"; mount_point ^"/db"] |> Shell.cmd';
+      (* let () = _deletes () in *)
+      Printf.printf "du=%s\n%!" (asd # get_disk_usage);
+      Printf.printf "stats=%s\n%!" (asd # get_statistics);
+      ["du -h"; mount_point] |> Shell.cmd' ~ignore_rc:true;
+
+      [cfg.alba_bin; "osd-bench";
+          "-h"; ip_v ;"-p"; string_of_int port;
+          "--scenario";"sets"; "-n"; "10"; "-v"; "1_000_000";
+          "--prefix kaboom"
+      ] |> Shell.cmd' ~ignore_rc:true;
+
+      asd # stop;
+      ["tail -n 30" ; mount_point ^"/" ^ asd_id ^ ".out"] |> Shell.cmd';
+      Unix.sleep 8;
+    in
+    wrapper test
+
+end
 
 let process_cmd_line () =
   let cmd_len = Array.length Sys.argv in
@@ -3111,6 +3379,7 @@ let process_cmd_line () =
       "voldrv_tests",    Test.voldrv_tests, true;
       "disk_failures",   Test.disk_failures, true;
       "stress",          Test.stress,true;
+      "stress2",         Test.stress2, false;
       "asd_start",       Test.asd_start,true;
       "everything_else", Test.everything_else, true;
       "compat",          Test.compat, false;
@@ -3125,8 +3394,8 @@ let process_cmd_line () =
       "rora",            Test.rora, false;
       "recovery",        Test.recovery, true;
       "job_crud",        Test.job_crud, true;
-      "test_427",        Test.test_427, false;
       "pread_bench",     Bench.pread_bench, false;
+      "enospc",          ASDBorder.enospc, false;
     ]
   in
   let print_suites () =

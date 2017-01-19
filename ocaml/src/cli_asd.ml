@@ -105,7 +105,9 @@ let asd_start cfg_url log_sinks =
        | Some c -> c
        | None ->
           let _, c = Fsutil.disk_usage home in
-          c
+          c (* let rocksdb_compensation = 100_000_000 in
+                   Int64.sub c rocksdb_compensation
+             *)
       in
 
       let capacity = ref (get_capacity capacity) in
@@ -537,6 +539,7 @@ let osd_bench hosts port transport tls_config osd_id
               power prefix seeds
               scenarios verbose
   =
+  let seeds = adjust_seeds n_clients seeds in
   let conn_info =
     Networking2.make_conn_info hosts port ~transport tls_config
   in

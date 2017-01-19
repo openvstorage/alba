@@ -80,7 +80,9 @@ module AlbaInstance = struct
     assert (namespace_id' = namespace_id);
 
     (* this returns the amount of bytes processed by the verify *)
-    10
+    if namespace_id < (Int64.of_int32 Int32.max_int)
+    then 10
+    else 18
 
   let namespace_status ~namespace_id =
     serialize _namespace_prefix_serializer namespace_id

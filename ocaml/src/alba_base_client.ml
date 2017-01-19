@@ -238,6 +238,7 @@ class client
              ~checksum_o
              ~allow_overwrite
              ~object_id_hint
+             ?timestamp:None
         )
 
     method upload_object'
@@ -247,8 +248,8 @@ class client
              ~object_reader
              ~checksum_o
              ~allow_overwrite
+             ?timestamp
              ~object_id_hint
-
       =
        Alba_client_upload.upload_object'
          nsm_host_access osd_access
@@ -265,6 +266,7 @@ class client
          ~cache_on_write
          ~upload_slack
          ~epilogue_delay:None
+         ?timestamp
 
 
     (* consumers of this method are responsible for freeing
@@ -463,7 +465,7 @@ class client
 
       Lwt_log.debug_f
         ~section:Statistics.section
-        "Download object %s with timings %s"
+        "Download object %S with timings %s"
         object_name (Statistics.show_object_download t_object) >>= fun () ->
 
       if checksum <> checksum2

@@ -13,7 +13,7 @@ RUN yum -y install python-devel
 
 RUN useradd jenkins -u 1500 -g root
 
-RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-8.noarch.rpm
+RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-9.noarch.rpm
 RUN yum -y update && \
     yum -y install python-pip openssl-devel gmp-devel which zlib-devel \
                    ncurses-devel bzip2 cmake3 sudo
@@ -100,7 +100,8 @@ RUN eval `${opam_env}` && \
         core.114.05+21 \
         redis.0.3.3 \
         uri.1.9.2 \
-        result
+        result \
+        ezxmlm
 
 
 RUN yum -y install autoconf help2man perl-Thread-Queue

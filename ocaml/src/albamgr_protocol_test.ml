@@ -31,6 +31,7 @@ let make_info () =
       ~write:ts
       ~errors:[]
       ~checksum_errors:3L
+      ~claimed_since:(Some 5.0)
 
 let create seen checksum_errors=
   Protocol.Osd.Update.make
@@ -53,6 +54,7 @@ let test_apply () =
       ~write:info.write
       ~errors:[]
       ~checksum_errors:5L
+      ~claimed_since:(Some 5.0)
   in
   OUnit.assert_equal ~printer:[%show : t] expected r ;
   ()

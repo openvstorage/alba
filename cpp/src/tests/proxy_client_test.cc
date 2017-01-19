@@ -20,7 +20,6 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "alba_logger.h"
 #include "manifest.h"
 #include "gtest/gtest.h"
-#include "gtest/gtest.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/log/trivial.hpp>
@@ -44,6 +43,7 @@ string env_or_default(const std::string &name, const std::string &def) {
 
 auto TIMEOUT = std::chrono::seconds(20);
 using alba::proxy_client::Proxy_client;
+using alba::proxy_client::make_proxy_client;
 using namespace alba;
 
 struct config_exception : std::exception {
@@ -57,12 +57,12 @@ struct config {
   config() {
     PORT = env_or_default("ALBA_PROXY_PORT", "10000");
     HOST = env_or_default("ALBA_PROXY_IP", "127.0.0.1");
-    TRANSPORT = alba::proxy_client::Transport::tcp;
+    TRANSPORT = alba::transport::Kind::tcp;
     string transport = env_or_default("ALBA_PROXY_TRANSPORT", "tcp");
     boost::algorithm::to_lower(transport);
 
     if (transport == "rdma") {
-      TRANSPORT = alba::proxy_client::Transport::rdma;
+      TRANSPORT = alba::transport::Kind::rdma;
     }
     NAMESPACE = "demo";
   }
@@ -70,7 +70,7 @@ struct config {
   string PORT;
   string HOST;
   string NAMESPACE;
-  alba::proxy_client::Transport TRANSPORT;
+  alba::transport::Kind TRANSPORT;
 };
 
 TEST(proxy_client, list_objects) {
@@ -277,7 +277,7 @@ TEST(proxy_client, test_osd_info2) {
   EXPECT_EQ(result.size(), 2);
   EXPECT_EQ(alba_ids.size(), 2);
 
-  auto &osd_access = alba::proxy_client::OsdAccess::getInstance();
+  auto &osd_access = alba::proxy_client::OsdAccess::getInstance(5);
   osd_access.update(*client);
 
   osd_map_t &m = std::get<1>(result[1]);
@@ -340,7 +340,7 @@ void _generic_partial_read_test(
     client->invalidate_cache(actual_namespace);
   }
   ALBA_LOG(INFO, "doing partial read");
-  alba::statistics::RoraCounter cntr{0, 0};
+  alba::statistics::RoraCounter cntr;
   client->read_objects_slices(actual_namespace, objects_slices,
                               proxy_client::consistent_read::F, cntr);
 
@@ -357,12 +357,16 @@ void _generic_partial_read_test(
 
   std::cout << "slow_path=" << cntr.slow_path
             << ", fast_path=" << cntr.fast_path << std::endl;
-  if (clear_before_read) {
-    EXPECT_TRUE(cntr.slow_path > 0);
-    EXPECT_EQ(cntr.fast_path, 0);
-  } else {
-    EXPECT_EQ(cntr.slow_path, 0);
-    EXPECT_TRUE(cntr.fast_path > 0);
+  std::string slow_allowed_s = env_or_default("ALBA_TEST_SLOW_ALLOWED", "false");
+  bool slow_allowed = "true" == slow_allowed_s;
+  if (!slow_allowed){
+      if (clear_before_read) {
+          EXPECT_TRUE(cntr.slow_path > 0);
+          EXPECT_EQ(cntr.fast_path, 0);
+      } else {
+          EXPECT_EQ(cntr.slow_path, 0);
+          EXPECT_TRUE(cntr.fast_path > 0);
+      }
   }
 }
 
@@ -461,7 +465,7 @@ TEST(proxy_client, test_partial_reads) {
   client->write_object_fs(namespace_, name, file,
                           proxy_client::allow_overwrite::T, nullptr);
   client->invalidate_cache(namespace_);
-  alba::statistics::RoraCounter cntr{0, 0};
+  alba::statistics::RoraCounter cntr;
   for (int i = 0; i < 8; i++) {
     SliceDescriptor sd{&buf[0], 0, 4096};
     std::vector<SliceDescriptor> slices{sd};
@@ -491,8 +495,8 @@ TEST(proxy_client, manifest_cache_eviction) {
   }
 }
 
-TEST(proxy_client, rora_fc_partial_read_trivial) {
-  std::string namespace_("rora_fc_partial_read_trivial");
+TEST(proxy_client,test_partial_read_fc) {
+  std::string namespace_("test_partial_read_fc");
   std::ostringstream sos;
   sos << "with_manifest" << std::rand();
   string name = sos.str();
@@ -507,7 +511,7 @@ TEST(proxy_client, rora_fc_partial_read_trivial) {
   std::vector<ObjectSlices> objects_slices{object_slices};
   string file_name("./ocaml/alba.native");
   config cfg;
-  cfg.PORT = "10000";
+
   _generic_partial_read_test(cfg, namespace_, name, objects_slices, file_name,
                              false);
 }

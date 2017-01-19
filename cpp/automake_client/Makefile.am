@@ -7,6 +7,9 @@ libalbaproxy_la_CPPFLAGS = -I$(abs_top_srcdir)/../include
 #libalbaproxy_la_LDFLAGS = -static
 
 libalbaproxy_la_SOURCES = \
+	../src/lib/asd_access.cc \
+	../src/lib/asd_client.cc \
+	../src/lib/asd_protocol.cc \
         ../src/lib/alba_common.cc \
 	../src/lib/alba_logger.cc \
 	../src/lib/checksum.cc \
@@ -22,13 +25,19 @@ libalbaproxy_la_SOURCES = \
 	../src/lib/proxy_client.cc \
 	../src/lib/proxy_protocol.cc \
 	../src/lib/rdma_proxy_client.cc \
+	../src/lib/rdma_transport.cc \
 	../src/lib/rora_proxy_client.cc \
 	../src/lib/stuff.cc \
-	../src/lib/tcp_proxy_client.cc
+	../src/lib/tcp_proxy_client.cc \
+	../src/lib/tcp_transport.cc \
+	../src/lib/transport.cc
 
 albadir = $(includedir)/alba
 
 alba_HEADERS = \
+	../include/asd_access.h \
+	../include/asd_client.h \
+	../include/asd_protocol.h \
 	../include/alba_common.h \
 	../include/alba_logger.h \
 	../include/boolean_enum.h \
@@ -43,5 +52,8 @@ alba_HEADERS = \
 	../include/proxy_client.h \
 	../include/proxy_protocol.h \
 	../include/rdma_proxy_client.h \
+	../include/rdma_transport.h \
 	../include/stuff.h \
-	../include/tcp_proxy_client.h
+	../include/tcp_proxy_client.h \
+	../include/tcp_transport.h \
+	../include/transport.h

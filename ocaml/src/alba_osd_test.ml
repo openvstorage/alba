@@ -107,6 +107,7 @@ let test_update_abm_cfg () =
          write = [];
          errors = [];
          checksum_errors = 0L;
+         claimed_since = None;
        }) >>= fun () ->
      client # get_osd_by_long_id ~long_id >>= fun o_osd_info ->
 

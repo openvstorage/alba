@@ -97,6 +97,7 @@ module OsdInfo = struct
     write : timestamp list;
     errors : (timestamp * string) list;
     checksum_errors : int64;
+    claimed_since : timestamp option;
   }
   [@@deriving show, yojson]
 
@@ -106,12 +107,14 @@ module OsdInfo = struct
       ~total ~used
       ~seen ~read ~write ~errors
       ~checksum_errors
+      ~claimed_since
     =
     { kind; node_id;
       decommissioned; other;
       total; used;
       seen; read; write; errors;
       checksum_errors;
+      claimed_since;
     }
 
   let _check_rdma = function
@@ -228,6 +231,7 @@ module OsdInfo = struct
         total; used;
         seen; read; write; errors;
         checksum_errors;
+        claimed_since
       }
     =
     let ser_version = 3 in
@@ -255,7 +259,9 @@ module OsdInfo = struct
            Llio.string_to)
         buf
         errors;
-      Llio.int64_to buf checksum_errors
+      Llio.int64_to buf checksum_errors;
+      Llio.option_to Llio.float_to buf claimed_since
+
     in
     Llio.string_to final_buf (Buffer.contents buf)
 
@@ -310,6 +316,7 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors;
       checksum_errors = 0L;
+      claimed_since = None;
     }
 
   let _from_buffer2 orig_buf =
@@ -358,6 +365,7 @@ module OsdInfo = struct
       total; used;
       seen; read; write; errors;
       checksum_errors = 0L;
+      claimed_since = None;
     }
 
   let _from_buffer3 orig_buf =
@@ -417,10 +425,13 @@ module OsdInfo = struct
            Llio.string_from)
         buf in
     let checksum_errors = maybe_from_buffer Llio.int64_from 0L buf in
+    let claimed_since = maybe_from_buffer
+                          (Llio.option_from Llio.float_from) None buf in
     { kind; node_id; decommissioned; other;
       total; used;
       seen; read; write; errors;
       checksum_errors;
+      claimed_since;
     }
 
 
@@ -476,11 +487,11 @@ module EncryptInfo = struct
   open Encryption
 
   type key_identification =
-    | KeySha1 of string
+    | KeySha256 of string
   [@@deriving show]
 
   let id_to_buffer buf = function
-    | KeySha1 id ->
+    | KeySha256 id ->
       Llio.int8_to buf 1;
       Llio.string_to buf id
 
@@ -488,7 +499,7 @@ module EncryptInfo = struct
     let k = Llio.int8_from buf in
     if k <> 1
     then raise_bad_tag "EncryptInfo.key_identification" k;
-    KeySha1 (Llio.string_from buf)
+    KeySha256 (Llio.string_from buf)
 
   type t =
     | NoEncryption
@@ -1560,7 +1571,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          let upds, old_manifest = cleanup_for_object_id kv old_object_id in
 
          let old_timestamp = old_manifest.Manifest.timestamp in
-         if manifest.Manifest.timestamp <= old_timestamp
+         if manifest.Manifest.timestamp < old_timestamp
          then Err.(failwith ~payload:(serialize Llio.float_to old_timestamp) Old_timestamp);
 
          let logical_delta = Int64.sub manifest.size old_manifest.size in

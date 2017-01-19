@@ -94,7 +94,8 @@ RUN eval `${opam_env}` && \
         core.114.05+21 \
         redis.0.3.3 \
         uri.1.9.2 \
-        result
+        result \
+        ezxmlm
 
 RUN wget https://01.org/sites/default/files/downloads/intelr-storage-acceleration-library-open-source-version/isa-l-2.14.0.tar.gz && \
     tar xfzv isa-l-2.14.0.tar.gz && \

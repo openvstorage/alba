@@ -23,7 +23,7 @@ let make_client albamgr_client_cfg
                 ?(albamgr_connection_pool_size = 10)
                 ?nsm_host_connection_pool_size
                 ?(osd_connection_pool_size = 10)
-                ?(osd_timeout = 2.)
+                ?(osd_timeout = 10.)
                 ?(default_osd_priority = Osd.Low)
                 ~tls_config
                 ?release_resources

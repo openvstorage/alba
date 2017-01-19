@@ -109,8 +109,7 @@ let create_namespace
         in
 
         wait_for_nsm_host_delivery_thread () >>= fun () ->
-        ensure_nsm_host_delivery ();
-        wait_for_nsm_host_delivery_thread ()
+        deliver_nsm_host_messages ()
       end; ] >>= fun () ->
 
   Lwt_log.info_f "Alba_client: create_namespace %S:%Li ok"

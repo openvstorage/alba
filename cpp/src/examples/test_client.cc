@@ -28,6 +28,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <ctime>
 #include <fstream>
 #include <iomanip>
+#include <mutex>
 #include <thread>
 
 #include "alba_logger.h"
@@ -86,7 +87,7 @@ using namespace alba::proxy_client;
 
 void proxy_get_version(const string &host, const string &port,
                        const std::chrono::steady_clock::duration &timeout,
-                       const Transport &transport) {
+                       const alba::transport::Kind &transport) {
   auto client = make_proxy_client(host, port, timeout, transport);
   auto version = client->get_proxy_version();
 
@@ -101,8 +102,21 @@ void proxy_get_version(const string &host, const string &port,
 using namespace std::chrono;
 enum io_pattern_t { FIXED, RANDOM, STRIDE };
 
-void _bench_one_client(std::unique_ptr<Proxy_client> client,
+std::mutex cout_mutex;
+
+void progress(const long t, int client_index, int i) {
+  // struct tm tm;
+  char buffer[26];
+  ctime_r(&t, buffer);
+  buffer[24] = '\0'; // Removes the newline that is added
+  // localtime_r(&time2, &tm);
+  std::lock_guard<std::mutex> lock(cout_mutex);
+  cout << buffer << " " << client_index << " i:" << i << std::endl;
+}
+
+void _bench_one_client(std::unique_ptr<Proxy_client> client, int client_index,
                        std::shared_ptr<alba::statistics::Statistics> stats_p,
+                       std::shared_ptr<alba::statistics::RoraCounter> cntr_p,
                        const string &namespace_, const string &object_name,
                        const int n, const uint32_t block_size,
                        const uint64_t object_size,
@@ -136,9 +150,9 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
       ObjectSlices object_slices{object_name, slices};
       std::vector<ObjectSlices> objects_slices{object_slices};
       stats.new_start();
-      alba::statistics::RoraCounter cntr{0, 0};
+
       client->read_objects_slices(namespace_, objects_slices,
-                                  consistent_read::F, cntr);
+                                  consistent_read::F, *cntr_p);
 
       stats.new_stop();
       t1 = high_resolution_clock::now();
@@ -146,12 +160,7 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
       int reporting_period = 1;
       if (dur2 > reporting_period) {
         auto time2 = system_clock::to_time_t(t1);
-        // struct tm tm;
-        char buffer[26];
-        ctime_r(&time2, buffer);
-        buffer[24] = '\0'; // Removes the newline that is added
-        // localtime_r(&time2, &tm);
-        cout << buffer << " i:" << i << std::endl;
+        progress(time2, client_index, i);
         t0 = t0 + seconds(reporting_period);
       }
     }
@@ -162,19 +171,22 @@ void _bench_one_client(std::unique_ptr<Proxy_client> client,
 
 void partial_read_benchmark(const string &host, const string &port,
                             const std::chrono::steady_clock::duration &timeout,
-                            const Transport &transport,
+                            const alba::transport::Kind &transport,
                             const string &namespace_, const string &file_name,
                             const int n, const int n_clients,
                             const boost::optional<RoraConfig> &rora_config,
                             const bool focus, const uint32_t block_size,
-                            const io_pattern_t io_pattern) {
+                            const io_pattern_t io_pattern,
+                            const bool invalidate_cache) {
 
   ALBA_LOG(WARNING, "partial_read_benchmark("
                         << host << ", " << port << ", " << transport
                         << ", rora_config =" << rora_config << ")");
 
   cout << "block_size=" << block_size;
-  std::vector<std::shared_ptr<alba::statistics::Statistics>> stats_v;
+  using namespace alba::statistics;
+  std::vector<std::shared_ptr<Statistics>> stats_v;
+  std::vector<std::shared_ptr<RoraCounter>> cntr_v;
   std::vector<std::thread> thread_v;
   int rand = std::rand();
   std::ostringstream sos;
@@ -190,6 +202,7 @@ void partial_read_benchmark(const string &host, const string &port,
                               allow_overwrite::T, checksum);
     ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
   };
+
   for (int client_index = 0; client_index < n_clients; client_index++) {
     auto client_p =
         make_proxy_client(host, port, timeout, transport, rora_config);
@@ -203,15 +216,29 @@ void partial_read_benchmark(const string &host, const string &port,
       ALBA_LOG(INFO, "uploaded" << file_name << " as " << object_name);
     }
 
+    if (invalidate_cache) {
+      client_p->invalidate_cache(namespace_);
+      ALBA_LOG(INFO, "invalidated cache");
+    };
+
     auto stats_p = std::shared_ptr<alba::statistics::Statistics>(
         new alba::statistics::Statistics);
     stats_v.push_back(stats_p);
-    std::thread t(_bench_one_client, std::move(client_p), stats_p, namespace_,
-                  object_name, n, block_size, object_size, io_pattern);
+    auto cntr_p = std::shared_ptr<alba::statistics::RoraCounter>(
+        new alba::statistics::RoraCounter);
+    cntr_v.push_back(cntr_p);
+
+    std::thread t(_bench_one_client, std::move(client_p), client_index, stats_p,
+                  cntr_p, namespace_, object_name, n, block_size, object_size,
+                  io_pattern);
 
     thread_v.push_back(std::move(t));
   }
-  cout << "launched " << n_clients << " client(s). joining" << std::endl;
+  {
+    std::lock_guard<std::mutex> lock(cout_mutex);
+    cout << "launched " << n_clients << " client(s). joining" << std::endl;
+  }
+
   for (auto &thread : thread_v) {
     thread.join();
   }
@@ -219,6 +246,10 @@ void partial_read_benchmark(const string &host, const string &port,
   for (auto stats_p : stats_v) {
     stats_p->pretty(cout);
     cout << "----------------" << std::endl;
+  }
+  for (auto counter_p : cntr_v) {
+    cout << "slow_path " << counter_p->slow_path << " fast_path "
+         << counter_p->fast_path << std::endl;
   }
 }
 
@@ -274,9 +305,12 @@ int main(int argc, const char *argv[]) {
           "block size for partial read")(
           "io-pattern", po::value<string>()->default_value("fixed"),
           "pattern for partial read benchmark: fixed | random | stride "
-          "(default = fixed)")("focus", po::value<bool>()->default_value(false),
-                               "if set, all rora partial reads come from the "
-                               "same object, and hit the same ASD");
+          "(default = fixed)")(
+          "invalidate-cache", po::value<bool>()->default_value(true),
+          "invalidate cache between upload and partial reads")(
+          "focus", po::value<bool>()->default_value(false),
+          "if set, all rora partial reads come from the "
+          "same object, and hit the same ASD");
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -307,12 +341,12 @@ int main(int argc, const char *argv[]) {
                                      logging::trivial::debug);
   };
   auto timeout = std::chrono::seconds(5);
-  Transport transport(Transport::tcp);
+  alba::transport::Kind transport(alba::transport::Kind::tcp);
 
   if (vm.count("transport")) {
     string transport_s = vm["transport"].as<string>();
     if (transport_s == "rdma") {
-      transport = Transport::rdma;
+      transport = alba::transport::Kind::rdma;
     } else {
       assert(transport_s == "tcp");
     }
@@ -341,7 +375,7 @@ int main(int argc, const char *argv[]) {
     auto buf = std::unique_ptr<unsigned char>(new unsigned char[length]);
     alba::proxy_protocol::SliceDescriptor slice{buf.get(), offset, length};
     alba::proxy_protocol::ObjectSlices object_slices{name, {slice}};
-    alba::statistics::RoraCounter cntr{0, 0};
+    alba::statistics::RoraCounter cntr;
     client->read_objects_slices(ns, {object_slices}, _consistent_read, cntr);
     std::ofstream fout(file);
     fout.write((char *)buf.get(), length);
@@ -454,6 +488,9 @@ int main(int argc, const char *argv[]) {
     bool focus = getRequiredArg<bool>(vm, "focus");
     string io_pattern_s = getRequiredStringArg(vm, "io-pattern");
     io_pattern_t io_pattern = FIXED;
+
+    bool invalidate_cache = getRequiredArg<bool>(vm, "invalidate-cache");
+
     const auto &it = string_to_pattern.find(io_pattern_s);
     if (it != string_to_pattern.cend()) {
       io_pattern = it->second;
@@ -465,7 +502,7 @@ int main(int argc, const char *argv[]) {
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
                            n_clients, rora_config, focus, block_size,
-                           io_pattern);
+                           io_pattern, invalidate_cache);
   } else {
     cout << "got invalid command name. valid options are: "
          << "download-object, upload-object, delete-object, list-objects "

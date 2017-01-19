@@ -322,6 +322,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | MultiExists     -> fun args ->
                        Printf.sprintf "(%S)" ([%show : Namespace.name * object_name list] args)
   | GetAlbaId       -> fun () -> "()"
+  | HasLocalFragmentCache -> fun () -> "()"
 
 let log_request code error renderer time =
   let details = renderer () in
@@ -591,6 +592,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats () -> alba_client # osd_infos
     | GetAlbaId ->
        fun stats () -> alba_client # get_alba_id
+    | HasLocalFragmentCache ->
+       fun stats () -> alba_client # has_local_fragment_cache |> Lwt.return
   in
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
@@ -607,7 +610,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
   in
   let default_renderer () = "(request could not be parsed)" in
   let handle_request buf code : (bool * (unit -> string)) Lwt.t =
-    Lwt_log.debug_f "Proxy_server: got command with code %i" code >>= fun () ->
+    Lwt_log.debug_f "Proxy_server: got command %s" (Protocol.code_to_txt code) >>= fun () ->
     let return_err_response ?msg err =
       return_err_response ?msg err >>= fun res ->
       Lwt.return (true, res)
@@ -889,8 +892,7 @@ let run_server hosts port ~transport
          ~upload_slack
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # discover_osds ~check_claimed:(fun _ -> true) ());
-              (alba_client # osd_access # propagate_osd_info ());
+            [ (alba_client # osd_access # propagate_osd_info ());
               (refresh_albamgr_cfg
                  ~loop:true
                  albamgr_client_cfg
