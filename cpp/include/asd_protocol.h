@@ -39,11 +39,7 @@ enum return_code : uint32_t {
   PROTOCOL_VERSION_MISMATCH = 7
 };
 
-enum command : uint32_t {
-  GET_VERSION = 7,
-  PARTIAL_GET = 11,
-  SLOWNESS = 14
-};
+enum command : uint32_t { GET_VERSION = 7, PARTIAL_GET = 11, SLOWNESS = 14 };
 
 struct Status {
   void set_rc(uint32_t return_code) { _return_code = return_code; }
@@ -70,16 +66,13 @@ void read_partial_get_response(message &m, Status &status, bool &success);
 
 typedef boost::optional<std::pair<double, double>> slowness_t;
 
-void write_set_slowness_request(message_builder &,
-                                const slowness_t&);
-void read_set_slowness_response(message &,
-                                Status &);
+void write_set_slowness_request(message_builder &, const slowness_t &);
+void read_set_slowness_response(message &, Status &);
 
 void write_get_version_request(message_builder &mb);
 
 void read_get_version_response(message &m, Status &status, int32_t &major,
-                                   int32_t &minor, int32_t &patch,
-                                   std::string &hash);
-
+                               int32_t &minor, int32_t &patch,
+                               std::string &hash);
 }
 }

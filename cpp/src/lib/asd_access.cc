@@ -154,7 +154,7 @@ ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info,
   auto it = connection_pools_.find(osd_info.long_id);
   if (it == connection_pools_.end()) {
     ALBA_LOG(INFO, "asd ConnenctionPools adding ConnectionPool for "
-             << osd_info.long_id);
+                       << osd_info.long_id);
     proxy_protocol::OsdInfo *osd_info_copy =
         new proxy_protocol::OsdInfo(osd_info);
 

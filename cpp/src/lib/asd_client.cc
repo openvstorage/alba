@@ -26,14 +26,13 @@ using llio::message_builder;
 using llio::message;
 
 void Asd_client::check_status(const char *function_name) {
-  _transport -> expires_from_now(std::chrono::steady_clock::duration::max());
+  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
   if (not _status.is_ok()) {
     ALBA_LOG(DEBUG, function_name << " received rc:"
                                   << (uint32_t)_status._return_code)
-     throw asd_exception(_status._return_code, function_name);
+    throw asd_exception(_status._return_code, function_name);
   }
 }
-
 
 Asd_client::Asd_client(const std::chrono::steady_clock::duration &timeout,
                        std::unique_ptr<transport::Transport> &&transport,
@@ -54,7 +53,7 @@ void Asd_client::init_(boost::optional<string> long_id) {
   _transport->read_exact((char *)&rc, 4);
 
   if (rc != 0) {
-      throw asd_exception(rc, "error during asd prologue");
+    throw asd_exception(rc, "error during asd prologue");
   }
 
   uint32_t length;
@@ -90,33 +89,31 @@ void Asd_client::partial_get(string &key, vector<slice> &slices) {
   }
 }
 
-void Asd_client::set_slowness(asd_protocol::slowness_t &slowness){
-  _transport -> expires_from_now(_timeout);
+void Asd_client::set_slowness(asd_protocol::slowness_t &slowness) {
+  _transport->expires_from_now(_timeout);
   asd_protocol::write_set_slowness_request(_mb, slowness);
-  _transport -> output(_mb);
+  _transport->output(_mb);
   _mb.reset();
-  message response = _transport-> read_message();
+  message response = _transport->read_message();
   asd_protocol::read_set_slowness_response(response, _status);
-
 }
 
-std::tuple<int32_t, int32_t, int32_t, std::string>
-Asd_client::get_version(){
-  _transport -> expires_from_now(_timeout);
+std::tuple<int32_t, int32_t, int32_t, std::string> Asd_client::get_version() {
+  _transport->expires_from_now(_timeout);
 
   asd_protocol::write_get_version_request(_mb);
-  _transport -> output(_mb);
+  _transport->output(_mb);
   _mb.reset();
 
-  message response = _transport -> read_message();
+  message response = _transport->read_message();
 
   std::tuple<int32_t, int32_t, int32_t, std::string> result;
   int32_t &major = std::get<0>(result);
   int32_t &minor = std::get<1>(result);
   int32_t &patch = std::get<2>(result);
   std::string &hash = std::get<3>(result);
-  asd_protocol::read_get_version_response(response, _status, major,
-                                              minor, patch, hash);
+  asd_protocol::read_get_version_response(response, _status, major, minor,
+                                          patch, hash);
   check_status(__PRETTY_FUNCTION__);
   return result;
 }

@@ -307,14 +307,12 @@ int main(int argc, const char *argv[]) {
           "pattern for partial read benchmark: fixed | random | stride "
           "(default = fixed)")(
           "invalidate-cache", po::value<bool>()->default_value(true),
-          "invalidate cache between upload and partial reads")
-      (
+          "invalidate cache between upload and partial reads")(
           "focus", po::value<bool>()->default_value(false),
           "if set, all rora partial reads come from the "
-          "same object, and hit the same ASD")
-      ("asd-pool-size", po::value<uint32_t>() -> default_value(5),
-       "config for partial read benchmark")
-      ;
+          "same object, and hit the same ASD")(
+          "asd-pool-size", po::value<uint32_t>()->default_value(5),
+          "config for partial read benchmark");
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -504,7 +502,7 @@ int main(int argc, const char *argv[]) {
 
     if (use_rora) {
       bool use_null_io = getRequiredArg<bool>(vm, "use-null-io");
-      rora_config -> use_null_io = use_null_io;
+      rora_config->use_null_io = use_null_io;
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
                            n_clients, rora_config, focus, block_size,

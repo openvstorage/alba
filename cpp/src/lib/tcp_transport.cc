@@ -17,8 +17,8 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "tcp_transport.h"
-#include <boost/lambda/lambda.hpp>
 #include <boost/lambda/bind.hpp>
+#include <boost/lambda/lambda.hpp>
 
 namespace alba {
 namespace transport {
@@ -31,11 +31,10 @@ using llio::message;
 using llio::message_builder;
 using namespace boost::asio;
 
-#define _convert(t) \
-    boost::posix_time::milliseconds(\
-        std::chrono::duration_cast<std::chrono::milliseconds>(t).count())
+#define _convert(t)                                                            \
+  boost::posix_time::milliseconds(                                             \
+      std::chrono::duration_cast<std::chrono::milliseconds>(t).count())
 #define _NEVER boost::posix_time::pos_infin
-
 
 /*
   using boost::asio::ip::tcp::iostream is comfy,
@@ -46,40 +45,32 @@ using namespace boost::asio;
 
  */
 
-TCP_transport::TCP_transport(
-    const string &ip, const string &port,
-    const std::chrono::steady_clock::duration &timeout):
-    _io_service{},
-    _socket(_io_service),
-    _deadline(_io_service),
-    _timeout(_convert(timeout))
-{
+TCP_transport::TCP_transport(const string &ip, const string &port,
+                             const std::chrono::steady_clock::duration &timeout)
+    : _io_service{}, _socket(_io_service), _deadline(_io_service),
+      _timeout(_convert(timeout)) {
   ALBA_LOG(INFO, "TCP_transport(" << ip << ", " << port << ")");
   _deadline.expires_from_now(_timeout);
   _check_deadline();
-
-
 
   int port_as_int = std::stoi(port);
   auto addr = ip::address::from_string(ip);
   auto sa = ip::tcp::endpoint(addr, port_as_int);
 
-
-
-
   boost::system::error_code ec = boost::asio::error::would_block;
-  auto handler =
-      [&](const boost::system::error_code& x) -> void{
-      ALBA_LOG(DEBUG, "connect handler called ec=" << x);
-      ec = x;
+  auto handler = [&](const boost::system::error_code &x) -> void {
+    ALBA_LOG(DEBUG, "connect handler called ec=" << x);
+    ec = x;
   };
   _socket.async_connect(sa, handler);
 
-  do _io_service.run_one(); while (ec == boost::asio::error::would_block);
+  do
+    _io_service.run_one();
+  while (ec == boost::asio::error::would_block);
 
   if (ec || !_socket.is_open())
-      throw boost::system::system_error(
-          ec ? ec : boost::asio::error::operation_aborted);
+    throw boost::system::system_error(
+        ec ? ec : boost::asio::error::operation_aborted);
 
   const ip::tcp::no_delay no_delay(true);
   _socket.set_option(no_delay);
@@ -88,77 +79,72 @@ TCP_transport::TCP_transport(
 
 void TCP_transport::expires_from_now(
     const std::chrono::steady_clock::duration &timeout) {
-    ALBA_LOG(DEBUG, "TCP_transport::expires_from_now("
-             << _timeout.total_milliseconds() << " ms)");
-    _timeout = _convert(timeout);
+  ALBA_LOG(DEBUG, "TCP_transport::expires_from_now("
+                      << _timeout.total_milliseconds() << " ms)");
+  _timeout = _convert(timeout);
 }
 
 void TCP_transport::write_exact(const char *buf, int len) {
   boost::asio::const_buffers_1 buffer(buf, len);
-  //boost::asio::write(_socket, buffer);
-
+  // boost::asio::write(_socket, buffer);
 
   //_io_service.reset();
   _deadline.expires_from_now(_timeout);
   boost::system::error_code ec = boost::asio::error::would_block;
 
-  auto handler =
-      [&](const boost::system::error_code& x, std::size_t len) -> void{
-      ALBA_LOG(DEBUG,"write handler called: " << len << " bytes");
-      ec = x;
+  auto handler = [&](const boost::system::error_code &x,
+                     std::size_t len) -> void {
+    ALBA_LOG(DEBUG, "write handler called: " << len << " bytes");
+    ec = x;
   };
   boost::asio::async_write(_socket, buffer, handler);
 
   do {
-      _io_service.run_one();
-      ALBA_LOG(DEBUG, "ran once (write)");
+    _io_service.run_one();
+    ALBA_LOG(DEBUG, "ran once (write)");
   } while (ec == boost::asio::error::would_block);
 
   if (ec)
-      throw boost::system::system_error(ec);
-
+    throw boost::system::system_error(ec);
 }
 
 void TCP_transport::read_exact(char *buf, int len) {
-    boost::asio::mutable_buffers_1 buffer(buf, len);
-    //boost::asio::read(_socket, buffer);
+  boost::asio::mutable_buffers_1 buffer(buf, len);
+  // boost::asio::read(_socket, buffer);
 
+  //_io_service.reset();
+  _deadline.expires_from_now(_timeout);
+  ALBA_LOG(DEBUG, "read, timeout is " << _timeout.total_milliseconds()
+                                      << " ms");
+  boost::system::error_code ec = boost::asio::error::would_block;
 
-    //_io_service.reset();
-    _deadline.expires_from_now(_timeout);
-    ALBA_LOG(DEBUG, "read, timeout is " << _timeout.total_milliseconds() << " ms");
-    boost::system::error_code ec = boost::asio::error::would_block;
+  auto handler = [&](const boost::system::error_code &x,
+                     std::size_t len) -> void {
+    ALBA_LOG(DEBUG, "read handler called: " << len << " bytes");
+    ec = x;
+  };
+  boost::asio::async_read(_socket, buffer, handler);
 
-    auto handler =
-        [&](const boost::system::error_code& x, std::size_t len) -> void{
-        ALBA_LOG(DEBUG,"read handler called: " << len << " bytes");
-        ec = x;
-    };
-    boost::asio::async_read(_socket, buffer, handler);
+  // Block until the asynchronous operation has completed.
 
-    // Block until the asynchronous operation has completed.
+  do {
+    _io_service.run_one();
+    ALBA_LOG(DEBUG, "ran once (read)");
+  } while (ec == boost::asio::error::would_block);
 
-    do {
-        _io_service.run_one();
-        ALBA_LOG(DEBUG, "ran once (read)");
-    } while (ec == boost::asio::error::would_block);
-
-    if (ec)
-      throw boost::system::system_error(ec);
-
+  if (ec)
+    throw boost::system::system_error(ec);
 }
 
-void TCP_transport::_check_deadline(){
-    if(_deadline.expires_at() <= deadline_timer::traits_type::now()){
-        boost::system::error_code ignored_ec;
-        _socket.close(ignored_ec);
-        _deadline.expires_at(_NEVER);
-    }
-    _deadline.async_wait(boost::lambda::bind(&TCP_transport::_check_deadline, this));
+void TCP_transport::_check_deadline() {
+  if (_deadline.expires_at() <= deadline_timer::traits_type::now()) {
+    boost::system::error_code ignored_ec;
+    _socket.close(ignored_ec);
+    _deadline.expires_at(_NEVER);
+  }
+  _deadline.async_wait(
+      boost::lambda::bind(&TCP_transport::_check_deadline, this));
 }
-TCP_transport::~TCP_transport(){
-    _socket.close();
-}
-
+TCP_transport::~TCP_transport() { _socket.close(); }
 }
 }

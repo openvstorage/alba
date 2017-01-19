@@ -178,7 +178,7 @@ TEST(proxy_client, test_ping) {
 
   double timestamp = client->ping(1.0);
   double delta = timestamp - t0;
-  double t1 = alba::stuff:: stamp();
+  double t1 = alba::stuff::stamp();
   std::cout << "t0:" << t0 << " timestamp:" << timestamp << std::endl;
   std::cout << "delta(t0,timestamp)" << delta << std::endl;
   std::cout << "delta(t1,timestamp)" << t1 - timestamp << std::endl;

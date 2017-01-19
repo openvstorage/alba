@@ -24,8 +24,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/asio.hpp>
 #include <boost/intrusive/slist.hpp>
 #include <chrono>
-#include <vector>
 #include <tuple>
+#include <vector>
 
 namespace alba {
 namespace asd_client {
@@ -35,15 +35,14 @@ using std::vector;
 using asd_protocol::slice;
 
 struct asd_exception : std::exception {
-asd_exception(uint32_t return_code, std::string what)
-    : _return_code(return_code), _what(what) {}
+  asd_exception(uint32_t return_code, std::string what)
+      : _return_code(return_code), _what(what) {}
 
-    uint32_t _return_code;
-    std::string _what;
+  uint32_t _return_code;
+  std::string _what;
 
-    virtual const char *what() const noexcept { return _what.c_str(); }
+  virtual const char *what() const noexcept { return _what.c_str(); }
 };
-
 
 class Asd_client : public boost::intrusive::slist_base_hook<> {
 public:
@@ -54,6 +53,7 @@ public:
   void partial_get(string &, vector<slice> &);
   void set_slowness(asd_protocol::slowness_t &slowness);
   std::tuple<int32_t, int32_t, int32_t, std::string> get_version();
+
 private:
   void init_(boost::optional<string> long_id);
 
@@ -61,8 +61,7 @@ private:
   std::unique_ptr<transport::Transport> _transport;
   const std::chrono::steady_clock::duration _timeout;
   llio::message_builder _mb;
-  void check_status(const char* function_name);
+  void check_status(const char *function_name);
 };
-
 }
 }
