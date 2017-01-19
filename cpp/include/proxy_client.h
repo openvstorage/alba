@@ -51,6 +51,9 @@ struct RoraConfig {
   size_t manifest_cache_size;
   bool use_null_io;
   int asd_connection_pool_size;
+
+  // RoraConfig &operator=(const RoraConfig &) = delete;
+  // RoraConfig(const RoraConfig&) = delete;
 };
 
 BOOLEAN_ENUM(has_more)

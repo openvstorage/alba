@@ -115,10 +115,13 @@ public:
 protected:
   virtual void
   _expires_from_now(const std::chrono::steady_clock::duration &timeout) = 0;
-  virtual void _output(llio::message_builder &mb) = 0;
+  virtual void _output() = 0;
   virtual llio::message _input() = 0;
+
   proxy_protocol::Status _status;
   const std::chrono::steady_clock::duration _timeout;
+  message_builder _mb;
+
   virtual void check_status(const char *function_name) = 0;
 };
 }

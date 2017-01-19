@@ -21,6 +21,13 @@ but WITHOUT ANY WARRANTY of any kind.
 namespace alba {
 namespace llio {
 
+std::ostream &operator<<(std::ostream &os, const message &msg) {
+  os << "message { size:" << msg._size << " data=";
+  stuff::dump_buffer(os, msg._mb->data(msg._initial_offset), msg._size);
+  os << " }";
+  return os;
+}
+
 void check_stream(const std::istream &is) {
   if (!is.good()) {
     throw input_stream_exception("invalid inputstream");

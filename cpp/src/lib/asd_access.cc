@@ -32,7 +32,7 @@ using alba::proxy_protocol::OsdInfo;
 #define LOCK() std::lock_guard<std::mutex> lock(_mutex)
 
 ConnectionPool::ConnectionPool(std::unique_ptr<OsdInfo> config, size_t capacity)
-    : config_(std::move(config)), capacity_(capacity) {
+    : config_(std::move(config)), capacity_(capacity), _fast_path_failures(0) {
   ALBA_LOG(INFO, "Created pool for asd client " << *config_ << ", capacity "
                                                 << capacity);
 }
@@ -60,7 +60,6 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
 
   std::unique_ptr<transport::Transport> transport;
   if (config_->use_rdma) {
-    ;
     transport =
         std::unique_ptr<transport::Transport>(new transport::RDMA_transport(
             config_->ips[0], std::to_string(config_->port), duration));
@@ -78,7 +77,8 @@ void ConnectionPool::release_connection(std::unique_ptr<Asd_client> conn) {
   LOCK();
   if (conn) {
     _fast_path_failures = 0;
-    if (connections_.size() < capacity_) {
+    auto current_size = connections_.size();
+    if (current_size < capacity_) {
       connections_.push_front(*conn.release());
       return;
     }

@@ -33,8 +33,9 @@ template <> void from(message &m, proxy_protocol::OsdInfo &info) {
   }
   std::string inner_s;
   from(m, inner_s);
+  auto mb = message_buffer::from_string(inner_s);
   std::vector<char> inner_v(inner_s.begin(), inner_s.end());
-  message inner(inner_v);
+  message inner(mb);
 
   uint8_t kind;
   from(inner, kind);

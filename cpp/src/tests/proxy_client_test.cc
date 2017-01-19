@@ -89,7 +89,7 @@ TEST(proxy_client, list_objects) {
 
   auto objects = std::get<0>(res);
   auto has_more = std::get<1>(res);
-  cout << "received" << objects.size() << " objects" << endl;
+  cout << "received " << objects.size() << " objects" << endl;
   cout << "[ ";
   for (auto &object : objects) {
     cout << object << ",\n";
@@ -166,13 +166,6 @@ TEST(proxy_client, get_proxy_version) {
   std::cout << "hash:" << hash << std::endl;
 }
 
-double stamp() {
-  struct timeval tp;
-  gettimeofday(&tp, NULL);
-  double t0 = tp.tv_sec + (double)tp.tv_usec / 1e6;
-  return t0;
-}
-
 TEST(proxy_client, test_ping) {
 
   config cfg;
@@ -181,27 +174,27 @@ TEST(proxy_client, test_ping) {
       0.1; // otherwise it might fail under valgrind (it was 0.085 once)
   struct timeval timeval0;
   gettimeofday(&timeval0, NULL);
-  double t0 = stamp();
+  double t0 = alba::stuff::stamp();
 
   double timestamp = client->ping(1.0);
   double delta = timestamp - t0;
-  double t1 = stamp();
+  double t1 = alba::stuff::stamp();
   std::cout << "t0:" << t0 << " timestamp:" << timestamp << std::endl;
   std::cout << "delta(t0,timestamp)" << delta << std::endl;
   std::cout << "delta(t1,timestamp)" << t1 - timestamp << std::endl;
   EXPECT_NEAR(delta, 1.0, eps);
 
   std::cout << "part2" << std::endl;
-  t0 = stamp();
+  t0 = alba::stuff::stamp();
   try {
     timestamp = client->ping(25.0);
     // expect failure....
-    double t1 = stamp();
+    double t1 = alba::stuff::stamp();
     std::cout << "we got here after " << t1 - t0 << " s" << std::endl;
     EXPECT_EQ(true, false);
   } catch (std::exception &e) {
     std::cout << e.what() << std::endl;
-    double t1 = stamp();
+    double t1 = alba::stuff::stamp();
     delta = t1 - t0;
     std::cout << "t0:" << t0 << " t1:" << t1 << std::endl;
     std::cout << "delta:" << delta << std::endl;
@@ -221,8 +214,8 @@ TEST(proxy_client, manifest) {
   std::cout << "size:" << size << std::endl;
 
   ManifestWithNamespaceId mf;
-  std::vector<char> v(data.begin(), data.end());
-  llio::message m(v);
+  auto mb = llio::message_buffer::from_string(data);
+  llio::message m(mb);
   from(m, mf);
 
   std::cout << mf << std::endl;
@@ -357,16 +350,17 @@ void _generic_partial_read_test(
 
   std::cout << "slow_path=" << cntr.slow_path
             << ", fast_path=" << cntr.fast_path << std::endl;
-  std::string slow_allowed_s = env_or_default("ALBA_TEST_SLOW_ALLOWED", "false");
+  std::string slow_allowed_s =
+      env_or_default("ALBA_TEST_SLOW_ALLOWED", "false");
   bool slow_allowed = "true" == slow_allowed_s;
-  if (!slow_allowed){
-      if (clear_before_read) {
-          EXPECT_TRUE(cntr.slow_path > 0);
-          EXPECT_EQ(cntr.fast_path, 0);
-      } else {
-          EXPECT_EQ(cntr.slow_path, 0);
-          EXPECT_TRUE(cntr.fast_path > 0);
-      }
+  if (!slow_allowed) {
+    if (clear_before_read) {
+      EXPECT_TRUE(cntr.slow_path > 0);
+      EXPECT_EQ(cntr.fast_path, 0);
+    } else {
+      EXPECT_EQ(cntr.slow_path, 0);
+      EXPECT_TRUE(cntr.fast_path > 0);
+    }
   }
 }
 
@@ -495,7 +489,7 @@ TEST(proxy_client, manifest_cache_eviction) {
   }
 }
 
-TEST(proxy_client,test_partial_read_fc) {
+TEST(proxy_client, test_partial_read_fc) {
   std::string namespace_("test_partial_read_fc");
   std::ostringstream sos;
   sos << "with_manifest" << std::rand();

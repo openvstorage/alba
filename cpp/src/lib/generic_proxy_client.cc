@@ -43,9 +43,8 @@ GenericProxy_client::GenericProxy_client(
 bool GenericProxy_client::namespace_exists(const string &name) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
-  proxy_protocol::write_namespace_exists_request(mb, name);
-  _output(mb);
+  proxy_protocol::write_namespace_exists_request(_mb, name);
+  _output();
 
   message response = _input();
   bool exists;
@@ -60,9 +59,8 @@ void GenericProxy_client::create_namespace(
     const string &name, const boost::optional<string> &preset_name) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
-  proxy_protocol::write_create_namespace_request(mb, name, preset_name);
-  _output(mb);
+  proxy_protocol::write_create_namespace_request(_mb, name, preset_name);
+  _output();
 
   message response = _input();
   proxy_protocol::read_create_namespace_response(response, _status);
@@ -73,9 +71,8 @@ void GenericProxy_client::create_namespace(
 void GenericProxy_client::delete_namespace(const string &name) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
-  proxy_protocol::write_delete_namespace_request(mb, name);
-  _output(mb);
+  proxy_protocol::write_delete_namespace_request(_mb, name);
+  _output();
 
   message response = _input();
   proxy_protocol::read_delete_namespace_response(response, _status);
@@ -89,11 +86,10 @@ tuple<vector<string>, has_more> GenericProxy_client::list_namespaces(
 
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_list_namespaces_request(
-      mb, first, BooleanEnumTrue(finc), last, BooleanEnumTrue(linc), max,
+      _mb, first, BooleanEnumTrue(finc), last, BooleanEnumTrue(linc), max,
       BooleanEnumTrue(reverse));
-  _output(mb);
+  _output();
 
   message response = _input();
   std::vector<string> namespaces;
@@ -113,11 +109,10 @@ void GenericProxy_client::write_object_fs(const string &namespace_,
                                           const Checksum *checksum) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_write_object_fs_request(
-      mb, namespace_, object_name, input_file, BooleanEnumTrue(allow_overwrite),
-      checksum);
-  _output(mb);
+      _mb, namespace_, object_name, input_file,
+      BooleanEnumTrue(allow_overwrite), checksum);
+  _output();
 
   message response = _input();
   proxy_protocol::read_write_object_fs_response(response, _status);
@@ -133,11 +128,10 @@ void GenericProxy_client::read_object_fs(const string &namespace_,
 
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_read_object_fs_request(
-      mb, namespace_, object_name, dest_file, BooleanEnumTrue(consistent_read),
+      _mb, namespace_, object_name, dest_file, BooleanEnumTrue(consistent_read),
       BooleanEnumTrue(should_cache));
-  _output(mb);
+  _output();
 
   message response = _input();
   proxy_protocol::read_read_object_fs_response(response, _status);
@@ -150,10 +144,9 @@ void GenericProxy_client::delete_object(const string &namespace_,
                                         const may_not_exist may_not_exist) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
-  proxy_protocol::write_delete_object_request(mb, namespace_, object_name,
+  proxy_protocol::write_delete_object_request(_mb, namespace_, object_name,
                                               BooleanEnumTrue(may_not_exist));
-  _output(mb);
+  _output();
 
   message response = _input();
   proxy_protocol::read_delete_object_response(response, _status);
@@ -167,11 +160,10 @@ tuple<vector<string>, has_more> GenericProxy_client::list_objects(
     const reverse reverse) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_list_objects_request(
-      mb, namespace_, first, BooleanEnumTrue(finc), last, BooleanEnumTrue(linc),
-      max, BooleanEnumTrue(reverse));
-  _output(mb);
+      _mb, namespace_, first, BooleanEnumTrue(finc), last,
+      BooleanEnumTrue(linc), max, BooleanEnumTrue(reverse));
+  _output();
 
   message response = _input();
   std::vector<string> objects;
@@ -195,10 +187,9 @@ void GenericProxy_client::read_objects_slices(
 
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_read_objects_slices_request(
-      mb, namespace_, slices, BooleanEnumTrue(consistent_read));
-  _output(mb);
+      _mb, namespace_, slices, BooleanEnumTrue(consistent_read));
+  _output();
 
   message response = _input();
   proxy_protocol::read_read_objects_slices_response(response, _status, slices);
@@ -219,10 +210,9 @@ void GenericProxy_client::read_objects_slices2(
   }
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_read_objects_slices2_request(
-      mb, namespace_, slices, BooleanEnumTrue(consistent_read));
-  _output(mb);
+      _mb, namespace_, slices, BooleanEnumTrue(consistent_read));
+  _output();
 
   message response = _input();
   proxy_protocol::read_read_objects_slices2_response(response, _status, slices,
@@ -238,11 +228,10 @@ void GenericProxy_client::write_object_fs2(
     const Checksum *checksum, proxy_protocol::ManifestWithNamespaceId &mf) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_write_object_fs2_request(
-      mb, namespace_, object_name, input_file, BooleanEnumTrue(allow_overwrite),
-      checksum);
-  _output(mb);
+      _mb, namespace_, object_name, input_file,
+      BooleanEnumTrue(allow_overwrite), checksum);
+  _output();
 
   message response = _input();
   proxy_protocol::read_write_object_fs2_response(response, _status, mf);
@@ -254,11 +243,10 @@ tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
     const consistent_read consistent_read, const should_cache should_cache) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_get_object_info_request(
-      mb, namespace_, object_name, BooleanEnumTrue(consistent_read),
+      _mb, namespace_, object_name, BooleanEnumTrue(consistent_read),
       BooleanEnumTrue(should_cache));
-  _output(mb);
+  _output();
 
   message response = _input();
   uint64_t size;
@@ -284,10 +272,9 @@ void GenericProxy_client::apply_sequence_(
     std::vector<proxy_protocol::object_info> &object_infos) {
   _expires_from_now(_timeout);
 
-  message_builder mb;
   proxy_protocol::write_apply_sequence_request(
-      mb, namespace_, BooleanEnumTrue(write_barrier), asserts, updates);
-  _output(mb);
+      _mb, namespace_, BooleanEnumTrue(write_barrier), asserts, updates);
+  _output();
 
   message response = _input();
   proxy_protocol::read_apply_sequence_response(response, _status, object_infos);
@@ -297,9 +284,8 @@ void GenericProxy_client::apply_sequence_(
 
 void GenericProxy_client::invalidate_cache(const string &namespace_) {
   _expires_from_now(_timeout);
-  message_builder mb;
-  proxy_protocol::write_invalidate_cache_request(mb, namespace_);
-  _output(mb);
+  proxy_protocol::write_invalidate_cache_request(_mb, namespace_);
+  _output();
 
   message response = _input();
   proxy_protocol::read_invalidate_cache_response(response, _status);
@@ -308,9 +294,8 @@ void GenericProxy_client::invalidate_cache(const string &namespace_) {
 
 void GenericProxy_client::drop_cache(const string &namespace_) {
   _expires_from_now(_timeout);
-  message_builder mb;
-  proxy_protocol::write_drop_cache_request(mb, namespace_);
-  _output(mb);
+  proxy_protocol::write_drop_cache_request(_mb, namespace_);
+  _output();
 
   message response = _input();
   proxy_protocol::read_drop_cache_response(response, _status);
@@ -320,9 +305,9 @@ void GenericProxy_client::drop_cache(const string &namespace_) {
 std::tuple<int32_t, int32_t, int32_t, std::string>
 GenericProxy_client::get_proxy_version() {
   _expires_from_now(_timeout);
-  message_builder mb;
-  proxy_protocol::write_get_proxy_version_request(mb);
-  _output(mb);
+
+  proxy_protocol::write_get_proxy_version_request(_mb);
+  _output();
   message response = _input();
 
   std::tuple<int32_t, int32_t, int32_t, std::string> result;
@@ -339,9 +324,9 @@ GenericProxy_client::get_proxy_version() {
 
 double GenericProxy_client::ping(double delay) {
   _expires_from_now(_timeout);
-  message_builder mb;
-  proxy_protocol::write_ping_request(mb, delay);
-  _output(mb);
+
+  proxy_protocol::write_ping_request(_mb, delay);
+  _output();
   message response = _input();
   double result;
   proxy_protocol::read_ping_response(response, _status, result);
@@ -351,9 +336,9 @@ double GenericProxy_client::ping(double delay) {
 
 void GenericProxy_client::osd_info(osd_map_t &result) {
   _expires_from_now(_timeout);
-  message_builder mb;
-  proxy_protocol::write_osd_info_request(mb);
-  _output(mb);
+
+  proxy_protocol::write_osd_info_request(_mb);
+  _output();
   message response = _input();
   proxy_protocol::read_osd_info_response(response, _status, result);
 }
@@ -361,19 +346,18 @@ void GenericProxy_client::osd_info(osd_map_t &result) {
 void GenericProxy_client::osd_info2(osd_maps_t &result) {
   ALBA_LOG(DEBUG, "Generic_proxy_client::osd_info2");
   _expires_from_now(_timeout);
-  message_builder mb;
-  proxy_protocol::write_osd_info2_request(mb);
-  _output(mb);
+
+  proxy_protocol::write_osd_info2_request(_mb);
+  _output();
   message response = _input();
   proxy_protocol::read_osd_info2_response(response, _status, result);
 }
 
 bool GenericProxy_client::has_local_fragment_cache() {
   _expires_from_now(_timeout);
-  message_builder mb;
 
-  proxy_protocol::write_has_local_fragment_cache_request(mb);
-  _output(mb);
+  proxy_protocol::write_has_local_fragment_cache_request(_mb);
+  _output();
   message response = _input();
   bool result;
   proxy_protocol::read_has_local_fragment_cache_response(response, _status,

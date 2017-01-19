@@ -310,7 +310,9 @@ int main(int argc, const char *argv[]) {
           "invalidate cache between upload and partial reads")(
           "focus", po::value<bool>()->default_value(false),
           "if set, all rora partial reads come from the "
-          "same object, and hit the same ASD");
+          "same object, and hit the same ASD")(
+          "asd-pool-size", po::value<uint32_t>()->default_value(5),
+          "config for partial read benchmark");
 
   po::positional_options_description positionalOptions;
   positionalOptions.add("command", 1);
@@ -482,8 +484,10 @@ int main(int argc, const char *argv[]) {
     uint32_t n = getRequiredArg<uint32_t>(vm, "benchmark-size");
     uint32_t n_clients = getRequiredArg<uint32_t>(vm, "n-clients");
     bool use_rora = getRequiredArg<bool>(vm, "use-rora");
-    boost::optional<RoraConfig> rora_config = boost::none;
-
+    uint32_t asd_pool_size = getRequiredArg<uint32_t>(vm, "asd-pool-size");
+    boost::optional<RoraConfig> rora_config =
+        RoraConfig(10000, false, asd_pool_size);
+    ALBA_LOG(INFO, "config = " << *rora_config);
     uint32_t block_size = getRequiredArg<uint32_t>(vm, "block-size");
     bool focus = getRequiredArg<bool>(vm, "focus");
     string io_pattern_s = getRequiredStringArg(vm, "io-pattern");
@@ -498,7 +502,7 @@ int main(int argc, const char *argv[]) {
 
     if (use_rora) {
       bool use_null_io = getRequiredArg<bool>(vm, "use-null-io");
-      rora_config = RoraConfig(100, use_null_io);
+      rora_config->use_null_io = use_null_io;
     }
     partial_read_benchmark(host, port, timeout, transport, ns, file, n,
                            n_clients, rora_config, focus, block_size,

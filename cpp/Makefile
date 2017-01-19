@@ -6,7 +6,10 @@ GOBJFS_HOME ?=$(ALBA_HOME)/../gobjfs
 # & dynamic linking with boost libraries causes arbitrary segv's for g++
 # So this is currently the GCD : statically link the boost stuff
 
-OPTIMIZATION = 2
+# Also, when you've done something wrong, level 3 is more likely to SEGV.
+# so it's probably a better test
+OPTIMIZATION = 3
+
 WARNINGS = \
 	-Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo \
 	-Woverloaded-virtual -Wnon-virtual-dtor
