@@ -741,6 +741,7 @@ class osd_access
                            write = [];
                            errors = [];
                            checksum_errors = 0L;
+                           claimed_since = None;
                          })
              in
 

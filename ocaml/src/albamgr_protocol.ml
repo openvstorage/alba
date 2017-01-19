@@ -233,9 +233,12 @@ module Protocol = struct
                      ~compare:(fun i1 i2 -> my_compare (fst i1) (fst i2))
                      osd.errors errors' max_n;
           checksum_errors =
+            begin
             match checksum_errors' with
             | None   -> osd.checksum_errors
             | Some x -> Int64.add osd.checksum_errors x
+            end;
+          claimed_since = osd.claimed_since;
         }
 
       let _to_buffer_1 buf u =

@@ -1317,14 +1317,19 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       in
 
       let osd_id_to_long_id_key = Keys.Osd.osd_id_to_long_id ~osd_id in
-
+      let osd_info' =
+        let open Nsm_model.OsdInfo in
+        { osd_info with
+          claimed_since = Some (Unix.gettimeofday())
+        }
+      in
       let upds =
         List.concat
           [ [ Update.Assert (info_key, Some info_serialized);
               Update.Set (info_key,
                           serialize
                             (Osd.to_buffer_with_claim_info ~version:3)
-                            (Osd.ClaimInfo.ThisAlba osd_id, osd_info));
+                            (Osd.ClaimInfo.ThisAlba osd_id, osd_info'));
               Update.Assert (next_id_key, next_id_so);
               Update.Set (next_id_key, serialize x_int64_to (Int64.succ osd_id));
               Update.Assert (osd_id_to_long_id_key, None);
