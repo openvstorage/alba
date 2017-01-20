@@ -4,7 +4,7 @@ RUN rpm --import file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
 
 RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-9.noarch.rpm
 RUN yum -y update
-RUN yum -y install python-devel wget make m4 gcc install python-pip
+RUN yum -y install python-devel wget make m4 gcc install python-pip openssl-devel
 
 RUN pip install fabric junit-xml
 RUN yum -y install sudo
