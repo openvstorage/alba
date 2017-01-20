@@ -57,3 +57,44 @@ alba_HEADERS = \
 	../include/tcp_proxy_client.h \
 	../include/tcp_transport.h \
 	../include/transport.h
+
+bin_PROGRAMS = alba_proxy_client_test alba_test_client
+
+alba_proxy_client_test_SOURCES = \
+	../src/tests/asd_client_test.cc \
+	../src/tests/llio_test.cc \
+	../src/tests/main.cc \
+	../src/tests/proxy_client_test.cc
+
+alba_proxy_client_test_CXXFLAGS = -std=c++11
+alba_proxy_client_test_CPPFLAGS = -I$(abs_top_srcdir)/../include
+alba_proxy_client_test_LDADD = \
+	./libalbaproxy.la \
+	-lboost_system \
+	-lboost_thread \
+	-lboost_log \
+	-lpthread \
+	-lboost_program_options \
+	-lsnappy \
+	-lgobjfs_client \
+	-lgtest \
+	-lxio \
+	-lrdmacm
+
+alba_test_client_SOURCES = \
+	../src/examples/test_client.cc
+
+alba_test_client_CXXFLAGS = -std=c++11
+alba_test_client_CPPFLAGS = -I$(abs_top_srcdir)/../include
+alba_test_client_LDADD = \
+	./libalbaproxy.la \
+	-lboost_system \
+	-lboost_thread \
+	-lboost_log \
+	-lpthread \
+	-lboost_program_options \
+	-lsnappy \
+	-lgobjfs_client \
+	-lgtest \
+	-lxio \
+	-lrdmacm
