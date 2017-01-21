@@ -20,7 +20,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "alba_common.h"
 #include "tcp_transport.h"
 #include "gtest/gtest.h"
-
+#include "asd_access.h"
+#include "proxy_protocol.h"
 #include <chrono>
 
 // setup cpp -> schiet key in nen asd
@@ -105,7 +106,7 @@ TEST(asd_client, timeouts) {
     _dump_version(r);
     EXPECT_EQ(true, false);
   } catch (std::exception &e) {
-    ALBA_LOG(INFO, e.what());
+    ALBA_LOG(INFO, "EXPECTED EXCEPTION:" << e.what());
     double t1 = alba::stuff::stamp();
     delta = t1 - t0;
     std::cout << "t0:" << t0 << " t1:" << t1 << std::endl;
@@ -114,4 +115,22 @@ TEST(asd_client, timeouts) {
   }
   // clean up
   make_client(timeout)->set_slowness(fast);
+}
+
+TEST(asd_access, get_connection){
+    // this one does not exist:
+    string ip = "172.26.1.15";
+    uint32_t port = 64000;
+    using namespace alba::proxy_protocol;
+    //const steady_clock::duration timeout = milliseconds(100);
+    auto info = std::unique_ptr<OsdInfo>(new OsdInfo);
+    info -> ips = std::vector<string> { ip};
+    info -> port = port;
+    info -> use_rdma = false;
+
+    alba::asd::ConnectionPool p(std::move(info), 5);
+    auto c = p.get_connection();
+    EXPECT_EQ(nullptr,c);
+
+
 }

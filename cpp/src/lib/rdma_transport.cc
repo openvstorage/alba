@@ -145,7 +145,7 @@ RDMA_transport::RDMA_transport(
   int socket = rsocket(AF_INET, SOCK_STREAM, 0);
 
   if (socket < 0) {
-    throw transport_exception("socket < 0?");
+    throw transport_exception("RDMA_transport::socket < 0?");
   }
   struct sockaddr_in serv_addr;
 
