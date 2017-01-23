@@ -118,8 +118,12 @@ let claim_osd mgr_access osd_access ~long_id =
      update_osd ())
   >>= function
   | `ClaimedBy alba_id' ->
-     Lwt_io.printlf "This OSD is already claimed by alba instance %s" alba_id' >>= fun () ->
-     Lwt.fail_with "Failed to add OSD because it's already claimed by another alba instance"
+     let msg = Printf.sprintf
+                 "This OSD is already claimed by alba instance %s"
+                 alba_id'
+     in
+     Lwt_log.info msg >>= fun () ->
+     Lwt.fail_with msg
   | `Continue ->
      let open Albamgr_protocol.Protocol in
      Lwt.catch
