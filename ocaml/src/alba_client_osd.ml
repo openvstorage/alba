@@ -122,7 +122,7 @@ let claim_osd mgr_access osd_access ~long_id =
                  "This OSD is already claimed by alba instance %s"
                  alba_id'
      in
-     Lwt_io.eprintl msg >>= fun () ->
+     Lwt_log.info msg >>= fun () ->
      Lwt.fail_with msg
   | `Continue ->
      let open Albamgr_protocol.Protocol in
