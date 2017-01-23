@@ -145,6 +145,11 @@ void TCP_transport::_check_deadline() {
   _deadline.async_wait(
       boost::lambda::bind(&TCP_transport::_check_deadline, this));
 }
-TCP_transport::~TCP_transport() { _socket.close(); }
+
+TCP_transport::~TCP_transport() {
+    boost::system::error_code ec;
+    _socket.close(ec); // does not throw
+
+}
 }
 }

@@ -26,7 +26,7 @@ using llio::message_builder;
 using llio::message;
 
 void Asd_client::check_status(const char *function_name) {
-  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
+
   if (not _status.is_ok()) {
     ALBA_LOG(DEBUG, function_name << " received rc:"
                                   << (uint32_t)_status._return_code)
@@ -87,6 +87,8 @@ void Asd_client::partial_get(string &key, vector<slice> &slices) {
   for (auto &slice : slices) {
     _transport->read_exact((char *)slice.target, slice.length);
   }
+
+  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
 }
 
 void Asd_client::set_slowness(asd_protocol::slowness_t &slowness) {
@@ -96,6 +98,9 @@ void Asd_client::set_slowness(asd_protocol::slowness_t &slowness) {
   _mb.reset();
   message response = _transport->read_message();
   asd_protocol::read_set_slowness_response(response, _status);
+
+  check_status(__PRETTY_FUNCTION__);
+  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
 }
 
 std::tuple<int32_t, int32_t, int32_t, std::string> Asd_client::get_version() {
@@ -114,7 +119,10 @@ std::tuple<int32_t, int32_t, int32_t, std::string> Asd_client::get_version() {
   std::string &hash = std::get<3>(result);
   asd_protocol::read_get_version_response(response, _status, major, minor,
                                           patch, hash);
+
   check_status(__PRETTY_FUNCTION__);
+  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
+
   return result;
 }
 }
