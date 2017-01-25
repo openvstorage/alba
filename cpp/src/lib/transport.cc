@@ -54,13 +54,6 @@ llio::message Transport::read_message() {
         this->read_exact(buffer, len);
       });
   return llio::message(mb);
-  /*
-  uint32_t size;
-  this->read_exact((char *)&size, 4);
-  std::vector<char> buffer(size);
-  this->read_exact(buffer.data(), size);
-  return llio::message(buffer);
-  */
 }
 
 void Transport::output(llio::message_builder &mb) {

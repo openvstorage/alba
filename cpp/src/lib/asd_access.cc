@@ -103,14 +103,12 @@ std::unique_ptr<Asd_client> ConnectionPool::get_connection() {
   }
 
   if (not conn) {
-    try{
-        conn = make_one_();
-    } catch(std::exception& e){
-        ALBA_LOG(DEBUG, "failed to connect to "
-                 << config_ -> ips[0] << ":"
-                 << config_ -> port   << " `"
-                 << e.what()
-                 << "`");
+    try {
+      conn = make_one_();
+    } catch (std::exception &e) {
+      ALBA_LOG(DEBUG, "failed to connect to " << config_->ips[0] << ":"
+                                              << config_->port << " `"
+                                              << e.what() << "`");
     }
   }
 
