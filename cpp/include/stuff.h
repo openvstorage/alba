@@ -87,6 +87,6 @@ std::ostream &operator<<(std::ostream &os, const boost::optional<T> &ot) {
   return os;
 }
 
-double stamp();
+double timestamp_millis();
 }
 }

@@ -213,6 +213,7 @@ RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
 #         && dpkg -i ${voldrv_base_pkg_name}-test-dbgsym_${voldrv_version}.ddeb )
 
 
+RUN pip install setuptools==34.0.1
 RUN pip install fabric junit-xml
 
 RUN chmod ugoa+rxw -R ${opam_root}

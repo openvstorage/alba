@@ -71,7 +71,7 @@ void dump_data(std::ostream &os, char **rows, int k, int block_size) {
   }
 }
 
-double stamp() {
+double timestamp_millis() {
   struct timeval tp;
   gettimeofday(&tp, NULL);
   double t0 = tp.tv_sec + (double)tp.tv_usec / 1e6;
