@@ -748,11 +748,10 @@ let execute_query : type req res.
                     then
                       begin
                         let classic =
-                          mgmt.AsdMgmt.use_classic
-                          || (match nfd with
-                              | Net_fd.Plain _ -> false
-                              | _ ->true
-                             )
+                          (match nfd with
+                           | Net_fd.Plain _ -> false
+                           | _ ->true
+                          )
                         in
                         if classic
                         then
@@ -1514,7 +1513,6 @@ let run_server
       ~tcp_keepalive
       ~use_fadvise
       ~use_fallocate
-      ~(use_classic:bool)
       ~log_level
   =
 
@@ -1829,7 +1827,6 @@ let run_server
   let mgmt = AsdMgmt.make ~latest_disk_usage
                           ~capacity
                           ~limit
-                          ~use_classic
   in
 
   let capabilities =

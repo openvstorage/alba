@@ -43,7 +43,7 @@ let asd_start cfg_url log_sinks =
            use_fadvise, use_fallocate,
            rocksdb_block_cache_size,
            rora_num_cores, rora_queue_depth,
-           lwt_unix_pool_size, use_classic
+           lwt_unix_pool_size
         =
         let open Config in
         cfg.ips,     cfg.port,      cfg.rora_port,
@@ -57,8 +57,7 @@ let asd_start cfg_url log_sinks =
         cfg.use_fadvise, cfg.use_fallocate,
         cfg.rocksdb_block_cache_size,
         cfg.rora_num_cores, cfg.rora_queue_depth,
-        cfg.lwt_unix_pool_size,
-        cfg.use_classic
+        cfg.lwt_unix_pool_size
        in
        Lwt_log.info_f "Lwt_unix.pool_size : %i" lwt_unix_pool_size >>=fun () ->
        let () = Lwt_unix.set_pool_size lwt_unix_pool_size in
@@ -151,7 +150,6 @@ let asd_start cfg_url log_sinks =
                             ~write_blobs
                             ~use_fadvise
                             ~use_fallocate
-                            ~use_classic
                             ~log_level:(to_level log_level)
   in
 

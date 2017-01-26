@@ -58,6 +58,7 @@ static void worker_partial_read(struct job_partial_read* job)
     }
     int pos;
     int n = job -> n_slices;
+
     if(job -> use_fadvise){
         int r;
         r = posix_fadvise(in_fd,
@@ -67,6 +68,7 @@ static void worker_partial_read(struct job_partial_read* job)
         if(r){
             job -> result = r;
             job -> errno_copy = r; // syscall doesn't use errno.
+            close(in_fd);
             return;
         }
         pos = 0;
@@ -78,12 +80,15 @@ static void worker_partial_read(struct job_partial_read* job)
             if (r){
                 job -> result = r;
                 job -> errno_copy = r;
+                close(in_fd);
                 return;
             }
             pos++;
         }
 
     }
+
+
     pos = 0;
     while (pos < n ){
         int64_t offset = job -> offsets[pos];
@@ -101,6 +106,8 @@ static void worker_partial_read(struct job_partial_read* job)
         } while(todo > 0);
         pos++;
     }
+
+
     if(job -> use_fadvise){
         pos = 0;
         int r;
@@ -112,6 +119,7 @@ static void worker_partial_read(struct job_partial_read* job)
             if (r) {
                 job -> result = r;
                 job -> errno_copy = r;
+                close(in_fd);
                 return;
             }
             pos++;

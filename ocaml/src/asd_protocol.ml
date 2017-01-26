@@ -238,7 +238,6 @@ module AsdMgmt = struct
                limit : int64;
                mutable full : bool; (* override *)
                mutable slowness : (float * float) option;
-               mutable use_classic : bool;
              }
     let _next_msg_id =
       Slice.wrap_string Osd_keys.AlbaInstance.next_msg_id
@@ -247,13 +246,11 @@ module AsdMgmt = struct
           ~latest_disk_usage
           ~capacity
           ~limit
-          ~use_classic
       = { _latest_disk_usage = latest_disk_usage;
           _capacity = capacity;
           limit;
           full=false;
           slowness = None;
-          use_classic;
         }
 
     let updates_allowed t (updates:Update.t list) =
