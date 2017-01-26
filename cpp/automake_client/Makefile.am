@@ -76,7 +76,6 @@ alba_proxy_client_test_LDADD = \
 	-lpthread \
 	-lboost_program_options \
 	-lsnappy \
-	-lgobjfs_client \
 	-lgtest \
 	-lxio \
 	-lrdmacm
@@ -94,7 +93,6 @@ alba_test_client_LDADD = \
 	-lpthread \
 	-lboost_program_options \
 	-lsnappy \
-	-lgobjfs_client \
 	-lgtest \
 	-lxio \
 	-lrdmacm

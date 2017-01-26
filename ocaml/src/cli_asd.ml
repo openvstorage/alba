@@ -36,7 +36,7 @@ let asd_start cfg_url log_sinks =
        let ips,         port,      rora_port,
            rora_ips, transport, rora_transport, home,
            node_id,     log_level, asd_id,
-           fsync_wanted, limit, capacity,
+           fsync, limit, capacity,
            multicast, buffer_size,
            tls_config,tcp_keepalive,
            write_blobs,
@@ -62,18 +62,11 @@ let asd_start cfg_url log_sinks =
        Lwt_log.info_f "Lwt_unix.pool_size : %i" lwt_unix_pool_size >>=fun () ->
        let () = Lwt_unix.set_pool_size lwt_unix_pool_size in
 
-       (match fsync_wanted, rora_port with
-        | false, None ->
-           Lwt_log.warning "Fsync has been disabled, data will not be stored durably!!"
-           >>= fun () ->
-           Lwt.return false
-        | false, Some _ ->
-           Lwt_log.warning "rora configured: overrule configuration and enable fsync!!"
-           >>= fun () ->
-           Lwt.return true
-        | true, _ -> Lwt.return true
-       )
-       >>= fun fsync ->
+       (match rora_port, rora_ips, rora_transport, rora_num_cores, rora_queue_depth with
+        | None, None, None, None, None -> Lwt.return ()
+        | _ -> Lwt_log.warning "rora path in the asd has been deprecated but some rora specific option was specified!")
+       >>= fun () ->
+
       (
         if port = None && tls_config = None
         then
@@ -90,9 +83,7 @@ let asd_start cfg_url log_sinks =
                Lwt_log.fatal msg >>= fun () ->
                Lwt.fail_with msg
       in
-      let rora_transport = Option.get_some_default transport rora_transport in
       to_transport "transport" transport >>= fun transport ->
-      to_transport "rora_transport" rora_transport >>= fun rora_transport ->
 
       verify_log_level log_level;
       Lwt_log.add_rule "*" (to_level log_level);
@@ -133,10 +124,8 @@ let asd_start cfg_url log_sinks =
             in
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
-      Asd_server.run_server ips ~port ~rora_port
-                            ~transport ~rora_transport
-                            ~rora_ips
-                            ~rora_num_cores ~rora_queue_depth
+      Asd_server.run_server ips ~port
+                            ~transport
                             home ~asd_id ~node_id
                             ~fsync
                             ~limit

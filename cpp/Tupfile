@@ -7,18 +7,17 @@ flags = $(WARNINGS) -std=c++11 -ggdb3 -gdwarf-3 -O0 -fPIC
 includes = -I./include
 
 LIBDIRS  = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib
-LIBDIRS += -L/usr/lib -L$(GOBJFS_HOME)/lib
+LIBDIRS += -L/usr/lib
 
 LIBS_lib  = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options
-LIBS_lib += -lsnappy
-LIBS_lib += -lgobjfs_client -lxio
+LIBS_lib += -lsnappy -lxio
 
 LIBS_exec  = -L/usr/local/lib
 LIBS_exec += -Wl,-Bstatic
 LIBS_exec += -lboost_log -lboost_system -lboost_thread -lboost_program_options
 LIBS_exec += -Wl,-Bdynamic
 LIBS_exec += -L./lib -lalba -lrdmacm -lpthread 
-LIBS_exec += -lsnappy -lgobjfs_client -lxio
+LIBS_exec += -lsnappy -lxio
 
 tests = src/tests/llio_test.cc
 tests += src/tests/proxy_client_test.cc
@@ -65,7 +64,7 @@ examples = src/examples/test_client.cc
 #examples
 
 :src/examples/test_client.cc |>\
-  @(COMPILER) -Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo -Woverloaded-virtual -Wnon-virtual-dtor -std=c++11 -ggdb3 -gdwarf-3 -O0 -fPIC -I./include -I/home/romain/workspace/ALBA/ovs_gobjfs/include -c %f -o %o \
+  @(COMPILER) -Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo -Woverloaded-virtual -Wnon-virtual-dtor -std=c++11 -ggdb3 -gdwarf-3 -O0 -fPIC -I./include -c %f -o %o \
   |> src/examples/test_client.o {test_client_obj}
 
 :{test_client_obj} | {shared_lib} {alias} {alias1}  |> \

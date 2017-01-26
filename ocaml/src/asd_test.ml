@@ -76,10 +76,8 @@ let with_asd_client
            ?write_blobs
            ~cancel
            ~tcp_keepalive:Tcp_keepalive2.default
-           [] ~port:o_port ~rora_port:None
-           ~transport:Net_fd.TCP ~rora_transport:Net_fd.TCP
-           ~rora_ips:None
-           ~rora_num_cores:0 ~rora_queue_depth:0
+           [] ~port:o_port
+           ~transport:Net_fd.TCP
            path
            ~asd_id
            ~node_id

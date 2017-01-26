@@ -25,10 +25,10 @@ true: package(ordma)
 true: ppx_lwt
 true: package(result)
 
-"src/alba.native" : use_Jerasure, use_gcrypt, use_isal, use_gobjfs
-"src/alba.byte" : use_Jerasure, use_gcrypt, use_isal, use_gobjfs
-"src/disk_failure_tests.native": use_Jerasure, use_gcrypt, use_isal, use_gobjfs
-"src/kinetic_client_test.native": use_Jerasure, use_gcrypt, use_isal, use_gobjfs
+"src/alba.native" : use_Jerasure, use_gcrypt, use_isal
+"src/alba.byte" : use_Jerasure, use_gcrypt, use_isal
+"src/disk_failure_tests.native": use_Jerasure, use_gcrypt, use_isal
+"src/kinetic_client_test.native": use_Jerasure, use_gcrypt, use_isal
 "src":include
 "src/experiments":include
 "src/tools":include

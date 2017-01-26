@@ -197,17 +197,6 @@ RUN rpm -i /root/rpmbuild/RPMS/x86_64/jerasure-devel-2.0-1.el7.centos.x86_64.rpm
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 
-# gobjfs shared lib:
-
-RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout c729acc4c52f36d811c2ac71da77fb834de14075
-RUN cd gobjfs \
-       && mkdir build \
-       && cd build \
-       && cmake3 -DCMAKE_BUILD_TYPE=RELWITHDEBINFO .. \
-       && make \
-       && make install
-
 RUN echo -e '[ovs]\nname=ovs\nbaseurl=http://yum.openvstorage.org/CentOS/7/x86_64/dists/unstable\nenabled=1\ngpgcheck=0' > /etc/yum.repos.d/ovs.repo
 RUN cat /etc/yum.repos.d/ovs.repo
 RUN yum -y update && \
@@ -248,6 +237,5 @@ RUN su - -c "echo 'eval `${opam_env}`' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'LD_LIBRARY_PATH=/usr/local/lib; export LD_LIBRARY_PATH;' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'VOLDRV_TEST=volumedriver_test; export VOLDRV_TEST;' >> /home/jenkins/.bash_profile"
 RUN su - -c "echo 'VOLDRV_BACKEND_TEST=backend_test; export VOLDRV_BACKEND_TEST;' >> /home/jenkins/.bash_profile"
-RUN su - -c "echo 'GOBJFS_HOME=/usr/local/lib; export GOBJFS_HOME;' >> /home/jenkins/.bash_profile"
 
 ENTRYPOINT ["/bin/bash", "-c", "set -e && /home/jenkins/alba/docker/docker-entrypoint.sh $@"]
