@@ -73,6 +73,11 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
   return c;
 }
 
+void ConnectionPool::report_failure() {
+  _failure_time = std::chrono::steady_clock::now();
+  _fast_path_failures++;
+}
+
 void ConnectionPool::release_connection(std::unique_ptr<Asd_client> conn) {
   LOCK();
   if (conn) {
@@ -83,8 +88,7 @@ void ConnectionPool::release_connection(std::unique_ptr<Asd_client> conn) {
       return;
     }
   } else {
-    _failure_time = std::chrono::steady_clock::now();
-    _fast_path_failures++;
+    this->report_failure();
   }
 }
 

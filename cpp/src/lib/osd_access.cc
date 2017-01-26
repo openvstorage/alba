@@ -159,6 +159,7 @@ int OsdAccess::_read_osd_slices_asd_direct_path(
       p->release_connection(std::move(connection));
       return 0;
     } catch (std::exception &e) {
+      p->report_failure();
       ALBA_LOG(INFO, "exception in _read_osd_slices_asd_direct_path for osd "
                          << osd << " " << e.what());
       return -1;

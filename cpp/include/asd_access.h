@@ -54,6 +54,7 @@ public:
   size_t size() const;
 
   void release_connection(std::unique_ptr<Asd_client>);
+  void report_failure();
 
 private:
   mutable std::mutex _mutex;
