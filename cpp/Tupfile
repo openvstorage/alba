@@ -10,14 +10,14 @@ LIBDIRS  = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib
 LIBDIRS += -L/usr/lib
 
 LIBS_lib  = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options
-LIBS_lib += -lsnappy -lxio
+LIBS_lib += -lsnappy
 
 LIBS_exec  = -L/usr/local/lib
 LIBS_exec += -Wl,-Bstatic
 LIBS_exec += -lboost_log -lboost_system -lboost_thread -lboost_program_options
 LIBS_exec += -Wl,-Bdynamic
 LIBS_exec += -L./lib -lalba -lrdmacm -lpthread 
-LIBS_exec += -lsnappy -lxio
+LIBS_exec += -lsnappy
 
 tests = src/tests/llio_test.cc
 tests += src/tests/proxy_client_test.cc

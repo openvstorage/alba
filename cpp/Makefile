@@ -20,14 +20,14 @@ LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib \
           -L/usr/lib
 
 LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options \
-           -lsnappy -lxio -lrdmacm
+           -lsnappy -lrdmacm
 
 LIBS_exec = -L/usr/local/lib \
 	-Wl,-Bstatic \
 	  -lboost_log -lboost_system -lboost_thread -lboost_program_options \
 	-Wl,-Bdynamic \
-	-L./lib -lalba -lpthread \
-        -lsnappy -lxio -lrdmacm
+        -L./lib -lalba -lrdmacm -lpthread \
+        -lsnappy
 
 _OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
