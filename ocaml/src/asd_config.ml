@@ -55,6 +55,7 @@ module Config = struct
 
     rocksdb_block_cache_size : (int option [@default None]);
     lwt_unix_pool_size : (int [@default 100]);
+    use_classic : (bool [@default true]);
   } [@@deriving yojson, show]
 end
 

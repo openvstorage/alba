@@ -93,6 +93,7 @@ let with_asd_client
            ~multicast:(Some 10.0)
            ~use_fadvise:true
            ~use_fallocate:true
+           ~use_classic:false
            ~log_level:Lwt_log.Debug
          >>= fun () ->
          Lwt.fail_with "Asd server stopped!");
