@@ -11,6 +11,8 @@
 /cpp/bin/
 /cpp/**/*.o
 /cpp/.tup/
+/cpp/automake_client/alba_proxy_client_test
+/cpp/automake_client/alba_test_client
 /cpp/automake_client/Makefile.in
 /cpp/automake_client/aclocal.m4
 /cpp/automake_client/autom4te.cache/
@@ -30,10 +32,15 @@
 /cpp/automake_client/libtool
 /cpp/automake_client/.deps/
 /cpp/automake_client/.libs/
+/cpp/include/.deps/
 /cpp/lib/
 /cpp/gtestresults.xml
+/cpp/src/examples/.deps/
+/cpp/src/examples/.dirstamp
 /cpp/src/lib/.deps/
 /cpp/src/lib/.dirstamp
+/cpp/src/tests/.deps/
+/cpp/src/tests/.dirstamp
 /ocaml/_build/
 /ocaml/*.native
 /ocaml/*.byte
@@ -42,7 +49,7 @@
 /tmp/
 /fabfile.pyc
 /_virt/
-/testresults.xml
+/testresults*.xml
 /**/*.pyc
 /gtestresults.xml
 /*.out
