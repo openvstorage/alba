@@ -151,15 +151,6 @@ RUN apt-get update && apt-get -y --allow-unauthenticated install \
       libz-dev libbz2-dev \
       libgoogle-glog-dev libibverbs-dev
 
-RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout c729acc4c52f36d811c2ac71da77fb834de14075
-RUN cd gobjfs \
-       && mkdir build \
-       && cd build \
-       && cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO .. \
-       && make \
-       && make install
-
 # Install etcd:
 RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
 RUN tar xzvf etcd-v2.2.4-linux-amd64.tar.gz

@@ -29,6 +29,10 @@ open Range_query_args
 
 let blob_threshold = 16 * 1024
 
+let transport_s = function
+  | Net_fd.TCP  -> "tcp"
+  | Net_fd.RDMA -> "rdma"
+
 module KVS = Key_value_store
 
 module Keys = struct
@@ -1463,19 +1467,12 @@ class check_garbage_from_advancer check_garbage_from kv =
       end
   end
 
-let _rora_server = ref []
-
 let run_server
       ?cancel
       ?(write_blobs = true)
       (hosts:string list)
       ~(port:int option)
       ~(transport: Net_fd.transport)
-      ~rora_ips
-      ~(rora_port : int option)
-      ~(rora_transport : Net_fd.transport)
-      ~rora_num_cores
-      ~rora_queue_depth
       (path:string)
       ~asd_id ~node_id
       ~fsync
@@ -1505,9 +1502,7 @@ let run_server
 
   Lwt_log.info_f "asd_server version:%s" Alba_version.git_revision     >>= fun () ->
   Lwt_log.debug_f "tls:%s" ([%show: Asd_config.Config.tls option] tls_config) >>= fun () ->
-  Lwt_log.debug_f "transport:%s, rora_transport:%s"
-                  ([%show: Net_fd.transport] transport)
-                  ([%show: Net_fd.transport] rora_transport) >>= fun () ->
+  Lwt_log.debug_f "transport:%s" ([%show: Net_fd.transport] transport) >>= fun () ->
   let tls =
     match tls_config with
     | None -> (None: Tls.t option)
@@ -1545,18 +1540,8 @@ let run_server
       ~db_path ()
   in
   Lwt_log.debug_f "opened rocksdb in %S" db_path >>= fun () ->
-  let () = Rora_server.register_rocksdb db in
 
-  let maybe_shutdown_rora_server () =
-    Lwt_list.iter_p
-      (fun w ->
-       Lwt_log.fatal "closing rora server" >>= fun () ->
-       Lwt.wakeup w ();
-       Lwt.return_unit)
-      !_rora_server
-  in
   let endgame () =
-    maybe_shutdown_rora_server() >>= fun () ->
     Lwt_log.fatal_f "endgame: closing %s" db_path >>= fun () ->
     Lwt_io.printlf "endgame%!" >>= fun () ->
     let () = Rocks.close db in
@@ -1809,21 +1794,7 @@ let run_server
     let open Capabilities.OsdCapabilities in
     let result0 = [CMultiGet2;CPartialGet] in
     let len0 = List.length result0 in
-
-    match rora_port with
-    | None -> (len0, result0)
-    | Some p ->
-       let rora_transport' = Rora_server.transport_s rora_transport in
-       let cap =
-         (* try to send old style capability for backwards compatibility when possible *)
-         if rora_transport = transport
-            && rora_ips = None && List.length hosts = 1
-         then
-           CRoraFetcher p
-         else
-           CRoraFetcher2 (Option.get_some_default hosts rora_ips, p, rora_transport')
-       in
-       (len0 + 1, cap :: result0)
+    len0, result0
   in
 
   let protocol nfd =
@@ -1858,38 +1829,6 @@ let run_server
                  ~tls:None protocol
        in
        (wrap_t t "plain server") :: threads
-  in
-  let maybe_add_rora_server threads =
-    match rora_port with
-    | None -> threads
-    | Some port ->
-       begin
-         let make_t host =
-           let sleeper, awakener = Lwt.wait() in
-           Lwt_log.debug_f "starting rora server host:%s port:%i" host port
-           >>= fun () ->
-           let handle = Rora_server.start
-                          rora_transport
-                          host
-                          port
-                          rora_num_cores
-                          rora_queue_depth
-                          files_path
-                          (String.length files_path)
-                          log_level
-           in
-           let () = _rora_server := awakener :: !_rora_server in
-           Lwt_log.debug_f "started rora server:0x%Lx" handle >>= fun () ->
-           sleeper  >>= fun () ->
-           let _ = Rora_server.stop handle in
-           Lwt.return_unit
-         in
-         List.rev_append
-           (List.map
-              make_t
-              (Option.get_some_default hosts rora_ips))
-           threads
-       end
   in
   let maybe_add_tls_server threads =
       match tls with
@@ -1954,7 +1893,6 @@ let run_server
       wrap_t io_sched_t "io_sched_t";
     ]
     |> maybe_add_plain_server
-    |> maybe_add_rora_server
     |> maybe_add_tls_server
     |> maybe_add_multicast
   in

@@ -181,9 +181,9 @@ class type component =
 let merge_result_xmls input output_file =
   let open Ezxmlm in
   let dtd = ref None in
-  let (tests, failures, disabled, errors, timestamp, time, testsuite_members) =
+  let (tests, failures, disabled, errors, time, testsuite_members) =
     List.fold_left
-      (fun (tests, failures, disabled, errors, timestamp, time, testsuite_members)
+      (fun (tests, failures, disabled, errors, time, testsuite_members)
            (input_file, suite_prefix) ->
         let dtd', xml = from_channel (open_in input_file) in
         dtd := Some dtd';
@@ -210,21 +210,19 @@ let merge_result_xmls input output_file =
             testsuite_members
         in
 
-        let timestamp = get_attr "timestamp" testsuites_attrs in
         let time = time +. (get_attr "time" testsuites_attrs |> float_of_string) in
         let tests = tests + (get_attr "tests" testsuites_attrs |> int_of_string) in
         let failures = failures + (get_attr "failures" testsuites_attrs |> int_of_string) in
         let disabled = disabled + (get_attr "disabled" testsuites_attrs |> int_of_string) in
         let errors = errors + (get_attr "errors" testsuites_attrs |> int_of_string) in
-        tests, failures, disabled, errors, timestamp, time, testsuite_members)
-      (0, 0, 0, 0, "", 0., [])
+        tests, failures, disabled, errors, time, testsuite_members)
+      (0, 0, 0, 0, 0., [])
       input
   in
   let attrs = [ ("", "tests"), string_of_int tests;
                 ("", "failures"), string_of_int failures;
                 ("", "disabled"), string_of_int disabled;
                 ("", "errors"), string_of_int errors;
-                ("", "timestamp"), timestamp;
                 ("", "time"), string_of_float time;
               ]
   in

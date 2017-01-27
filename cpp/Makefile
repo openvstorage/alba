@@ -1,6 +1,5 @@
 CXX ?= g++
 ALBA_HOME ?=../
-GOBJFS_HOME ?=$(ALBA_HOME)/../gobjfs
 
 # g++ 5 and clang++-3.7 have binary compatibility problems
 # & dynamic linking with boost libraries causes arbitrary segv's for g++
@@ -15,22 +14,20 @@ WARNINGS = \
 	-Woverloaded-virtual -Wnon-virtual-dtor
 FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC
 
-CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include -I$(GOBJFS_HOME)/include
+CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
 
 LIBDIRS = -L/usr/lib/x86_64-linux-gnu -L/usr/local/lib \
-          -L/usr/lib \
-          -L$(GOBJFS_HOME)/lib
+          -L/usr/lib
 
 LIBS_lib = -lboost_system -lboost_thread -lboost_log -lpthread -lboost_program_options \
-           -lsnappy \
-	   -lgobjfs_client -lxio
+           -lsnappy -lrdmacm
 
 LIBS_exec = -L/usr/local/lib \
 	-Wl,-Bstatic \
 	  -lboost_log -lboost_system -lboost_thread -lboost_program_options \
 	-Wl,-Bdynamic \
-	-L./lib -lalba -lrdmacm -lpthread \
-	-lsnappy -lgobjfs_client -lxio
+        -L./lib -lalba -lrdmacm -lpthread \
+        -lsnappy
 
 _OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \

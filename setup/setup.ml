@@ -47,7 +47,6 @@ module Config = struct
       tls : bool;
       ip: string option;
       alba_rdma : string option; (* ip of the rdma capable nic *)
-      alba_rora : bool; (* use rora back door on ASDs *)
       alba_asd_log_level : string;
       alba_proxy_log_level : string;
       alba_asd_base_paths :string list;
@@ -63,7 +62,7 @@ module Config = struct
       etcd : ((string * int) list * string) option;
     }
 
-  let make ?(n_osds = 12) ?workspace ?use_rora () =
+  let make ?(n_osds = 12) ?workspace () =
     let home = Sys.getenv "HOME" in
     let workspace =
       match workspace with
@@ -109,10 +108,6 @@ module Config = struct
     in
     let tls = env_or_default_bool "ALBA_TLS" false in
     let alba_rdma = env_or_default_generic (fun x -> Some x) "ALBA_RDMA" None
-    and alba_rora =
-      get_some_default
-        (env_or_default_bool "ALBA_RORA" false)
-        use_rora
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
     and alba_proxy_log_level = env_or_default "ALBA_PROXY_LOG_LEVEL" "debug"
@@ -139,7 +134,6 @@ module Config = struct
       tls;
       ip = alba_ip;
       alba_rdma;
-      alba_rora;
       alba_asd_log_level;
       alba_proxy_log_level;
       alba_asd_base_paths;
@@ -828,16 +822,12 @@ type asd_cfg = {
     __warranty_void__write_blobs  : (bool option [@default None]);
     use_fadvise  : (bool [@default true]);
     use_fallocate: (bool [@default true]);
-    rora_ips : string list option;
-    rora_port : int option;
-    rora_transport : string option;
   }[@@deriving yojson]
 
 let make_asd_config
       ?write_blobs
       ?(use_fadvise = true)
       ?(use_fallocate = true)
-      ~use_rora ~rora_transport ?rora_ips
       ~(port:int)
       ?transport
       ~(ip:string option)
@@ -847,10 +837,6 @@ let make_asd_config
   let ips = match ip with
     | None -> [local_ip_address ()];
     | Some ip -> [ip]
-  in
-  let rora_port = match use_rora with
-    | false -> None
-    | true -> Some (port + 1000)
   in
   {node_id;
    asd_id;
@@ -866,9 +852,6 @@ let make_asd_config
    __warranty_void__write_blobs   = write_blobs;
    use_fadvise;
    use_fallocate;
-   rora_ips;
-   rora_port;
-   rora_transport;
   }
 
 
@@ -877,7 +860,6 @@ let make_asd_config
 class asd ?(use_fadvise = true)
           ?(use_fallocate = true)
           ?write_blobs ?transport ~ip
-          ?rora_ips ~use_rora ?rora_transport
           node_id asd_id alba_bin arakoon_path home
           ~(port:int) ~etcd tls ~log_level
   =
@@ -887,7 +869,6 @@ class asd ?(use_fadvise = true)
                   ~use_fallocate
                   ?write_blobs ?transport ~ip
                   node_id asd_id home ~port tls
-                  ~use_rora ?rora_ips ~rora_transport
                   ~log_level
   in
 
@@ -1061,7 +1042,7 @@ module Deployment = struct
   let make_osds
         ?(base_port=8000)
         ?write_blobs
-        ?(transport = `None) ~ip ~use_rora ?rora_ips ?rora_transport
+        ?(transport = `None) ~ip
         n local_nodeid_prefix base_paths arakoon_path alba_bin
         ~etcd (tls:bool) ~log_level =
     let rec loop asds base_paths j =
@@ -1099,11 +1080,6 @@ module Deployment = struct
                         ?write_blobs
                         ?transport:(to_transport transport)
                         ~ip
-                        ~use_rora
-                        ?rora_ips
-                        ?rora_transport:(match rora_transport with
-                                         | None -> None
-                                         | Some x -> to_transport x)
                         node_id_s asd_id
                         alba_bin
                         arakoon_path
@@ -1119,7 +1095,7 @@ module Deployment = struct
   let make_default
         ?__retry_timeout
         ?(cfg = Config.default) ?(base_port=4000)
-        ?asd_transport ?rora_transport
+        ?asd_transport
         ?write_blobs ?fragment_cache () =
     let abm =
       let id = "abm"
@@ -1169,8 +1145,6 @@ module Deployment = struct
                          ?write_blobs
                          ~ip:cfg.ip
                          ?transport:asd_transport
-                         ~use_rora:cfg.alba_rora
-                         ?rora_transport
                          cfg.n_osds
                          cfg.local_nodeid_prefix
                          cfg.alba_asd_base_paths
@@ -1647,7 +1621,6 @@ module Test = struct
       alba_connection_host : string ;
       alba_connection_port : string ;
       alba_connection_transport : string;
-      alba_connection_use_rora : bool;
       alba_connection_preset : string;
     } [@@ deriving yojson, show]
 
@@ -1658,14 +1631,13 @@ module Test = struct
   let backend_cfg_dir cfg = cfg.workspace ^ "/tmp/voldrv"
   let backend_cfg_file cfg = backend_cfg_dir cfg  ^ "/backend.json"
 
-  let make_backend_cfg cfg ~host ~port ~transport ~use_rora ~preset_name =
+  let make_backend_cfg cfg ~host ~port ~transport ~preset_name =
       {
         backend_connection_manager = {
           backend_type = "ALBA";
           alba_connection_host = host;
           alba_connection_port = port;
           alba_connection_transport = transport; (* "RDMA" | "TCP" *)
-          alba_connection_use_rora = use_rora;
           alba_connection_preset = preset_name;
         }
       }
@@ -1686,14 +1658,12 @@ module Test = struct
     let backend_cfg =
       let host, transport = _get_ip_transport cfg
       and port = "10000"
-      and use_rora = cfg.alba_rora
       in
-      let preset_name = if use_rora then "preset_rora" else "default" in
+      let preset_name = "default" in
       make_backend_cfg cfg
                        ~host
                        ~port
                        ~transport
-                       ~use_rora
                        ~preset_name
     in
     let oc = open_out (backend_cfg_file cfg) in
@@ -1724,10 +1694,7 @@ module Test = struct
   let setup_aaa ~bump_ids ?(the_prefix="my_prefix") ?(the_preset="default") () =
     (* alba accelerated alba *)
     let workspace = env_or_default "WORKSPACE" (Unix.getcwd ()) in
-    let cfg_ssd = Config.make
-                    ~use_rora:false (* no rora for now, as it doesn't work anyway *)
-                    ~workspace:(workspace ^ "/tmp/alba_ssd") ()
-    in
+    let cfg_ssd = Config.make ~workspace:(workspace ^ "/tmp/alba_ssd") () in
     let t_ssd = Deployment.make_default ~cfg:cfg_ssd ~base_port:6000 () in
     Deployment.kill t_ssd;
     Shell.cmd_with_capture [ "rm"; "-rf"; workspace ^ "/tmp" ] |> print_endline;
@@ -2655,7 +2622,6 @@ module Test = struct
                                       tx.cfg.alba_asd_base_paths
                                       tx.cfg.arakoon_path
                                       ~ip:tx.cfg.ip
-                                      ~use_rora:false ~rora_transport:`None
                                       tx.cfg.alba_06_bin
                                       ~etcd:tx.cfg.etcd
                                       false
@@ -2805,7 +2771,7 @@ module Test = struct
     0
 
   let rora ?(xml=false) ?filter ?dump _ =
-    let cfg = Config.make ~use_rora:true () in
+    let cfg = Config.make () in
     let t = Deployment.make_default ~cfg () in
     Deployment.kill t;
     Deployment.setup t;
@@ -3068,16 +3034,12 @@ module Test = struct
 
   let asd_transport_combos ?(xml=false) ?filter ?dump t =
     Deployment.kill t;
-    let cfg = Config.make ~n_osds:4 ~use_rora:true () in
+    let cfg = Config.make ~n_osds:4 () in
     let t = Deployment.make_default
               ~asd_transport:(`Mixed (fun i ->
                                       if i / 2 = 0
                                       then Some "tcp"
                                       else Some "rdma"))
-              ~rora_transport:(`Mixed (fun i ->
-                                       if i mod 2 = 0
-                                       then Some "tcp"
-                                       else Some "rdma"))
               ~cfg () in
     Deployment.setup t;
     (* TODO
@@ -3327,7 +3289,7 @@ module ASDBorder = struct
             cfg.alba_bin "xxx"
             mount_point
             ~port ~etcd:None ~log_level
-            ~use_rora:false None
+            None
       in
       let ip_v =
         match ip with

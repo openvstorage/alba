@@ -157,15 +157,6 @@ RUN git clone https://github.com/toolslive/ordma.git \
     && make install
 
 
-RUN git clone https://github.com/openvstorage/gobjfs.git
-RUN cd gobjfs  && git pull && git checkout c729acc4c52f36d811c2ac71da77fb834de14075
-RUN cd gobjfs \
-       && mkdir build \
-       && cd build \
-       && cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO .. \
-       && make \
-       && make install
-
 # Install alba 0.6, and arakoon.1.8.9 which we might need for compatibility tests
 RUN echo "deb http://apt.openvstorage.org chicago-community main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get update && apt-get install -y --force-yes alba arakoon liburiparser1 gdb

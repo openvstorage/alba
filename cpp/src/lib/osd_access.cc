@@ -50,29 +50,6 @@ std::shared_ptr<info_caps> OsdAccess::_find_osd(osd_t osd) {
   }
 }
 
-std::shared_ptr<gobjfs::xio::client_ctx> OsdAccess::_find_ctx(osd_t osd) {
-  std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
-
-  auto &map = _osd_ctx;
-  auto it = map.find(osd);
-  if (it == map.end()) {
-    return nullptr;
-  } else {
-    return it->second;
-  }
-}
-
-void OsdAccess::_set_ctx(osd_t osd,
-                         std::shared_ptr<gobjfs::xio::client_ctx> ctx) {
-  std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
-  _osd_ctx[osd] = std::move(ctx);
-}
-
-void OsdAccess::_remove_ctx(osd_t osd) {
-  std::lock_guard<std::mutex> lock(_osd_ctxs_mutex);
-  _osd_ctx.erase(osd);
-}
-
 bool OsdAccess::update(Proxy_client &client) {
   bool result = true;
   if (!_filling.load()) {
@@ -168,101 +145,6 @@ int OsdAccess::_read_osd_slices_asd_direct_path(
     // asd was disqualified
     return -2;
   }
-}
-
-using namespace gobjfs::xio;
-int OsdAccess::_read_osd_slices_xio(osd_t osd, std::vector<asd_slice> &slices) {
-
-  ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices(" << osd << ")");
-
-  auto ctx = _find_ctx(osd);
-
-  if (ctx == nullptr) {
-    std::shared_ptr<gobjfs::xio::client_ctx_attr> ctx_attr = ctx_attr_new();
-
-    auto maybe_ic = _find_osd(osd);
-    if (nullptr == maybe_ic) {
-      ALBA_LOG(WARNING, "have context, but no info?");
-      return -1;
-    }
-    const info_caps &ic = *maybe_ic;
-    const auto &osd_info = ic.first;
-    const auto &osd_caps = ic.second;
-    std::string transport_name;
-    if (boost::none == osd_caps.rora_transport) {
-      if (osd_info.use_rdma) {
-        transport_name = "rdma";
-      } else {
-        transport_name = "tcp";
-      }
-    } else {
-      transport_name = *osd_caps.rora_transport;
-    }
-    if (boost::none == osd_caps.rora_port) {
-      ALBA_LOG(DEBUG, "osd " << osd << " has no rora port. returning -1");
-      return -1;
-    }
-
-    int backdoor_port = *osd_caps.rora_port;
-
-    std::string ip;
-    if (osd_caps.rora_ips != boost::none) {
-      // TODO randomize the ip used here
-      ip = (*osd_caps.rora_ips)[0];
-    } else {
-      ip = osd_info.ips[0];
-    }
-
-    ALBA_LOG(DEBUG, "OsdAccess::_read_osd_slices osd_id="
-                        << osd << ", backdoor_port=" << backdoor_port
-                        << ", ip=" << ip << ", transport=" << transport_name);
-
-    int err =
-        ctx_attr_set_transport(ctx_attr, transport_name, ip, backdoor_port);
-    if (err != 0) {
-      throw osd_access_exception(err, "ctx_attr_set_transport");
-    }
-
-    ctx = ctx_new(ctx_attr);
-    err = ctx_init(ctx);
-    if (err != 0) {
-      throw osd_access_exception(err, "ctx_init");
-    }
-    _set_ctx(osd, ctx);
-  }
-  size_t n_slices = slices.size();
-  std::vector<giocb *> iocb_vec(n_slices);
-  std::vector<giocb> giocb_vec(n_slices);
-  std::vector<std::string> key_vec(n_slices);
-
-  for (uint i = 0; i < n_slices; i++) {
-    asd_slice &slice = slices[i];
-    giocb &iocb = giocb_vec[i];
-    iocb.aio_offset = slice.offset;
-    iocb.aio_nbytes = slice.len;
-    iocb.aio_buf = slice.target;
-    iocb_vec[i] = &iocb;
-    key_vec[i] = slice.key;
-  }
-
-  int ret = aio_readv(ctx, key_vec, iocb_vec);
-  if (ret == 0) {
-    ret = aio_suspendv(ctx, iocb_vec, nullptr /* timeout */);
-  }
-  for (auto &elem : iocb_vec) {
-    auto retcode = aio_return(ctx, elem);
-    if (ret != 0) {
-      ALBA_LOG(ERROR, "aio_return retcode:" << retcode << ", osd_id=" << osd
-                                            << ", ret=" << ret);
-    }
-    aio_finish(ctx, elem);
-  }
-  // ALBA_LOG(DEBUG, "osd_access: ret=" << ret);
-  if (ret != 0 && ctx_is_disconnected(ctx)) {
-    ALBA_LOG(INFO, "removing bad ctx");
-    _remove_ctx(osd);
-  }
-  return ret;
 }
 
 std::ostream &operator<<(std::ostream &os, const asd_slice &s) {
