@@ -587,10 +587,11 @@ let alba_get_disk_safety
           end) >>= fun namespaces ->
 
          client # mgr_access # get_maintenance_config >>= fun maintenance_config ->
-         let t_should_have_activity = Unix.gettimeofday () -. maintenance_config.Maintenance_config.auto_repair_timeout_seconds in
+         let now = Unix.gettimeofday () in
+         let t_should_have_activity = now -. maintenance_config.Maintenance_config.auto_repair_timeout_seconds in
 
          client # mgr_access # list_all_claimed_osds >>= fun (_, all_osds) ->
-         let osds =
+         let dead_osds =
            List.filter
              (fun (osd_id, osd_info) ->
                let open Nsm_model.OsdInfo in
@@ -603,7 +604,12 @@ let alba_get_disk_safety
                       | t_read :: _, t_write :: _, [] ->
                         t_should_have_activity > (min t_read t_write)
                       | _, [], _
-                      | [], _, _ -> true
+                      | [], _, _ ->
+                         begin
+                           match osd_info.claimed_since with
+                           | None -> true
+                           | Some tc -> tc +. 60.0 <= now
+                         end
                      )
                   )
                || List.mem (get_long_id osd_info.kind) long_ids
@@ -614,7 +620,7 @@ let alba_get_disk_safety
          let actual_long_ids =
            List.map
              (fun (_, osd_info) -> Nsm_model.OsdInfo.(get_long_id osd_info.kind))
-             osds
+             dead_osds
          in
          List.iter
            (fun long_id ->
@@ -622,14 +628,15 @@ let alba_get_disk_safety
              then failwith (Printf.sprintf "unknown osd %s" long_id))
            long_ids;
 
-         let osds = List.map fst osds in
+         let dead_osds = List.map fst dead_osds in
 
          (client # mgr_access # list_all_purging_osds >>= fun (_, osds') ->
           Lwt.return (List.rev_append
-                        osds
-                        osds')) >>= fun osds ->
+                        dead_osds
+                        osds'))
+         >>= fun dead_osds ->
 
-         Disk_safety.get_disk_safety client namespaces osds >>= fun res ->
+         Disk_safety.get_disk_safety client namespaces dead_osds >>= fun res ->
 
          if to_json
          then

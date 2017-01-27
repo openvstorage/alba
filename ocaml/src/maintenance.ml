@@ -230,9 +230,11 @@ class client ?(retry_timeout = 60.)
 
     method failure_detect_all_osds : unit Lwt.t =
       let first_time = ref true in
+      let task_name = "failure_detect_all_osds" in
       Lwt_extra2.run_forever
-        "failure_detect_all_osds"
+        task_name
         (fun () ->
+         Lwt_log.info task_name >>= fun () ->
          if maintenance_config.Maintenance_config.enable_auto_repair
          then
            begin
