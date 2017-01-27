@@ -363,8 +363,8 @@ let download_chunk
 
   ignore threads;
 
-  Lwt.pick [ CountDownLatch.await successes;
-             CountDownLatch.await failures; ] >>= fun () ->
+  Lwt.choose [ CountDownLatch.await successes;
+               CountDownLatch.await failures; ] >>= fun () ->
 
   finito := true;
 
