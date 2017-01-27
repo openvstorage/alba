@@ -237,7 +237,7 @@ module AsdMgmt = struct
                _capacity : int64 ref;
                limit : int64;
                mutable full : bool; (* override *)
-               mutable slowness : (float * float) option
+               mutable slowness : (float * float) option;
              }
     let _next_msg_id =
       Slice.wrap_string Osd_keys.AlbaInstance.next_msg_id

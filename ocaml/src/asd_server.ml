@@ -751,42 +751,66 @@ let execute_query : type req res.
                     if dir_info.DirectoryInfo.write_blobs
                     then
                       begin
-                        DirectoryInfo.with_blob_fd
-                          dir_info fnr
-                          (fun blob_fd ->
-                           let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
-                           let () =
-                             if dir_info.DirectoryInfo.use_fadvise
-                             then
-                               begin
-                                 Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_RANDOM;
-                                 List.iter
-                                   (fun (offset, length) ->
-                                    Posix.posix_fadvise
-                                      blob_ufd
-                                      offset length
-                                      Posix.POSIX_FADV_WILLNEED)
-                                   slices
-                               end
-                           in
-                           Lwt_list.iter_s
-                             (fun (offset, length) ->
-                              Net_fd.sendfile_all
-                                ~fd_in:blob_fd ~offset
-                                ~fd_out:nfd
-                                length
-                              >>= fun () ->
-                              let () =
-                                if dir_info.DirectoryInfo.use_fadvise
-                                then
-                                  Posix.posix_fadvise
-                                    blob_ufd
-                                    0 size
-                                    Posix.POSIX_FADV_DONTNEED
-                              in
-                              Lwt.return_unit)
-                             slices
+                        let classic =
+                          (match nfd with
+                           | Net_fd.Plain _ -> false
+                           | _ ->true
                           )
+                        in
+                        if classic
+                        then
+                          begin
+                            DirectoryInfo.with_blob_fd
+                              dir_info fnr
+                              (fun blob_fd ->
+                                let blob_ufd = Lwt_unix.unix_file_descr blob_fd in
+                                let () =
+                                  if dir_info.DirectoryInfo.use_fadvise
+                                  then
+                                    begin
+                                      Posix.posix_fadvise blob_ufd 0 size Posix.POSIX_FADV_RANDOM;
+                                      List.iter
+                                        (fun (offset, length) ->
+                                          Posix.posix_fadvise
+                                            blob_ufd
+                                            offset length
+                                            Posix.POSIX_FADV_WILLNEED)
+                                        slices
+                                    end
+                                in
+                                Lwt_list.iter_s
+                                  (fun (offset, length) ->
+                                    Net_fd.sendfile_all
+                                      ~fd_in:blob_fd ~offset
+                                      ~fd_out:nfd
+                                      length
+                                    >>= fun () ->
+                                    let () =
+                                      if dir_info.DirectoryInfo.use_fadvise
+                                      then
+                                        Posix.posix_fadvise
+                                          blob_ufd
+                                          0 size
+                                          Posix.POSIX_FADV_DONTNEED
+                                    in
+                                    Lwt.return_unit)
+                                  slices
+                              )
+                          end
+                        else
+                          begin
+                            let fn = DirectoryInfo.get_file_path dir_info fnr in
+                            let n = List.length slices in
+                            let (socket:int) = match
+                                nfd with
+                              | Net_fd.Plain fd -> Lwt_extra2.lwt_unix_fd_to_fd fd
+                              | _ -> failwith "can't happen"
+                            in
+                            Lwt_log.debug_f "socket=%i" socket >>= fun () ->
+                            Alba_partial_read.partial_read
+                              fn n slices socket
+                              dir_info.DirectoryInfo.use_fadvise
+                          end
                       end
                     else
                       Lwt_list.iter_s

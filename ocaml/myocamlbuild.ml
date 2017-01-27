@@ -138,7 +138,8 @@ let _ = dispatch &
                  ["src/tools/alba_crc32c_stubs.o";
                   "src/tools/alba_gcrypt_stubs.o";
                   "src/tools/alba_wrappers_stubs.o";
-                  "src/other/posix_stubs.o"
+                  "src/other/posix_stubs.o";
+                  "src/tools/alba_partial_read_stubs.o";
                  ];
 
              flag ["c";"compile"]
