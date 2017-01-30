@@ -546,11 +546,13 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | DropCache ->
       fun stats namespace -> alba_client # drop_cache namespace ~global:false
     | ProxyStatistics ->
-       fun stats clear ->
+       fun stats request ->
        begin
-         let stopped = ProxyStatistics.clone stats in
-         let () = ProxyStatistics.stop stopped in
-         if clear then ProxyStatistics.clear stats;
+         let open ProxyStatistics in
+         let () = forget stats request.forget in
+         let stopped = clone stats in
+         let () = stop stopped in
+         if request.clear then clear stats;
          Lwt.return stopped
        end
     | GetVersion -> fun stats () -> Lwt.return Alba_version.summary

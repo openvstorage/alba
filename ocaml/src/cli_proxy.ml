@@ -376,11 +376,13 @@ let proxy_invalidate_cache_cmd =
   Term.info "proxy-invalidate-cache"
             ~doc:"invalidate the cache on the proxy for $(NAMESPACE)"
 
-let proxy_statistics host port transport clear to_json verbose =
+let proxy_statistics host port transport clear forget to_json verbose =
+  let open Proxy_protocol in
+  let request = { ProxyStatistics.clear ; forget } in
   proxy_client_cmd_line
     host port transport ~to_json ~verbose
     (fun client ->
-     client # statistics clear >>= fun stats ->
+     client # statistics request >>= fun stats ->
      if to_json
      then
        let open Alba_json.ProxyStatistics in
@@ -391,9 +393,19 @@ let proxy_statistics host port transport clear to_json verbose =
     )
 
 let proxy_statistics_cmd =
+  let forget =
+    let doc =
+      "comma separated list of $(docv) that should be forgotten"
+    in
+    Arg.(value
+         & opt (list string) []
+         & info ["forget"] ~docv:"NAMESPACEs" ~doc
+    )
+  in
   Term.(pure proxy_statistics
         $ host $ port 10000 $ transport
-        $ clear $ to_json $ verbose ),
+        $ clear $ forget
+        $ to_json $ verbose ),
   Term.info "proxy-statistics" ~doc:"retrieve statistics for this proxy"
 
 let proxy_delete_namespace host port transport namespace to_json verbose =

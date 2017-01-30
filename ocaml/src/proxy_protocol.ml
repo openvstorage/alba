@@ -45,6 +45,9 @@ module ProxyStatistics = struct
         let find t a = List.assoc a t
 
         let add t a b = (a,b) :: t
+
+        let remove t a = List.remove_assoc a t
+
       end
 
     type ns_t = {
@@ -202,6 +205,14 @@ module ProxyStatistics = struct
         let () = t.t.ns_stats <- H.add t.t.ns_stats ns v in
         v
 
+    let forget t nss =
+      let r =
+        List.fold_left
+          (fun acc ns ->H.remove acc ns)
+          t.t.ns_stats nss
+      in
+      t.t.ns_stats <- r
+
     let show' ~only_changed t =
       show
         (if only_changed
@@ -267,6 +278,23 @@ module ProxyStatistics = struct
      ns_stats.fragment_cache_misses <- ns_stats.fragment_cache_misses + fc_misses;
      ()
 
+   type request = { clear: bool ;
+                    forget : string list }
+
+   let request_to buf r =
+     let module W = Llio2.WriteBuffer in
+     W.bool_to buf r.clear;
+     W.list_to W.string_to buf r.forget
+
+   let request_from buf =
+     let module R = Llio2.ReadBuffer in
+     let clear = R.bool_from buf in
+     let forget =
+       R.maybe_from_buffer (R.list_from R.string_from) [] buf
+     in
+     { clear; forget }
+
+   let deser_request = request_from, request_to
 end
 
 module Protocol = struct
@@ -452,7 +480,7 @@ module Protocol = struct
                                  * manifest_with_id) list))) request
     | InvalidateCache : (Namespace.name, unit) request
     | DropCache : (Namespace.name, unit) request
-    | ProxyStatistics : (bool, ProxyStatistics.t) request
+    | ProxyStatistics : (ProxyStatistics.request, ProxyStatistics.t) request
     | GetVersion : (unit, (int * int * int * string)) request
     | OsdView : (unit, (string * Albamgr_protocol.Protocol.Osd.ClaimInfo.t) counted_list
                        * (Albamgr_protocol.Protocol.Osd.id
@@ -632,7 +660,7 @@ module Protocol = struct
         Deser.bool
     | InvalidateCache -> Deser.string
     | DropCache -> Deser.string
-    | ProxyStatistics -> Deser.bool
+    | ProxyStatistics -> ProxyStatistics.deser_request
     | GetVersion      -> Deser.unit
     | OsdView         -> Deser.unit
     | GetClientConfig -> Deser.unit
