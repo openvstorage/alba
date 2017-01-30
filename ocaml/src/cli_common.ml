@@ -324,10 +324,10 @@ let lido =
   )
 
 let long_ids =
-  let doc = "comma seperated $(docv) list of the osds involved" in
+  let doc = "comma separated list of $(docv)" in
   Arg.(value
        & opt (list string) []
-       & info ["long-id"] ~docv:"LONG_ID" ~doc
+       & info ["long-id"] ~docv:"LONG_IDs" ~doc
   )
 
 let consistent_read =
