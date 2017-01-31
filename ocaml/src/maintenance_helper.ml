@@ -134,14 +134,22 @@ let _upload_missing_fragments
         fragment_checksum_algo
       >>= fun (packed_fragment, _, _, checksum', fragment_ctr) ->
 
+      let old_f_checksums_for_chunk =
+        List.nth_exn manifest.Manifest.fragments chunk_id
+        |> List.map Manifest._crc_of
+      in
+      let old_fp_sizes_for_chunk =
+        List.nth_exn manifest.Manifest.fragments chunk_id
+        |> List.map Manifest._len_of
+      in
       RecoveryInfo.make
         ~object_name:manifest.Manifest.name
         ~object_id
         object_info_o
         encryption
         (List.nth_exn manifest.Manifest.chunk_sizes chunk_id)
-        (List.nth_exn manifest.Manifest.fragment_packed_sizes chunk_id)
-        (List.nth_exn manifest.Manifest.fragment_checksums chunk_id)
+        old_fp_sizes_for_chunk
+        old_f_checksums_for_chunk
         fragment_ctr
       >>= fun recovery_info_slice ->
       let recovery_info_blob_old = Osd.Blob.Slice recovery_info_slice in
@@ -157,16 +165,10 @@ let _upload_missing_fragments
            (Compression.show compression)
          >>= fun () ->
          let packed_size' = Lwt_bytes2.Lwt_bytes.length packed_fragment in
-
-         let old_f_checksums_for_chunk =
-           List.nth_exn manifest.Manifest.fragment_checksums chunk_id
-         in
          let new_f_checksums_for_chunk =
            List.replace fragment_id checksum' old_f_checksums_for_chunk
          in
-         let old_fp_sizes_for_chunk =
-           List.nth_exn manifest.Manifest.fragment_packed_sizes chunk_id
-         in
+
          let new_fp_sizes_for_chunk =
            List.replace fragment_id packed_size' old_fp_sizes_for_chunk
          in

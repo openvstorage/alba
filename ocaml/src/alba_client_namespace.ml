@@ -124,7 +124,7 @@ let delete_namespace
       drop_cache_by_id
       ~namespace
   =
-  Lwt_log.debug_f "Alba_client: delete_namespace %S" namespace >>= fun () ->
+  Lwt_log.info_f "Alba_client: delete_namespace %S" namespace >>= fun () ->
 
   nsm_host_access # with_namespace_id
     ~namespace

@@ -37,7 +37,7 @@ let repair_object_generic
   let object_name = manifest.Manifest.name in
   let object_id = manifest.Manifest.object_id in
 
-  let locations = manifest.Manifest.fragment_locations in
+  let locations = Manifest.locations manifest in
   let fragment_info = Manifest.combined_fragment_infos manifest in
 
   alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->

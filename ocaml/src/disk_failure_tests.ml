@@ -87,9 +87,7 @@ let _easiest_upload () =
      >>= fun (manifest,_, _,_) ->
      Lwt_io.printlf "manifest=%s" ([%show : Nsm_model.Manifest.t] manifest)
      >>= fun()->
-     let open Manifest in
-     let chunks = manifest.fragment_locations in
-     let osd_id_o, version_id = List.hd_exn (List.hd_exn chunks) in
+     let osd_id_o, version_id = Manifest.get_location manifest 0 0 in
      Lwt_io.printlf "osd_id:%Li" (Option.get_some osd_id_o))
 
 

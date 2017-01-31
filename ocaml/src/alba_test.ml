@@ -119,9 +119,8 @@ let maybe_delete_fragment
   chunk_id fragment_id =
   let open Nsm_model in
   let osd_id_o, version_id =
-    Layout.index
-      manifest.Manifest.fragment_locations
-      chunk_id fragment_id in
+    Manifest.get_location manifest chunk_id fragment_id
+  in
   match osd_id_o with
   | None ->
     Lwt.return ()
@@ -283,7 +282,7 @@ let test_upload_download () =
            ~should_cache:false
          >>= fun (hm,omanifest) ->
          let manifest = Option.get_some omanifest in
-         let locations = List.hd_exn (manifest.Manifest.fragment_locations) in
+         let n_chunks = Manifest.n_chunks manifest in
 
          maybe_delete_fragment
            ~update_manifest:false
@@ -292,7 +291,7 @@ let test_upload_download () =
          maybe_delete_fragment
            ~update_manifest:false
            alba_client namespace_id manifest
-           0 (List.length locations - 1) >>= fun () ->
+           0 (n_chunks - 1) >>= fun () ->
 
          verify_download () >>= fun () ->
 
@@ -358,10 +357,8 @@ let test_delete_namespace () =
          >>= fun (hm,manifest_o) ->
          let manifest = Option.get_some manifest_o in
          let object_id = manifest.Nsm_model.Manifest.object_id in
-         let locations =
-           let open Nsm_model in
-           manifest.Manifest.fragment_locations
-         in
+         let locations = Nsm_model.Manifest.locations manifest in
+
          let osd_id_o, version_id = List.hd_exn (List.hd_exn locations) in
          let osd_id = Option.get_some osd_id_o in
          Lwt_io.printlf "using osd %Li for assertions" osd_id >>= fun () ->
@@ -435,9 +432,8 @@ let test_clean_obsolete_keys () =
          >>= fun (hm,manifest_o) ->
          let manifest = Option.get_some manifest_o in
          let object_id = manifest.Manifest.object_id in
-
-         let locations = manifest.Manifest.fragment_locations in
-         let osd_id_o_first_fragment, version_id = List.hd_exn (List.hd_exn locations) in
+         let osd_id_o_first_fragment, version_id =
+           Manifest.get_location manifest 0 0 in
          let osd_id_first_fragment = Option.get_some osd_id_o_first_fragment in
          let assert_fragment assert_ =
            Lwt_io.printlf "assert_fragment.." >>= fun () ->
@@ -630,8 +626,8 @@ let test_partial_download () =
 
        let open Nsm_model in
        let size, checksum =
+         assert (1 < Manifest.n_chunks mf);
          let open Manifest in
-         assert (1 < List.length mf.chunk_sizes);
          mf.size, mf.checksum
        in
        assert (checksum <> Checksum.NoChecksum);
@@ -780,12 +776,12 @@ let test_partial_download_bad_fragment () =
 
      begin
        let mf = Option.get_some r in
-       let fragment_locations = mf.Nsm_model.Manifest.fragment_locations in
-       assert (Nsm_model.Layout.index fragment_locations 0 0 |> fst = None);
-       assert (Nsm_model.Layout.index fragment_locations 0 1 |> fst = None);
+       let get_loc = Nsm_model.Manifest.get_location mf in
+       assert (get_loc 0 0 |> fst = None);
+       assert (get_loc 0 1 |> fst = None);
 
        (* disqualify a osd related to (0,2) fragment *)
-       let osd_id = Nsm_model.Layout.index fragment_locations 0 2 |> fst |> Option.get_some in
+       let osd_id = get_loc 0 2 |> fst |> Option.get_some in
        alba_client # osd_access # get_osd_info ~osd_id >>= fun (_, state, _) ->
        Osd_state.disqualify state true;
        Lwt.return ()
@@ -812,10 +808,10 @@ let test_partial_download_bad_fragment () =
        Lwt_log.debug_f "%s" (Nsm_model.Manifest.show mf') >>= fun () ->
        let assert_ chunk_id fragment_id version =
          Lwt_log.ign_debug_f "asserting %i,%i,%i" chunk_id fragment_id version;
-         assert (version = (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations chunk_id fragment_id
-                            |> snd));
-         assert (None <> (Nsm_model.Layout.index mf'.Nsm_model.Manifest.fragment_locations chunk_id fragment_id
-                          |> fst))
+         let get_loc' = Nsm_model.Manifest.get_location mf' in
+         let loc' = get_loc' chunk_id fragment_id in
+         assert (version = snd loc');
+         assert (None <> fst loc')
        in
        (* both missing fragments should be repaired *)
        assert_ 0 0 2;
@@ -1257,8 +1253,8 @@ let test_missing_corrupted_fragment () =
        let object_id = mf.Manifest.object_id in
 
        (* remove a fragment *)
-       let locations = List.hd_exn (mf.Manifest.fragment_locations) in
-       let victim_osd_o, version0 = List.hd_exn locations in
+
+       let victim_osd_o, version0 = Manifest.get_location mf 0 0 in
        let victim_osd = Option.get_some victim_osd_o in
        delete_fragment
          alba_client namespace_id object_id
@@ -1286,7 +1282,8 @@ let test_missing_corrupted_fragment () =
        >>= fun (hm,r) ->
        let mf' = Option.get_some r in
        Lwt_log.debug_f "mf':%s" (Manifest.show mf') >>= fun () ->
-       let locations' = List.hd_exn mf'.Manifest.fragment_locations in
+       let locations  = List.hd_exn (Manifest.locations mf) in
+       let locations' = List.hd_exn (Manifest.locations mf') in
        let l2s = [%show : (int64 option * int) list ] in
        Lwt_log.debug_f "locations :%s" (l2s locations ) >>= fun () ->
        Lwt_log.debug_f "locations':%s" (l2s locations') >>= fun () ->
@@ -1466,7 +1463,7 @@ let test_disk_churn () =
            ~checksum_o:None
            ~allow_overwrite:NoPrevious >>= fun (mf,_, _,_) ->
 
-         let used_osds_set = Manifest.osds_used mf.Manifest.fragment_locations in
+         let used_osds_set = Manifest.osds_used mf in
          let used_osds = DeviceSet.elements used_osds_set in
          assert (List.length used_osds = (k+1));
 
@@ -1506,7 +1503,7 @@ let test_disk_churn () =
          let mf' = Option.get_some mf_o in
 
          assert (mf'.Manifest.object_id = mf.Manifest.object_id);
-         let used_osds_set' = Manifest.osds_used mf'.Manifest.fragment_locations in
+         let used_osds_set' = Manifest.osds_used mf' in
          let used_osds' = DeviceSet.elements used_osds_set' in
 
          (* assert the decommissioned osds are no longer used *)
@@ -1576,7 +1573,7 @@ let test_disk_churn () =
            let mf' = Option.get_some mf_o in
 
            (* TODO assert (mf'.Manifest.object_id = mf.Manifest.object_id); *)
-           assert (2 = DeviceSet.cardinal (Manifest.osds_used mf'.Manifest.fragment_locations));
+           assert (2 = DeviceSet.cardinal (Manifest.osds_used mf'));
            Lwt.return ()
          end >>= fun () ->
 
@@ -1593,10 +1590,7 @@ let test_disk_churn () =
 
            assert (mf_o <> None);
            let mf = Option.get_some mf_o in
-           let used_osds =
-             Manifest.osds_used mf.Manifest.fragment_locations
-             |> DeviceSet.elements
-           in
+           let used_osds = Manifest.osds_used mf |> DeviceSet.elements in
 
            let osd_id = List.hd_exn used_osds in
 
@@ -1622,7 +1616,7 @@ let test_disk_churn () =
            let mf' = Option.get_some mf_o in
 
            assert (mf'.Manifest.object_id <> mf.Manifest.object_id);
-           assert (1 = DeviceSet.cardinal (Manifest.osds_used mf'.Manifest.fragment_locations));
+           assert (1 = DeviceSet.cardinal (Manifest.osds_used mf'));
 
            Lwt.return ()
          end
@@ -1725,7 +1719,7 @@ let test_replication () =
          let open Manifest in
          let size = Int64.to_int mf.size in
 
-         let fragment_size = List.hd_exn (List.hd_exn mf.fragment_packed_sizes) in
+         let fragment_size = Manifest.get_packed_size mf 0 0 in
 
          Lwt_io.printlf "%s" (Manifest.show mf) >>= fun () ->
 
@@ -2191,13 +2185,16 @@ let test_retry_download () =
 
      let bad_mf =
        let open Nsm_model.Manifest in
-       let fragment_locations =
-         [ List.hd_exn mf.fragment_locations;
-           [ (Some 0L,0); (Some 0L,0); (Some 0L,0); ] ]
+       let bad_f = ((Some 0L,0),Nsm_model.Checksum.NoChecksum, 0,None) in
+       let fragments =
+         [ List.hd_exn (mf.fragments);
+           [ bad_f;bad_f;bad_f ]
+         ]
        in
        { mf with
          size = Int64.(add mf.size 5L);
-         fragment_locations; }
+         fragments;
+       }
      in
 
      let poison_mf_cache () =
@@ -2311,6 +2308,25 @@ let test_preset_validation () =
 
       let mf =
         let open Nsm_model in
+        let fragment_locations =
+          [ [ Some 0L, 0; Some 1L, 0; Some 2L, 0; Some 4L, 0; Some 5L, 0;
+              Some 6L, 0; Some 8L, 0; Some 9L, 0; None, 0;
+            ];
+          ] in
+        let fragment_checksums =
+          Layout.map (fun _ -> Checksum.Crc32c 0l) fragment_locations
+        and fragment_packed_sizes =
+          Layout.map (fun _ -> 0) fragment_locations
+        and fragment_ctrs =
+          Layout.map (fun _ -> None) fragment_locations
+        in
+        let fragments = Layout.map4
+                      Manifest.make_fragment
+                          fragment_locations
+                          fragment_checksums
+                          fragment_packed_sizes
+                          fragment_ctrs
+        in
         {
           Manifest.name = test_name;
           object_id = get_random_string 32;
@@ -2318,16 +2334,10 @@ let test_preset_validation () =
           storage_scheme = Storage_scheme.EncodeCompressEncrypt (Preset.Encoding_scheme.(RSVM (5,4, W8)),
                                                                  Compression.Snappy);
           encrypt_info = EncryptInfo.NoEncryption;
-          fragment_locations = [ [ Some 0L, 0; Some 1L, 0; Some 2L, 0; Some 4L, 0; Some 5L, 0;
-                                   Some 6L, 0; Some 8L, 0; Some 9L, 0; None, 0;
-                                 ];
-                               ];
           chunk_sizes = [];
           size = 0L;
           checksum = Checksum.NoChecksum;
-          fragment_checksums = [];
-          fragment_packed_sizes = [ [ 0; 0; 0; 0; 0; 0; 0; 0; 0; ]; ];
-          fragment_ctrs = [];
+          fragments;
           version_id = 0;
           max_disks_per_node = 3;
           timestamp = 0.;
@@ -2454,12 +2464,12 @@ let test_upload_epilogue () =
         >>= fun mf2 ->
         Lwt_io.printlf "manifest2:%s" (Manifest.show mf2) >>= fun () ->
         let open Manifest in
-        let side_by_side =
-          Layout.combine mf.fragment_locations mf2.fragment_locations
-        in
         let _r =
-          Layout.map
-            (fun ((o0,v0), (o1,v1)) ->
+          Layout.map2
+            (fun f0 f1 ->
+              let (o0,v0) = _loc_of f0
+              and (o1,v1) = _loc_of f1
+              in
               let () =
                 match v0,v1 with
                 | 0,0 -> ()
@@ -2474,13 +2484,16 @@ let test_upload_epilogue () =
                  OUnit.assert_equal ~msg:"osd_id" x y ~printer:Int64.to_string
               | Some _, None   -> failwith "Some,None: we lost a fragment?"
               | None  , Some x -> ()
-            ) side_by_side
+            ) mf.Manifest.fragments mf2.Manifest.fragments
         in
         let () =
+          let fps mf =
+            Layout.map Manifest._len_of mf.fragments
+          in
           OUnit.assert_equal
             ~msg:"fragment_sizes differ"
             ~printer:[%show : int Layout.t ]
-            mf.fragment_packed_sizes mf2.fragment_packed_sizes
+            (fps mf) (fps mf2)
         in
         Lwt_log.debug_f "%s: success" test_name >>= fun () ->
         Lwt.return_unit

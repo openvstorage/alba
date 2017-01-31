@@ -42,8 +42,8 @@ let verify_and_maybe_repair_object
           key >>= function
       | None -> Lwt.return `Missing
       | Some fragment_data ->
-         let checksum = Layout.index manifest.fragment_checksums
-                                     chunk_id fragment_id
+         let checksum =
+           Manifest.get_checksum manifest chunk_id fragment_id
          in
          Fragment_helper.verify fragment_data checksum
          >>= fun checksum_valid ->
@@ -80,15 +80,16 @@ let verify_and_maybe_repair_object
   in
 
   Lwt_list.mapi_s
-    (fun chunk_id chunk_location ->
-     Lwt_list.mapi_p
-       (fun fragment_id location ->
-        match location with
-        | (None, _) -> Lwt.return `NoneOsd
-        | (Some osd_id, version_id) ->
-           verify ~osd_id ~chunk_id ~fragment_id ~version_id)
-       chunk_location)
-    manifest.Manifest.fragment_locations >>= fun results ->
+    (fun chunk_id chunk ->
+      Lwt_list.mapi_p
+        (fun fragment_id fragment ->
+          let location = Manifest._loc_of fragment in
+          match location with
+          | (None, _) -> Lwt.return `NoneOsd
+          | (Some osd_id, version_id) ->
+             verify ~osd_id ~chunk_id ~fragment_id ~version_id)
+        chunk)
+    manifest.Manifest.fragments >>= fun results ->
 
   let _,
       (fragments_detected_missing,

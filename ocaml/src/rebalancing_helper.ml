@@ -100,7 +100,7 @@ let plan_move cache (too_low,ok, too_high) manifest
     let () = List.iter add (snd too_low) in
     fun osd_id -> Hashtbl.find tbl osd_id
   in
-  let object_osds = Manifest.osds_used manifest.Manifest.fragment_locations in
+  let object_osds = Manifest.osds_used manifest in
   let node_id_of osd_id =
     let open Nsm_model.OsdInfo in
     let info = Hashtbl.find cache osd_id in

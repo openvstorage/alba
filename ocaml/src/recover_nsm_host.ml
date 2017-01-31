@@ -376,8 +376,15 @@ let gather_and_push_objects
             | Some f -> f.recovery_info.fragment_ctr
           )
       in
-
       let open Nsm_model in
+      let fragments =
+        Layout.map4
+        Manifest.make_fragment
+          fragment_locations
+          fragment_checksums
+          fragment_packed_sizes
+          fragment_ctrs
+      in
       let manifest : Manifest.t =
         Manifest.make
           ~name:object_name
@@ -388,11 +395,8 @@ let gather_and_push_objects
           ~encrypt_info:(Encrypt_info_helper.from_encryption encryption)
           ~timestamp
           ~chunk_sizes
-          ~fragment_locations
-          ~fragment_checksums
-          ~fragment_packed_sizes
+          ~fragments
           ~version_id
-          ~fragment_ctrs
           (* TODO *)
           ~max_disks_per_node:100
       in
