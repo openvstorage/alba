@@ -59,7 +59,6 @@ TCP_transport::TCP_transport(const string &ip, const string &port,
 
   boost::system::error_code ec = boost::asio::error::would_block;
   auto handler = [&](const boost::system::error_code &x) -> void {
-    ALBA_LOG(DEBUG, "connect handler called ec=" << x);
     ec = x;
   };
   _socket.async_connect(sa, handler);
@@ -79,8 +78,6 @@ TCP_transport::TCP_transport(const string &ip, const string &port,
 
 void TCP_transport::expires_from_now(
     const std::chrono::steady_clock::duration &timeout) {
-  ALBA_LOG(DEBUG, "TCP_transport::expires_from_now("
-                      << _timeout.total_milliseconds() << " ms)");
   _timeout = _convert(timeout);
 }
 
@@ -93,15 +90,13 @@ void TCP_transport::write_exact(const char *buf, int len) {
   boost::system::error_code ec = boost::asio::error::would_block;
 
   auto handler = [&](const boost::system::error_code &x,
-                     std::size_t len) -> void {
-    ALBA_LOG(DEBUG, "write handler called: " << len << " bytes");
+                     std::size_t /*len */) -> void {
     ec = x;
   };
   boost::asio::async_write(_socket, buffer, handler);
 
   do {
     _io_service.run_one();
-    ALBA_LOG(DEBUG, "ran once (write)");
   } while (ec == boost::asio::error::would_block);
 
   if (ec)
@@ -114,13 +109,10 @@ void TCP_transport::read_exact(char *buf, int len) {
 
   //_io_service.reset();
   _deadline.expires_from_now(_timeout);
-  ALBA_LOG(DEBUG, "read, timeout is " << _timeout.total_milliseconds()
-                                      << " ms");
   boost::system::error_code ec = boost::asio::error::would_block;
 
   auto handler = [&](const boost::system::error_code &x,
-                     std::size_t len) -> void {
-    ALBA_LOG(DEBUG, "read handler called: " << len << " bytes");
+                     std::size_t /* len*/) -> void {
     ec = x;
   };
   boost::asio::async_read(_socket, buffer, handler);
@@ -129,7 +121,6 @@ void TCP_transport::read_exact(char *buf, int len) {
 
   do {
     _io_service.run_one();
-    ALBA_LOG(DEBUG, "ran once (read)");
   } while (ec == boost::asio::error::would_block);
 
   if (ec)
