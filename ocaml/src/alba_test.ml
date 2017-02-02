@@ -53,7 +53,8 @@ let test_with_alba_client
         )
     end
   in
-  Lwt_main.run t
+  Test_extra.lwt_run t
+
 
 let _wait_for_osds ?(cnt=11) (alba_client:Alba_client.alba_client) namespace_id =
   alba_client # nsm_host_access # get_namespace_info ~namespace_id

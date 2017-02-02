@@ -27,14 +27,14 @@ let _IP,_PORT,_TRANSPORT =
     Not_found ->
     ("127.0.0.1", 10_000, Net_fd.TCP)
 
-                   
+
 let with_proxy_client f =
   Proxy_client.with_client
     _IP _PORT _TRANSPORT
     f
 
 let test_with_proxy_client f =
-  Lwt_main.run (with_proxy_client f)
+  Test_extra.lwt_run (with_proxy_client f)
 
 let assert_proxy_error f err =
   Lwt.catch
@@ -200,7 +200,7 @@ let test_protocol_version () =
            Lwt.fail_with "wrong protocol error or no failure"
       )
   in
-  Lwt_main.run t
+  Test_extra.lwt_run t
 
 let test_unknown_operation () =
   test_with_proxy_client

@@ -14,10 +14,11 @@ in the <LICENSE.txt> file of the Open vStorage OSE distribution.
 
 Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
-*)
+ *)
 
-module Sys2 : sig
-    val get_maxrss : unit -> int
-    val lwt_get_maxrss : unit -> int Lwt.t
-    val get_num_fds : unit -> int
-end
+let lwt_run t =
+  let nfds0 = Alba_wrappers.Sys2.get_num_fds () in
+  let rc = Lwt_main.run t in
+  let nfds = Alba_wrappers.Sys2.get_num_fds () in
+  let () = Printf.printf "n_fds: before:%i after:%i\n%!" nfds0 nfds in
+  rc

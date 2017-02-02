@@ -51,7 +51,7 @@ let test_unknown_operation () =
          Lwt.return ())
     end
   in
-  Lwt_main.run t
+  Test_extra.lwt_run t
 
 let suite = "Nsm_protocol" >::: [
     "doubles" >:: doubles;

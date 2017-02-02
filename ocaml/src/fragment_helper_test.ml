@@ -55,7 +55,7 @@ let test_encrypt_decrypt () =
       t
       [ 0; 1; 15; 16; 17; 32; 255; 1024; 100_001; ]
   in
-  Lwt_main.run
+  Test_extra.lwt_run
     begin
       let open Encryption.Encryption in
       Lwt_list.iter_s
