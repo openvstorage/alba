@@ -255,6 +255,7 @@ class osd_access
     (Hashtbl.create 3
      : (Osd.id,
         OsdInfo.t * Osd_state.t  * Capabilities.OsdCapabilities.t) Hashtbl.t) in
+  let refreshers = ref [] in
   let add_osd_info ~osd_id osd_info capabilities =
     if not (Hashtbl.mem osds_info_cache osd_id)
     then
@@ -303,9 +304,12 @@ class osd_access
                closer
             )
             60.
-        in Some refresher
+        in let _t = refresher () in
+           Lwt.ignore_result _t;
+           let () = refreshers := _t :: !refreshers in
+           ()
+
       end
-    else None
   in
   let get_osd_info ~osd_id =
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
@@ -315,13 +319,7 @@ class osd_access
         | None -> failwith (Printf.sprintf "could not find osd with id %Li" osd_id)
         | Some info -> info
       in
-      let maybe_refresher =
-        add_osd_info ~osd_id  osd_info Capabilities.OsdCapabilities.default
-      in
-      let () = match maybe_refresher with
-      | None -> ()
-      | Some r -> r () |> Lwt.ignore_result
-      in
+      add_osd_info ~osd_id  osd_info Capabilities.OsdCapabilities.default;
       Lwt.return (Hashtbl.find osds_info_cache osd_id)
   in
 
@@ -467,12 +465,10 @@ class osd_access
 
     val mutable finalizing = false
 
-    val mutable refreshers = []
-
     method finalize =
       finalizing <- true;
       Osd_pool.invalidate_all osds_pool;
-      List.iter Lwt.cancel refreshers
+      List.iter Lwt.cancel !refreshers
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -492,20 +488,10 @@ class osd_access
                       ~max:(-1) >>= fun ((cnt, osds), has_more) ->
            List.iter
              (fun (osd_id, osd_info) ->
-               let maybe_refresher =
-                 add_osd_info
+               add_osd_info
                  ~osd_id
                  osd_info
                  Capabilities.OsdCapabilities.default
-               in
-               let () = match maybe_refresher with
-               | None ->()
-               | Some r ->
-                  let _t = r () in
-                  Lwt.ignore_result _t;
-                  refreshers <- _t :: refreshers
-               in
-               ()
              )
              osds;
 
