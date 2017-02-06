@@ -51,7 +51,7 @@ let test_with_albamgr f =
        ~tls_config
        f
   in
-  Lwt_main.run t
+  Test_extra.lwt_run t
 
 
 

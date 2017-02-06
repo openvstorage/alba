@@ -26,7 +26,10 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <caml/fail.h>
 #include <caml/threads.h>
 
-
+#include <string.h>
+#include <stdio.h>
+#include <dirent.h>
+#include <unistd.h>
 
 /* maybe when we need more values from getrusage,
    we can expose the whole struct. in that case, ctypes
@@ -49,4 +52,26 @@ CAMLprim value alba_get_maxrss(value unit) {
     caml_acquire_runtime_system ();
 
     CAMLreturn(Val_int(usage.ru_maxrss));
+}
+
+// http://stackoverflow.com/questions/6583158/finding-open-file-descriptors-for-a-process-linux-c-code
+CAMLprim value alba_get_num_fds(value unit){
+    CAMLparam1(unit);
+    caml_release_runtime_system();
+    int fd_count;
+    char buf[64];
+    struct dirent *dp;
+
+    snprintf(buf, 64, "/proc/%i/fd/", getpid());
+
+    fd_count = 0;
+    DIR *dir = opendir(buf);
+    while ((dp = readdir(dir)) != NULL) {
+        fd_count++;
+    }
+    closedir(dir);
+
+    caml_acquire_runtime_system ();
+    CAMLreturn(Val_int(fd_count));
+    return fd_count;
 }

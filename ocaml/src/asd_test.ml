@@ -109,10 +109,10 @@ let with_asd_client
   t
 
 let test_with_asd_client ?write_blobs test_name port f =
-  Lwt_main.run (with_asd_client ?write_blobs test_name port f)
+  Test_extra.lwt_run (with_asd_client ?write_blobs test_name port f)
 
 let test_with_kvs_client ?write_blobs test_name port f =
-  Lwt_main.run
+  Test_extra.lwt_run
     begin
       with_asd_client
         ?write_blobs
@@ -201,7 +201,7 @@ let test_startup port1 port2 () =
          assert (vs' = [ v1; v2; v3; v4 ]);
          Lwt.return ())
   in
-  Lwt_main.run t
+  Test_extra.lwt_run t
 
 let test_protocol_version port () =
   let protocol_test port =
@@ -293,7 +293,7 @@ let test_capacity port1 port2 () =
        assert (used = 0L);
        Lwt.return ())
   in
-  Lwt_main.run (t ())
+  Test_extra.lwt_run (t ())
 
 open OUnit
 

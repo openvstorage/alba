@@ -46,7 +46,7 @@ let run_with_local_fragment_cache size test test_name =
        Lwt.fail exn
       )
   in
-  let () = Lwt_main.run t in
+  let () = Test_extra.lwt_run t in
   ()
 
 let run_with_alba_fragment_cache test test_name =
@@ -71,7 +71,7 @@ let run_with_alba_fragment_cache test test_name =
     in
     test cache
   in
-  Lwt_main.run (t ())
+  Test_extra.lwt_run (t ())
 
 let test_1 () =
   let _inner (cache :Fragment_cache.blob_cache) =
@@ -320,7 +320,7 @@ let test_remove_local_cache () =
 
     Lwt.return ()
   in
-  Lwt_main.run (t ())
+  Test_extra.lwt_run (t ())
 
 let _test_lookup2 (cache : cache) =
   let bid = 0L in

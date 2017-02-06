@@ -140,7 +140,7 @@ let easiest_upload ctx =
       )
   in
   let combined = Lwt.pick [t (); report ()] in
-  Lwt_main.run combined
+  Test_extra.lwt_run combined
 
 let () =
   let suite =

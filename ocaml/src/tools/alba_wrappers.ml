@@ -17,9 +17,10 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 external alba_get_maxrss : unit -> int = "alba_get_maxrss"
-
+external alba_get_num_fds : unit -> int = "alba_get_num_fds"
 
 module Sys2 = struct
     let get_maxrss () = alba_get_maxrss ()
     let lwt_get_maxrss () = Lwt_preemptive.detach get_maxrss ()
+    let get_num_fds ()= alba_get_num_fds()
 end

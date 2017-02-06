@@ -42,7 +42,7 @@ let test_with_kvs_client test_name f =
         f (proxy_osd # global_kvs))
       (fun () -> pp # finalize)
   in
-  Lwt_main.run (t ())
+  Test_extra.lwt_run (t ())
 
 let test_set_get_delete () =
   test_with_kvs_client
