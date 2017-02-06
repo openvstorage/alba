@@ -70,6 +70,8 @@ void Asd_client::init_(boost::optional<string> long_id) {
       throw asd_exception(0xff, "wrong asd on the other side");
     }
   }
+
+  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
 }
 
 void Asd_client::partial_get(string &key, vector<slice> &slices) {

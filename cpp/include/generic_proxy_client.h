@@ -108,21 +108,25 @@ public:
 
   virtual bool has_local_fragment_cache();
 
-  GenericProxy_client(const std::chrono::steady_clock::duration &timeout);
+  GenericProxy_client(const std::chrono::steady_clock::duration &timeout,
+                      std::unique_ptr<transport::Transport> &&);
 
   virtual ~GenericProxy_client(){};
 
 protected:
-  virtual void
-  _expires_from_now(const std::chrono::steady_clock::duration &timeout) = 0;
-  virtual void _output() = 0;
-  virtual llio::message _input() = 0;
+  void init_();
+
+  // these methods delegate to _transport
+  void _expires_from_now(const std::chrono::steady_clock::duration &timeout);
+  void _output();
+  llio::message _input();
 
   proxy_protocol::Status _status;
+  std::unique_ptr<transport::Transport> _transport;
   const std::chrono::steady_clock::duration _timeout;
   message_builder _mb;
 
-  virtual void check_status(const char *function_name) = 0;
+  void check_status(const char *function_name);
 };
 }
 }

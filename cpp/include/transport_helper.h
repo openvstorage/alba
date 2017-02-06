@@ -17,21 +17,14 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
-#include "generic_proxy_client.h"
+
+#include "transport.h"
 
 namespace alba {
-namespace proxy_client {
-class TCPProxy_client : public GenericProxy_client {
-public:
-  TCPProxy_client(const std::string &ip, const std::string &port,
-                  const std::chrono::steady_clock::duration &timeout);
+namespace transport {
 
-private:
-  void check_status(const char *function_name);
-  boost::asio::ip::tcp::iostream _stream;
-  void _expires_from_now(const std::chrono::steady_clock::duration &timeout);
-  void _output();
-  llio::message _input();
-};
+std::unique_ptr<Transport>
+make_transport(const Kind, const std::string &ip, const std::string &port,
+               const std::chrono::steady_clock::duration &timeout);
 }
 }
