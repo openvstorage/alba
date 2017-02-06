@@ -269,7 +269,8 @@ class osd_access
             long_id (Osd.ClaimInfo.ThisAlba osd_id)
             !osd_long_id_claim_info;
 
-        Lwt_extra2.run_forever
+        let refresher () =
+          Lwt_extra2.run_forever
             "refresh_osd_total_used_and_capabilities"
             (fun () ->
              let osd_info,osd_state,capabilities = Hashtbl.find osds_info_cache osd_id in
@@ -302,8 +303,9 @@ class osd_access
                closer
             )
             60.
-        |> Lwt.ignore_result
+        in Some refresher
       end
+    else None
   in
   let get_osd_info ~osd_id =
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
@@ -313,7 +315,13 @@ class osd_access
         | None -> failwith (Printf.sprintf "could not find osd with id %Li" osd_id)
         | Some info -> info
       in
-      add_osd_info ~osd_id  osd_info Capabilities.OsdCapabilities.default;
+      let maybe_refresher =
+        add_osd_info ~osd_id  osd_info Capabilities.OsdCapabilities.default
+      in
+      let () = match maybe_refresher with
+      | None -> ()
+      | Some r -> r () |> Lwt.ignore_result
+      in
       Lwt.return (Hashtbl.find osds_info_cache osd_id)
   in
 
@@ -459,9 +467,12 @@ class osd_access
 
     val mutable finalizing = false
 
+    val mutable refreshers = []
+
     method finalize =
       finalizing <- true;
-      Osd_pool.invalidate_all osds_pool
+      Osd_pool.invalidate_all osds_pool;
+      List.iter Lwt.cancel refreshers
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -480,10 +491,22 @@ class osd_access
                       ~last:None ~reverse:false
                       ~max:(-1) >>= fun ((cnt, osds), has_more) ->
            List.iter
-             (fun (osd_id, osd_info) -> add_osd_info
-                                          ~osd_id
-                                          osd_info
-                                          Capabilities.OsdCapabilities.default)
+             (fun (osd_id, osd_info) ->
+               let maybe_refresher =
+                 add_osd_info
+                 ~osd_id
+                 osd_info
+                 Capabilities.OsdCapabilities.default
+               in
+               let () = match maybe_refresher with
+               | None ->()
+               | Some r ->
+                  let _t = r () in
+                  Lwt.ignore_result _t;
+                  refreshers <- _t :: refreshers
+               in
+               ()
+             )
              osds;
 
            (if has_more
