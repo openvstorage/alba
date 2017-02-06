@@ -96,9 +96,7 @@ let test_rebalance_one () =
 
 
      wait_for_lazy_write alba_client namespace_id manifest >>= fun manifest ->
-     let object_osds =
-       Manifest.osds_used manifest.Manifest.fragment_locations
-     in
+     let object_osds = Manifest.osds_used manifest in
      let set2s set=
        Printf.sprintf
          "(%i,%s)" (DeviceSet.cardinal set)
@@ -158,7 +156,7 @@ let test_rebalance_one () =
        | None -> Lwt.fail_with "no more manifest?"
        | Some mf' ->
           Lwt_log.debug_f "mf':%s" (Manifest.show mf') >>= fun () ->
-          let object_osds' = Manifest.osds_used mf'.Manifest.fragment_locations in
+          let object_osds' = Manifest.osds_used mf' in
           let diff_from = DeviceSet.diff object_osds object_osds' in
           let diff_to   = DeviceSet.diff object_osds' object_osds in
           Lwt_log.debug_f "diff_from:%s" (set2s diff_from) >>= fun () ->
@@ -372,11 +370,8 @@ let test_repair_orange () =
          ~should_cache:false >>= fun (_, mf_o) ->
        let mf' = Option.get_some mf_o in
 
-       let get_version mf x y =
-         Layout.index mf.Manifest.fragment_locations 0 0
-       in
-       let osd_id_o, version = get_version mf' 0 0 in
-       let _, version2 = get_version mf_2 0 0 in
+       let osd_id_o, version = Manifest.get_location mf' 0 0 in
+       let _, version2 = Manifest.get_location mf_2 0 0 in
        assert (osd_id_o <> None);
        OUnit.assert_equal ~msg:"fragment_version"
                           ~printer:string_of_int
@@ -447,7 +442,7 @@ let test_repair_orange2 () =
 
        let open Nsm_model in
        (* missing data fragment is regenerated *)
-       let osd_id_o, version = Layout.index mf'.Manifest.fragment_locations 0 0 in
+       let osd_id_o, version = Manifest.get_location mf' 0 0 in
        OUnit.assert_bool "osd_id was None?" (osd_id_o <> None);
        OUnit.assert_equal ~msg:"version mismatch" ~printer:string_of_int
        2 version;
@@ -503,21 +498,20 @@ let test_rebalance_node_spread () =
                         r;
 
      (* move a fragment to create a sub awesome node spread *)
-     let is_osd_used mf osd_id =
-       List.mem (Some osd_id, 0) (List.hd_exn mf.Nsm_model.Manifest.fragment_locations)
-     in
+     let osds_used = Nsm_model.Manifest.osds_used mf in
+     let is_osd_used osd_id = Nsm_model.DeviceSet.mem osd_id osds_used in
      let target_osd =
        let rec inner = function
          | [] -> assert false
          | osd_id :: tl ->
-            if is_osd_used mf osd_id
+            if is_osd_used osd_id
             then inner tl
             else osd_id
        in
        inner [ 0L; 1L; 2L; 3L; ]
      in
      let source_osd =
-       if is_osd_used mf 4L
+       if is_osd_used 4L
        then 4L
        else 5L
      in
@@ -684,8 +678,7 @@ let test_verify_namespace () =
      let object_id = mf.Manifest.object_id in
 
      (* remove a fragment *)
-     let locations = List.hd_exn (mf.Manifest.fragment_locations) in
-     let victim_osd_o, version0 = List.hd_exn locations in
+     let victim_osd_o, version0 = Manifest.get_location mf 0 0 in
      let victim_osd = Option.get_some victim_osd_o in
      Alba_test.delete_fragment
        alba_client namespace_id object_id
@@ -695,7 +688,9 @@ let test_verify_namespace () =
 
      (* overwrite a fragment with garbage (to create a checksum mismatch) *)
      begin
-       let osd_id_o, version_id = List.nth_exn locations 1 in
+       let chunk_id = 0
+       and fragment_id = 1 in
+       let osd_id_o, version_id = Manifest.get_location mf chunk_id fragment_id in
        let osd_id = Option.get_some osd_id_o in
        alba_client # with_osd
          ~osd_id
@@ -706,8 +701,8 @@ let test_verify_namespace () =
               [ Osd.Update.set_string
                   (Osd_keys.AlbaInstance.fragment
                      ~object_id ~version_id
-                     ~chunk_id:0
-                     ~fragment_id:1)
+                     ~chunk_id
+                     ~fragment_id)
                   (get_random_string 39)
                   Checksum.NoChecksum
                   false; ] >>= function
@@ -741,22 +736,15 @@ let test_verify_namespace () =
      ~msg:"version_id" ~printer:string_of_int (mf.version_id +1) mf2.version_id;
 
      (* missing fragment *)
-     let new_version_missing = mf2.fragment_locations
-                               |> List.hd_exn
-                               |> List.hd_exn
-                               |> snd
-     in
+     let new_version_missing = Manifest.get_location mf2 0 0 |> snd in
      OUnit.assert_bool "Manifest.version_id of formerly missing"
        (1 = new_version_missing);
 
      (* checksum mismatch fragment *)
-     assert (mf2.fragment_locations
-             |> List.hd_exn
-             |> fun l -> List.nth_exn l 1
-             |> snd
-             = 1);
+     assert (Manifest.get_location mf2 0 1 |> snd = 1) ;
 
-     alba_client # mgr_access # get_progress_for_prefix name >>= fun (cnt', progresses) ->
+     alba_client # mgr_access # get_progress_for_prefix name
+     >>= fun (cnt', progresses) ->
      assert (cnt = cnt');
      let objects_verified,
          fragments_detected_missing,
@@ -990,8 +978,7 @@ let test_repair_evolved_compressor () =
        let open Nsm_model in
        let open Manifest in
        (* assert missing data fragment is regenerated *)
-       let osd_id_o, version_id =
-         Layout.index mf'.fragment_locations 0 0 in
+       let osd_id_o, version_id = Manifest.get_location mf' 0 0 in
        OUnit.assert_bool "osd_id was None?" (osd_id_o <> None);
        OUnit.assert_equal ~msg:"version mismatch" ~printer:string_of_int
                           2 version_id;
@@ -1027,7 +1014,11 @@ let test_repair_evolved_compressor () =
        in
        let chunk_id = 0 in
        get_info osd_id chunk_id 0 2 >>= fun info ->
-       let chunk = List.nth_exn mf.fragment_checksums chunk_id in
+
+       let chunk =
+         List.nth_exn mf.fragments chunk_id
+         |> List.map Manifest._crc_of
+       in
        let oks = List.map2
                    (fun oldc new_c -> true)
                    chunk info.RecoveryInfo.fragment_checksums

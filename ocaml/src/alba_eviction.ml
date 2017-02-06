@@ -185,17 +185,10 @@ let lru_collect_some_garbage alba_client redis_client key =
           function
           | None -> acc
           | Some mf ->
-             let obj_disk_size =
-               List.fold_left
-                 (fun acc sizes ->
-                  List.fold_left
-                    (+)
-                    acc
-                    sizes)
-                 0
-                 mf.Nsm_model.Manifest.fragment_packed_sizes
-             in
-             Int64.(add acc (of_int obj_disk_size)))
+             Int64.(add
+               acc
+               (Nsm_model.Manifest.get_summed_fragment_sizes mf))
+         )
          0L
          mfs
      in

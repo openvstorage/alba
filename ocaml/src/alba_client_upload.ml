@@ -556,15 +556,6 @@ let upload_object''
   (* all fragments have been stored
          make a manifest and store it in the namespace manager *)
 
-  let locations,
-      fragment_checksums,
-      fragment_packed_sizes,
-      fragment_ctrs =
-    Nsm_model.Layout.split4 fragments_info
-  in
-
-  let chunk_sizes = List.map snd chunk_sizes' in
-  let open Nsm_model in
   let object_checksum = object_hash # final () in
   let checksum =
     match checksum_o with
@@ -575,10 +566,12 @@ let upload_object''
        then Error.failwith Error.ChecksumMismatch;
        checksum
   in
-  let fragment_locations =
-    Nsm_model.Layout.map
-      (fun osd_id -> osd_id, version_id)
-      locations
+  let chunk_sizes = List.map snd chunk_sizes' in
+  let open Nsm_model in
+  let fragments = (* TODO: fragments_info is almost perfect *)
+    Layout.map
+      (fun (osd_id,crc,len,ctr) -> ((osd_id,version_id),crc,len,ctr))
+      fragments_info
   in
   let manifest =
     Manifest.make
@@ -589,10 +582,7 @@ let upload_object''
       ~chunk_sizes
       ~checksum
       ~size:(Int64.of_int size)
-      ~fragment_locations
-      ~fragment_checksums
-      ~fragment_packed_sizes
-      ~fragment_ctrs
+      ~fragments
       ~version_id
       ~max_disks_per_node
       ~timestamp
@@ -623,7 +613,8 @@ let cleanup_gc_tags
      Lwt_list.iteri_p
        (fun chunk_id chunk_locs ->
         Lwt_list.iteri_p
-          (fun fragment_id (osd_id_o, version_id) ->
+          (fun fragment_id f  ->
+           let (osd_id_o, version_id) = Nsm_model.Manifest._loc_of f in
            match osd_id_o with
            | None -> Lwt.return ()
            | Some osd_id ->
@@ -644,7 +635,7 @@ let cleanup_gc_tags
                                                              [] [ remove_gc_tag; ] >>= fun _ ->
                           Lwt.return ()))
           chunk_locs)
-       mf.Nsm_model.Manifest.fragment_locations)
+       mf.Nsm_model.Manifest.fragments)
     (fun exn -> Lwt_log.debug_f ~exn "Error while cleaning up gc tags")
   |> Lwt.ignore_result
 
@@ -702,18 +693,17 @@ let store_manifest_epilogue
         >>= fun locations ->
         let side_by_side =
           let open Nsm_model in
-          let open Manifest in
-          Layout.combine3
+          Layout.map2 (fun a b -> (a,b))
             locations
-            manifest.fragment_locations
-            manifest.fragment_ctrs
+            (manifest.Manifest.fragments)
         in
         let updates =
           let r = ref [] in
           List.iteri
             (fun chunk_id chunk ->
               List.iteri
-                (fun fragment_id (new_o , (old_o, _old_version), fragment_ctr) ->
+                (fun fragment_id (new_o ,
+                                  ((old_o, _old_version), _, _ , fragment_ctr)) ->
                   match new_o, old_o with
                   | None, Some _ -> failwith "new is None ?"
                   | Some x,Some y -> assert (x=y);
@@ -746,25 +736,29 @@ let store_manifest_epilogue
             >>= fun () ->
             let manifest' =
               { manifest with
-                fragment_locations =
+                fragments =
                   Nsm_model.Layout.map_indexed
-                    (fun chunk_id fragment_id ((old_o, _) as old) ->
-                      match old_o with
-                      | None ->
-                         begin
-                           let update =
-                             List.find
-                               (fun (cid,fid,_,_,_) ->
-                                 cid = chunk_id && fid = fragment_id
-                               ) updates
-                           in
-                           match update with
-                           | Some (_,_,Some osd_id, _, _) -> (Some osd_id, 0)
-                           | _ -> (None,0)
-                         end
-                      | _ -> old
+                    (fun chunk_id fragment_id (old_loc, crc, len, ctr)  ->
+                      let old_o,_ = old_loc in
+                      let new_loc =
+                        match old_o with
+                        | None ->
+                           begin
+                             let update =
+                               List.find
+                                 (fun (cid,fid,_,_,_) ->
+                                   cid = chunk_id && fid = fragment_id
+                                 ) updates
+                             in
+                             match update with
+                             | Some (_,_,Some osd_id, _, _) -> (Some osd_id, 0)
+                             | _ -> (None,0)
+                           end
+                        | _ -> old_loc
+                      in
+                      (new_loc, crc,len,ctr)
 
-                    ) manifest.fragment_locations
+                    ) manifest.fragments
               }
             in
             ManifestCache.add

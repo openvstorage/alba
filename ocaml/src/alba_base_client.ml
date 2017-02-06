@@ -395,9 +395,7 @@ class client
 
       Lwt_list.fold_left_s
         (fun (offset, t_chunks, t_write_data, t_verify) (chunk_id, chunk_locations) ->
-         let chunk_size =
-           List.nth_exn manifest.Manifest.chunk_sizes chunk_id
-         in
+         let chunk_size = Manifest.chunk_size manifest chunk_id in
          let fragment_size = chunk_size / k in
 
          self # download_chunk

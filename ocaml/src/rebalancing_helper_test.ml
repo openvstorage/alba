@@ -66,6 +66,37 @@ let test_check_move () =
              used
   in
   let manifest =
+    let fragment_locations = [[  (Some 0L, 0);
+                                 (Some 1L, 0);
+                                 (Some 2L, 0);
+                                 (* we can move from {0,1,2} to 3 *)
+
+                                 (Some 4L, 0);
+                                 (Some 5L, 0);
+                                 (Some 6L, 0);
+                                 (Some 7L, 0);
+
+                                 (Some 8L, 0);
+                                 (Some 9L, 0);
+                                 (Some 10L, 0);
+                                 (Some 11L, 0);
+
+                                 (Some 12L, 0);
+                             ]] in
+    let fragment_checksums =
+      Layout.map (fun _ -> Checksum.NoChecksum) fragment_locations
+    and fragment_packed_sizes =
+      Layout.map (fun _ -> 4960) fragment_locations
+    and fragment_ctrs =
+      Layout.map (fun _ -> None) fragment_locations
+    in
+    let fragments = Layout.map4
+                  Manifest.make_fragment
+                      fragment_locations
+                      fragment_checksums
+                      fragment_packed_sizes
+                      fragment_ctrs
+    in
     { Nsm_model.Manifest.name = "xxx";
       object_id = "whatever";
       storage_scheme = Nsm_model.Storage_scheme.EncodeCompressEncrypt (
@@ -79,32 +110,7 @@ let test_check_move () =
       chunk_sizes = [39552];
       size = 39552L;
       checksum = Checksum.NoChecksum;
-      fragment_locations = [[  (Some 0L, 0);
-                               (Some 1L, 0);
-                               (Some 2L, 0);
-                               (* we can move from {0,1,2} to 3 *)
-
-                               (Some 4L, 0);
-                               (Some 5L, 0);
-                               (Some 6L, 0);
-                               (Some 7L, 0);
-
-                               (Some 8L, 0);
-                               (Some 9L, 0);
-                               (Some 10L, 0);
-                               (Some 11L, 0);
-
-                               (Some 12L, 0);
-                               ]];
-      fragment_checksums = [[Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum;
-                             Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum;
-                             Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum; Checksum.NoChecksum;]
-                           ];
-      fragment_packed_sizes = [[4960; 4960; 4960; 4960;
-                                4960; 4960; 4960; 4960;
-                                4960; 4960; 4960; 4960]
-                              ];
-      fragment_ctrs = [];
+      fragments;
       version_id = 2;
       max_disks_per_node = 3; timestamp = 1457402732.57
     }

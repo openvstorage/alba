@@ -1157,10 +1157,7 @@ let alba_delete_fragment
                | None -> Lwt.fail_with "object not found"
                | Some mf ->
                   let open Nsm_model in
-                  let locations = mf.Manifest.fragment_locations in
-                  let floc = Layout.index
-                               locations chunk_id fragment_id
-                  in
+                  let floc = Manifest.get_location mf chunk_id fragment_id in
                   let object_id = mf.Manifest.object_id in
                   begin
                     match floc with

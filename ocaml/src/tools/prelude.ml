@@ -308,6 +308,17 @@ module List = struct
         ([], [], []) xs
     in List.rev x0s_r, List.rev x1s_r, List.rev x2s_r
 
+  let rev_map2 f l1 l2 =
+    let rec inner acc = function
+      | [], [] -> acc
+      | e1::l1, e2::l2 ->
+         inner (f e1 e2 :: acc) (l1, l2)
+      | _ -> invalid_arg "List.rev_map2"
+    in
+    inner [] (l1, l2)
+
+  let map2 f l1 l2 = rev_map2 f l1 l2 |> rev
+
   let rev_map3 f l1 l2 l3 =
     let rec inner acc = function
       | [], [], [] -> acc
@@ -321,6 +332,19 @@ module List = struct
     rev_map3 f (rev l1) (rev l2) (rev l3)
 
   let combine3 l1 l2 l3 = map3 (fun e1 e2 e3 -> e1, e2, e3) l1 l2 l3
+
+  let rev_map4 f l1 l2 l3 l4 =
+    let rec inner acc = function
+      | [], [], [],[] -> acc
+      | e1::l1, e2::l2, e3::l3, e4::l4 ->
+         inner (f e1 e2 e3 e4:: acc) (l1, l2, l3, l4)
+      | _ -> invalid_arg "List.rev_map4"
+    in
+    inner [] (l1, l2, l3, l4)
+
+  let map4 f l1 l2 l3 l4 = rev_map4 f l1 l2 l3 l4 |> List.rev
+
+  let combine4 l1 l2 l3 l4 = map4 (fun e1 e2 e3 e4 -> e1, e2, e3, e4) l1 l2 l3 l4
 
   let map2i f xs ys =
     let rec inner acc i xs ys =

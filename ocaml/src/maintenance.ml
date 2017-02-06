@@ -315,8 +315,8 @@ class client ?(retry_timeout = 60.)
       =
       let open Nsm_model in
       let open Manifest in
-      let locations = manifest.fragment_locations in
-      let osds_touched = Manifest.osds_used manifest.fragment_locations in
+      let n_chunks = Manifest.n_chunks manifest in
+      let osds_touched = Manifest.osds_used manifest in
 
       let () =
         if DeviceSet.mem target_osd osds_touched
@@ -365,7 +365,7 @@ class client ?(retry_timeout = 60.)
          let (fragment_id, fragment_checksum,version, fragment_ctr) = source_fragment in
 
          let object_info_o =
-           let is_last_chunk = chunk_id = List.length locations - 1 in
+           let is_last_chunk = chunk_id = n_chunks - 1 in
            if is_last_chunk
            then
              let open RecoveryInfo in
@@ -384,9 +384,13 @@ class client ?(retry_timeout = 60.)
            ~object_id
            object_info_o
            encryption
-           (List.nth_exn manifest.chunk_sizes chunk_id)
-           (List.nth_exn manifest.fragment_packed_sizes chunk_id)
-           (List.nth_exn manifest.fragment_checksums chunk_id)
+           (Manifest.chunk_size manifest chunk_id)
+           (List.nth_exn manifest.fragments chunk_id
+            |> List.map Manifest._len_of
+           )
+           (List.nth_exn manifest.fragments chunk_id
+            |> List.map Manifest._crc_of
+           )
            fragment_ctr
          >>= fun recovery_info_slice ->
 
@@ -507,24 +511,25 @@ class client ?(retry_timeout = 60.)
               let open Nsm_model.Manifest in
               let _, updated_locations =
                 List.fold_left
-                  (fun (chunk_id, acc) fragment_locations ->
-                   let _, acc =
-                     List.fold_left
-                       (fun (fragment_id, acc) (osd_id_o, version) ->
-                        let acc = match osd_id_o with
-                          | None -> acc
-                          | Some osd_id ->
-                             if Hashtbl.mem purging_osds osd_id
-                             then (chunk_id, fragment_id, None, None, None) :: acc
-                             else acc
-                        in
-                        (fragment_id + 1, acc))
-                       (0, acc)
-                       fragment_locations
-                   in
-                   (chunk_id + 1, acc))
+                  (fun (chunk_id, acc) fragments ->
+                    let _, acc =
+                      List.fold_left
+                        (fun (fragment_id, acc) f  ->
+                          let (osd_id_o, version) = Nsm_model.Manifest._loc_of f in
+                          let acc = match osd_id_o with
+                            | None -> acc
+                            | Some osd_id ->
+                               if Hashtbl.mem purging_osds osd_id
+                               then (chunk_id, fragment_id, None, None, None) :: acc
+                               else acc
+                          in
+                          (fragment_id + 1, acc))
+                        (0, acc)
+                        fragments
+                    in
+                    (chunk_id + 1, acc))
                   (0, [])
-                  manifest.fragment_locations
+                  manifest.fragments
               in
               Lwt.catch
                 (fun () ->
@@ -851,11 +856,12 @@ class client ?(retry_timeout = 60.)
                cleanup_fragment ()
              | Some manifest ->
                (* verify that this (chunk_id, fragment_id) is on the device *)
-               let locs = manifest.Nsm_model.Manifest.fragment_locations in
-               let loc = List.nth_exn (List.nth_exn locs chunk_id) fragment_id in
-               if loc = (Some osd_id, version_id)
-               then cleanup_gc_epoch_tag ()
-               else cleanup_fragment ())
+                let loc = Nsm_model.Manifest.get_location
+                            manifest chunk_id fragment_id
+                in
+                if loc = (Some osd_id, version_id)
+                then cleanup_gc_epoch_tag ()
+                else cleanup_fragment ())
           keys >>= fun () ->
         if has_more && filter namespace_id
         then inner (List.last keys |> Option.get_some_default first)
@@ -985,12 +991,12 @@ class client ?(retry_timeout = 60.)
       in
       let problem_osds =
         List.map
-          (fun (chunk_id,fragment_id) ->
-           let open Nsm_model in
-           let chunk_fgs =
-             List.nth_exn manifest.Manifest.fragment_locations chunk_id in
-           let osd_id,_ = List.nth_exn chunk_fgs fragment_id in
-           osd_id
+          (fun (chunk_id, fragment_id) ->
+            let open Nsm_model in
+            let osd_id_o,_ =
+              Manifest.get_location manifest chunk_id fragment_id
+            in
+            osd_id_o
           )
           problem_fragments
         |> List.map_filter_rev Std.id
@@ -1287,7 +1293,7 @@ class client ?(retry_timeout = 60.)
                in
                chunk_id + 1, acc')
               (0, [])
-              manifest.Nsm_model.Manifest.fragment_locations
+              (Nsm_model.Manifest.locations manifest)
           in
           self # repair_object
                ~namespace_id
@@ -1316,7 +1322,8 @@ class client ?(retry_timeout = 60.)
            * that have to be moved elsewhere...)
            *)
           let osds_of_first_chunk =
-            List.hd_exn manifest.Nsm_model.Manifest.fragment_locations
+            List.hd_exn manifest.Nsm_model.Manifest.fragments
+            |> List.map Nsm_model.Manifest._loc_of
             |> List.map fst
             |> List.map_filter_rev Std.id
           in
@@ -1573,8 +1580,7 @@ class client ?(retry_timeout = 60.)
                    >>= fun () ->
                    (* this is inefficient but in general it should never happen *)
                    let (_,fragment_version) =
-                     Layout.index manifest.Manifest.fragment_locations
-                                  chunk_id fragment_id
+                     Manifest.get_location manifest chunk_id fragment_id
                    in
                    if fragment_version = version
                    then
