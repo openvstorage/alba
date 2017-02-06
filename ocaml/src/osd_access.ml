@@ -255,6 +255,7 @@ class osd_access
     (Hashtbl.create 3
      : (Osd.id,
         OsdInfo.t * Osd_state.t  * Capabilities.OsdCapabilities.t) Hashtbl.t) in
+  let refreshers = ref [] in
   let add_osd_info ~osd_id osd_info capabilities =
     if not (Hashtbl.mem osds_info_cache osd_id)
     then
@@ -269,7 +270,8 @@ class osd_access
             long_id (Osd.ClaimInfo.ThisAlba osd_id)
             !osd_long_id_claim_info;
 
-        Lwt_extra2.run_forever
+        let refresher () =
+          Lwt_extra2.run_forever
             "refresh_osd_total_used_and_capabilities"
             (fun () ->
              let osd_info,osd_state,capabilities = Hashtbl.find osds_info_cache osd_id in
@@ -302,7 +304,11 @@ class osd_access
                closer
             )
             60.
-        |> Lwt.ignore_result
+        in let _t = refresher () in
+           Lwt.ignore_result _t;
+           let () = refreshers := _t :: !refreshers in
+           ()
+
       end
   in
   let get_osd_info ~osd_id =
@@ -461,7 +467,8 @@ class osd_access
 
     method finalize =
       finalizing <- true;
-      Osd_pool.invalidate_all osds_pool
+      Osd_pool.invalidate_all osds_pool;
+      List.iter Lwt.cancel !refreshers
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -480,10 +487,12 @@ class osd_access
                       ~last:None ~reverse:false
                       ~max:(-1) >>= fun ((cnt, osds), has_more) ->
            List.iter
-             (fun (osd_id, osd_info) -> add_osd_info
-                                          ~osd_id
-                                          osd_info
-                                          Capabilities.OsdCapabilities.default)
+             (fun (osd_id, osd_info) ->
+               add_osd_info
+                 ~osd_id
+                 osd_info
+                 Capabilities.OsdCapabilities.default
+             )
              osds;
 
            (if has_more
