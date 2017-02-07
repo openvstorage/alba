@@ -2,7 +2,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 lib_LTLIBRARIES = libalbaproxy.la
 
-libalbaproxy_la_CXXFLAGS = -std=c++11
+libalbaproxy_la_CXXFLAGS = -std=c++14
 libalbaproxy_la_CPPFLAGS = -I$(abs_top_srcdir)/../include
 #libalbaproxy_la_LDFLAGS = -static
 
@@ -64,7 +64,7 @@ alba_proxy_client_test_SOURCES = \
 	../src/tests/main.cc \
 	../src/tests/proxy_client_test.cc
 
-alba_proxy_client_test_CXXFLAGS = -std=c++11
+alba_proxy_client_test_CXXFLAGS = -std=c++14
 alba_proxy_client_test_CPPFLAGS = -I$(abs_top_srcdir)/../include -DBOOST_LOG_DYN_LINK
 alba_proxy_client_test_LDADD = \
 	./libalbaproxy.la \
@@ -80,7 +80,7 @@ alba_proxy_client_test_LDADD = \
 alba_test_client_SOURCES = \
 	../src/examples/test_client.cc
 
-alba_test_client_CXXFLAGS = -std=c++11
+alba_test_client_CXXFLAGS = -std=c++14
 alba_test_client_CPPFLAGS = -I$(abs_top_srcdir)/../include -DBOOST_LOG_DYN_LINK
 alba_test_client_LDADD = \
 	./libalbaproxy.la \
