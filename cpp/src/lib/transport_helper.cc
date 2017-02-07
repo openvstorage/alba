@@ -28,9 +28,9 @@ make_transport(const Kind k, const std::string &ip, const std::string &port,
                const std::chrono::steady_clock::duration &timeout) {
   switch (k) {
   case Kind::tcp:
-    return alba::stuff::make_unique<TCP_transport>(ip, port, timeout);
+    return std::make_unique<TCP_transport>(ip, port, timeout);
   case Kind::rdma:
-    return alba::stuff::make_unique<RDMA_transport>(ip, port, timeout);
+    return std::make_unique<RDMA_transport>(ip, port, timeout);
   default:
     // g++ issues bogus:
     // warning: control reaches end of non-void function [-Wreturn-type]

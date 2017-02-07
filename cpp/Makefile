@@ -12,7 +12,7 @@ OPTIMIZATION = 3
 WARNINGS = \
 	-Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo \
 	-Woverloaded-virtual -Wnon-virtual-dtor
-FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC
+FLAGS = -std=c++14 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC
 
 CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
 
