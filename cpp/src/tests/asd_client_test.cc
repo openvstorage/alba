@@ -37,6 +37,7 @@ using alba::transport::TCP_transport;
 using alba::asd_protocol::slice;
 using alba::asd_client::Asd_client;
 using namespace std::chrono;
+
 std::unique_ptr<Asd_client> make_client(const steady_clock::duration &timeout) {
   string ip = getenv("ALBA_ASD_IP");
   string port = "8000";

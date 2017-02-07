@@ -19,11 +19,14 @@ but WITHOUT ANY WARRANTY of any kind.
 #pragma once
 
 #include <boost/optional.hpp>
+#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <stdint.h>
 #include <string>
 #include <sys/stat.h>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace alba {

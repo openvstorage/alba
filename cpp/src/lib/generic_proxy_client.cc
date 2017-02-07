@@ -18,8 +18,6 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include "generic_proxy_client.h"
 #include "alba_logger.h"
-#include "rdma_proxy_client.h"
-#include "tcp_proxy_client.h"
 
 #include <iostream>
 
@@ -37,8 +35,44 @@ using llio::message;
 using llio::message_builder;
 
 GenericProxy_client::GenericProxy_client(
-    const std::chrono::steady_clock::duration &timeout)
-    : _timeout(timeout) {}
+    const std::chrono::steady_clock::duration &timeout,
+    std::unique_ptr<transport::Transport> &&transport)
+    : _transport(transport.release()), _timeout(timeout) {
+  init_();
+}
+
+void GenericProxy_client::init_() {
+  _transport->expires_from_now(_timeout);
+
+  int32_t magic{1148837403};
+  int32_t version{1};
+
+  _transport->write_exact((const char *)(&magic), 4);
+  _transport->write_exact((const char *)(&version), 4);
+
+  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
+}
+
+void GenericProxy_client::_expires_from_now(
+    const std::chrono::steady_clock::duration &timeout) {
+  _transport->expires_from_now(timeout);
+}
+void GenericProxy_client::_output() {
+  _transport->output(_mb);
+  _mb.reset();
+}
+llio::message GenericProxy_client::_input() {
+  return _transport->read_message();
+}
+
+void GenericProxy_client::check_status(const char *function_name) {
+  _transport->expires_from_now(std::chrono::steady_clock::duration::max());
+  if (not _status.is_ok()) {
+    ALBA_LOG(DEBUG, function_name << " received rc:"
+                                  << (uint32_t)_status._return_code)
+    throw proxy_exception(_status._return_code, _status._what);
+  }
+}
 
 bool GenericProxy_client::namespace_exists(const string &name) {
   _expires_from_now(_timeout);

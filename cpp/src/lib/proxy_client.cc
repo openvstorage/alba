@@ -17,10 +17,9 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "proxy_client.h"
-#include "rdma_proxy_client.h"
-#include "tcp_proxy_client.h"
-
 #include "rora_proxy_client.h"
+
+#include "transport_helper.h"
 
 #include "alba_logger.h"
 
@@ -36,18 +35,8 @@ std::unique_ptr<GenericProxy_client>
 _make_proxy_client(const std::string &ip, const std::string &port,
                    const std::chrono::steady_clock::duration &timeout,
                    const transport::Kind &transport) {
-  GenericProxy_client *r = nullptr;
-
-  switch (transport) {
-  case transport::Kind::tcp: {
-    r = new TCPProxy_client(ip, port, timeout);
-  }; break;
-  case transport::Kind::rdma: {
-    r = new RDMAProxy_client(ip, port, timeout);
-  }; break;
-  }
-  std::unique_ptr<GenericProxy_client> result(r);
-  return result;
+  return std::make_unique<GenericProxy_client>(
+      timeout, alba::transport::make_transport(transport, ip, port, timeout));
 }
 
 std::unique_ptr<Proxy_client>

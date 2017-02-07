@@ -17,8 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #include "asd_access.h"
-#include "rdma_transport.h"
-#include "tcp_transport.h"
+#include "transport_helper.h"
 
 #include <iostream>
 
@@ -58,16 +57,15 @@ void ConnectionPool::clear_(Connections &conns) {
 std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
   auto duration = std::chrono::seconds(5);
 
-  std::unique_ptr<transport::Transport> transport;
+  alba::transport::Kind t;
   if (config_->use_rdma) {
-    transport =
-        std::unique_ptr<transport::Transport>(new transport::RDMA_transport(
-            config_->ips[0], std::to_string(config_->port), duration));
+    t = alba::transport::Kind::rdma;
   } else {
-    transport =
-        std::unique_ptr<transport::Transport>(new transport::TCP_transport(
-            config_->ips[0], std::to_string(config_->port), duration));
+    t = alba::transport::Kind::tcp;
   }
+  auto transport = alba::transport::make_transport(
+      // TODO try to use other ips too
+      t, config_->ips[0], std::to_string(config_->port), duration);
   std::unique_ptr<Asd_client> c(
       new Asd_client(duration, std::move(transport), config_->long_id));
   return c;

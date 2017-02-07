@@ -12,7 +12,7 @@ OPTIMIZATION = 3
 WARNINGS = \
 	-Wall -Wextra -Wno-unknown-pragmas -Wctor-dtor-privacy -Wsign-promo \
 	-Woverloaded-virtual -Wnon-virtual-dtor
-FLAGS = -std=c++11 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC
+FLAGS = -std=c++14 -ggdb3 -gdwarf-3 -O$(OPTIMIZATION) -fPIC
 
 CMD = $(CXX) $(WARNINGS) $(FLAGS) -I./include
 
@@ -32,8 +32,8 @@ LIBS_exec = -L/usr/local/lib \
 _OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
            proxy_sequences.o \
-           io.o proxy_client.o generic_proxy_client.o \
-	   tcp_proxy_client.o rdma_proxy_client.o rora_proxy_client.o \
+           io.o proxy_client.o generic_proxy_client.o rora_proxy_client.o \
+           transport_helper.o \
 	   osd_info.o manifest_cache.o osd_access.o statistics.o \
 	   asd_client.o asd_protocol.o rdma_transport.o tcp_transport.o transport.o \
 	   asd_access.o
