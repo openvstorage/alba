@@ -1017,7 +1017,7 @@ let test_repair_evolved_compressor () =
 
        let chunk =
          List.nth_exn mf.fragments chunk_id
-         |> List.map Manifest._crc_of
+         |> List.map Fragment.crc_of
        in
        let oks = List.map2
                    (fun oldc new_c -> true)

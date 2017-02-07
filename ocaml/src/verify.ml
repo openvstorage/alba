@@ -83,7 +83,7 @@ let verify_and_maybe_repair_object
     (fun chunk_id chunk ->
       Lwt_list.mapi_p
         (fun fragment_id fragment ->
-          let location = Manifest._loc_of fragment in
+          let location = Fragment.loc_of fragment in
           match location with
           | (None, _) -> Lwt.return `NoneOsd
           | (Some osd_id, version_id) ->

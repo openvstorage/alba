@@ -379,7 +379,7 @@ let gather_and_push_objects
       let open Nsm_model in
       let fragments =
         Layout.map4
-        Manifest.make_fragment
+        Fragment.make
           fragment_locations
           fragment_checksums
           fragment_packed_sizes

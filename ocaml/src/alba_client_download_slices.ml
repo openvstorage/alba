@@ -460,7 +460,7 @@ let _repair_after_read
                                 | None -> [])
             ~problem_osds:Int64Set.empty
             ~n_chunks:(Manifest.n_chunks manifest)
-            ~chunk_location:(List.nth_exn fragment_info chunk_id)
+            ~chunk_fragments:(List.nth_exn fragment_info chunk_id)
             ~with_chunk_data >>= fun updated_locations ->
           Lwt_log.debug_f "updated_locations=%s"
                           ([%show :

@@ -386,10 +386,10 @@ class client ?(retry_timeout = 60.)
            encryption
            (Manifest.chunk_size manifest chunk_id)
            (List.nth_exn manifest.fragments chunk_id
-            |> List.map Manifest._len_of
+            |> List.map Fragment.len_of
            )
            (List.nth_exn manifest.fragments chunk_id
-            |> List.map Manifest._crc_of
+            |> List.map Fragment.crc_of
            )
            fragment_ctr
          >>= fun recovery_info_slice ->
@@ -515,7 +515,7 @@ class client ?(retry_timeout = 60.)
                     let _, acc =
                       List.fold_left
                         (fun (fragment_id, acc) f  ->
-                          let (osd_id_o, version) = Nsm_model.Manifest._loc_of f in
+                          let (osd_id_o, version) = Nsm_model.Fragment.loc_of f in
                           let acc = match osd_id_o with
                             | None -> acc
                             | Some osd_id ->
@@ -1323,7 +1323,7 @@ class client ?(retry_timeout = 60.)
            *)
           let osds_of_first_chunk =
             List.hd_exn manifest.Nsm_model.Manifest.fragments
-            |> List.map Nsm_model.Manifest._loc_of
+            |> List.map Nsm_model.Fragment.loc_of
             |> List.map fst
             |> List.map_filter_rev Std.id
           in

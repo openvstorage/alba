@@ -59,7 +59,7 @@ let _upload_missing_fragments
       encryption
       fragment_checksum_algo
       ~is_replication
-      ~n_chunks ~chunk_location
+      ~n_chunks ~chunk_fragments
   =
 
   let ok_fragments' =
@@ -136,11 +136,11 @@ let _upload_missing_fragments
 
       let old_f_checksums_for_chunk =
         List.nth_exn manifest.Manifest.fragments chunk_id
-        |> List.map Manifest._crc_of
+        |> List.map Fragment.crc_of
       in
       let old_fp_sizes_for_chunk =
         List.nth_exn manifest.Manifest.fragments chunk_id
-        |> List.map Manifest._len_of
+        |> List.map Fragment.len_of
       in
       RecoveryInfo.make
         ~object_name:manifest.Manifest.name
@@ -217,7 +217,7 @@ let upload_missing_fragments
       fragment_checksum_algo
       ~k
       ~problem_fragments ~problem_osds
-      ~n_chunks ~chunk_location
+      ~n_chunks ~chunk_fragments
       ~with_chunk_data
   =
 
@@ -235,7 +235,11 @@ let upload_missing_fragments
   let _, ok_fragments, fragments_to_be_repaired =
     List.fold_left
       (fun (fragment_id, ok_fragments, to_be_repaireds)
-           ((fragment_osd_id_o, fragment_version_id), fragment_checksum, fragment_ctr) ->
+           fragment ->
+        let (fragment_osd_id_o, fragment_version_id),
+            fragment_checksum,
+            fragment_ctr = fragment
+        in
         let ok_fragments', to_be_repaireds' =
           if List.mem (chunk_id, fragment_id) problem_fragments ||
                (match fragment_osd_id_o with
@@ -249,7 +253,7 @@ let upload_missing_fragments
             to_be_repaireds in
         fragment_id + 1, ok_fragments', to_be_repaireds')
       (0, [], [])
-      chunk_location in
+      chunk_fragments in
 
   if fragments_to_be_repaired = []
   then Lwt.return []
@@ -272,4 +276,4 @@ let upload_missing_fragments
           encryption
           fragment_checksum_algo
           ~is_replication:(k=1)
-          ~n_chunks ~chunk_location)
+          ~n_chunks ~chunk_fragments)

@@ -25,11 +25,11 @@ module ManifestCache = struct
   let deflate m =
     serialize
       ~buf_size:512
-      Nsm_model.Manifest.to_buffer' m
+      Nsm_model.Manifest.inner_to_buffer_2 m
 
   let inflate deflated =
     deserialize
-      Nsm_model.Manifest.from_buffer'
+      Nsm_model.Manifest.inner_from_buffer_2
       deflated
 
     type cache_stat = {

@@ -91,7 +91,7 @@ let test_check_move () =
       Layout.map (fun _ -> None) fragment_locations
     in
     let fragments = Layout.map4
-                  Manifest.make_fragment
+                  Fragment.make
                       fragment_locations
                       fragment_checksums
                       fragment_packed_sizes
