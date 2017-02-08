@@ -1,0 +1,14 @@
+sequenceDiagram
+participant Edge
+participant Pracc
+participant Proxy
+participant NSM
+participant ASDy
+
+    Edge  ->>  Pracc : partial_read([SCOx, off, 4096])
+    Pracc ->>  ASDy  : partial_read([fragment_t, off, 4096])
+    ASDy  -->> Pracc : [data]
+    Pracc -->> Edge  : [data]
+
+
+

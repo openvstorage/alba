@@ -1,0 +1,16 @@
+sequenceDiagram
+participant Edge
+participant VD
+participant Proxy
+participant NSM
+participant ASDy
+
+    Edge   ->> VD     : read_block(x)
+    VD     ->> Proxy  : partial_read([SCOx,off, 4096])
+    Proxy  ->> NSM    : get_manifest(SCOx)
+    NSM    -->> Proxy : mf
+    Proxy  ->> ASDy   : partial_read([fragment_t, off, 4096])
+    ASDy   -->> Proxy : [data]
+    Proxy  -->> VD    : [data], mf
+    VD     -->> Edge  : [data]
+
