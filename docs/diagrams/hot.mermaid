@@ -1,12 +1,12 @@
-    sequenceDiagram
-    participant Edge
-    participant VD
-    participant Proxy
-    participant NSM
-    participant ASDy
+sequenceDiagram
+participant Edge
+participant VD
+participant Proxy
+participant NSM
+participant ASDy
 
-      Edge   ->>  VD   : read_block(x)
-      VD     ->>  ASDy : partial_read([fragment_t,off, 4096])
-      ASDy   -->> VD   : [data]
-      VD     -->> Edge : [data]
+    Edge   ->>  VD   : read_block(x)
+    VD     ->>  ASDy : partial_read([fragment_t,off, 4096])
+    ASDy   -->> VD   : [data]
+    VD     -->> Edge : [data]
 
