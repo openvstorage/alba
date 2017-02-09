@@ -47,62 +47,71 @@ let connect_with ip port transport ~tls_config =
     (Net_fd.show_transport transport) fdi
   >>= fun () ->
   let closer () =
-    Lwt_log.debug_f "closing fd:%i" fdi >>= fun () ->
-    Net_fd.close fd
+    Lwt.catch
+    (fun () ->
+      Lwt_log.debug_f "closing fd:%i" fdi >>= fun () ->
+      Net_fd.close fd
+    )
+    (fun exn -> Lwt_log.debug_f ~exn "fd:%i during close .. ignoring" fdi)
   in
-  match Tls.to_client_context tls_config with
-  | None ->
-     let finished = ref false in
-     Lwt.choose
-       [ begin
-           Lwt_unix.sleep 1. >>= fun () ->
-           if !finished
-           then Lwt.return_unit
-           else
-             begin
-               finished := true;
-               Lwt_log.debug_f
-                 "timeout while connecting to fd=%i ip=%s port=%i"
-                 fdi ip port >>= fun () ->
-               Lwt.fail ConnectTimeout
-             end
-         end;
-         begin
-           Net_fd.connect fd address >>= fun () ->
-           if !finished
-           then closer () |> Lwt.ignore_result
-           else finished := true;
-           Lwt.return_unit
-         end;
-       ] >>= fun () ->
-     Lwt.return (fd , closer)
-  | Some ctx ->
-     begin
-       Lwt.catch
-         (fun () ->
-          Lwt_extra2.with_timeout
-            1.
-            ~msg:(Printf.sprintf
-                    "timeout while connecting to fd=%i ip=%s port=%i (ssl)"
-                    fdi ip port)
-            (fun () ->
+  let connect() =
+    match Tls.to_client_context tls_config with
+    | None ->
+       let finished = ref false in
+       Lwt.choose
+         [ begin
+             Lwt_unix.sleep 1. >>= fun () ->
+             if !finished
+             then Lwt.return_unit
+             else
+               begin
+                 finished := true;
+                 Lwt_log.debug_f
+                   "timeout while connecting to fd=%i ip=%s port=%i"
+                   fdi ip port >>= fun () ->
+                 Lwt.fail ConnectTimeout
+               end
+           end;
+           begin
              Net_fd.connect fd address >>= fun () ->
-             (* Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
+             if !finished
+             then closer () |> Lwt.ignore_result
+             else finished := true;
+             Lwt.return_unit
+           end;
+         ] >>= fun () ->
+       Lwt.return (fd , closer)
+    | Some ctx ->
+       begin
+         Lwt.catch
+           (fun () ->
+             Lwt_extra2.with_timeout
+               1.
+               ~msg:(Printf.sprintf
+                       "timeout while connecting to fd=%i ip=%s port=%i (ssl)"
+                       fdi ip port)
+               (fun () ->
+                 Net_fd.connect fd address >>= fun () ->
+                 (* Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
              let r = Net_fd.wrap_ssl lwt_s in *)
-             let () = failwith "todo:ssl_connect" in
-             Lwt.return (fd, closer))
-         )
-         (fun exn ->
-          closer () >>= fun () ->
-          begin
-            match exn with
-              | Ssl.Connection_error e ->
-                 Lwt_log.debug_f ~exn "e:%S" (Ssl.get_error_string ())
-              | _ -> Lwt.return_unit
-          end
-          >>= fun () ->
-          Lwt.fail exn)
-     end
+                 let () = failwith "todo:ssl_connect" in
+                 Lwt.return (fd, closer))
+           )
+           (fun exn ->
+             closer () >>= fun () ->
+             begin
+               match exn with
+               | Ssl.Connection_error e ->
+                  Lwt_log.debug_f ~exn "e:%S" (Ssl.get_error_string ())
+               | _ -> Lwt.return_unit
+             end
+             >>= fun () ->
+             Lwt.fail exn)
+       end
+  in
+  Lwt.catch
+    (fun () ->connect ())
+    (fun exn -> closer () >>= fun () -> Lwt.fail exn)
 
 let with_connection ip port transport ~tls_config ~buffer_pool f =
   connect_with ip port transport ~tls_config >>= fun(nfd, closer) ->
