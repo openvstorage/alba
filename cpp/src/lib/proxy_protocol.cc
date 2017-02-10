@@ -42,6 +42,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _APPLY_SEQUENCE 24
 #define _OSD_INFO2 28
 #define _HAS_LOCAL_FRAGMENT_CACHE 31
+#define _APPLY_SEQUENCE2 32
 
 namespace alba {
 namespace proxy_protocol {
@@ -340,7 +341,7 @@ void write_apply_sequence_request(
         &asserts,
     const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
         &updates) {
-  write_tag(mb, _APPLY_SEQUENCE);
+  write_tag(mb, _APPLY_SEQUENCE2);
   to(mb, namespace_);
   to(mb, write_barrier);
   to(mb, asserts);

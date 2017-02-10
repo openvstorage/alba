@@ -58,9 +58,7 @@ TCP_transport::TCP_transport(const string &ip, const string &port,
   auto sa = ip::tcp::endpoint(addr, port_as_int);
 
   boost::system::error_code ec = boost::asio::error::would_block;
-  auto handler = [&](const boost::system::error_code &x) -> void {
-    ec = x;
-  };
+  auto handler = [&](const boost::system::error_code &x) -> void { ec = x; };
   _socket.async_connect(sa, handler);
 
   do
@@ -90,9 +88,7 @@ void TCP_transport::write_exact(const char *buf, int len) {
   boost::system::error_code ec = boost::asio::error::would_block;
 
   auto handler = [&](const boost::system::error_code &x,
-                     std::size_t /*len */) -> void {
-    ec = x;
-  };
+                     std::size_t /*len */) -> void { ec = x; };
   boost::asio::async_write(_socket, buffer, handler);
 
   do {
@@ -112,9 +108,7 @@ void TCP_transport::read_exact(char *buf, int len) {
   boost::system::error_code ec = boost::asio::error::would_block;
 
   auto handler = [&](const boost::system::error_code &x,
-                     std::size_t /* len*/) -> void {
-    ec = x;
-  };
+                     std::size_t /* len*/) -> void { ec = x; };
   boost::asio::async_read(_socket, buffer, handler);
 
   // Block until the asynchronous operation has completed.
@@ -138,9 +132,8 @@ void TCP_transport::_check_deadline() {
 }
 
 TCP_transport::~TCP_transport() {
-    boost::system::error_code ec;
-    _socket.close(ec); // does not throw
-
+  boost::system::error_code ec;
+  _socket.close(ec); // does not throw
 }
 }
 }

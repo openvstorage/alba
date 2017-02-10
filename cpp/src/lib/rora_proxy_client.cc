@@ -185,7 +185,7 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
     }
   }
 
-  auto &chunk_fragment_locations = mf.fragment_locations[chunk_index];
+  auto &chunk_fragments = mf.fragments[chunk_index];
 
   uint32_t chunk_size = mf.chunk_sizes[chunk_index];
   total -= chunk_size;
@@ -193,7 +193,7 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   uint32_t pos_in_chunk = pos - total;
 
   uint32_t fragment_index = pos_in_chunk / fragment_length;
-  auto p = chunk_fragment_locations[fragment_index];
+  auto &fragment = chunk_fragments[fragment_index];
 
   total += fragment_length * fragment_index;
   uint32_t pos_in_fragment = pos - total;
@@ -203,7 +203,7 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.object_id = mf.object_id;
   l.chunk_id = chunk_index;
   l.fragment_id = fragment_index;
-  l.fragment_location = p;
+  l.fragment_location = fragment->loc;
   l.offset = pos_in_fragment;
   l.length = std::min(len, fragment_length - pos_in_fragment);
   l.uses_compression =

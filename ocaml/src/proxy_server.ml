@@ -278,6 +278,13 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                    (offset * length) list) list ]
          objects_slices)
   in
+  let render_apply_sequence (namespace, write_barrier, asserts, updates) =
+    (Printf.sprintf "(%S,%b,%s,%s)"
+                    namespace
+                    write_barrier
+                    ([%show : Assert.t list] asserts)
+                    ([%show : Update.t list] updates))
+  in
   function
   | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} -> "{ }"
   | ListNamespaces2 -> fun { RangeQueryArgs.first; finc; last; max; reverse} -> "{ }"
@@ -307,12 +314,8 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
   | OsdInfo         -> fun () -> "()"
   | OsdInfo2        -> fun () -> "()"
-  | ApplySequence   -> fun (namespace, write_barrier, asserts, updates) ->
-                       Printf.sprintf "(%S,%b,%s,%s)"
-                                      namespace
-                                      write_barrier
-                                      ([%show : Assert.t list] asserts)
-                                      ([%show : Update.t list] updates)
+  | ApplySequence   -> fun args -> render_apply_sequence args
+  | ApplySequence2  -> fun args -> render_apply_sequence args
   | ReadObjects     -> fun args ->
                        Printf.sprintf "(%S)" ([%show : Namespace.name
                                                        * object_name list
@@ -390,6 +393,19 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           | Exn FileNotFound ->
              Protocol.Error.failwith Protocol.Error.FileNotFound
           | exn -> Lwt.fail exn)
+    in
+    let do_apply_sequence (namespace, _write_barrier, asserts, updates) =
+       alba_client # nsm_host_access # with_namespace_id
+                   ~namespace
+                   (fun namespace_id ->
+                     apply_sequence
+                       alba_client
+                       namespace
+                       namespace_id
+                       asserts
+                       updates
+                       stats
+                   )
     in
     function
     | ListNamespaces -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
@@ -484,18 +500,10 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                    ~namespace
                    (fun nsm -> nsm # multi_exists object_names)
     | ApplySequence ->
-       fun stats (namespace, _write_barrier, asserts, updates) ->
-       alba_client # nsm_host_access # with_namespace_id
-                   ~namespace
-                   (fun namespace_id ->
-                     apply_sequence
-                       alba_client
-                       namespace
-                       namespace_id
-                       asserts
-                       updates
-                       stats
-                   )
+       fun stats args ->
+       do_apply_sequence args
+    | ApplySequence2 ->
+       fun stats args -> do_apply_sequence args
     | GetObjectInfo ->
        fun stats (namespace, object_name, consistent_read, should_cache) ->
        begin

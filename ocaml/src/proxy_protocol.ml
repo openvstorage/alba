@@ -497,7 +497,11 @@ module Protocol = struct
                   ((alba_id * (Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
                                Capabilities.OsdCapabilities.t) counted_list) counted_list)
                  ) request
-    | ApplySequence : (Namespace.name * write_barrier * Assert.t list * Update.t list,
+    | ApplySequence : (Namespace.name *
+                         write_barrier * Assert.t list * Update.t list,
+                       (object_name * alba_id * manifest_with_id) list) request
+    | ApplySequence2 : (Namespace.name *
+                         write_barrier * Assert.t list * Update.t list,
                        (object_name * alba_id * manifest_with_id) list) request
     | ReadObjects : (Namespace.name
                      * object_name list
@@ -539,6 +543,7 @@ module Protocol = struct
                       29, Wrap GetAlbaId, "GetAlbaId";
                       30, Wrap ListNamespaces2, "ListNamespaces2";
                       31, Wrap HasLocalFragmentCache, "HasLocalFragmentCache";
+                      32, Wrap ApplySequence2, "ApplySequence2";
                     ]
 
   module Error = struct
@@ -673,6 +678,12 @@ module Protocol = struct
          Deser.bool
          (Deser.list Assert.deser)
          (Deser.list Update.deser)
+    | ApplySequence2 ->
+       Deser.tuple4
+         Deser.string
+         Deser.bool
+         (Deser.list Assert.deser)
+         (Deser.list Update.deser)
     | ReadObjects ->
        Deser.tuple4
          Deser.string
@@ -698,16 +709,21 @@ module Protocol = struct
     | ListObjects -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | ReadObjectFs -> Deser.unit
     | WriteObjectFs -> Deser.unit
-    | WriteObjectFs2 -> Deser.tuple2 Manifest_deser.deser Deser.x_int64
+    | WriteObjectFs2 -> Deser.tuple2
+                          (Manifest_deser.deser ~ser_version:1)
+                          Deser.x_int64
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string
     | ReadObjectsSlices2 ->
        Deser.tuple2
          Deser.string
-         (Deser.list (Deser.tuple3 Deser.string
-                                   Deser.string
-                                   (Deser.tuple2 Manifest_deser.deser Deser.x_int64)
+         (Deser.list (Deser.tuple3
+                        Deser.string
+                        Deser.string
+                        (Deser.tuple2
+                           (Manifest_deser.deser ~ser_version:1)
+                           Deser.x_int64)
          ))
     | InvalidateCache -> Deser.unit
     | DropCache -> Deser.unit
@@ -747,16 +763,25 @@ module Protocol = struct
          )))
     | ApplySequence ->
        Deser.list (Deser.tuple3
-                             Deser.string
-                             Deser.string
-                             (Deser.pair Manifest_deser.deser Deser.x_int64))
+                     Deser.string
+                     Deser.string
+                     (Deser.pair
+                        (Manifest_deser.deser ~ser_version:1)
+                        Deser.x_int64))
+    | ApplySequence2 ->
+       Deser.list (Deser.tuple3
+                     Deser.string
+                     Deser.string
+                     (Deser.pair
+                        (Manifest_deser.deser ~ser_version:2)
+                        Deser.x_int64))
     | ReadObjects ->
        Deser.pair
          Deser.x_int64
          (Deser.list
             (Deser.option
                (Deser.pair
-                  Manifest_deser.deser
+                  (Manifest_deser.deser ~ser_version:1)
                   Deser.bigstring_slice)))
     | MultiExists ->
        Deser.list Deser.bool
