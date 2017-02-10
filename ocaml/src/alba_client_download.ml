@@ -92,17 +92,24 @@ let download_packed_fragment
 
   Lwt.catch
     (fun () ->
-     osd_access # with_osd
-                ~osd_id
-                (fun device_client ->
-                 (device_client # namespace_kvs namespace_id) # get_option
-                               (osd_access # get_default_osd_priority)
-                               osd_key
-                 >>= E.return))
+      Lwt_extra2.with_timeout
+        ~msg:"download_packed_fragment"
+        (osd_access # osd_timeout)
+        (fun () ->
+          osd_access # with_osd
+                     ~osd_id
+                     (fun device_client ->
+                       (device_client # namespace_kvs namespace_id)
+                         # get_option
+                         (osd_access # get_default_osd_priority)
+                         osd_key
+                       >>= E.return))
+    )
     (let open Asd_protocol.Protocol in
      function
      | Error.Exn err -> E.fail (`AsdError err)
-     | exn -> E.fail (`AsdExn exn))
+     | exn -> E.fail (`AsdExn exn)
+    )
   >>== function
   | None ->
      let msg =
@@ -144,8 +151,10 @@ let download_fragment
       ~chunk_id
       ~fragment_id
   in
-
-  fragment_cache # lookup namespace_id cache_key >>= function
+  let fc_timeout  = osd_access # osd_timeout *. 0.5 in
+  fragment_cache # lookup
+                 ~timeout:fc_timeout namespace_id cache_key
+  >>= function
   | Some (data, mfs) ->
      E.return (Statistics.FromCache (Unix.gettimeofday () -. t0_fragment),
                data,

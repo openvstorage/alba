@@ -216,61 +216,74 @@ class alba_cache
           Lwt.return []
         )
 
-    method lookup bid name =
-      Lwt.catch
+    method lookup ?(timeout=20.0) bid name =
+      Lwt_extra2.with_timeout_default
+        ~msg:"fragment_cache_alba # lookup"
+        timeout
+        None
         (fun () ->
-         with_namespace
-           bid
-           (fun namespace ->
-            let object_name = make_object_name ~bid ~name in
-            client # download_object_to_bytes
-                   ~object_name
-                   ~namespace
-                   ~consistent_read:false
-                   ~should_cache:true
-            >>= function
-            | None -> Lwt.return_none
-            | Some (data, mf, namespace_id) ->
-               lru_track ~namespace ~object_name;
-               client # get_alba_id >>= fun alba_id ->
-               Lwt.return (Some (data, [ mf, namespace_id, alba_id ])))
+          Lwt.catch
+            (fun () ->
+              with_namespace
+                bid
+                (fun namespace ->
+                  let object_name = make_object_name ~bid ~name in
+                  client # download_object_to_bytes
+                         ~object_name
+                         ~namespace
+                         ~consistent_read:false
+                         ~should_cache:true
+                  >>= function
+                  | None -> Lwt.return_none
+                  | Some (data, mf, namespace_id) ->
+                     lru_track ~namespace ~object_name;
+                     client # get_alba_id >>= fun alba_id ->
+                     Lwt.return (Some (data, [ mf, namespace_id, alba_id ])))
+            )
+            (fun exn ->
+              Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup"
+              >>= fun () ->
+              Lwt.return_none)
         )
-        (fun exn ->
-         Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup" >>= fun () ->
-         Lwt.return_none)
 
-    method lookup2 bid name object_slices =
-      let object_slices =
-        List.map
-          (fun (offset, length, dest, dest_off) ->
-           Int64.of_int offset, length, dest, dest_off)
-          object_slices
-      in
-      Lwt.catch
+    method lookup2 ?(timeout=20.0) bid name object_slices =
+      Lwt_extra2.with_timeout_default
+        ~msg:"fragment_cache_alba # lookup2"
+        timeout
+        (false,[])
         (fun () ->
-         with_namespace
-           bid
-           (fun namespace ->
-            let object_name = make_object_name ~bid ~name in
-            client # nsm_host_access # with_namespace_id
-                   ~namespace
-                   (fun namespace_id ->
-                    base_client # download_object_slices'
-                                ~namespace_id
-                                ~object_name
-                                ~object_slices
-                                ~consistent_read:false
-                                ~fragment_statistics_cb:ignore
-                   ) >>= function
-            | None -> Lwt.return (false, [])
-            | Some (mf, namespace_id, _, mfs) ->
-               lru_track ~namespace ~object_name;
-               client # get_alba_id >>= fun alba_id ->
-               let mfs = (mf, namespace_id, alba_id) :: mfs in
-               Lwt.return (true, mfs)))
-        (fun exn ->
-         Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup2" >>= fun () ->
-         Lwt.return (false, []))
+          let object_slices =
+            List.map
+              (fun (offset, length, dest, dest_off) ->
+                Int64.of_int offset, length, dest, dest_off)
+              object_slices
+          in
+          Lwt.catch
+            (fun () ->
+              with_namespace
+                bid
+                (fun namespace ->
+                  let object_name = make_object_name ~bid ~name in
+                  client # nsm_host_access # with_namespace_id
+                         ~namespace
+                         (fun namespace_id ->
+                           base_client # download_object_slices'
+                                       ~namespace_id
+                                       ~object_name
+                                       ~object_slices
+                                       ~consistent_read:false
+                                       ~fragment_statistics_cb:ignore
+                         ) >>= function
+                  | None -> Lwt.return (false, [])
+                  | Some (mf, namespace_id, _, mfs) ->
+                     lru_track ~namespace ~object_name;
+                     client # get_alba_id >>= fun alba_id ->
+                     let mfs = (mf, namespace_id, alba_id) :: mfs in
+                     Lwt.return (true, mfs)))
+            (fun exn ->
+              Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup2" >>= fun () ->
+              Lwt.return (false, []))
+        )
 
     method drop bid ~global =
       if global

@@ -32,8 +32,11 @@ class virtual cache = object(self)
     method add' bid oid blob =
       self # add bid oid blob >>= fun _ -> Lwt.return_unit
 
-    method virtual lookup : int64 -> string -> (Lwt_bytes.t * (Manifest.t * int64 * string) list) option Lwt.t
-    method virtual lookup2 : int64 -> string
+    method virtual lookup : ?timeout:float
+                            -> int64 -> string
+                            -> (Lwt_bytes.t * (Manifest.t * int64 * string) list) option Lwt.t
+    method virtual lookup2 : ?timeout:float
+                             -> int64 -> string
                              -> (int * int * Lwt_bytes.t * int) list
                              -> (bool * (Manifest.t * int64 * string) list) Lwt.t
 
@@ -52,8 +55,8 @@ end
 class no_cache = object(self)
     inherit cache
     method add     bid oid blob   = Lwt.return []
-    method lookup  bid oid        = Lwt.return_none
-    method lookup2 bid oid slices = Lwt.return (false, [])
+    method lookup  ?timeout bid oid = Lwt.return_none
+    method lookup2 ?timeout bid oid slices = Lwt.return (false, [])
     method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
     method osd_infos ()           = Lwt.return (0, [])
@@ -438,24 +441,33 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          Lwt.return None
         )
 
-    method lookup bid oid =
-      self # _lookup bid oid read_it >>= function
-      | Some data ->
-         Lwt.return (Some (data, []))
-      | None ->
-         Lwt.return_none
+    method lookup ?(timeout= 10.0) bid oid =
+      Lwt_extra2.with_timeout_default
+        ~msg:"fragment_cache # lookup"
+        timeout None
+        (fun () ->
+          self # _lookup bid oid read_it >>= function
+          | Some data ->
+             Lwt.return (Some (data, []))
+          | None ->
+             Lwt.return_none)
 
-    method lookup2 bid oid slices =
-      self # _lookup
-           bid oid
-           (fun fd ~len ->
-            Lwt_list.iter_s
-              (fun (offset, length, target, offset') ->
-               Lwt_unix.lseek fd offset Lwt_unix.SEEK_SET >>= fun _ ->
-               Lwt_extra2.read_all_lwt_bytes_exact fd target offset' length)
-              slices) >>= function
-      | Some () -> Lwt.return (true, [])
-      | None -> Lwt.return (false, [])
+    method lookup2 ?(timeout = 10.0) bid oid slices =
+      Lwt_extra2.with_timeout_default
+        ~msg:"fragment_cache # lookup2"
+        timeout (false,[])
+        (fun () ->
+          self # _lookup
+               bid oid
+               (fun fd ~len ->
+                 Lwt_list.iter_s
+                   (fun (offset, length, target, offset') ->
+                     Lwt_unix.lseek fd offset Lwt_unix.SEEK_SET >>= fun _ ->
+                     Lwt_extra2.read_all_lwt_bytes_exact fd target offset' length)
+                   slices) >>= function
+          | Some () -> Lwt.return (true, [])
+          | None -> Lwt.return (false, [])
+        )
 
     method _check () =
       Printf.printf "_check()\n%!";
