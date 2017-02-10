@@ -600,10 +600,7 @@ let alba_list_jobs cfg_file tls_config to_json verbose attempts =
         >>= fun ((cnt,r),more) ->
         if to_json
         then
-          let result_to_json xs =
-            `List (List.map (fun x -> `String x ) xs)
-          in
-          print_result r result_to_json
+          print_result r Alba_json.string_list_to_json
         else
           Lwt_list.iter_s
             (fun x -> Lwt_io.printlf "%S" x)

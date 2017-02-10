@@ -216,10 +216,10 @@ let proxy_client_cmd_line host port transport ~to_json ~verbose f =
   lwt_cmd_line ~to_json ~verbose t
 
 
-let proxy_list_namespaces host port transport verbose =
+let proxy_list_namespaces host port transport to_json verbose =
   proxy_client_cmd_line
     host port transport
-    ~to_json:false ~verbose
+    ~to_json ~verbose
     (fun client ->
        let rec inner acc cnt =
          let first, finc = match acc with
@@ -235,15 +235,20 @@ let proxy_list_namespaces host port transport verbose =
          else Lwt.return (cnt'', List.rev acc')
        in
        inner [] 0 >>= fun (cnt, namespaces) ->
-       Lwt_io.printlf
-         "Found %i namespaces: %s"
-         cnt
-         ([%show : string list] namespaces)
+       if to_json
+       then
+         print_result namespaces Alba_json.string_list_to_json
+       else
+         Lwt_io.printlf
+           "Found %i namespaces: %s"
+           cnt
+           ([%show : string list] namespaces)
     )
 
 let proxy_list_namespaces_cmd =
   Term.(pure proxy_list_namespaces
         $ host $ port 10000 $ transport
+        $ to_json
         $ verbose),
   Term.info "proxy-list-namespaces" ~doc:"list namespaces"
 
@@ -425,23 +430,35 @@ let proxy_delete_namespace_cmd =
 let proxy_list_objects
       host port transport
       namespace
-      first finc last max reverse verbose
+      first finc last max reverse to_json verbose
   =
   let last = Option.map (fun l -> l, true ) last in
   proxy_client_cmd_line
     host port transport
-    ~to_json:false ~verbose
+    ~to_json ~verbose
    (fun client ->
     client # list_object ~namespace ~first ~finc ~last ~max ~reverse >>=
       fun (obj, hmore) ->
+      if to_json
+      then
+        let result_to_json ((n,obj), (hmore:bool)) =
+          `Assoc ["have_more", `Bool hmore;
+                  "n", `Int n;
+                  "objects" , Alba_json.string_list_to_json obj
+                 ]
+        in
+        print_result (obj,hmore) result_to_json
+      else
       Lwt_io.printl
-        ([%show: (int * string list) * bool] (obj, hmore)))
+        ([%show: (int * string list) * bool] (obj, hmore))
+   )
 
 let proxy_list_objects_cmd =
   Term.(pure proxy_list_objects
         $ host $ port 10000 $ transport
-        $ namespace 0 $ first $
-          finc $ last $ max $ reverse $ verbose),
+        $ namespace 0 $ first
+        $ finc $ last $ max $ reverse
+        $ to_json $ verbose),
   Term.info "proxy-list-objects" ~doc:"list the objects"
 
 let proxy_get_version host port transport to_json verbose =

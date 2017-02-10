@@ -420,3 +420,5 @@ module Progress = struct
 
   type progresses = (int * t) list [@@deriving yojson]
 end
+
+let string_list_to_json xs = `List (List.map (fun x -> `String x ) xs)
