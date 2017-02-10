@@ -208,12 +208,12 @@ ARG INSTALL_VOLDRV_PACKAGES=false
 
 RUN test ${INSTALL_VOLDRV_PACKAGES} = 'true' || echo 'we are NOT going to install the voldrv packages/testers'
 
-# http://10.100.129.100:8080/view/volumedriver/view/centos/job/volumedriver-no-dedup-release-centos-7/14/artifact/volumedriver-core/build/rpm/volumedriver-no-dedup-base-debuginfo_6.3.0.0-1.rpm
+# http://10.100.129.100:8080/view/volumedriver/view/centos/job/volumedriver-no-dedup-release-centos-7/35/artifact/volumedriver-core/build/rpm/volumedriver-no-dedup-base-debuginfo_6.10.1.0-1.rpm
 
-ENV voldrv_jenkins=http://10.100.129.100:8080/view/volumedriver/view/centos/job/volumedriver-no-dedup-release-centos-7/14/artifact/volumedriver-core/build/rpm
+ENV voldrv_jenkins=http://10.100.129.100:8080/view/volumedriver/view/centos/job/volumedriver-no-dedup-release-centos-7/35/artifact/volumedriver-core/build/rpm
 
 ENV voldrv_base_pkg_name=volumedriver-no-dedup
-ENV voldrv_version=6.3.0.0-1
+ENV voldrv_version=6.10.1.0-1
 
 RUN test ${INSTALL_VOLDRV_PACKAGES} = 'false' \
     || (wget ${voldrv_jenkins}/${voldrv_base_pkg_name}-base_${voldrv_version}.rpm \
