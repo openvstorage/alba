@@ -32,10 +32,10 @@ class virtual cache = object(self)
     method add' bid oid blob =
       self # add bid oid blob >>= fun _ -> Lwt.return_unit
 
-    method virtual lookup : ?timeout:float
+    method virtual lookup : timeout:float
                             -> int64 -> string
                             -> (Lwt_bytes.t * (Manifest.t * int64 * string) list) option Lwt.t
-    method virtual lookup2 : ?timeout:float
+    method virtual lookup2 : timeout:float
                              -> int64 -> string
                              -> (int * int * Lwt_bytes.t * int) list
                              -> (bool * (Manifest.t * int64 * string) list) Lwt.t
@@ -55,8 +55,8 @@ end
 class no_cache = object(self)
     inherit cache
     method add     bid oid blob   = Lwt.return []
-    method lookup  ?timeout bid oid = Lwt.return_none
-    method lookup2 ?timeout bid oid slices = Lwt.return (false, [])
+    method lookup  ~timeout bid oid = Lwt.return_none
+    method lookup2 ~timeout bid oid slices = Lwt.return (false, [])
     method drop    bid ~global    = Lwt.return_unit
     method close   ()             = Lwt.return_unit
     method osd_infos ()           = Lwt.return (0, [])
@@ -441,7 +441,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          Lwt.return None
         )
 
-    method lookup ?(timeout= 10.0) bid oid =
+    method lookup ~timeout bid oid =
       Lwt_extra2.with_timeout_default
         ~msg:"fragment_cache # lookup"
         timeout None
@@ -452,7 +452,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
           | None ->
              Lwt.return_none)
 
-    method lookup2 ?(timeout = 10.0) bid oid slices =
+    method lookup2 ~timeout bid oid slices =
       Lwt_extra2.with_timeout_default
         ~msg:"fragment_cache # lookup2"
         timeout (false,[])

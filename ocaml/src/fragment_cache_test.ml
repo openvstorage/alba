@@ -89,7 +89,7 @@ let test_1 () =
     Bigstring_slice.set blob 0 'z';     (* _replace_grow *)
     cache # add' bid oid blob >>= fun () ->
     (* lookup *)
-    cache # lookup bid oid >>=
+    cache # lookup ~timeout:5.0 bid oid >>=
       begin
         function
         | None ->
@@ -138,7 +138,7 @@ let test_3 () =
       | [] -> Lwt.return ()
       | (k, is_some)::rest ->
          begin
-           cache # lookup 0L k >>= fun r ->
+           cache # lookup ~timeout:5.0 0L k >>= fun r ->
            match r, is_some with
            | None  , false  -> Lwt.return ()
            | Some _, true   -> Lwt.return ()
@@ -268,7 +268,7 @@ let test_long () =
           begin
             let bid = Random.int64 10L in
             let oid = Random.int 100 |> Printf.sprintf "%04x" in
-            cache # lookup bid oid
+            cache # lookup ~timeout:5.0 bid oid
             >>= function
             | None ->    loop (found    ) (missed + 1) (i-1)
             | Some _  -> loop (found + 1)     missed   (i-1)
@@ -337,7 +337,7 @@ let _test_lookup2 (cache : cache) =
          offset, length, destination, destoff)
         slices
     in
-    cache # lookup2 bid key slices >>= fun (success, _) ->
+    cache # lookup2 ~timeout:5.0 bid key slices >>= fun (success, _) ->
     assert success;
     assert (value = destination);
     Lwt.return_unit
@@ -350,7 +350,7 @@ let _test_lookup2 (cache : cache) =
           0, size - 15, 0; ] >>= fun () ->
 
   (* test regular lookup too *)
-  cache # lookup bid key >>= function
+  cache # lookup ~timeout:5.0 bid key >>= function
   | None -> assert false
   | Some (r, _) ->
      assert (value = r);

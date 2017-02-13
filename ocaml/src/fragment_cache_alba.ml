@@ -216,7 +216,7 @@ class alba_cache
           Lwt.return []
         )
 
-    method lookup ?(timeout=20.0) bid name =
+    method lookup ~timeout bid name =
       Lwt_extra2.with_timeout_default
         ~msg:"fragment_cache_alba # lookup"
         timeout
@@ -246,7 +246,7 @@ class alba_cache
               Lwt.return_none)
         )
 
-    method lookup2 ?(timeout=20.0) bid name object_slices =
+    method lookup2 ~timeout bid name object_slices =
       Lwt_extra2.with_timeout_default
         ~msg:"fragment_cache_alba # lookup2"
         timeout

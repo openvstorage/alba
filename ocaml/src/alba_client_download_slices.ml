@@ -184,7 +184,9 @@ let try_get_from_fragments
   let get_from_fragments () =
     Lwt_list.iter_p
       (fun (fragment_id, fragment_slice, fragment_intersections) ->
+        let timeout = osd_access # osd_timeout in
         fragment_cache # lookup2
+                       ~timeout
                        namespace_id
                        (Fragment_cache_keys.make_key
                           ~object_id ~chunk_id ~fragment_id)
