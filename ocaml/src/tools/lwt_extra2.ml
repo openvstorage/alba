@@ -39,6 +39,18 @@ let with_timeout ~msg (timeout:float) f =
      end >>= fun () -> Lwt.fail ex
     )
 
+let with_timeout_default ~msg timeout default f =
+  Lwt.catch
+    (fun () -> Lwt_unix.with_timeout timeout f)
+    (function
+     | Lwt_unix.Timeout ->
+        Lwt_log.debug_f "Timeout(%.2f):%s" timeout msg
+        >>= fun () ->
+        Lwt.return default
+     | exn -> Lwt.fail exn
+    )
+
+
 module CountDownLatch = struct
   type t = { mutable needed : int;
              mutable waiters : unit Lwt.u list; }
