@@ -43,7 +43,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _OSD_INFO2 28
 #define _HAS_LOCAL_FRAGMENT_CACHE 31
 #define _APPLY_SEQUENCE2 32
-
+#define _READ_OBJECTS_SLICES3 33
 namespace alba {
 namespace proxy_protocol {
 
@@ -251,23 +251,41 @@ void read_get_object_info_response(message &m, Status &status, uint64_t &size,
   }
 }
 
-void write_read_objects_slices_request(message_builder &mb,
-                                       const string &namespace_,
-                                       const std::vector<ObjectSlices> &slices,
-                                       const bool consistent_read) {
-  write_tag(mb, _READ_OBJECTS_SLICES);
+void _write_read_objects_slices_request(const int tag, message_builder &mb,
+                                        const string &namespace_,
+                                        const std::vector<ObjectSlices> &slices,
+                                        const bool consistent_read) {
+  write_tag(mb, tag);
   to(mb, namespace_);
   to(mb, slices);
   to(mb, consistent_read);
 }
+
+void write_read_objects_slices_request(message_builder &mb,
+                                       const string &namespace_,
+                                       const std::vector<ObjectSlices> &slices,
+                                       const bool consistent_read) {
+
+  _write_read_objects_slices_request(_READ_OBJECTS_SLICES, mb, namespace_,
+                                     slices, consistent_read);
+}
+
 void write_read_objects_slices2_request(message_builder &mb,
                                         const string &namespace_,
                                         const std::vector<ObjectSlices> &slices,
                                         const bool consistent_read) {
-  write_tag(mb, _READ_OBJECTS_SLICES2);
-  to(mb, namespace_);
-  to(mb, slices);
-  to(mb, consistent_read);
+
+  _write_read_objects_slices_request(_READ_OBJECTS_SLICES2, mb, namespace_,
+                                     slices, consistent_read);
+}
+
+void write_read_objects_slices3_request(message_builder &mb,
+                                        const string &namespace_,
+                                        const std::vector<ObjectSlices> &slices,
+                                        const bool consistent_read) {
+
+  _write_read_objects_slices_request(_READ_OBJECTS_SLICES3, mb, namespace_,
+                                     slices, consistent_read);
 }
 
 void read_read_objects_slices_response(
@@ -333,6 +351,13 @@ void read_read_objects_slices2_response(
 
     _read_object_infos(m, object_infos);
   }
+}
+
+void read_read_objects_slices3_response(
+    message &m, Status &status, const std::vector<ObjectSlices> &objects_slices,
+    std::vector<object_info> &object_infos) {
+
+  read_read_objects_slices2_response(m, status, objects_slices, object_infos);
 }
 
 void write_apply_sequence_request(

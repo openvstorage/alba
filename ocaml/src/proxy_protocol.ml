@@ -478,6 +478,13 @@ module Protocol = struct
                              * ((object_name
                                  * alba_id
                                  * manifest_with_id) list))) request
+    | ReadObjectsSlices3 : (Namespace.name *
+                              (object_name * (offset * length) list) list *
+                                consistent_read,
+                            (data
+                             * ((object_name
+                                 * alba_id
+                                 * manifest_with_id) list))) request
     | InvalidateCache : (Namespace.name, unit) request
     | DropCache : (Namespace.name, unit) request
     | ProxyStatistics : (ProxyStatistics.request, ProxyStatistics.t) request
@@ -544,6 +551,7 @@ module Protocol = struct
                       30, Wrap ListNamespaces2, "ListNamespaces2";
                       31, Wrap HasLocalFragmentCache, "HasLocalFragmentCache";
                       32, Wrap ApplySequence2, "ApplySequence2";
+                      33, Wrap ReadObjectsSlices2, "ReadObjectsSlices3";
                     ]
 
   module Error = struct
@@ -663,6 +671,17 @@ module Protocol = struct
                     Deser.int64
                     Deser.int))))
         Deser.bool
+    | ReadObjectsSlices3 ->
+       Deser.tuple3
+        Deser.string
+        (Deser.list
+           (Deser.pair
+              Deser.string
+              (Deser.list
+                 (Deser.tuple2
+                    Deser.int64
+                    Deser.int))))
+        Deser.bool
     | InvalidateCache -> Deser.string
     | DropCache -> Deser.string
     | ProxyStatistics -> ProxyStatistics.deser_request
@@ -723,6 +742,17 @@ module Protocol = struct
                         Deser.string
                         (Deser.tuple2
                            (Manifest_deser.deser ~ser_version:1)
+                           Deser.x_int64)
+         ))
+
+    | ReadObjectsSlices3 ->
+       Deser.tuple2
+         Deser.string
+         (Deser.list (Deser.tuple3
+                        Deser.string
+                        Deser.string
+                        (Deser.tuple2
+                           (Manifest_deser.deser ~ser_version:2)
                            Deser.x_int64)
          ))
     | InvalidateCache -> Deser.unit

@@ -31,7 +31,8 @@ RoraProxy_client::RoraProxy_client(
     std::unique_ptr<GenericProxy_client> delegate,
     const RoraConfig &rora_config)
     : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io),
-      _asd_connection_pool_size(rora_config.asd_connection_pool_size) {
+      _asd_connection_pool_size(rora_config.asd_connection_pool_size),
+      _supports_read_objects_slices3(boost::none) {
   ALBA_LOG(INFO, "RoraProxy_client( _asd_connection_pool_size = "
                      << _asd_connection_pool_size << " ...)");
   ManifestCache::getInstance().set_capacity(rora_config.manifest_cache_size);
@@ -355,6 +356,39 @@ void RoraProxy_client::_process(std::vector<object_info> &object_infos,
   }
 }
 
+void RoraProxy_client::_slow_path(const std::string &namespace_,
+                                  const std::vector<ObjectSlices> &slices,
+                                  const consistent_read consistent_read_,
+                                  std::vector<object_info> &object_infos,
+                                  alba::statistics::RoraCounter &cntr) {
+  if (boost::none == _supports_read_objects_slices3) {
+    ALBA_LOG(DEBUG, "Server side supports read_objects_slices3 ?");
+    try {
+      _delegate->read_objects_slices3(namespace_, slices, consistent_read_,
+                                      object_infos, cntr);
+
+      _supports_read_objects_slices3 = true;
+    } catch (alba::proxy_client::proxy_exception &e) {
+      if (e._return_code ==
+          alba::proxy_protocol::return_code::UNKNOWN_OPERATION) {
+        _supports_read_objects_slices3 = false;
+        _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
+                                        object_infos, cntr);
+      } else {
+        throw e;
+      }
+    }
+  } else {
+    if (*_supports_read_objects_slices3) {
+      _delegate->read_objects_slices3(namespace_, slices, consistent_read_,
+                                      object_infos, cntr);
+    } else {
+      _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
+                                      object_infos, cntr);
+    }
+  }
+}
+
 void RoraProxy_client::read_objects_slices(
     const string &namespace_, const std::vector<ObjectSlices> &slices,
     const consistent_read consistent_read_,
@@ -374,9 +408,9 @@ void RoraProxy_client::read_objects_slices(
 
   if (use_slow_path) {
     std::vector<object_info> object_infos;
-    _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
-                                    object_infos, cntr);
+    _slow_path(namespace_, slices, consistent_read_, object_infos, cntr);
     _process(object_infos, namespace_);
+
   } else {
     std::vector<std::pair<byte *, Location>> short_path;
     std::vector<ObjectSlices> via_proxy;
@@ -424,8 +458,7 @@ void RoraProxy_client::read_objects_slices(
     ALBA_LOG(DEBUG, "rora read_objects_slices going via proxy, size="
                         << via_proxy.size());
     std::vector<object_info> object_infos;
-    _delegate->read_objects_slices2(namespace_, via_proxy, consistent_read_,
-                                    object_infos, cntr);
+    _slow_path(namespace_, via_proxy, consistent_read_, object_infos, cntr);
     _process(object_infos, namespace_);
   }
 }
