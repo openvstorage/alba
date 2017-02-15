@@ -660,7 +660,7 @@ module Manifest = struct
     Llio.float_to buf t.timestamp
 
 
-  let to_buffer ?(version=1) buf t =
+  let to_buffer ~version buf t =
     Llio.int8_to buf version;
     let ser = match version with
       | 1 -> inner_to_buffer_1
@@ -669,8 +669,6 @@ module Manifest = struct
     in
     let res = serialize ser t in
     Llio.string_to buf (Snappy.compress res)
-
-  let output = to_buffer ~version:1
 
   let inner_from_buffer_1 buf =
     let name = Llio.string_from buf in
@@ -845,10 +843,10 @@ module Update =
       | PutObject of Manifest.t * GcEpochs.gc_epoch
       | DeleteObject of object_name
 
-    let to_buffer buf = function
+    let to_buffer ~manifest_version buf = function
       | PutObject (mf, gc_epoch) ->
          Llio.int8_to buf 1;
-         Manifest.to_buffer buf mf;
+         Manifest.to_buffer ~version:manifest_version buf mf;
          Llio.int64_to buf gc_epoch
       | DeleteObject name ->
          Llio.int8_to buf 2;
@@ -1112,6 +1110,7 @@ module Err = struct
     | Assert_failed           [@value 20]
     | Invalid_bucket          [@value 21]
     | Preset_violated         [@value 22]
+    | Session_update_error    [@value 23]
   [@@deriving show, enum]
 
   exception Nsm_exn of t * string
@@ -1578,7 +1577,9 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       Update'.compare_and_swap
         (Keys.objects ~object_id)
         None
-        (Some (serialize Manifest.output manifest)) in
+        (Some (serialize (Manifest.to_buffer
+                            ~version:1 (* TODO: should become 2 *)) manifest))
+    in
 
     let gc_epoch_so, gc_epochs = get_gc_epochs kv in
     let assert_gc_epoch =
@@ -2118,7 +2119,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         []
     in
 
-    let updated_manifest_s = serialize Manifest.output updated_manifest in
+    let updated_manifest_s = serialize
+                               (Manifest.to_buffer ~version:1)
+                               updated_manifest
+    in
     let update_manifest =
       Update'.compare_and_swap
         (Keys.objects ~object_id)

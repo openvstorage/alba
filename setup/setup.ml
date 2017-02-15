@@ -255,6 +255,7 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
     w "cluster = %s" (String.concat ", " nodes);
     w "cluster_id = %s" cluster_id;
     w "plugins = albamgr_plugin nsm_host_plugin";
+    w "lease_period = 5";
     w "";
     if cfg.tls
     then

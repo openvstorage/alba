@@ -260,8 +260,11 @@ let maybe_activate_reporting =
   end
 
 
-let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.query -> i -> o =
-  fun db tag req ->
+let handle_query : type i o. read_user_db ->
+                        Nsm_protocol.Session.t ->
+                        (i, o) Nsm_host_protocol.Protocol.query -> i -> o
+  =
+  fun db session tag req ->
   let open Nsm_host_protocol.Protocol in
   let nsm_query tag namespace_id req =
     let prefix = Keys.namespace_content namespace_id in
@@ -375,6 +378,24 @@ let handle_query : type i o. read_user_db -> (i, o) Nsm_host_protocol.Protocol.q
         try Result.Ok (nsm_query tag namespace_id req)
         with Nsm_model.Err.Nsm_exn (err, _) -> Result.Error err)
        req
+  | UpdateSession ->
+     begin
+       List.iter
+         (function
+          | "manifest_ser", vo ->
+             begin
+               match vo with
+               | None -> ()
+               | Some v ->
+                  let new_version = deserialize Llio.int8_from v in
+                  Nsm_protocol.Session.set_manifest_ser session new_version
+             end
+          | key,_ ->
+             let open Nsm_model in
+             Err.failwith Err.Session_update_error ~payload:key
+         )
+         req
+     end
 
 let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
@@ -433,7 +454,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   in
 
 
-  let do_one tag req_buf =
+  let do_one session tag req_buf =
     let tag_name = (Protocol.tag_to_name tag) in
     Plugin_helper.debug_f "NSM host: Got tag %s" tag_name;
     let open Protocol in
@@ -453,8 +474,8 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       then
         Lwt.catch
           (fun () ->
-             let res = handle_query db r req in
-             let res_serializer = write_query_o r in
+             let res = handle_query db session r req in
+             let res_serializer = write_query_o session r in
              write_response_ok res_serializer res)
           (function
             | Err.Nsm_exn (err, payload) -> write_response_error payload err
@@ -499,7 +520,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
            then write_response_error "" Err.Old_plugin_version
            else begin
              try_update 0 >>= fun res ->
-             let serializer = write_update_o u in
+             let serializer = write_update_o session u in
              write_response_ok serializer res
            end)
         (function
@@ -511,7 +532,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             write_response_error msg Err.Unknown >>= fun () ->
             Lwt.fail exn)
   in
-  let rec inner () =
+  let rec inner (session:Nsm_protocol.Session.t) =
     Lwt.catch
       (fun () ->
        Plugin_helper.debug_f "NSM host: Waiting for new request";
@@ -519,7 +540,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        let req_buf = Llio.make_buffer req_s 0 in
        let tag = Llio.int32_from req_buf in
        with_timing_lwt
-         (fun () -> do_one tag req_buf)
+         (fun () -> do_one session tag req_buf)
        >>= fun (delta,r) ->
        Protocol.NSMHStatistics.new_delta statistics tag delta;
        Lwt.return r
@@ -533,9 +554,10 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           write_response_error msg Err.Unknown >>= fun () ->
           Lwt.fail exn)
     >>= fun () ->
-    inner ()
+    inner session
   in
-  inner ()
+  let session = Nsm_protocol.Session.make () in
+  inner session
 
 
 

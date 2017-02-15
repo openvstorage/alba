@@ -70,6 +70,7 @@ module Protocol = struct
       | k -> raise_bad_tag "Nsm_host_protocol.Namespace_message" k
   end
 
+
   module Message = struct
     type t =
       | CreateNamespace of namespace_name * namespace_id
@@ -153,6 +154,7 @@ module Protocol = struct
         ('i_, 'o_) Nsm_protocol.Protocol.query ->
         ((namespace_id * 'i_) list,
          ('o_, Nsm_model.Err.t) Result.result list) query
+    | UpdateSession : ((string * string option) list , unit) query
 
   type ('i, 'o) update =
     | CleanupForNamespace : (namespace_id, int) update
@@ -216,6 +218,7 @@ module Protocol = struct
       nsm_update UpdateObject2, 38l, "UpdateObject2";
 
       Wrap_u (NsmsUpdate UpdatePreset), 39l, "Multi UpdatePreset";
+      Wrap_q UpdateSession, 40l, "UpdateSession"
     ]
 
   let wrap_unknown_operation f =
@@ -262,7 +265,13 @@ module Protocol = struct
          (Llio.pair_from
             Llio.int64_from
             (Nsm_protocol.Protocol.read_update_request u))
-  let write_update_i : type i o. (i, o) update -> i serializer = function
+  let write_update_i :
+  type i o. Nsm_protocol.Session.t ->
+       (i, o) update ->
+       i serializer
+    =
+    fun session ->
+    function
     | CleanupForNamespace -> x_int64_to
     | DeliverMsg -> Llio.pair_to Message.to_buffer x_int64_to
     | DeliverMsgs -> Llio.list_to
@@ -272,12 +281,12 @@ module Protocol = struct
     | NsmUpdate u ->
       Llio.pair_to
         x_int64_to
-        (Nsm_protocol.Protocol.write_update_request u)
+        (Nsm_protocol.Protocol.write_update_request session u)
     | NsmsUpdate u ->
        Llio.list_to
          (Llio.pair_to
             Llio.int64_to
-            (Nsm_protocol.Protocol.write_update_request u))
+            (Nsm_protocol.Protocol.write_update_request session u))
 
 
 
@@ -291,14 +300,18 @@ module Protocol = struct
                            (Nsm_protocol.Protocol.read_update_response u)
                            (fun buf -> Nsm_model.Err.int2err (Llio.int8_from buf))
                         )
-  let write_update_o : type i o. (i, o) update -> o serializer = function
+  let write_update_o :
+  type i o. Nsm_protocol.Session.t ->
+       (i, o) update -> o serializer =
+    fun session ->
+    function
     | CleanupForNamespace -> Llio.int_to
     | DeliverMsg -> Llio.unit_to
     | DeliverMsgs -> Llio.unit_to
-    | NsmUpdate u -> Nsm_protocol.Protocol.write_update_response u
+    | NsmUpdate u -> Nsm_protocol.Protocol.write_update_response session u
     | NsmsUpdate u -> Llio.list_to
                         (Result.to_buffer
-                           (Nsm_protocol.Protocol.write_update_response u)
+                           (Nsm_protocol.Protocol.write_update_response session u)
                            (fun buf err -> Llio.int8_to buf (Nsm_model.Err.err2int err))
                         )
 
@@ -315,7 +328,12 @@ module Protocol = struct
          (Llio.pair_from
             x_int64_from
             (Nsm_protocol.Protocol.read_query_request q))
-
+    | UpdateSession ->
+       Llio.list_from
+         (Llio.pair_from
+            Llio.string_from
+            (Llio.option_from Llio.string_from)
+         )
 
   let write_query_i : type i o. (i, o) query -> i serializer = function
     | ListNsms -> Llio.unit_to
@@ -330,6 +348,12 @@ module Protocol = struct
          (Llio.pair_to
             x_int64_to
             (Nsm_protocol.Protocol.write_query_request q))
+    | UpdateSession ->
+       Llio.list_to
+         (Llio.pair_to
+            Llio.string_to
+            (Llio.option_to Llio.string_to)
+         )
 
 
   let read_query_o : type i o. (i, o) query -> o deserializer = function
@@ -346,7 +370,13 @@ module Protocol = struct
                           (Nsm_protocol.Protocol.read_query_response q)
                           (fun buf -> Nsm_model.Err.int2err (Llio.int8_from buf))
                        )
-  let write_query_o : type i o. (i, o) query -> o serializer = function
+    | UpdateSession -> Llio.unit_from
+
+  let write_query_o : type i o. Nsm_protocol.Session.t -> (i, o) query ->
+                           o serializer
+    =
+    fun session ->
+    function
     | ListNsms -> Llio.counted_list_to (Llio.pair_to x_int64_to namespace_state_to_buf)
     | GetVersion -> Llio.tuple4_to
                       Llio.int_to
@@ -354,10 +384,11 @@ module Protocol = struct
                       Llio.int_to
                       Llio.string_to
     | NSMHStatistics -> NSMHStatistics.to_buffer
-    | NsmQuery q -> Nsm_protocol.Protocol.write_query_response q
+    | NsmQuery q -> Nsm_protocol.Protocol.write_query_response session q
     | NsmsQuery q -> Llio.list_to
                        (Result.to_buffer
-                          (Nsm_protocol.Protocol.write_query_response q)
+                          (Nsm_protocol.Protocol.write_query_response session q)
                           (fun buf err -> Llio.int8_to buf (Nsm_model.Err.err2int err))
                        )
+    | UpdateSession -> Llio.unit_to
 end
