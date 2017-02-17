@@ -17,9 +17,9 @@ but WITHOUT ANY WARRANTY of any kind.
  *)
 
 open Checksum
-type version = int [@@deriving show]
+type version = int [@@deriving show, yojson]
 
-type location = Preset.osd_id option * version [@@deriving show]
+type location = Preset.osd_id option * version [@@deriving show, yojson]
 
 type chunk_id = int [@@deriving show]
 (* 0 <= fragment_id < k+m *)
@@ -32,7 +32,7 @@ module Fragment = struct
     { loc : location;
       crc : Checksum.t;
       len : int;
-      ctr : string option } [@@deriving show]
+      ctr : string option } [@@deriving show, yojson]
 
   let make loc crc len ctr = {loc;crc;len;ctr}
 

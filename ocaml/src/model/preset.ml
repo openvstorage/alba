@@ -18,13 +18,13 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Prelude
 
-type k = Policy.k [@@deriving show]
-type m = Policy.m [@@deriving show]
+type k = Policy.k [@@deriving show, yojson]
+type m = Policy.m [@@deriving show, yojson]
 
 module Encoding_scheme = struct
   type w =
     | W8 [@value 1]
-  [@@deriving show, enum]
+  [@@deriving show, enum, yojson]
 
   let w_as_int = function
     | W8 -> 8
@@ -39,7 +39,7 @@ module Encoding_scheme = struct
 
   type t =
     | RSVM of k * m * w (* k identity blocks + m redundancy blocks * word size *)
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let output buf = function
     | RSVM (k, m, w) ->

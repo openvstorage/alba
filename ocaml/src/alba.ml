@@ -420,7 +420,7 @@ let alba_show_object
       cfg_file tls_config
       namespace object_name
       attribute_name
-      verbose unescape
+      to_json verbose unescape
   =
   let object_name = maybe_unescape unescape object_name in
 
@@ -435,23 +435,31 @@ let alba_show_object
        >>= fun (hm,r) ->
        match r with
          | None ->
-            Lwt_io.eprintlf "not found"
+            Lwt.fail_with "not found"
          | Some manifest ->
             begin
-              match attribute_name with
-              | None -> Lwt_io.printlf "%s"
-                                       ([%show: Manifest.t ]
-                                          manifest)
-              | Some "checksum" ->
-                 let open Manifest in
-                 Lwt_io.printlf "%s"
-                                ([%show : Checksum.t]
-                                   manifest.checksum)
-              | Some x -> Lwt_io.eprintlf "no such attribute `%s`" x
+              if to_json
+              then
+                begin
+                  print_result manifest Alba_json.Manifest.to_yojson
+                end
+              else
+                begin
+                  match attribute_name with
+                  | None -> Lwt_io.printlf "%s"
+                                           ([%show: Manifest.t ]
+                                              manifest)
+                  | Some "checksum" ->
+                     let open Manifest in
+                     Lwt_io.printlf "%s"
+                                    ([%show : Checksum.t]
+                                       manifest.checksum)
+                  | Some x -> Lwt_io.eprintlf "no such attribute `%s`" x
+                end
             end
       )
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_show_object_cmd =
   Term.(pure alba_show_object
@@ -464,7 +472,7 @@ let alba_show_object_cmd =
         $ Arg.(value & opt (some string) None &
                  info ["attribute"] ~docv:"ATTRIBUTE"
                       ~doc:"nothing or 'checksum' ")
-        $ verbose
+        $ to_json $ verbose
         $ unescape
   ),
   Term.info "show-object" ~doc:"print some info about the object"

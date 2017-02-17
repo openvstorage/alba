@@ -432,7 +432,7 @@ void dump_string(std::ostream &os, const std::string &s) {
 
 std::ostream &operator<<(std::ostream &os, const Fragment &f) {
   os << "{";
-  os << "loc = " << f.loc << ", crc = " << f.crc << ", len = " << f.len;
+  os << "loc = " << f.loc << ", crc = " << *f.crc << ", len = " << f.len;
   os << "}" << std::endl;
   return os;
 }

@@ -44,7 +44,7 @@ module Checksum = struct
   type t =
     | NoChecksum
     | Sha1 of HexString.t (* a string of size 20, actually *)
-    | Crc32c of HexInt32.t
+    | Crc32c of HexInt32.t [@@ deriving yojson]
 
   let show = function
     | NoChecksum -> "NoChecksum"

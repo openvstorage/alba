@@ -1827,6 +1827,7 @@ module Test = struct
       let cfg = deployment.cfg in
       let host, transport = _get_ip_transport cfg
       and port = deployment.proxy # port
+      and test_abm = deployment.abm # config_url |> Url.canonical
       in
       let cmd =
         ["cd";cfg.alba_home; "&&";
@@ -1836,6 +1837,7 @@ module Test = struct
          Printf.sprintf "ALBA_PROXY_PORT=%i" port;
          Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
          Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
+         Printf.sprintf "TEST_ABM=%s" test_abm;
         ]
       in
       let cmd =

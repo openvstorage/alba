@@ -20,6 +20,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <exception>
 #include <iomanip>
 #include <sys/time.h>
+#include <string>
 
 namespace alba {
 namespace stuff {
@@ -77,5 +78,18 @@ double timestamp_millis() {
   double t0 = tp.tv_sec + (double)tp.tv_usec / 1e6;
   return t0;
 }
+
+std::string shell(const std::string& cmd) {
+  std::array<char, 128> buffer;
+  std::string result;
+  std::shared_ptr<FILE> pipe(popen(cmd.c_str(), "r"), pclose);
+  if (!pipe) throw std::runtime_error("popen() failed!");
+  while (!feof(pipe.get())) {
+      if (fgets(buffer.data(), 128, pipe.get()) != NULL)
+          result += buffer.data();
+  }
+  return result;
+}
+
 }
 }

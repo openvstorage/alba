@@ -488,7 +488,7 @@ module EncryptInfo = struct
 
   type key_identification =
     | KeySha256 of string
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let id_to_buffer buf = function
     | KeySha256 id ->
@@ -504,7 +504,7 @@ module EncryptInfo = struct
   type t =
     | NoEncryption
     | Encrypted of Encryption.algo * key_identification
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let to_buffer buf = function
     | NoEncryption ->
@@ -531,7 +531,7 @@ module Storage_scheme = struct
     | EncodeCompressEncrypt of Encoding_scheme.t * Compression.t
     (* alternative scheme which doesn't require repair to know the encryption key
        | CompressEncryptEncode of compression * encoding_scheme *)
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let output buf = function
     | EncodeCompressEncrypt (es, compression) ->
@@ -576,7 +576,7 @@ module Manifest = struct
 
     timestamp : float;
   }
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let make ~name ~object_id
            ~storage_scheme ~encrypt_info
@@ -606,6 +606,7 @@ module Manifest = struct
       t.fragments
 
   let inner_to_buffer_1 buf t =
+    Lwt_log.ign_debug_f "Manifest.inner_to_buffer_1";
     Llio.string_to buf t.name;
     Llio.string_to buf t.object_id;
     Llio.list_to Llio.int_to buf t.chunk_sizes;
@@ -647,6 +648,7 @@ module Manifest = struct
     ()
 
   let inner_to_buffer_2 buf t =
+    Lwt_log.ign_debug_f "Manifest.inner_to_buffer_2";
     Llio.string_to buf t.name;
     Llio.string_to buf t.object_id;
     Llio.list_to Llio.int_to buf t.chunk_sizes;

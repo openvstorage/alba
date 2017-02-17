@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 
 module Layout = struct
-    type 'a t = 'a list list [@@deriving show]
+    type 'a t = 'a list list [@@deriving show, yojson]
 
     let map_indexed f t =
       List.mapi

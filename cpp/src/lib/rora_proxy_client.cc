@@ -362,16 +362,17 @@ void RoraProxy_client::_slow_path(const std::string &namespace_,
                                   std::vector<object_info> &object_infos,
                                   alba::statistics::RoraCounter &cntr) {
   if (boost::none == _supports_read_objects_slices3) {
-    ALBA_LOG(DEBUG, "Server side supports read_objects_slices3 ?");
     try {
       _delegate->read_objects_slices3(namespace_, slices, consistent_read_,
                                       object_infos, cntr);
 
       _supports_read_objects_slices3 = true;
+      ALBA_LOG(DEBUG, "server supports read_objects_slices3");
     } catch (alba::proxy_client::proxy_exception &e) {
       if (e._return_code ==
           alba::proxy_protocol::return_code::UNKNOWN_OPERATION) {
         _supports_read_objects_slices3 = false;
+        ALBA_LOG(DEBUG, "Server does not support read_objects_slices3");
         _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
                                         object_infos, cntr);
       } else {
