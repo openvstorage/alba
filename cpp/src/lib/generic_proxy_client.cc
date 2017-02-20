@@ -256,30 +256,6 @@ void GenericProxy_client::read_objects_slices2(
   check_status(__PRETTY_FUNCTION__);
 }
 
-void GenericProxy_client::read_objects_slices3(
-    const string &namespace_,
-    const vector<proxy_protocol::ObjectSlices> &slices,
-    const consistent_read consistent_read,
-    vector<proxy_protocol::object_info> &object_infos,
-    alba::statistics::RoraCounter &cntr) {
-
-  if (slices.size() == 0) {
-    return;
-  }
-  _expires_from_now(_timeout);
-
-  proxy_protocol::write_read_objects_slices3_request(
-      _mb, namespace_, slices, BooleanEnumTrue(consistent_read));
-  _output();
-
-  message response = _input();
-  proxy_protocol::read_read_objects_slices3_response(response, _status, slices,
-                                                     object_infos);
-  cntr.slow_path += slices.size();
-
-  check_status(__PRETTY_FUNCTION__);
-}
-
 void GenericProxy_client::write_object_fs2(
     const string &namespace_, const string &object_name,
     const string &input_file, const allow_overwrite allow_overwrite,
@@ -296,6 +272,18 @@ void GenericProxy_client::write_object_fs2(
   check_status(__PRETTY_FUNCTION__);
 }
 
+void GenericProxy_client::update_session(
+    const std::vector<std::pair<std::string, boost::optional<std::string>>>
+        &args) {
+  _expires_from_now(_timeout);
+
+  proxy_protocol::write_update_session_request(_mb, args);
+  _output();
+
+  message response = _input();
+  proxy_protocol::read_update_session_response(response, _status);
+  check_status(__PRETTY_FUNCTION__);
+}
 tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
     const string &namespace_, const string &object_name,
     const consistent_read consistent_read, const should_cache should_cache) {

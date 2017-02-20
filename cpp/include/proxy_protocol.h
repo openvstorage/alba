@@ -151,18 +151,19 @@ void write_read_objects_slices_request(
 void write_read_objects_slices2_request(
     message_builder &mb, const string &namespace_,
     const std::vector<ObjectSlices> &object_slices, const bool allow_cached);
-void write_read_objects_slices3_request(
-    message_builder &mb, const string &namespace_,
-    const std::vector<ObjectSlices> &object_slices, const bool allow_cached);
 
 void read_read_objects_slices_response(message &m, Status &status,
                                        const std::vector<ObjectSlices> &dest);
 void read_read_objects_slices2_response(message &m, Status &status,
                                         const std::vector<ObjectSlices> &dest,
                                         std::vector<object_info> &object_infos);
-void read_read_objects_slices3_response(message &m, Status &status,
-                                        const std::vector<ObjectSlices> &dest,
-                                        std::vector<object_info> &object_infos);
+
+void write_update_session_request(
+    message_builder &mb,
+    const std::vector<std::pair<std::string, boost::optional<std::string>>>
+        &args);
+
+void read_update_session_response(message &m, Status &status);
 
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,

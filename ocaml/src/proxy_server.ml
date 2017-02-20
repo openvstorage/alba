@@ -300,7 +300,6 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S,%S,_,_,_)" namespace object_name
   | ReadObjectsSlices  -> render_read_object_slices
   | ReadObjectsSlices2 -> render_read_object_slices
-  | ReadObjectsSlices3 -> render_read_object_slices
   | NamespaceExists -> fun namespace ->
                        Printf.sprintf "(%S)" namespace
   | ProxyStatistics -> fun _ -> "-"
@@ -316,7 +315,6 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | OsdInfo         -> fun () -> "()"
   | OsdInfo2        -> fun () -> "()"
   | ApplySequence   -> fun args -> render_apply_sequence args
-  | ApplySequence2  -> fun args -> render_apply_sequence args
   | ReadObjects     -> fun args ->
                        Printf.sprintf "(%S)" ([%show : Namespace.name
                                                        * object_name list
@@ -327,6 +325,9 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S)" ([%show : Namespace.name * object_name list] args)
   | GetAlbaId       -> fun () -> "()"
   | HasLocalFragmentCache -> fun () -> "()"
+  | UpdateSession   -> fun args ->
+                       Printf.sprintf "%s"
+                       ([%show : (string * string option) list] args)
 
 let log_request code error renderer time =
   let details = renderer () in
@@ -359,7 +360,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                    (albamgr_client_cfg:Alba_arakoon.Config.t ref)
                    (stats: ProxyStatistics.t')
                    (nfd:Net_fd.t) =
-
+  let session = ProxySession.make () in
   let execute_request : type i o. (i, o) Protocol.request ->
                              ProxyStatistics.t' ->
                              i -> o Lwt.t
@@ -523,8 +524,6 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | ApplySequence ->
        fun stats args ->
        do_apply_sequence args
-    | ApplySequence2 ->
-       fun stats args -> do_apply_sequence args
     | GetObjectInfo ->
        fun stats (namespace, object_name, consistent_read, should_cache) ->
        begin
@@ -553,8 +552,6 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          ~took:delay;
        Lwt.return bytes
     | ReadObjectsSlices2 -> do_read_objects_slices
-    | ReadObjectsSlices3 -> do_read_objects_slices
-
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
@@ -610,6 +607,27 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats () -> alba_client # get_alba_id
     | HasLocalFragmentCache ->
        fun stats () -> alba_client # has_local_fragment_cache |> Lwt.return
+    | UpdateSession ->
+       fun stats args ->
+       begin
+         let () = List.iter
+           (function
+            | "manifest_ser", vo ->
+               begin
+                 match vo with
+                 | None -> ()
+                 | Some v ->
+                    let new_version = deserialize Llio.int8_from v in
+                    ProxySession.set_manifest_ser session new_version
+               end
+            | key,_ ->
+               let open Nsm_model in
+               Err.failwith Err.Session_update_error ~payload:key
+           )
+           args
+         in
+         Lwt.return_unit
+       end
   in
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
@@ -648,7 +666,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                        Llio.serialize_with_length'
                          (Llio.pair_to
                             Llio.int_to
-                            (snd (Protocol.deser_request_o r)))
+                            (snd (Protocol.deser_request_o session r)))
                          (0, res)))
          (function
           | End_of_file as e ->

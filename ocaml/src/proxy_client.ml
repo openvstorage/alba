@@ -75,16 +75,19 @@ class proxy_client fd =
 
     with_response tag_name response_deserializer f
   in
+  let session = ProxySession.make () in
   object(self)
-    method private request' : type i o r. (i, o) request -> i -> (o -> r Lwt.t) -> r Lwt.t =
+    method private request' :
+    type i o r. (i, o) request -> i -> (o -> r Lwt.t) -> r Lwt.t =
       fun command req f ->
       do_request
         (command_to_code (Wrap command))
         (deser_request_i command |> snd) req
-        (Deser.from_buffer (deser_request_o command))
+        (Deser.from_buffer (deser_request_o session command))
         f
 
-    method private request : type i o. (i, o) request -> i -> o Lwt.t =
+    method private request :
+    type i o. (i, o) request -> i -> o Lwt.t =
       fun command req ->
       self # request' command req Lwt.return
 

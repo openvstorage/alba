@@ -42,8 +42,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _APPLY_SEQUENCE 24
 #define _OSD_INFO2 28
 #define _HAS_LOCAL_FRAGMENT_CACHE 31
-#define _APPLY_SEQUENCE2 32
-#define _READ_OBJECTS_SLICES3 33
+#define _UPDATE_SESSION 32
+
 namespace alba {
 namespace proxy_protocol {
 
@@ -279,15 +279,6 @@ void write_read_objects_slices2_request(message_builder &mb,
                                      slices, consistent_read);
 }
 
-void write_read_objects_slices3_request(message_builder &mb,
-                                        const string &namespace_,
-                                        const std::vector<ObjectSlices> &slices,
-                                        const bool consistent_read) {
-
-  _write_read_objects_slices_request(_READ_OBJECTS_SLICES3, mb, namespace_,
-                                     slices, consistent_read);
-}
-
 void read_read_objects_slices_response(
     message &m, Status &status,
     const std::vector<ObjectSlices> &objects_slices) {
@@ -353,20 +344,24 @@ void read_read_objects_slices2_response(
   }
 }
 
-void read_read_objects_slices3_response(
-    message &m, Status &status, const std::vector<ObjectSlices> &objects_slices,
-    std::vector<object_info> &object_infos) {
-
-  read_read_objects_slices2_response(m, status, objects_slices, object_infos);
+void write_update_session_request(
+    message_builder &mb,
+    const std::vector<std::pair<std::string, boost::optional<std::string>>>
+        &args) {
+  write_tag(mb, _UPDATE_SESSION);
+  to(mb, args);
 }
 
+void read_update_session_response(message &m, Status &status) {
+  read_status(m, status);
+}
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
     const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>
         &asserts,
     const std::vector<std::shared_ptr<alba::proxy_client::sequences::Update>>
         &updates) {
-  write_tag(mb, _APPLY_SEQUENCE2);
+  write_tag(mb, _APPLY_SEQUENCE);
   to(mb, namespace_);
   to(mb, write_barrier);
   to(mb, asserts);

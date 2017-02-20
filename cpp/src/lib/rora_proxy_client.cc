@@ -32,7 +32,7 @@ RoraProxy_client::RoraProxy_client(
     const RoraConfig &rora_config)
     : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io),
       _asd_connection_pool_size(rora_config.asd_connection_pool_size),
-      _supports_read_objects_slices3(boost::none) {
+      _ser_version(boost::none) {
   ALBA_LOG(INFO, "RoraProxy_client( _asd_connection_pool_size = "
                      << _asd_connection_pool_size << " ...)");
   ManifestCache::getInstance().set_capacity(rora_config.manifest_cache_size);
@@ -361,33 +361,30 @@ void RoraProxy_client::_slow_path(const std::string &namespace_,
                                   const consistent_read consistent_read_,
                                   std::vector<object_info> &object_infos,
                                   alba::statistics::RoraCounter &cntr) {
-  if (boost::none == _supports_read_objects_slices3) {
+  if (boost::none == _ser_version) {
     try {
-      _delegate->read_objects_slices3(namespace_, slices, consistent_read_,
-                                      object_infos, cntr);
-
-      _supports_read_objects_slices3 = true;
-      ALBA_LOG(DEBUG, "server supports read_objects_slices3");
+      using namespace std;
+      vector<pair<string, boost::optional<string>>> args;
+      auto p = make_pair(string("manifest_ser"),
+                         boost::optional<string>(string("\02")));
+      args.push_back(p);
+      _delegate->update_session(args);
+      _ser_version = 2;
+      ALBA_LOG(DEBUG, "manifest_ser = " << 2);
     } catch (alba::proxy_client::proxy_exception &e) {
       if (e._return_code ==
           alba::proxy_protocol::return_code::UNKNOWN_OPERATION) {
-        _supports_read_objects_slices3 = false;
-        ALBA_LOG(DEBUG, "Server does not support read_objects_slices3");
+        _ser_version = 1;
+        ALBA_LOG(DEBUG, "manifest_ser = " << 1);
         _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
                                         object_infos, cntr);
       } else {
         throw e;
       }
     }
-  } else {
-    if (*_supports_read_objects_slices3) {
-      _delegate->read_objects_slices3(namespace_, slices, consistent_read_,
-                                      object_infos, cntr);
-    } else {
-      _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
-                                      object_infos, cntr);
-    }
   }
+  _delegate->read_objects_slices2(namespace_, slices, consistent_read_,
+                                  object_infos, cntr);
 }
 
 void RoraProxy_client::read_objects_slices(

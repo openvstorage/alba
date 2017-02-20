@@ -69,12 +69,6 @@ public:
                        const consistent_read,
                        std::vector<proxy_protocol::object_info> &,
                        alba::statistics::RoraCounter &);
-  virtual void
-  read_objects_slices3(const std::string &namespace_,
-                       const std::vector<proxy_protocol::ObjectSlices> &,
-                       const consistent_read,
-                       std::vector<proxy_protocol::object_info> &,
-                       alba::statistics::RoraCounter &);
 
   virtual void write_object_fs2(const std::string &namespace_,
                                 const std::string &object_name,
@@ -82,6 +76,9 @@ public:
                                 const allow_overwrite, const Checksum *checksum,
                                 proxy_protocol::ManifestWithNamespaceId &);
 
+  virtual void update_session(
+      const std::vector<std::pair<std::string, boost::optional<std::string>>>
+          &args);
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache);
