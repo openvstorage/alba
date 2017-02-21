@@ -517,7 +517,8 @@ module Protocol = struct
     | MultiExists : (Namespace.name * object_name list, bool list) request
     | GetAlbaId : (unit, alba_id) request
     | HasLocalFragmentCache : (unit, bool) request
-    | UpdateSession : ((string * string option) list , unit) request
+    | UpdateSession : ((string * string option) list ,
+                       (string * string) list) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -789,5 +790,8 @@ module Protocol = struct
        Deser.string
     | HasLocalFragmentCache ->
        Deser.bool
-    | UpdateSession -> Deser.unit
+    | UpdateSession -> Deser.list
+                         (Deser.pair
+                            Deser.string
+                            Deser.string)
 end

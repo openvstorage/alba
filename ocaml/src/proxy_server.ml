@@ -610,23 +610,24 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
     | UpdateSession ->
        fun stats args ->
        begin
-         let () = List.iter
-           (function
-            | "manifest_ser", vo ->
-               begin
-                 match vo with
-                 | None -> ()
-                 | Some v ->
-                    let new_version = deserialize Llio.int8_from v in
-                    ProxySession.set_manifest_ser session new_version
-               end
-            | key,_ ->
-               let open Nsm_model in
-               Err.failwith Err.Session_update_error ~payload:key
+         let result =
+           List.fold_left
+             (fun acc (k,vo) ->
+               match k with
+               | "manifest_ser" ->
+                  begin
+                    match vo with
+                    | None -> acc
+                    | Some v ->
+                       let new_version = deserialize Llio.int8_from v in
+                       let () = ProxySession.set_manifest_ser session new_version in
+                       (k, v) :: acc
+                  end
+               | _ -> acc
            )
-           args
+           [] args
          in
-         Lwt.return_unit
+         Lwt.return (List.rev result)
        end
   in
   let module Llio = Llio2.WriteBuffer in

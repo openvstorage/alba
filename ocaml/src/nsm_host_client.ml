@@ -194,8 +194,16 @@ let wrap_around (client:Arakoon_client.client) =
           let manifest_ser = 2 in
           client # query UpdateSession
                  ["manifest_ser", Some (serialize Llio.int8_to manifest_ser)]
-          >>= fun () ->
-          Nsm_protocol.Session.set_manifest_ser session manifest_ser;
+          >>= fun processed ->
+          let () = List.iter
+            (fun (k,v) ->
+              match k with
+              | "manifest_ser" ->
+                 let manifest_ser = deserialize Llio.int8_from v in
+                 Nsm_protocol.Session.set_manifest_ser session manifest_ser
+              | _ -> ()
+            ) processed
+          in
           Lwt.return_unit
         )
         (function

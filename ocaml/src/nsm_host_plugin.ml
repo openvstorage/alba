@@ -380,21 +380,26 @@ let handle_query : type i o. read_user_db ->
        req
   | UpdateSession ->
      begin
-       List.iter
-         (function
-          | "manifest_ser", vo ->
-             begin
-               match vo with
-               | None -> ()
-               | Some v ->
-                  let new_version = deserialize Llio.int8_from v in
-                  Nsm_protocol.Session.set_manifest_ser session new_version
-             end
-          | key,_ ->
-             let open Nsm_model in
-             Err.failwith Err.Session_update_error ~payload:key
-         )
-         req
+       let r =
+         List.fold_left
+         (fun acc (k,vo) ->
+           begin
+             match k with
+             | "manifest_ser" ->
+                begin
+                  match vo with
+                  | None -> acc
+                  | Some v ->
+                     let new_version = deserialize Llio.int8_from v in
+                     let () =
+                       Nsm_protocol.Session.set_manifest_ser session new_version in
+                     (k, v) :: acc
+                end
+             | _ -> acc
+           end
+         ) [] req
+       in
+       List.rev r
      end
 
 let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->

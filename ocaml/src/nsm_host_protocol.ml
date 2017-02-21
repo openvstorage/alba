@@ -154,7 +154,7 @@ module Protocol = struct
         ('i_, 'o_) Nsm_protocol.Protocol.query ->
         ((namespace_id * 'i_) list,
          ('o_, Nsm_model.Err.t) Result.result list) query
-    | UpdateSession : ((string * string option) list , unit) query
+    | UpdateSession : ((string * string option) list , (string * string) list) query
 
   type ('i, 'o) update =
     | CleanupForNamespace : (namespace_id, int) update
@@ -370,7 +370,10 @@ module Protocol = struct
                           (Nsm_protocol.Protocol.read_query_response q)
                           (fun buf -> Nsm_model.Err.int2err (Llio.int8_from buf))
                        )
-    | UpdateSession -> Llio.unit_from
+    | UpdateSession -> Llio.list_from
+                         (Llio.pair_from
+                            Llio.string_from
+                            Llio.string_from)
 
   let write_query_o : type i o. Nsm_protocol.Session.t -> (i, o) query ->
                            o serializer
@@ -390,5 +393,6 @@ module Protocol = struct
                           (Nsm_protocol.Protocol.write_query_response session q)
                           (fun buf err -> Llio.int8_to buf (Nsm_model.Err.err2int err))
                        )
-    | UpdateSession -> Llio.unit_to
+    | UpdateSession -> Llio.list_to
+                         (Llio.pair_to Llio.string_to Llio.string_to)
 end
