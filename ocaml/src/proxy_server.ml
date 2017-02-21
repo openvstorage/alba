@@ -619,7 +619,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     match vo with
                     | None -> acc
                     | Some v ->
-                       let new_version = deserialize Llio.int8_from v in
+                       let wanted_version = deserialize Llio.int8_from v in
+                       let new_version = min 2 wanted_version in
                        let () = ProxySession.set_manifest_ser session new_version in
                        (k, v) :: acc
                   end
