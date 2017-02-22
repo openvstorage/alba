@@ -574,13 +574,18 @@ TEST(proxy_client, test_partial_read_full_object) {
       ASSERT_EQ(mf_len, js_len);
       auto mf_loc = mf_fr->loc;
       boost::optional<osd_t> mf_osd_o = std::get<0>(mf_loc);
-      osd_t mf_osd = *mf_osd_o;
+
       int mf_version = std::get<1>(mf_loc);
 
       auto js_loc = js_fr->second.get_child("loc");
       auto js_loc_it = js_loc.begin();
-      int js_osd = js_loc_it->second.get_value<int>();
-      ASSERT_EQ(mf_osd.i, js_osd);
+      boost::optional<int> js_osd_o =
+          js_loc_it->second.get_value_optional<int>();
+      if(boost::none != mf_osd_o && boost::none != js_osd_o){
+          osd_t mf_osd = *mf_osd_o;
+          int js_osd = *js_osd_o;
+          ASSERT_EQ(mf_osd.i, js_osd);
+      }
 
       js_loc_it++;
       int js_version = js_loc_it->second.get_value<uint64_t>();
