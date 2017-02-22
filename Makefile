@@ -35,6 +35,7 @@ build-nsm-plugin: build-cmxs
 	_build/src/tools/weak_pool.cmx \
 	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/tls.cmx \
+	_build/src/tools/alba_llio.cmx \
 	_build/src/model/fragment_size_helper.cmx \
 	_build/src/model/consistency.cmx \
 	_build/src/model/policy.cmx \
@@ -73,6 +74,7 @@ build-mgr-plugin: build-alba
 	_build/src/tools/weak_pool.cmx \
 	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/tls.cmx \
+	_build/src/tools/alba_llio.cmx \
 	_build/src/model/fragment_size_helper.cmx \
 	_build/src/model/consistency.cmx \
 	_build/src/model/policy.cmx \

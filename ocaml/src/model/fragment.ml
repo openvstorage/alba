@@ -27,6 +27,7 @@ type fragment_id = int [@@deriving show]
 
 open Prelude
 
+module L = Alba_llio
 module Fragment = struct
   type t =
     { loc : location;
@@ -45,37 +46,38 @@ module Fragment = struct
   let version_of x = x.loc |> snd
 
   let _inner_fragment_to buf t =
-    Llio.int8_to buf 1;
-    Llio.option_to x_int64_to buf (osd_of t);
-    Llio.int_to buf (version_of t);
+    L.int8_to buf 1;
+    L.option_to x_int64_to buf (osd_of t);
+    L.int_to buf (version_of t);
 
     Checksum.output buf t.crc;
-    Llio.int_to buf t.len;
-    Llio.option_to Llio.string_to buf t.ctr
+    L.int_to buf t.len;
+    L.option_to L.small_bytes_to buf t.ctr
 
   let _inner_fragment_from buf =
 
     let () =
-      let tag = Llio.int8_from buf in
+      let tag = L.int8_from buf in
       match tag with
       | 1 -> ()
       | k -> raise_bad_tag "Fragment" k
     in
-    let osd_id = Llio.option_from x_int64_from buf in
-    let version = Llio.int_from buf in
+    let osd_id = L.option_from x_int64_from buf in
+    let version = L.int_from buf in
     let loc = (osd_id, version) in
     let crc = Checksum.input buf in
-    let len = Llio.int_from buf in
-    let ctr = Llio.option_from Llio.string_from buf in
+    let len = L.int_from buf in
+    let ctr = L.option_from L.small_bytes_from buf in
     make loc crc len ctr
 
   let fragment_to buf t =
-    let s = serialize ~buf_size:512
-                      _inner_fragment_to t
+    let s = serialize
+              ~buf_size:512
+              _inner_fragment_to t
     in
-    Llio.string_to buf s
+    L.small_bytes_to buf s
 
   let fragment_from buf =
-    let s = Llio.string_from buf in
+    let s = L.small_bytes_from buf in
     deserialize _inner_fragment_from s
 end

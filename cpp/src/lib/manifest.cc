@@ -234,10 +234,10 @@ void _from_version1(message &m, Manifest &mf, bool &ok_to_continue) {
 }
 
 template <> void from(message &m, Fragment &f) {
-  uint32_t fragment_s_size;
+  varint_t fragment_s_size;
   from(m, fragment_s_size);
-  auto m2 = m.get_nested_message(fragment_s_size);
-  m.skip(fragment_s_size);
+  auto m2 = m.get_nested_message(fragment_s_size.j);
+  m.skip(fragment_s_size.j);
 
   uint8_t version;
   from(m2, version);
