@@ -352,13 +352,12 @@ void write_update_session_request(
   to(mb, args);
 }
 
-    void read_update_session_response(message &m,
-                                      Status &status,
-                                      std::vector<std::pair<std::string,
-                                      std::string>> &processed_kvs) {
+void read_update_session_response(
+    message &m, Status &status,
+    std::vector<std::pair<std::string, std::string>> &processed_kvs) {
   read_status(m, status);
-  if (status.is_ok()){
-      from(m, processed_kvs);
+  if (status.is_ok()) {
+    from(m, processed_kvs);
   }
 }
 void write_apply_sequence_request(

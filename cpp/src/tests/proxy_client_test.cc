@@ -581,10 +581,10 @@ TEST(proxy_client, test_partial_read_full_object) {
       auto js_loc_it = js_loc.begin();
       boost::optional<int> js_osd_o =
           js_loc_it->second.get_value_optional<int>();
-      if(boost::none != mf_osd_o && boost::none != js_osd_o){
-          osd_t mf_osd = *mf_osd_o;
-          int js_osd = *js_osd_o;
-          ASSERT_EQ(mf_osd.i, js_osd);
+      if (boost::none != mf_osd_o && boost::none != js_osd_o) {
+        osd_t mf_osd = *mf_osd_o;
+        int js_osd = *js_osd_o;
+        ASSERT_EQ(mf_osd.i, js_osd);
       }
 
       js_loc_it++;

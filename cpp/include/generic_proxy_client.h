@@ -78,7 +78,8 @@ public:
 
   virtual void update_session(
       const std::vector<std::pair<std::string, boost::optional<std::string>>>
-      &args, std::vector<std::pair<std::string, std::string>> &processed_kvs);
+          &args,
+      std::vector<std::pair<std::string, std::string>> &processed_kvs);
   virtual std::tuple<uint64_t, Checksum *>
   get_object_info(const std::string &namespace_, const std::string &object_name,
                   const consistent_read, const should_cache);

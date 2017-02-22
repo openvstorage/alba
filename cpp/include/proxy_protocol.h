@@ -163,8 +163,9 @@ void write_update_session_request(
     const std::vector<std::pair<std::string, boost::optional<std::string>>>
         &args);
 
-void read_update_session_response(message &m, Status &status,
-                                  std::vector<std::pair<std::string, std::string>> & processed_kvs);
+void read_update_session_response(
+    message &m, Status &status,
+    std::vector<std::pair<std::string, std::string>> &processed_kvs);
 
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,

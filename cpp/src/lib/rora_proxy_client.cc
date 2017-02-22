@@ -49,34 +49,33 @@ RoraProxy_client::RoraProxy_client(
   }
 
   try {
-      using namespace std;
-      vector<pair<string, boost::optional<string>>> args;
-      auto p = make_pair(string("manifest_ser"),
-                         boost::optional<string>(string("\02")));
-      args.push_back(p);
-      vector<pair<string, string>> processed_kvs;
-      _delegate->update_session(args, processed_kvs);
-      for(auto &it: processed_kvs){
-          string &key = std::get<0>(it);
-          string &v = std::get<1>(it);
-          if(key == "manifest_ser"){
-              const char* vd = v.data();
-              uint32_t sv = *((uint32_t *)vd);
-              _ser_version = sv;
-              ALBA_LOG(DEBUG, "manifest_ser = " << sv);
-          }
+    using namespace std;
+    vector<pair<string, boost::optional<string>>> args;
+    auto p = make_pair(string("manifest_ser"),
+                       boost::optional<string>(string("\02")));
+    args.push_back(p);
+    vector<pair<string, string>> processed_kvs;
+    _delegate->update_session(args, processed_kvs);
+    for (auto &it : processed_kvs) {
+      string &key = std::get<0>(it);
+      string &v = std::get<1>(it);
+      if (key == "manifest_ser") {
+        const char *vd = v.data();
+        uint32_t sv = *((uint32_t *)vd);
+        _ser_version = sv;
+        ALBA_LOG(DEBUG, "manifest_ser = " << sv);
       }
+    }
 
   } catch (alba::proxy_client::proxy_exception &e) {
-      if (e._return_code ==
-          alba::proxy_protocol::return_code::UNKNOWN_OPERATION) {
-          _ser_version = 1;
-          ALBA_LOG(DEBUG, "manifest_ser = " << 1);
-      } else{
-          throw e;
-      }
+    if (e._return_code ==
+        alba::proxy_protocol::return_code::UNKNOWN_OPERATION) {
+      _ser_version = 1;
+      ALBA_LOG(DEBUG, "manifest_ser = " << 1);
+    } else {
+      throw e;
+    }
   }
-
 }
 
 bool RoraProxy_client::namespace_exists(const string &name) {
@@ -461,12 +460,12 @@ void RoraProxy_client::read_objects_slices(
       cntr.fast_path += short_path.size();
     }
 
-    if(via_proxy.size() > 0){
-        ALBA_LOG(DEBUG, "rora read_objects_slices going via proxy, size="
-                 << via_proxy.size());
-        std::vector<object_info> object_infos;
-        _slow_path(namespace_, via_proxy, consistent_read_, object_infos, cntr);
-        _process(object_infos, namespace_);
+    if (via_proxy.size() > 0) {
+      ALBA_LOG(DEBUG, "rora read_objects_slices going via proxy, size="
+                          << via_proxy.size());
+      std::vector<object_info> object_infos;
+      _slow_path(namespace_, via_proxy, consistent_read_, object_infos, cntr);
+      _process(object_infos, namespace_);
     }
   }
 }
