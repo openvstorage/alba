@@ -26,6 +26,7 @@ let _fetch_abm_client_cfg () =
   Alba_arakoon.config_from_url cfg_url
 
 let test_with_alba_client
+      ?(upload_slack = 0.001)
       ?bad_fragment_callback
       ?read_preference
       f
@@ -41,7 +42,7 @@ let test_with_alba_client
         ~release_resources:true
         ~tcp_keepalive:Tcp_keepalive2.default
         ~populate_osds_info_cache:true
-        ~upload_slack:0.001
+        ~upload_slack
         ?read_preference
         (fun client ->
           Lwt.catch
@@ -2250,6 +2251,7 @@ let test_list_objects_by_id () =
   let test_name = "test_list_objects_by_id" in
   let namespace = test_name in
   test_with_alba_client
+    ~upload_slack:2.0
     (fun alba_client ->
      alba_client # create_namespace
                  ~preset_name:None
@@ -2259,7 +2261,7 @@ let test_list_objects_by_id () =
 
      let open Nsm_model in
      alba_client # get_base_client # upload_object_from_string
-                 ~epilogue_delay:(Some 10.)
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name:""
                  ~object_data:""
