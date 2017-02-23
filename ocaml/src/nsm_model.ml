@@ -488,7 +488,7 @@ module EncryptInfo = struct
 
   type key_identification =
     | KeySha256 of string
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let id_to_buffer buf = function
     | KeySha256 id ->
@@ -504,7 +504,7 @@ module EncryptInfo = struct
   type t =
     | NoEncryption
     | Encrypted of Encryption.algo * key_identification
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let to_buffer buf = function
     | NoEncryption ->
@@ -531,7 +531,7 @@ module Storage_scheme = struct
     | EncodeCompressEncrypt of Encoding_scheme.t * Compression.t
     (* alternative scheme which doesn't require repair to know the encryption key
        | CompressEncryptEncode of compression * encoding_scheme *)
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let output buf = function
     | EncodeCompressEncrypt (es, compression) ->
@@ -550,74 +550,13 @@ end
 
 
 
-module Layout = struct
-    type 'a t = 'a list list [@@deriving show]
-
-    let map_indexed f t =
-      List.mapi
-        (fun ci c ->
-          List.mapi (fun fi fr -> f ci fi fr) c
-        ) t
-
-    let output a_to buf t =
-      let ser_version = 1 in Llio.int8_to buf ser_version;
-      Llio.list_to (Llio.list_to a_to) buf t
-    let input a_from buf =
-      let ser_version = Llio.int8_from buf in
-      assert (ser_version = 1);
-      Llio.list_from (Llio.list_from a_from) buf
-
-    let map f t = List.map (List.map f) t
-
-    let map2 f t0 t1 = List.map2 (List.map2 f) t0 t1
-
-    let map4 f x_t y_t z_t u_t = List.map4 (List.map4 f) x_t y_t z_t u_t
-
-    let congruent x_t y_t =
-      let list_ok x y = List.length x = List.length y in
-      let rec ok = function
-        | [],[] -> true
-        | x :: xs, y::ys -> list_ok x y && ok (xs,ys)
-        | _,_ -> false
-      in
-      ok (x_t,y_t)
-
-    let index t chunk_id fragment_id =
-      List.nth_exn (List.nth_exn t chunk_id) fragment_id
-
-    let unfold ~n_chunks ~n_fragments f =
-      List.unfold
-        (fun chunk_id ->
-          if chunk_id = n_chunks
-          then None
-          else
-            Some
-              (List.unfold
-                 (fun fragment_id ->
-                   if fragment_id = n_fragments
-                   then None
-                   else Some (f chunk_id fragment_id, fragment_id + 1))
-                 0,
-               chunk_id + 1))
-        0
-
-    let fold f a0 t =
-      List.fold_left
-        (fun acc l0 ->
-          List.fold_left (fun acc l1 -> f acc l1) acc l0
-        ) a0 t
-end
-
-type version = int [@@deriving show]
-type location = osd_id option * version [@@deriving show]
-
-type chunk_id = int [@@deriving show]
-(* 0 <= fragment_id < k+m *)
-type fragment_id = int [@@deriving show]
+include Layout
 
 include Checksum
 
 module DeviceSet = Set.Make(struct type t = osd_id let compare = compare end)
+
+include Fragment
 
 module Manifest = struct
 
@@ -631,13 +570,13 @@ module Manifest = struct
     chunk_sizes : int list;
     size : Int64.t; (* size of the object *)
     checksum : Checksum.t;
-    fragments : (location * Checksum.t * int * string option) Layout.t;
+    fragments : Fragment.t Layout.t;
     version_id : version;
     max_disks_per_node : int;
 
     timestamp : float;
   }
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let make ~name ~object_id
            ~storage_scheme ~encrypt_info
@@ -657,19 +596,17 @@ module Manifest = struct
       timestamp;
     }
 
-  let _loc_of (x,_,_,_) = x
-  let _crc_of (_,x,_,_) = x
-  let _len_of (_,_,x,_) = x
-  let _ctr_of (_,_,_,x) = x
-  let make_fragment loc crc len ctr = (loc,crc,len,ctr)
+
+
 
   let get_summed_fragment_sizes t =
     Layout.fold
-      (fun acc f -> Int64.(add acc (of_int (_len_of f))))
+      (fun acc f -> Int64.(add acc (of_int (Fragment.len_of f))))
       0L
       t.fragments
 
-  let to_buffer' buf t =
+  let inner_to_buffer_1 buf t =
+    Lwt_log.ign_debug_f "Manifest.inner_to_buffer_1";
     Llio.string_to buf t.name;
     Llio.string_to buf t.object_id;
     Llio.list_to Llio.int_to buf t.chunk_sizes;
@@ -682,18 +619,18 @@ module Manifest = struct
         (Llio.pair_to
            (Llio.option_to x_int64_to)
            Llio.int_to)
-         buf (_loc_of f)
+         buf (Fragment.loc_of f)
       )
       buf
       t.fragments;
     Layout.output
-      (fun buf  f -> Checksum.output buf (_crc_of f))
+      (fun buf  f -> Checksum.output buf (Fragment.crc_of f))
       buf
       t.fragments;
 
     Layout.output
       (fun buf f ->
-        Llio.int_to buf (_len_of f))
+        Llio.int_to buf (Fragment.len_of f))
       buf
       t.fragments;
 
@@ -704,21 +641,38 @@ module Manifest = struct
       (fun buf f ->
         (Llio.option_to Llio.string_to)
           buf
-          (_ctr_of f)
+          (Fragment.ctr_of f)
       )
       buf
       t.fragments;
     ()
 
-  let to_buffer buf t =
-    let res = serialize to_buffer' t in
-    let ser_version = 1 in
-    Llio.int8_to buf ser_version;
+  let inner_to_buffer_2 buf t =
+    Lwt_log.ign_debug_f "Manifest.inner_to_buffer_2";
+    Llio.string_to buf t.name;
+    Llio.string_to buf t.object_id;
+    Llio.list_to Llio.int_to buf t.chunk_sizes;
+    Storage_scheme.output buf t.storage_scheme;
+    EncryptInfo.to_buffer buf t.encrypt_info;
+    Checksum.output buf t.checksum;
+    Llio.int64_to buf t.size;
+    Layout.output Fragment.fragment_to buf t.fragments;
+    Llio.int_to buf t.version_id;
+    Llio.int_to buf t.max_disks_per_node;
+    Llio.float_to buf t.timestamp
+
+
+  let to_buffer ~version buf t =
+    Llio.int8_to buf version;
+    let ser = match version with
+      | 1 -> inner_to_buffer_1
+      | 2 -> inner_to_buffer_2
+      | _ -> failwith "unsupported version"
+    in
+    let res = serialize ser t in
     Llio.string_to buf (Snappy.compress res)
 
-  let output = to_buffer
-
-  let from_buffer' buf =
+  let inner_from_buffer_1 buf =
     let name = Llio.string_from buf in
     let object_id = Llio.string_from buf in
     let chunk_sizes = Llio.list_from Llio.int_from buf in
@@ -743,7 +697,7 @@ module Manifest = struct
                           buf
     in
     let fragments = Layout.map4
-                      make_fragment
+                      Fragment.make
                       fragment_locations
                       fragment_checksums
                       fragment_packed_sizes
@@ -757,12 +711,37 @@ module Manifest = struct
          ~max_disks_per_node
          ~timestamp
 
+  let inner_from_buffer_2 buf : t =
+    Lwt_log.ign_debug_f "Manifest.inner_from_buffer_2";
+    let name = Llio.string_from buf in
+    let object_id = Llio.string_from buf in
+    let chunk_sizes = Llio.list_from Llio.int_from buf in
+    let storage_scheme = Storage_scheme.input buf in
+    let encrypt_info = EncryptInfo.from_buffer buf in
+    let checksum = Checksum.input buf in
+    let size = Llio.int64_from buf in
+    let fragments = Layout.input Fragment.fragment_from buf in
+    let version_id = Llio.int_from buf in
+    let max_disks_per_node = Llio.int_from buf in
+    let timestamp = Llio.float_from buf in
+    make ~name ~object_id
+         ~chunk_sizes
+         ~storage_scheme ~encrypt_info
+         ~size ~checksum
+         ~fragments
+         ~version_id
+         ~max_disks_per_node
+         ~timestamp
+
   let from_buffer buf =
-    match Llio.int8_from buf with
-    | 1 ->
-      let s = Snappy.uncompress (Llio.string_from buf) in
-      deserialize from_buffer' s
-    | k -> raise_bad_tag "Nsm_model.Manifest" k
+    let inflater =
+      match Llio.int8_from buf with
+      | 1 -> inner_from_buffer_1
+      | 2 -> inner_from_buffer_2
+      | k -> raise_bad_tag "Nsm_model.Manifest" k
+    in
+    let s = Snappy.uncompress (Llio.string_from buf) in
+    deserialize inflater s
 
   let input = from_buffer
 
@@ -776,19 +755,19 @@ module Manifest = struct
       DeviceSet.empty
       fragment_locations
 
-  let osds_used t = osds_used' ~loc_of:_loc_of t.fragments
+  let osds_used t = osds_used' ~loc_of:Fragment.loc_of t.fragments
 
-  let locations t = Layout.map _loc_of t.fragments
-  let counters t = Layout.map _ctr_of t.fragments
+  let locations t = Layout.map Fragment.loc_of t.fragments
+  let counters t = Layout.map Fragment.ctr_of t.fragments
 
   let get_packed_size t chunk_id fragment_id =
-    Layout.index t.fragments chunk_id fragment_id |> _len_of
+    Layout.index t.fragments chunk_id fragment_id |> Fragment.len_of
 
   let get_location t chunk_id fragment_id =
-    Layout.index t.fragments chunk_id fragment_id |> _loc_of
+    Layout.index t.fragments chunk_id fragment_id |> Fragment.loc_of
 
   let get_checksum t chunk_id fragment_id =
-    Layout.index t.fragments chunk_id fragment_id |> _crc_of
+    Layout.index t.fragments chunk_id fragment_id |> Fragment.crc_of
 
   let n_chunks t = List.length t.chunk_sizes
 
@@ -796,12 +775,13 @@ module Manifest = struct
 
   let combined_fragment_infos mf =
     Layout.map
-    (fun (len,crc,_,ctr) -> (len,crc,ctr)) mf.fragments
+      (fun f -> let open Fragment in
+                (loc_of f, crc_of f, ctr_of f)) mf.fragments
 
   let has_holes t =
     Layout.fold
       (fun acc f  ->
-        let (osd_id_o,_) = _loc_of f in
+        let osd_id_o = Fragment.osd_of f in
         acc || osd_id_o = None)
       false
       t.fragments
@@ -865,10 +845,10 @@ module Update =
       | PutObject of Manifest.t * GcEpochs.gc_epoch
       | DeleteObject of object_name
 
-    let to_buffer buf = function
+    let to_buffer ~manifest_version buf = function
       | PutObject (mf, gc_epoch) ->
          Llio.int8_to buf 1;
-         Manifest.to_buffer buf mf;
+         Manifest.to_buffer ~version:manifest_version buf mf;
          Llio.int64_to buf gc_epoch
       | DeleteObject name ->
          Llio.int8_to buf 2;
@@ -1150,12 +1130,12 @@ let check_fragment_osd_spread manifest =
       let (_ : DeviceSet.t) =
         List.fold_left
           (fun acc f ->
-            match Manifest._loc_of f with
-            | None, _ -> acc
-            | Some osd_id, _ ->
+            match Fragment.osd_of f with
+            | None -> acc
+            | Some osd_id  ->
                if DeviceSet.mem osd_id acc
                then
-                 let locations = List.map Manifest._loc_of chunk in
+                 let locations = List.map Fragment.loc_of chunk in
                  Err.(failwith
                         ~payload:([%show : (int64 option * int) list] locations)
                         Invalid_fragment_spread)
@@ -1233,7 +1213,8 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       (fun acc fds ->
          let acc' =
            List.fold_left
-             (fun a -> function
+             (fun a f ->
+               match f.Fragment.len, f.Fragment.loc with
                 | (_,             (None, _)) -> a
                 | (fragment_size, (Some osd_id, _)) ->
                   let upd =
@@ -1248,8 +1229,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          in
          acc')
       []
-      (Layout.map
-        (fun (loc,crc,len,ctr) -> (len,loc)) manifest.Manifest.fragments)
+      manifest.Manifest.fragments
 
   let get_preset kv =
     match KV.get kv Keys.preset_version with
@@ -1273,11 +1253,11 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let osds_per_node = Hashtbl.create 3 in
       List.fold_left
         (fun (effective_fragment_count, effective_max_disks_per_node) fragment ->
-          match Manifest._loc_of fragment with
-          | None, _ ->
+          match Fragment.osd_of fragment with
+          | None ->
              (effective_fragment_count,
               effective_max_disks_per_node)
-          | Some osd_id, _ ->
+          | Some osd_id ->
              let osd_info = get_osd_info kv osd_id in
              let node_id = osd_info.OsdInfo.node_id in
              let cnt =
@@ -1355,7 +1335,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let from_chunk_fragments chunk_id chunk_fragments =
       List.fold_left
         (fun (fragment_id, deletes) fragment ->
-           let deletes' = match _loc_of fragment with
+           let deletes' = match Fragment.loc_of fragment with
              | None, _ -> []
              | Some device_id, version_id ->
                let keys_to_be_deleted =
@@ -1472,7 +1452,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
        S2 \ S1 -> some keys to be added *)
 
     let old_devices = Manifest.osds_used' ~loc_of:(fun x -> x) old_locations in
-    let new_devices = Manifest.osds_used' ~loc_of:Manifest._loc_of new_fragments in
+    let new_devices = Manifest.osds_used' ~loc_of:Fragment.loc_of new_fragments in
 
     let remove_upds =
       let removed_from_devices = DeviceSet.diff old_devices new_devices in
@@ -1547,7 +1527,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          List.iter
            (List.iter
               (fun f ->
-                let cs = Manifest._crc_of f in
+                let cs = Fragment.crc_of f in
                 if p.Preset.fragment_checksum_algo <> Checksum.algo_of cs
                 then Err.(failwith Preset_violated
                                    ~payload:"fragment_checksum mismatch")))
@@ -1598,7 +1578,9 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       Update'.compare_and_swap
         (Keys.objects ~object_id)
         None
-        (Some (serialize Manifest.output manifest)) in
+        (Some (serialize (Manifest.to_buffer
+                            ~version:1 (* TODO: should become 2 *)) manifest))
+    in
 
     let gc_epoch_so, gc_epochs = get_gc_epochs kv in
     let assert_gc_epoch =
@@ -2014,21 +1996,21 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let new_fragment_checksums =
       Layout.map_indexed
         (fun c i f ->
-          let old = Manifest._crc_of f in
+          let old = Fragment.crc_of f in
           maybe_replace snd c i old)
         manifest_old.fragments
     in
     let new_fragment_packed_sizes =
       Layout.map_indexed
         (fun c i f ->
-          let old = Manifest._len_of f in
+          let old = Fragment.len_of f in
           maybe_replace fst c i old)
         manifest_old.fragments
     in
     let new_fragment_ctrs =
       Layout.map_indexed
         (fun chunk_id fragment_id f ->
-          let old = Manifest._ctr_of f in
+          let old = Fragment.ctr_of f in
           try
             let _, _, _, fragment_ctr =
               Hashtbl.find fragments (chunk_id, fragment_id)
@@ -2040,7 +2022,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     in
     let fragments' =
       Layout.map4
-        make_fragment
+        Fragment.make
         fragment_locations
         new_fragment_checksums
         new_fragment_packed_sizes
@@ -2138,7 +2120,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         []
     in
 
-    let updated_manifest_s = serialize Manifest.output updated_manifest in
+    let updated_manifest_s = serialize
+                               (Manifest.to_buffer ~version:1)
+                               updated_manifest
+    in
     let update_manifest =
       Update'.compare_and_swap
         (Keys.objects ~object_id)

@@ -65,7 +65,12 @@ alba_proxy_client_test_SOURCES = \
 	../src/tests/proxy_client_test.cc
 
 alba_proxy_client_test_CXXFLAGS = -std=c++14
-alba_proxy_client_test_CPPFLAGS = -I$(abs_top_srcdir)/../include -DBOOST_LOG_DYN_LINK
+
+alba_proxy_client_test_CPPFLAGS = \
+	-I$(abs_top_srcdir)/../include \
+	-I$(abs_top_srcdir)/../src/lib \
+	-DBOOST_LOG_DYN_LINK
+
 alba_proxy_client_test_LDADD = \
 	./libalbaproxy.la \
 	-lboost_system \

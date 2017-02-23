@@ -255,6 +255,7 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
     w "cluster = %s" (String.concat ", " nodes);
     w "cluster_id = %s" cluster_id;
     w "plugins = albamgr_plugin nsm_host_plugin";
+    w "lease_period = 5";
     w "";
     if cfg.tls
     then
@@ -1826,6 +1827,7 @@ module Test = struct
       let cfg = deployment.cfg in
       let host, transport = _get_ip_transport cfg
       and port = deployment.proxy # port
+      and test_abm = deployment.abm # config_url |> Url.canonical
       in
       let cmd =
         ["cd";cfg.alba_home; "&&";
@@ -1835,6 +1837,7 @@ module Test = struct
          Printf.sprintf "ALBA_PROXY_PORT=%i" port;
          Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
          Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
+         Printf.sprintf "TEST_ABM=%s" test_abm;
         ]
       in
       let cmd =

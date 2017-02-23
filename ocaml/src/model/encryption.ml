@@ -22,7 +22,7 @@ module Encryption = struct
 
   type key_length =
     | L256
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let key_length_to_buffer buf = function
     | L256 -> Llio.int8_to buf 1
@@ -38,7 +38,7 @@ module Encryption = struct
   type chaining_mode =
     | CBC
     | CTR
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let chaining_mode_to_buffer buf = function
     | CBC -> Llio.int8_to buf 1
@@ -52,7 +52,7 @@ module Encryption = struct
 
   type algo =
     | AES of chaining_mode * key_length
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let algo_to_buffer buf = function
     | AES (mode, kl) ->

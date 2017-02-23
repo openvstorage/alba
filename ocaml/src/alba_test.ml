@@ -26,6 +26,7 @@ let _fetch_abm_client_cfg () =
   Alba_arakoon.config_from_url cfg_url
 
 let test_with_alba_client
+      ?(upload_slack = 0.001)
       ?bad_fragment_callback
       ?read_preference
       f
@@ -41,7 +42,7 @@ let test_with_alba_client
         ~release_resources:true
         ~tcp_keepalive:Tcp_keepalive2.default
         ~populate_osds_info_cache:true
-        ~upload_slack:0.001
+        ~upload_slack
         ?read_preference
         (fun client ->
           Lwt.catch
@@ -2185,13 +2186,16 @@ let test_retry_download () =
      >>= fun (mf,_, _,_) ->
 
      let bad_mf =
-       let open Nsm_model.Manifest in
-       let bad_f = ((Some 0L,0),Nsm_model.Checksum.NoChecksum, 0,None) in
+       let open Nsm_model in
+       let open Manifest in
+       let bad_f =
+         Fragment.make (Some 0L,0) Nsm_model.Checksum.NoChecksum  0 None in
        let fragments =
          [ List.hd_exn (mf.fragments);
            [ bad_f;bad_f;bad_f ]
          ]
        in
+
        { mf with
          size = Int64.(add mf.size 5L);
          fragments;
@@ -2247,6 +2251,7 @@ let test_list_objects_by_id () =
   let test_name = "test_list_objects_by_id" in
   let namespace = test_name in
   test_with_alba_client
+    ~upload_slack:2.0
     (fun alba_client ->
      alba_client # create_namespace
                  ~preset_name:None
@@ -2256,7 +2261,7 @@ let test_list_objects_by_id () =
 
      let open Nsm_model in
      alba_client # get_base_client # upload_object_from_string
-                 ~epilogue_delay:(Some 10.)
+                 ~epilogue_delay:None
                  ~namespace
                  ~object_name:""
                  ~object_data:""
@@ -2322,7 +2327,7 @@ let test_preset_validation () =
           Layout.map (fun _ -> None) fragment_locations
         in
         let fragments = Layout.map4
-                      Manifest.make_fragment
+                      Fragment.make
                           fragment_locations
                           fragment_checksums
                           fragment_packed_sizes
@@ -2464,12 +2469,12 @@ let test_upload_epilogue () =
                     )
         >>= fun mf2 ->
         Lwt_io.printlf "manifest2:%s" (Manifest.show mf2) >>= fun () ->
-        let open Manifest in
+        let open Fragment in
         let _r =
           Layout.map2
             (fun f0 f1 ->
-              let (o0,v0) = _loc_of f0
-              and (o1,v1) = _loc_of f1
+              let (o0,v0) = loc_of f0
+              and (o1,v1) = loc_of f1
               in
               let () =
                 match v0,v1 with
@@ -2489,7 +2494,7 @@ let test_upload_epilogue () =
         in
         let () =
           let fps mf =
-            Layout.map Manifest._len_of mf.fragments
+            Layout.map Fragment.len_of mf.Manifest.fragments
           in
           OUnit.assert_equal
             ~msg:"fragment_sizes differ"

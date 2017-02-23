@@ -75,7 +75,7 @@ compile_tests:
 	$(CMD) -I/usr/include/gtest \
 	-c src/tests/llio_test.cc -o src/tests/llio_test.o
 
-	$(CMD) -I/usr/include/gtest \
+	$(CMD) -I/usr/include/gtest -I./src/lib/ \
 	-c src/tests/proxy_client_test.cc -o src/tests/proxy_client_test.o
 
 	$(CMD) -I/usr/include/gtest \

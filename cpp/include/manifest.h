@@ -133,6 +133,15 @@ struct Location {
   bool uses_encryption;
 };
 
+struct Fragment {
+  fragment_location_t loc;
+  std::shared_ptr<alba::Checksum> crc;
+  uint32_t len;
+  Fragment() = default;
+  Fragment &operator=(const Fragment &) = delete;
+  Fragment(const Fragment &) = delete;
+};
+
 struct Manifest {
   std::string name;
   std::string object_id;
@@ -143,9 +152,7 @@ struct Manifest {
   std::unique_ptr<EncryptInfo> encrypt_info;
   std::unique_ptr<alba::Checksum> checksum;
   uint64_t size;
-  layout<fragment_location_t> fragment_locations;
-  layout<std::shared_ptr<alba::Checksum>> fragment_checksums;
-  layout<uint32_t> fragment_packed_sizes;
+  layout<std::shared_ptr<Fragment>> fragments;
   uint32_t version_id;
   uint32_t max_disks_per_node;
   double timestamp = 1.0;
@@ -170,6 +177,7 @@ std::ostream &operator<<(std::ostream &, const Compression &);
 std::ostream &operator<<(std::ostream &, const encryption_t &);
 std::ostream &operator<<(std::ostream &, const EncryptInfo &);
 std::ostream &operator<<(std::ostream &, const fragment_location_t &);
+std::ostream &operator<<(std::ostream &, const Fragment &);
 std::ostream &operator<<(std::ostream &, const Manifest &);
 std::ostream &operator<<(std::ostream &, const ManifestWithNamespaceId &);
 std::ostream &operator<<(std::ostream &, const algo_t &);

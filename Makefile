@@ -32,21 +32,24 @@ build-nsm-plugin: build-cmxs
 	_build/src/tools/prelude.cmx \
 	_build/src/tools/deser.cmx \
 	_build/src/tools/cache.cmx \
-	_build/src/consistency.cmx \
-	_build/src/policy.cmx \
-	_build/src/encryption.cmx \
 	_build/src/tools/weak_pool.cmx \
 	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/tls.cmx \
-	_build/src/tools/checksum.cmx \
-	_build/src/tools/alba_compression.cmx \
+	_build/src/tools/alba_llio.cmx \
+	_build/src/model/fragment_size_helper.cmx \
+	_build/src/model/consistency.cmx \
+	_build/src/model/policy.cmx \
+	_build/src/model/encryption.cmx \
+	_build/src/model/checksum.cmx \
+	_build/src/model/alba_compression.cmx \
+	_build/src/model/preset.cmx \
+	_build/src/model/fragment.cmx \
 	_build/src/arith64.cmx \
 	_build/src/key_value_store.cmx \
 	_build/src/mem_key_value_store.cmx \
 	_build/src/osd_keys.cmx \
 	_build/src/alba_arakoon.cmx \
-        _build/src/fragment_size_helper.cmx \
-        _build/src/preset.cmx \
+	_build/src/model/layout.cmx \
         _build/src/nsm_model.cmx \
 	_build/src/tools/stat.cmx \
 	_build/src/alba_statistics.cmx \
@@ -65,18 +68,21 @@ build-mgr-plugin: build-alba
 	_build/alba_version.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/prelude.cmx \
-        _build/src/range_query_args.cmx \
-        _build/src/fragment_size_helper.cmx \
-        _build/src/tools/deser.cmx \
+	_build/src/range_query_args.cmx \
+	_build/src/tools/deser.cmx \
 	_build/src/tools/cache.cmx \
-	_build/src/consistency.cmx \
-	_build/src/policy.cmx \
-	_build/src/encryption.cmx \
 	_build/src/tools/weak_pool.cmx \
 	_build/src/tools/buffer_pool.cmx \
 	_build/src/tools/tls.cmx \
-	_build/src/tools/checksum.cmx \
-	_build/src/tools/alba_compression.cmx \
+	_build/src/tools/alba_llio.cmx \
+	_build/src/model/fragment_size_helper.cmx \
+	_build/src/model/consistency.cmx \
+	_build/src/model/policy.cmx \
+	_build/src/model/encryption.cmx \
+	_build/src/model/checksum.cmx \
+	_build/src/model/alba_compression.cmx \
+	_build/src/model/preset.cmx \
+	_build/src/model/fragment.cmx \
 	_build/src/alba_arakoon.cmx \
 	_build/src/arith64.cmx \
 	_build/src/key_value_store.cmx \
@@ -84,7 +90,7 @@ build-mgr-plugin: build-alba
 	_build/src/plugin_extra.cmx \
 	_build/src/log_plugin.cmx \
 	_build/src/osd_keys.cmx \
-        _build/src/preset.cmx \
+	_build/src/model/layout.cmx \
 	_build/src/nsm_model.cmx \
 	_build/src/tools/stat.cmx \
 	_build/src/alba_statistics.cmx \

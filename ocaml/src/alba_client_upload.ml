@@ -570,7 +570,8 @@ let upload_object''
   let open Nsm_model in
   let fragments = (* TODO: fragments_info is almost perfect *)
     Layout.map
-      (fun (osd_id,crc,len,ctr) -> ((osd_id,version_id),crc,len,ctr))
+      (fun (osd_id,crc,len,ctr) ->
+        Fragment.make (osd_id,version_id) crc len ctr)
       fragments_info
   in
   let manifest =
@@ -614,7 +615,7 @@ let cleanup_gc_tags
        (fun chunk_id chunk_locs ->
         Lwt_list.iteri_p
           (fun fragment_id f  ->
-           let (osd_id_o, version_id) = Nsm_model.Manifest._loc_of f in
+           let (osd_id_o, version_id) = Nsm_model.Fragment.loc_of f in
            match osd_id_o with
            | None -> Lwt.return ()
            | Some osd_id ->
@@ -702,15 +703,17 @@ let store_manifest_epilogue
           List.iteri
             (fun chunk_id chunk ->
               List.iteri
-                (fun fragment_id (new_o ,
-                                  ((old_o, _old_version), _, _ , fragment_ctr)) ->
+                (fun fragment_id (new_o , old_f) ->
+                  let open Nsm_model in
+                  let old_o, _old_version = Fragment.loc_of old_f in
+                  let old_ctr = Fragment.ctr_of old_f in
                   match new_o, old_o with
                   | None, Some _ -> failwith "new is None ?"
                   | Some x,Some y -> assert (x=y);
                   | None, None   -> ()
 
                   | Some osd_id, None ->
-                     let update = (chunk_id,fragment_id, Some osd_id, None, fragment_ctr) in
+                     let update = (chunk_id,fragment_id, Some osd_id, None, old_ctr) in
                      let () = r := update :: !r in ()
                 ) chunk
             ) side_by_side;
@@ -738,7 +741,8 @@ let store_manifest_epilogue
               { manifest with
                 fragments =
                   Nsm_model.Layout.map_indexed
-                    (fun chunk_id fragment_id (old_loc, crc, len, ctr)  ->
+                    (fun chunk_id fragment_id old_fragment  ->
+                      let old_loc = Nsm_model.Fragment.loc_of old_fragment in
                       let old_o,_ = old_loc in
                       let new_loc =
                         match old_o with
@@ -756,8 +760,8 @@ let store_manifest_epilogue
                            end
                         | _ -> old_loc
                       in
-                      (new_loc, crc,len,ctr)
-
+                      let open Nsm_model.Fragment in
+                      { old_fragment with loc = new_loc }
                     ) manifest.fragments
               }
             in

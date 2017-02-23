@@ -117,6 +117,12 @@ private:
   string _fragment_key(const namespace_t namespace_id, const string &object_id,
                        uint32_t version_id, uint32_t chunk_id,
                        uint32_t fragment_id);
+  boost::optional<int> _ser_version;
+
+  void _slow_path(const std::string &namespace_,
+                  const std::vector<ObjectSlices> &, const consistent_read,
+                  std::vector<object_info> &object_infos,
+                  alba::statistics::RoraCounter &);
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,

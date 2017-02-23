@@ -422,3 +422,7 @@ module Progress = struct
 end
 
 let string_list_to_json xs = `List (List.map (fun x -> `String x ) xs)
+
+module Manifest = struct
+  type t = Nsm_model.Manifest.t [@@ deriving yojson]
+end

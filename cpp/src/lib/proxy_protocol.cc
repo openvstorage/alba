@@ -42,6 +42,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _APPLY_SEQUENCE 24
 #define _OSD_INFO2 28
 #define _HAS_LOCAL_FRAGMENT_CACHE 31
+#define _UPDATE_SESSION 32
 
 namespace alba {
 namespace proxy_protocol {
@@ -250,23 +251,32 @@ void read_get_object_info_response(message &m, Status &status, uint64_t &size,
   }
 }
 
-void write_read_objects_slices_request(message_builder &mb,
-                                       const string &namespace_,
-                                       const std::vector<ObjectSlices> &slices,
-                                       const bool consistent_read) {
-  write_tag(mb, _READ_OBJECTS_SLICES);
+void _write_read_objects_slices_request(const int tag, message_builder &mb,
+                                        const string &namespace_,
+                                        const std::vector<ObjectSlices> &slices,
+                                        const bool consistent_read) {
+  write_tag(mb, tag);
   to(mb, namespace_);
   to(mb, slices);
   to(mb, consistent_read);
 }
+
+void write_read_objects_slices_request(message_builder &mb,
+                                       const string &namespace_,
+                                       const std::vector<ObjectSlices> &slices,
+                                       const bool consistent_read) {
+
+  _write_read_objects_slices_request(_READ_OBJECTS_SLICES, mb, namespace_,
+                                     slices, consistent_read);
+}
+
 void write_read_objects_slices2_request(message_builder &mb,
                                         const string &namespace_,
                                         const std::vector<ObjectSlices> &slices,
                                         const bool consistent_read) {
-  write_tag(mb, _READ_OBJECTS_SLICES2);
-  to(mb, namespace_);
-  to(mb, slices);
-  to(mb, consistent_read);
+
+  _write_read_objects_slices_request(_READ_OBJECTS_SLICES2, mb, namespace_,
+                                     slices, consistent_read);
 }
 
 void read_read_objects_slices_response(
@@ -334,6 +344,22 @@ void read_read_objects_slices2_response(
   }
 }
 
+void write_update_session_request(
+    message_builder &mb,
+    const std::vector<std::pair<std::string, boost::optional<std::string>>>
+        &args) {
+  write_tag(mb, _UPDATE_SESSION);
+  to(mb, args);
+}
+
+void read_update_session_response(
+    message &m, Status &status,
+    std::vector<std::pair<std::string, std::string>> &processed_kvs) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    from(m, processed_kvs);
+  }
+}
 void write_apply_sequence_request(
     message_builder &mb, const string &namespace_, const bool write_barrier,
     const std::vector<std::shared_ptr<alba::proxy_client::sequences::Assert>>

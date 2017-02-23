@@ -73,7 +73,7 @@ std::ostream &operator<<(std::ostream &os, const algo_t &algo) {
     os << "SHA1";
     break;
   case algo_t::CRC32c:
-    os << "CRC32c";
+    os << "Crc32c";
     break;
   }
   return os;

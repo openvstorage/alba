@@ -30,7 +30,8 @@ class type basic_client = object
 
 end
 
-class single_connection_client (ic, oc) =
+
+class single_connection_client (ic, oc) (session:Nsm_protocol.Session.t) =
   let read_response tag_name deserializer =
     Llio.input_string ic >>= fun res_s ->
 
@@ -55,7 +56,7 @@ class single_connection_client (ic, oc) =
       >>= fun () ->
       Lwt.fail exn
   in
-  let do_request tag serialize_request deserialize_response =
+  let do_request session tag serialize_request deserialize_response =
     let buf = Buffer.create 20 in
     Llio.int32_to buf tag;
     let tag_name = tag_to_name tag in
@@ -75,6 +76,7 @@ class single_connection_client (ic, oc) =
       (i, o) query -> i -> o Lwt.t =
       fun ?(consistency = Consistency.Consistent) command req ->
       do_request
+        session
         (command_to_tag (Wrap_q command))
         (fun buf ->
          Consistency.to_buffer buf consistency;
@@ -84,8 +86,9 @@ class single_connection_client (ic, oc) =
     method update : type i o. (i, o) update -> i -> o Lwt.t =
       fun command req ->
       do_request
+        session
         (command_to_tag (Wrap_u command))
-        (fun buf -> write_update_i command buf req)
+        (fun buf -> write_update_i session command buf req)
         (read_update_o command)
 
     method do_unknown_operation =
@@ -100,22 +103,24 @@ class single_connection_client (ic, oc) =
       in
       Lwt.catch
         (fun () ->
-         do_request
-           code
-           (fun buf -> ())
-           (fun buf -> ())
-         >>= fun () ->
-         Lwt.fail_with "did not get an exception for unknown operation")
+          do_request
+            session
+            code
+            (fun buf -> ())
+            (fun buf -> ())
+          >>= fun () ->
+          Lwt.fail_with "did not get an exception for unknown operation")
         (let open Nsm_model in
          function
-          | Err.Nsm_exn (Err.Unknown_operation, _) -> Lwt.return ()
-          | exn -> Lwt.fail exn)
+         | Err.Nsm_exn (Err.Unknown_operation, _) -> Lwt.return ()
+         | exn -> Lwt.fail exn)
 
   end
 
 class client (client : basic_client) =
   object(self)
     val supports_deliver_messages = ref None
+    val mutable manifest_ser = 1
 
     method deliver_messages msgs =
       let do_new () = client # update DeliverMsgs msgs in
@@ -167,17 +172,45 @@ class client (client : basic_client) =
 
     method update_presets req =
       client # update (NsmsUpdate Nsm_protocol.Protocol.UpdatePreset) req
+
+    method update_session kvs =
+      client # query UpdateSession kvs
   end
 
 let wrap_around (client:Arakoon_client.client) =
-  client # user_hook "nsm_host" >>= fun (ic, oc) ->
+  let hook_name = "nsm_host" in
+  let session = Nsm_protocol.Session.make () in
+  client # user_hook hook_name >>= fun (ic, oc) ->
   Llio.input_int32 ic
   >>= function
   | 0l -> begin
-      Lwt_log.debug_f "user hook was found%!" >>= fun () ->
-      let client = new single_connection_client (ic, oc) in
+      Lwt_log.debug_f "user hook %S was found%!" hook_name >>= fun () ->
+      let client = new single_connection_client (ic, oc) session in
       client # query GetVersion () >>= fun (major,minor,patch, commit) ->
-      Lwt_log.debug_f "version:(%i,%i,%i,%s)" major minor patch commit >>= fun () ->
+      Lwt_log.debug_f "version:(%i,%i,%i,%s)" major minor patch commit
+      >>= fun () ->
+      Lwt.catch
+        (fun () ->
+          let manifest_ser = 2 in
+          client # query UpdateSession
+                 ["manifest_ser", Some (serialize Llio.int8_to manifest_ser)]
+          >>= fun processed ->
+          let () = List.iter
+            (fun (k,v) ->
+              match k with
+              | "manifest_ser" ->
+                 let manifest_ser = deserialize Llio.int8_from v in
+                 Nsm_protocol.Session.set_manifest_ser session manifest_ser
+              | _ -> ()
+            ) processed
+          in
+          Lwt.return_unit
+        )
+        (function
+         | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Unknown_operation, _) ->
+            Lwt.return_unit
+        )
+      >>= fun () ->
       Lwt.return client
     end
   | e ->

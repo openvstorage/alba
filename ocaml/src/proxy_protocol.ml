@@ -25,6 +25,13 @@ open Stat
 open Range_query_args2
 open Checksum
 
+module ProxySession = struct
+  type t = { mutable manifest_ser : int}
+  let make () = { manifest_ser = 1}
+  let set_manifest_ser t v = t.manifest_ser <- v
+end
+
+
 module ProxyStatistics = struct
     include Stat
 
@@ -497,7 +504,8 @@ module Protocol = struct
                   ((alba_id * (Albamgr_protocol.Protocol.Osd.id * Nsm_model.OsdInfo.t *
                                Capabilities.OsdCapabilities.t) counted_list) counted_list)
                  ) request
-    | ApplySequence : (Namespace.name * write_barrier * Assert.t list * Update.t list,
+    | ApplySequence : (Namespace.name *
+                         write_barrier * Assert.t list * Update.t list,
                        (object_name * alba_id * manifest_with_id) list) request
     | ReadObjects : (Namespace.name
                      * object_name list
@@ -509,6 +517,8 @@ module Protocol = struct
     | MultiExists : (Namespace.name * object_name list, bool list) request
     | GetAlbaId : (unit, alba_id) request
     | HasLocalFragmentCache : (unit, bool) request
+    | UpdateSession : ((string * string option) list ,
+                       (string * string) list) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -539,6 +549,7 @@ module Protocol = struct
                       29, Wrap GetAlbaId, "GetAlbaId";
                       30, Wrap ListNamespaces2, "ListNamespaces2";
                       31, Wrap HasLocalFragmentCache, "HasLocalFragmentCache";
+                      32, Wrap UpdateSession, "UpdateSession";
                     ]
 
   module Error = struct
@@ -687,8 +698,16 @@ module Protocol = struct
        Deser.unit
     | HasLocalFragmentCache ->
        Deser.unit
-
-  let deser_request_o : type i o. (i, o) request -> o Deser.t = function
+    | UpdateSession -> Deser.list
+                         (Deser.pair
+                            Deser.string
+                            (Deser.option Deser.string)
+                         )
+  let deser_request_o :
+  type i o. ProxySession.t -> (i, o) request -> o Deser.t =
+    fun session ->
+    let ser_version = session.ProxySession.manifest_ser in
+    function
     | ListNamespaces -> Deser.counted_list_more Deser.string
     | ListNamespaces2 -> Deser.counted_list_more (Deser.pair Deser.string Deser.string)
     | NamespaceExists -> Deser.bool
@@ -698,16 +717,21 @@ module Protocol = struct
     | ListObjects -> Deser.tuple2 (Deser.counted_list Deser.string) Deser.bool
     | ReadObjectFs -> Deser.unit
     | WriteObjectFs -> Deser.unit
-    | WriteObjectFs2 -> Deser.tuple2 Manifest_deser.deser Deser.x_int64
+    | WriteObjectFs2 -> Deser.tuple2
+                          (Manifest_deser.deser ~ser_version)
+                          Deser.x_int64
     | DeleteObject -> Deser.unit
     | GetObjectInfo -> Deser.tuple2 Deser.int64 Checksum_deser.deser'
     | ReadObjectsSlices -> Deser.string
     | ReadObjectsSlices2 ->
        Deser.tuple2
          Deser.string
-         (Deser.list (Deser.tuple3 Deser.string
-                                   Deser.string
-                                   (Deser.tuple2 Manifest_deser.deser Deser.x_int64)
+         (Deser.list (Deser.tuple3
+                        Deser.string
+                        Deser.string
+                        (Deser.tuple2
+                           (Manifest_deser.deser ~ser_version)
+                           Deser.x_int64)
          ))
     | InvalidateCache -> Deser.unit
     | DropCache -> Deser.unit
@@ -747,16 +771,18 @@ module Protocol = struct
          )))
     | ApplySequence ->
        Deser.list (Deser.tuple3
-                             Deser.string
-                             Deser.string
-                             (Deser.pair Manifest_deser.deser Deser.x_int64))
+                     Deser.string
+                     Deser.string
+                     (Deser.pair
+                        (Manifest_deser.deser ~ser_version)
+                        Deser.x_int64))
     | ReadObjects ->
        Deser.pair
          Deser.x_int64
          (Deser.list
             (Deser.option
                (Deser.pair
-                  Manifest_deser.deser
+                  (Manifest_deser.deser ~ser_version)
                   Deser.bigstring_slice)))
     | MultiExists ->
        Deser.list Deser.bool
@@ -764,4 +790,8 @@ module Protocol = struct
        Deser.string
     | HasLocalFragmentCache ->
        Deser.bool
+    | UpdateSession -> Deser.list
+                         (Deser.pair
+                            Deser.string
+                            Deser.string)
 end

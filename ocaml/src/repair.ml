@@ -57,7 +57,7 @@ let repair_object_generic
   let version_id = manifest.Manifest.version_id + 1 in
 
   Lwt_list.map_s
-    (fun (chunk_id, chunk_location) ->
+    (fun (chunk_id, chunk_fragments) ->
 
       alba_client # get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache' ->
 
@@ -66,7 +66,7 @@ let repair_object_generic
                     ~namespace_id
                     ~object_id
                     ~object_name
-                    chunk_location
+                    chunk_fragments
                     ~chunk_id
                     ~encryption
                     decompress
@@ -96,7 +96,7 @@ let repair_object_generic
         ~k:1
         ~problem_fragments ~problem_osds
         ~n_chunks:(List.length locations)
-        ~chunk_location
+        ~chunk_fragments
         ~with_chunk_data
       >>= fun updated_locations ->
 

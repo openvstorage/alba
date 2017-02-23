@@ -39,21 +39,21 @@ let get_best_policy_exn policies osds_info_cache =
   | None -> Error.(failwith NoSatisfiablePolicy)
   | Some p -> p
 
-open Lwt.Infix
 
-let downloadable chunk_locations =
+
+let downloadable chunk_fragments =
   let rec build acc nones i = function
     | [] -> List.rev acc , nones
-    | ((None, _), _, _) :: cls -> build acc (nones+1) (i+1) cls
-    | ((Some osd, v), checksum, ctr) :: cls ->
+    | ((None, _), _, _) :: cfs -> build acc (nones+1) (i+1) cfs
+    | ((Some osd, v), checksum, ctr) :: cfs ->
        let cl' = (osd, v), checksum, ctr in
        let acc' = (i,cl') :: acc
        and i' = i+1 in
-       build acc' nones i' cls
+       build acc' nones i' cfs
   in
-  build [] 0 0 chunk_locations
+  build [] 0 0 chunk_fragments
 
-
+open Lwt.Infix
 
 let sort_by_preference prefered_nodes osd_access
                        chunk_locations_i

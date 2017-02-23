@@ -91,5 +91,6 @@ std::ostream &operator<<(std::ostream &os, const boost::optional<T> &ot) {
 }
 
 double timestamp_millis();
+std::string shell(const std::string &cmd);
 }
 }

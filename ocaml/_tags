@@ -32,4 +32,5 @@ true: package(result)
 "src":include
 "src/experiments":include
 "src/tools":include
+"src/model":include
 "src/other":include

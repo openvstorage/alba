@@ -272,6 +272,20 @@ void GenericProxy_client::write_object_fs2(
   check_status(__PRETTY_FUNCTION__);
 }
 
+void GenericProxy_client::update_session(
+    const std::vector<std::pair<std::string, boost::optional<std::string>>>
+        &args,
+    std::vector<std::pair<std::string, std::string>> &processed_kvs) {
+  _expires_from_now(_timeout);
+
+  proxy_protocol::write_update_session_request(_mb, args);
+  _output();
+
+  message response = _input();
+  proxy_protocol::read_update_session_response(response, _status,
+                                               processed_kvs);
+  check_status(__PRETTY_FUNCTION__);
+}
 tuple<uint64_t, Checksum *> GenericProxy_client::get_object_info(
     const string &namespace_, const string &object_name,
     const consistent_read consistent_read, const should_cache should_cache) {

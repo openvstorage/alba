@@ -23,9 +23,13 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 
+#include "manifest_cache.h"
 #include "osd_access.h"
 #include "osd_info.h"
+
 #include <fstream>
 #include <iostream>
 
@@ -467,6 +471,160 @@ TEST(proxy_client, test_partial_reads) {
     std::vector<ObjectSlices> objects_slices{object_slices};
     client->read_objects_slices(namespace_, objects_slices,
                                 proxy_client::consistent_read::F, cntr);
+  }
+}
+
+TEST(proxy_client, test_partial_read_full_object) {
+  using namespace std;
+  config cfg;
+  string namespace_("test_partial_read_full_object");
+  ostringstream sos;
+  sos << "with_manifest" << std::rand();
+  string name = sos.str();
+  using namespace proxy_protocol;
+
+  int slice_size = 100000;
+  vector<byte> buf(slice_size);
+  boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
+                                  rora_config);
+  boost::optional<std::string> preset{"preset_rora"};
+  client->create_namespace(namespace_, preset);
+  string file("./ocaml/alba.native");
+  client->write_object_fs(namespace_, name, file,
+                          proxy_client::allow_overwrite::T, nullptr);
+  client->invalidate_cache(namespace_);
+  alba::statistics::RoraCounter cntr;
+  const uint64_t object_size = alba::stuff::get_file_size(file);
+  string fn2{"./test_partial_read_full_object.bin"};
+  ofstream file2(fn2);
+  int n = (object_size + slice_size - 1) / slice_size;
+  uint64_t pos = 0;
+  int todo = object_size;
+  for (int i = 0; i < n; i++) {
+    ALBA_LOG(DEBUG, "n:" << n << " todo=" << todo << " pos=" << pos);
+    uint32_t len = std::min(slice_size, todo);
+    SliceDescriptor sd{&buf[0], pos, len};
+    std::vector<SliceDescriptor> slices{sd};
+    ObjectSlices object_slices{name, slices};
+    std::vector<ObjectSlices> objects_slices{object_slices};
+    client->read_objects_slices(namespace_, objects_slices,
+                                proxy_client::consistent_read::F, cntr);
+    file2.write((char *)&buf[0], len);
+    todo -= len;
+    pos += len;
+  }
+  file2.close();
+
+  ALBA_LOG(DEBUG, "comparing files");
+  ifstream f1(file);
+  ifstream f2(fn2);
+  EXPECT_FALSE(f1.fail() || f2.fail());
+  ASSERT_EQ(f1.tellg(), f2.tellg());
+
+  f1.seekg(0, ifstream::beg);
+  f2.seekg(0, ifstream::beg);
+  bool r = std::equal(istreambuf_iterator<char>(f1.rdbuf()),
+                      istreambuf_iterator<char>(),
+                      istreambuf_iterator<char>(f2.rdbuf()));
+  EXPECT_TRUE(r);
+
+  ALBA_LOG(DEBUG, "comparing manifests");
+  ostringstream cmd;
+  using namespace alba::proxy_client;
+  char *abm_config_p = getenv("TEST_ABM");
+  if (NULL == abm_config_p) {
+
+    throw proxy_exception(255, "point TEST_ABM to the alba config");
+  }
+  string abm_config(abm_config_p);
+  ALBA_LOG(DEBUG, "using " << abm_config);
+  cmd << "./ocaml/alba.native show-object " << namespace_ << " " << name
+      << " --config " << abm_config << " --to-json";
+  string cmd_s = cmd.str();
+  string result = alba::stuff::shell(cmd_s);
+  ALBA_LOG(DEBUG, "result" << result);
+  using boost::property_tree::ptree;
+  ptree pt;
+  istringstream input(result);
+  read_json(input, pt);
+
+  const vector<alba_id_t> &alba_levels =
+      OsdAccess::getInstance(5).get_alba_levels(*client);
+
+  ManifestCache &mfc = ManifestCache::getInstance();
+  auto alba_id = alba_levels[0];
+  ALBA_LOG(DEBUG, "alba_id " << alba_id);
+  auto entry = mfc.find(namespace_, alba_id, name);
+  auto pt_r = pt.get_child("result");
+  ASSERT_EQ(entry->name, pt_r.get<string>("name"));
+  ASSERT_EQ(entry->size, pt_r.get<uint64_t>("size"));
+
+  auto fragments = pt_r.get_child("fragments");
+  int chunk_index = 0;
+  for (auto chunk = fragments.begin(); chunk != fragments.end(); ++chunk) {
+    int fragment_index = 0;
+    for (auto js_fr = chunk->second.begin(); js_fr != chunk->second.end();
+         ++js_fr) {
+
+      auto mf_fr = entry->fragments[chunk_index][fragment_index];
+      int mf_len = mf_fr->len;
+      int js_len = js_fr->second.get<int>("len");
+
+      ASSERT_EQ(mf_len, js_len);
+      auto mf_loc = mf_fr->loc;
+      boost::optional<osd_t> mf_osd_o = std::get<0>(mf_loc);
+
+      int mf_version = std::get<1>(mf_loc);
+
+      auto js_loc = js_fr->second.get_child("loc");
+      auto js_loc_it = js_loc.begin();
+      boost::optional<int> js_osd_o =
+          js_loc_it->second.get_value_optional<int>();
+      if (boost::none != mf_osd_o && boost::none != js_osd_o) {
+        osd_t mf_osd = *mf_osd_o;
+        int js_osd = *js_osd_o;
+        ASSERT_EQ(mf_osd.i, js_osd);
+      }
+
+      js_loc_it++;
+      int js_version = js_loc_it->second.get_value<uint64_t>();
+      ASSERT_EQ(mf_version, js_version);
+
+      // "crc": [ "Crc32c", "0xc1103e5c" ],
+      shared_ptr<Checksum> mf_crc = mf_fr->crc;
+      alba::algo_t mf_crc_algo = mf_crc->get_algo();
+      auto js_crc = js_fr->second.get_child("crc");
+
+      auto js_crc_it = js_crc.begin();
+      string js_crc_algo = js_crc_it->second.get_value<string>();
+      ostringstream mf_algo_ss;
+      mf_algo_ss << mf_crc_algo;
+      string mf_crc_algo_s = mf_algo_ss.str();
+      ASSERT_EQ(mf_crc_algo_s, js_crc_algo);
+
+      // TODO: avoid cast?.
+      Crc32c *crc32c_p = (Crc32c *)&(*mf_crc);
+      uint32_t d = crc32c_p->_digest;
+      ostringstream mf_digest_ss;
+      mf_digest_ss << "0x";
+      using alba::stuff::dump_hex;
+      dump_hex(mf_digest_ss, d >> 24);
+      dump_hex(mf_digest_ss, (d >> 16) & 0xff);
+      dump_hex(mf_digest_ss, (d >> 8) & 0xff);
+      dump_hex(mf_digest_ss, (d)&0xff);
+      string mf_digest_s(mf_digest_ss.str());
+
+      js_crc_it++;
+
+      string js_digest = js_crc_it->second.get_value<string>();
+
+      ALBA_LOG(DEBUG, "mf_crc    : " << *mf_crc);
+
+      ASSERT_EQ(mf_digest_s, js_digest);
+      fragment_index++;
+    }
+    chunk_index++;
   }
 }
 

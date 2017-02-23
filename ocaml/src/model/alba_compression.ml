@@ -24,7 +24,7 @@ module Compression = struct
     | Snappy
     | Bzip2
     | Test
-  [@@deriving show]
+  [@@deriving show, yojson]
 
   let output buf c =
     let t = match c with

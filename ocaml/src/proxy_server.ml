@@ -278,6 +278,13 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                    (offset * length) list) list ]
          objects_slices)
   in
+  let render_apply_sequence (namespace, write_barrier, asserts, updates) =
+    (Printf.sprintf "(%S,%b,%s,%s)"
+                    namespace
+                    write_barrier
+                    ([%show : Assert.t list] asserts)
+                    ([%show : Update.t list] updates))
+  in
   function
   | ListNamespaces  -> fun { RangeQueryArgs.first; finc; last; max; reverse} -> "{ }"
   | ListNamespaces2 -> fun { RangeQueryArgs.first; finc; last; max; reverse} -> "{ }"
@@ -307,12 +314,7 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | Ping            -> fun delay -> Printf.sprintf "(%f)" delay
   | OsdInfo         -> fun () -> "()"
   | OsdInfo2        -> fun () -> "()"
-  | ApplySequence   -> fun (namespace, write_barrier, asserts, updates) ->
-                       Printf.sprintf "(%S,%b,%s,%s)"
-                                      namespace
-                                      write_barrier
-                                      ([%show : Assert.t list] asserts)
-                                      ([%show : Update.t list] updates)
+  | ApplySequence   -> fun args -> render_apply_sequence args
   | ReadObjects     -> fun args ->
                        Printf.sprintf "(%S)" ([%show : Namespace.name
                                                        * object_name list
@@ -323,6 +325,9 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
                        Printf.sprintf "(%S)" ([%show : Namespace.name * object_name list] args)
   | GetAlbaId       -> fun () -> "()"
   | HasLocalFragmentCache -> fun () -> "()"
+  | UpdateSession   -> fun args ->
+                       Printf.sprintf "%s"
+                       ([%show : (string * string option) list] args)
 
 let log_request code error renderer time =
   let details = renderer () in
@@ -355,7 +360,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                    (albamgr_client_cfg:Alba_arakoon.Config.t ref)
                    (stats: ProxyStatistics.t')
                    (nfd:Net_fd.t) =
-
+  let session = ProxySession.make () in
   let execute_request : type i o. (i, o) Protocol.request ->
                              ProxyStatistics.t' ->
                              i -> o Lwt.t
@@ -390,6 +395,39 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
           | Exn FileNotFound ->
              Protocol.Error.failwith Protocol.Error.FileNotFound
           | exn -> Lwt.fail exn)
+    in
+    let do_apply_sequence (namespace, _write_barrier, asserts, updates) =
+       alba_client # nsm_host_access # with_namespace_id
+                   ~namespace
+                   (fun namespace_id ->
+                     apply_sequence
+                       alba_client
+                       namespace
+                       namespace_id
+                       asserts
+                       updates
+                       stats
+                   )
+    in
+    let do_read_objects_slices
+          stats (namespace, objects_slices, consistent_read)
+      =
+      with_timing_lwt
+        (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
+      >>= fun (delay, (bytes, n_slices, n_objects,
+                       mf_sources, fc_hits, fc_misses,
+                       object_infos)) ->
+      let total_length = Bytes.length bytes in
+      ProxyStatistics.new_read_objects_slices
+        stats namespace
+        ~total_length ~n_slices ~n_objects ~mf_sources
+        ~fc_hits ~fc_misses
+        ~took:delay;
+      Lwt_log.debug_f "object_infos:%s"
+                      ([%show : (string * string * manifest_with_id) list]
+                         object_infos)
+      >>= fun () ->
+      Lwt.return (bytes, object_infos)
     in
     function
     | ListNamespaces -> fun stats { RangeQueryArgs.first; finc; last; max; reverse } ->
@@ -484,18 +522,8 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                    ~namespace
                    (fun nsm -> nsm # multi_exists object_names)
     | ApplySequence ->
-       fun stats (namespace, _write_barrier, asserts, updates) ->
-       alba_client # nsm_host_access # with_namespace_id
-                   ~namespace
-                   (fun namespace_id ->
-                     apply_sequence
-                       alba_client
-                       namespace
-                       namespace_id
-                       asserts
-                       updates
-                       stats
-                   )
+       fun stats args ->
+       do_apply_sequence args
     | GetObjectInfo ->
        fun stats (namespace, object_name, consistent_read, should_cache) ->
        begin
@@ -523,24 +551,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
          ~fc_hits ~fc_misses
          ~took:delay;
        Lwt.return bytes
-    | ReadObjectsSlices2 ->
-       fun stats (namespace, objects_slices, consistent_read) ->
-       with_timing_lwt
-         (fun () -> read_objects_slices alba_client namespace objects_slices ~consistent_read)
-       >>= fun (delay, (bytes, n_slices, n_objects,
-                        mf_sources, fc_hits, fc_misses,
-                        object_infos)) ->
-       let total_length = Bytes.length bytes in
-       ProxyStatistics.new_read_objects_slices
-         stats namespace
-         ~total_length ~n_slices ~n_objects ~mf_sources
-         ~fc_hits ~fc_misses
-         ~took:delay;
-       Lwt_log.debug_f "object_infos:%s"
-                       ([%show : (string * string * manifest_with_id) list]
-                          object_infos)
-       >>= fun () ->
-       Lwt.return (bytes, object_infos)
+    | ReadObjectsSlices2 -> do_read_objects_slices
     | InvalidateCache ->
       fun stats namespace -> alba_client # invalidate_cache namespace
     | DropCache ->
@@ -596,6 +607,30 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
        fun stats () -> alba_client # get_alba_id
     | HasLocalFragmentCache ->
        fun stats () -> alba_client # has_local_fragment_cache |> Lwt.return
+    | UpdateSession ->
+       fun stats args ->
+       begin
+         let result =
+           List.fold_left
+             (fun acc (k,vo) ->
+               match k with
+               | "manifest_ser" ->
+                  begin
+                    match vo with
+                    | None -> acc
+                    | Some v ->
+                       let wanted_version = deserialize Llio.int8_from v in
+                       let new_version = min 2 wanted_version in
+                       let v' = serialize Llio.int8_to new_version in
+                       let () = ProxySession.set_manifest_ser session new_version in
+                       (k, v') :: acc
+                  end
+               | _ -> acc
+           )
+           [] args
+         in
+         Lwt.return (List.rev result)
+       end
   in
   let module Llio = Llio2.WriteBuffer in
   let return_err_response ?msg err =
@@ -634,7 +669,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                        Llio.serialize_with_length'
                          (Llio.pair_to
                             Llio.int_to
-                            (snd (Protocol.deser_request_o r)))
+                            (snd (Protocol.deser_request_o session r)))
                          (0, res)))
          (function
           | End_of_file as e ->

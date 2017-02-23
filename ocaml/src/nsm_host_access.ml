@@ -354,7 +354,8 @@ class nsm_host_access
     get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
     let nsm_host_id = ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id in
     let nsm_host_basic = get_basic ~nsm_host_id in
-    Lwt.return (new Nsm_client.client nsm_host_basic namespace_id)
+    let nsm_client = new Nsm_client.client nsm_host_basic namespace_id in
+    Lwt.return nsm_client
   in
 
   object(self)
