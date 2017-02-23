@@ -390,7 +390,8 @@ let handle_query : type i o. read_user_db ->
                   match vo with
                   | None -> acc
                   | Some v ->
-                     let new_version = deserialize Llio.int8_from v in
+                     let wanted_version = deserialize Llio.int8_from v in
+                     let new_version = min 2 wanted_version in
                      let () =
                        Nsm_protocol.Session.set_manifest_ser session new_version in
                      (k, v) :: acc
