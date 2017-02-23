@@ -184,11 +184,12 @@ let test_protocol_version () =
        >>= fun (nfd, closer) ->
        Lwt.finalize
          (fun () ->
-          Proxy_client._prologue nfd Protocol.magic 666l >>= fun () ->
-          let client = new Proxy_client.proxy_client nfd in
-          client # get_version >>= fun _ ->
-          OUnit.assert_bool "should have failed" false;
-          Lwt.return ()
+           Proxy_client._prologue nfd Protocol.magic 666l >>= fun () ->
+           let session = ProxySession.make () in
+           let client = new Proxy_client.proxy_client nfd session in
+           client # get_version >>= fun _ ->
+           OUnit.assert_bool "should have failed" false;
+           Lwt.return ()
          )
          closer
       )

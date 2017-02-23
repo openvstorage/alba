@@ -621,8 +621,9 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                     | Some v ->
                        let wanted_version = deserialize Llio.int8_from v in
                        let new_version = min 2 wanted_version in
+                       let v' = serialize Llio.int8_to new_version in
                        let () = ProxySession.set_manifest_ser session new_version in
-                       (k, v) :: acc
+                       (k, v') :: acc
                   end
                | _ -> acc
            )
@@ -710,8 +711,7 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                | Preset_violated
                | Too_many_disks_per_node
                | Insufficient_fragments
-               | Unknown_operation
-               | Session_update_error ->
+               | Unknown_operation ->
                   let msg = Nsm_model.Err.show err in
                   Lwt_log.error_f
                     "Unexpected Nsm_model.Err exception in proxy while handling request: %s" msg

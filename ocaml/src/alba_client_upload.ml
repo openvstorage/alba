@@ -876,8 +876,7 @@ let _upload_with_retry
            | Overwrite_not_allowed
            | Assert_failed
            | Insufficient_fragments
-           | Object_not_found
-           | Session_update_error ->
+           | Object_not_found ->
               Lwt.fail exn
 
            | Not_master

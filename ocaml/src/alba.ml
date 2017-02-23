@@ -462,6 +462,11 @@ let alba_show_object
   lwt_cmd_line ~to_json ~verbose t
 
 let alba_show_object_cmd =
+  let doc =
+    "print some info about the object."
+    ^ " This call serves development purposes, and the output format"
+    ^ " (even the json format) can change without notice."
+  in
   Term.(pure alba_show_object
         $ alba_cfg_url
         $ tls_config
@@ -475,7 +480,7 @@ let alba_show_object_cmd =
         $ to_json $ verbose
         $ unescape
   ),
-  Term.info "show-object" ~doc:"print some info about the object"
+  Term.info "show-object" ~doc
 
 let alba_list_objects cfg_file tls_config namespace verbose =
   let t () =

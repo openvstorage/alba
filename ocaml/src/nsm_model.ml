@@ -1112,7 +1112,6 @@ module Err = struct
     | Assert_failed           [@value 20]
     | Invalid_bucket          [@value 21]
     | Preset_violated         [@value 22]
-    | Session_update_error    [@value 23]
   [@@deriving show, enum]
 
   exception Nsm_exn of t * string

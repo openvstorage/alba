@@ -23,7 +23,7 @@ open Protocol
 open Range_query_args
 
 
-class proxy_client fd =
+class proxy_client fd session =
   let buffer = Lwt_bytes.create 1024 |> ref in
 
   let with_response tag_name deserializer f =
@@ -75,7 +75,6 @@ class proxy_client fd =
 
     with_response tag_name response_deserializer f
   in
-  let session = ProxySession.make () in
   object(self)
     method private request' :
     type i o r. (i, o) request -> i -> (o -> r Lwt.t) -> r Lwt.t =
@@ -215,6 +214,8 @@ class proxy_client fd =
     method osd_info = self # request OsdInfo ()
 
     method get_alba_id = self # request GetAlbaId ()
+
+    method update_session kvs = self # request UpdateSession kvs
   end
 
 let _prologue fd magic version =
@@ -229,8 +230,36 @@ let make_client ip port transport =
     ip port transport
   >>= fun (nfd, closer) ->
   Lwt.catch
-    (fun () -> _prologue nfd Protocol.magic Protocol.version >>= fun () ->
-               Lwt.return (new proxy_client nfd, closer))
+    (fun () ->
+      _prologue nfd Protocol.magic Protocol.version >>= fun () ->
+      let session = ProxySession.make () in
+      let client = new proxy_client nfd session in
+      Lwt.catch
+        (fun () ->
+          let manifest_ser = 2 in
+          let kvs = [("manifest_ser", Some (serialize Llio.int8_to manifest_ser))]
+          in
+          client # update_session kvs >>= fun processed ->
+          let () =
+            List.iter
+              (fun (k,v) ->
+                match k with
+                | "manifest_ser" ->
+                   let manifest_ser = deserialize Llio.int8_from v in
+                   ProxySession.set_manifest_ser session manifest_ser
+                | _ -> ()
+              ) processed
+          in
+          Lwt.return_unit
+        )
+        (let open Proxy_protocol.Protocol in
+         function
+         | Error.Exn (Error.UnknownOperation,_) -> Lwt.return_unit
+         | exn -> Lwt.fail exn
+        )
+      >>= fun () ->
+      Lwt.return (client, closer)
+    )
     (fun exn ->
       closer () >>= fun () ->
       Lwt.fail exn)
