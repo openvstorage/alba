@@ -61,31 +61,27 @@ TEST(llio, composition) {
   EXPECT_EQ(y0b, true);
 }
 
-TEST(llio, varint){
+TEST(llio, varint) {
 
-  std::vector<int> tests {0,
-          1 ,2,
-          127, 128, 129,
-          16383, 16384, 16385,
-          40000, 100000
-          };
+  std::vector<int> tests{0,     1,     2,     127,   128,   129,
+                         16383, 16384, 16385, 40000, 100000};
   using namespace alba::llio;
-  for(int t:tests){
-      message_builder mb;
-      varint_t v;
-      v.j = t;
-      to(mb, v);
-      std::ostringstream sos;
-      mb.output(sos);
-      std::string contents = sos.str();
-      alba::stuff::dump_buffer(std::cout, contents.data(), contents.size());
-      std::cout << std::endl;
+  for (int t : tests) {
+    message_builder mb;
+    varint_t v;
+    v.j = t;
+    to(mb, v);
+    std::ostringstream sos;
+    mb.output(sos);
+    std::string contents = sos.str();
+    alba::stuff::dump_buffer(std::cout, contents.data(), contents.size());
+    std::cout << std::endl;
 
-      std::istringstream sis(contents);
-      auto buffer = message_buffer::from_istream(sis);
-      message m(buffer);
-      varint_t v2;
-      from(m, v2);
-      EXPECT_EQ(v.j, v2.j);
+    std::istringstream sis(contents);
+    auto buffer = message_buffer::from_istream(sis);
+    message m(buffer);
+    varint_t v2;
+    from(m, v2);
+    EXPECT_EQ(v.j, v2.j);
   }
 }

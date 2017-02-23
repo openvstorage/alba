@@ -134,31 +134,30 @@ template <> void from(message &m, double &d) {
   m.skip(8);
 }
 
-template <> void to(message_builder &mb, const varint_t &v) noexcept{
-    uint64_t j = v.j;
-    uint8_t b;
-    while(j >= 0x80){
-        b = (j & 0x7f) | 0x80;
-        mb.add_raw((const char*)&b, 1);
-        j >>= 7;
-    }
-    b = j & 0x7f;
-    mb.add_raw((const char*)&b, 1);
+template <> void to(message_builder &mb, const varint_t &v) noexcept {
+  uint64_t j = v.j;
+  uint8_t b;
+  while (j >= 0x80) {
+    b = (j & 0x7f) | 0x80;
+    mb.add_raw((const char *)&b, 1);
+    j >>= 7;
+  }
+  b = j & 0x7f;
+  mb.add_raw((const char *)&b, 1);
 }
 
-template <> void from(message& m, varint_t &v){
-    uint8_t b0;
-    uint64_t r = 0;
-    int shift = 0;
+template <> void from(message &m, varint_t &v) {
+  uint8_t b0;
+  uint64_t r = 0;
+  int shift = 0;
+  from(m, b0);
+  while (b0 >= 0x80) {
+    r = r + ((b0 & 0x7f) << shift);
     from(m, b0);
-    while(b0 >= 0x80){
-        r = r + ((b0 & 0x7f) << shift);
-        from(m, b0);
-        shift = shift + 7;
-    }
-    r = r + (b0 << shift);
-    v.j = r;
+    shift = shift + 7;
+  }
+  r = r + (b0 << shift);
+  v.j = r;
 }
-
 }
 }

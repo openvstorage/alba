@@ -288,7 +288,7 @@ void _from_version2(message &m, Manifest &mf, bool &ok_to_continue) {
   if (layout_tag != 1) {
     throw deserialisation_exception("unexpected layout tag");
   }
-  // from(m2, mf.fragments);
+  // TODO: from(m2, mf.fragments) // how to coerce templating system ?
 
   uint32_t n_chunks;
   from(m2, n_chunks);
