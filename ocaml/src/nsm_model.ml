@@ -697,7 +697,7 @@ module Manifest = struct
                           buf
     in
     let fragments = Layout.map4
-                      Fragment.make
+                      Fragment.make'
                       fragment_locations
                       fragment_checksums
                       fragment_packed_sizes
@@ -2022,7 +2022,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     in
     let fragments' =
       Layout.map4
-        Fragment.make
+        Fragment.make'
         fragment_locations
         new_fragment_checksums
         new_fragment_packed_sizes

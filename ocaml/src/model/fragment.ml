@@ -33,15 +33,19 @@ module Fragment = struct
     { loc : location;
       crc : Checksum.t;
       len : int;
-      ctr : string option } [@@deriving show, yojson]
+      ctr : string option;
+      fnr : string option
+    } [@@deriving show, yojson]
 
-  let make loc crc len ctr = {loc;crc;len;ctr}
+  let make  loc crc len ctr fnr = {loc;crc;len;ctr; fnr}
+  let make' loc crc len ctr = { loc; crc;len; ctr; fnr = None}
 
   let loc_of x = x.loc
   let crc_of x = x.crc
   let len_of x = x.len
   let ctr_of x = x.ctr
   let osd_of x = x.loc |> fst
+  let fnr_of x = x.fnr
 
   let version_of x = x.loc |> snd
 
@@ -53,6 +57,7 @@ module Fragment = struct
     Checksum.output buf t.crc;
     L.int_to buf t.len;
     L.option_to L.small_bytes_to buf t.ctr
+  (* L.option_to L.small_bytes_to buf t.fnr *)
 
   let _inner_fragment_from buf =
 
@@ -68,7 +73,8 @@ module Fragment = struct
     let crc = Checksum.input buf in
     let len = L.int_from buf in
     let ctr = L.option_from L.small_bytes_from buf in
-    make loc crc len ctr
+    let fnr = maybe_from_buffer (L.option_from L.small_bytes_from) None buf in
+    make loc crc len ctr fnr
 
   let fragment_to buf t =
     let s = serialize

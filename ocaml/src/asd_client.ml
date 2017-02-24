@@ -454,8 +454,11 @@ object(self :# Osd.key_value_osd)
       method apply_sequence prio asserts (upds: Update.t list) =
         Lwt.catch
           (fun () ->
-           asd # apply_sequence ~prio asserts upds >>= fun () ->
-           Lwt.return Osd.Ok)
+            asd # apply_sequence ~prio asserts upds
+            >>= fun (fnros : string option list) ->
+            let r = Some fnros in
+            Lwt.return (Osd.Ok r)
+          )
           (function
             | Error.Exn e ->
                Lwt.return (Osd.Exn e)

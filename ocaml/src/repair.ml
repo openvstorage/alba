@@ -109,8 +109,10 @@ let repair_object_generic
       (fun acc (chunk_id, updated_locations) ->
        let updated_chunk_locations =
          List.map
-           (fun (fragment_id, device_id,maybe_changed, fragment_ctr) ->
-            (chunk_id, fragment_id, device_id, maybe_changed, fragment_ctr))
+           (fun (fragment_id, device_id,maybe_changed, fragment_ctr,
+                 apply_result') ->
+             (chunk_id, fragment_id, device_id, maybe_changed,
+              fragment_ctr))
            updated_locations in
        List.rev_append updated_chunk_locations acc)
       []

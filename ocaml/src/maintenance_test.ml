@@ -145,7 +145,7 @@ let test_rebalance_one () =
      >>= fun object_locations_movements ->
      let source_osds =
        List.map
-         (fun (c,f,s,t,_) -> s) object_locations_movements
+         (fun (c,f,s,t,_, _apply_result') -> s) object_locations_movements
      in
      alba_client # get_object_manifest'
        ~namespace_id ~object_name
@@ -706,7 +706,7 @@ let test_verify_namespace () =
                   (get_random_string 39)
                   Checksum.NoChecksum
                   false; ] >>= function
-          | Osd.Ok -> Lwt.return ()
+          | Osd.Ok _ -> Lwt.return_unit
           | _ -> assert false)
      end >>= fun () ->
 

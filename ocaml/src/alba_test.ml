@@ -111,7 +111,7 @@ let delete_fragment
                 namespace_id
                 (k, 0, String.length k)) ]
      >>= fun s ->
-     OUnit.assert_equal Osd.Ok s;
+     OUnit.assert_equal (Osd.Ok (Some [None])) s;
      Lwt.return ())
 
 let maybe_delete_fragment
@@ -975,7 +975,7 @@ let test_discover_claimed () =
                   (serialize Llio.int32_to id_on_osd)
                   no_checksum true; ]
             >>= fun apply_result ->
-            OUnit.assert_equal Osd.Ok apply_result;
+            OUnit.assert_bool "sequence ok?" (Osd.is_ok apply_result);
             Lwt_log.debug "applied sequence" >>= fun () ->
 
             (* this timeout should be enough... *)
@@ -2189,7 +2189,7 @@ let test_retry_download () =
        let open Nsm_model in
        let open Manifest in
        let bad_f =
-         Fragment.make (Some 0L,0) Nsm_model.Checksum.NoChecksum  0 None in
+         Fragment.make' (Some 0L,0) Nsm_model.Checksum.NoChecksum  0 None in
        let fragments =
          [ List.hd_exn (mf.fragments);
            [ bad_f;bad_f;bad_f ]
@@ -2327,7 +2327,7 @@ let test_preset_validation () =
           Layout.map (fun _ -> None) fragment_locations
         in
         let fragments = Layout.map4
-                      Fragment.make
+                      Fragment.make'
                           fragment_locations
                           fragment_checksums
                           fragment_packed_sizes

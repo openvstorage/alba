@@ -45,9 +45,16 @@ module Osd_namespace_state = struct
 end
 
 module Error = Asd_protocol.Protocol.Error
+
+type apply_result' = (string option list) option [@@deriving show]
+
 type apply_result =
-  | Ok
+  | Ok of apply_result'
   | Exn of Error.t
+
+let is_ok = function
+  | Ok _ -> true
+  | _ -> false
 
 type partial_get_return =
   | Unsupported
@@ -81,7 +88,8 @@ class type key_value_storage =
              reverse:bool -> max:int ->
              (key * value * checksum) counted_list_more Lwt.t
 
-    method apply_sequence : priority -> Assert.t list -> Update.t list -> apply_result Lwt.t
+    method apply_sequence : priority -> Assert.t list -> Update.t list ->
+                            apply_result Lwt.t
   end
 
 class type key_value_osd =
@@ -255,7 +263,7 @@ object(self :# osd)
         (List.map
            (fun key -> Update.delete (to_global_key namespace_id key))
            keys) >>= function
-    | Ok -> Lwt.return (List.last keys)
+    | Ok _ -> Lwt.return (List.last keys)
     | Exn e -> Lwt.fail (Asd_protocol.Protocol.Error.Exn e)
 
   method set_full = key_value_osd # set_full

@@ -311,7 +311,10 @@ class client ?(retry_timeout = 60.)
              ~manifest
              ~(source_osd:Nsm_model.osd_id)
              ~(target_osd:Nsm_model.osd_id)
-           : (int * int * Nsm_model.osd_id * Nsm_model.osd_id * bytes option) list Lwt.t
+           : (int * int
+              * Nsm_model.osd_id * Nsm_model.osd_id
+              * bytes option
+              * string option) list Lwt.t
       =
       let open Nsm_model in
       let open Manifest in
@@ -425,8 +428,10 @@ class client ?(retry_timeout = 60.)
                      ~gc_epoch
                      ~recovery_info_blob:(Osd.Blob.Slice recovery_info_slice)
                      ~osd_id:target_osd
-                   >>= fun () ->
-                   Lwt.return (chunk_id, fragment_id, source_osd, target_osd, fragment_ctr)
+                   >>= fun apply_result' ->
+                   Lwt.return (chunk_id, fragment_id, source_osd,
+                               target_osd,
+                               fragment_ctr, apply_result')
                  end)
               (fun () ->
                Lwt_bytes.unsafe_destroy packed_fragment;
@@ -435,11 +440,14 @@ class client ?(retry_timeout = 60.)
         (List.mapi (fun i lc -> i, lc) fragment_info)
       >>= fun object_location_movements ->
       Lwt_log.debug_f "object_location_movements: %s"
-        ([%show: (int * int * osd_id * osd_id * bytes option) list] object_location_movements)
+                      ([%show: (int * int * osd_id * osd_id
+                                * bytes option
+                                * string option) list]
+                         object_location_movements)
       >>= fun ()->
       let updated_object_locations =
         List.map
-          (fun (c,f,s, target_osd_id, fragment_ctr) ->
+          (fun (c,f,s, target_osd_id, fragment_ctr, apply_result') ->
              (c,f, Some target_osd_id, None, fragment_ctr))
           object_location_movements
       in
@@ -700,7 +708,7 @@ class client ?(retry_timeout = 60.)
                         (osd_client # namespace_kvs namespace_id) # apply_sequence
                                    Osd.Low
                                    [] upds >>= function
-                        | Osd.Ok -> Lwt.return ()
+                        | Osd.Ok _ -> Lwt.return ()
                         | Osd.Exn x ->
                            Lwt_log.warning_f "%s: deletes should never fail"
                                              ([%show : Osd.Error.t] x)

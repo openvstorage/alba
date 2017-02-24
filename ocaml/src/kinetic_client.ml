@@ -259,7 +259,7 @@ object (self :# Osd.key_value_osd)
                       (String.concat ";" (List.map show kseq))
       >>= fun () ->
       if kseq = []
-      then Lwt.return Osd.Ok
+      then Lwt.return (Osd.Ok None)
       else
         begin
           let exn = ref [] in
@@ -312,7 +312,7 @@ object (self :# Osd.key_value_osd)
           Lwt.join !waiters >>= fun () ->
 
           match !exn with
-          | [] -> Lwt.return Ok
+          | [] -> Lwt.return (Ok None)
           | ims ->
              begin
                let ims' = List.rev ims in

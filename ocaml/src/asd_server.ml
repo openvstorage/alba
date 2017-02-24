@@ -1036,7 +1036,7 @@ let execute_update : type req res.
           Lwt.catch
             (fun () ->
              immediate_upds_promise >>= fun immediate_upds ->
-             f immediate_upds >>= fun () ->
+             f immediate_upds >>= fun fnros ->
 
              (* the files are now definitely commited,
                 release file numbers so that collect_garbage_from
@@ -1045,7 +1045,7 @@ let execute_update : type req res.
              List.iter
                (fun (fnr, _, _) -> release_fnr fnr)
                !files;
-             Lwt.return ())
+             Lwt.return fnros)
             (function
               | (Error.Exn (Error.Assert_failed _)) as exn ->
 
@@ -1222,12 +1222,28 @@ let execute_update : type req res.
                      kv
                      dir_info
                      files_to_be_deleted >>= fun () ->
-                   Lwt.return `Succeeded)
+                   let fnros =
+                     List.map
+                       (function
+                        | (_, `Set (value, _)) ->
+                           begin
+                             let open Value in
+                             match value with
+                             | Direct v -> None
+                             | OnFs (fnr, _) ->
+                                let fnr_s = serialize Llio.int64_to fnr in
+                                Some fnr_s
+                           end
+                        | (_, _) -> None
+                       )
+                       immediate_updates
+                   in
+                   Lwt.return (`Succeeded fnros))
                   (function
                     | Lwt.Canceled -> Lwt.fail Lwt.Canceled
                     | ConcurrentModification -> Lwt.return `Retry
                     | exn -> Lwt.fail exn) >>= function
-                | `Succeeded -> Lwt.return ()
+                | `Succeeded fnros -> Lwt.return fnros
                 | `Retry ->
                    Lwt_log.debug_f "Asd retrying apply due to concurrent modification" >>= fun () ->
                    inner (attempt + 1)

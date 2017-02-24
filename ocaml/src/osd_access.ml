@@ -425,7 +425,7 @@ class osd_access
                                            Checksum.NoChecksum
                                            false ])
                                 >>= function
-                                | (t, Osd.Ok) ->
+                                | (t, Osd.Ok _) ->
                                    if t < osd_timeout
                                    then Lwt.return `OkAgain
                                    else Lwt.return (`Continue Lwt_unix.Timeout)

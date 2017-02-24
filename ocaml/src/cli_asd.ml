@@ -220,7 +220,19 @@ let asd_set hosts port transport tls_config
                  (Osd.Blob.Bytes value')
                  checksum true
              ]
-     >>= unit_result to_json
+     >>= fun fnros ->
+     let fnro = List.hd_exn fnros in
+     if to_json
+     then
+       print_result
+         fnro
+         (function
+          | None -> `Null
+          | Some fnr -> `String fnr
+         )
+     else
+
+       Lwt_io.printlf "%s" ([%show : string option] fnro)
     )
 
 let asd_set_cmd =
@@ -278,7 +290,7 @@ let asd_multi_delete hosts port transport tls_config asd_id (keys:string list) v
         List.map (fun key' -> Update.delete (Slice.wrap_string key')) keys'
       in
       let asserts = [] in
-      client # apply_sequence ~prio:Osd.High asserts updates >>= fun () ->
+      client # apply_sequence ~prio:Osd.High asserts updates >>= fun fnros ->
       Lwt.return_unit)
 
 let asd_multi_delete_cmd =

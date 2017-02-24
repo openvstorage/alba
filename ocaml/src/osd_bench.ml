@@ -26,7 +26,7 @@ open Slice
 let oc = Lwt_io.stdout
 
 let maybe_fail = function
-  | Osd.Ok -> Lwt.return_unit
+  | Osd.Ok _ -> Lwt.return_unit
   | Osd.Exn e -> Osd.Error.lwt_fail e
 
 let deletes with_client progress n value_size _

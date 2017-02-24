@@ -169,7 +169,7 @@ class client
                   namespace_id
                   (assert_ts namespace_id)
                   apply_sequence_updates >>= fun _ ->
-                Lwt.return Osd.Ok)
+                Lwt.return (Osd.Ok None))
               (function
                | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Assert_failed, key) ->
                   Lwt.return (Osd.Exn Osd.Error.(Assert_failed key))

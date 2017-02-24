@@ -464,7 +464,10 @@ let _repair_after_read
             ~with_chunk_data >>= fun updated_locations ->
           Lwt_log.debug_f "updated_locations=%s"
                           ([%show :
-                               (int * osd_id option * (int * Checksum.t) option * bytes option)
+                               (int * osd_id option * (int * Checksum.t) option
+                                * bytes option
+                                * string option
+                               )
                                  list]
                              updated_locations)
           >>= fun () ->
@@ -482,7 +485,9 @@ let _repair_after_read
              (List.map
                 (fun (chunk_id, updated_locations) ->
                   List.map
-                    (fun (fragment_id, osd_id_o, maybe_changed, fragment_ctr) ->
+                    (fun (fragment_id, osd_id_o,
+                          maybe_changed,
+                          fragment_ctr, apply_result') ->
                       chunk_id, fragment_id, osd_id_o, maybe_changed, fragment_ctr)
                     updated_locations)
                 updated_locations))

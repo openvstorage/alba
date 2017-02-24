@@ -28,7 +28,7 @@ let no_checksum = Checksum.Checksum.NoChecksum
 
 let apply (client : kvs) asserts updates =
   client # apply_sequence High asserts updates >>= function
-  | Osd.Ok -> Lwt.return ()
+  | Osd.Ok _ -> Lwt.return ()
   | Osd.Exn err -> Lwt.fail (Asd_protocol.Protocol.Error.Exn err)
 
 let set_string (client : kvs) key value =
