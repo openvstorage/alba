@@ -714,7 +714,10 @@ module Protocol = struct
     =
     let module Llio = Llio2.ReadBuffer in
     function
-      | Apply    -> Llio.list_from (Llio.option_from Llio.string_from)
-      | SetFull  -> Llio.unit_from
-      | Slowness -> Llio.unit_from
+    | Apply    -> Llio.maybe_from_buffer
+                    (Llio.list_from
+                       (Llio.option_from Llio.string_from))
+                  [None]
+    | SetFull  -> Llio.unit_from
+    | Slowness -> Llio.unit_from
 end
