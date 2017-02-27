@@ -1223,20 +1223,24 @@ let execute_update : type req res.
                      dir_info
                      files_to_be_deleted >>= fun () ->
                    let fnros =
-                     List.map
-                       (function
-                        | (_, `Set (value, _)) ->
-                           begin
-                             let open Value in
-                             match value with
-                             | Direct v -> None
-                             | OnFs (fnr, _) ->
-                                let fnr_s = serialize Llio.int64_to fnr in
-                                Some fnr_s
-                           end
-                        | (_, _) -> None
+                     List.fold_left
+                       (fun acc ku ->
+                         match ku with
+                         | (key, `Set (value, _)) ->
+                            begin
+                              let open Value in
+                              let e =
+                                match value with
+                                | Direct v -> key, None
+                                | OnFs (fnr, _) ->
+                                   let fnr_s = serialize Llio.int64_to fnr in
+                                   key, Some fnr_s
+                              in
+                              e :: acc
+                            end
+                         | (key, _) -> acc
                        )
-                       immediate_updates
+                       [] immediate_updates
                    in
                    Lwt.return (`Succeeded fnros))
                   (function

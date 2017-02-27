@@ -446,7 +446,7 @@ class t
                                          )
                                          updates)
                 >>= fun _ ->
-                Lwt.return (Osd.Ok None)))
+                Lwt.return (Osd.Ok [])))
           (function
            | Proxy_protocol.Protocol.Error.Exn (Proxy_protocol.Protocol.Error.AssertFailed, key) ->
               Lwt.return Osd.(Exn (Error.Assert_failed (Option.get_some key)))

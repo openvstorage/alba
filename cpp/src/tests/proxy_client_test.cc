@@ -622,6 +622,14 @@ TEST(proxy_client, test_partial_read_full_object) {
       ALBA_LOG(DEBUG, "mf_crc    : " << *mf_crc);
 
       ASSERT_EQ(mf_digest_s, js_digest);
+
+      //"fnr": "\u0004\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+      ostringstream mf_fnr_ss;
+      dump_string_option(mf_fnr_ss, mf_fr -> fnr);
+
+      auto mf_fnr_s = mf_fnr_ss.str();
+      ALBA_LOG(DEBUG, "mf_fnr =" << mf_fnr_s);
+
       fragment_index++;
     }
     chunk_index++;

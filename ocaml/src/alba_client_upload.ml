@@ -43,12 +43,14 @@ let upload_packed_fragment_data
     "upload_packed_fragment_data (%i,%i) to osd:%Li"
     chunk_id fragment_id osd_id
   >>= fun () ->
+  let data_key = AlbaInstance.fragment
+                   ~object_id ~version_id
+                   ~chunk_id ~fragment_id
+                  |> Slice.wrap_string
+  in
   let set_data =
     Osd.Update.set
-      (AlbaInstance.fragment
-         ~object_id ~version_id
-         ~chunk_id ~fragment_id
-       |> Slice.wrap_string)
+      data_key
       (Asd_protocol.Blob.Lwt_bytes packed_fragment)
       checksum false
   in
@@ -90,9 +92,8 @@ let upload_packed_fragment_data
   | Osd_sec.Ok r ->
      Osd_state.add_write state;
      let r' =
-       match r with
-       | None   -> None
-       | Some x -> List.hd_exn x
+       try List.assoc' Slice.equal data_key r
+       with Not_found -> None
      in
      Lwt.return r'
   | Osd_sec.Exn exn ->

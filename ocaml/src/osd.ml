@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Slice
 
-type key = Asd_protocol.key
+type key = Asd_protocol.key [@@deriving show]
 type value = Lwt_bytes.t
 type checksum = Asd_protocol.checksum
 
@@ -46,11 +46,11 @@ end
 
 module Error = Asd_protocol.Protocol.Error
 
-type apply_result' = (string option list) option [@@deriving show]
+type apply_result' = ((key * string option) list) [@@deriving show]
 
 type apply_result =
   | Ok of apply_result'
-  | Exn of Error.t
+  | Exn of Error.t [@@ deriving show]
 
 let is_ok = function
   | Ok _ -> true
@@ -245,6 +245,15 @@ object(self :# osd)
                          (function Update.Set (key, x) ->
                                    Update.Set (to_global_key key, x))
                          updates)
+        >>= fun r ->
+        match r with
+        | Ok r' ->
+           begin
+             let r2 = List.map (fun (gk, vo) -> from_global_key gk, vo) r' in
+             Lwt.return (Ok r2)
+           end
+        | r -> Lwt.return r
+
 
     end
 

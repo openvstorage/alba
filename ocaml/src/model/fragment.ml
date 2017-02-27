@@ -56,8 +56,8 @@ module Fragment = struct
 
     Checksum.output buf t.crc;
     L.int_to buf t.len;
-    L.option_to L.small_bytes_to buf t.ctr
-  (* L.option_to L.small_bytes_to buf t.fnr *)
+    L.option_to L.small_bytes_to buf t.ctr;
+    L.option_to L.small_bytes_to buf t.fnr
 
   let _inner_fragment_from buf =
 

@@ -111,7 +111,7 @@ let delete_fragment
                 namespace_id
                 (k, 0, String.length k)) ]
      >>= fun s ->
-     OUnit.assert_equal (Osd.Ok (Some [None])) s;
+     OUnit.assert_equal (Osd.Ok ([])) s;
      Lwt.return ())
 
 let maybe_delete_fragment

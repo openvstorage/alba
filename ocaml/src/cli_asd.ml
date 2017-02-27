@@ -226,13 +226,16 @@ let asd_set hosts port transport tls_config
      then
        print_result
          fnro
-         (function
-          | None -> `Null
-          | Some fnr -> `String fnr
+         (fun (key, vo) ->
+           let vj = match vo with
+             | None -> `Null
+             | Some fnr -> `String fnr
+           in
+           `List [`String (Slice.get_string key); vj]
          )
      else
 
-       Lwt_io.printlf "%s" ([%show : string option] fnro)
+       Lwt_io.printlf "%s" ([%show : Slice.t * string option] fnro)
     )
 
 let asd_set_cmd =

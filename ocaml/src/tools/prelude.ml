@@ -191,6 +191,16 @@ module List = struct
 
   let find_index f l = find_index' f 0 l
 
+  let assoc' eq k kvs =
+    let rec inner = function
+      | [] -> raise Not_found
+      | (k0,v0) :: rest ->
+         if eq k k0
+         then v0
+         else inner rest
+    in
+    inner kvs
+
   let flatten_unordered lists =
     let rec inner acc = function
       | [] -> acc

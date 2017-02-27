@@ -233,6 +233,15 @@ void _from_version1(message &m, Manifest &mf, bool &ok_to_continue) {
   from(m2, mf.timestamp);
 }
 
+void _small_string_from(message&m, std::string& s){
+  varint_t v;
+  from(m, v);
+  int size = v.j;
+  s.resize(size);
+  s.replace(0,size, m.current(size), size);
+  m.skip(size);
+}
+
 template <> void from(message &m, Fragment &f) {
   varint_t fragment_s_size;
   from(m, fragment_s_size);
@@ -252,6 +261,29 @@ template <> void from(message &m, Fragment &f) {
   f.crc = sp;
 
   from(m2, f.len);
+  int size_left = m.get_pos() - m2.get_pos();
+
+  if(size_left > 0){
+      bool has_ctr;
+      from(m2,has_ctr);
+      if(has_ctr){
+          string ctr;
+          _small_string_from(m2, ctr);
+          f.ctr = ctr;
+      }
+  }
+  //TODO: need m2.is_done()
+  size_left = m.get_pos() - m2.get_pos();
+  if(size_left > 0){
+      bool has_fnr;
+      from(m2, has_fnr);
+      if(has_fnr){
+          string fnr;
+          _small_string_from(m2, fnr);
+          f.fnr = fnr;
+      }
+  }
+  size_left = m.get_pos() - m2.get_pos();
 }
 
 void _from_version2(message &m, Manifest &mf, bool &ok_to_continue) {
@@ -430,10 +462,25 @@ void dump_string(std::ostream &os, const std::string &s) {
   stuff::dump_buffer(os, bytes, size);
 }
 
+void dump_string_option(std::ostream& os, const boost::optional<string> &so){
+    if(boost::none == so){
+        os << "None";
+    }else {
+        os << "(Some ";
+        dump_string(os, *so);
+        os << ")";
+    }
+}
 std::ostream &operator<<(std::ostream &os, const Fragment &f) {
   os << "{";
-  os << "loc = " << f.loc << ", crc = " << *f.crc << ", len = " << f.len;
-  os << "}" << std::endl;
+  os << "loc = " << f.loc
+     << ", crc = " << *f.crc
+     << ", len = " << f.len
+     << ", ctr = ";
+  dump_string_option(os, f.ctr);
+  os  << " , fnr = ";;
+  dump_string_option(os, f.fnr);
+  os << " }" << std::endl;
   return os;
 }
 

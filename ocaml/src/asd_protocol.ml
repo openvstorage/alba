@@ -433,7 +433,8 @@ module Protocol = struct
   [@deriving show]
 
   type ('request, 'response) update =
-    | Apply : (Assert.t list * Update.t list * priority, string option list) update
+    | Apply : (Assert.t list * Update.t list * priority,
+               (key * string option) list) update
     | SetFull: (bool, unit) update
     | Slowness: ((float * float) option, unit) update
 
@@ -706,9 +707,11 @@ module Protocol = struct
     =
     let module Llio = Llio2.WriteBuffer in
     function
-      | Apply    -> Llio.list_to (Llio.option_to Llio.string_to)
-      | SetFull  -> Llio.unit_to
-      | Slowness -> Llio.unit_to
+    | Apply    -> Llio.list_to (Llio.pair_to
+                                  Slice.to_buffer'
+                                  (Llio.option_to Llio.string_to))
+    | SetFull  -> Llio.unit_to
+    | Slowness -> Llio.unit_to
 
   let update_response_deserializer : type req res. (req, res) update -> res Llio2.deserializer
     =
@@ -716,8 +719,12 @@ module Protocol = struct
     function
     | Apply    -> Llio.maybe_from_buffer
                     (Llio.list_from
-                       (Llio.option_from Llio.string_from))
-                  [None]
+                       (Llio.pair_from
+                          Slice.from_buffer'
+                          (Llio.option_from Llio.string_from)
+                       )
+                    )
+                  []
     | SetFull  -> Llio.unit_from
     | Slowness -> Llio.unit_from
 end
