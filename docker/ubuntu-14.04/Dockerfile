@@ -57,7 +57,12 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libunwind8-dev libaio1 libaio1-dbg libaio-dev \
         libz-dev libbz2-dev \
         libgoogle-glog-dev libibverbs-dev \
-        librdmacm-dev
+        librdmacm-dev \
+        software-properties-common
+
+RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
+RUN apt-get update && apt-get install -y g++-5
+RUN ln -sf /usr/bin/g++-5 /usr/bin/g++
 
 # Install etcd:
 RUN curl -L  https://github.com/coreos/etcd/releases/download/v2.2.4/etcd-v2.2.4-linux-amd64.tar.gz -o etcd-v2.2.4-linux-amd64.tar.gz
