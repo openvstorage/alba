@@ -434,7 +434,7 @@ module Protocol = struct
 
   type ('request, 'response) update =
     | Apply : (Assert.t list * Update.t list * priority,
-               (key * string option) list) update
+               (key * string) list) update
     | SetFull: (bool, unit) update
     | Slowness: ((float * float) option, unit) update
 
@@ -709,7 +709,7 @@ module Protocol = struct
     function
     | Apply    -> Llio.list_to (Llio.pair_to
                                   Slice.to_buffer'
-                                  (Llio.option_to Llio.string_to))
+                                  Llio.string_to)
     | SetFull  -> Llio.unit_to
     | Slowness -> Llio.unit_to
 
@@ -721,7 +721,7 @@ module Protocol = struct
                     (Llio.list_from
                        (Llio.pair_from
                           Slice.from_buffer'
-                          (Llio.option_from Llio.string_from)
+                          Llio.string_from
                        )
                     )
                   []

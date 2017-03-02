@@ -1222,32 +1222,33 @@ let execute_update : type req res.
                      kv
                      dir_info
                      files_to_be_deleted >>= fun () ->
-                   let fnros =
+                   let fnrs =
                      List.fold_left
                        (fun acc ku ->
                          match ku with
                          | (key, `Set (value, _)) ->
                             begin
                               let open Value in
-                              let e =
-                                match value with
-                                | Direct v -> key, None
+                              match value with
+                                | Direct v -> acc
                                 | OnFs (fnr, _) ->
-                                   let fnr_s = serialize Llio.int64_to fnr in
-                                   key, Some fnr_s
-                              in
-                              e :: acc
+                                   let fnr_s =
+                                     serialize
+                                       Alba_llio.varint_to
+                                       (Int64.to_int fnr)
+                                   in
+                                   (key, fnr_s):: acc
                             end
                          | (key, _) -> acc
                        )
                        [] immediate_updates
                    in
-                   Lwt.return (`Succeeded fnros))
+                   Lwt.return (`Succeeded fnrs))
                   (function
                     | Lwt.Canceled -> Lwt.fail Lwt.Canceled
                     | ConcurrentModification -> Lwt.return `Retry
                     | exn -> Lwt.fail exn) >>= function
-                | `Succeeded fnros -> Lwt.return fnros
+                | `Succeeded fnrs -> Lwt.return fnrs
                 | `Retry ->
                    Lwt_log.debug_f "Asd retrying apply due to concurrent modification" >>= fun () ->
                    inner (attempt + 1)

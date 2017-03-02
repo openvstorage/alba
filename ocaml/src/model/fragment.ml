@@ -47,6 +47,10 @@ module Fragment = struct
   let osd_of x = x.loc |> fst
   let fnr_of x = x.fnr
 
+  let has_loc t = match osd_of t with
+    | None   -> false
+    | Some _ -> true
+
   let version_of x = x.loc |> snd
 
   let _inner_fragment_to buf t =

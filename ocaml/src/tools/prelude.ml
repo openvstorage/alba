@@ -193,10 +193,10 @@ module List = struct
 
   let assoc' eq k kvs =
     let rec inner = function
-      | [] -> raise Not_found
+      | [] -> None
       | (k0,v0) :: rest ->
          if eq k k0
-         then v0
+         then Some v0
          else inner rest
     in
     inner kvs

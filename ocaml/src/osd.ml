@@ -46,7 +46,7 @@ end
 
 module Error = Asd_protocol.Protocol.Error
 
-type apply_result' = ((key * string option) list) [@@deriving show]
+type apply_result' = ((key * string) list) [@@deriving show]
 
 type apply_result =
   | Ok of apply_result'
@@ -249,7 +249,7 @@ object(self :# osd)
         match r with
         | Ok r' ->
            begin
-             let r2 = List.map (fun (gk, vo) -> from_global_key gk, vo) r' in
+             let r2 = List.map (fun (gk, v) -> from_global_key gk, v) r' in
              Lwt.return (Ok r2)
            end
         | r -> Lwt.return r

@@ -455,8 +455,8 @@ object(self :# Osd.key_value_osd)
         Lwt.catch
           (fun () ->
             asd # apply_sequence ~prio asserts upds
-            >>= fun (fnros : (key * string option) list) ->
-            Lwt.return (Osd.Ok fnros)
+            >>= fun (fnrs : (key * string) list) ->
+            Lwt.return (Osd.Ok fnrs)
           )
           (function
             | Error.Exn e ->
