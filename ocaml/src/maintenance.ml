@@ -708,8 +708,8 @@ class client ?(retry_timeout = 60.)
                         (osd_client # namespace_kvs namespace_id) # apply_sequence
                                    Osd.Low
                                    [] upds >>= function
-                        | Osd.Ok _ -> Lwt.return ()
-                        | Osd.Exn x ->
+                        | Ok _    -> Lwt.return_unit
+                        | Error x ->
                            Lwt_log.warning_f "%s: deletes should never fail"
                                              ([%show : Osd.Error.t] x)
                            >>= fun () ->

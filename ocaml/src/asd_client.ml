@@ -456,11 +456,11 @@ object(self :# Osd.key_value_osd)
           (fun () ->
             asd # apply_sequence ~prio asserts upds
             >>= fun (fnrs : (key * string) list) ->
-            Lwt.return (Osd.Ok fnrs)
+            Lwt.return (Ok fnrs)
           )
           (function
             | Error.Exn e ->
-               Lwt.return (Osd.Exn e)
+               Lwt.return (Error e)
             | exn -> Lwt.fail exn)
     end
 

@@ -259,7 +259,7 @@ object (self :# Osd.key_value_osd)
                       (String.concat ";" (List.map show kseq))
       >>= fun () ->
       if kseq = []
-      then Lwt.return (Osd.Ok [])
+      then Lwt.return (Ok [])
       else
         begin
           let exn = ref [] in

@@ -100,7 +100,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
              let open Osd_sec in
              (function
                | Ok  _ -> Lwt.return ()
-               | Exn x ->
+               | Error x ->
                   Lwt_log.warning ([%show : Error.t] x)
                   >>= fun () ->
                   Error.lwt_fail x

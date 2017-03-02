@@ -111,7 +111,7 @@ let delete_fragment
                 namespace_id
                 (k, 0, String.length k)) ]
      >>= fun s ->
-     OUnit.assert_equal (Osd.Ok ([])) s;
+     OUnit.assert_equal (Ok ([])) s;
      Lwt.return ())
 
 let maybe_delete_fragment
@@ -975,7 +975,7 @@ let test_discover_claimed () =
                   (serialize Llio.int32_to id_on_osd)
                   no_checksum true; ]
             >>= fun apply_result ->
-            OUnit.assert_bool "sequence ok?" (Osd.is_ok apply_result);
+            OUnit.assert_bool "sequence ok?" (Result.is_ok apply_result);
             Lwt_log.debug "applied sequence" >>= fun () ->
 
             (* this timeout should be enough... *)

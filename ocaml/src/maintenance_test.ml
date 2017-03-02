@@ -706,7 +706,7 @@ let test_verify_namespace () =
                   (get_random_string 39)
                   Checksum.NoChecksum
                   false; ] >>= function
-          | Osd.Ok _ -> Lwt.return_unit
+          | Ok _ -> Lwt.return_unit
           | _ -> assert false)
      end >>= fun () ->
 

@@ -89,11 +89,11 @@ let upload_packed_fragment_data
   do_upload () >>= fun apply_result ->
   osd_access # get_osd_info ~osd_id >>= fun (_, state, _) ->
   match apply_result with
-  | Osd_sec.Ok r ->
+  | Ok r ->
      Osd_state.add_write state;
      let r' = List.assoc' Slice.equal data_key r in
      Lwt.return r'
-  | Osd_sec.Exn exn ->
+  | Error exn ->
      let open Asd_protocol.Protocol in
      Error.lwt_fail exn
 

@@ -48,13 +48,12 @@ module Error = Asd_protocol.Protocol.Error
 
 type apply_result' = ((key * string) list) [@@deriving show]
 
-type apply_result =
+type apply_result = (apply_result', Error.t) Result.t
+
+(*
   | Ok of apply_result'
   | Exn of Error.t [@@ deriving show]
-
-let is_ok = function
-  | Ok _ -> true
-  | _ -> false
+ *)
 
 type partial_get_return =
   | Unsupported
@@ -273,7 +272,7 @@ object(self :# osd)
            (fun key -> Update.delete (to_global_key namespace_id key))
            keys) >>= function
     | Ok _ -> Lwt.return (List.last keys)
-    | Exn e -> Lwt.fail (Asd_protocol.Protocol.Error.Exn e)
+    | Error e -> Lwt.fail (Asd_protocol.Protocol.Error.Exn e)
 
   method set_full = key_value_osd # set_full
   method set_slowness = key_value_osd # set_slowness

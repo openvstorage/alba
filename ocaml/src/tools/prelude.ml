@@ -652,6 +652,10 @@ module Result =
                  ok_to buf ok
       | Error err -> Llio.int8_to buf 2;
                      err_to buf err
+
+    let is_ok = function
+      | Ok _ -> true
+      | _    -> false
   end
 
 module Hashtbl = struct
