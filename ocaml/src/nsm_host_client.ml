@@ -179,7 +179,8 @@ class client (client : basic_client) =
 
 let wrap_around (client:Arakoon_client.client) =
   let hook_name = "nsm_host" in
-  let session = Nsm_protocol.Session.make () in
+  let open Nsm_protocol in
+  let session = Session.make () in
   client # user_hook hook_name >>= fun (ic, oc) ->
   Llio.input_int32 ic
   >>= function
@@ -192,18 +193,9 @@ let wrap_around (client:Arakoon_client.client) =
       Lwt.catch
         (fun () ->
           let manifest_ser = 2 in
-          client # query UpdateSession
-                 ["manifest_ser", Some (serialize Llio.int8_to manifest_ser)]
+          client # query UpdateSession (Session.make_update manifest_ser)
           >>= fun processed ->
-          let () = List.iter
-            (fun (k,v) ->
-              match k with
-              | "manifest_ser" ->
-                 let manifest_ser = deserialize Llio.int8_from v in
-                 Nsm_protocol.Session.set_manifest_ser session manifest_ser
-              | _ -> ()
-            ) processed
-          in
+          let () = Session.client_update session processed in
           Lwt.return_unit
         )
         (function

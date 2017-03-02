@@ -24,6 +24,46 @@ module Session = struct
   let make () = { manifest_ser = 1}
   let set_manifest_ser t v = t.manifest_ser <- v
 
+  let wrap_manifest_ser   v  = serialize Llio.int8_to v
+  let unwrap_manifest_ser vs = deserialize Llio.int8_from vs
+
+  let server_update t kvos =
+    let r =
+      List.fold_left
+        (fun acc (k,vo) ->
+          begin
+            match k with
+            | "manifest_ser" ->
+               begin
+                 match vo with
+                 | None -> acc
+                 | Some v ->
+                    let wanted_version = unwrap_manifest_ser v in
+                    let new_version = min 2 wanted_version in
+                    let v' = wrap_manifest_ser new_version in
+                    let () =
+                      set_manifest_ser t new_version in
+                    (k, v') :: acc
+               end
+            | _ -> acc
+          end
+        ) [] kvos
+    in
+    List.rev r
+
+  let make_update manifest_ser  =
+    ["manifest_ser", Some (wrap_manifest_ser manifest_ser)]
+
+  let client_update t kvos =
+    List.iter
+      (fun (k,v) ->
+        match k with
+        | "manifest_ser" ->
+           let manifest_ser = unwrap_manifest_ser v in
+           set_manifest_ser t manifest_ser
+        | _ -> ()
+      ) kvos
+
 end
 
 module Protocol = struct

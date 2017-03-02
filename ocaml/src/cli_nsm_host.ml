@@ -167,9 +167,27 @@ let list_osd_keys_to_be_deleted_cmd =
 
 
 
+let check_update tls_config alba_cfg_url verbose =
+  let t () =
+    Alba_arakoon.config_from_url alba_cfg_url >>= fun abm_ccfg ->
+    Nsm_host_updater.check tls_config abm_ccfg
+    >>= fun _ ->
+    Lwt.return_unit
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let check_update_cmd =
+  Term.(pure check_update
+        $ tls_config
+        $ alba_cfg_url
+        $ verbose
+  ),
+  Term.info "dev-check-update" ~doc:"..."
+
 let cmds =
   [
     nsm_host_statistics_cmd;
     list_device_objects_cmd;
     list_osd_keys_to_be_deleted_cmd;
+    check_update_cmd;
   ]

@@ -384,31 +384,8 @@ let handle_query : type i o. read_user_db ->
         try Result.Ok (nsm_query tag namespace_id req)
         with Nsm_model.Err.Nsm_exn (err, _) -> Result.Error err)
        req
-  | UpdateSession ->
-     begin
-       let r =
-         List.fold_left
-         (fun acc (k,vo) ->
-           begin
-             match k with
-             | "manifest_ser" ->
-                begin
-                  match vo with
-                  | None -> acc
-                  | Some v ->
-                     let wanted_version = deserialize Llio.int8_from v in
-                     let new_version = min 2 wanted_version in
-                     let v' = serialize Llio.int8_to new_version in
-                     let () =
-                       Nsm_protocol.Session.set_manifest_ser session new_version in
-                     (k, v') :: acc
-                end
-             | _ -> acc
-           end
-         ) [] req
-       in
-       List.rev r
-     end
+  | UpdateSession -> Nsm_protocol.Session.server_update session req
+
 
 let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
