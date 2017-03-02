@@ -249,6 +249,13 @@ let port default =
        & opt int default
        & info ["p"; "port"] ~docv:"PORT" ~doc)
 
+let port_option =
+  Arg.(value
+       & opt (some int) None
+       & info ["port"; "p";]
+              ~docv:"PORT"
+              ~doc:"the port to connect with")
+
 let attempts default =
   let doc = "number of attempts" in
   Arg.(value
@@ -266,6 +273,13 @@ let hosts =
   Arg.(value
        & opt_all string []
        & info ["h";"host"] ~docv:"HOST" ~doc)
+
+let host_option =
+  Arg.(value
+       & opt (some string) None
+       & info ["host"; "h";]
+              ~docv:"HOST"
+              ~doc:"the host to connect with")
 
 let transport =
   let (tr : Net_fd.transport Arg.converter) =
