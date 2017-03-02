@@ -1214,9 +1214,9 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          let acc' =
            List.fold_left
              (fun a f ->
-               match f.Fragment.len, f.Fragment.loc with
-                | (_,             (None, _)) -> a
-                | (fragment_size, (Some osd_id, _)) ->
+               match f.Fragment.len, f.Fragment.osd with
+                | (_,             None) -> a
+                | (fragment_size, Some osd_id) ->
                   let upd =
                     Update'.add
                       (Keys.Device.size osd_id)

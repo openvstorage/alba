@@ -218,8 +218,10 @@ let upload_chunk
            in
 
            let res =
-             let loc = osd_id_o, version_id in
-             Fragment.make loc checksum packed_len fragment_ctr fnro
+             Fragment.make
+               osd_id_o version_id
+               checksum packed_len fragment_ctr
+               fnro
            in
            Lwt_log.debug_f "fragment_uploaded (%i,%i) to %s"
                            chunk_id fragment_id ([%show : int64 option] osd_id_o)
@@ -238,7 +240,7 @@ let upload_chunk
            Lwt.return_unit
          )
      in
-     let test = fun (_, f) -> Fragment.has_loc f in
+     let test = fun (_, f) -> Fragment.has_osd f in
      Lwt_extra2.first_n
        ~count:min_fragment_count
        ~slack:upload_slack
@@ -504,8 +506,7 @@ let upload_object''
                  })
                in
                let fragment =
-                 let loc = None, version_id in
-                 Fragment.make loc
+                 Fragment.make None version_id
                           fragment_checksum
                           packed_fragment_size
                           fragment_ctr
@@ -526,9 +527,8 @@ let upload_object''
                  })
                in
                let fragment =
-                 let loc = None, version_id in
                  Fragment.make
-                           loc
+                           None version_id
                            fragment_checksum
                            packed_fragment_size
                            fragment_ctr None
@@ -763,10 +763,9 @@ let store_manifest_epilogue
                 fragments =
                   Layout.map_indexed
                     (fun chunk_id fragment_id old_fragment  ->
-                      let old_loc = Fragment.loc_of old_fragment in
-                      let old_o,_ = old_loc in
-                      let new_loc =
-                        match old_o with
+                      let old_osd = Fragment.osd_of old_fragment in
+                      let new_osd =
+                        match old_osd with
                         | None ->
                            begin
                              let update =
@@ -776,13 +775,13 @@ let store_manifest_epilogue
                                  ) updates
                              in
                              match update with
-                             | Some (_,_,Some osd_id, _, _) -> (Some osd_id, 0)
-                             | _ -> (None,0)
+                             | Some (_,_,Some osd_id, _, _) -> Some osd_id
+                             | _ -> None
                            end
-                        | _ -> old_loc
+                        | _ -> old_osd
                       in
                       let open Fragment in
-                      { old_fragment with loc = new_loc }
+                      { old_fragment with osd = new_osd }
                     ) manifest.fragments
               }
             in
