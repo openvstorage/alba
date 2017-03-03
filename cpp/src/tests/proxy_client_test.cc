@@ -578,11 +578,12 @@ TEST(proxy_client, test_partial_read_full_object) {
 
 
       if (boost::none != mf_osd_o) {
-        auto js_osd_o = js_fr->second.get_optional<int>("osd");
-        ASSERT_TRUE(boost::none != js_osd_o);
-        int js_osd = *js_osd_o;
-        osd_t mf_osd = *mf_osd_o;
-        ASSERT_EQ(mf_osd.i, js_osd);
+        boost::optional<int> js_osd_o = js_fr->second.get_optional<int>("osd");
+        if (boost::none != js_osd_o){
+            int js_osd = *js_osd_o;
+            osd_t mf_osd = *mf_osd_o;
+            ASSERT_EQ(mf_osd.i, js_osd);
+        }
       }
 
       int mf_version = std::get<1>(mf_loc);
