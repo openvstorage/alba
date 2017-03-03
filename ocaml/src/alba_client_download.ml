@@ -112,13 +112,6 @@ let download_packed_fragment
     )
   >>== function
   | None ->
-     let msg =
-       Printf.sprintf
-         "Detected missing fragment namespace_id=%Li object_name=%S object_id=%S osd_id=%Li (chunk,fragment,version)=(%i,%i,%i)"
-         namespace_id object_name object_id osd_id
-         chunk_id fragment_id version_id
-     in
-     Lwt_log.warning msg >>= fun () ->
      E.fail `FragmentMissing
   | Some data ->
      osd_access # get_osd_info ~osd_id >>= fun (_, state,_) ->
