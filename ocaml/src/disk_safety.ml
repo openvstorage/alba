@@ -99,11 +99,18 @@ let get_disk_safety alba_client namespaces dead_osds =
 
   Lwt_list.map_p
     (fun (namespace, ns_info) ->
-       let open Albamgr_protocol.Protocol in
-       let namespace_id = ns_info.Namespace.id in
-       get_namespace_safety
-         alba_client
-         ns_info
-         (get_dead_namespace_osds ~namespace_id) >>= fun r ->
-       Lwt.return (namespace, r))
+      let open Albamgr_protocol.Protocol in
+      Lwt.catch
+        (fun () ->
+          let namespace_id = ns_info.Namespace.id in
+          get_namespace_safety
+            alba_client
+            ns_info
+            (get_dead_namespace_osds ~namespace_id) >>= fun r ->
+          Lwt.return (Some (namespace, r)))
+        (function
+         | Error.Albamgr_exn (Error.Namespace_does_not_exist, _) -> Lwt.return_none
+         | exn -> Lwt.fail exn)
+    )
     namespaces
+  >|= List.map_filter Std.id
