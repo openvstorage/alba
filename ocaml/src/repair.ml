@@ -100,25 +100,12 @@ let repair_object_generic
         ~with_chunk_data
       >>= fun updated_locations ->
 
-      Lwt.return (chunk_id, updated_locations))
+      Lwt.return updated_locations)
     (List.mapi (fun i lc -> i, lc) fragment_info)
   >>= fun updated_locations ->
 
-  let updated_object_locations =
-    List.fold_left
-      (fun acc (chunk_id, updated_locations) ->
-       let updated_chunk_locations =
-         List.map
-           (fun (fragment_id, device_id,maybe_changed, fragment_ctr,
-                 apply_result') ->
-             (chunk_id, fragment_id, device_id, maybe_changed,
-              fragment_ctr))
-           updated_locations in
-       List.rev_append updated_chunk_locations acc)
-      []
-      updated_locations
+  let updated_object_locations =  List.flatten updated_locations
   in
-
   Lwt.return (updated_object_locations, gc_epoch, version_id)
 
 let repair_object_generic_and_update_manifest
@@ -151,7 +138,7 @@ let repair_object_generic_and_update_manifest
   Lwt_log.debug_f
     "updated_manifest ~namespace_id:%Li ~object_id:%S ~updated_object_locations:%s ~version_id:%i"
     namespace_id object_id
-    ([%show : (Manifest.fragment_update) list] updated_object_locations)
+    ([%show : FragmentUpdate.t list] updated_object_locations)
     version_id
   >>= fun () ->
   Lwt.return ()

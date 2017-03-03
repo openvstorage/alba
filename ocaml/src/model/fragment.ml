@@ -97,7 +97,7 @@ module Fragment = struct
 
   let fragment_to buf t =
     let s = serialize
-              ~buf_size:512
+              ~buf_size:64
               _inner_fragment_to t
     in
     L.small_bytes_to buf s

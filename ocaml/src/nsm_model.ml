@@ -786,15 +786,9 @@ module Manifest = struct
       false
       t.fragments
 
-  type fragment_update =
-    chunk_id
-    * fragment_id
-    * osd_id option
-    * (int * Checksum.t) option
-    * bytes option
-  [@@deriving show]
-
 end
+
+include Fragment_update
 
 module Assert =
   struct
@@ -1850,7 +1844,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
   let update_manifest_generic
       kv object_name object_id
-      (new_fragments : Manifest.fragment_update list)
+      (new_fragments : FragmentUpdate.t list)
       gc_epoch
       version_id
     =
@@ -1862,18 +1856,20 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     in
     let fragments = Hashtbl.create 3 in
     List.iter
-      (fun (chunk_id, fragment_id, osd_id_o, maybe_changed, fragment_ctr) ->
-       let key = chunk_id, fragment_id in
-       if Hashtbl.mem fragments key
-       then
-         (* we don't want multiple updates for the same fragment,
-          * it indicates a buggy client! *)
-         Err.(failwith ~payload:"duplicate chunk_id,fragment_id for update_manifest" Unknown)
-       else
-         Hashtbl.add
-           fragments
-           key
-           (osd_id_o, version_id, maybe_changed, fragment_ctr))
+      (fun fu ->
+        let open FragmentUpdate in
+        let key = fu.chunk_id, fu.fragment_id in
+        if Hashtbl.mem fragments key
+        then
+          (* we don't want multiple updates for the same fragment,
+           * it indicates a buggy client! *)
+          Err.(failwith ~payload:"duplicate chunk_id,fragment_id for update_manifest" Unknown)
+        else
+          Hashtbl.add
+            fragments
+            key
+            (fu, version_id)
+      )
       new_fragments;
     let manifest_old, manifest_old_s = get_object_manifest_by_id kv object_id in
     let version_id_old = manifest_old.Manifest.version_id in
@@ -1891,11 +1887,12 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
     let update_osd_sizes =
       List.fold_left
-        (fun acc (chunk_id, fragment_id, osd_id_o, maybe_changed, fragment_ctr) ->
+        (fun acc fu ->
+          let open FragmentUpdate in
           let old_fragment_size =
-            Manifest.get_packed_size manifest_old chunk_id fragment_id
+            Manifest.get_packed_size manifest_old fu.chunk_id fu.fragment_id
            in
-           let upd1 = match osd_id_o, maybe_changed with
+           let upd1 = match fu.osd_id_o, fu.size_change with
              | None, None -> []
              | None, Some _ ->
                 (* fragment has new checksum, but was stored nowhere *)
@@ -1912,7 +1909,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
            in
            let upd2 =
              match
-               Manifest.get_location manifest_old chunk_id fragment_id
+               Manifest.get_location manifest_old fu.chunk_id fu.fragment_id
              with
              | None, _ -> []
              | Some previous_osd_id, _ ->
@@ -1935,12 +1932,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
                   let obsolete_fragments', loc' =
                     if Hashtbl.mem fragments loc_index
                     then begin
-                        let (osd_id_o, version, _, _) =
-                          Hashtbl.find fragments loc_index
-                        in
-                      let new_loc = (osd_id_o, version) in
-                      ((loc_index, old_loc)::obsolete_fragments,
-                       new_loc)
+                        let fu,version = Hashtbl.find fragments loc_index in
+                        let new_loc = (fu.FragmentUpdate.osd_id_o, version) in
+                        ((loc_index, old_loc)::obsolete_fragments,
+                         new_loc)
                     end else
                       (obsolete_fragments,
                        old_loc)
@@ -1983,11 +1978,12 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         obsolete_fragments in
 
     let open Manifest in
+    let open FragmentUpdate in
     let maybe_replace extract c i old  =
       try
         let key = (c,i) in
-        let _,_,maybe_new, _ = Hashtbl.find fragments key in
-        match maybe_new with
+        let fu,_ = Hashtbl.find fragments key in
+        match fu.size_change with
         | None -> old
         | Some x -> extract x
       with Not_found ->
@@ -2012,10 +2008,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
         (fun chunk_id fragment_id f ->
           let old = Fragment.ctr_of f in
           try
-            let _, _, _, fragment_ctr =
+            let fu,_ =
               Hashtbl.find fragments (chunk_id, fragment_id)
             in
-            fragment_ctr
+            fu.ctr
           with Not_found ->
             old)
         manifest_old.fragments
@@ -2073,7 +2069,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       let fragment_count_updated, max_disks_per_node_updated =
         let all_fragment_updates_are_removes =
           List.for_all
-            (fun (_, _, osd_id_o, _, _) -> osd_id_o = None)
+            (fun fu -> fu.osd_id_o = None)
             new_fragments
         in
         get_min_fragment_count_and_max_disks_per_node
@@ -2146,7 +2142,10 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
     let new_fragments' =
       List.map
         (fun (chunk_id, fragment_id, osd_id_o)
-           -> chunk_id,fragment_id, osd_id_o, None, None)
+         -> FragmentUpdate.make
+              chunk_id fragment_id  osd_id_o
+              None None None
+        )
         new_fragments
     in
     update_manifest_generic
@@ -2155,7 +2154,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
   let update_manifest2
         kv object_name object_id
-        (new_fragments : Manifest.fragment_update list)
+        (new_fragments : FragmentUpdate.t list)
         gc_epoch
         version_id
     =

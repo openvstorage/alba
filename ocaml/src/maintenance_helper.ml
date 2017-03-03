@@ -199,10 +199,12 @@ let _upload_missing_fragments
          ~gc_epoch ~checksum:new_checksum
          ~recovery_info_blob
        >>= fun fnro ->
-       Lwt.return (fragment_id,
-                   Some chosen_osd_id,
-                   maybe_changed,
-                   fragment_ctr, fnro)
+       let fu = FragmentUpdate.make
+                  chunk_id fragment_id
+                  (Some chosen_osd_id)
+                  maybe_changed fragment_ctr fnro
+       in
+       Lwt.return fu
      end
     )
     to_be_repaireds

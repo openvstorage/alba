@@ -143,10 +143,6 @@ let test_rebalance_one () =
               ~target_osd
        ))
      >>= fun object_locations_movements ->
-     let source_osds =
-       List.map
-         (fun (c,f,s,t,_, _apply_result') -> s) object_locations_movements
-     in
      alba_client # get_object_manifest'
        ~namespace_id ~object_name
        ~consistent_read:true ~should_cache:false
@@ -165,14 +161,6 @@ let test_rebalance_one () =
           OUnit.assert_equal ~msg:"target_osd should match"
             ~printer:Int64.to_string
             (DeviceSet.choose diff_to) target_osd;
-
-          List.iter
-            (fun s ->
-             OUnit.assert_bool
-               "source_osd should be member"
-               (DeviceSet.mem s diff_from)
-            ) source_osds;
-
           Lwt.return ()
      end
     )

@@ -707,8 +707,9 @@ let store_manifest_epilogue
             let osd_id_os =
               List.map
                 (function
-                 | Lwt.Return (stats, fragment) -> Fragment.osd_of fragment
-                 | _ -> None
+                 | Lwt.Return (stats, fragment) ->
+                    (Fragment.osd_of fragment, Fragment.fnr_of fragment)
+                 | _ -> (None,None)
                 ) last_states
             in
             Lwt.return osd_id_os
@@ -725,7 +726,7 @@ let store_manifest_epilogue
           List.iteri
             (fun chunk_id chunk ->
               List.iteri
-                (fun fragment_id (new_o , old_f) ->
+                (fun fragment_id ((new_o,new_fnr) , old_f) ->
                   let old_o, _old_version = Fragment.loc_of old_f in
                   let old_ctr = Fragment.ctr_of old_f in
                   match new_o, old_o with
@@ -734,7 +735,11 @@ let store_manifest_epilogue
                   | None, None   -> ()
 
                   | Some osd_id, None ->
-                     let update = (chunk_id,fragment_id, Some osd_id, None, old_ctr) in
+                     let update =
+                       FragmentUpdate.make
+                         chunk_id fragment_id (Some osd_id)
+                         None old_ctr new_fnr
+                     in
                      let () = r := update :: !r in ()
                 ) chunk
             ) side_by_side;
@@ -756,7 +761,7 @@ let store_manifest_epilogue
             Lwt_log.debug_f
               "epilogue:successfully updated object:%S with updates:%s"
               object_name
-              ([%show : Manifest.fragment_update list] updates)
+              ([%show : FragmentUpdate.t list] updates)
             >>= fun () ->
             let manifest' =
               { manifest with
@@ -768,14 +773,16 @@ let store_manifest_epilogue
                         match old_osd with
                         | None ->
                            begin
+                             let open FragmentUpdate in
                              let update =
                                List.find
-                                 (fun (cid,fid,_,_,_) ->
-                                   cid = chunk_id && fid = fragment_id
+                                 (fun fu ->
+                                   fu.chunk_id = chunk_id
+                                   && fu.fragment_id = fragment_id
                                  ) updates
                              in
                              match update with
-                             | Some (_,_,Some osd_id, _, _) -> Some osd_id
+                             | Some fu -> fu.osd_id_o
                              | _ -> None
                            end
                         | _ -> old_osd

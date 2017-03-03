@@ -212,9 +212,15 @@ let rec get_updates_res : type i o. read_user_db ->
          fun (preset, version) ->
          NSM.update_preset db preset version
       | UpdateObject2 ->
-         fun (object_name, object_id, new_fragments, gc_epoch, version_id) ->
+         fun (object_name, object_id, updates, gc_epoch, version_id) ->
          NSM.update_manifest2 db
-                              object_name object_id new_fragments
+                              object_name object_id updates
+                              gc_epoch version_id
+         , ()
+      | UpdateObject3 ->
+         fun (object_name, object_id, updates, gc_epoch, version_id) ->
+         NSM.update_manifest2 db
+                              object_name object_id updates
                               gc_epoch version_id
          , ()
     in
