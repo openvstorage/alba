@@ -904,12 +904,34 @@ let run_server hosts port ~transport
          Lwt.ignore_result
            (Lwt_extra2.ignore_errors
               (fun () ->
-                 alba_client # mgr_access # add_work_repair_fragment
-                   ~namespace_id ~object_id
-                   ~object_name
-                   ~chunk_id
-                   ~fragment_id
-                   ~version_id:(snd location))) in
+                alba_client # get_object_manifest'
+                            ~namespace_id
+                            ~object_name
+                            ~consistent_read:true
+                            ~should_cache:false
+                >>= fun (_, mfo) ->
+                match mfo with
+                | None -> Lwt.return_unit
+                | Some mf ->
+                   let open Nsm_model.Manifest in
+                   if (mf.object_id = object_id)
+                      || ((get_location mf chunk_id fragment_id) = (Some (fst location), snd location))
+                   then
+                     Lwt_log.info_f
+                       "Detected missing fragment namespace_id=%Li object_name=%S object_id=%S location=(%s) (chunk,fragment,version)=(%i,%i)"
+                       namespace_id object_name object_id ([%show: int64*int] location)
+                       chunk_id fragment_id
+                     >>= fun () ->
+                     alba_client # mgr_access # add_work_repair_fragment
+                                 ~namespace_id ~object_id
+                                 ~object_name
+                                 ~chunk_id
+                                 ~fragment_id
+                                 ~version_id:(snd location)
+                   else
+                     Lwt.return_unit
+           ))
+       in
        Alba_client2.with_client
          albamgr_client_cfg
          ~fragment_cache
