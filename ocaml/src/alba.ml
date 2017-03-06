@@ -68,7 +68,7 @@ let alba_get_id_cmd =
 
 
 
-let alba_list_ns_osds cfg_file tls_config namespace verbose =
+let alba_list_ns_osds cfg_file tls_config namespace to_json verbose =
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -79,11 +79,12 @@ let alba_list_ns_osds cfg_file tls_config namespace verbose =
               client # mgr_access # list_all_namespace_osds ~namespace_id)
          >>= fun (i,osds) ->
          let open Albamgr_protocol.Protocol.Osd in
-         Lwt_io.printlf "osds : %s\n" ([%show : (id * NamespaceLink.state) list] osds)
-         >>= fun () ->
-         Lwt.return ())
+         if to_json
+         then print_result osds [%to_yojson : (id * NamespaceLink.state) list]
+         else Lwt_io.printlf "osds : %s\n" ([%show : (id * NamespaceLink.state) list] osds)
+      )
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 
 let alba_list_ns_osds_cmd =
@@ -92,13 +93,30 @@ let alba_list_ns_osds_cmd =
           $ alba_cfg_url
           $ tls_config
           $ namespace 0
+          $ to_json
+          $ verbose)
+  in
+  let info =
+    let doc = "list OSDs coupled to the specified namespace (alias for list-namespace-osds)" in
+    Term.info "list-ns-osds" ~doc
+  in
+  alba_list_ns_osds_t, info
+
+let alba_list_ns_osds_cmd2 =
+  let alba_list_ns_osds_t =
+    Term.(pure alba_list_ns_osds
+          $ alba_cfg_url
+          $ tls_config
+          $ namespace 0
+          $ to_json
           $ verbose)
   in
   let info =
     let doc = "list OSDs coupled to the specified namespace" in
-    Term.info "list-ns-osds" ~doc
+    Term.info "list-namespace-osds" ~doc
   in
   alba_list_ns_osds_t, info
+
 
 let _render_namespace name namespace stats =
   let { Nsm_model.NamespaceStats.logical_size;
@@ -902,6 +920,7 @@ let () =
       alba_show_namespace_cmd;
       alba_show_namespaces_cmd;
       alba_list_ns_osds_cmd;
+      alba_list_ns_osds_cmd2;
 
       alba_upload_object_cmd;
       alba_list_objects_cmd;
