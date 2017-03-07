@@ -3110,7 +3110,7 @@ module Test = struct
       Deployment.add_nsm_host t nsm2;
       Deployment.recover_namespace t ns nsm2_id;
       Deployment.deliver_messages t;
-      Deployment._alba_with_cfg t ["list-ns-osds"; ns;];
+      Deployment._alba_with_cfg t ["list-namespace-osds"; ns;];
 
       t.osds.(0) # stop;
       Deployment.deliver_messages t;

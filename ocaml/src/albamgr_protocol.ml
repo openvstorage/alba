@@ -420,7 +420,7 @@ module Protocol = struct
         | Active
         | Decommissioning
         | Repairing
-      [@@ deriving show]
+      [@@ deriving show, yojson]
 
       let from_buffer buf =
         match Llio.int8_from buf with
