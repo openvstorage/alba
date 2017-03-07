@@ -1606,14 +1606,19 @@ class client ?(retry_timeout = 60.)
          end
       | RewriteObject (namespace_id, object_id) ->
          begin
-           alba_client # with_nsm_client'
-                       ~namespace_id
-                       (fun nsm_client ->
-                         nsm_client # get_object_manifest_by_id object_id)
-           >>= function
-           | None -> Lwt.return ()
-           | Some manifest ->
-              _timed_rewrite_object alba_client ~namespace_id ~manifest
+           let rewrite () =
+             alba_client # with_nsm_client'
+                         ~namespace_id
+                         (fun nsm_client ->
+                           nsm_client # get_object_manifest_by_id object_id)
+             >>= function
+             | None -> Lwt.return ()
+             | Some manifest ->
+                _timed_rewrite_object alba_client ~namespace_id ~manifest
+           in
+           namespace_exists ~namespace_id >>= function
+           | true -> rewrite ()
+           | false -> Lwt.return ()
          end
       | IterNamespaceLeaf (action, namespace_id, name, (first, last)) ->
         let rec inner = function
