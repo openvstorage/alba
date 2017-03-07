@@ -58,7 +58,7 @@ let get_namespace_safety
          { bucket;
            count;
            applicable_dead_osds;
-           remaining_safety = (fragment_count-k) - applicable_dead_osds;
+           remaining_safety = max ((fragment_count-k) - applicable_dead_osds) (-k);
          }
       ) |>
     List.sort
