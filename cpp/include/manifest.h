@@ -137,6 +137,8 @@ struct Fragment {
   fragment_location_t loc;
   std::shared_ptr<alba::Checksum> crc;
   uint32_t len;
+  boost::optional<std::string> ctr;
+  boost::optional<std::string> fnr;
   Fragment() = default;
   Fragment &operator=(const Fragment &) = delete;
   Fragment(const Fragment &) = delete;
@@ -170,6 +172,7 @@ struct ManifestWithNamespaceId : Manifest {
 };
 
 void dump_string(std::ostream &, const std::string &);
+void dump_string_option(std::ostream&, const boost::optional<std::string>&);
 
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);
 std::ostream &operator<<(std::ostream &, const compressor_t &);

@@ -99,12 +99,19 @@ module Protocol = struct
     | ApplySequence : (Assert.t list * Update.t list, unit) update
     | UpdateObject2 :
         (object_name * object_id
-         * Manifest.fragment_update list
+         * FragmentUpdate.t list
          * GcEpochs.gc_epoch * version,
          unit
         ) update
 
     | UpdatePreset : (Preset.t * Preset.version, unit) update
+    | UpdateObject3 :
+        (object_name * object_id
+         * FragmentUpdate.t list
+         * GcEpochs.gc_epoch * version,
+         unit
+        ) update
+
 
   let overwrite_to buf = function
     | Unconditionally -> Llio.int8_to buf 1
@@ -192,17 +199,14 @@ module Protocol = struct
          Llio.tuple5_from
            Llio.string_from
            Llio.string_from
-           (Llio.list_from
-              (Llio.tuple5_from
-                 Llio.int_from
-                 Llio.int_from
-                 (Llio.option_from x_int64_from)
-                 (Llio.option_from
-                    (Llio.pair_from Llio.int_from Checksum.from_buffer)
-                 )
-                 (Llio.option_from Llio.string_from)
-              )
-           )
+           (Llio.list_from FragmentUpdate.from_buffer_v0)
+           Llio.int64_from
+           Llio.int_from
+      | UpdateObject3 ->
+         Llio.tuple5_from
+           Llio.string_from
+           Llio.string_from
+           (Llio.list_from FragmentUpdate.from_buffer)
            Llio.int64_from
            Llio.int_from
 
@@ -280,17 +284,14 @@ module Protocol = struct
        Llio.tuple5_to
          Llio.string_to
          Llio.string_to
-         (Llio.list_to
-            (Llio.tuple5_to
-               Llio.int_to
-               Llio.int_to
-               (Llio.option_to x_int64_to)
-               (Llio.option_to
-                  (Llio.pair_to Llio.int_to Checksum.to_buffer)
-               )
-               (Llio.option_to Llio.string_to)
-            )
-         )
+         (Llio.list_to FragmentUpdate.to_buffer_v0)
+         Llio.int64_to
+         Llio.int_to
+    | UpdateObject3 ->
+       Llio.tuple5_to
+         Llio.string_to
+         Llio.string_to
+         (Llio.list_to FragmentUpdate.to_buffer)
          Llio.int64_to
          Llio.int_to
 
@@ -339,6 +340,7 @@ module Protocol = struct
       | ApplySequence -> Llio.unit_to
       | UpdatePreset -> Llio.unit_to
       | UpdateObject2 -> Llio.unit_to
+      | UpdateObject3 -> Llio.unit_to
 
   let read_query_response : type req res. (req, res) query -> res Llio.deserializer
     = function
@@ -382,5 +384,6 @@ module Protocol = struct
       | ApplySequence -> Llio.unit_from
       | UpdatePreset -> Llio.unit_from
       | UpdateObject2 -> Llio.unit_from
+      | UpdateObject3 -> Llio.unit_from
 
 end

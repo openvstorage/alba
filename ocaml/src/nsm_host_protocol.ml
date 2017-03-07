@@ -218,7 +218,8 @@ module Protocol = struct
       nsm_update UpdateObject2, 38l, "UpdateObject2";
 
       Wrap_u (NsmsUpdate UpdatePreset), 39l, "Multi UpdatePreset";
-      Wrap_q UpdateSession, 40l, "UpdateSession"
+      Wrap_q UpdateSession, 40l, "UpdateSession";
+      nsm_update UpdateObject3, 41l, "UpdateObject3";
     ]
 
   let wrap_unknown_operation f =

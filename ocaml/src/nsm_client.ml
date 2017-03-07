@@ -23,7 +23,7 @@ open Lwt.Infix
 
 class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
   object(self)
-    val supports_update_manifest2 = ref None
+    val update_object_version = ref None
 
     method private query : type req res.
       ?consistency : Consistency.t ->
@@ -152,15 +152,17 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
         (allow_overwrite, object_name)
 
     method update_manifest ~object_name ~object_id
-                           updated_object_locations
+                           (updated_object_locations: Nsm_model.FragmentUpdate.t list)
                            ~gc_epoch ~version_id
       =
       let old_call () =
         let updated_object_locations' =
            List.map
-             (function
-              | (cid,fid,ov ,None, None) -> (cid,fid,ov)
-              | _ -> failwith "this nsm can't handle that kind of update"
+             (fun fu ->
+               let open Nsm_model.FragmentUpdate in
+               if fu.size_change = None && fu.ctr = None
+               then (fu.chunk_id,fu.fragment_id,fu.osd_id_o)
+               else failwith "this nsm can't handle that kind of update"
              )
              updated_object_locations
          in
@@ -169,32 +171,55 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
               (object_name, object_id, updated_object_locations',
                gc_epoch, version_id)
       in
-      match !supports_update_manifest2 with
-      | Some true ->
+      match !update_object_version with
+      | Some 3 ->
+         self # update
+                  UpdateObject3
+                  (object_name, object_id, updated_object_locations,
+                   gc_epoch, version_id)
+      | Some 2 ->
          self # update
                   UpdateObject2
                   (object_name, object_id, updated_object_locations,
                    gc_epoch, version_id)
-      | Some false -> old_call ()
+      | Some 1 -> old_call ()
       | None ->
-         Lwt.catch
-           (fun () ->
-             self # update
-                  UpdateObject2
-                  (object_name, object_id, updated_object_locations,
-                   gc_epoch, version_id)
-             >>= fun () ->
-             supports_update_manifest2 := Some true;
-             Lwt.return_unit
-           )
-           (let open Nsm_model.Err in
-            function
-            | Nsm_exn (Unknown_operation,_) ->
-               supports_update_manifest2 := Some false;
-               old_call ()
-            | exn -> Lwt.fail exn
-           )
+         begin
+           let call = function
+             | 3 ->
+                self # update
+                     UpdateObject3
+                     (object_name, object_id, updated_object_locations,
+                      gc_epoch, version_id)
+             | 2 ->
+                self # update
+                     UpdateObject2
+                     (object_name, object_id, updated_object_locations,
+                      gc_epoch, version_id)
 
+             | 1 ->
+                old_call ()
+             | _ ->
+                let open Nsm_model.Err in
+                Lwt.fail (Nsm_exn (Unknown_operation, "UpdateObjectX"))
+           in
+           let rec loop v =
+             Lwt.catch
+               (fun () ->
+                 call v >>= fun () ->
+                 update_object_version := Some v;
+                 Lwt.return_unit
+               )
+               (let open Nsm_model.Err in
+                function
+                | Nsm_exn (Unknown_operation,_) ->
+                   loop (v - 1)
+                | exn -> Lwt.fail exn
+               )
+           in
+           loop 3
+         end
+      | _ -> Lwt.fail_with "programmer error"
 
 
 

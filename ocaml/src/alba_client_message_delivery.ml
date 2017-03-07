@@ -23,7 +23,7 @@ open Lwt.Infix
 open Alba_client_common
 module Osd_sec = Osd
 module DK = Osd_keys.AlbaInstance
-              
+
 let _get_next_msg_id client prio =
 
   client # global_kvs # get_option
@@ -99,8 +99,8 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
            >>=
              let open Osd_sec in
              (function
-               | Ok    -> Lwt.return ()
-               | Exn x ->
+               | Ok  _ -> Lwt.return ()
+               | Error x ->
                   Lwt_log.warning ([%show : Error.t] x)
                   >>= fun () ->
                   Error.lwt_fail x

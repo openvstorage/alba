@@ -575,20 +575,19 @@ TEST(proxy_client, test_partial_read_full_object) {
       auto mf_loc = mf_fr->loc;
       boost::optional<osd_t> mf_osd_o = std::get<0>(mf_loc);
 
-      int mf_version = std::get<1>(mf_loc);
 
-      auto js_loc = js_fr->second.get_child("loc");
-      auto js_loc_it = js_loc.begin();
-      boost::optional<int> js_osd_o =
-          js_loc_it->second.get_value_optional<int>();
-      if (boost::none != mf_osd_o && boost::none != js_osd_o) {
-        osd_t mf_osd = *mf_osd_o;
-        int js_osd = *js_osd_o;
-        ASSERT_EQ(mf_osd.i, js_osd);
+
+      if (boost::none != mf_osd_o) {
+        boost::optional<int> js_osd_o = js_fr->second.get_optional<int>("osd");
+        if (boost::none != js_osd_o){
+            int js_osd = *js_osd_o;
+            osd_t mf_osd = *mf_osd_o;
+            ASSERT_EQ(mf_osd.i, js_osd);
+        }
       }
 
-      js_loc_it++;
-      int js_version = js_loc_it->second.get_value<uint64_t>();
+      int mf_version = std::get<1>(mf_loc);
+      int js_version = js_fr -> second.get<int>("ver");
       ASSERT_EQ(mf_version, js_version);
 
       // "crc": [ "Crc32c", "0xc1103e5c" ],
@@ -622,6 +621,14 @@ TEST(proxy_client, test_partial_read_full_object) {
       ALBA_LOG(DEBUG, "mf_crc    : " << *mf_crc);
 
       ASSERT_EQ(mf_digest_s, js_digest);
+
+      //"fnr": "\u0004\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+      ostringstream mf_fnr_ss;
+      dump_string_option(mf_fnr_ss, mf_fr -> fnr);
+
+      auto mf_fnr_s = mf_fnr_ss.str();
+      ALBA_LOG(DEBUG, "mf_fnr =" << mf_fnr_s);
+
       fragment_index++;
     }
     chunk_index++;

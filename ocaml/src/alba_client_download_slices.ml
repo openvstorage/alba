@@ -463,12 +463,10 @@ let _repair_after_read
             ~chunk_fragments:(List.nth_exn fragment_info chunk_id)
             ~with_chunk_data >>= fun updated_locations ->
           Lwt_log.debug_f "updated_locations=%s"
-                          ([%show :
-                               (int * osd_id option * (int * Checksum.t) option * bytes option)
-                                 list]
+                          ([%show : FragmentUpdate.t list]
                              updated_locations)
           >>= fun () ->
-          Lwt.return (chunk_id, updated_locations))
+          Lwt.return updated_locations)
         to_repair
       >>= fun updated_locations ->
 
@@ -478,14 +476,7 @@ let _repair_after_read
           ~object_id:manifest.Manifest.object_id
           ~gc_epoch
           ~version_id
-          (List.flatten
-             (List.map
-                (fun (chunk_id, updated_locations) ->
-                  List.map
-                    (fun (fragment_id, osd_id_o, maybe_changed, fragment_ctr) ->
-                      chunk_id, fragment_id, osd_id_o, maybe_changed, fragment_ctr)
-                    updated_locations)
-                updated_locations))
+          (List.flatten updated_locations)
     )
     (fun () ->
       List.iter

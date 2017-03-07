@@ -44,6 +44,7 @@ build-nsm-plugin: build-cmxs
 	_build/src/model/alba_compression.cmx \
 	_build/src/model/preset.cmx \
 	_build/src/model/fragment.cmx \
+        _build/src/model/fragment_update.cmx \
 	_build/src/arith64.cmx \
 	_build/src/key_value_store.cmx \
 	_build/src/mem_key_value_store.cmx \
@@ -83,6 +84,7 @@ build-mgr-plugin: build-alba
 	_build/src/model/alba_compression.cmx \
 	_build/src/model/preset.cmx \
 	_build/src/model/fragment.cmx \
+	_build/src/model/fragment_update.cmx \
 	_build/src/alba_arakoon.cmx \
 	_build/src/arith64.cmx \
 	_build/src/key_value_store.cmx \

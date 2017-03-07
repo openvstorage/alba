@@ -191,6 +191,16 @@ module List = struct
 
   let find_index f l = find_index' f 0 l
 
+  let assoc' eq k kvs =
+    let rec inner = function
+      | [] -> None
+      | (k0,v0) :: rest ->
+         if eq k k0
+         then Some v0
+         else inner rest
+    in
+    inner kvs
+
   let flatten_unordered lists =
     let rec inner acc = function
       | [] -> acc
@@ -642,6 +652,10 @@ module Result =
                  ok_to buf ok
       | Error err -> Llio.int8_to buf 2;
                      err_to buf err
+
+    let is_ok = function
+      | Ok _ -> true
+      | _    -> false
   end
 
 module Hashtbl = struct

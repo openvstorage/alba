@@ -1036,7 +1036,7 @@ let execute_update : type req res.
           Lwt.catch
             (fun () ->
              immediate_upds_promise >>= fun immediate_upds ->
-             f immediate_upds >>= fun () ->
+             f immediate_upds >>= fun fnros ->
 
              (* the files are now definitely commited,
                 release file numbers so that collect_garbage_from
@@ -1045,7 +1045,7 @@ let execute_update : type req res.
              List.iter
                (fun (fnr, _, _) -> release_fnr fnr)
                !files;
-             Lwt.return ())
+             Lwt.return fnros)
             (function
               | (Error.Exn (Error.Assert_failed _)) as exn ->
 
@@ -1222,12 +1222,33 @@ let execute_update : type req res.
                      kv
                      dir_info
                      files_to_be_deleted >>= fun () ->
-                   Lwt.return `Succeeded)
+                   let fnrs =
+                     List.fold_left
+                       (fun acc ku ->
+                         match ku with
+                         | (key, `Set (value, _)) ->
+                            begin
+                              let open Value in
+                              match value with
+                                | Direct v -> acc
+                                | OnFs (fnr, _) ->
+                                   let fnr_s =
+                                     serialize
+                                       Alba_llio.varint_to
+                                       (Int64.to_int fnr)
+                                   in
+                                   (key, fnr_s):: acc
+                            end
+                         | (key, _) -> acc
+                       )
+                       [] immediate_updates
+                   in
+                   Lwt.return (`Succeeded fnrs))
                   (function
                     | Lwt.Canceled -> Lwt.fail Lwt.Canceled
                     | ConcurrentModification -> Lwt.return `Retry
                     | exn -> Lwt.fail exn) >>= function
-                | `Succeeded -> Lwt.return ()
+                | `Succeeded fnrs -> Lwt.return fnrs
                 | `Retry ->
                    Lwt_log.debug_f "Asd retrying apply due to concurrent modification" >>= fun () ->
                    inner (attempt + 1)

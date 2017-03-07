@@ -86,7 +86,7 @@ let claim_osd mgr_access osd_access ~long_id =
                   no_checksum true; ]
           >>=
             function
-            | Ok ->
+            | Ok _ ->
                Lwt_log.debug_f "successfully claimed osd %s" long_id >>= fun () ->
                Lwt.return `Continue
             | _  ->

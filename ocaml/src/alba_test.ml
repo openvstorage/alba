@@ -111,7 +111,7 @@ let delete_fragment
                 namespace_id
                 (k, 0, String.length k)) ]
      >>= fun s ->
-     OUnit.assert_equal Osd.Ok s;
+     OUnit.assert_equal (Ok ([])) s;
      Lwt.return ())
 
 let maybe_delete_fragment
@@ -139,10 +139,11 @@ let maybe_delete_fragment
       alba_client # with_nsm_client'
         ~namespace_id
         (fun client ->
+          let fu = FragmentUpdate.make chunk_id fragment_id None None None None in
            client # update_manifest
              ~object_name:manifest.Manifest.name
              ~object_id
-             [ (chunk_id, fragment_id, None, None, None); ]
+             [ fu ]
              ~gc_epoch ~version_id:(manifest.Manifest.version_id + 1))
     else
       Lwt.return ()
@@ -761,11 +762,14 @@ let test_partial_download_bad_fragment () =
      >>= fun gc_epoch ->
      alba_client # get_base_client # with_nsm_client ~namespace
                  (fun client ->
+                   let open Nsm_model in
+                   let fu00 = FragmentUpdate.make 0 0 None None None None in
+                   let fu01 = FragmentUpdate.make 0 1 None None None None in
                   client # update_manifest
                          ~object_name
-                         ~object_id:mf.Nsm_model.Manifest.object_id
-                         [ 0, 0, None, None, None;
-                           0, 1, None, None, None; ]
+                         ~object_id:mf.Manifest.object_id
+                         [ fu00;
+                           fu01 ]
                          ~gc_epoch
                          ~version_id:1) >>= fun () ->
 
@@ -975,7 +979,7 @@ let test_discover_claimed () =
                   (serialize Llio.int32_to id_on_osd)
                   no_checksum true; ]
             >>= fun apply_result ->
-            OUnit.assert_equal Osd.Ok apply_result;
+            OUnit.assert_bool "sequence ok?" (Result.is_ok apply_result);
             Lwt_log.debug "applied sequence" >>= fun () ->
 
             (* this timeout should be enough... *)
@@ -2189,7 +2193,7 @@ let test_retry_download () =
        let open Nsm_model in
        let open Manifest in
        let bad_f =
-         Fragment.make (Some 0L,0) Nsm_model.Checksum.NoChecksum  0 None in
+         Fragment.make' (Some 0L,0) Nsm_model.Checksum.NoChecksum  0 None in
        let fragments =
          [ List.hd_exn (mf.fragments);
            [ bad_f;bad_f;bad_f ]
@@ -2327,7 +2331,7 @@ let test_preset_validation () =
           Layout.map (fun _ -> None) fragment_locations
         in
         let fragments = Layout.map4
-                      Fragment.make
+                      Fragment.make'
                           fragment_locations
                           fragment_checksums
                           fragment_packed_sizes
@@ -2386,10 +2390,11 @@ let test_preset_validation () =
         }
         Nsm_model.Err.Preset_violated >>= fun () ->
 
+      let open Nsm_model in
       let test_update_manifest updated_object_locations err =
         Lwt.catch
           (fun () ->
-            let open Nsm_model.Manifest in
+            let open Manifest in
             nsm_client # update_manifest
                        ~object_name:mf.name
                        ~object_id:mf.object_id (* TODO wrong *)
@@ -2399,8 +2404,8 @@ let test_preset_validation () =
             Lwt.fail_with "arrr update_manifest didn't fail!"
           )
           (function
-           | Nsm_model.Err.Nsm_exn (err', _) ->
-              Lwt_log.debug_f "Got error %s" ([%show : Nsm_model.Err.t] err') >>= fun () ->
+           | Err.Nsm_exn (err', _) ->
+              Lwt_log.debug_f "Got error %s" ([%show : Err.t] err') >>= fun () ->
               assert (err' = err);
               Lwt.return ()
            | exn ->
@@ -2408,12 +2413,12 @@ let test_preset_validation () =
       in
 
       test_update_manifest
-        [ 0, 0, Some 7L, None, None ]
-        Nsm_model.Err.Invalid_bucket >>= fun () ->
+        [ FragmentUpdate.make 0 0 (Some 7L) None None None ]
+        Err.Invalid_bucket >>= fun () ->
 
       test_update_manifest
-        [ 0, 0, Some 1L, None, None ]
-        Nsm_model.Err.Invalid_fragment_spread >>= fun () ->
+        [ FragmentUpdate.make 0 0 (Some 1L) None None None ]
+        Err.Invalid_fragment_spread >>= fun () ->
 
       Lwt.return ())
 

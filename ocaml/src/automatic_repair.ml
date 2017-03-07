@@ -55,11 +55,11 @@ let periodic_load_osds
                 Lwt_log.info_f "Write load on %Li" osd_id >>= fun () ->
                 write_test_blob ()
                 >>= function
-                | Osd.Ok | Osd.Exn Osd.Error.Full  ->
+                | Ok _ | Error Osd.Error.Full  ->
                    Osd_state.add_write osd_state;
-                   Lwt.return ()
-                | Osd.Exn _ ->
-                   Lwt.return ())
+                   Lwt.return_unit
+                | Error _ ->
+                   Lwt.return_unit)
                (fun exn ->
                 Lwt.return ())
            end

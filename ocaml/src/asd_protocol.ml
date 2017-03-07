@@ -24,6 +24,7 @@ open Range_query_args2
 
 (* TODO use a Lwt_bytes.t instead *)
 type key = Slice.t
+type fnr = int64
 let show_key = Slice.show_limited_escaped
 let pp_key = Slice.pp_limited_escaped
 
@@ -432,7 +433,8 @@ module Protocol = struct
   [@deriving show]
 
   type ('request, 'response) update =
-    | Apply : (Assert.t list * Update.t list * priority, unit) update
+    | Apply : (Assert.t list * Update.t list * priority,
+               (key * string) list) update
     | SetFull: (bool, unit) update
     | Slowness: ((float * float) option, unit) update
 
@@ -705,15 +707,24 @@ module Protocol = struct
     =
     let module Llio = Llio2.WriteBuffer in
     function
-      | Apply    -> Llio.unit_to
-      | SetFull  -> Llio.unit_to
-      | Slowness -> Llio.unit_to
+    | Apply    -> Llio.list_to (Llio.pair_to
+                                  Slice.to_buffer'
+                                  Llio.string_to)
+    | SetFull  -> Llio.unit_to
+    | Slowness -> Llio.unit_to
 
   let update_response_deserializer : type req res. (req, res) update -> res Llio2.deserializer
     =
     let module Llio = Llio2.ReadBuffer in
     function
-      | Apply    -> Llio.unit_from
-      | SetFull  -> Llio.unit_from
-      | Slowness -> Llio.unit_from
+    | Apply    -> Llio.maybe_from_buffer
+                    (Llio.list_from
+                       (Llio.pair_from
+                          Slice.from_buffer'
+                          Llio.string_from
+                       )
+                    )
+                  []
+    | SetFull  -> Llio.unit_from
+    | Slowness -> Llio.unit_from
 end
