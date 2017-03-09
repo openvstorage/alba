@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
+#include "alba_logger.h"
 #include "stuff.h"
 #include <exception>
 #include <iomanip>
@@ -80,6 +81,7 @@ double timestamp_millis() {
 }
 
 std::string shell(const std::string &cmd) {
+  ALBA_LOG(DEBUG, "stuff::shell: " << cmd);
   std::array<char, 128> buffer;
   std::string result;
   std::shared_ptr<FILE> pipe(popen(cmd.c_str(), "r"), pclose);
