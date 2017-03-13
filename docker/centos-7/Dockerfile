@@ -49,11 +49,11 @@ RUN git clone https://github.com/domsj/orocksdb.git \
 
 RUN pip install fabric junit-xml
 
-RUN wget http://cudf-solvers.irill.org/cudf_remote_proxy
-RUN chmod u+x cudf_remote_proxy
-RUN mv cudf_remote_proxy /usr/local/bin/
+# RUN wget http://cudf-solvers.irill.org/cudf_remote_proxy
+# RUN chmod u+x cudf_remote_proxy
+# RUN mv cudf_remote_proxy /usr/local/bin/
 
-ENV OPAMEXTERNALSOLVER="cudf_remote_proxy %{input}% %{output}% %{criteria}%"
+# ENV OPAMEXTERNALSOLVER="cudf_remote_proxy %{input}% %{output}% %{criteria}%"
 
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 
