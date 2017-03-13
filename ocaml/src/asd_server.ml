@@ -849,11 +849,13 @@ let cleanup_files_to_delete ignore_unlink_error io_sched prio kv dir_info fnrs =
          (* TODO bulk sync of (unique) parent filedescriptors *)
          perform_delete
            io_sched
-           prio >>= fun () ->
-         Lwt_extra2.unlink
-           ~may_not_exist:(ignore_unlink_error || not dir_info.DirectoryInfo.write_blobs)
-           ~fsync_parent_dir:true
-           path)
+           prio
+           (fun () ->
+             Lwt_extra2.unlink
+               ~may_not_exist:(ignore_unlink_error || not dir_info.DirectoryInfo.write_blobs)
+               ~fsync_parent_dir:true
+               path)
+      )
       fnrs >>= fun () ->
 
     List.iter
