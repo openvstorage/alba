@@ -26,48 +26,94 @@ let check_nsm_host tls_config (ccfg:Arakoon_client_config.t) =
                      ccfg.node_cfgs
   in
   let cluster_id = ccfg.cluster_id in
-  Lwt_log.debug_f "checking %s" cluster_id >>= fun () ->
-  let check_one node_name =
+  let with_nsm_master ccfg tls_config f default =
     Lwt.catch
       (fun () ->
-        Lwt_log.debug_f "checking: node_name=%s" node_name
-        >>= fun () ->
-        Client_helper.with_client''
-          ccfg node_name
-          (fun c ->
-            let consistency = Arakoon_client.No_guarantees in
-            c # user_hook ~consistency "nsm_host" >>= fun (ic,oc) ->
-            Llio.input_int32 ic >>= function
-            | 0l -> begin
-                let open Nsm_protocol in
-                let open Nsm_host_protocol in
-                let session = Session.make () in
-                let scc = new Nsm_host_client.single_connection_client (ic,oc)
-                              session
-                in
-                scc # query ~consistency Protocol.GetVersion ()
-                >>= fun (major,minor,patch, commit) ->
-                Lwt_log.debug_f "version:(%i,%i,%i,%s)"
-                                major minor patch commit
-                >>= fun () ->
-                let update = Session.make_update 2 in
-                scc # query ~consistency Protocol.UpdateSession update
-                >>= fun processed ->
-                let () = Session.client_update session processed in
-                Lwt.return (Some session.Session.manifest_ser)
-              end
-            | e ->
-               Lwt_log.warning_f "user hook was not found %li%!\n" e
-               >>= fun ()->
-               Lwt.return_none
-          )
+        Nsm_host_client.with_client
+          (ccfg:Arakoon_client_config.t) tls_config f
       )
-      (fun exn ->
-        Lwt.return_none)
+      (fun exn -> Lwt.return default)
   in
-  Lwt_list.map_p check_one node_names >>= fun rs ->
-  Lwt_log.debug_f "results:%s" ([%show:int option list] rs) >>= fun () ->
-  Lwt.return_unit
+  with_nsm_master
+    ccfg tls_config
+    (fun c ->
+      c # query Nsm_host_protocol.Protocol.GetHostVersion ()
+    ) 0l
+  >>= fun host_version ->
+  Lwt_log.debug_f "host_version:%li" host_version >>= fun () ->
+  if host_version = 1l
+  then Lwt.return_true
+  else
+    begin
+      Lwt_log.debug_f "checking %s" cluster_id >>= fun () ->
+      let check_one node_name =
+        Lwt.catch
+          (fun () ->
+            Lwt_log.debug_f "checking: node_name=%s" node_name
+            >>= fun () ->
+            Client_helper.with_client''
+              ccfg node_name
+              (fun c ->
+                let consistency = Arakoon_client.No_guarantees in
+                c # user_hook ~consistency "nsm_host" >>= fun (ic,oc) ->
+                Llio.input_int32 ic >>= function
+                | 0l -> begin
+                    let open Nsm_protocol in
+                    let open Nsm_host_protocol in
+                    let session = Session.make () in
+                    let scc = new Nsm_host_client.single_connection_client (ic,oc)
+                                  session
+                    in
+                    scc # query ~consistency Protocol.GetVersion ()
+                    >>= fun (major,minor,patch, commit) ->
+                    Lwt_log.debug_f "version:(%i,%i,%i,%s)"
+                                    major minor patch commit
+                    >>= fun () ->
+                    let update = Session.make_update 2 in
+                    scc # query ~consistency Protocol.UpdateSession update
+                    >>= fun processed ->
+                    let () = Session.client_update session processed in
+                    Lwt.return (Some session.Session.manifest_ser)
+                  end
+                | e ->
+                   Lwt_log.warning_f "user hook was not found %li%!\n" e
+                   >>= fun ()->
+                   Lwt.return_none
+              )
+          )
+          (fun exn ->
+            Lwt.return_none)
+      in
+
+      Lwt_list.map_p check_one node_names >>= fun results ->
+      Lwt_log.debug_f "results:%s" ([%show:int option list] results) >>= fun () ->
+      let min_ver =
+        List.fold_left
+          (fun acc r ->
+            match r with
+            | None -> acc
+            | Some v -> min acc v
+          ) 2 results
+      in
+
+      begin
+        if 2 = min_ver
+        then
+          Lwt_log.debug_f "updating host version" >>= fun () ->
+          with_nsm_master
+            ccfg tls_config
+            (fun c ->
+              c # update Nsm_host_protocol.Protocol.UpdateHostVersion (0l, 1l)
+              >>= fun result_version ->
+              Lwt_log.debug_f "resulting host version:%li" result_version
+              >>= fun () ->
+              Lwt.return_true
+            ) false
+        else
+          Lwt.return_false
+      end >>= fun r ->
+      Lwt.return r
+    end
 
 let check tls_config (abm_ccfg: Arakoon_client_config.t) =
   Albamgr_client.with_client'
@@ -87,6 +133,7 @@ let check tls_config (abm_ccfg: Arakoon_client_config.t) =
           | Arakoon ccfg -> check_nsm_host tls_config ccfg
         ) hosts
       >>= fun results ->
+      Lwt_log.debug_f "results:%s" ([%show: bool list] results) >>= fun () ->
       Lwt.return_unit
 
 

@@ -133,12 +133,24 @@ let deliver_msgs (db : user_db) msgs =
        end)
     msgs
 
+let get_host_version (db:read_user_db) =
+  Option.map
+    (fun vs -> deserialize Llio.int32_from vs)
+    (db # get Keys.nsm_host_version)
+
 
 let rec get_updates_res : type i o. read_user_db ->
                                (i, o) Protocol.update ->
                                i ->
                                (o * Arakoon_update.Update.t list) Lwt.t =
   fun db ->
+
+  let mf_version =
+    match get_host_version db |> Option.get_some with
+    | 0l -> 1
+    | _  -> 2
+  in
+
   let open Protocol in
   let open Arakoon_update in
   function
@@ -195,8 +207,9 @@ let rec get_updates_res : type i o. read_user_db ->
         NSM.disable_gc_epoch db gc_epoch, ()
       | EnableGcEpoch -> fun gc_epoch ->
         NSM.enable_new_gc_epoch db gc_epoch, ()
-      | PutObject -> fun (overwrite, manifest, fragment_gc_epochs) ->
-        NSM.put_object db overwrite manifest fragment_gc_epochs
+      | PutObject ->
+         fun (overwrite, manifest, fragment_gc_epochs) ->
+         NSM.put_object db overwrite manifest fragment_gc_epochs mf_version
       | DeleteObject -> fun (overwrite, object_name) ->
         NSM.delete_object db object_name overwrite
       | UpdateObject -> fun (object_name, object_id, new_fragments, gc_epoch, version_id) ->
@@ -207,7 +220,7 @@ let rec get_updates_res : type i o. read_user_db ->
         NSM.cleanup_osd_keys_to_be_deleted db osd_id
       | ApplySequence ->
          fun (asserts, updates) ->
-         NSM.apply_sequence db asserts updates
+         NSM.apply_sequence db asserts updates mf_version
       | UpdatePreset ->
          fun (preset, version) ->
          NSM.update_preset db preset version
@@ -242,6 +255,20 @@ let rec get_updates_res : type i o. read_user_db ->
        reqs >>= fun r ->
      let upds, res = List.split r in
      Lwt.return (res, List.flatten upds)
+  | UpdateHostVersion ->
+     fun (old, wanted) ->
+     let current = get_host_version db |> Option.get_some in
+     if current = old
+     then
+       let updates =
+         let s32 x = serialize Llio.int32_to x in
+         let open Arakoon_update.Update in
+         [TestAndSet (Keys.nsm_host_version, Some (s32 old), Some (s32 wanted))]
+       in
+       Lwt.return (wanted, updates)
+     else
+       Lwt.return (current, [])
+
 
 let statistics = Protocol.NSMHStatistics.make ()
 
@@ -385,6 +412,7 @@ let handle_query : type i o. read_user_db ->
         with Nsm_model.Err.Nsm_exn (err, _) -> Result.Error err)
        req
   | UpdateSession -> Nsm_protocol.Session.server_update session req
+  | GetHostVersion -> get_host_version db |> Option.get_some
 
 
 let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
@@ -392,11 +420,7 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   Llio.output_int32 oc 0l >>= fun () ->
 
   (* ensure the current version is stored in the database *)
-  let get_version () =
-    Option.map
-      (fun vs -> deserialize Llio.int32_from vs)
-      (db # get Keys.nsm_host_version)
-  in
+  let get_version () = get_host_version db in
   begin match get_version () with
     | None ->
       backend # push_update
@@ -416,11 +440,13 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
      we want to ensure here that no old version
      can work on new data *)
   let check_version () =
-    0l = get_version () in
+    let v = get_version () in
+    v = 0l || v = 1l
+  in
   let assert_version_update =
     Arakoon_update.Update.Assert
       (Keys.nsm_host_version,
-       Some (serialize Llio.int32_to 0l)) in
+       Some (serialize Llio.int32_to (get_version()))) in
 
   let write_response_ok serializer res =
     let s =

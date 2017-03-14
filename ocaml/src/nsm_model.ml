@@ -1486,7 +1486,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       if object_id_o = None
       then Err.failwith Err.Overwrite_not_allowed
 
-  let put_object kv overwrite manifest gc_epoch =
+  let put_object kv overwrite manifest gc_epoch mf_version =
     let maybe_preset = get_preset kv in
     let () =
       match maybe_preset with
@@ -1572,8 +1572,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
       Update'.compare_and_swap
         (Keys.objects ~object_id)
         None
-        (Some (serialize (Manifest.to_buffer
-                            ~version:1 (* TODO: should become 2 *)) manifest))
+        (Some (serialize (Manifest.to_buffer ~version:mf_version) manifest))
     in
 
     let gc_epoch_so, gc_epochs = get_gc_epochs kv in
@@ -1691,7 +1690,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
          ],
        Some manifest)
 
-  let apply_sequence kv asserts updates =
+  let apply_sequence kv asserts updates mf_version =
     let updates_for_asserts =
       List.flatmap
         (let open Assert in
@@ -1762,7 +1761,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
            let open Update in
            match update with
            | PutObject (mf, gc_epoch) ->
-              put_object kv Unconditionally mf gc_epoch |> fst
+              put_object kv Unconditionally mf gc_epoch mf_version |> fst
            | DeleteObject name ->
               delete_object kv name Unconditionally |> fst
          in
