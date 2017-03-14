@@ -22,7 +22,7 @@ open Lwt.Infix
 
 type 'a input = (unit -> ('a * int) Lwt.t) * 'a Lwt.u
 type output_blobs = (int64 * Asd_protocol.Blob.t) list * unit Lwt.u
-type delete_blobs = unit * unit Lwt.u
+type delete_blobs = (unit -> unit Lwt.t) * unit Lwt.u
 type sync_rocks   = unit Lwt.u
 
 type post_write = Lwt_unix.file_descr -> int -> string -> unit Lwt.t
@@ -77,10 +77,10 @@ let perform_write t prio blobs =
      | Low  -> t.low_prio_writes) >>= fun () ->
   sleep
 
-let perform_delete t prio =
+let perform_delete t prio f =
   let sleep, waker = Lwt.wait () in
   Lwt_buffer.add
-    ((), waker)
+    (f, waker)
     (match prio with
      | High -> t.high_prio_deletes
      | Low  -> t.low_prio_deletes) >>= fun () ->
@@ -129,7 +129,9 @@ let _perform_deletes_from_buffer buffer count =
   _harvest_from_buffer
     buffer
     [] 0 count
-    (fun () -> Lwt.return ((), 1))
+    (fun f ->
+      f () >>= fun () ->
+      Lwt.return ((), 1))
   >>= fun (results, _) ->
   _notify_waiters results;
   Lwt.return_unit
