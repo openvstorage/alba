@@ -1574,7 +1574,8 @@ class client ?(retry_timeout = 60.)
             | Some manifest ->
                let open Nsm_model in
                if manifest.Manifest.object_id = object_id
-               then begin
+               then
+                 begin
                    Lwt_log.warning_f
                      "Repairing object due to bad (missing/corrupted) fragment (%Li, %S, %S, %i, %i)"
                      namespace_id object_id object_name chunk_id fragment_id
@@ -1595,9 +1596,10 @@ class client ?(retry_timeout = 60.)
                         ^^ "version in manifest :%i <> version:%i")
                        namespace_id object_id object_name chunk_id fragment_id
                        fragment_version version
-                 end else
+                 end
+               else
                  (* object has been replaced with a new version in the mean time,
-               so no work to do here *)
+                  * so no work to do here *)
                  Lwt.return ()
           in
           namespace_exists ~namespace_id >>= function

@@ -590,6 +590,7 @@ class proxy ?fragment_cache ?ip ?transport
          let json = Proxy_cfg.to_yojson cfg in
          let json' = suppress_tags [] json in
          Yojson.Safe.pretty_to_channel oc json' ;
+         output_string oc "\n";
          close_out oc
        in
        persister, cfg_url
@@ -886,6 +887,7 @@ class asd ?(use_fadvise = true)
            else suppress_tags ["multicast"] json
          in
          Yojson.Safe.pretty_to_channel oc json' ;
+         output_string oc "\n";
          close_out oc
        and url = Url.File (home ^ "/cfg.json") in
        persister,url
@@ -1405,7 +1407,7 @@ module Deployment = struct
     nsm_host_register t;
 
     setup_osds t;
-    claim_local_osds t t.cfg.n_osds;
+    claim_local_osds t t.cfg.n_osds |> ignore;
 
     Unix.sleep 2;
 
@@ -1671,6 +1673,7 @@ module Test = struct
     let oc = open_out (backend_cfg_file cfg) in
     let json = backend_cfg_to_yojson backend_cfg in
     Yojson.Safe.pretty_to_channel oc json;
+    output_string oc "\n";
     close_out oc
 
   let wrapper cmd f t =
@@ -1970,25 +1973,26 @@ module Test = struct
       in
 
       let extra_asds = Deployment.make_osds
-                         ~base_port:4000
+                         ~base_port:12000
                          ~ip:cfg_ssd.ip
                          12
-                         cfg_ssd.local_nodeid_prefix
+                         (cfg_ssd.local_nodeid_prefix ^ "_bis")
                          (List.map (fun x -> x ^ "2") cfg_ssd.alba_asd_base_paths)
                          "/dummy_path/for/ssl"
                          cfg_ssd.alba_bin
                          ~etcd:cfg_ssd.etcd false ~log_level:"debug"
       in
-      Array.iter (fun asd -> asd # persist_config;
-                             asd # start)
-                 extra_asds;
-      let extra_asds = Deployment.wait_for_local_osds t_ssd 12 in
+      Array.iter (fun asd -> asd # persist_config) extra_asds;
 
       let cmd =
         make_cpp_cmd
-          ~prep_env:(Printf.sprintf "EXTRA_ASDS=%s SSD_ASDS=%s"
-                                    (String.concat "," extra_asds)
-                                    (String.concat "," (Deployment.harvest_osds t_ssd))
+          ~prep_env:(Printf.sprintf
+                       "SSD_ASDS=%s EXTRA_ASDS=%s"
+                       (String.concat "," (Deployment.harvest_osds t_ssd))
+                       (String.concat "," (Array.map
+                                             (fun asd -> asd # long_id)
+                                             extra_asds
+                                           |> Array.to_list))
                     )
           t_hdd
           (Some "proxy_client.test_partial_read_broken_fragment_cache")
@@ -2743,7 +2747,7 @@ module Test = struct
       Unix.sleep 5;
       Deployment.nsm_host_register t;
       Deployment.setup_osds t;
-      Deployment.claim_local_osds t t.cfg.n_osds;
+      Deployment.claim_local_osds t t.cfg.n_osds |> ignore;
       t.proxy # create_namespace "demo";
 
       test old_proxy old_plugins old_asds t

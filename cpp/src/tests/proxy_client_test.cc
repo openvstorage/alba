@@ -822,35 +822,39 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
 
   do_read("initial read after write", true);
 
-  // ALBA_LOG(DEBUG, "delete first fragment from ssd");
-  // stuff::shell(
-  //     (boost::format("./ocaml/alba.native dev-delete-fragment --config "
-  //                    "tmp/alba_ssd/tmp/arakoon/abm.ini %s %s --chunk 0 "
-  //                    "--fragment 0 --verbose") %
-  //      // TODO obj_name in fragment cache! ah crap, da vloekt met cli
-  //      invocation
-  //      namespace_ % obj_name)
-  //         .str());
-  // do_read("read after delete fragment", false);
-  // do_read("read after delete fragment bis", true);
-
-  // kill an osd (one with first fragment)
-  // do_read(false);
-  // do_read(true);
-
   stuff::shell("pkill -e -f tmp/alba_ssd/tmp/alba/asd/");
   for (auto &s : ssd_asds) {
     stuff::shell((boost::format("./ocaml/alba.native purge-osd --long-id %s "
                                 "--config tmp/alba_ssd/tmp/arakoon/abm.ini") %
                   s).str());
   }
+
+  stuff::shell("find ./tmp/alba_ssd/tmp/alba/asd/*/cfg.json -exec sed -i "
+               "\"s,_00_,_00_bis_,g\" {}");
+
+  int i = 0;
+  for (auto &s : extra_asds) {
+    stuff::shell((boost::format("nohup ./ocaml/alba.native asd-start --config "
+                                "./tmp/alba_ssd/tmp/alba/asd2/%02i/cfg.json >> "
+                                "/home/jan/projects/alba/tmp/alba_ssd/tmp/alba/"
+                                "asd2/%02i/%s.out 2>&1 &") %
+                  i % i %
+                  s).str());
+    i++;
+  }
+
+  // wait for asds to become available
+  sleep(10);
+
   for (auto &s : extra_asds) {
     stuff::shell((boost::format("./ocaml/alba.native claim-osd --long-id %s "
                                 "--config tmp/alba_ssd/tmp/arakoon/abm.ini") %
                   s).str());
   }
-  stuff::shell("./ocaml/alba.native deliver-messages --config tmp/alba_ssd/tmp/arakoon/abm.ini");
-  stuff::shell("./ocaml/alba.native deliver-messages --config tmp/alba_ssd/tmp/arakoon/abm.ini");
+  stuff::shell("./ocaml/alba.native deliver-messages --config "
+               "tmp/alba_ssd/tmp/arakoon/abm.ini");
+  stuff::shell("./ocaml/alba.native deliver-messages --config "
+               "tmp/alba_ssd/tmp/arakoon/abm.ini");
   sleep(5);
 
   do_read("after purge & claim", false);
