@@ -590,6 +590,7 @@ class proxy ?fragment_cache ?ip ?transport
          let json = Proxy_cfg.to_yojson cfg in
          let json' = suppress_tags [] json in
          Yojson.Safe.pretty_to_channel oc json' ;
+         output_string oc "\n";
          close_out oc
        in
        persister, cfg_url
@@ -886,6 +887,7 @@ class asd ?(use_fadvise = true)
            else suppress_tags ["multicast"] json
          in
          Yojson.Safe.pretty_to_channel oc json' ;
+         output_string oc "\n";
          close_out oc
        and url = Url.File (home ^ "/cfg.json") in
        persister,url
@@ -1241,7 +1243,7 @@ module Deployment = struct
     let suffix = t.cfg.local_nodeid_prefix in
     suffix = Str.last_chars long_id (String.length suffix)
 
-  let claim_local_osds t n =
+  let wait_for_local_osds t n =
     let rec loop c =
       let long_ids = harvest_available_osds t in
       let locals =
@@ -1250,9 +1252,7 @@ module Deployment = struct
           long_ids
       in
       if n = List.length locals
-      then
-        let _ : string list = claim_osds t locals in
-        ()
+      then locals
       else if c > 20
       then failwith "could not claim enough local osds after 20 attempts"
       else
@@ -1262,6 +1262,9 @@ module Deployment = struct
         end
     in
     loop 0
+
+  let claim_local_osds t n =
+    wait_for_local_osds t n |> claim_osds t
 
   let stop_osds t =
     Array.iter (fun asd -> asd # stop) t.osds
@@ -1404,7 +1407,7 @@ module Deployment = struct
     nsm_host_register t;
 
     setup_osds t;
-    claim_local_osds t t.cfg.n_osds;
+    claim_local_osds t t.cfg.n_osds |> ignore;
 
     Unix.sleep 2;
 
@@ -1681,6 +1684,7 @@ module Test = struct
     let oc = open_out (backend_cfg_file cfg) in
     let json = backend_cfg_to_yojson backend_cfg in
     Yojson.Safe.pretty_to_channel oc json;
+    output_string oc "\n";
     close_out oc
 
   let wrapper cmd f t =
@@ -1833,39 +1837,40 @@ module Test = struct
     [ t_local1; t_local2; t_local3; t_local4; ],
     add_backend_as_osd
 
-  let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
-    let make_cmd ?(prep_env="") deployment filter result_file =
-      let cfg = deployment.cfg in
-      let host, transport = _get_ip_transport cfg
-      and port = deployment.proxy # port
-      and test_abm = deployment.abm # config_url |> Url.canonical
-      in
-      let cmd =
-        ["cd";cfg.alba_home; "&&";
-         prep_env;
-         "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
-         Printf.sprintf "ALBA_PROXY_IP=%s" host;
-         Printf.sprintf "ALBA_PROXY_PORT=%i" port;
-         Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
-         Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
-         Printf.sprintf "TEST_ABM=%s" test_abm;
-        ]
-      in
-      let cmd =
-        if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
-        then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
-        else cmd @ [ "./cpp/bin/unit_tests.out" ]
-      in
-      let cmd2 = if xml
-                 then cmd @ ["--gtest_output=xml:" ^ result_file ]
-                 else cmd
-      in
-      let cmd3 = match filter with
-        | None -> cmd2
-        | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
-      in
-      cmd3 |> String.concat " "
+
+  let make_cpp_cmd ?(prep_env="") deployment filter xml result_file =
+    let cfg = deployment.cfg in
+    let host, transport = _get_ip_transport cfg
+    and port = deployment.proxy # port
+    and test_abm = deployment.abm # config_url |> Url.canonical
     in
+    let cmd =
+      ["cd";cfg.alba_home; "&&";
+       prep_env;
+       "LD_LIBRARY_PATH=./cpp/lib:$LD_LIBRARY_PATH";
+       Printf.sprintf "ALBA_PROXY_IP=%s" host;
+       Printf.sprintf "ALBA_PROXY_PORT=%i" port;
+       Printf.sprintf "ALBA_PROXY_TRANSPORT=%s" transport;
+       Printf.sprintf "ALBA_ASD_IP=%s" (local_ip_address ());
+       Printf.sprintf "TEST_ABM=%s" test_abm;
+      ]
+    in
+    let cmd =
+      if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
+      then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
+      else cmd @ [ "./cpp/bin/unit_tests.out" ]
+    in
+    let cmd2 = if xml
+               then cmd @ ["--gtest_output=xml:" ^ result_file ]
+               else cmd
+    in
+    let cmd3 = match filter with
+      | None -> cmd2
+      | Some f -> cmd2 @ ["--gtest_filter=" ^ f]
+    in
+    cmd3 |> String.concat " "
+
+  let cpp ?(xml=false) ?filter ?dump (_:Deployment.t) =
     let run_aaa () =
       let (_, t_hdd), (_, t_ssd) = setup_aaa ~bump_ids:true ~the_preset:"preset_rora" () in
 
@@ -1885,7 +1890,7 @@ module Test = struct
                               "./cfg/preset_test.json"
       in
 
-      let cmd = make_cmd t_hdd None "testresults_aaa.xml" in
+      let cmd = make_cpp_cmd t_hdd None xml "testresults_aaa.xml" in
       let rc = cmd |> Shell.cmd_with_rc in
       let kill () =
         Deployment.kill t_hdd;
@@ -1904,9 +1909,9 @@ module Test = struct
                               "./cfg/preset.json"
       in
       let cmd =
-        make_cmd
+        make_cpp_cmd
           ~prep_env:"ALBA_TEST_SLOW_ALLOWED=true"
-          t filter "testresults_nil.xml"
+          t filter xml "testresults_nil.xml"
       in
       let rc = cmd |> Shell.cmd_with_rc in
       let kill ()= Deployment.kill t in
@@ -1924,8 +1929,8 @@ module Test = struct
                  "./cfg/preset_no_compression.json"
       in
       let cmd =
-        make_cmd
-          t filter "testresults_nil_nofc.xml"
+        make_cpp_cmd
+          t filter xml "testresults_nil_nofc.xml"
       in
       let rc = cmd |> Shell.cmd_with_rc in
       let kill ()= Deployment.kill t in
@@ -1940,9 +1945,9 @@ module Test = struct
                               "./cfg/preset.json"
       in
       let cmd =
-        make_cmd
+        make_cpp_cmd
           ~prep_env:"ALBA_TEST_SLOW_ALLOWED=true"
-          t_global filter "testresults_global.xml"
+          t_global filter xml "testresults_global.xml"
       in
       let rc = cmd |> Shell.cmd_with_rc in
       let kill () =
@@ -1960,8 +1965,8 @@ module Test = struct
                               "./cfg/preset.json"
       in
       let cmd =
-        make_cmd
-          t_global filter "testresults_global_aaa.xml"
+        make_cpp_cmd
+          t_global filter xml "testresults_global_aaa.xml"
       in
       let rc = cmd |> Shell.cmd_with_rc in
       let kill () =
@@ -1970,11 +1975,53 @@ module Test = struct
       in
       rc, kill
     in
+    let run_broken_frag_cache () =
+      let (_, t_hdd), (cfg_ssd, t_ssd) = setup_aaa ~bump_ids:false ~the_preset:"preset_rora" () in
+
+      let () = _create_preset t_ssd
+                              "preset_rora"
+                              "./cfg/preset_no_compression.json"
+      in
+
+      let extra_asds = Deployment.make_osds
+                         ~base_port:12000
+                         ~ip:cfg_ssd.ip
+                         12
+                         (cfg_ssd.local_nodeid_prefix ^ "_bis")
+                         (List.map (fun x -> x ^ "2") cfg_ssd.alba_asd_base_paths)
+                         "/dummy_path/for/ssl"
+                         cfg_ssd.alba_bin
+                         ~etcd:cfg_ssd.etcd false ~log_level:"debug"
+      in
+      Array.iter (fun asd -> asd # persist_config) extra_asds;
+
+      let cmd =
+        make_cpp_cmd
+          ~prep_env:(Printf.sprintf
+                       "SSD_ASDS=%s EXTRA_ASDS=%s"
+                       (String.concat "," (Deployment.harvest_osds t_ssd))
+                       (String.concat "," (Array.map
+                                             (fun asd -> asd # long_id)
+                                             extra_asds
+                                           |> Array.to_list))
+                    )
+          t_hdd
+          (Some "proxy_client.test_partial_read_broken_fragment_cache")
+          xml "testresults_broken_frag_cache.xml"
+      in
+      let rc = cmd |> Shell.cmd_with_rc in
+      let kill () =
+        Deployment.kill t_hdd;
+        Deployment.kill t_ssd;
+      in
+      rc, kill
+    in
     let tests = [run_aaa;
                  run_nil;
                  run_nil_nofc;
                  run_global;
                  run_global_aaa;
+                 run_broken_frag_cache;
                 ]
     in
     let rc,_kill =
@@ -1992,6 +2039,7 @@ module Test = struct
                                      ("testresults_nil_nofc.xml", "nil_nofc");
                                      ("testresults_global.xml", "global");
                                      ("testresults_global_aaa.xml", "global_aaa");
+                                     ("testresults_broken_frag_cache.xml", "broken_frag_cache");
                                     ] "testresults.xml"
     in
 
@@ -2710,7 +2758,7 @@ module Test = struct
       Unix.sleep 5;
       Deployment.nsm_host_register t;
       Deployment.setup_osds t;
-      Deployment.claim_local_osds t t.cfg.n_osds;
+      Deployment.claim_local_osds t t.cfg.n_osds |> ignore;
       t.proxy # create_namespace "demo";
 
       test old_proxy old_plugins old_asds t

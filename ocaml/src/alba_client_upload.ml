@@ -320,7 +320,8 @@ let upload_object''
      Lwt.return (p, osds_info_cache'))
     (function
       | Error.Exn Error.NoSatisfiablePolicy ->
-         nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
+         nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun (_, osds) ->
+         Lwt_log.debug_f "got namespace osds for namespace_id=%Li: %s" namespace_id ([%show: int64 list] osds) >>= fun () ->
          get_namespace_osds_info_cache ~namespace_id >>= fun osds_info_cache' ->
          let p =
            get_best_policy_exn
@@ -884,8 +885,8 @@ let _upload_with_retry
                 "%s failed due to inactive (decommissioned) osd, retrying..."
                 (Lazy.force message)
               >>= fun () ->
-              nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
-              Lwt.return ()
+              nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun (_, osds) ->
+              Lwt_log.debug_f "got namespace osds for namespace_id=%Li: %s" namespace_id ([%show: int64 list] osds)
 
            | Too_many_disks_per_node
            | Preset_violated

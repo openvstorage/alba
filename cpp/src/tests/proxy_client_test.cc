@@ -21,7 +21,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "manifest.h"
 #include "gtest/gtest.h"
 #include <boost/algorithm/string.hpp>
-#include <boost/algorithm/string.hpp>
+#include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -575,19 +575,17 @@ TEST(proxy_client, test_partial_read_full_object) {
       auto mf_loc = mf_fr->loc;
       boost::optional<osd_t> mf_osd_o = std::get<0>(mf_loc);
 
-
-
       if (boost::none != mf_osd_o) {
         boost::optional<int> js_osd_o = js_fr->second.get_optional<int>("osd");
-        if (boost::none != js_osd_o){
-            int js_osd = *js_osd_o;
-            osd_t mf_osd = *mf_osd_o;
-            ASSERT_EQ(mf_osd.i, js_osd);
+        if (boost::none != js_osd_o) {
+          int js_osd = *js_osd_o;
+          osd_t mf_osd = *mf_osd_o;
+          ASSERT_EQ(mf_osd.i, js_osd);
         }
       }
 
       int mf_version = std::get<1>(mf_loc);
-      int js_version = js_fr -> second.get<int>("ver");
+      int js_version = js_fr->second.get<int>("ver");
       ASSERT_EQ(mf_version, js_version);
 
       // "crc": [ "Crc32c", "0xc1103e5c" ],
@@ -624,7 +622,7 @@ TEST(proxy_client, test_partial_read_full_object) {
 
       //"fnr": "\u0004\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
       ostringstream mf_fnr_ss;
-      dump_string_option(mf_fnr_ss, mf_fr -> fnr);
+      dump_string_option(mf_fnr_ss, mf_fr->fnr);
 
       auto mf_fnr_s = mf_fnr_ss.str();
       ALBA_LOG(DEBUG, "mf_fnr =" << mf_fnr_s);
@@ -753,4 +751,112 @@ TEST(proxy_client, manifest_with_ctr) {
   // if we get here, it means we at least could process
   // the response (containing a manifest with AES ctr encryption info)
   // without exception
+}
+
+TEST(proxy_client, test_partial_read_broken_fragment_cache) {
+  string namespace_ =
+      (boost::format("test_partial_read_broken_fragment_cache_%i") % rand())
+          .str();
+  string obj_name("test_partial_read_broken_fragment_cache");
+
+  std::vector<std::string> extra_asds;
+  {
+    auto env = env_or_default("EXTRA_ASDS", "");
+    if (env == "") {
+      ALBA_LOG(WARNING, "skipping test, because EXTRA_ASDS was not set");
+      return;
+    }
+    boost::split(extra_asds, env, boost::is_any_of(","));
+  }
+
+  std::vector<std::string> ssd_asds;
+  {
+    auto env = env_or_default("SSD_ASDS", "");
+    if (env == "") {
+      ALBA_LOG(WARNING, "skipping test, because SSD_ASDS was not set");
+      return;
+    }
+    boost::split(ssd_asds, env, boost::is_any_of(","));
+  }
+
+  config cfg;
+  boost::optional<alba::proxy_client::RoraConfig> rora_config{1000};
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
+                                  rora_config);
+
+  client->create_namespace(namespace_, boost::none);
+
+  client->write_object_fs(namespace_, "warming up the proxy ...",
+                          "./ocaml/alba.native",
+                          proxy_client::allow_overwrite::T, nullptr);
+  client->write_object_fs(namespace_, "warming up the proxy ...",
+                          "./ocaml/alba.native",
+                          proxy_client::allow_overwrite::T, nullptr);
+
+  client->write_object_fs(namespace_, obj_name, "./ocaml/alba.native",
+                          proxy_client::allow_overwrite::T, nullptr);
+
+  auto do_read = [&](string msg, bool fast) {
+    ALBA_LOG(INFO, msg << " start");
+
+    alba::statistics::RoraCounter cntr;
+
+    std::vector<byte> buf(4096);
+    proxy_protocol::SliceDescriptor sd{&buf[0], 1239, 4096};
+    std::vector<proxy_protocol::SliceDescriptor> slices{sd};
+    proxy_protocol::ObjectSlices object_slices{obj_name, slices};
+    std::vector<proxy_protocol::ObjectSlices> objects_slices{object_slices};
+    client->read_objects_slices(namespace_, objects_slices,
+                                proxy_client::consistent_read::F, cntr);
+
+    ALBA_LOG(INFO, msg << " asserting");
+
+    if (fast) {
+      assert(cntr.slow_path == 0);
+      assert(cntr.fast_path == 1);
+    } else {
+      assert(cntr.slow_path == 1);
+      assert(cntr.fast_path == 0);
+    }
+  };
+
+  do_read("initial read after write", true);
+
+  stuff::shell("pkill -e -f tmp/alba_ssd/tmp/alba/asd/");
+  for (auto &s : ssd_asds) {
+    stuff::shell((boost::format("./ocaml/alba.native purge-osd --long-id %s "
+                                "--config tmp/alba_ssd/tmp/arakoon/abm.ini") %
+                  s).str());
+  }
+
+  stuff::shell("find ./tmp/alba_ssd/tmp/alba/asd/*/cfg.json -exec sed -i "
+               "\"s,_00_,_00_bis_,g\" {}");
+
+  int i = 0;
+  for (auto &s : extra_asds) {
+    stuff::shell((boost::format("nohup ./ocaml/alba.native asd-start --config "
+                                "./tmp/alba_ssd/tmp/alba/asd2/%02i/cfg.json >> "
+                                "/home/jan/projects/alba/tmp/alba_ssd/tmp/alba/"
+                                "asd2/%02i/%s.out 2>&1 &") %
+                  i % i %
+                  s).str());
+    i++;
+  }
+
+  // wait for asds to become available
+  sleep(10);
+
+  for (auto &s : extra_asds) {
+    stuff::shell((boost::format("./ocaml/alba.native claim-osd --long-id %s "
+                                "--config tmp/alba_ssd/tmp/arakoon/abm.ini") %
+                  s).str());
+  }
+  stuff::shell("./ocaml/alba.native deliver-messages --config "
+               "tmp/alba_ssd/tmp/arakoon/abm.ini");
+  stuff::shell("./ocaml/alba.native deliver-messages --config "
+               "tmp/alba_ssd/tmp/arakoon/abm.ini");
+  sleep(5);
+
+  do_read("after purge & claim", false);
+  do_read("after purge & claim bis", true);
 }
