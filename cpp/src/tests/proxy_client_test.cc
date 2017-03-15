@@ -740,12 +740,12 @@ TEST(proxy_client, upload_from_buffer){
 
   auto write_barrier = proxy_client::write_barrier::F;
   std::string blob_s("I'm a really large object (37 bytes)");
-  std::vector<char>* blob_p = new std::vector<char>(blob_s.begin(),blob_s.end());
-  auto blob = std::shared_ptr<std::vector<char>>(blob_p);
-
   const auto seq =
       proxy_client::sequences::Sequence()
-      .add_upload("large_object", blob, nullptr);
+      .add_upload("large_object",
+                  (const uint8_t*) blob_s.data(),
+                  blob_s.size(),
+                  nullptr);
 
   client -> apply_sequence(namespace_, write_barrier, seq);
 
