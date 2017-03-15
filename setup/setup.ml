@@ -1443,6 +1443,17 @@ module Deployment = struct
 
   let smoke_test t =
     let _  = proxy_pid t in
+    let out,rc =
+      Shell.cmd_with_capture_and_rc
+        [
+          t.cfg.alba_bin; "list-osds";
+          "--config"; t.abm # config_url |> Url.canonical;
+          "| grep Bad"
+        ]
+    in
+    Printf.printf "(rc=%i) Bad address? %S\n" rc out;
+    assert (out = "");
+    assert (rc = 1); (* no lines *)
     ()
 
   let get_alba_id t =
