@@ -834,17 +834,17 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
 
   int i = 0;
   for (auto &s : extra_asds) {
-    stuff::shell((boost::format("nohup ./ocaml/alba.native asd-start --config "
-                                "./tmp/alba_ssd/tmp/alba/asd2/%02i/cfg.json >> "
-                                "/home/jan/projects/alba/tmp/alba_ssd/tmp/alba/"
-                                "asd2/%02i/%s.out 2>&1 &") %
-                  i % i %
-                  s).str());
+    stuff::shell(
+        (boost::format("nohup ./ocaml/alba.native asd-start --config "
+                       "./tmp/alba_ssd/tmp/alba/asd2/%02i/cfg.json >> "
+                       "./tmp/alba_ssd/tmp/alba/asd2/%02i/%s.out 2>&1 &") %
+         i % i %
+         s).str());
     i++;
   }
 
   // wait for asds to become available
-  sleep(10);
+  sleep(20);
 
   for (auto &s : extra_asds) {
     stuff::shell((boost::format("./ocaml/alba.native claim-osd --long-id %s "
