@@ -731,6 +731,27 @@ TEST(proxy_client, apply_sequence) {
   client->apply_sequence(namespace_, write_barrier, seq);
 }
 
+TEST(proxy_client, upload_from_buffer){
+  config cfg;
+  auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
+
+  std::string namespace_("upload_from_buffer");
+  client->create_namespace(namespace_, boost::none);
+
+  auto write_barrier = proxy_client::write_barrier::F;
+  std::string blob_s("I'm a really large object (37 bytes)");
+  std::vector<char>* blob_p = new std::vector<char>(blob_s.begin(),blob_s.end());
+  auto blob = std::shared_ptr<std::vector<char>>(blob_p);
+
+  const auto seq =
+      proxy_client::sequences::Sequence()
+      .add_upload("large_object", blob, nullptr);
+
+  client -> apply_sequence(namespace_, write_barrier, seq);
+
+
+}
+
 TEST(proxy_client, manifest_with_ctr) {
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);

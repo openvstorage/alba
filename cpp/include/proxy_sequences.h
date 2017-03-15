@@ -118,7 +118,30 @@ public:
   const alba::Checksum *_cs_o;
 };
 
-/* TODO upload object from in memory blob */
+class UpdateUploadObject final : public Update {
+public:
+  UpdateUploadObject(const std::string &name,
+                     const std::shared_ptr<std::vector<char>> data,
+                     const alba::Checksum *cs_o)
+      : _name(name), _data(data), _cs_o(cs_o){};
+
+  void to(llio::message_builder &mb) const override {
+    mb.add_type(2);
+    llio::to(mb, _name);
+    uint32_t len = _data->size();
+    llio::to(mb, len);
+    mb.add_raw(_data->data(), len); // copies
+    if (_cs_o == nullptr) {
+      llio::to<boost::optional<const Checksum *>>(mb, boost::none);
+    } else {
+      llio::to(mb, boost::optional<const Checksum *>(_cs_o));
+    }
+  }
+
+  std::string _name;
+  std::shared_ptr<std::vector<char>> _data;
+  const alba::Checksum *_cs_o;
+};
 
 class UpdateDeleteObject final : public Update {
 public:
@@ -174,6 +197,13 @@ public:
     return *this;
   }
 
+  Sequence &add_upload(const std::string &name,
+                       const std::shared_ptr<std::vector<char>> blob,
+                       const alba::Checksum *cs_o) {
+    _updates.push_back(
+        std::shared_ptr<Update>(new UpdateUploadObject(name, blob, cs_o)));
+    return *this;
+  }
   Sequence &add_delete(const std::string &name) {
     _updates.push_back(std::shared_ptr<Update>(new UpdateDeleteObject(name)));
     return *this;
