@@ -20,6 +20,7 @@ open Prelude
 open Nsm_model
 open Recovery_info
 open Lwt.Infix
+open Lwt_bytes2
 
 let choose_new_devices
       (osd_access : Osd_access_type.t)
@@ -48,7 +49,7 @@ let _upload_missing_fragments
       osd_access
       osds_info_cache'
       ok_fragments
-      all_fragments
+      (all_fragments : SharedBuffer.t list)
       fragments_to_be_repaired
       ~namespace_id
       manifest
@@ -124,7 +125,9 @@ let _upload_missing_fragments
 
   Lwt_list.map_p
     (fun ((fragment_id, checksum), chosen_osd_id) ->
-      let fragment_ba = List.nth_exn all_fragments fragment_id in
+      let fragment_ba = List.nth_exn all_fragments fragment_id
+                        |> SharedBuffer.deref
+      in
       Fragment_helper.pack_fragment
         (Bigstring_slice.wrap_bigstring fragment_ba)
         ~object_id ~chunk_id ~fragment_id

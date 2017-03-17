@@ -76,13 +76,9 @@ let repair_object_generic
         Lwt.finalize
           (fun () -> f data_fragments coding_fragments)
           (fun () ->
-            List.iter
-              Lwt_bytes.unsafe_destroy
-              data_fragments;
-            List.iter
-              Lwt_bytes.unsafe_destroy
-              coding_fragments;
-            Lwt.return ())
+            List.iter SharedBuffer.unregister_usage data_fragments;
+            List.iter SharedBuffer.unregister_usage coding_fragments;
+            Lwt.return_unit)
       in
 
       Maintenance_helper.upload_missing_fragments

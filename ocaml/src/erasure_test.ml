@@ -19,6 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Prelude
 open Lwt.Infix
 open Ctypes_helper
+open Lwt_bytes2
 
 let test_free_cm () =
   let k, m, w = 2, 3, 8 in
@@ -27,6 +28,11 @@ let test_free_cm () =
       (fun () -> Jerasure.reed_sol_vandermonde_coding_matrix ~k ~m ~w)
       ignore
   done
+
+let make_parity len m  =
+  List.map
+    (fun _ -> SharedBuffer.create len)
+    (Int.range 0 m)
 
 let test_isa_l_jerasure () =
   let open Lwt.Infix in
@@ -39,17 +45,13 @@ let test_isa_l_jerasure () =
   let data3 = String.make len 'c' in
   let data4 = String.make len 'd' in
   let data =
-      [ Lwt_bytes.of_string data1;
-        Lwt_bytes.of_string data2;
-        Lwt_bytes.of_string data3;
-        Lwt_bytes.of_string data4;
+      [ SharedBuffer.of_string data1;
+        SharedBuffer.of_string data2;
+        SharedBuffer.of_string data3;
+        SharedBuffer.of_string data4;
       ] in
   let t () =
-    let parity =
-      List.map
-        (fun _ -> Lwt_bytes.create len)
-        (Int.range 0 m)
-    in
+    let parity = make_parity len m  in
     Erasure.encode'
       ~kind:Erasure.Isa_l
       ~k ~m ~w
@@ -57,13 +59,10 @@ let test_isa_l_jerasure () =
       len >>= fun () ->
     Printf.printf
       "parity'=%s\n"
-      ([%show : string list] (List.map Lwt_bytes.to_string parity));
+      ([%show : string list] (List.map SharedBuffer.to_string parity));
 
-    let parity' =
-      List.map
-        (fun _ -> Lwt_bytes.create len)
-        (Int.range 0 m)
-    in
+    let parity' = make_parity len m in
+
     Erasure.encode'
       ~kind:Erasure.Jerasure
       ~k ~m ~w
@@ -72,7 +71,7 @@ let test_isa_l_jerasure () =
 
     Printf.printf
       "parity'=%s\n"
-      ([%show : string list] (List.map Lwt_bytes.to_string parity'));
+      ([%show : string list] (List.map SharedBuffer.to_string parity'));
 
     assert (parity = parity');
 
@@ -91,16 +90,12 @@ let test_encode_decode () =
     let data3 = String.make len 'c' in
     let data4 = String.make len 'd' in
     let data =
-      [ Lwt_bytes.of_string data1;
-        Lwt_bytes.of_string data2;
-        Lwt_bytes.of_string data3;
-        Lwt_bytes.of_string data4;
+      [ SharedBuffer.of_string data1;
+        SharedBuffer.of_string data2;
+        SharedBuffer.of_string data3;
+        SharedBuffer.of_string data4;
       ] in
-    let parity =
-      List.map
-        (fun _ -> Lwt_bytes.create len)
-        (Int.range 0 m)
-    in
+    let parity = make_parity len m in
     Erasure.encode'
       ~kind
       ~k ~m ~w
@@ -108,26 +103,26 @@ let test_encode_decode () =
       len >>= fun () ->
     Printf.printf
       "parity=%s\n"
-      ([%show : string list] (List.map Lwt_bytes.to_string parity));
+      ([%show : string list] (List.map SharedBuffer.to_string parity));
 
     let erasures = [0; k; -1] in
 
-    let data' = Lwt_bytes.create len :: List.tl_exn data in
-    let parity' = Lwt_bytes.create len :: List.tl_exn parity in
+    let data' = SharedBuffer.create len :: List.tl_exn data in
+    let parity' = SharedBuffer.create len :: List.tl_exn parity in
 
     Erasure.decode
       ~kind
       ~k ~m ~w
-      erasures 
+      erasures
       data' parity'
       len >>= fun () ->
 
     Printf.printf
       "data'=%s\n"
-      ([%show : string list] (List.map Lwt_bytes.to_string data'));
+      ([%show : string list] (List.map SharedBuffer.to_string data'));
     Printf.printf
       "parity'=%s\n"
-      ([%show : string list] (List.map Lwt_bytes.to_string parity'));
+      ([%show : string list] (List.map SharedBuffer.to_string parity'));
 
     assert (data' = data);
     assert (parity' = parity);

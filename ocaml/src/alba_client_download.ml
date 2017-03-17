@@ -150,7 +150,7 @@ let download_fragment
   >>= function
   | Some (data, mfs) ->
      E.return (Statistics.FromCache (Unix.gettimeofday () -. t0_fragment),
-               data,
+               SharedBuffer.make_shared data,
                mfs)
   | None ->
      E.with_timing
@@ -195,14 +195,21 @@ let download_fragment
         decompress maybe_decrypted
         >>= E.return)
      >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
-
+     let shared = SharedBuffer.make_shared maybe_decompressed in
      begin
        if cache_on_read && fragment_id < k (* only cache data fragments *)
        then
-         fragment_cache # add
-                        namespace_id
-                        cache_key
-                        (Bigstring_slice.wrap_bigstring maybe_decompressed)
+         Lwt.finalize
+           (fun () ->
+             let () = SharedBuffer.register_sharing shared in
+             fragment_cache # add
+                            namespace_id
+                            cache_key
+                            (Bigstring_slice.wrap_bigstring maybe_decompressed)
+           )
+           (fun () ->
+             let () = SharedBuffer.unregister_usage shared in
+             Lwt.return_unit)
        else
          Lwt.return []
      end >>= fun mfs ->
@@ -216,7 +223,7 @@ let download_fragment
                                      total = Unix.gettimeofday () -. t0_fragment;
                                    }) in
 
-     E.return (t_fragment, maybe_decompressed, mfs)
+     E.return (t_fragment, shared, mfs)
 
 (* consumers of this method are responsible for freeing
  * the returned fragment bigstring
@@ -342,7 +349,7 @@ let download_chunk
 
               if !finito
               then
-                Lwt_bytes.unsafe_destroy fragment_data
+                SharedBuffer.unregister_usage fragment_data
               else
                 begin
                   Hashtbl.add fragments fragment_id r;
@@ -381,14 +388,14 @@ let download_chunk
           chunk_id (Hashtbl.length fragments) k
       in
       Hashtbl.iter
-        (fun _ (_, fragment) -> Lwt_bytes.unsafe_destroy fragment)
+        (fun _ (_, fragment) -> SharedBuffer.unregister_usage fragment)
         fragments;
 
       Error.failwith Error.NotEnoughFragments
   in
   let fragment_size =
     let _, (_, bs) = Hashtbl.choose_first fragments |> Option.get_some in
-    Lwt_bytes.length bs
+    SharedBuffer.length bs
   in
 
   let rec gather_fragments end_fragment acc_fragments erasures cnt = function
@@ -396,10 +403,14 @@ let download_chunk
     | fragment_id ->
        let fragment_bigarray, erasures', cnt' =
          if Hashtbl.mem fragments fragment_id
-         then snd (Hashtbl.find fragments fragment_id), erasures, cnt + 1
-         else Lwt_bytes.create fragment_size, fragment_id :: erasures, cnt in
-       if Lwt_bytes.length fragment_bigarray <> fragment_size
-       then failwith (Printf.sprintf "fragment %i,%i has size %i while %i expected\n%!" chunk_id fragment_id (Lwt_bytes.length fragment_bigarray) fragment_size);
+         then
+           snd (Hashtbl.find fragments fragment_id), erasures, cnt + 1
+         else
+           let sb = SharedBuffer.create fragment_size in
+           sb, fragment_id :: erasures, cnt
+       in
+       if SharedBuffer.length fragment_bigarray <> fragment_size
+       then failwith (Printf.sprintf "fragment %i,%i has size %i while %i expected\n%!" chunk_id fragment_id (SharedBuffer.length fragment_bigarray) fragment_size);
        gather_fragments
          end_fragment
          (fragment_bigarray :: acc_fragments)
