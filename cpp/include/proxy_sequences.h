@@ -120,6 +120,14 @@ public:
 
 class UpdateUploadObject final : public Update {
 public:
+  /* creates an upload from supplied buffer.
+   * The data buffer needs to be kept alive by the user until
+   * Proxy_client::apply_sequence is called.
+   *
+   * performance note:
+   *    when this update is serialized, there will be a copy of the data.
+   *
+   */
   UpdateUploadObject(const std::string &name,
                      const uint8_t* data,
                      const uint32_t size,
