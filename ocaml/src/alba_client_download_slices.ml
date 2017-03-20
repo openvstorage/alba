@@ -57,7 +57,7 @@ let try_get_from_fragments
   =
   let mfs = ref [] in
 
-  let fetch_fragment fragment_id =
+  let fetch_fragment fragment_id : SharedBuffer.t Lwt.t =
 
     let determine_location () =
       if k = 1
@@ -119,7 +119,7 @@ let try_get_from_fragments
         let () = fragment_statistics_cb t_fragment in
         Lwt.return fragment_data)
       (fun exn ->
-        Lwt_bytes.unsafe_destroy fragment_data;
+        SharedBuffer.unregister_usage fragment_data;
         Lwt.fail exn)
   in
 
@@ -206,8 +206,10 @@ let try_get_from_fragments
               fetch_fragment fragment_id >>= fun fragment_data ->
               let () =
                 finalize
-                  (fun () -> blit_from_fragment fragment_data fragment_intersections)
-                  (fun () -> Lwt_bytes.unsafe_destroy fragment_data)
+                  (fun () -> blit_from_fragment
+                               (SharedBuffer.deref fragment_data)
+                               fragment_intersections)
+                  (fun () -> SharedBuffer.unregister_usage fragment_data)
               in
               Lwt.return_unit)
       chunk_intersections
@@ -503,22 +505,19 @@ let handle_failures
       Lwt_list.map_s
         (fun (fetch_chunk, chunk_id, fragment_id_o, chunk_intersections) ->
 
-          fetch_chunk () >>= fun (data_fragments, coding_fragments, _) ->
+          fetch_chunk ()
+          >>= fun (data_fragments , coding_fragments, _) ->
           let () =
             List.iter
               (fun (fragment_id, fragment_slice, fragment_intersections) ->
                 blit_from_fragment
-                  (List.nth_exn data_fragments fragment_id)
+                  (List.nth_exn data_fragments fragment_id |> SharedBuffer.deref)
                   fragment_intersections)
               chunk_intersections
           in
           let cleanup () =
-            List.iter
-              Lwt_bytes.unsafe_destroy
-              coding_fragments;
-            List.iter
-              Lwt_bytes.unsafe_destroy
-              data_fragments
+            List.iter SharedBuffer.unregister_usage coding_fragments;
+            List.iter SharedBuffer.unregister_usage data_fragments
           in
           let res = (chunk_id, fragment_id_o, data_fragments, coding_fragments, cleanup) in
           Lwt.return res

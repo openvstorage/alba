@@ -817,7 +817,7 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
   client->write_object_fs(namespace_, obj_name, "./ocaml/alba.native",
                           proxy_client::allow_overwrite::T, nullptr);
 
-  auto do_read = [&](string msg, bool fast) {
+  auto do_read = [&](string msg) {
     ALBA_LOG(INFO, msg << " start");
 
     alba::statistics::RoraCounter cntr;
@@ -830,18 +830,22 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
     client->read_objects_slices(namespace_, objects_slices,
                                 proxy_client::consistent_read::F, cntr);
 
-    ALBA_LOG(INFO, msg << " asserting");
+    ALBA_LOG(INFO, msg << " slow_path=" << cntr.slow_path
+             << " fast_path=" << cntr.fast_path);
 
-    if (fast) {
-      assert(cntr.slow_path == 0);
-      assert(cntr.fast_path == 1);
-    } else {
-      assert(cntr.slow_path == 1);
-      assert(cntr.fast_path == 0);
-    }
+    cntr.slow_path = 0;
+    cntr.fast_path = 0;
+    sleep(5); // give fragment time to arrive at fragment cache.
+    client->read_objects_slices(namespace_, objects_slices,
+                                proxy_client::consistent_read::F, cntr);
+    ALBA_LOG(INFO, msg << " asserting: slow_path=" << cntr.slow_path
+             << " fast_path=" << cntr.fast_path);
+    EXPECT_EQ(0, cntr.slow_path);
+    EXPECT_EQ(1, cntr.fast_path);
+
   };
 
-  do_read("initial read after write", true);
+  do_read("initial read after write");
 
   stuff::shell("pkill -e -f tmp/alba_ssd/tmp/alba/asd/");
   for (auto &s : ssd_asds) {
@@ -878,6 +882,6 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
                "tmp/alba_ssd/tmp/arakoon/abm.ini");
   sleep(5);
 
-  do_read("after purge & claim", false);
-  do_read("after purge & claim bis", true);
+  do_read("after purge & claim");
+  do_read("after purge & claim bis");
 }

@@ -38,3 +38,27 @@ module Lwt_bytes = struct
     done;
     r
 end
+
+module SharedBuffer = struct
+  type t = { b : Lwt_bytes.t ; mutable ref_count : int}
+
+  let make_shared b = { b ; ref_count = 1}
+
+  let create len = Lwt_bytes.create len |> make_shared
+
+  let length t = Lwt_bytes.length t.b
+
+  let register_sharing t = t.ref_count <- t.ref_count + 1
+  let unregister_usage t =
+    let ref_count' = t.ref_count -1 in
+    let () = t.ref_count <- ref_count' in
+    if ref_count' = 0
+    then
+      Lwt_bytes.unsafe_destroy t.b
+
+  let deref t = t.b
+
+  let of_string s = Lwt_bytes.of_string s |> make_shared
+
+  let to_string t = Lwt_bytes.to_string t.b
+end

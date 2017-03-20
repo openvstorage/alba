@@ -41,6 +41,15 @@ let lwt_bytes_list_to_carray (l : Lwt_bytes.t list) =
        (ptr char)
        (List.map (bigarray_start array1) l))
 
+let shared_buffer_list_to_carray (l : Lwt_bytes2.SharedBuffer.t list) =
+  let open CArray in
+  let open Lwt_bytes2 in
+  start
+    (of_list
+       (ptr char)
+       (List.map (fun b -> SharedBuffer.deref b |> bigarray_start array1) l)
+    )
+
 let with_free = Ctypes_helper.with_free
 let with_free_lwt = Ctypes_helper.with_free_lwt
 
@@ -95,8 +104,8 @@ let encode ?kind ~k ~m ~w data parity size =
   _encode ?kind ~k ~m ~w data_ptrs parity_ptrs size
 
 let encode' ?kind ~k ~m ~w data parity size =
-  let data_ptrs = lwt_bytes_list_to_carray data in
-  let parity_ptrs = lwt_bytes_list_to_carray parity in
+  let data_ptrs = shared_buffer_list_to_carray data in
+  let parity_ptrs = shared_buffer_list_to_carray parity in
   _encode ?kind ~k ~m ~w data_ptrs parity_ptrs size
 
 let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
@@ -112,7 +121,8 @@ let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
             ~k ~m ~w
             cm row_k_ones
             (Ctypes.CArray.start (Ctypes.CArray.of_list Ctypes.int erasures))
-            (lwt_bytes_list_to_carray data) (lwt_bytes_list_to_carray parity)
+            (shared_buffer_list_to_carray data)
+            (shared_buffer_list_to_carray parity)
             size)
     | Isa_l ->
        (* TODO this decode is rather suboptimal. It will
@@ -181,14 +191,14 @@ let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
             ~len:size
             ~k ~rows:k
             ~gftbls
-            ~data_in:(lwt_bytes_list_to_carray data_in)
-            ~data_out:(lwt_bytes_list_to_carray data_out))
+            ~data_in:(shared_buffer_list_to_carray data_in)
+            ~data_out:(shared_buffer_list_to_carray data_out))
          () >>= fun () ->
 
        _encode
          ~kind ~k ~m ~w
-         (lwt_bytes_list_to_carray data)
-         (lwt_bytes_list_to_carray parity)
+         (shared_buffer_list_to_carray data)
+         (shared_buffer_list_to_carray parity)
          size
     end
   else
