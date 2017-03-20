@@ -196,23 +196,25 @@ let download_fragment
         >>= E.return)
      >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
      let shared = SharedBuffer.make_shared maybe_decompressed in
-     begin
+     let () =
        if cache_on_read && fragment_id < k (* only cache data fragments *)
        then
-         Lwt.finalize
-           (fun () ->
-             let () = SharedBuffer.register_sharing shared in
-             fragment_cache # add
-                            namespace_id
-                            cache_key
-                            (Bigstring_slice.wrap_bigstring maybe_decompressed)
-           )
-           (fun () ->
-             let () = SharedBuffer.unregister_usage shared in
-             Lwt.return_unit)
-       else
-         Lwt.return []
-     end >>= fun mfs ->
+         let t () =
+           Lwt.finalize
+             (fun () ->
+               let () = SharedBuffer.register_sharing shared in
+               fragment_cache # add
+                              namespace_id
+                              cache_key
+                              (Bigstring_slice.wrap_shared_buffer shared)
+               >>= fun _mfs ->
+               Lwt.return_unit)
+             (fun () ->
+               let () = SharedBuffer.unregister_usage shared in
+               Lwt.return_unit)
+         in
+         Lwt.async t
+     in
 
      let t_fragment = Statistics.(FromOsd {
                                      osd_id;
@@ -222,7 +224,7 @@ let download_fragment
                                      decompress = t_decompress;
                                      total = Unix.gettimeofday () -. t0_fragment;
                                    }) in
-
+     let mfs = [] in
      E.return (t_fragment, shared, mfs)
 
 (* consumers of this method are responsible for freeing
