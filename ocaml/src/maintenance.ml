@@ -2149,6 +2149,7 @@ class client ?(retry_timeout = 60.)
                          if mfs = []
                          then
                            begin
+                             Lwt_log.info_f "Alba_eviction: deleting namespace %s because it's empty" namespace >>= fun () ->
                              alba_client # delete_namespace ~namespace >>= fun () ->
                              Lwt.return 0.
                            end
