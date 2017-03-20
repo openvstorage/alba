@@ -28,12 +28,17 @@ let from_bigstring bs offset length =
   assert (offset + length <= Lwt_bytes.length bs);
   { bs; offset; length; }
 
+let from_shared_buffer sb offset length =
+  let bs = SharedBuffer.deref sb in
+  assert (offset + length <= Lwt_bytes.length bs);
+  { bs; offset; length; }
+
 let wrap_bigstring bs =
   from_bigstring bs 0 (Lwt_bytes.length bs)
 
-let wrap_shared_buffer b =
-  let open SharedBuffer in
-  from_bigstring b.b 0 (SharedBuffer.length b)
+let wrap_shared_buffer sb =
+  let b = SharedBuffer.deref sb in
+  from_bigstring b 0 (Lwt_bytes.length b)
 
 let create length =
   wrap_bigstring (Lwt_bytes.create length)

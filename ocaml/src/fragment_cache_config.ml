@@ -70,7 +70,7 @@ let rec make_fragment_cache = function
        let open Int64 in
        mul (div max_size 100L) 85L
      in
-     Fragment_cache.safe_create
+     Fragment_cache_fs.safe_create
        path ~max_size ~rocksdb_max_open_files
      >>= fun cache ->
 
