@@ -100,16 +100,22 @@ let get_disk_safety alba_client namespaces dead_osds =
   Lwt_list.map_p
     (fun (namespace, ns_info) ->
       let open Albamgr_protocol.Protocol in
+      let namespace_id = ns_info.Namespace.id in
       Lwt.catch
         (fun () ->
-          let namespace_id = ns_info.Namespace.id in
           get_namespace_safety
             alba_client
             ns_info
             (get_dead_namespace_osds ~namespace_id) >>= fun r ->
           Lwt.return (Some (namespace, r)))
         (function
-         | Error.Albamgr_exn (Error.Namespace_does_not_exist, _) -> Lwt.return_none
+         | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Namespace_id_not_found, _)
+         | Error.Albamgr_exn (Error.Namespace_does_not_exist, _) as exn ->
+            Lwt_log.info_f
+              ~exn
+              "Ignoring an exception while determining disk-safety for namespace (%s,%Li), because it indicates the namespace was deleted"
+              namespace namespace_id >>= fun () ->
+            Lwt.return_none
          | exn -> Lwt.fail exn)
     )
     namespaces
