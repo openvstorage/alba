@@ -22,6 +22,7 @@ open Lwt.Infix
 let do_random_eviction
       (alba_client : Alba_base_client.client)
       ~prefixes =
+  Lwt_log.info_f "Alba_eviction: starting random eviction" >>= fun () ->
   Lwt_list.map_p
     (fun prefix ->
      alba_client # mgr_access # list_all_namespaces_with_prefix prefix)
@@ -100,7 +101,9 @@ let do_random_eviction
   in
   let delete_empty_namespaces () =
     Lwt_list.iter_p
-      (fun namespace -> alba_client # delete_namespace ~namespace)
+      (fun namespace ->
+        Lwt_log.info_f "Alba_eviction: deleting namespace %s because it's empty" namespace >>= fun () ->
+        alba_client # delete_namespace ~namespace)
       empty_namespaces
   in
   Lwt.join
@@ -137,6 +140,7 @@ let should_evict (alba_client : Alba_base_client.client) coordinator =
     false
 
 let lru_collect_some_garbage alba_client redis_client key =
+  Lwt_log.info_f "Alba_eviction: starting redis based lru eviction" >>= fun () ->
   let module R = Redis_lwt.Client in
   R.zrangebyscore
     redis_client
