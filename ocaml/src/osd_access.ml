@@ -858,4 +858,18 @@ class osd_access
            end else
              Lwt.return ()
 
+    val download_fragment_dedup_cache :
+      ((Nsm_model.osd_id * Nsm_model.version) * Osd.namespace_id * string * int * int,
+       (Alba_statistics.Statistics.fragment_fetch * Lwt_bytes2.SharedBuffer.t *
+          (Nsm_model.Manifest.t * int64 * string) list,
+        [ `AsdError of Asd_protocol.Protocol.Error.t
+        | `AsdExn of exn
+        | `ChecksumMismatch
+        | `FragmentMissing ])
+         Prelude.Error.t Lwt.u list)
+        Prelude.Hashtbl.t
+      =
+      Hashtbl.create 3
+
+    method get_download_fragment_dedup_cache = download_fragment_dedup_cache
   end

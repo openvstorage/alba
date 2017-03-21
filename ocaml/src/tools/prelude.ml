@@ -690,6 +690,10 @@ module Hashtbl = struct
     then None
     else _choose ~n:(Random.int len) t
 
+  let find_option t k =
+    try Hashtbl.find t k |> Option.some
+    with Not_found -> None
+
   let map f t =
     Hashtbl.fold
       (fun k v acc ->
@@ -875,6 +879,7 @@ let with_timing_lwt f =
   Lwt.return (t1 -. t0, res)
 
 module Error = struct
+  (* TODO remove this module/type, replace usages with `Result` *)
   type ('a, 'b) t =
     | Ok of 'a
     | Error of 'b
