@@ -109,7 +109,11 @@ let get_disk_safety alba_client namespaces dead_osds =
             (get_dead_namespace_osds ~namespace_id) >>= fun r ->
           Lwt.return (Some (namespace, r)))
         (function
-         | Error.Albamgr_exn (Error.Namespace_does_not_exist, _) -> Lwt.return_none
+         | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Namespace_id_not_found, _)
+         | Error.Albamgr_exn (Error.Namespace_does_not_exist, _) ->
+            (* getting disk-safety might race with namespace deletion.
+             * we want to ignore errors caused by this race. *)
+            Lwt.return_none
          | exn -> Lwt.fail exn)
     )
     namespaces
