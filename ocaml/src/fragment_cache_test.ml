@@ -370,6 +370,84 @@ let test_lookup2_alba () =
     (fun c -> _test_lookup2 (c :> cache))
     "test_lookup2"
 
+let test_x_cache () =
+  run_with_local_fragment_cache
+    1_000_000L
+    (fun c ->
+      let open Prelude in
+      let x = new Fragment_cache.x_cache (c:> cache) in
+      let n = 20 in
+      let item_range = Int.range 1 (n+1) in
+      let shared = Lwt_bytes.create_random 100_000 |> SharedBuffer.make_shared in
+      let blob = Bigstring_slice.wrap_shared_buffer shared in
+      let test_concurrent_add () =
+        Lwt_list.map_p
+          (fun i -> x # add 0L "the_item" blob) item_range
+        >>= fun _ -> Lwt.return_unit
+      in
+
+      let test_concurrent_lookup () =
+        Lwt_list.map_p
+          (fun i -> x # lookup ~timeout:1.0 0L "the_item" ) item_range
+        >>= fun results ->
+        let first,_ = List.hd_exn results |> Option.get_some in
+        let degree = first.SharedBuffer.ref_count in
+        Lwt_log.debug_f "share_degree:%i" degree
+        >>= fun () ->
+        OUnit.assert_equal ~msg:"degree after lookup" n degree (* ? *);
+        List.iter (fun r ->
+            let buf,_ = Option.get_some r in
+            SharedBuffer.unregister_usage buf
+          ) results ;
+        let degree' = first.SharedBuffer.ref_count in
+        Lwt_log.debug_f "share_degree':%i" degree' >>= fun () ->
+        OUnit.assert_equal ~msg:"degree at end" 0 degree';
+        Lwt.return_unit
+      in
+      let test_concurrent_lookup2 () =
+        Lwt_log.debug "test_concurrent_lookup2" >>= fun () ->
+        let key = "concurrent_lookup2" in
+        let lookups () =
+          Lwt_list.iter_p
+            (fun i ->
+              let slices = [   0, 100,Lwt_bytes.create 100, 0;
+                               5000, 100,Lwt_bytes.create 100, 0;
+                           ]
+              in
+              x # lookup2 ~timeout:1.0 0L key slices >>= fun (success, _) ->
+              OUnit.assert_bool "lookup should be successful" success;
+              List.iter
+                (fun (off, len, dest, dest_off) ->
+                  let rec cmp_bytes i =
+                    if i = len
+                    then ()
+                    else
+                      let b0 = Bigstring_slice.get blob (off + i) in
+                      let s0 = Lwt_bytes.get dest (dest_off + i) in
+                      let () = OUnit.assert_equal b0 s0 in
+                      cmp_bytes (i+1)
+                  in
+                  cmp_bytes 0
+                ) slices;
+              Lwt.return_unit
+            ) item_range
+        in
+        let add () =  x # add 0L key blob >>= fun _ -> Lwt.return_unit in
+        Lwt.join
+          [ add () ;
+            Lwt_unix.sleep 0.001 >>= fun () -> lookups ();
+          ]
+        >>= fun () ->
+        Lwt.return_unit
+      in
+      test_concurrent_add () >>= fun () ->
+      test_concurrent_lookup () >>= fun () ->
+      test_concurrent_lookup2 () >>= fun () ->
+      let () = SharedBuffer.unregister_usage shared in
+      Lwt.return_unit
+    )
+    "test_x_cache"
+
 let suite =
 let open OUnit in
 "fragment_cache" >:::[
@@ -382,4 +460,5 @@ let open OUnit in
     "test_long" >:: test_long;
     "test_lookup2_local" >:: test_lookup2_local;
     "test_lookup2_alba" >:: test_lookup2_alba;
+    "test_x_cache" >:: test_x_cache;
   ]

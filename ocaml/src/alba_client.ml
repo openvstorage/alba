@@ -466,7 +466,7 @@ class alba_client (base_client : Alba_base_client.client)
 
 let make_client (mgr_access : Albamgr_access.mgr_access)
                 ~osd_access
-                ?(fragment_cache = (new no_cache :> cache))
+                ?(fragment_cache = new no_cache)
                 ?(manifest_cache_size=100_000)
                 ?(bad_fragment_callback = fun
                     alba_client

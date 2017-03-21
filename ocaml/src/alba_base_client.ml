@@ -29,7 +29,7 @@ open Nsm_host_access
 let default_buffer_pool = Buffer_pool.default_buffer_pool
 
 class client
-    (fragment_cache : cache)
+    (fragment_cache : x_cache)
     ~(mgr_access : Albamgr_client.client)
     ~(osd_access : Osd_access_type.t)
     ~manifest_cache_size

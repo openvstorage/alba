@@ -57,6 +57,11 @@ let extract t offset length =
   let bs = Lwt_bytes.extract t.bs (t.offset + offset) length in
   wrap_bigstring bs
 
+let blit t offset length dest dest_off =
+  Lwt_bytes.blit t.bs (t.offset + offset)
+                 dest dest_off
+                 length
+
 let length t = t.length
 
 let get t pos = Lwt_bytes.get t.bs (t.offset + pos)
