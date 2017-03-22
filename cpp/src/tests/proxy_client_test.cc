@@ -69,12 +69,14 @@ struct config {
       TRANSPORT = alba::transport::Kind::rdma;
     }
     NAMESPACE = "demo";
+    WORKSPACE = env_or_default("WORKSPACE", ".");
   }
 
   string PORT;
   string HOST;
   string NAMESPACE;
   alba::transport::Kind TRANSPORT;
+  string WORKSPACE;
 };
 
 TEST(proxy_client, list_objects) {
@@ -838,33 +840,45 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
     sleep(5); // give fragment time to arrive at fragment cache.
     client->read_objects_slices(namespace_, objects_slices,
                                 proxy_client::consistent_read::F, cntr);
-    ALBA_LOG(INFO, msg << " asserting: slow_path=" << cntr.slow_path
+    ALBA_LOG(INFO, msg << "(2nd) slow_path=" << cntr.slow_path
+             << " fast_path=" << cntr.fast_path);
+
+    cntr.slow_path = 0;
+    cntr.fast_path = 0;
+    sleep(5);
+    int n = 20;
+    for(int i = 0; i < n; ++i){
+        client->read_objects_slices(namespace_, objects_slices,
+                                    proxy_client::consistent_read::F, cntr);
+    }
+
+    ALBA_LOG(INFO, msg << " (final) asserting: slow_path=" << cntr.slow_path
              << " fast_path=" << cntr.fast_path);
     EXPECT_EQ(0, cntr.slow_path);
-    EXPECT_EQ(1, cntr.fast_path);
+    EXPECT_EQ(20,cntr.fast_path);
 
   };
 
   do_read("initial read after write");
-
+  std::string abm_ini = cfg.WORKSPACE + string("/tmp/alba_ssd/tmp/arakoon/abm.ini");
   stuff::shell("pkill -e -f tmp/alba_ssd/tmp/alba/asd/");
   for (auto &s : ssd_asds) {
     stuff::shell((boost::format("./ocaml/alba.native purge-osd --long-id %s "
-                                "--config tmp/alba_ssd/tmp/arakoon/abm.ini") %
-                  s).str());
+                                "--config %s") %
+                  s % abm_ini).str());
   }
 
-  stuff::shell("find ./tmp/alba_ssd/tmp/alba/asd/*/cfg.json -exec sed -i "
-               "\"s,_00_,_00_bis_,g\" {}");
+  stuff::shell((boost::format("find %s/tmp/alba_ssd/tmp/alba/asd/*/cfg.json -exec sed -i " "\"s,_00_,_00_bis_,g\" {}") % cfg.WORKSPACE).str());
 
   int i = 0;
   for (auto &s : extra_asds) {
     stuff::shell(
         (boost::format("nohup ./ocaml/alba.native asd-start --config "
-                       "./tmp/alba_ssd/tmp/alba/asd2/%02i/cfg.json >> "
-                       "./tmp/alba_ssd/tmp/alba/asd2/%02i/%s.out 2>&1 &") %
-         i % i %
-         s).str());
+                       "%s/tmp/alba_ssd/tmp/alba/asd2/%02i/cfg.json >> "
+                       "%s/tmp/alba_ssd/tmp/alba/asd2/%02i/%s.out 2>&1 &")
+         % cfg.WORKSPACE % i
+         % cfg.WORKSPACE % i
+         % s).str());
     i++;
   }
 
@@ -873,13 +887,12 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
 
   for (auto &s : extra_asds) {
     stuff::shell((boost::format("./ocaml/alba.native claim-osd --long-id %s "
-                                "--config tmp/alba_ssd/tmp/arakoon/abm.ini") %
-                  s).str());
+                                "--config %s") %
+                  s % abm_ini).str());
   }
-  stuff::shell("./ocaml/alba.native deliver-messages --config "
-               "tmp/alba_ssd/tmp/arakoon/abm.ini");
-  stuff::shell("./ocaml/alba.native deliver-messages --config "
-               "tmp/alba_ssd/tmp/arakoon/abm.ini");
+  stuff::shell("./ocaml/alba.native deliver-messages --config " + abm_ini);
+  stuff::shell("./ocaml/alba.native deliver-messages --config " + abm_ini);
+
   sleep(5);
 
   do_read("after purge & claim");
