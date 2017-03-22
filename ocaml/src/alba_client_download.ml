@@ -217,14 +217,15 @@ let download_fragment
            Lwt.async t
        in
 
-       let t_fragment = Statistics.(FromOsd {
-                                        osd_id;
-                                        retrieve = t_retrieve;
-                                        verify = t_verify;
-                                        decrypt = t_decrypt;
-                                        decompress = t_decompress;
-                                        total = Unix.gettimeofday () -. t0_fragment;
-                        }) in
+       let t_fragment = Statistics.({
+                                       osd_id;
+                                       retrieve = t_retrieve;
+                                       verify = t_verify;
+                                       decrypt = t_decrypt;
+                                       decompress = t_decompress;
+                                       total = Unix.gettimeofday () -. t0_fragment;
+                        })
+       in
        let mfs = [] in
        E.return (t_fragment, shared, mfs)
      in
@@ -248,16 +249,18 @@ let download_fragment
             let wakers = Hashtbl.find download_fragment_dedup_cache dedup_key in
             Hashtbl.remove download_fragment_dedup_cache dedup_key;
 
-            let () = match r with
-              | Prelude.Error.Error _ -> ()
-              | Prelude.Error.Ok (_, b, _) -> Lwt_bytes2.SharedBuffer.register_sharing ~n:(List.length wakers) b
+            let r' = match r with
+              | Prelude.Error.Error _ as r -> r
+              | Prelude.Error.Ok (t_fragment, b, mfs) ->
+                 Lwt_bytes2.SharedBuffer.register_sharing ~n:(List.length wakers) b;
+                 Prelude.Error.Ok (Statistics.FromOsd (t_fragment, wakers <> []), b, mfs)
             in
 
             List.iter
-              (fun u -> Lwt.wakeup u r)
+              (fun u -> Lwt.wakeup u r')
               wakers;
 
-            Lwt.return r
+            Lwt.return r'
           )
           (fun exn ->
             let wakers = Hashtbl.find download_fragment_dedup_cache dedup_key in

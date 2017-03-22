@@ -56,9 +56,11 @@ module Statistics = struct
     total : duration;
   } [@@deriving show]
 
+  type deduplicated = bool [@@deriving show]
+
   type fragment_fetch =
     | FromCache of duration
-    | FromOsd of fragment_download
+    | FromOsd of (fragment_download * deduplicated)
   [@@deriving show]
 
   type chunk_download = {
