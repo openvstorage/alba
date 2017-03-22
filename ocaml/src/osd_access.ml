@@ -448,7 +448,7 @@ class osd_access
     then Lwt.return ()
     else begin
         Osd_state.disqualify state true;
-        Lwt_log.info_f ~exn "Disqualifying osd %Li" osd_id >>= fun () ->
+        Lwt_log.error_f ~exn "Disqualifying osd %Li" osd_id >>= fun () ->
         (* start loop to get it requalified... *)
         Lwt.async
           (fun () ->
