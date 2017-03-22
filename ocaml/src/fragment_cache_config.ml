@@ -53,8 +53,8 @@ and alba_fragment_cache = {
 
 let rec make_fragment_cache = function
   | None' ->
-     Lwt.return ((new Fragment_cache.no_cache :> Fragment_cache.cache),
-                 false, false)
+     let no_cache = new Fragment_cache.no_cache in
+     Lwt.return (no_cache, false, false)
   | Local { path;
             max_size;
             rocksdb_max_open_files;
@@ -70,10 +70,9 @@ let rec make_fragment_cache = function
        let open Int64 in
        mul (div max_size 100L) 85L
      in
-     Fragment_cache.safe_create
+     Fragment_cache_fs.safe_create
        path ~max_size ~rocksdb_max_open_files
-     >>= fun cache ->
-
+     >>= fun cache  ->
      let rec fragment_cache_disk_usage_t () =
        Lwt.catch
          (fun () ->
@@ -88,8 +87,8 @@ let rec make_fragment_cache = function
        fragment_cache_disk_usage_t ()
      in
      Lwt.ignore_result (fragment_cache_disk_usage_t ());
-
-     Lwt.return ((cache :> Fragment_cache.cache),
+     let x_cache = new Fragment_cache.x_cache (cache :> Fragment_cache.cache) in
+     Lwt.return (x_cache,
                  cache_on_read, cache_on_write)
   | Alba { albamgr_cfg_url;
            bucket_strategy;
@@ -120,7 +119,7 @@ let rec make_fragment_cache = function
                      ~cache_on_read:nested_cache_on_read ~cache_on_write:nested_cache_on_write
                      ~partial_osd_read:(match fragment_cache with
                                         | None' -> true
-                                        | _ -> false)
-     in
-     Lwt.return ((cache :> Fragment_cache.cache),
+                                        | _ -> false) in
+     let x_cache = new Fragment_cache.x_cache (cache:> Fragment_cache.cache) in
+     Lwt.return (x_cache,
                  cache_on_read_, cache_on_write_)

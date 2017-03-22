@@ -32,7 +32,7 @@ let run_with_local_fragment_cache size test test_name =
   let t =
     Lwt.catch
       (fun () ->
-       safe_create dir ~max_size:size ~rocksdb_max_open_files:256
+       Fragment_cache_fs.safe_create dir ~max_size:size ~rocksdb_max_open_files:256
        >>= fun cache ->
        test cache >>= fun () ->
        OUnit.assert_bool "internal integrity check failed" (cache # _check ());
@@ -74,7 +74,7 @@ let run_with_alba_fragment_cache test test_name =
   Test_extra.lwt_run (t ())
 
 let test_1 () =
-  let _inner (cache :Fragment_cache.blob_cache) =
+  let _inner (cache :Fragment_cache_fs.blob_cache) =
     let blob = Bigstring_slice.create_random 4096 in
     let bid = 0L and oid = "0000" in
     cache # add' bid oid blob  (* _add_new_grow *)
@@ -96,16 +96,17 @@ let test_1 () =
            OUnit.assert_bool "should have been found" false;
            Lwt.return ()
         | Some (retrieved, _) ->
-           OUnit.assert_bool "first byte?" (Lwt_bytes.get retrieved 0 = 'z');
-
-           Lwt.return ()
+           let bytes = SharedBuffer.deref retrieved in
+           OUnit.assert_equal ~msg:"first byte?" 'z' (Lwt_bytes.get bytes 0);
+           let () = SharedBuffer.unregister_usage retrieved in
+           Lwt.return_unit
       end >>= fun () ->
     Lwt.return ()
   in
   run_with_local_fragment_cache 10_000L _inner "test_1"
 
 let test_2 () =
-  let _inner (cache: Fragment_cache.blob_cache) =
+  let _inner (cache: Fragment_cache_fs.blob_cache) =
     let blob = Bigstring_slice.create_random 4096 in
     cache # add' 0L "X" blob >>= fun () -> (* _add_new_grow *)
     cache # add' 0L "Y" blob >>= fun () -> (* _add_new_full *)
@@ -123,7 +124,7 @@ let test_2 () =
 
 let test_3 () =
   let blob_size = 4096 in
-  let _inner (cache: Fragment_cache.blob_cache) =
+  let _inner (cache: Fragment_cache_fs.blob_cache) =
     let blob = Bigstring_slice.create_random blob_size in
     cache # add' 0L "X" blob >>= fun () -> (* _add_new_grow *)
     cache # add' 0L "Y" blob >>= fun () -> (* _add_new_grow *)
@@ -161,7 +162,7 @@ let test_3 () =
 
 let test_4 () =
   let blob_size = 4096 in
-  let _inner (cache : Fragment_cache.blob_cache) =
+  let _inner (cache : Fragment_cache_fs.blob_cache) =
     let blob = Bigstring_slice.create_random blob_size in
     let make_oid n = Printf.sprintf "%8i" n in
     let rec loop n =
@@ -188,7 +189,7 @@ let test_4 () =
 
 let test_5 () =
   let blob_size = 4096 in
-  let _inner (cache: Fragment_cache.blob_cache) =
+  let _inner (cache: Fragment_cache_fs.blob_cache) =
     let blob = Bigstring_slice.create_random blob_size in
     let bid0 = 0L
     and bid1 = 1L
@@ -229,7 +230,7 @@ let test_5 () =
 
 
 let test_long () =
-  let _inner (cache :Fragment_cache.blob_cache) =
+  let _inner (cache :Fragment_cache_fs.blob_cache) =
     let bid_to_drop1 = 21L in
     let blob = Bigstring_slice.of_string "blob" in
     cache # add' bid_to_drop1 "oid" blob >>= fun () ->
@@ -295,7 +296,7 @@ let test_remove_local_cache () =
   let root = Printf.sprintf "/tmp/alba/blob_cache_tests/%s" test_name in
   let t () =
     let _ = Sys.command (Printf.sprintf "mkdir -p %s" root) in
-    safe_create root ~max_size ~rocksdb_max_open_files:256
+    Fragment_cache_fs.safe_create root ~max_size ~rocksdb_max_open_files:256
     >>= fun cache ->
     let bid = 0L in
     let value = Bigstring_slice.of_string "value" in
@@ -309,7 +310,7 @@ let test_remove_local_cache () =
 
     cache # close' ~write_marker:false () >>= fun () ->
 
-    safe_create root ~max_size ~rocksdb_max_open_files:256
+    Fragment_cache_fs.safe_create root ~max_size ~rocksdb_max_open_files:256
     >>= fun cache ->
 
     cache # close () >>= fun () ->
@@ -352,9 +353,11 @@ let _test_lookup2 (cache : cache) =
   (* test regular lookup too *)
   cache # lookup ~timeout:5.0 bid key >>= function
   | None -> assert false
-  | Some (r, _) ->
+  | Some (sr, _) ->
+     let r = SharedBuffer.deref sr in
      assert (value = r);
-     Lwt.return ()
+     let () = SharedBuffer.unregister_usage sr in
+     Lwt.return_unit
 
 let test_lookup2_local () =
   run_with_local_fragment_cache
@@ -366,6 +369,84 @@ let test_lookup2_alba () =
   run_with_alba_fragment_cache
     (fun c -> _test_lookup2 (c :> cache))
     "test_lookup2"
+
+let test_x_cache () =
+  run_with_local_fragment_cache
+    1_000_000L
+    (fun c ->
+      let open Prelude in
+      let x = new Fragment_cache.x_cache (c:> cache) in
+      let n = 20 in
+      let item_range = Int.range 1 (n+1) in
+      let shared = Lwt_bytes.create_random 100_000 |> SharedBuffer.make_shared in
+      let blob = Bigstring_slice.wrap_shared_buffer shared in
+      let test_concurrent_add () =
+        Lwt_list.map_p
+          (fun i -> x # add 0L "the_item" blob) item_range
+        >>= fun _ -> Lwt.return_unit
+      in
+
+      let test_concurrent_lookup () =
+        Lwt_list.map_p
+          (fun i -> x # lookup ~timeout:1.0 0L "the_item" ) item_range
+        >>= fun results ->
+        let first,_ = List.hd_exn results |> Option.get_some in
+        let degree = first.SharedBuffer.ref_count in
+        Lwt_log.debug_f "share_degree:%i" degree
+        >>= fun () ->
+        OUnit.assert_equal ~msg:"degree after lookup" n degree (* ? *);
+        List.iter (fun r ->
+            let buf,_ = Option.get_some r in
+            SharedBuffer.unregister_usage buf
+          ) results ;
+        let degree' = first.SharedBuffer.ref_count in
+        Lwt_log.debug_f "share_degree':%i" degree' >>= fun () ->
+        OUnit.assert_equal ~msg:"degree at end" 0 degree';
+        Lwt.return_unit
+      in
+      let test_concurrent_lookup2 () =
+        Lwt_log.debug "test_concurrent_lookup2" >>= fun () ->
+        let key = "concurrent_lookup2" in
+        let lookups () =
+          Lwt_list.iter_p
+            (fun i ->
+              let slices = [   0, 100,Lwt_bytes.create 100, 0;
+                               5000, 100,Lwt_bytes.create 100, 0;
+                           ]
+              in
+              x # lookup2 ~timeout:1.0 0L key slices >>= fun (success, _) ->
+              OUnit.assert_bool "lookup should be successful" success;
+              List.iter
+                (fun (off, len, dest, dest_off) ->
+                  let rec cmp_bytes i =
+                    if i = len
+                    then ()
+                    else
+                      let b0 = Bigstring_slice.get blob (off + i) in
+                      let s0 = Lwt_bytes.get dest (dest_off + i) in
+                      let () = OUnit.assert_equal b0 s0 in
+                      cmp_bytes (i+1)
+                  in
+                  cmp_bytes 0
+                ) slices;
+              Lwt.return_unit
+            ) item_range
+        in
+        let add () =  x # add 0L key blob >>= fun _ -> Lwt.return_unit in
+        Lwt.join
+          [ add () ;
+            Lwt_unix.sleep 0.001 >>= fun () -> lookups ();
+          ]
+        >>= fun () ->
+        Lwt.return_unit
+      in
+      test_concurrent_add () >>= fun () ->
+      test_concurrent_lookup () >>= fun () ->
+      test_concurrent_lookup2 () >>= fun () ->
+      let () = SharedBuffer.unregister_usage shared in
+      Lwt.return_unit
+    )
+    "test_x_cache"
 
 let suite =
 let open OUnit in
@@ -379,4 +460,5 @@ let open OUnit in
     "test_long" >:: test_long;
     "test_lookup2_local" >:: test_lookup2_local;
     "test_lookup2_alba" >:: test_lookup2_alba;
+    "test_x_cache" >:: test_x_cache;
   ]

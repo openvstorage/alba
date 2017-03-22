@@ -151,18 +151,16 @@ let upload_chunk
   in
 
   let __shared_packed_fragments = ref (k+m) in
-  let get_checksum (_, _, (_, _, _, checksum,   _)) = checksum in
-  let get_ctr      (_, _, (_, _, _,        _, ctr)) = ctr in
+  let get_checksum    (_, _, (_ , _, _, checksum,   _)) = checksum in
+  let get_ctr         (_, _, (_ , _, _,        _, ctr)) = ctr in
+  let get_packed_size (_, _, (pf, _, _,        _,   _)) =
+    Lwt_bytes.length pf
+  in
   Lwt.finalize
     (fun () ->
-     let packed_fragment_sizes =
-       List.map
-         (fun (_, _, (packed_fragment, _, _, _, _)) ->
-          Lwt_bytes.length packed_fragment)
-         fragments_with_id
-     in
-     let fragment_checksums = List.map get_checksum fragments_with_id in
-     let fragment_ctrs      = List.map get_ctr fragments_with_id in
+     let packed_fragment_sizes = List.map get_packed_size fragments_with_id in
+     let fragment_checksums    = List.map get_checksum    fragments_with_id in
+     let fragment_ctrs         = List.map get_ctr         fragments_with_id in
 
      let upload_fragment_and_finalize
            ((fragment_id,

@@ -236,9 +236,11 @@ class alba_cache
                   >>= function
                   | None -> Lwt.return_none
                   | Some (data, mf, namespace_id) ->
+                     let open Lwt_bytes2 in
+                     let sb = SharedBuffer.make_shared data in
                      lru_track ~namespace ~object_name;
                      client # get_alba_id >>= fun alba_id ->
-                     Lwt.return (Some (data, [ mf, namespace_id, alba_id ])))
+                     Lwt.return (Some (sb, [ mf, namespace_id, alba_id ])))
             )
             (fun exn ->
               Lwt_log.debug_f ~exn "Exception during alba fragment cache lookup"

@@ -148,10 +148,9 @@ let download_fragment
   fragment_cache # lookup
                  ~timeout:fc_timeout namespace_id cache_key
   >>= function
-  | Some (data, mfs) ->
+  | Some (sb, mfs) ->
      E.return (Statistics.FromCache (Unix.gettimeofday () -. t0_fragment),
-               SharedBuffer.make_shared data,
-               mfs)
+               sb, mfs)
   | None ->
      let download_and_unpack () =
        E.with_timing
