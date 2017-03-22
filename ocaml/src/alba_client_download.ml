@@ -153,79 +153,123 @@ let download_fragment
                SharedBuffer.make_shared data,
                mfs)
   | None ->
-     E.with_timing
-       (fun () ->
-        download_packed_fragment
-          osd_access
-          ~location
-          ~namespace_id
-          ~object_id ~object_name
-          ~chunk_id ~fragment_id)
-     >>== fun (t_retrieve, (osd_id, fragment_data)) ->
+     let download_and_unpack () =
+       E.with_timing
+         (fun () ->
+           download_packed_fragment
+             osd_access
+             ~location
+             ~namespace_id
+             ~object_id ~object_name
+             ~chunk_id ~fragment_id)
+       >>== fun (t_retrieve, (osd_id, fragment_data)) ->
 
-     E.with_timing
-       (fun () ->
-        Fragment_helper.verify fragment_data fragment_checksum
-        >>= E.return)
-     >>== fun (t_verify, checksum_valid) ->
+       E.with_timing
+         (fun () ->
+           Fragment_helper.verify fragment_data fragment_checksum
+           >>= E.return)
+       >>== fun (t_verify, checksum_valid) ->
 
-     (if checksum_valid
-      then E.return ()
-      else
-        begin
-          Lwt_bytes.unsafe_destroy fragment_data;
-          osd_access # get_osd_info ~osd_id >>= fun (_,osd_state,_) ->
-          Osd_state.add_checksum_errors osd_state 1L;
-          E.fail `ChecksumMismatch
-        end) >>== fun () ->
+       (if checksum_valid
+        then E.return ()
+        else
+          begin
+            Lwt_bytes.unsafe_destroy fragment_data;
+            osd_access # get_osd_info ~osd_id >>= fun (_,osd_state,_) ->
+            Osd_state.add_checksum_errors osd_state 1L;
+            E.fail `ChecksumMismatch
+          end) >>== fun () ->
 
-     E.with_timing
-       (fun () ->
-        Fragment_helper.maybe_decrypt
-          encryption
-          ~object_id ~chunk_id ~fragment_id
-          ~ignore_fragment_id:(k=1)
-          fragment_data
-          ~fragment_ctr
-        >>= E.return)
-     >>== fun (t_decrypt, maybe_decrypted) ->
+       E.with_timing
+         (fun () ->
+           Fragment_helper.maybe_decrypt
+             encryption
+             ~object_id ~chunk_id ~fragment_id
+             ~ignore_fragment_id:(k=1)
+             fragment_data
+             ~fragment_ctr
+           >>= E.return)
+       >>== fun (t_decrypt, maybe_decrypted) ->
 
-     E.with_timing
-       (fun () ->
-        decompress maybe_decrypted
-        >>= E.return)
-     >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
-     let shared = SharedBuffer.make_shared maybe_decompressed in
-     let () =
-       if cache_on_read && fragment_id < k (* only cache data fragments *)
-       then
-         let t () =
-           Lwt.finalize
-             (fun () ->
-               let () = SharedBuffer.register_sharing shared in
-               fragment_cache # add
-                              namespace_id
-                              cache_key
-                              (Bigstring_slice.wrap_shared_buffer shared)
-               >>= fun _mfs ->
-               Lwt.return_unit)
-             (fun () ->
-               let () = SharedBuffer.unregister_usage shared in
-               Lwt.return_unit)
-         in
-         Lwt.async t
+       E.with_timing
+         (fun () ->
+           decompress maybe_decrypted
+           >>= E.return)
+       >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
+       let shared = SharedBuffer.make_shared maybe_decompressed in
+       let () =
+         if cache_on_read && fragment_id < k (* only cache data fragments *)
+         then
+           let t () =
+             Lwt.finalize
+               (fun () ->
+                 let () = SharedBuffer.register_sharing shared in
+                 fragment_cache # add
+                                namespace_id
+                                cache_key
+                                (Bigstring_slice.wrap_shared_buffer shared)
+                 >>= fun _mfs ->
+                 Lwt.return_unit)
+               (fun () ->
+                 let () = SharedBuffer.unregister_usage shared in
+                 Lwt.return_unit)
+           in
+           Lwt.async t
+       in
+
+       let t_fragment = Statistics.({
+                                       osd_id;
+                                       retrieve = t_retrieve;
+                                       verify = t_verify;
+                                       decrypt = t_decrypt;
+                                       decompress = t_decompress;
+                                       total = Unix.gettimeofday () -. t0_fragment;
+                        })
+       in
+       let mfs = [] in
+       E.return (t_fragment, shared, mfs)
      in
 
-     let t_fragment = Statistics.(FromOsd {
-                                     osd_id;
-                                     retrieve = t_retrieve;
-                                     verify = t_verify;
-                                     decrypt = t_decrypt;
-                                     decompress = t_decompress;
-                                     total = Unix.gettimeofday () -. t0_fragment;
-                                   }) in
-     let mfs = [] in
-     E.return (t_fragment, shared, mfs)
+     let download_fragment_dedup_cache = osd_access # get_download_fragment_dedup_cache in
+
+     let dedup_key = location, namespace_id, object_id, chunk_id, fragment_id in
+     match Hashtbl.find_option download_fragment_dedup_cache dedup_key with
+     | Some us ->
+        let t, u = Lwt.wait () in
+        Hashtbl.replace download_fragment_dedup_cache dedup_key (u::us);
+        t
+     | None ->
+        Hashtbl.add
+          download_fragment_dedup_cache
+          dedup_key
+          [];
+        Lwt.catch
+          (fun () ->
+            download_and_unpack () >>= fun r ->
+            let wakers = Hashtbl.find download_fragment_dedup_cache dedup_key in
+            Hashtbl.remove download_fragment_dedup_cache dedup_key;
+
+            let r' = match r with
+              | Prelude.Error.Error _ as r -> r
+              | Prelude.Error.Ok (t_fragment, b, mfs) ->
+                 Lwt_bytes2.SharedBuffer.register_sharing ~n:(List.length wakers) b;
+                 Prelude.Error.Ok (Statistics.FromOsd (t_fragment, wakers <> []), b, mfs)
+            in
+
+            List.iter
+              (fun u -> Lwt.wakeup u r')
+              wakers;
+
+            Lwt.return r'
+          )
+          (fun exn ->
+            let wakers = Hashtbl.find download_fragment_dedup_cache dedup_key in
+            Hashtbl.remove download_fragment_dedup_cache dedup_key;
+            List.iter
+              (fun u -> Lwt.wakeup_exn u exn)
+              wakers;
+            Lwt.fail exn
+          )
 
 (* consumers of this method are responsible for freeing
  * the returned fragment bigstring

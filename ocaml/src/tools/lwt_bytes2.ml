@@ -48,7 +48,7 @@ module SharedBuffer = struct
 
   let length t = Lwt_bytes.length t.b
 
-  let register_sharing t = t.ref_count <- t.ref_count + 1
+  let register_sharing ?(n=1) t = t.ref_count <- t.ref_count + n
   let unregister_usage t =
     let ref_count' = t.ref_count -1 in
     let () = t.ref_count <- ref_count' in

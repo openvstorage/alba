@@ -2521,6 +2521,54 @@ let test_upload_epilogue () =
 
     )
 
+let test_deduplicate_fragment_fetch () =
+  test_with_alba_client
+    (fun alba_client ->
+      let test_name = "test_deduplicate_fragment_fetch" in
+      let namespace = test_name in
+      let object_name = test_name in
+
+      alba_client # create_namespace ~preset_name:None ~namespace () >>= fun namespace_id ->
+
+      alba_client # upload_object_from_bytes
+                  ~namespace
+                  ~object_name
+                  ~object_data:(Lwt_bytes.of_string "cucu")
+                  ~epilogue_delay:None
+                  ~checksum_o:None
+                  ~allow_overwrite:Nsm_model.NoPrevious >>= fun _ ->
+
+      let get_download_stats () =
+        alba_client # download_object_generic'
+                    ~namespace_id
+                    ~object_name
+                    ~write_object_data:(fun _ -> Lwt.return (fun _ _ _ -> Lwt.return_unit))
+                    ~consistent_read:false
+                    ~should_cache:true >>= function
+        | None -> assert false
+        | Some (_, s, _) -> Lwt.return s
+      in
+
+      let t1 = get_download_stats () in
+      let t2 = get_download_stats () in
+
+      t1 >>= fun s1 ->
+      t2 >>= fun s2 ->
+
+      let open Alba_statistics.Statistics in
+
+      let deduped_some =
+        List.rev_append s1.chunks s2.chunks
+        |> List.flatmap (fun chunk_stats -> chunk_stats.fragments)
+        |> List.exists (function
+                        | FromOsd (_, true) -> true
+                        | _ -> false)
+      in
+      assert (deduped_some);
+
+      Lwt.return ()
+    )
+
 
 open OUnit
 
@@ -2552,4 +2600,5 @@ let suite = "alba_test" >:::[
     "test_list_objects_by_id" >:: test_list_objects_by_id;
     "test_preset_validation" >:: test_preset_validation;
     "test_upload_epilogue" >:: test_upload_epilogue;
+    "test_deduplicate_fragment_fetch" >:: test_deduplicate_fragment_fetch;
   ]
