@@ -66,23 +66,23 @@ RUN opam init --root=${opam_root} --comp ${ocaml_version}
 
 RUN git clone git://github.com/janestreet/opam-repository.git /janestreet-opam-repo && \
     cd /janestreet-opam-repo && \
-    git checkout b98fd1964856f0c0b022a42ec4e6fc6c7bad2e81
+    git checkout 49a87b492c6d5e8a2c76bb8ac1956aac484c2f40
 RUN eval `${opam_env}` && \
     opam repo --root=${opam_root} -k local add janestreet /janestreet-opam-repo
 
 RUN eval `${opam_env}` && \
     opam update && \
     opam install -y \
-        oasis.0.4.6 \
+        oasis.0.4.8 \
         ocamlfind \
-        omake.0.9.8.6-0.rc1 \
-        ssl.0.5.2 \
+        omake.0.10.2 \
+        ssl.0.5.3 \
         camlbz2 \
         snappy \
         sexplib \
         bisect \
-        lwt.2.5.2 \
-        camltc.0.9.3 \
+        lwt.2.7.0 \
+        camltc.0.9.4 \
         ocplib-endian.1.0 \
         ctypes \
         ctypes-foreign \
@@ -97,7 +97,7 @@ RUN eval `${opam_env}` && \
         tiny_json \
         ppx_deriving \
         ppx_deriving_yojson \
-        core.114.05+21 \
+        core.114.35+03 \
         redis.0.3.3 \
         uri.1.9.2 \
         result \
@@ -158,7 +158,7 @@ RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout 5f2d9f32c3d47e9fc1c02f82d9127c607dfe43b9
+RUN cd arakoon && git pull && git checkout c9ff60275308de0e2f3e160984e7de41985a03db
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
