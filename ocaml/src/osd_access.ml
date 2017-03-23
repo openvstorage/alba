@@ -461,6 +461,8 @@ class osd_access
       end
   in
 
+  let osds_known_by_albamgr = Hashtbl.create 3 in
+
   object(self :# Osd_access_type.t)
 
     val mutable finalizing = false
@@ -754,12 +756,18 @@ class osd_access
                          })
              in
 
-             Lwt.catch
-               (fun () -> mgr_access # add_osd osd_info)
-               (function
-                 | Error.Albamgr_exn (Error.Osd_already_exists, _) -> Lwt.return ()
-                 | exn -> Lwt.fail exn)
+             (if not (Hashtbl.mem osds_known_by_albamgr id)
+              then
+                Lwt.catch
+                  (fun () -> mgr_access # add_osd osd_info)
+                  (function
+                   | Error.Albamgr_exn (Error.Osd_already_exists, _) -> Lwt.return ()
+                   | exn -> Lwt.fail exn)
+              else
+                Lwt.return_unit)
              >>= fun () ->
+
+             Hashtbl.add osds_known_by_albamgr id ();
 
              let get_claim_info () =
                mgr_access # get_osd_by_long_id ~long_id:id >>= fun osd_o ->
