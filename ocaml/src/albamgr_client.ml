@@ -745,7 +745,7 @@ let retrieve_cfg_from_any_node ~tls_config current_config =
 let make_client tls_config buffer_pool (ccfg:Arakoon_client_config.t) =
   let open Client_helper in
   let tls = Client_helper.get_tls_from_ssl_cfg (Option.map Tls.to_ssl_cfg tls_config) in
-  Lwt_log.debug_f "Albamgr_client.make_client :%s " (Arakoon_client_config.show ccfg)
+  Lwt_log.info_f "Albamgr_client.make_client :%s " (Arakoon_client_config.show ccfg)
   >>= fun () ->
   find_master' ?tls ccfg >>= function
   | MasterLookupResult.Found (m , ncfg) ->

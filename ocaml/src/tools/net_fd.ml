@@ -130,7 +130,15 @@ let apply_keepalive tcp_keepalive = function
      Tcp_keepalive.apply fd tcp_keepalive
   | Rsocket fd -> ()
 
-let connect fd address = match fd with
+let show_sockaddr =
+  let open Unix in
+  function
+  | ADDR_UNIX s -> Printf.sprintf "(ADDR_UNIX %s)" s
+  | ADDR_INET (addr, p) -> Printf.sprintf "(ADDR_INET %s,%i)" (string_of_inet_addr addr) p
+
+let connect fd address =
+  Lwt_log.info_f "Connecting to %s" (show_sockaddr address) >>= fun () ->
+  match fd with
   | Plain fd   -> Lwt_unix.connect fd address
   | SSL _ssl ->
      begin
