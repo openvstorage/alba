@@ -285,7 +285,7 @@ let make_server
     Lwt.finalize
       (fun () ->
         Net_fd.setsockopt listening_socket Unix.SO_REUSEADDR true;
-        Net_fd.bind listening_socket socket_address;
+        Net_fd.bind listening_socket socket_address >>= fun () ->
         Net_fd.listen listening_socket 1024;
         inner listening_socket)
       (fun () ->

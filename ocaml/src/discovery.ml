@@ -149,7 +149,7 @@ let discovery seen =
          Lwt_unix.setsockopt socket Unix.SO_REUSEADDR true;
          let sa = Unix.ADDR_INET (Unix.inet_addr_any, 8123) in
          let _ = join_my_mcast (Lwt_unix.unix_file_descr socket) in
-         let () = Lwt_unix.bind socket sa in
+         Lwt_unix.Versioned.bind_2 socket sa >>= fun () ->
          let maxlen = 16384 in
          let buffer = Bytes.create maxlen in
          let () = delay := min_delay in
