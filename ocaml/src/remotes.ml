@@ -53,10 +53,13 @@ module Pool = struct
       in
       Lwt_pool2.create
         size
-        ~check:(fun _ exn ->
-          (* TODO some exns shouldn't invalidate the connection *)
-          Lwt_log.ign_debug_f ~exn "Throwing an abm connection away after an exception";
-          false)
+        ~check:(fun _ ->
+          function
+          | Albamgr_protocol.Protocol.Error.Albamgr_exn _ ->
+             true
+          | exn ->
+             Lwt_log.ign_info_f ~exn "Throwing an abm connection away after an exception";
+             false)
         ~factory
         ~cleanup:(fun (_, closer) -> closer ())
 
@@ -94,9 +97,13 @@ module Pool = struct
           let p =
             Lwt_pool2.create
               t.pool_size
-              ~check:(fun _ exn ->
-                  (* TODO some exns shouldn't invalidate the connection *)
-                  false)
+              ~check:(fun _ ->
+                function
+                | Nsm_model.Err.Nsm_exn _ ->
+                   true
+                | exn ->
+                   Lwt_log.ign_info_f ~exn "Throwing an nsm host connection away after an exception";
+                   false)
               ~factory:(
                 fun () ->
                 t.get_nsm_host_config nsm_host_id
