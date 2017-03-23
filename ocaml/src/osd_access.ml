@@ -154,9 +154,13 @@ module Osd_pool = struct
             let p =
               Lwt_pool2.create
                 t.pool_size
-                ~check:(fun _ exn ->
-                        (* TODO some exns shouldn't invalidate the connection *)
-                        false)
+                ~check:(fun _ ->
+                  function
+                  | Asd_protocol.Protocol.Error.Exn _ ->
+                     true
+                  | exn ->
+                     Lwt_log.ign_info_f ~exn "Throwing an osd connection away after an exception";
+                     false)
                 ~factory
                 ~cleanup:(fun (_, closer) -> closer ())
             in
