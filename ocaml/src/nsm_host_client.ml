@@ -221,7 +221,7 @@ let wrap_around (client:Arakoon_client.client) =
 let make_client tls_config buffer_pool ccfg =
   let tls = Client_helper.get_tls_from_ssl_cfg (Option.map Tls.to_ssl_cfg tls_config) in
   let open Client_helper in
-  Lwt_log.debug_f "Nsm_host_client.make_client" >>= fun () ->
+  Lwt_log.info_f "Nsm_host_client.make_client: %s" ccfg.Arakoon_client_config.cluster_id >>= fun () ->
   find_master' ?tls ccfg >>= function
   | MasterLookupResult.Found (m, ncfg) ->
      let open Arakoon_client_config in

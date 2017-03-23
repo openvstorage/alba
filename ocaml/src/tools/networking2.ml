@@ -22,12 +22,7 @@ let make_address ip port =
   let ha = Unix.inet_addr_of_string ip in
   Unix.ADDR_INET (ha,port)
 
-let string_of_address = function
-  | Unix.ADDR_INET(addr, port) ->
-     Printf.sprintf
-       "ADDR_INET(%s,%i)"
-       (Unix.string_of_inet_addr addr) port
-  | Unix.ADDR_UNIX s -> Printf.sprintf "ADDR_UNIX %s" s
+let string_of_address = Net_fd.string_of_address
 
 exception ConnectTimeout
 
