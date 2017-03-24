@@ -446,24 +446,28 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
        Some (serialize Llio.int32_to 0l)) in
 
   let write_response_ok serializer res =
-    let s =
-      serialize
-        (Llio.pair_to Llio.int32_to serializer)
-        (0l, res) in
-    Plugin_helper.debug_f
-      "NSM host: Writing ok response (4+%i bytes)"
-      (String.length s);
-    Lwt_extra2.llio_output_and_flush oc s
+    Lwt.return
+      (fun () ->
+        let s =
+          serialize
+            (Llio.pair_to Llio.int32_to serializer)
+            (0l, res) in
+        Plugin_helper.debug_f
+          "NSM host: Writing ok response (4+%i bytes)"
+          (String.length s);
+        Lwt_extra2.llio_output_and_flush oc s)
   in
   let write_response_error payload err =
-    Plugin_helper.debug_f "NSM host: Writing error response %s" (Err.show err);
-    let s =
-      serialize
-        (Llio.pair_to
-           Llio.int_to
-           Llio.string_to)
-        (Err.err2int err, payload) in
-    Lwt_extra2.llio_output_and_flush oc s
+    Lwt.return
+      (fun () ->
+        Plugin_helper.debug_f "NSM host: Writing error response %s" (Err.show err);
+        let s =
+          serialize
+            (Llio.pair_to
+               Llio.int_to
+               Llio.string_to)
+            (Err.err2int err, payload) in
+        Lwt_extra2.llio_output_and_flush oc s)
   in
 
 
@@ -491,12 +495,12 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
              let res_serializer = write_query_o session r in
              write_response_ok res_serializer res)
           (function
-            | Err.Nsm_exn (err, payload) -> write_response_error payload err
+           | Err.Nsm_exn (err, payload) ->
+              write_response_error payload err
             | exn ->
               let msg = Printexc.to_string exn in
               Plugin_helper.info_f "unknown exception : %s" msg;
-              write_response_error msg Err.Unknown >>= fun () ->
-              Lwt.fail exn)
+              write_response_error msg Err.Unknown)
       else
         write_response_error "" Err.Inconsistent_read
     | Wrap_u u ->
@@ -537,36 +541,28 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
              write_response_ok serializer res
            end)
         (function
-          | End_of_file as exn -> Lwt.fail exn
-          | Err.Nsm_exn (err, payload) -> write_response_error payload err
-          | exn ->
+         | End_of_file as exn ->
+            Lwt.fail exn
+         | Err.Nsm_exn (err, payload) ->
+            write_response_error payload err
+         | exn ->
             let msg = Printexc.to_string exn in
             Plugin_helper.info_f "unknown exception : %s" msg;
-            write_response_error msg Err.Unknown >>= fun () ->
-            Lwt.fail exn)
+            write_response_error msg Err.Unknown
+        )
   in
   let rec inner (session:Nsm_protocol.Session.t) =
-    Lwt.catch
-      (fun () ->
-       Plugin_helper.debug_f "NSM host: Waiting for new request";
-       Llio.input_string ic >>= fun req_s ->
-       let req_buf = Llio.make_buffer req_s 0 in
-       let tag = Llio.int32_from req_buf in
-       with_timing_lwt
-         (fun () -> do_one session tag req_buf)
-       >>= fun (delta,r) ->
-       Protocol.NSMHStatistics.new_delta statistics tag delta;
-       Lwt.return r
-      )
-      (function
-        | End_of_file as exn -> Lwt.fail exn
-        | Err.Nsm_exn (err, payload) -> write_response_error payload err
-        | exn ->
-          let msg = Printexc.to_string exn in
-          Plugin_helper.info_f "unknown exception : %s" msg;
-          write_response_error msg Err.Unknown >>= fun () ->
-          Lwt.fail exn)
-    >>= fun () ->
+    Plugin_helper.debug_f "NSM host: Waiting for new request";
+    Llio.input_string ic >>= fun req_s ->
+    let req_buf = Llio.make_buffer req_s 0 in
+    let tag = Llio.int32_from req_buf in
+
+    with_timing_lwt
+      (fun () -> do_one session tag req_buf) >>= fun (delta,f_write_response) ->
+    f_write_response () >>= fun () ->
+
+    Protocol.NSMHStatistics.new_delta statistics tag delta;
+
     inner session
   in
   let session = Nsm_protocol.Session.make () in
