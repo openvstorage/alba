@@ -120,6 +120,8 @@ module Pool = struct
                      let r =
                        match t with
                        | Nsm_model.Err.Inconsistent_read -> false
+                       | Nsm_model.Err.Not_master        -> false
+                       | Nsm_model.Err.Unknown           -> false
                        | _ -> true
                      in
                      let () =
