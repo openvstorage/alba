@@ -105,7 +105,7 @@ class client ?(retry_timeout = 60.)
   let throttle_pool =
       let max_size = load in
       Lwt_pool2.create max_size
-                       ~check:(fun _ _ -> false)
+                       ~check:(fun _ _ -> Lwt_pool2.DropThis)
                        ~factory:(fun () -> Lwt.return_unit)
                        ~cleanup:(fun () -> Lwt.return_unit)
   in

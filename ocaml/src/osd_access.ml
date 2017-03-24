@@ -155,12 +155,13 @@ module Osd_pool = struct
               Lwt_pool2.create
                 t.pool_size
                 ~check:(fun _ ->
+                  let open Lwt_pool2 in
                   function
                   | Asd_protocol.Protocol.Error.Exn _ ->
-                     true
+                     Keep
                   | exn ->
                      Lwt_log.ign_info_f ~exn "Throwing an osd connection away after an exception";
-                     false)
+                     DropThis)
                 ~factory
                 ~cleanup:(fun (_, closer) -> closer ())
             in

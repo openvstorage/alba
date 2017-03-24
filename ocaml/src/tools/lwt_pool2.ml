@@ -18,10 +18,15 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Lwt.Infix
 
+type check_result =
+  | Keep
+  | DropThis
+  | DropPool
+
 type 'a t = {
   factory : unit -> 'a Lwt.t;
   cleanup : 'a -> unit Lwt.t;
-  check : 'a -> exn -> bool;
+  check : 'a -> exn -> check_result;
   max_size : int;
   mutable count : int;
   available_items : 'a Queue.t;
@@ -81,18 +86,35 @@ let use t f =
                end) >>= fun () ->
               Lwt.return r)
            (fun exn ->
-              if t.check a exn
-              then
+              match t.check a exn with
+              | Keep ->
                 begin
                   Queue.push a t.available_items;
                   Lwt.fail exn
                 end
-              else
+              | DropThis ->
                 begin
                   t.count <- t.count - 1;
                   t.cleanup a >>= fun () ->
                   Lwt.fail exn
-                end))
+                end
+              | DropPool ->
+                 begin
+                   t.count <- 0;
+                   t.cleanup a >>= fun () ->
+                   let rec loop () =
+                     if Queue.is_empty t.available_items
+                     then Lwt.return_unit
+                     else
+                       let a = Queue.pop t.available_items in
+                       t.cleanup a >>= fun () ->
+                       loop ()
+                   in
+                   loop () >>= fun () ->
+                   Lwt.fail exn
+                 end
+
+      ))
       (fun () ->
          (* wake up the first waiter *)
          (try Lwt.wakeup (Queue.pop t.waiters) ()

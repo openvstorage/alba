@@ -33,7 +33,7 @@ class simple_proxy_pool ~ip ~port ~transport ~size =
   let factory () = Proxy_client.make_client ip port transport in
   let pool = Lwt_pool2.create
                size
-               ~check:(fun _ exn -> false)
+               ~check:(fun _ exn -> Lwt_pool2.DropThis)
                ~factory
                ~cleanup:(fun (_, closer) -> closer ())
   in
