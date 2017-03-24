@@ -17,4 +17,6 @@
     }
     // node_ids of osds that are considered closer, default []
     , "read_preference" : []
+    , "multicast_discover_osds" : false // optional, default true. specifies whether maintenance
+                                        // should listen to asd/kinetic multicast messages or not
 }

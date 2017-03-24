@@ -28,6 +28,9 @@
     // optional, by default we use 99% of the capacity
     , "limit" : 99
 
+    , "multicast" : 10. // optional, default 10. can be disabled by setting to null
+                        // specifies the multicast interval in seconds
+
     // optional:
     , "tls" : {"cert": "path/to/cert",
                "key" : "path/to/key",
