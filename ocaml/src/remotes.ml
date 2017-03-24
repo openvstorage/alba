@@ -55,8 +55,24 @@ module Pool = struct
         size
         ~check:(fun _ ->
           function
-          | Albamgr_protocol.Protocol.Error.Albamgr_exn _ ->
-             true
+          | Albamgr_protocol.Protocol.Error.Albamgr_exn (t,p) ->
+             begin
+               let open Albamgr_protocol.Protocol in
+               let r =
+                 match t with
+                 | Error.Osd_already_exists       -> true
+                 | Error.Osd_already_claimed      -> true
+                 | Error.Namespace_does_not_exist -> true
+                 | Error.Claim_lease_mismatch     -> true
+                 | Error.Inconsistent_read        -> false (* This *)
+                 | _                              -> false
+               in
+               if not r then
+                 Lwt_log.ign_info_f
+                   "Throwing an abm connection away after protocol error: (%s,%s) "
+                   ([%show : Error.t ] t) p;
+               r
+             end
           | exn ->
              Lwt_log.ign_info_f ~exn "Throwing an abm connection away after an exception";
              false)
