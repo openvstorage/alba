@@ -253,6 +253,8 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                  root
                  ~use_fadvise:true
                  ~use_fallocate:true
+    val mutable delay_after_add = (None:float option)
+
     val mutable db =
       KV.create'
         ~db_path
@@ -984,6 +986,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         );
       Lwt.return ()
 
+    method set_delay_after_add maybe_d =
+      delay_after_add <- maybe_d
+
     method add bid oid blob =
 
       Lwt_log.debug_f "add %Lx %S" bid oid >>= fun () ->
@@ -1043,8 +1048,14 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          Lwt_mutex.with_lock _mutex _add
         )
       >>= fun (t, ()) ->
-      Lwt_log.debug_f "add %Lx %S took:%f" bid oid t
-      >>= fun () ->
+      Lwt_log.debug_f "add %Lx %S took:%f" bid oid t >>= fun () ->
+      begin
+        match delay_after_add with
+        | None   -> Lwt.return ()
+        | Some d ->
+           Lwt_log.debug_f "sleeping extra %f" d >>= fun () ->
+           Lwt_unix.sleep d
+      end >>= fun () ->
       Lwt.return []
 
     method drop bid ~global =
