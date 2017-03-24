@@ -38,6 +38,7 @@ module Config = struct
     tcp_keepalive : (Tcp_keepalive2.t [@default Tcp_keepalive2.default]);
     __retry_timeout : (float [@default 60.]);
     read_preference : string list [@default []];
+    multicast_discover_osds : bool [@default true];
     } [@@deriving yojson, show]
 
   let abm_cfg_url_from_cfg (t:t) : Prelude.Url.t =
@@ -129,6 +130,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       and lwt_preemptive_thread_pool_max_size = cfg.lwt_preemptive_thread_pool_max_size
       and tcp_keepalive                       = cfg.tcp_keepalive
       and retry_timeout                       = cfg.__retry_timeout
+      and multicast_discover_osds             = cfg.multicast_discover_osds
       in
       let () = match cfg.chattiness with
         | None -> ()
@@ -212,8 +214,6 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                     (Lwt_extra2.make_fuse_thread ());
                     (maintenance_client # deliver_all_messages
                             ~is_master:(fun () -> coordinator # is_master) ());
-                    (client # get_base_client # discover_osds
-                            ~check_claimed:(fun id -> true) ());
                     (client # osd_access # propagate_osd_info ());
                     (maintenance_client # refresh_maintenance_config);
                     (maintenance_client # do_work ());
@@ -229,6 +229,15 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                     (maintenance_client # cache_eviction ());
                     (maintenance_client # refresh_alba_osd_cfgs);
                   ]
+                in
+
+                let maintenance_threads =
+                  if multicast_discover_osds
+                  then
+                    (client # get_base_client # discover_osds
+                            ~check_claimed:(fun id -> true) ()) :: maintenance_threads
+                  else
+                    maintenance_threads
                 in
 
                 Lwt.pick maintenance_threads
