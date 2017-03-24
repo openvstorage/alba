@@ -115,8 +115,21 @@ module Pool = struct
               t.pool_size
               ~check:(fun _ ->
                 function
-                | Nsm_model.Err.Nsm_exn _ ->
-                   true
+                | Nsm_model.Err.Nsm_exn (t,p) ->
+                   begin
+                     let r =
+                       match t with
+                       | Nsm_model.Err.Inconsistent_read -> false
+                       | _ -> true
+                     in
+                     let () =
+                       if not r then
+                         Lwt_log.ign_info_f
+                           "Throwing nsm host connection away after model error (%s,%s)"
+                           ([%show: Nsm_model.Err.t] t) p
+                     in
+                     r
+                   end
                 | exn ->
                    Lwt_log.ign_info_f ~exn "Throwing an nsm host connection away after an exception";
                    false)
