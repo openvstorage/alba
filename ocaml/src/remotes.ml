@@ -55,8 +55,24 @@ module Pool = struct
         size
         ~check:(fun _ ->
           function
-          | Albamgr_protocol.Protocol.Error.Albamgr_exn _ ->
-             true
+          | Albamgr_protocol.Protocol.Error.Albamgr_exn (t,p) ->
+             begin
+               let open Albamgr_protocol.Protocol in
+               let r =
+                 match t with
+                 | Error.Osd_already_exists       -> true
+                 | Error.Osd_already_claimed      -> true
+                 | Error.Namespace_does_not_exist -> true
+                 | Error.Claim_lease_mismatch     -> true
+                 | Error.Inconsistent_read        -> false (* This *)
+                 | _                              -> false
+               in
+               if not r then
+                 Lwt_log.ign_info_f
+                   "Throwing an abm connection away after protocol error: (%s,%s) "
+                   ([%show : Error.t ] t) p;
+               r
+             end
           | exn ->
              Lwt_log.ign_info_f ~exn "Throwing an abm connection away after an exception";
              false)
@@ -99,8 +115,23 @@ module Pool = struct
               t.pool_size
               ~check:(fun _ ->
                 function
-                | Nsm_model.Err.Nsm_exn _ ->
-                   true
+                | Nsm_model.Err.Nsm_exn (t,p) ->
+                   begin
+                     let r =
+                       match t with
+                       | Nsm_model.Err.Inconsistent_read -> false
+                       | Nsm_model.Err.Not_master        -> false
+                       | Nsm_model.Err.Unknown           -> false
+                       | _ -> true
+                     in
+                     let () =
+                       if not r then
+                         Lwt_log.ign_info_f
+                           "Throwing nsm host connection away after model error (%s,%s)"
+                           ([%show: Nsm_model.Err.t] t) p
+                     in
+                     r
+                   end
                 | exn ->
                    Lwt_log.ign_info_f ~exn "Throwing an nsm host connection away after an exception";
                    false)
