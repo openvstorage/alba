@@ -199,10 +199,10 @@ let download_fragment
        let () =
          if cache_on_read && fragment_id < k (* only cache data fragments *)
          then
+           let () = SharedBuffer.register_sharing shared in
            let t () =
              Lwt.finalize
                (fun () ->
-                 let () = SharedBuffer.register_sharing shared in
                  fragment_cache # add
                                 namespace_id
                                 cache_key
@@ -401,15 +401,14 @@ let download_chunk
                   CountDownLatch.count_down successes;
                 end;
               Lwt.return ())
-            (function
-             | Lwt.Canceled -> Lwt.return ()
-             | exn ->
-                Lwt_log.debug_f
-                  ~exn
-                  "Downloading fragment %i failed"
-                  fragment_id >>= fun () ->
-                CountDownLatch.count_down failures;
-                Lwt.return ()) in
+            (fun exn ->
+              Lwt_log.debug_f
+                ~exn
+                "Downloading fragment %i failed"
+                fragment_id >>= fun () ->
+              CountDownLatch.count_down failures;
+              Lwt.return ())
+        in
         Lwt.ignore_result t;
         t)
       chunk_locations_i'

@@ -840,27 +840,6 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
   let open Protocol in
 
-  let write_response_ok serializer res =
-    let s =
-      serialize
-        (Llio.pair_to Llio.int32_to serializer)
-        (0l, res) in
-    Plugin_helper.debug_f
-      "Albamgr: Writing ok response (4+%i bytes)"
-      (String.length s);
-    Lwt_extra2.llio_output_and_flush oc s
-  in
-  let write_response_error payload err =
-    Plugin_helper.debug_f "Albamgr: Writing error response %s" (Error.show err);
-    let s =
-      serialize
-        (Llio.pair_to
-           Llio.int_to
-           Llio.string_to)
-        (Error.err2int err, payload) in
-    Lwt_extra2.llio_output_and_flush oc s
-  in
-
   let list_namespaces ~first ~finc ~last ~max ~reverse =
     let module KV = WrapReadUserDb(
       struct
@@ -2417,6 +2396,30 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         (fun cur key -> Keys.Work.extract_job_name key)
   in
 
+  let write_response_ok serializer res =
+    Lwt.return
+      (fun () ->
+        let s =
+          serialize
+            (Llio.pair_to Llio.int32_to serializer)
+            (0l, res) in
+        Plugin_helper.debug_f
+          "Albamgr: Writing ok response (4+%i bytes)"
+          (String.length s);
+        Lwt_extra2.llio_output_and_flush oc s)
+  in
+  let write_response_error payload err =
+    Lwt.return
+      (fun () ->
+        Plugin_helper.debug_f "Albamgr: Writing error response %s" (Error.show err);
+        let s =
+          serialize
+            (Llio.pair_to
+               Llio.int_to
+               Llio.string_to)
+            (Error.err2int err, payload) in
+        Lwt_extra2.llio_output_and_flush oc s)
+  in
 
   let do_one statistics () =
     Plugin_helper.debug_f "Albamgr: Waiting for new request";
@@ -2454,9 +2457,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               | Error.Albamgr_exn (err, payload) -> write_response_error payload err
               | exn ->
                 let msg = Printexc.to_string exn in
-                Plugin_helper.info_f "unknown exception : %s" msg;
-                write_response_error msg Error.Unknown >>= fun () ->
-                Lwt.fail exn)
+                Plugin_helper.info_f "Albamgr: unknown exception : %s" msg;
+                write_response_error msg Error.Unknown)
         else
           write_response_error "" Error.Inconsistent_read
       | Wrap_u r -> begin
@@ -2511,22 +2513,14 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               | Error.Albamgr_exn (err, payload) -> write_response_error payload err
               | exn ->
                  let msg = Printexc.to_string exn in
-                 Plugin_helper.info_f "unknown exception : %s" msg;
-                 write_response_error msg Error.Unknown >>= fun () ->
-                 Lwt.fail exn)
+                 Plugin_helper.info_f "Albamgr: unknown exception : %s" msg;
+                 write_response_error msg Error.Unknown)
         end
   in
   let rec inner () =
-    Lwt.catch
-      (do_one statistics)
-      (function
-        | End_of_file as exn -> Lwt.fail exn
-        | Error.Albamgr_exn (e, payload) -> write_response_error payload e
-        | exn ->
-          Plugin_helper.info_f "Albamgr: unknown exception : %s" (Printexc.to_string exn);
-          Lwt.fail exn)
-      >>= fun () ->
-      inner ()
+    do_one statistics () >>= fun f_write_response ->
+    f_write_response () >>= fun () ->
+    inner ()
   in
   inner ()
 
