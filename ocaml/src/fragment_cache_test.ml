@@ -375,6 +375,7 @@ let test_x_cache () =
     1_000_000L
     (fun c ->
       let () = c # set_delay_after_add (Some 0.5) in
+      let () = c # set_delay_after_lookup (Some 0.5) in
       let open Prelude in
       let x = new Fragment_cache.x_cache (c:> cache) in
       let n = 20 in

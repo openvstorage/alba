@@ -254,6 +254,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
                  ~use_fadvise:true
                  ~use_fallocate:true
     val mutable delay_after_add = (None:float option)
+    val mutable delay_after_lookup = (None: float option)
 
     val mutable db =
       KV.create'
@@ -404,33 +405,47 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
          Lwt.return None
         )
 
+    method private _maybe_sleep v =
+      match v with
+      | None -> Lwt.return_unit
+      | Some d -> Lwt_log.debug_f "sleeping extra %f" d >>= fun () ->
+                  Lwt_unix.sleep d
+
     method lookup ~timeout bid oid =
-      Lwt_extra2.with_timeout_default
-        ~msg:"fragment_cache # lookup"
-        timeout None
-        (fun () ->
-          self # _lookup bid oid read_it >>= function
+      let inner_lookup () =
+        self # _lookup bid oid read_it >>= function
           | Some data ->
              let sb = SharedBuffer.make_shared data in
              Lwt.return (Some (sb, []))
           | None ->
-             Lwt.return_none)
+             Lwt.return_none
+      in
+      Lwt_extra2.with_timeout_default
+        ~msg:"fragment_cache # lookup"
+        timeout None
+        (fun () -> inner_lookup () >>= fun r ->
+                   self # _maybe_sleep delay_after_lookup >>= fun () ->
+                   Lwt.return r)
 
     method lookup2 ~timeout bid oid slices =
+      let inner_lookup () =
+        self # _lookup
+             bid oid
+             (fun fd ~len ->
+               Lwt_list.iter_s
+                 (fun (offset, length, target, offset') ->
+                   Lwt_unix.lseek fd offset Lwt_unix.SEEK_SET >>= fun _ ->
+                   Lwt_extra2.read_all_lwt_bytes_exact fd target offset' length)
+                 slices) >>= function
+        | Some () -> Lwt.return (true, [])
+        | None -> Lwt.return (false, [])
+      in
       Lwt_extra2.with_timeout_default
         ~msg:"fragment_cache # lookup2"
         timeout (false,[])
-        (fun () ->
-          self # _lookup
-               bid oid
-               (fun fd ~len ->
-                 Lwt_list.iter_s
-                   (fun (offset, length, target, offset') ->
-                     Lwt_unix.lseek fd offset Lwt_unix.SEEK_SET >>= fun _ ->
-                     Lwt_extra2.read_all_lwt_bytes_exact fd target offset' length)
-                   slices) >>= function
-          | Some () -> Lwt.return (true, [])
-          | None -> Lwt.return (false, [])
+        (fun () -> inner_lookup () >>= fun r ->
+                   self # _maybe_sleep delay_after_lookup >>= fun () ->
+                   Lwt.return r
         )
 
     method _check () =
@@ -989,6 +1004,9 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
     method set_delay_after_add maybe_d =
       delay_after_add <- maybe_d
 
+    method set_delay_after_lookup maybe_d =
+      delay_after_lookup <- maybe_d
+
     method add bid oid blob =
 
       Lwt_log.debug_f "add %Lx %S" bid oid >>= fun () ->
@@ -1049,13 +1067,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
         )
       >>= fun (t, ()) ->
       Lwt_log.debug_f "add %Lx %S took:%f" bid oid t >>= fun () ->
-      begin
-        match delay_after_add with
-        | None   -> Lwt.return ()
-        | Some d ->
-           Lwt_log.debug_f "sleeping extra %f" d >>= fun () ->
-           Lwt_unix.sleep d
-      end >>= fun () ->
+      self # _maybe_sleep delay_after_add >>= fun () ->
       Lwt.return []
 
     method drop bid ~global =
