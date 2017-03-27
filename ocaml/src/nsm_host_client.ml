@@ -30,52 +30,57 @@ class type basic_client = object
 
 end
 
+let _read_response ic tag_name deserializer =
+  Llio.input_string ic >>= fun res_s ->
 
-class single_connection_client (ic, oc) (session:Nsm_protocol.Session.t) =
-  let read_response tag_name deserializer =
-    Llio.input_string ic >>= fun res_s ->
+  Lwt_log.debug_f
+    "nsm host client read response of size %i for %s"
+    (String.length res_s) tag_name
+  >>= fun () ->
 
-    Lwt_log.debug_f
-      "nsm host client read response of size %i for %s"
-      (String.length res_s) tag_name
-    >>= fun () ->
+  let res_buf = Llio.make_buffer res_s 0 in
+  let open Nsm_model in
+  match Llio.int_from res_buf with
+  | 0 ->
+     Lwt.return (deserializer res_buf)
+  | ierr ->
+     let ec = Err.int2err ierr in
+     let payload = Llio.string_from res_buf in
+     let exn = Err.Nsm_exn (ec, payload) in
+     Lwt_log.debug_f
+       "nsm host operation %s failed: %i %s,%s"
+       tag_name
+       ierr (Err.show ec) payload
+     >>= fun () ->
+     Lwt.fail exn
 
-    let res_buf = Llio.make_buffer res_s 0 in
-    let open Nsm_model in
-    match Llio.int_from res_buf with
-    | 0 ->
-      Lwt.return (deserializer res_buf)
-    | ierr ->
-      let ec = Err.int2err ierr in
-      let payload = Llio.string_from res_buf in
-      let exn = Err.Nsm_exn (ec, payload) in
-      Lwt_log.debug_f
-        "nsm host operation %s failed: %i %s,%s"
-        tag_name
-        ierr (Err.show ec) payload
-      >>= fun () ->
-      Lwt.fail exn
-  in
-  let do_request session tag serialize_request deserialize_response =
-    let buf = Buffer.create 20 in
-    Llio.int32_to buf tag;
-    let tag_name = tag_to_name tag in
-    Lwt_log.debug_f "nsm_host_client: %s" tag_name >>= fun () ->
-    serialize_request buf;
-    Lwt_unix.with_timeout
-      10.
-      (fun () ->
-       Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-       read_response tag_name deserialize_response
-      )
-  in
-  object(self :# basic_client)
+let _do_request connection (session:Nsm_protocol.Session.t)
+                tag serialize_request deserialize_response
+  =
+  let buf = Buffer.create 20 in
+  let ic,oc = connection in
+  Llio.int32_to buf tag;
+  let tag_name = tag_to_name tag in
+  Lwt_log.debug_f "nsm_host_client: %s" tag_name >>= fun () ->
+  serialize_request buf;
+  Lwt_unix.with_timeout
+    10.
+    (fun () ->
+      Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+      _read_response ic tag_name deserialize_response
+    )
 
-    method query : type i o.
-      ?consistency : Consistency.t ->
-      (i, o) query -> i -> o Lwt.t =
-      fun ?(consistency = Consistency.Consistent) command req ->
-      do_request
+
+let _query : type i o.
+             ?consistency : Consistency.t ->
+             Llio.lwtic * Llio.lwtoc ->
+             Nsm_protocol.Session.t ->
+             (i, o) query -> i -> o Lwt.t
+  =
+  fun ?(consistency = Consistency.Consistent)
+      connection session command req ->
+      _do_request
+        connection
         session
         (command_to_tag (Wrap_q command))
         (fun buf ->
@@ -83,9 +88,27 @@ class single_connection_client (ic, oc) (session:Nsm_protocol.Session.t) =
          write_query_i command buf req)
         (read_query_o command)
 
+let _get_version connection session =
+  _query connection session ~consistency:Consistency.Consistent GetVersion ()
+
+class single_connection_client
+        (version:Alba_version.version)
+        connection (session:Nsm_protocol.Session.t) =
+
+  object(self )
+
+    method query : type i o.
+      ?consistency : Consistency.t ->
+                     (i, o) query -> i -> o Lwt.t =
+
+      fun ?(consistency = Consistency.Consistent) command req ->
+      _query ~consistency connection session command req
+
+
     method update : type i o. (i, o) update -> i -> o Lwt.t =
       fun command req ->
-      do_request
+      _do_request
+        connection
         session
         (command_to_tag (Wrap_u command))
         (fun buf -> write_update_i session command buf req)
@@ -103,7 +126,8 @@ class single_connection_client (ic, oc) (session:Nsm_protocol.Session.t) =
       in
       Lwt.catch
         (fun () ->
-          do_request
+          _do_request
+            connection
             session
             code
             (fun buf -> ())
@@ -115,6 +139,7 @@ class single_connection_client (ic, oc) (session:Nsm_protocol.Session.t) =
          | Err.Nsm_exn (Err.Unknown_operation, _) -> Lwt.return ()
          | exn -> Lwt.fail exn)
 
+    method version () = version
   end
 
 class client (client : basic_client) =
@@ -180,15 +205,18 @@ class client (client : basic_client) =
 let wrap_around (client:Arakoon_client.client) =
   let hook_name = "nsm_host" in
   let session = Nsm_protocol.Session.make () in
-  client # user_hook hook_name >>= fun (ic, oc) ->
+  client # user_hook hook_name >>= fun connection ->
+  let ic,oc = connection in
   Llio.input_int32 ic
   >>= function
   | 0l -> begin
       Lwt_log.debug_f "user hook %S was found%!" hook_name >>= fun () ->
-      let client = new single_connection_client (ic, oc) session in
-      client # query GetVersion () >>= fun (major,minor,patch, commit) ->
+      _get_version connection session >>= fun version ->
+      let (major,minor,patch, commit) = version in
       Lwt_log.debug_f "version:(%i,%i,%i,%s)" major minor patch commit
       >>= fun () ->
+      let client = new single_connection_client version connection session in
+
       Lwt.catch
         (fun () ->
           let manifest_ser = 2 in

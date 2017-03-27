@@ -126,40 +126,48 @@ module Pool = struct
 
     let use_nsm_host t ~nsm_host_id f =
       let pool =
+        let check (c,_) exn  =
+          let open Lwt_pool2 in
+          let version = c # version () in
+          let keep_or_drop =
+            if Alba_version.lt version (1,3,11, "whatever")
+            then DropThis
+            else Keep
+          in
+          match exn with
+          | Nsm_model.Err.Nsm_exn (t,p) ->
+             begin
+               let r =
+                 match t with
+                 | Nsm_model.Err.Inconsistent_read -> DropPool
+                 | Nsm_model.Err.Not_master        -> DropPool
+                 | Nsm_model.Err.Unknown           -> DropThis
+                 | _ -> keep_or_drop
+               in
+               let () =
+                 match r with
+                 | Keep -> ()
+                 | DropThis ->
+                    Lwt_log.ign_info_f
+                      "Dropping nsm host connection after error (%s,%s)"
+                      ([%show: Nsm_model.Err.t] t) p
+                 | DropPool ->
+                    Lwt_log.ign_info_f
+                      "Dropping nsm host connection pool after error (%s,%s)"
+                      ([%show: Nsm_model.Err.t] t) p
+               in
+               r
+             end
+          | exn ->
+             Lwt_log.ign_info_f ~exn "Dropping nsm host connection after an exception";
+             DropThis
+        in
         try Hashtbl.find t.pools nsm_host_id with
         | Not_found ->
           let p =
             Lwt_pool2.create
               t.pool_size
-              ~check:(fun _ ->
-                let open Lwt_pool2 in
-                function
-                | Nsm_model.Err.Nsm_exn (t,p) ->
-                   begin
-                     let r =
-                       match t with
-                       | Nsm_model.Err.Inconsistent_read -> DropPool
-                       | Nsm_model.Err.Not_master        -> DropPool
-                       | Nsm_model.Err.Unknown           -> DropThis
-                       | _ -> Keep
-                     in
-                     let () =
-                       match r with
-                       | Keep -> ()
-                       | DropThis ->
-                          Lwt_log.ign_info_f
-                            "Dropping nsm host connection after error (%s,%s)"
-                            ([%show: Nsm_model.Err.t] t) p
-                       | DropPool ->
-                          Lwt_log.ign_info_f
-                            "Dropping nsm host connection pool after error (%s,%s)"
-                            ([%show: Nsm_model.Err.t] t) p
-                     in
-                     r
-                   end
-                | exn ->
-                   Lwt_log.ign_info_f ~exn "Dropping nsm host connection after an exception";
-                   DropThis)
+              ~check
               ~factory:(
                 fun () ->
                 t.get_nsm_host_config nsm_host_id
