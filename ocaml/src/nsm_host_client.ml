@@ -92,7 +92,7 @@ let _get_version connection session =
   _query connection session ~consistency:Consistency.Consistent GetVersion ()
 
 class single_connection_client
-        (version:Alba_version.version)
+        (version:Alba_version.t)
         connection (session:Nsm_protocol.Session.t) =
 
   object(self )

@@ -35,6 +35,7 @@ let test_with_kvs_client test_name f =
                             ~alba_id:"long_id"
                             ~prefix ~preset:"default"
                             ~namespace_name_format:1
+                            ~version:Alba_version.summary
         in
         pp # with_client
            ~namespace:""

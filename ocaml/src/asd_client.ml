@@ -24,7 +24,7 @@ open Asd_protocol
 open Protocol
 open Range_query_args
 
-class client (fd:Net_fd.t) id =
+class _inner_client (fd:Net_fd.t) id =
   let () = Net_fd.uncork fd in
 
   let buffer = Lwt_bytes.create (4+5+4096) |> ref in
@@ -385,7 +385,11 @@ let _prologue_response fd lido =
        end
     | err -> Error.from_stream (Int32.to_int err) fd
 
-
+class client (version:Alba_version.t) fd id =
+object(self)
+  inherit _inner_client fd id
+  method version () = version
+end
 
 let make_client ~conn_info (lido:string option)  =
   Networking2.first_connection ~conn_info
@@ -396,7 +400,9 @@ let make_client ~conn_info (lido:string option)  =
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
        Net_fd.write_all' nfd prologue_bytes >>= fun () ->
        _prologue_response nfd lido >>= fun long_id ->
-       let client = new client nfd long_id in
+       let inner = new _inner_client nfd long_id in
+       inner # get_version () >>= fun version ->
+       let client = new client version nfd long_id in
        let closer' () =
          let () = client # dispose () in
          closer()
@@ -467,6 +473,7 @@ object(self :# Osd.key_value_osd)
   method set_full full = asd # set_full full
   method set_slowness slowness = asd # set_slowness slowness
   method get_version = asd # get_version ()
+  method version () = asd # version ()
   method get_long_id = asd_id
   method get_disk_usage = asd # get_disk_usage ()
   method capabilities = asd # capabilities ()

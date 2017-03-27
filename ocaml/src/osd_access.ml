@@ -126,6 +126,8 @@ module Osd_pool = struct
                       ~transport:Net_fd.TCP
                       ~size:pool_size
          in
+         pp # with_client ~namespace:"" (fun c -> c # get_version)
+         >>= fun version ->
          let proxy_osd =
            new Proxy_osd.t
                (pp :> Proxy_osd.proxy_pool)
@@ -133,6 +135,7 @@ module Osd_pool = struct
                ~prefix
                ~preset
                ~namespace_name_format:1
+               ~version
          in
          Lwt.return
            ((function
@@ -151,17 +154,24 @@ module Osd_pool = struct
               >>= fun (_, client, closer) ->
               Lwt.return (client, closer)
             in
+            let check (c,_) exn =
+              let open Lwt_pool2 in
+              let version = c # version () in
+              let keep_or_drop =
+                if Alba_version.lt version (1,3,11, "whatever")
+                then DropThis
+                else Keep
+              in
+              match exn with
+              | Asd_protocol.Protocol.Error.Exn _ -> keep_or_drop
+              | exn ->
+                 Lwt_log.ign_info_f ~exn "Throwing an osd connection away after an exception";
+                 DropThis
+            in
             let p =
               Lwt_pool2.create
                 t.pool_size
-                ~check:(fun _ ->
-                  let open Lwt_pool2 in
-                  function
-                  | Asd_protocol.Protocol.Error.Exn _ ->
-                     Keep
-                  | exn ->
-                     Lwt_log.ign_info_f ~exn "Throwing an osd connection away after an exception";
-                     DropThis)
+                ~check
                 ~factory
                 ~cleanup:(fun (_, closer) -> closer ())
             in

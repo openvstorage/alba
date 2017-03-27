@@ -101,7 +101,7 @@ let make_version _ _ =
   let vals = List.map (fun (n, f, r) -> (n, f (), r)) fields in
   let lines = List.map (fun (n, v, r) -> Printf.sprintf "let %s = %s\n" n (r v)) vals in
   let lines' = lines @ [
-        "type version = int * int * int * string\n";
+        "type t = int * int * int * string\n";
         "let summary = (major,minor,patch, git_revision)\n";
         "let lt (v0_maj, v0_min, v0_patch, _) (v1_maj, v1_min, v1_patch, _) =";
         "  if v0_maj < v1_maj then true else";

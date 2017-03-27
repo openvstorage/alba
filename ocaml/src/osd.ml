@@ -97,7 +97,8 @@ class type key_value_osd =
 
     method set_full : bool -> unit Lwt.t
     method set_slowness : (float * float) option -> unit Lwt.t
-    method get_version : (int * int * int * string) Lwt.t
+    method get_version : Alba_version.t Lwt.t
+    method version : unit -> Alba_version.t
     method get_long_id : string
     method get_disk_usage : (int64 * int64) Lwt.t
     method capabilities : Capabilities.OsdCapabilities.t Lwt.t
@@ -124,7 +125,8 @@ class type osd = object
 
   method set_full : bool -> unit Lwt.t
   method set_slowness : (float * float) option -> unit Lwt.t
-  method get_version : (int * int * int * string) Lwt.t
+  method get_version : Alba_version.t Lwt.t
+  method version : unit -> Alba_version.t
   method get_long_id : string
 
   method get_disk_usage : (int64 * int64) Lwt.t
@@ -277,6 +279,7 @@ object(self :# osd)
   method set_full = key_value_osd # set_full
   method set_slowness = key_value_osd # set_slowness
   method get_version = key_value_osd # get_version
+  method version () = key_value_osd # version ()
   method get_long_id = key_value_osd # get_long_id
   method get_disk_usage = key_value_osd # get_disk_usage
   method capabilities = key_value_osd # capabilities
