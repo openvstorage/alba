@@ -55,7 +55,9 @@ module CountDownLatch = struct
   type t = { mutable needed : int;
              mutable waiters : unit Lwt.u list; }
 
-  let create ~count = { needed = count; waiters = [] }
+  let create ~count =
+    assert (count >= 0);
+    { needed = count; waiters = [] }
 
   let count_down t =
     if t.needed <> 0
