@@ -51,41 +51,49 @@ module Pool = struct
         >>= fun (c, node_name, closer) ->
         Lwt.return (c, closer)
       in
+      let check (client, _) exn =
+        let open Lwt_pool2 in
+        match exn with
+        | Albamgr_protocol.Protocol.Error.Albamgr_exn (t,p) ->
+           begin
+             let open Albamgr_protocol.Protocol in
+             let version = client # version () in
+             let keep_or_drop =
+               if Alba_version.lt version (1,3,11, "whatever")
+               then DropThis
+               else Keep
+             in
+             let r =
+               match t with
+               | Error.Osd_already_exists       -> keep_or_drop
+               | Error.Osd_already_claimed      -> keep_or_drop
+               | Error.Namespace_does_not_exist -> keep_or_drop
+               | Error.Claim_lease_mismatch     -> keep_or_drop
+               | Error.Inconsistent_read        -> DropPool
+               | Error.Not_master               -> DropPool
+               | _                              -> DropThis
+             in
+             let () =
+               match r with
+               | Keep -> ()
+               | DropThis ->
+                  Lwt_log.ign_info_f
+                    "Dropping abm connection after protocol error: (%s,%s) "
+                    ([%show : Error.t ] t) p
+               | DropPool ->
+                  Lwt_log.ign_info_f
+                    "Dropping abm connection pool after error: (%s,%s) "
+                    ([%show : Error.t ] t) p
+             in
+             r
+           end
+        | exn ->
+           Lwt_log.ign_info_f ~exn "Dropping abm connection after an exception";
+           DropThis
+      in
       Lwt_pool2.create
         size
-        ~check:(fun _ ->
-          let open Lwt_pool2 in
-          function
-          | Albamgr_protocol.Protocol.Error.Albamgr_exn (t,p) ->
-             begin
-               let open Albamgr_protocol.Protocol in
-               let r =
-                 match t with
-                 | Error.Osd_already_exists       -> Keep
-                 | Error.Osd_already_claimed      -> Keep
-                 | Error.Namespace_does_not_exist -> Keep
-                 | Error.Claim_lease_mismatch     -> Keep
-                 | Error.Inconsistent_read        -> DropPool
-                 | Error.Not_master               -> DropPool
-                 | _                              -> DropThis
-               in
-               let () =
-                 match r with
-                 | Keep -> ()
-                 | DropThis ->
-                    Lwt_log.ign_info_f
-                      "Dropping abm connection after protocol error: (%s,%s) "
-                      ([%show : Error.t ] t) p
-                 | DropPool ->
-                    Lwt_log.ign_info_f
-                      "Dropping abm connection pool after error: (%s,%s) "
-                      ([%show : Error.t ] t) p
-               in
-               r
-             end
-          | exn ->
-             Lwt_log.ign_info_f ~exn "Dropping abm connection after an exception";
-             DropThis)
+        ~check
         ~factory
         ~cleanup:(fun (_, closer) -> closer ())
 

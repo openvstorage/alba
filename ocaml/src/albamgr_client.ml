@@ -614,49 +614,71 @@ object(self)
 
   end
 
-class single_connection_client (ic, oc) =
-  let read_response deserializer =
-    Llio.input_string ic >>= fun res_s ->
-    let res_buf = Llio.make_buffer res_s 0 in
-    match Llio.int_from res_buf with
-    | 0 ->
-      Lwt.return (deserializer res_buf)
-    | ierr ->
-       let err = Error.int2err ierr in
-       let payload = Llio.string_from res_buf in
-       Lwt_log.debug_f
-         "albamgr operation failed: %i %s:%s"
-         ierr (Error.show err) payload
-      >>= fun () ->
-      Lwt.fail (Error.Albamgr_exn (err, payload))
-  in
-  let do_request tag serialize_request deserialize_response =
-    let buf = Buffer.create 20 in
-    Llio.int32_to buf tag;
-    serialize_request buf;
-    Lwt_log.debug_f "albamgr_client: %s" (tag_to_name tag) >>= fun () ->
-    Lwt_unix.with_timeout
-      10.
-      (fun () ->
-       Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
-       read_response deserialize_response
-      )
-  in
-  object(self :# basic_client)
+let read_response (ic,oc) deserializer =
+  Llio.input_string ic >>= fun res_s ->
+  let res_buf = Llio.make_buffer res_s 0 in
+  match Llio.int_from res_buf with
+  | 0 ->
+     Lwt.return (deserializer res_buf)
+  | ierr ->
+     let err = Error.int2err ierr in
+     let payload = Llio.string_from res_buf in
+     Lwt_log.debug_f
+       "albamgr operation failed: %i %s:%s"
+       ierr (Error.show err) payload
+     >>= fun () ->
+     Lwt.fail (Error.Albamgr_exn (err, payload))
+
+let do_request (ic,oc) tag serialize_request deserialize_response =
+  let buf = Buffer.create 20 in
+  Llio.int32_to buf tag;
+  serialize_request buf;
+  Lwt_log.debug_f "albamgr_client: %s" (tag_to_name tag) >>= fun () ->
+  Lwt_unix.with_timeout
+    10.
+    (fun () ->
+      Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+      read_response (ic,oc) deserialize_response
+    )
+
+
+let _query : 'i 'o.
+             ?consistency:Consistency.t ->
+             Llio.lwtic * Llio.lwtoc ->
+             ('i, 'o) Albamgr_protocol.Protocol.query -> 'i -> 'o Lwt.t =
+  fun ?(consistency = Consistency.Consistent)
+    connection
+    command req ->
+  do_request
+    connection
+    (command_to_tag (Wrap_q command))
+    (fun buf ->
+      Consistency.to_buffer buf consistency;
+      write_query_i command buf req)
+    (read_query_o command)
+
+let _get_version connection =
+  _query connection ~consistency:Consistency.Consistent GetVersion ()
+
+
+
+
+
+class single_connection_client
+        (version: (int * int * int * string))
+        connection =
+  let ic,oc = connection in
+
+  object(self )
     method query : 'i 'o.
            ?consistency:Consistency.t ->
            ('i, 'o) Albamgr_protocol.Protocol.query -> 'i -> 'o Lwt.t =
       fun ?(consistency = Consistency.Consistent) command req ->
-      do_request
-        (command_to_tag (Wrap_q command))
-        (fun buf ->
-         Consistency.to_buffer buf consistency;
-         write_query_i command buf req)
-        (read_query_o command)
+      _query connection ~consistency command req
 
     method update : 'i 'o. ('i, 'o) Albamgr_protocol.Protocol.update -> 'i -> 'o Lwt.t =
       fun command req ->
-      do_request
+      do_request (ic,oc)
         (command_to_tag (Wrap_u command))
         (fun buf -> write_update_i command buf req)
         (read_update_o command)
@@ -673,7 +695,7 @@ class single_connection_client (ic, oc) =
       in
       Lwt.catch
         (fun () ->
-         do_request
+         do_request connection
            code
            (fun buf -> ())
            (fun buf -> ()) >>= fun () ->
@@ -681,18 +703,24 @@ class single_connection_client (ic, oc) =
         (function
          | Error.Albamgr_exn (Error.Unknown_operation, _) -> Lwt.return ()
          | exn -> Lwt.fail exn)
+
+
+    method version () = version
+
   end
 
 let wrap_around
       ~consistency
       (ara_c:Arakoon_client.client)
   =
-  ara_c # user_hook "albamgr" ~consistency >>= fun (ic, oc) ->
+  ara_c # user_hook "albamgr" ~consistency >>= fun connection ->
+  let ic,_ = connection in
   Llio.input_int32 ic
   >>= function
   | 0l -> begin
       Lwt_log.debug_f "user hook was found%!" >>= fun () ->
-      let client = new single_connection_client (ic, oc) in
+      _get_version connection >>= fun version ->
+      let client = new single_connection_client version connection in
       Lwt.return client
     end
   | e ->
@@ -770,7 +798,8 @@ let make_client tls_config buffer_pool (ccfg:Arakoon_client_config.t) =
           Arakoon_remote_client.make_remote_client
             ccfg.cluster_id
             conn >>= fun client ->
-          wrap_around ~consistency:Arakoon_client.Consistent (client:Arakoon_client.client))
+          wrap_around ~consistency:Arakoon_client.Consistent
+                      (client:Arakoon_client.client))
        (fun exn ->
           closer () >>= fun () ->
           Lwt.fail exn)
