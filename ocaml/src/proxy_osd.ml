@@ -33,7 +33,7 @@ class simple_proxy_pool ~ip ~port ~transport ~size =
   let factory () = Proxy_client.make_client ip port transport in
   let pool = Lwt_pool2.create
                size
-               ~check:(fun _ exn -> false)
+               ~check:(fun _ exn -> Lwt_pool2.DropThis)
                ~factory
                ~cleanup:(fun (_, closer) -> closer ())
   in
@@ -257,6 +257,7 @@ class t
         ~alba_id
         ~prefix ~preset
         ~namespace_name_format
+        ~version
   =
   let to_namespace_name = to_namespace_name prefix namespace_name_format in
   let get_kvs ~consistent_read namespace =
@@ -493,6 +494,7 @@ class t
     method set_slowness _ = failwith "set_slowness not implemented"
 
     method get_version = proxy_pool # with_client ~namespace:"" (fun c -> c # get_version)
+    method version () = version
     method get_long_id = alba_id
     method get_disk_usage = Lwt.return
                               (1000L, 2000L)

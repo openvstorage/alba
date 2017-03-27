@@ -209,6 +209,8 @@ class client
     method set_slowness _ = failwith "set_slowness not implemented"
 
     method get_version = Lwt.return Alba_version.summary
+    method version () = Alba_version.summary
+
     method get_long_id = alba_id
     method get_disk_usage = Lwt.return
                               (1000L, 2000L)

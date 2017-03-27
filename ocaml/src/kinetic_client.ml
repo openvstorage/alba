@@ -180,7 +180,7 @@ let translate alba_asserts alba_updates =
 
 
 class kinetic_client cid session conn =
-
+let version = (0,0,1, "todo") in
 object (self :# Osd.key_value_osd)
   method kvs =
     object(self')
@@ -335,7 +335,8 @@ object (self :# Osd.key_value_osd)
         end
     end
 
-    method get_version = Lwt.fail_with "TODO"
+    method get_version = Lwt.return version
+    method version () = version
 
     method set_full full =
       Lwt.fail_with "Kinetic_client: `set_full` is not implemented"

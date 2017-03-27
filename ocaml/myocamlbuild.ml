@@ -100,7 +100,17 @@ let make_version _ _ =
   in
   let vals = List.map (fun (n, f, r) -> (n, f (), r)) fields in
   let lines = List.map (fun (n, v, r) -> Printf.sprintf "let %s = %s\n" n (r v)) vals in
-  let lines' = lines @ ["let summary = (major,minor,patch, git_revision)"] in
+  let lines' = lines @ [
+        "type t = int * int * int * string\n";
+        "let summary = (major,minor,patch, git_revision)\n";
+        "let lt (v0_maj, v0_min, v0_patch, _) (v1_maj, v1_min, v1_patch, _) =";
+        "  if v0_maj < v1_maj then true else";
+        "  if v0_maj > v1_maj then false else";
+        "    if v0_min < v1_min then true else";
+        "    if v0_min > v1_min then false else";
+        "      v0_patch < v1_patch"
+      ]
+  in
   Echo (lines', "alba_version.ml")
 
 let _ = dispatch &
