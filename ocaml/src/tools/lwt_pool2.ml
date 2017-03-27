@@ -94,23 +94,31 @@ let use t f =
                 end
               | DropThis ->
                 begin
-                  t.count <- t.count - 1;
-                  t.cleanup a >>= fun () ->
+                  let () =
+                    t.count <- t.count - 1;
+                    Lwt.async (fun () -> t.cleanup a)
+                  in
                   Lwt.fail exn
                 end
               | DropPool ->
                  begin
-                   t.count <- 0;
-                   t.cleanup a >>= fun () ->
-                   let rec loop () =
-                     if Queue.is_empty t.available_items
-                     then Lwt.return_unit
-                     else
-                       let a = Queue.pop t.available_items in
-                       t.cleanup a >>= fun () ->
-                       loop ()
+                   let () =
+                     t.count <- 0;
+                     let rec pop_all acc =
+                       if Queue.is_empty t.available_items
+                       then acc
+                       else
+                         let a = Queue.pop t.available_items in
+                         pop_all (a::acc)
+                     in
+                     let items = pop_all [] in
+                     Lwt.async
+                       (fun () ->
+                         Lwt_list.iter_p
+                           (fun a -> t.cleanup a)
+                           (a :: items)
+                       )
                    in
-                   loop () >>= fun () ->
                    Lwt.fail exn
                  end
 
