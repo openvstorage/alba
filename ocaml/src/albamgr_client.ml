@@ -658,7 +658,7 @@ let _query : 'i 'o.
     (read_query_o command)
 
 let _get_version connection =
-  _query connection ~consistency:Consistency.Consistent GetVersion ()
+  _query connection ~consistency:Consistency.No_guarantees GetVersion ()
 
 
 

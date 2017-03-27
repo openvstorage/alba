@@ -89,7 +89,7 @@ let _query : type i o.
         (read_query_o command)
 
 let _get_version connection session =
-  _query connection session ~consistency:Consistency.Consistent GetVersion ()
+  _query connection session ~consistency:Consistency.No_guarantees GetVersion ()
 
 class single_connection_client
         (version:Alba_version.t)
