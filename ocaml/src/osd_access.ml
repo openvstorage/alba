@@ -156,14 +156,8 @@ module Osd_pool = struct
             in
             let check (c,_) exn =
               let open Lwt_pool2 in
-              let version = c # version () in
-              let keep_or_drop =
-                if Alba_version.lt version (1,3,11, "whatever")
-                then DropThis
-                else Keep
-              in
               match exn with
-              | Asd_protocol.Protocol.Error.Exn _ -> keep_or_drop
+              | Asd_protocol.Protocol.Error.Exn _ -> Keep
               | exn ->
                  Lwt_log.ign_info_f ~exn "Throwing an osd connection away after an exception";
                  DropThis
