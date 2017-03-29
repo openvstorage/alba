@@ -16,7 +16,7 @@ clean:
 build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin setup
 
 build-alba:
-	cd ocaml && ocamlbuild -j 0 -use-ocamlfind alba.native disk_failure_tests.native
+	cd ocaml && ocamlbuild -j 0 -use-ocamlfind -cflag -runtime-variant -cflag d alba.native disk_failure_tests.native
 
 build-cmxs: build-alba
 	cd ocaml && ocamlbuild -use-ocamlfind \
