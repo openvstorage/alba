@@ -44,13 +44,17 @@ struct proxy_exception : std::exception {
 
 struct RoraConfig {
   RoraConfig(const size_t size = 10000, const bool null_io = false,
-             const int asd_connection_pool_size = 5)
+             const int asd_connection_pool_size = 5,
+             const int asd_partial_read_timeout_milliseconds = 25)
       : manifest_cache_size(size), use_null_io(null_io),
-        asd_connection_pool_size(asd_connection_pool_size) {}
+        asd_connection_pool_size(asd_connection_pool_size),
+        asd_partial_read_timeout_milliseconds(
+            asd_partial_read_timeout_milliseconds) {}
 
   size_t manifest_cache_size;
   bool use_null_io;
   int asd_connection_pool_size;
+  int asd_partial_read_timeout_milliseconds;
 
   // RoraConfig &operator=(const RoraConfig &) = delete;
   // RoraConfig(const RoraConfig&) = delete;

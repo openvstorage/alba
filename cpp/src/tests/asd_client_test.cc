@@ -129,7 +129,7 @@ TEST(asd_access, get_connection) {
   info->port = port;
   info->use_rdma = false;
 
-  alba::asd::ConnectionPool p(std::move(info), 5);
+  alba::asd::ConnectionPool p(std::move(info), 5, std::chrono::seconds(1));
   auto c = p.get_connection();
   EXPECT_EQ(nullptr, c);
 }

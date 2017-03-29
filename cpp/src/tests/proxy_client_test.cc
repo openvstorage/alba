@@ -276,7 +276,8 @@ TEST(proxy_client, test_osd_info2) {
   EXPECT_EQ(result.size(), 2);
   EXPECT_EQ(alba_ids.size(), 2);
 
-  auto &osd_access = alba::proxy_client::OsdAccess::getInstance(5);
+  auto &osd_access =
+      alba::proxy_client::OsdAccess::getInstance(5, std::chrono::seconds(1));
   osd_access.update(*client);
 
   osd_map_t &m = std::get<1>(result[1]);
@@ -552,7 +553,8 @@ TEST(proxy_client, test_partial_read_full_object) {
   read_json(input, pt);
 
   const vector<alba_id_t> &alba_levels =
-      OsdAccess::getInstance(5).get_alba_levels(*client);
+      OsdAccess::getInstance(5, std::chrono::seconds(1))
+          .get_alba_levels(*client);
 
   ManifestCache &mfc = ManifestCache::getInstance();
   auto alba_id = alba_levels[0];
@@ -731,7 +733,7 @@ TEST(proxy_client, apply_sequence) {
   client->apply_sequence(namespace_, write_barrier, seq);
 }
 
-TEST(proxy_client, upload_from_buffer){
+TEST(proxy_client, upload_from_buffer) {
   config cfg;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT);
 
@@ -740,16 +742,10 @@ TEST(proxy_client, upload_from_buffer){
 
   auto write_barrier = proxy_client::write_barrier::F;
   std::string blob_s("I'm a really large object (37 bytes)");
-  const auto seq =
-      proxy_client::sequences::Sequence()
-      .add_upload("large_object",
-                  (const uint8_t*) blob_s.data(),
-                  blob_s.size(),
-                  nullptr);
+  const auto seq = proxy_client::sequences::Sequence().add_upload(
+      "large_object", (const uint8_t *)blob_s.data(), blob_s.size(), nullptr);
 
-  client -> apply_sequence(namespace_, write_barrier, seq);
-
-
+  client->apply_sequence(namespace_, write_barrier, seq);
 }
 
 TEST(proxy_client, manifest_with_ctr) {
@@ -833,7 +829,7 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
                                 proxy_client::consistent_read::F, cntr);
 
     ALBA_LOG(INFO, msg << " slow_path=" << cntr.slow_path
-             << " fast_path=" << cntr.fast_path);
+                       << " fast_path=" << cntr.fast_path);
 
     cntr.slow_path = 0;
     cntr.fast_path = 0;
@@ -841,44 +837,49 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
     client->read_objects_slices(namespace_, objects_slices,
                                 proxy_client::consistent_read::F, cntr);
     ALBA_LOG(INFO, msg << "(2nd) slow_path=" << cntr.slow_path
-             << " fast_path=" << cntr.fast_path);
+                       << " fast_path=" << cntr.fast_path);
 
     cntr.slow_path = 0;
     cntr.fast_path = 0;
     sleep(5);
     int n = 20;
-    for(int i = 0; i < n; ++i){
-        client->read_objects_slices(namespace_, objects_slices,
-                                    proxy_client::consistent_read::F, cntr);
+    for (int i = 0; i < n; ++i) {
+      client->read_objects_slices(namespace_, objects_slices,
+                                  proxy_client::consistent_read::F, cntr);
     }
 
     ALBA_LOG(INFO, msg << " (final) asserting: slow_path=" << cntr.slow_path
-             << " fast_path=" << cntr.fast_path);
+                       << " fast_path=" << cntr.fast_path);
     EXPECT_EQ(0, cntr.slow_path);
-    EXPECT_EQ(20,cntr.fast_path);
+    EXPECT_EQ(20, cntr.fast_path);
 
   };
 
   do_read("initial read after write");
-  std::string abm_ini = cfg.WORKSPACE + string("/tmp/alba_ssd/tmp/arakoon/abm.ini");
+  std::string abm_ini =
+      cfg.WORKSPACE + string("/tmp/alba_ssd/tmp/arakoon/abm.ini");
   stuff::shell("pkill -e -f tmp/alba_ssd/tmp/alba/asd/");
   for (auto &s : ssd_asds) {
     stuff::shell((boost::format("./ocaml/alba.native purge-osd --long-id %s "
                                 "--config %s") %
-                  s % abm_ini).str());
+                  s % abm_ini)
+                     .str());
   }
 
-  stuff::shell((boost::format("find %s/tmp/alba_ssd/tmp/alba/asd/*/cfg.json -exec sed -i " "\"s,_00_,_00_bis_,g\" {}") % cfg.WORKSPACE).str());
+  stuff::shell((boost::format(
+                    "find %s/tmp/alba_ssd/tmp/alba/asd/*/cfg.json -exec sed -i "
+                    "\"s,_00_,_00_bis_,g\" {}") %
+                cfg.WORKSPACE)
+                   .str());
 
   int i = 0;
   for (auto &s : extra_asds) {
     stuff::shell(
         (boost::format("nohup ./ocaml/alba.native asd-start --config "
                        "%s/tmp/alba_ssd/tmp/alba/asd2/%02i/cfg.json >> "
-                       "%s/tmp/alba_ssd/tmp/alba/asd2/%02i/%s.out 2>&1 &")
-         % cfg.WORKSPACE % i
-         % cfg.WORKSPACE % i
-         % s).str());
+                       "%s/tmp/alba_ssd/tmp/alba/asd2/%02i/%s.out 2>&1 &") %
+         cfg.WORKSPACE % i % cfg.WORKSPACE % i %
+         s).str());
     i++;
   }
 
@@ -888,7 +889,8 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
   for (auto &s : extra_asds) {
     stuff::shell((boost::format("./ocaml/alba.native claim-osd --long-id %s "
                                 "--config %s") %
-                  s % abm_ini).str());
+                  s % abm_ini)
+                     .str());
   }
   stuff::shell("./ocaml/alba.native deliver-messages --config " + abm_ini);
   stuff::shell("./ocaml/alba.native deliver-messages --config " + abm_ini);
