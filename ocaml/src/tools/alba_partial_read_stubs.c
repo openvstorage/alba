@@ -30,6 +30,8 @@
 #include <sys/sendfile.h>
 #include <assert.h>
 
+#include <poll.h>
+
 struct job_partial_read {
   /*  used by lwt.
       MUST be the first field of the structure. */
@@ -97,10 +99,24 @@ static void worker_partial_read(struct job_partial_read* job)
         do {
             int sent = sendfile(job -> socket, in_fd, &offset, todo);
             if(sent == -1){
-                job -> result = -1;
-                job -> errno_copy = errno;
-                close(in_fd);
-                return;
+                int ok = -1;
+                if (errno == EAGAIN || errno == EWOULDBLOCK){
+                    struct pollfd pollfd;
+                    pollfd.fd = job->socket;
+                    pollfd.events = POLLOUT;
+                    pollfd.revents = 0;
+                    ok = poll(&pollfd, 1, -1);
+                    if (ok) {
+                        ok = (pollfd.revents == POLLOUT);
+                    }
+                    sent = 0;
+                }
+                if (!ok) {
+                    job -> result = -1;
+                    job -> errno_copy = errno;
+                    close(in_fd);
+                    return;
+                }
             }
             todo = todo - sent;
         } while(todo > 0);
