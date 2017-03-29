@@ -37,7 +37,8 @@ using asd_client::Asd_client;
 
 class ConnectionPool {
 public:
-  ConnectionPool(std::unique_ptr<proxy_protocol::OsdInfo>, size_t);
+  ConnectionPool(std::unique_ptr<proxy_protocol::OsdInfo>, size_t,
+                 std::chrono::steady_clock::duration timeout);
 
   ~ConnectionPool();
 
@@ -65,6 +66,8 @@ private:
   std::unique_ptr<proxy_protocol::OsdInfo> config_;
   size_t capacity_;
 
+  std::chrono::steady_clock::duration timeout_;
+
   std::unique_ptr<Asd_client> make_one_() const;
 
   static std::unique_ptr<Asd_client> pop_(Connections &);
@@ -77,8 +80,9 @@ private:
 
 class ConnectionPools {
 public:
-  ConnectionPool *get_connection_pool(const proxy_protocol::OsdInfo &,
-                                      int connection_pool_size);
+  ConnectionPool *
+  get_connection_pool(const proxy_protocol::OsdInfo &, int connection_pool_size,
+                      std::chrono::steady_clock::duration timeout);
 
   ConnectionPools() = default;
 

@@ -51,7 +51,8 @@ using namespace proxy_protocol;
 
 class OsdAccess {
 public:
-  static OsdAccess &getInstance(int connection_pool_size);
+  static OsdAccess &getInstance(int connection_pool_size,
+                                std::chrono::steady_clock::duration timeout);
 
   OsdAccess(OsdAccess const &) = delete;
   void operator=(OsdAccess const &) = delete;
@@ -64,10 +65,13 @@ public:
   std::vector<alba_id_t> get_alba_levels(Proxy_client &client);
 
 private:
-  OsdAccess(int connection_pool_size)
-      : _connection_pool_size(connection_pool_size), _filling(false) {}
+  OsdAccess(int connection_pool_size,
+            std::chrono::steady_clock::duration timeout)
+      : _connection_pool_size(connection_pool_size), _timeout(timeout),
+        _filling(false) {}
 
   int _connection_pool_size;
+  std::chrono::steady_clock::duration _timeout;
 
   std::mutex _osd_maps_mutex;
   osd_maps_t _osd_maps;

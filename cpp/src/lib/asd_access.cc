@@ -30,8 +30,10 @@ using alba::proxy_protocol::OsdInfo;
 
 #define LOCK() std::lock_guard<std::mutex> lock(_mutex)
 
-ConnectionPool::ConnectionPool(std::unique_ptr<OsdInfo> config, size_t capacity)
-    : config_(std::move(config)), capacity_(capacity), _fast_path_failures(0) {
+ConnectionPool::ConnectionPool(std::unique_ptr<OsdInfo> config, size_t capacity,
+                               std::chrono::steady_clock::duration timeout)
+    : config_(std::move(config)), capacity_(capacity), timeout_(timeout),
+      _fast_path_failures(0) {
   ALBA_LOG(INFO, "Created pool for asd client " << *config_ << ", capacity "
                                                 << capacity);
 }
@@ -55,8 +57,6 @@ void ConnectionPool::clear_(Connections &conns) {
 }
 
 std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
-  auto duration = std::chrono::seconds(5);
-
   alba::transport::Kind t;
   if (config_->use_rdma) {
     t = alba::transport::Kind::rdma;
@@ -65,9 +65,9 @@ std::unique_ptr<Asd_client> ConnectionPool::make_one_() const {
   }
   auto transport = alba::transport::make_transport(
       // TODO try to use other ips too
-      t, config_->ips[0], std::to_string(config_->port), duration);
+      t, config_->ips[0], std::to_string(config_->port), timeout_);
   std::unique_ptr<Asd_client> c(
-      new Asd_client(duration, std::move(transport), config_->long_id));
+      new Asd_client(timeout_, std::move(transport), config_->long_id));
   return c;
 }
 
@@ -151,9 +151,9 @@ void ConnectionPool::capacity(size_t cap) {
                           << capacity());
 }
 
-ConnectionPool *
-ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info,
-                                     int connection_pool_size) {
+ConnectionPool *ConnectionPools::get_connection_pool(
+    const proxy_protocol::OsdInfo &osd_info, int connection_pool_size,
+    std::chrono::steady_clock::duration timeout) {
   if (!osd_info.kind_asd) {
     return nullptr;
   }
@@ -170,7 +170,7 @@ ConnectionPools::get_connection_pool(const proxy_protocol::OsdInfo &osd_info,
         osd_info.long_id,
         std::unique_ptr<ConnectionPool>(new ConnectionPool(
             std::unique_ptr<proxy_protocol::OsdInfo>(osd_info_copy),
-            connection_pool_size)));
+            connection_pool_size, timeout)));
     it = connection_pools_.find(osd_info.long_id);
   }
   return it->second.get();

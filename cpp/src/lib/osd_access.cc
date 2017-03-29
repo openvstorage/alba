@@ -25,8 +25,9 @@
 namespace alba {
 namespace proxy_client {
 
-OsdAccess &OsdAccess::getInstance(int connection_pool_size) {
-  static OsdAccess instance(connection_pool_size);
+OsdAccess &OsdAccess::getInstance(int connection_pool_size,
+                                  std::chrono::steady_clock::duration timeout) {
+  static OsdAccess instance(connection_pool_size, timeout);
   return instance;
 }
 
@@ -115,8 +116,8 @@ int OsdAccess::_read_osd_slices_asd_direct_path(
     ALBA_LOG(WARNING, "have context, but no info?");
     return -1;
   }
-  auto p = asd_connection_pools.get_connection_pool(maybe_ic->first,
-                                                    _connection_pool_size);
+  auto p = asd_connection_pools.get_connection_pool(
+      maybe_ic->first, _connection_pool_size, _timeout);
   if (nullptr == p) {
     return -1;
   }

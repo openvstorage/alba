@@ -112,6 +112,7 @@ private:
   steady_clock::time_point _failure_time;
 
   int _asd_connection_pool_size;
+  std::chrono::steady_clock::duration _asd_partial_read_timeout;
 
   message_builder _fkb;
   string _fragment_key(const namespace_t namespace_id, const string &object_id,

@@ -32,6 +32,8 @@ RoraProxy_client::RoraProxy_client(
     const RoraConfig &rora_config)
     : _delegate(std::move(delegate)), _use_null_io(rora_config.use_null_io),
       _asd_connection_pool_size(rora_config.asd_connection_pool_size),
+      _asd_partial_read_timeout(std::chrono::milliseconds(
+          rora_config.asd_partial_read_timeout_milliseconds)),
       _ser_version(boost::none) {
   ALBA_LOG(INFO, "RoraProxy_client( _asd_connection_pool_size = "
                      << _asd_connection_pool_size << " ...)");
@@ -186,7 +188,8 @@ void RoraProxy_client::_maybe_update_osd_infos(
 
   ALBA_LOG(DEBUG, "RoraProxy_client::_maybe_update_osd_infos(_)");
   bool ok = true;
-  auto &access = OsdAccess::getInstance(_asd_connection_pool_size);
+  auto &access = OsdAccess::getInstance(_asd_connection_pool_size,
+                                        _asd_partial_read_timeout);
   for (auto &item : per_osd) {
     osd_t osd = item.first;
     if (access.osd_is_unknown(osd)) {
@@ -359,7 +362,8 @@ int RoraProxy_client::_short_path(
   if (_use_null_io) {
     return 0;
   } else {
-    return OsdAccess::getInstance(_asd_connection_pool_size)
+    return OsdAccess::getInstance(_asd_connection_pool_size,
+                                  _asd_partial_read_timeout)
         .read_osds_slices(per_osd);
   }
 }
@@ -376,7 +380,8 @@ void RoraProxy_client::_process(std::vector<object_info> &object_infos,
             std::get<2>(object_info).release());
     string alba_id = std::get<1>(object_info);
     if (alba_id == "") {
-      alba_id = OsdAccess::getInstance(_asd_connection_pool_size)
+      alba_id = OsdAccess::getInstance(_asd_connection_pool_size,
+                                       _asd_partial_read_timeout)
                     .get_alba_levels(*this)
                     .at(0);
     }
@@ -419,7 +424,8 @@ void RoraProxy_client::read_objects_slices(
   } else {
     std::vector<std::pair<byte *, Location>> short_path;
     std::vector<ObjectSlices> via_proxy;
-    auto alba_levels = OsdAccess::getInstance(_asd_connection_pool_size)
+    auto alba_levels = OsdAccess::getInstance(_asd_connection_pool_size,
+                                              _asd_partial_read_timeout)
                            .get_alba_levels(*this);
     for (auto &object_slices : slices) {
       auto locations =
