@@ -85,6 +85,10 @@ let major_minor_patch_modifier () =
   in
   Printf.sprintf "(%d, %d, %d, %s)" major minor patch modif_s
 
+let is_alba_test =
+  try Sys.getenv "ALBA_TEST" |> String.lowercase = "true"
+  with Not_found -> false
+
 let make_version _ _ =
   let stringify v = Printf.sprintf "%S" v
   and id = fun x -> x in
@@ -96,6 +100,7 @@ let make_version _ _ =
                ; "model_name", run_cmd "cat /proc/cpuinfo | grep 'model name' | head -n 1 | cut -d ':' -f 2 | xargs", stringify
                ; "(major, minor, patch, modifier)", major_minor_patch_modifier, id
                ; "dependencies", list_dependencies, stringify
+               ; "is_alba_test", (fun () ->string_of_bool is_alba_test), id
                ]
   in
   let vals = List.map (fun (n, f, r) -> (n, f (), r)) fields in
@@ -113,11 +118,29 @@ let make_version _ _ =
   in
   Echo (lines', "alba_version.ml")
 
+
+let cppo_files = ["src/tools/lwt_bytes2.ml.cppo";]
+
 let _ = dispatch &
           function
           | After_rules ->
              rule "alba_version.ml" ~prod:"alba_version.ml" make_version;
-
+             rule "process .ccpo files with cppo"
+                  ~prod:"%.ml"
+                  ~dep:"%.ml.cppo"
+                  begin fun env _build ->
+                  let cppo = env "%.ml.cppo" in
+                  let ml = env "%.ml" in
+                  let seq =
+                    if is_alba_test
+                    then
+                      S[A"cppo"; A"-D";A"ALBA_TEST 1";A cppo;A"-o";A ml]
+                    else
+                      S[A"cppo"; A cppo;A"-o";A ml]
+                  in
+                  Cmd seq
+                  end;
+             dep ["compile"; "ocaml"] cppo_files;
              flag["ocaml";"compile"]
                  (S[
                     A"-w";A "+1";
@@ -151,7 +174,8 @@ let _ = dispatch &
                   "src/other/posix_stubs.o";
                   "src/tools/alba_partial_read_stubs.o";
                  ];
-
+             dep ["src/tools/lwt_bytes2.ml";]
+                 ["src/tools/lwt_bytes2.cppo.ml"];
              flag ["c";"compile"]
                   (S[A"-ccopt"; A"-Wall";
                      A"-ccopt"; A"-Wextra";

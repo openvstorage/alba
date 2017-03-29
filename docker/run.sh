@@ -16,6 +16,7 @@ fi
 
 docker run -i $TTY --privileged=true -e UID=${UID} \
        --env ALBA_TLS --env ALBA_USE_ETCD --env ALBA_USE_GIOEXECFILE \
+       --env ALBA_TEST \
        --env arakoon_url --env alba_url \
        --env TRAVIS \
        -v ${PWD}:/home/jenkins/alba \

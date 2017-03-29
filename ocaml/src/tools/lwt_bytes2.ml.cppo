@@ -39,7 +39,7 @@ module Lwt_bytes = struct
     r
 end
 
-module SharedBuffer = struct
+module ProdSharedBuffer = struct
   type t = { b : Lwt_bytes.t ; mutable ref_count : int}
 
   let make_shared b = { b ; ref_count = 1}
@@ -62,3 +62,56 @@ module SharedBuffer = struct
 
   let to_string t = Lwt_bytes.to_string t.b
 end
+
+
+module TestSharedBuffer = struct
+  type t = { b : Lwt_bytes.t ;
+             mutable ref_count : int;
+             from_where: string;
+           }
+
+  let when_collected b =
+    if b.ref_count != 0
+    then
+      let () = Printf.printf
+                 "HIERE!\nref_count=%i size=%i from_where:%s\n%!"
+                 b.ref_count
+                 (Lwt_bytes.length b.b)
+                 (b.from_where)
+      in
+      exit (-1)
+
+  let make_shared b =
+    let from_where =
+      Printexc.get_callstack 40 |> Printexc.raw_backtrace_to_string
+    in
+    let r = { b ; ref_count = 1; from_where} in
+    let () = Gc.finalise when_collected r in
+
+    r
+
+  let create len = Lwt_bytes.create len |> make_shared
+
+  let length t = Lwt_bytes.length t.b
+
+  let register_sharing ?(n=1) t = t.ref_count <- t.ref_count + n
+  let unregister_usage t =
+    let ref_count' = t.ref_count -1 in
+    let () = t.ref_count <- ref_count' in
+    if ref_count' = 0
+    then
+      Lwt_bytes.unsafe_destroy t.b
+
+  let deref t = t.b
+
+  let of_string s = Lwt_bytes.of_string s |> make_shared
+
+  let to_string t = Lwt_bytes.to_string t.b
+end
+
+module SharedBuffer =
+#ifdef ALBA_TEST
+TestSharedBuffer
+#else
+ProdSharedBuffer
+#endif
