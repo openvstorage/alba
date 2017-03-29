@@ -845,6 +845,7 @@ let unit_tests produce_xml alba_cfg_url tls_config only_test =
   let suite = Test.suite in
   Printf.printf "%s\n" ([%show: string array] Sys.argv);
   let results = _my_run only_test suite produce_xml in
+  let () = Gc.full_major() in
   let rc = rc_of results in
   exit rc
 

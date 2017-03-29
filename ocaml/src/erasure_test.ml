@@ -34,6 +34,11 @@ let make_parity len m  =
     (fun _ -> SharedBuffer.create len)
     (Int.range 0 m)
 
+let show_fragments p =
+  List.map SharedBuffer.to_string p |> [%show : string list]
+
+let cmp_fragments a b = show_fragments a = show_fragments b
+
 let test_isa_l_jerasure () =
   let open Lwt.Infix in
   let k = 4 in
@@ -52,14 +57,13 @@ let test_isa_l_jerasure () =
       ] in
   let t () =
     let parity = make_parity len m  in
+
     Erasure.encode'
       ~kind:Erasure.Isa_l
       ~k ~m ~w
       data parity
       len >>= fun () ->
-    Printf.printf
-      "parity'=%s\n"
-      ([%show : string list] (List.map SharedBuffer.to_string parity));
+    Lwt_io.printlf "parity'=%s" (show_fragments parity) >>= fun () ->
 
     let parity' = make_parity len m in
 
@@ -69,12 +73,20 @@ let test_isa_l_jerasure () =
       data parity'
       len >>= fun () ->
 
-    Printf.printf
-      "parity'=%s\n"
-      ([%show : string list] (List.map SharedBuffer.to_string parity'));
-
-    assert (parity = parity');
-
+    Lwt_io.printlf "parity'=%s%!" (show_fragments parity') >>= fun () ->
+    let () =
+      Prelude.finalize
+        (fun () -> OUnit.assert_equal
+                     parity parity'
+                     ~printer:show_fragments
+                     ~cmp:cmp_fragments
+        )
+        (fun () ->
+          List.iter SharedBuffer.unregister_usage data;
+          List.iter SharedBuffer.unregister_usage parity';
+          List.iter SharedBuffer.unregister_usage parity;
+        )
+    in
     Lwt.return ()
   in
   Lwt_main.run (t ())
@@ -101,14 +113,13 @@ let test_encode_decode () =
       ~k ~m ~w
       data parity
       len >>= fun () ->
-    Printf.printf
-      "parity=%s\n"
-      ([%show : string list] (List.map SharedBuffer.to_string parity));
+    Lwt_io.printlf "parity=%s" (show_fragments parity) >>= fun () ->
 
     let erasures = [0; k; -1] in
-
-    let data' = SharedBuffer.create len :: List.tl_exn data in
-    let parity' = SharedBuffer.create len :: List.tl_exn parity in
+    let d0 = SharedBuffer.create len in
+    let data' = d0 :: List.tl_exn data in
+    let p0 = SharedBuffer.create len in
+    let parity' = p0 :: List.tl_exn parity in
 
     Erasure.decode
       ~kind
@@ -117,16 +128,24 @@ let test_encode_decode () =
       data' parity'
       len >>= fun () ->
 
-    Printf.printf
-      "data'=%s\n"
-      ([%show : string list] (List.map SharedBuffer.to_string data'));
-    Printf.printf
-      "parity'=%s\n"
-      ([%show : string list] (List.map SharedBuffer.to_string parity'));
+    Lwt_io.printlf "data'=%s"     (show_fragments data') >>= fun () ->
+    Lwt_io.printlf "parity'=%s%!" (show_fragments parity') >>= fun ()->
 
-    assert (data' = data);
-    assert (parity' = parity);
-
+    let () =
+      Prelude.finalize
+        (fun () ->
+          OUnit.assert_equal data' data
+                             ~printer:show_fragments
+                             ~cmp:cmp_fragments;
+          OUnit.assert_equal parity' parity
+                             ~printer:show_fragments
+                             ~cmp:cmp_fragments)
+        (fun () ->
+          List.iter SharedBuffer.unregister_usage data;
+          List.iter SharedBuffer.unregister_usage parity;
+          List.iter SharedBuffer.unregister_usage [d0;p0];
+        )
+    in
     Lwt.return ()
   in
   Lwt_main.run

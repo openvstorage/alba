@@ -141,9 +141,11 @@ let test_3 () =
          begin
            cache # lookup ~timeout:5.0 0L k >>= fun r ->
            match r, is_some with
-           | None  , false  -> Lwt.return ()
-           | Some _, true   -> Lwt.return ()
-           | _,_ -> OUnit.assert_bool k false; Lwt.return ()
+           | None  , false  -> Lwt.return_unit
+           | Some (retrieved,_), true   ->
+              let () = SharedBuffer.unregister_usage retrieved in
+              Lwt.return_unit
+           | _,_ -> OUnit.assert_bool k false; Lwt.return_unit
          end >>= fun () ->
          loop rest
     in
@@ -271,8 +273,10 @@ let test_long () =
             let oid = Random.int 100 |> Printf.sprintf "%04x" in
             cache # lookup ~timeout:5.0 bid oid
             >>= function
-            | None ->    loop (found    ) (missed + 1) (i-1)
-            | Some _  -> loop (found + 1)     missed   (i-1)
+            | None -> loop (found    ) (missed + 1) (i-1)
+            | Some (r,_)  ->
+               let () = SharedBuffer.unregister_usage r in
+               loop (found + 1)     missed   (i-1)
 
           end
       in
