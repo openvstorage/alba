@@ -878,7 +878,9 @@ let () =
         Printf.printf "machine: %S\n" machine;
         Printf.printf "model_name: %S\n" model_name;
         Printf.printf "compiler_version: %S\n" compiler_version;
+        Printf.printf "is_alba_test: %b\n" is_alba_test;
         Printf.printf "dependencies:\n%s\n" dependencies
+
       end
   in
   let help_cmd =
