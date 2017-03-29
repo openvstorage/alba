@@ -312,6 +312,7 @@ void _generic_partial_read_test(
     std::string &file, bool clear_before_read) {
 
   boost::optional<alba::proxy_client::RoraConfig> rora_config{100};
+  rora_config->asd_partial_read_timeout_milliseconds = 1000;
   auto client = make_proxy_client(cfg.HOST, cfg.PORT, TIMEOUT, cfg.TRANSPORT,
                                   rora_config);
   boost::optional<std::string> preset{"preset_rora"};

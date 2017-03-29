@@ -90,10 +90,10 @@ void TCP_transport::write_exact(const char *buf, int len) {
   auto handler = [&](const boost::system::error_code &x,
                      std::size_t len2) -> void {
     ec = x;
-    if (len2 < len) {
-      ALBA_LOG(INFO, "tcp_transport: len2<len (" << len2 << "<" << len
-                                                 << ") aka EOF (" << ec.message()
-                                                 << ")");
+    if (!ec && len2 < len) {
+      ALBA_LOG(INFO, "tcp_transport write_exact: len2<len ("
+                         << len2 << "<" << len << ") aka EOF (" << ec.message()
+                         << ")");
       ec = boost::asio::error::eof;
     }
   };
@@ -116,7 +116,15 @@ void TCP_transport::read_exact(char *buf, int len) {
   boost::system::error_code ec = boost::asio::error::would_block;
 
   auto handler = [&](const boost::system::error_code &x,
-                     std::size_t /* len*/) -> void { ec = x; };
+                     std::size_t len2) -> void {
+    ec = x;
+    if (!ec && len2 < len) {
+      ALBA_LOG(INFO, "tcp_transport read_exact: len2<len ("
+                         << len2 << "<" << len << ") aka EOF (" << ec.message()
+                         << ")");
+      ec = boost::asio::error::eof;
+    }
+  };
   boost::asio::async_read(_socket, buffer, handler);
 
   // Block until the asynchronous operation has completed.
