@@ -18,6 +18,7 @@
 
 #include <string.h>
 #include <errno.h>
+#include <stdbool.h>
 #include "lwt_unix.h"
 #include <sys/stat.h>
 
@@ -99,17 +100,17 @@ static void worker_partial_read(struct job_partial_read* job)
         do {
             int sent = sendfile(job -> socket, in_fd, &offset, todo);
             if(sent == -1){
-                int ok = -1;
+                bool ok = false;
                 if (errno == EAGAIN || errno == EWOULDBLOCK){
                     struct pollfd pollfd;
                     pollfd.fd = job->socket;
                     pollfd.events = POLLOUT;
                     pollfd.revents = 0;
-                    ok = poll(&pollfd, 1, -1);
-                    if (ok == 1) {
+                    int r = poll(&pollfd, 1, -1);
+                    if (r == 1) {
                         ok = (pollfd.revents == POLLOUT);
                     } else {
-                        ok = 0;
+                        ok = false;
                     }
                     sent = 0;
                 }
