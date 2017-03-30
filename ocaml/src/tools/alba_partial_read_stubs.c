@@ -109,7 +109,7 @@ static void worker_partial_read(struct job_partial_read* job)
                     if (ok == 1) {
                         ok = (pollfd.revents == POLLOUT);
                     } else {
-                        ok = false;
+                        ok = 0;
                     }
                     sent = 0;
                 }
