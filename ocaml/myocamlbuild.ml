@@ -86,7 +86,7 @@ let major_minor_patch_modifier () =
   Printf.sprintf "(%d, %d, %d, %s)" major minor patch modif_s
 
 let is_alba_test =
-  try Sys.getenv "ALBA_TEST" |> String.lowercase = "true"
+  try Sys.getenv "ALBA_TEST" |> String.lowercase_ascii = "true"
   with Not_found -> false
 
 let make_version _ _ =
