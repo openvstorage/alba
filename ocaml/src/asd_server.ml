@@ -730,7 +730,7 @@ let execute_query : type req res.
             let cost =
               List.fold_left
                 (fun acc (_, length) ->
-                 acc + 200 + length)
+                 acc + 32000 + length)
                 0
                 slices
             in
