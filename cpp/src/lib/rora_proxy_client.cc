@@ -23,6 +23,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "manifest_cache.h"
 #include "osd_access.h"
 
+#include <gcrypt.h>
+
 namespace alba {
 namespace proxy_client {
 using std::string;
@@ -35,6 +37,12 @@ RoraProxy_client::RoraProxy_client(
       _asd_partial_read_timeout(std::chrono::milliseconds(
           rora_config.asd_partial_read_timeout_milliseconds)),
       _ser_version(boost::none) {
+
+  if (!gcry_control(GCRYCTL_INITIALIZATION_FINISHED_P)) {
+    fputs("libgcrypt has not been initialized\n", stderr);
+    abort();
+  }
+
   ALBA_LOG(INFO, "RoraProxy_client( _asd_connection_pool_size = "
                      << _asd_connection_pool_size << " ...)");
   ManifestCache::getInstance().set_capacity(rora_config.manifest_cache_size);
@@ -242,6 +250,7 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.uses_compression =
       mf.compression->get_compressor() != compressor_t::NO_COMPRESSION;
   l.encrypt_info = mf.encrypt_info;
+  l.ctr = fragment->ctr;
   return l;
 }
 
@@ -451,6 +460,7 @@ void RoraProxy_client::read_objects_slices(
     ALBA_LOG(DEBUG, "_short_path result => " << result_front);
 
     if (!result_front) {
+      // maybe decrypt data
       try {
         for (auto &s : short_path) {
           unsigned char *buf = s.first;
@@ -459,15 +469,19 @@ void RoraProxy_client::read_objects_slices(
           case encryption_t::NO_ENCRYPTION:
             break;
           case encryption_t::ENCRYPTED:
-            auto encrypt_info = static_cast<Encrypted *>(l.encrypt_info.get());
+            auto encrypt_info =
+                static_cast<encryption::Encrypted *>(l.encrypt_info.get());
             auto enc_key =
                 get_encryption_key(alba_levels.back(), l.namespace_id,
                                    encrypt_info->key_identification);
-            ALBA_LOG(DEBUG, "TODO enc_key=" << enc_key);
-            // TODO decrypt
-            // - calculate CTR (offset)
-            // - call into libgcrypt
-            throw "TODO";
+
+            if (!encrypt_info->partial_decrypt(buf, l.length, enc_key, *l.ctr,
+                                               l.offset)) {
+              ALBA_LOG(
+                  INFO,
+                  "Could not partially decrypt data, which is unexpected!");
+              throw 0;
+            }
             break;
           }
         }

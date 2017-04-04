@@ -80,7 +80,8 @@ alba_proxy_client_test_LDADD = \
 	-lboost_program_options \
         -lrdmacm \
 	-lsnappy \
-	-lgtest
+	-lgtest \
+	-lgcrypt
 
 alba_test_client_SOURCES = \
 	../src/examples/test_client.cc
@@ -96,4 +97,5 @@ alba_test_client_LDADD = \
 	-lboost_program_options \
         -lrdmacm \
 	-lsnappy \
-	-lgtest
+	-lgtest \
+	-lgcrypt

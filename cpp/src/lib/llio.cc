@@ -108,6 +108,14 @@ template <> void from(message &m, uint64_t &i) {
   m.skip(8);
 }
 
+void from_be(message &m, uint64_t &i) {
+  from(m, i);
+  i = ((i & 0xff00000000000000) >> 56) | ((i & 0x00ff000000000000) >> 40) |
+      ((i & 0x0000ff0000000000) >> 24) | ((i & 0x000000ff00000000) >> 8) |
+      ((i & 0x00000000ff000000) << 8) | ((i & 0x0000000000ff0000) << 24) |
+      ((i & 0x000000000000ff00) << 40) | ((i & 0x00000000000000ff) << 56);
+}
+
 template <> void to(message_builder &mb, const std::string &s) noexcept {
   uint32_t size = s.size();
   to(mb, size);
@@ -152,11 +160,11 @@ template <> void from(message &m, varint_t &v) {
   int shift = 0;
   from(m, b0);
   while (b0 >= 0x80) {
-    r = r + ((b0 & 0x7f) << shift);
+    r = r + ((uint64_t)(b0 & 0x7f) << shift);
     from(m, b0);
     shift = shift + 7;
   }
-  r = r + (b0 << shift);
+  r = r + ((uint64_t)b0 << shift);
   v.j = r;
 }
 }

@@ -259,6 +259,8 @@ void to(message_builder &mb, const std::vector<T> &ts) noexcept {
 void to_be(message_builder &mb, const uint32_t &i) noexcept;
 void to_be(message_builder &mb, const uint64_t &i) noexcept;
 
+void from_be(message &m, uint64_t &i);
+
 struct varint_t {
   uint64_t j;
 };

@@ -16,15 +16,17 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
+#include "alba_logger.h"
+#include "alba_common.h"
+
+#include <string>
+
 #include <gtest/gtest.h>
 
 #include <boost/log/trivial.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
-
-#include "alba_logger.h"
-#include <string>
 
 namespace po = boost::program_options;
 
@@ -59,6 +61,8 @@ int main(int argc, char **argv) {
   po::store(po::command_line_parser(argc, argv).options(desc).run(), vm);
 
   init_log();
+  alba::initialize_libgcrypt();
+
   std::srand(std::time(0));
   int res = RUN_ALL_TESTS();
 

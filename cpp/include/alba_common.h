@@ -37,4 +37,6 @@ typedef x_uint64_t osd_t;
 typedef x_uint64_t namespace_t;
 typedef unsigned char byte;
 typedef std::string alba_id_t;
+
+void initialize_libgcrypt();
 }

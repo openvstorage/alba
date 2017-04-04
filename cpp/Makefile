@@ -27,7 +27,7 @@ LIBS_exec = -L/usr/local/lib \
 	  -lboost_log -lboost_system -lboost_thread -lboost_program_options \
 	-Wl,-Bdynamic \
         -L./lib -lalba -lrdmacm -lpthread \
-        -lsnappy
+        -lsnappy -lgcrypt
 
 _OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \

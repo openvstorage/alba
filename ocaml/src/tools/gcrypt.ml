@@ -121,17 +121,12 @@ let control =
     Error.check ~location:"gcrypt.control" err
 
 
-external gcrypt_set_threads : unit -> unit = "gcrypt_set_threads"
-
 let () =
-  (* https://www.gnupg.org/documentation/manuals/gcrypt/Multi_002dThreading.html *)
-  gcrypt_set_threads ();
-
   (* https://www.gnupg.org/documentation/manuals/gcrypt/Initializing-the-library.html *)
 
   (* /* Version check should be the very first call because it *)
   (*    makes sure that important subsystems are intialized. */ *)
-  let version_o : string option = check_version "1.5.3" in
+  let version_o : string option = check_version "1.6.0" in
   assert (version_o <> None);
 
   (* /* Disable secure memory.  */ *)
