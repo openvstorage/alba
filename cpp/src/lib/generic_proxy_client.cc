@@ -413,5 +413,20 @@ bool GenericProxy_client::has_local_fragment_cache() {
   check_status(__PRETTY_FUNCTION__);
   return result;
 }
+
+boost::optional<string> GenericProxy_client::get_fragment_encryption_key(
+    const string &alba_id, const namespace_t namespace_id) {
+  _expires_from_now(_timeout);
+
+  proxy_protocol::write_get_fragment_encryption_key_request(_mb, alba_id,
+                                                            namespace_id);
+  _output();
+  message response = _input();
+  boost::optional<string> enc_key;
+  proxy_protocol::read_get_fragment_encryption_key_response(response, _status,
+                                                            enc_key);
+  check_status(__PRETTY_FUNCTION__);
+  return enc_key;
+}
 }
 }

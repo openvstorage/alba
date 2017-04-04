@@ -241,8 +241,7 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.length = std::min(len, fragment_length - pos_in_fragment);
   l.uses_compression =
       mf.compression->get_compressor() != compressor_t::NO_COMPRESSION;
-  l.uses_encryption =
-      mf.encrypt_info->get_encryption() != encryption_t::NO_ENCRYPTION;
+  l.encrypt_info = mf.encrypt_info;
   return l;
 }
 
@@ -293,7 +292,7 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
       std::vector<std::pair<byte *, Location>> locations_final_level;
       locations_final_level.reserve(locations->size());
       for (auto &buf_l : *locations) {
-        auto l = std::get<1>(buf_l);
+        auto &l = std::get<1>(buf_l);
         message_builder mb;
         to(mb, l.object_id);
         to(mb, l.chunk_id);
@@ -431,14 +430,14 @@ void RoraProxy_client::read_objects_slices(
       auto locations =
           _resolve_one_many_levels(alba_levels, 0, namespace_, object_slices);
       if (locations == boost::none ||
-          std::any_of(locations->begin(), locations->end(),
-                      [](std::pair<byte *, Location> &l) {
-                        auto location = std::get<1>(l);
-                        return location.fragment_location.first ==
-                                   boost::none ||
-                               location.uses_compression ||
-                               location.uses_encryption;
-                      })) {
+          std::any_of(
+              locations->begin(), locations->end(),
+              [](std::pair<byte *, Location> &l) {
+                auto &location = std::get<1>(l);
+                return location.fragment_location.first == boost::none ||
+                       location.uses_compression ||
+                       !location.encrypt_info->supports_partial_decrypt();
+              })) {
         via_proxy.push_back(object_slices);
       } else {
         for (auto &l : *locations) {
@@ -450,6 +449,32 @@ void RoraProxy_client::read_objects_slices(
     // TODO: different paths could go in parallel
     int result_front = _short_path(short_path);
     ALBA_LOG(DEBUG, "_short_path result => " << result_front);
+
+    if (!result_front) {
+      try {
+        for (auto &s : short_path) {
+          unsigned char *buf = s.first;
+          alba::proxy_protocol::Location &l = s.second;
+          switch (l.encrypt_info->get_encryption()) {
+          case encryption_t::NO_ENCRYPTION:
+            break;
+          case encryption_t::ENCRYPTED:
+            auto encrypt_info = static_cast<Encrypted *>(l.encrypt_info.get());
+            auto enc_key =
+                get_encryption_key(alba_levels.back(), l.namespace_id,
+                                   encrypt_info->key_identification);
+            ALBA_LOG(DEBUG, "TODO enc_key=" << enc_key);
+            // TODO decrypt
+            // - calculate CTR (offset)
+            // - call into libgcrypt
+            throw "TODO";
+            break;
+          }
+        }
+      } catch (...) {
+        result_front = -1;
+      }
+    }
 
     if (result_front) {
       _failure_time = std::chrono::steady_clock::now();
@@ -520,6 +545,25 @@ void RoraProxy_client::osd_info(osd_map_t &result) {
 void RoraProxy_client::osd_info2(osd_maps_t &result) {
   ALBA_LOG(DEBUG, "RoraProxy_client::osd_info2");
   _delegate->osd_info2(result);
+}
+
+boost::optional<string>
+RoraProxy_client::get_fragment_encryption_key(const string &alba_id,
+                                              const namespace_t namespace_id) {
+  return _delegate->get_fragment_encryption_key(alba_id, namespace_id);
+}
+
+string RoraProxy_client::get_encryption_key(const string &alba_id,
+                                            const namespace_t namespace_id,
+                                            const string &key_identification) {
+  auto find_key = _enc_keys.find(key_identification);
+  if (find_key == _enc_keys.end()) {
+    auto enc_key = *get_fragment_encryption_key(alba_id, namespace_id);
+    // TODO check key_identification matches what is expected...
+    std::tie(find_key, std::ignore) =
+        _enc_keys.emplace(key_identification, enc_key);
+  }
+  return find_key->second;
 }
 }
 }

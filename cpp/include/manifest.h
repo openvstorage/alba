@@ -71,6 +71,8 @@ public:
   virtual encryption_t get_encryption() const = 0;
   virtual void print(std::ostream &os) const = 0;
 
+  virtual bool supports_partial_decrypt() const = 0;
+
   virtual ~EncryptInfo(){};
 };
 
@@ -80,6 +82,8 @@ class NoEncryption : public EncryptInfo {
   }
 
   virtual void print(std::ostream &os) const { os << "NoEncryption()"; }
+
+  virtual bool supports_partial_decrypt() const { return true; }
 };
 
 enum class algo_t { AES };
@@ -106,10 +110,14 @@ class Encrypted : public EncryptInfo {
 
   virtual void print(std::ostream &os) const { os << "Encrypted()"; }
 
+  virtual bool supports_partial_decrypt() const {
+    return mode == chaining_mode_t::CTR;
+  }
+
 public:
-  algo_t algo = algo_t::AES;
-  chaining_mode_t mode = chaining_mode_t::CTR;
-  key_length_t key_length = key_length_t::L256;
+  algo_t algo;
+  chaining_mode_t mode;
+  key_length_t key_length;
 
   std::string key_identification;
 };
@@ -128,9 +136,7 @@ struct Location {
   fragment_location_t fragment_location;
 
   bool uses_compression;
-  // should be more fine grained about encryption when we want to support rora
-  // for CTR mode encryption
-  bool uses_encryption;
+  std::shared_ptr<EncryptInfo> encrypt_info;
 };
 
 struct Fragment {
@@ -151,7 +157,7 @@ struct Manifest {
   EncodingScheme encoding_scheme;
 
   std::unique_ptr<Compression> compression;
-  std::unique_ptr<EncryptInfo> encrypt_info;
+  std::shared_ptr<EncryptInfo> encrypt_info;
   std::unique_ptr<alba::Checksum> checksum;
   uint64_t size;
   layout<std::shared_ptr<Fragment>> fragments;
@@ -172,7 +178,7 @@ struct ManifestWithNamespaceId : Manifest {
 };
 
 void dump_string(std::ostream &, const std::string &);
-void dump_string_option(std::ostream&, const boost::optional<std::string>&);
+void dump_string_option(std::ostream &, const boost::optional<std::string> &);
 
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);
 std::ostream &operator<<(std::ostream &, const compressor_t &);

@@ -17,10 +17,13 @@ but WITHOUT ANY WARRANTY of any kind.
 */
 
 #pragma once
+
 #include "generic_proxy_client.h"
 #include "osd_access.h"
 #include "osd_info.h"
 #include "proxy_client.h"
+
+#include <unordered_map>
 
 namespace alba {
 namespace proxy_client {
@@ -91,6 +94,10 @@ public:
   virtual void osd_info(osd_map_t &);
   virtual void osd_info2(osd_maps_t &);
 
+  virtual boost::optional<string>
+  get_fragment_encryption_key(const string &alba_id,
+                              const namespace_t namespace_id);
+
   virtual ~RoraProxy_client(){};
 
 private:
@@ -124,6 +131,10 @@ private:
                   const std::vector<ObjectSlices> &, const consistent_read,
                   std::vector<object_info> &object_infos,
                   alba::statistics::RoraCounter &);
+
+  std::unordered_map<string, string> _enc_keys;
+  string get_encryption_key(const string &alba_id, const namespace_t namespace_id,
+                            const string &key_identification);
 };
 
 std::string fragment_key(const std::string &object_id, uint32_t version_id,

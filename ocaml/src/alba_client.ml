@@ -72,6 +72,15 @@ class alba_client (base_client : Alba_base_client.client)
 
     method has_local_fragment_cache = base_client # get_fragment_cache # has_local_fragment_cache
 
+    method get_preset ~alba_id ~namespace_id =
+      alba_id_t >>= fun alba_id' ->
+      if alba_id = alba_id'
+      then
+        base_client # get_ns_preset_info ~namespace_id
+        >>= fun p -> Lwt.return (Some p)
+      else
+        base_client # get_fragment_cache # get_preset ~alba_id ~namespace_id
+
     method osd_infos =
       alba_id_t >>= fun alba_id ->
       let my_entry = (alba_id, osd_access # osd_infos) in

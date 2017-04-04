@@ -119,7 +119,7 @@ void from(message &m, Encrypted &awk) {
   }
 }
 
-void from(message &m, std::unique_ptr<EncryptInfo> &p) {
+void from(message &m, std::shared_ptr<EncryptInfo> &p) {
   uint8_t type;
   from(m, type);
   EncryptInfo *r;

@@ -328,6 +328,8 @@ let render_request_args: type i o. (i,o) Protocol.request -> i -> Bytes.t =
   | UpdateSession   -> fun args ->
                        Printf.sprintf "%s"
                        ([%show : (string * string option) list] args)
+  | GetFragmentEncryptionKey -> fun (alba_id, namespace_id) ->
+                                Printf.sprintf "(%s,%Li)" alba_id namespace_id
 
 let log_request code error renderer time =
   let details = renderer () in
@@ -630,6 +632,18 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            [] args
          in
          Lwt.return (List.rev result)
+       end
+    | GetFragmentEncryptionKey ->
+       begin
+         fun stats (alba_id, namespace_id) ->
+         alba_client # get_preset ~alba_id ~namespace_id
+         >>= function
+         | None -> Lwt.return_none
+         | Some p ->
+            let open Encryption.Encryption in
+            match p.Preset.fragment_encryption with
+            | NoEncryption -> Lwt.return_none
+            | AlgoWithKey (_, key) -> Lwt.return (Some key)
        end
   in
   let module Llio = Llio2.WriteBuffer in

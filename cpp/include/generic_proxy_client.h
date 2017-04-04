@@ -112,6 +112,10 @@ public:
 
   virtual bool has_local_fragment_cache();
 
+  virtual boost::optional<string>
+  get_fragment_encryption_key(const string &alba_id,
+                              const namespace_t namespace_id);
+
   GenericProxy_client(const std::chrono::steady_clock::duration &timeout,
                       std::unique_ptr<transport::Transport> &&);
 

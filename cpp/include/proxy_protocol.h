@@ -203,5 +203,11 @@ void read_osd_info2_response(message &m, Status &status, osd_maps_t &result);
 
 void write_has_local_fragment_cache_request(message_builder &mb);
 void read_has_local_fragment_cache_response(message &m, Status &status, bool &);
+
+void write_get_fragment_encryption_key_request(message_builder &mb,
+                                               const string &alba_id,
+                                               const namespace_t namespace_id);
+void read_get_fragment_encryption_key_response(
+    message &m, Status &status, boost::optional<string> &enc_key);
 }
 }
