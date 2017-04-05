@@ -1858,7 +1858,10 @@ module Test = struct
     let cmd =
       if Config.env_or_default_bool "ALBA_RUN_IN_GDB" false
       then cmd @ [ "gdb"; "--args";"./cpp/bin/unit_tests.out" ]
-      else cmd @ [ "./cpp/bin/unit_tests.out" ]
+      else
+        if Config.env_or_default_bool "ALBA_RUN_IN_VALGRIND" false
+        then cmd @ [ "valgrind"; "./cpp/bin/unit_tests.out" ]
+        else cmd @ [ "./cpp/bin/unit_tests.out" ]
     in
     let cmd2 = if xml
                then cmd @ ["--gtest_output=xml:" ^ result_file ]
