@@ -71,7 +71,7 @@ RoraProxy_client::RoraProxy_client(
       string &v = std::get<1>(it);
       if (key == "manifest_ser") {
         const char *vd = v.data();
-        uint32_t sv = *((uint32_t *)vd);
+        uint8_t sv = *((uint8_t *)vd);
         _ser_version = sv;
         ALBA_LOG(DEBUG, "manifest_ser = " << sv);
       }
