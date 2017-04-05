@@ -128,17 +128,15 @@ public:
    *    when this update is serialized, there will be a copy of the data.
    *
    */
-  UpdateUploadObject(const std::string &name,
-                     const uint8_t* data,
-                     const uint32_t size,
-                     const alba::Checksum *cs_o)
+  UpdateUploadObject(const std::string &name, const uint8_t *data,
+                     const uint32_t size, const alba::Checksum *cs_o)
       : _name(name), _data(data), _size(size), _cs_o(cs_o){};
 
   void to(llio::message_builder &mb) const override {
     mb.add_type(2);
     llio::to(mb, _name);
     llio::to(mb, _size);
-    mb.add_raw((const char*) _data, _size); // copies
+    mb.add_raw((const char *)_data, _size); // copies
     if (_cs_o == nullptr) {
       llio::to<boost::optional<const Checksum *>>(mb, boost::none);
     } else {
@@ -147,7 +145,7 @@ public:
   }
 
   std::string _name;
-  const uint8_t* _data;
+  const uint8_t *_data;
   const uint32_t _size;
   const alba::Checksum *_cs_o;
 };
@@ -206,12 +204,10 @@ public:
     return *this;
   }
 
-  Sequence &add_upload(const std::string &name,
-                       const uint8_t *data,
-                       const uint32_t size,
-                       const alba::Checksum *cs_o) {
+  Sequence &add_upload(const std::string &name, const uint8_t *data,
+                       const uint32_t size, const alba::Checksum *cs_o) {
     _updates.push_back(
-       std::make_shared<UpdateUploadObject>(name, data, size, cs_o));
+        std::make_shared<UpdateUploadObject>(name, data, size, cs_o));
     return *this;
   }
   Sequence &add_delete(const std::string &name) {

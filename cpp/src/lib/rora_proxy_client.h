@@ -133,7 +133,8 @@ private:
                   alba::statistics::RoraCounter &);
 
   std::unordered_map<string, string> _enc_keys;
-  string get_encryption_key(const string &alba_id, const namespace_t namespace_id,
+  string get_encryption_key(const string &alba_id,
+                            const namespace_t namespace_id,
                             const string &key_identification);
 };
 

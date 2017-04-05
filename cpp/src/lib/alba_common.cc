@@ -18,8 +18,8 @@
 */
 
 #include "alba_common.h"
-#include <iostream>
 #include <gcrypt.h>
+#include <iostream>
 
 namespace alba {
 
@@ -57,18 +57,17 @@ std::ostream &operator<<(std::ostream &os, const x_uint64_t &t) {
 void initialize_libgcrypt() {
   /* Version check should be the very first call because it
      makes sure that important subsystems are initialized. */
-  if (!gcry_check_version (GCRYPT_VERSION))
-    {
-      fputs ("libgcrypt version mismatch\n", stderr);
-      exit (2);
-    }
+  if (!gcry_check_version(GCRYPT_VERSION)) {
+    fputs("libgcrypt version mismatch\n", stderr);
+    exit(2);
+  }
 
   /* Disable secure memory.  */
-  gcry_control (GCRYCTL_DISABLE_SECMEM, 0);
+  gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
 
   /* ... If required, other initialization goes here.  */
 
   /* Tell Libgcrypt that initialization has completed. */
-  gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
+  gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
 }
 }

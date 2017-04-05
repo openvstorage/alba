@@ -16,8 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
-#include "alba_logger.h"
 #include "stuff.h"
+#include "alba_logger.h"
 #include <exception>
 #include <iomanip>
 #include <string>
