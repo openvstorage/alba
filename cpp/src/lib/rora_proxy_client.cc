@@ -473,6 +473,7 @@ void RoraProxy_client::read_objects_slices(
                 static_cast<encryption::Encrypted *>(l.encrypt_info.get());
 
             if (l.ctr == boost::none) {
+              ALBA_LOG(ERROR, "ctr==boost::none while doing ctr partial decrypt");
               throw 0;
             }
 
@@ -483,13 +484,17 @@ void RoraProxy_client::read_objects_slices(
             if (!encrypt_info->partial_decrypt(buf, l.length, enc_key, *l.ctr,
                                                l.offset)) {
               ALBA_LOG(
-                  INFO,
+                  ERROR,
                   "Could not partially decrypt data, which is unexpected!");
               throw 0;
             }
             break;
           }
         }
+      } catch (std::exception &e) {
+        result_front = -1;
+        ALBA_LOG(ERROR,
+                 "partial decrypt failed due to an exception: " << e.what());
       } catch (...) {
         result_front = -1;
       }
