@@ -13,6 +13,7 @@ libalbaproxy_la_SOURCES = \
         ../src/lib/alba_common.cc \
 	../src/lib/alba_logger.cc \
 	../src/lib/checksum.cc \
+	../src/lib/encryption.cc \
 	../src/lib/generic_proxy_client.cc \
 	../src/lib/io.cc \
 	../src/lib/llio.cc \
@@ -41,6 +42,7 @@ alba_HEADERS = \
 	../include/alba_logger.h \
 	../include/boolean_enum.h \
 	../include/checksum.h \
+	../include/encryption.h \
 	../include/generic_proxy_client.h \
 	../include/io.h \
 	../include/llio.h \

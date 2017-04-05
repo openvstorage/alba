@@ -39,7 +39,7 @@ RoraProxy_client::RoraProxy_client(
       _ser_version(boost::none) {
 
   if (!gcry_control(GCRYCTL_INITIALIZATION_FINISHED_P)) {
-    fputs("libgcrypt has not been initialized\n", stderr);
+    ALBA_LOG(ERROR, "libgcrypt has not been initialized");
     abort();
   }
 
@@ -471,6 +471,11 @@ void RoraProxy_client::read_objects_slices(
           case encryption_t::ENCRYPTED:
             auto encrypt_info =
                 static_cast<encryption::Encrypted *>(l.encrypt_info.get());
+
+            if (l.ctr == boost::none) {
+              throw 0;
+            }
+
             auto enc_key =
                 get_encryption_key(alba_levels.back(), l.namespace_id,
                                    encrypt_info->key_identification);
@@ -573,9 +578,36 @@ string RoraProxy_client::get_encryption_key(const string &alba_id,
   auto find_key = _enc_keys.find(key_identification);
   if (find_key == _enc_keys.end()) {
     auto enc_key = *get_fragment_encryption_key(alba_id, namespace_id);
-    // TODO check key_identification matches what is expected...
-    std::tie(find_key, std::ignore) =
-        _enc_keys.emplace(key_identification, enc_key);
+
+    int gcrypt_result;
+
+    gcry_md_hd_t hd;
+    gcrypt_result = gcry_md_open(&hd, GCRY_MD_SHA256, 0);
+    if (gcrypt_result != 0) {
+      ALBA_LOG(ERROR, "gcry_md_open failed: " << gcrypt_result);
+      throw 0;
+    }
+
+    gcry_md_write(hd, enc_key.c_str(), enc_key.size());
+
+    gcrypt_result = gcry_md_final(hd);
+    if (gcrypt_result != 0) {
+      ALBA_LOG(ERROR, "gcry_md_final failed: " << gcrypt_result);
+      throw 0;
+    }
+
+    unsigned char *sha256 = gcry_md_read(hd, GCRY_MD_SHA256);
+    string key_identification2((char *)sha256, 256 / 8);
+
+    gcry_md_close(hd);
+
+    if (key_identification == key_identification2) {
+      std::tie(find_key, std::ignore) =
+          _enc_keys.emplace(key_identification, enc_key);
+    } else {
+      _enc_keys.emplace(key_identification2, enc_key);
+      throw 0;
+    }
   }
   return find_key->second;
 }
