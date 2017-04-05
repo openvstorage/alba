@@ -90,18 +90,19 @@ template <> void from(message &m, std::shared_ptr<EncryptInfo> &p) {
   switch (type) {
   case 1: {
     r = new NoEncryption();
+    p.reset(r);
   }; break;
   case 2: {
     Encrypted *awk = new Encrypted();
-    from(m, *awk);
     r = awk;
+    p.reset(r);
+    from(m, *awk);
   }; break;
   default: {
     ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
     throw deserialisation_exception("unknown encryption scheme)");
   };
   }
-  p.reset(r);
 }
 }
 }
@@ -157,12 +158,14 @@ bool Encrypted::partial_decrypt(unsigned char *buf, int len,
   gcrypt_result = gcry_cipher_setkey(hd, enc_key.c_str(), enc_key.size());
   if (gcrypt_result != 0) {
     ALBA_LOG(WARNING, "gcry_cipher_setkey returned " << gcrypt_result);
+    gcry_cipher_close(hd);
     return false;
   }
 
   gcrypt_result = gcry_cipher_setctr(hd, ctr_with_offset.c_str(), block_len);
   if (gcrypt_result != 0) {
     ALBA_LOG(WARNING, "gcry_cipher_setctr returned " << gcrypt_result);
+    gcry_cipher_close(hd);
     return false;
   }
 
@@ -172,6 +175,7 @@ bool Encrypted::partial_decrypt(unsigned char *buf, int len,
     gcrypt_result = gcry_cipher_decrypt(hd, burn_buf, to_burn, nullptr, 0);
     if (gcrypt_result != 0) {
       ALBA_LOG(WARNING, "gcry_cipher_setctr returned " << gcrypt_result);
+      gcry_cipher_close(hd);
       return false;
     }
   }
@@ -179,9 +183,11 @@ bool Encrypted::partial_decrypt(unsigned char *buf, int len,
   gcrypt_result = gcry_cipher_decrypt(hd, buf, len, nullptr, 0);
   if (gcrypt_result != 0) {
     ALBA_LOG(WARNING, "gcry_cipher_setctr returned " << gcrypt_result);
+    gcry_cipher_close(hd);
     return false;
   }
 
+  gcry_cipher_close(hd);
   return true;
 }
 
