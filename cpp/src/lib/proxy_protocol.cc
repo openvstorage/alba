@@ -43,6 +43,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #define _OSD_INFO2 28
 #define _HAS_LOCAL_FRAGMENT_CACHE 31
 #define _UPDATE_SESSION 32
+#define _GET_FRAGMENT_ENCRYPTION_KEY 33
 
 namespace alba {
 namespace proxy_protocol {
@@ -491,6 +492,22 @@ void read_has_local_fragment_cache_response(message &m, Status &status,
   read_status(m, status);
   if (status.is_ok()) {
     from(m, result);
+  }
+}
+
+void write_get_fragment_encryption_key_request(message_builder &mb,
+                                               const string &alba_id,
+                                               const namespace_t namespace_id) {
+  write_tag(mb, _GET_FRAGMENT_ENCRYPTION_KEY);
+  to(mb, alba_id);
+  to(mb, namespace_id.i);
+}
+
+void read_get_fragment_encryption_key_response(
+    message &m, Status &status, boost::optional<string> &enc_key) {
+  read_status(m, status);
+  if (status.is_ok()) {
+    from(m, enc_key);
   }
 }
 

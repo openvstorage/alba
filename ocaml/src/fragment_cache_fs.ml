@@ -1109,6 +1109,7 @@ class blob_cache root ~(max_size:int64) ~rocksdb_max_open_files
 
     method osd_infos () = Lwt.return (0, [])
     method has_local_fragment_cache = true
+    method get_preset ~alba_id ~namespace_id = Lwt.return_none
 end
 
 let safe_create root

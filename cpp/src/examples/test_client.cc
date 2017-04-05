@@ -255,6 +255,7 @@ void partial_read_benchmark(const string &host, const string &port,
 
 int main(int argc, const char *argv[]) {
   init_log();
+  alba::initialize_libgcrypt();
 
   ALBA_LOG(WARNING, "logging initialized")
 

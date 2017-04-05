@@ -17,7 +17,7 @@ LIBS_exec += -Wl,-Bstatic
 LIBS_exec += -lboost_log -lboost_system -lboost_thread -lboost_program_options
 LIBS_exec += -Wl,-Bdynamic
 LIBS_exec += -L./lib -lalba -lrdmacm -lpthread 
-LIBS_exec += -lsnappy
+LIBS_exec += -lsnappy -lgcrypt
 
 tests = src/tests/llio_test.cc
 tests += src/tests/proxy_client_test.cc

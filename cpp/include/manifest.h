@@ -20,6 +20,8 @@ but WITHOUT ANY WARRANTY of any kind.
 
 #include "alba_common.h"
 #include "checksum.h"
+#include "encryption.h"
+
 #include <boost/optional.hpp>
 #include <iostream>
 #include <map>
@@ -27,6 +29,10 @@ but WITHOUT ANY WARRANTY of any kind.
 
 namespace alba {
 namespace proxy_protocol {
+
+using alba::encryption::EncryptInfo;
+using alba::encryption::encryption_t;
+
 struct EncodingScheme {
   uint32_t k;
   uint32_t m;
@@ -64,56 +70,6 @@ class TestCompression : public Compression {
   virtual void print(std::ostream &os) const { os << "TestCompression()"; }
 };
 
-enum class encryption_t { NO_ENCRYPTION, ENCRYPTED };
-
-class EncryptInfo {
-public:
-  virtual encryption_t get_encryption() const = 0;
-  virtual void print(std::ostream &os) const = 0;
-
-  virtual ~EncryptInfo(){};
-};
-
-class NoEncryption : public EncryptInfo {
-  virtual encryption_t get_encryption() const {
-    return encryption_t::NO_ENCRYPTION;
-  }
-
-  virtual void print(std::ostream &os) const { os << "NoEncryption()"; }
-};
-
-enum class algo_t { AES };
-enum class chaining_mode_t { CBC, CTR };
-enum class key_length_t { L256 };
-
-class Encrypted : public EncryptInfo {
-  /* | Encrypted of Encryption.algo * key_identification */
-
-  /* type algo = */
-  /*   | AES of chaining_mode * key_length */
-  /* type chaining_mode = */
-  /*   | CBC */
-  /*   | CTR */
-  /* type key_length = */
-  /*   | L256 */
-
-  /* type key_identification = */
-  /*   | KeySha256 of string */
-
-  virtual encryption_t get_encryption() const {
-    return encryption_t::ENCRYPTED;
-  }
-
-  virtual void print(std::ostream &os) const { os << "Encrypted()"; }
-
-public:
-  algo_t algo = algo_t::AES;
-  chaining_mode_t mode = chaining_mode_t::CTR;
-  key_length_t key_length = key_length_t::L256;
-
-  std::string key_identification;
-};
-
 typedef std::pair<boost::optional<osd_t>, uint32_t> fragment_location_t;
 
 template <class T> using layout = std::vector<std::vector<T>>;
@@ -128,9 +84,8 @@ struct Location {
   fragment_location_t fragment_location;
 
   bool uses_compression;
-  // should be more fine grained about encryption when we want to support rora
-  // for CTR mode encryption
-  bool uses_encryption;
+  std::shared_ptr<EncryptInfo> encrypt_info;
+  boost::optional<std::string> ctr;
 };
 
 struct Fragment {
@@ -151,7 +106,7 @@ struct Manifest {
   EncodingScheme encoding_scheme;
 
   std::unique_ptr<Compression> compression;
-  std::unique_ptr<EncryptInfo> encrypt_info;
+  std::shared_ptr<EncryptInfo> encrypt_info;
   std::unique_ptr<alba::Checksum> checksum;
   uint64_t size;
   layout<std::shared_ptr<Fragment>> fragments;
@@ -172,18 +127,14 @@ struct ManifestWithNamespaceId : Manifest {
 };
 
 void dump_string(std::ostream &, const std::string &);
-void dump_string_option(std::ostream&, const boost::optional<std::string>&);
+void dump_string_option(std::ostream &, const boost::optional<std::string> &);
 
 std::ostream &operator<<(std::ostream &, const EncodingScheme &);
 std::ostream &operator<<(std::ostream &, const compressor_t &);
 std::ostream &operator<<(std::ostream &, const Compression &);
-std::ostream &operator<<(std::ostream &, const encryption_t &);
-std::ostream &operator<<(std::ostream &, const EncryptInfo &);
 std::ostream &operator<<(std::ostream &, const fragment_location_t &);
 std::ostream &operator<<(std::ostream &, const Fragment &);
 std::ostream &operator<<(std::ostream &, const Manifest &);
 std::ostream &operator<<(std::ostream &, const ManifestWithNamespaceId &);
-std::ostream &operator<<(std::ostream &, const algo_t &);
-std::ostream &operator<<(std::ostream &, const chaining_mode_t &);
 }
 }

@@ -519,6 +519,7 @@ module Protocol = struct
     | HasLocalFragmentCache : (unit, bool) request
     | UpdateSession : ((string * string option) list ,
                        (string * string) list) request
+    | GetFragmentEncryptionKey : (string * Namespace.id, string option) request
 
   type request' = Wrap : _ request -> request'
   let command_map = [ 1, Wrap ListNamespaces, "ListNamespaces";
@@ -550,6 +551,7 @@ module Protocol = struct
                       30, Wrap ListNamespaces2, "ListNamespaces2";
                       31, Wrap HasLocalFragmentCache, "HasLocalFragmentCache";
                       32, Wrap UpdateSession, "UpdateSession";
+                      33, Wrap GetFragmentEncryptionKey, "GetFragmentEncryptionKey";
                     ]
 
   module Error = struct
@@ -703,6 +705,9 @@ module Protocol = struct
                             Deser.string
                             (Deser.option Deser.string)
                          )
+    | GetFragmentEncryptionKey ->
+       Deser.pair Deser.string Deser.int64
+
   let deser_request_o :
   type i o. ProxySession.t -> (i, o) request -> o Deser.t =
     fun session ->
@@ -794,4 +799,6 @@ module Protocol = struct
                          (Deser.pair
                             Deser.string
                             Deser.string)
+    | GetFragmentEncryptionKey ->
+       Deser.option Deser.string
 end

@@ -38,7 +38,7 @@ template <> void from(message &m, EncodingScheme &es) {
   from(m, es.w);
 }
 
-void from(message &m, std::unique_ptr<Compression> &p) {
+template <> void from(message &m, std::unique_ptr<Compression> &p) {
   uint8_t type;
   from(m, type);
   Compression *r;
@@ -58,83 +58,6 @@ void from(message &m, std::unique_ptr<Compression> &p) {
   default: {
     ALBA_LOG(WARNING, "unknown compression type " << (int)type);
     throw deserialisation_exception("unknown compression type");
-  };
-  }
-  p.reset(r);
-}
-
-void from(message &m, chaining_mode_t &mode) {
-  uint8_t type;
-  from(m, type);
-  switch (type) {
-  case 1: {
-    mode = chaining_mode_t::CBC;
-  }; break;
-  case 2: {
-    mode = chaining_mode_t::CTR;
-  }; break;
-  default: { throw deserialisation_exception("unknown chaining_mode"); };
-  }
-}
-
-void from(message &m, key_length_t &kl) {
-  uint8_t type;
-  from(m, type);
-  switch (type) {
-  case 1: {
-    kl = key_length_t::L256;
-  } break;
-  default: { throw deserialisation_exception("unknown key_length"); };
-  }
-}
-
-void from(message &m, proxy_protocol::algo_t &algo) {
-  uint8_t type;
-  from(m, type);
-  switch (type) {
-  case 1: {
-    algo = proxy_protocol::algo_t::AES;
-  }; break;
-  default: { throw deserialisation_exception("unknown algo"); };
-  }
-}
-void from(message &m, Encrypted &awk) {
-
-  // ALBA_LOG(DEBUG, "pos = " << m.get_pos());
-  // alba::stuff::dump_buffer(std::cout, m.current(16), 16);
-
-  // AES   CTR  KEY_LENGTH  x length of key  key bytes
-  // 01    02   01         01 20 00 00 00    fa c8
-  from(m, awk.algo);
-  from(m, awk.mode);
-  from(m, awk.key_length);
-
-  // key_identification
-  uint8_t tag;
-  from(m, tag);
-  assert(tag == 1); // KeySha256
-  from(m, awk.key_identification);
-  if (awk.key_identification.size() != 32) {
-    throw deserialisation_exception("key length != 32");
-  }
-}
-
-void from(message &m, std::unique_ptr<EncryptInfo> &p) {
-  uint8_t type;
-  from(m, type);
-  EncryptInfo *r;
-  switch (type) {
-  case 1: {
-    r = new NoEncryption();
-  }; break;
-  case 2: {
-    Encrypted *awk = new Encrypted();
-    from(m, *awk);
-    r = awk;
-  }; break;
-  default: {
-    ALBA_LOG(WARNING, "unknown encryption scheme: type=" << type);
-    throw deserialisation_exception("unknown encryption scheme)");
   };
   }
   p.reset(r);
@@ -233,12 +156,12 @@ void _from_version1(message &m, Manifest &mf, bool &ok_to_continue) {
   from(m2, mf.timestamp);
 }
 
-void _small_string_from(message&m, std::string& s){
+void _small_string_from(message &m, std::string &s) {
   varint_t v;
   from(m, v);
   int size = v.j;
   s.resize(size);
-  s.replace(0,size, m.current(size), size);
+  s.replace(0, size, m.current(size), size);
   m.skip(size);
 }
 
@@ -263,25 +186,25 @@ template <> void from(message &m, Fragment &f) {
   from(m2, f.len);
   int size_left = m.get_pos() - m2.get_pos();
 
-  if(size_left > 0){
-      bool has_ctr;
-      from(m2,has_ctr);
-      if(has_ctr){
-          string ctr;
-          _small_string_from(m2, ctr);
-          f.ctr = ctr;
-      }
+  if (size_left > 0) {
+    bool has_ctr;
+    from(m2, has_ctr);
+    if (has_ctr) {
+      string ctr;
+      _small_string_from(m2, ctr);
+      f.ctr = ctr;
+    }
   }
-  //TODO: need m2.is_done()
+  // TODO: need m2.is_done()
   size_left = m.get_pos() - m2.get_pos();
-  if(size_left > 0){
-      bool has_fnr;
-      from(m2, has_fnr);
-      if(has_fnr){
-          string fnr;
-          _small_string_from(m2, fnr);
-          f.fnr = fnr;
-      }
+  if (size_left > 0) {
+    bool has_fnr;
+    from(m2, has_fnr);
+    if (has_fnr) {
+      string fnr;
+      _small_string_from(m2, fnr);
+      f.fnr = fnr;
+    }
   }
   size_left = m.get_pos() - m2.get_pos();
 }
@@ -406,47 +329,8 @@ std::ostream &operator<<(std::ostream &os, const compressor_t &compressor) {
   return os;
 }
 
-std::ostream &operator<<(std::ostream &os, const algo_t &algo) {
-  switch (algo) {
-  case algo_t::AES: {
-    os << "AES";
-  }
-  };
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const chaining_mode_t &mode) {
-  switch (mode) {
-  case chaining_mode_t::CBC: {
-    os << "CBC";
-  }; break;
-  case chaining_mode_t::CTR: {
-    os << "CTR";
-  }; break;
-  };
-  return os;
-}
-
 std::ostream &operator<<(std::ostream &os, const Compression &c) {
   c.print(os);
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const encryption_t &encryption) {
-  switch (encryption) {
-  case encryption_t::NO_ENCRYPTION:
-    os << "NO_ENCRYPTION";
-    break;
-  case encryption_t::ENCRYPTED:
-    os << "ENCRYPTED";
-  default:
-    os << "?encryption?";
-  };
-  return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const EncryptInfo &info) {
-  info.print(os);
   return os;
 }
 
@@ -462,23 +346,22 @@ void dump_string(std::ostream &os, const std::string &s) {
   stuff::dump_buffer(os, bytes, size);
 }
 
-void dump_string_option(std::ostream& os, const boost::optional<string> &so){
-    if(boost::none == so){
-        os << "None";
-    }else {
-        os << "(Some ";
-        dump_string(os, *so);
-        os << ")";
-    }
+void dump_string_option(std::ostream &os, const boost::optional<string> &so) {
+  if (boost::none == so) {
+    os << "None";
+  } else {
+    os << "(Some ";
+    dump_string(os, *so);
+    os << ")";
+  }
 }
 std::ostream &operator<<(std::ostream &os, const Fragment &f) {
   os << "{";
-  os << "loc = " << f.loc
-     << ", crc = " << *f.crc
-     << ", len = " << f.len
+  os << "loc = " << f.loc << ", crc = " << *f.crc << ", len = " << f.len
      << ", ctr = ";
   dump_string_option(os, f.ctr);
-  os  << " , fnr = ";;
+  os << " , fnr = ";
+  ;
   dump_string_option(os, f.fnr);
   os << " }" << std::endl;
   return os;

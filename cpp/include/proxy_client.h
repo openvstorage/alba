@@ -156,6 +156,10 @@ public:
   virtual ~Proxy_client(){};
 
   virtual void osd_info2(osd_maps_t &result) = 0;
+
+  virtual boost::optional<string>
+  get_fragment_encryption_key(const string &alba_id,
+                              const namespace_t namespace_id) = 0;
 };
 
 /* API backward compatibility:

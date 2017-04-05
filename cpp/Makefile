@@ -27,7 +27,7 @@ LIBS_exec = -L/usr/local/lib \
 	  -lboost_log -lboost_system -lboost_thread -lboost_program_options \
 	-Wl,-Bdynamic \
         -L./lib -lalba -lrdmacm -lpthread \
-        -lsnappy
+        -lsnappy -lgcrypt
 
 _OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            proxy_protocol.o llio.o checksum.o \
@@ -36,7 +36,7 @@ _OBJECTS = alba_common.o stuff.o manifest.o alba_logger.o \
            transport_helper.o \
 	   osd_info.o manifest_cache.o osd_access.o statistics.o \
 	   asd_client.o asd_protocol.o rdma_transport.o tcp_transport.o transport.o \
-	   asd_access.o
+	   asd_access.o encryption.o
 
 OBJECTS = $(patsubst %,src/lib/%,$(_OBJECTS))
 

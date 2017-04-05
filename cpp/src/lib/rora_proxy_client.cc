@@ -23,6 +23,8 @@ but WITHOUT ANY WARRANTY of any kind.
 #include "manifest_cache.h"
 #include "osd_access.h"
 
+#include <gcrypt.h>
+
 namespace alba {
 namespace proxy_client {
 using std::string;
@@ -35,6 +37,12 @@ RoraProxy_client::RoraProxy_client(
       _asd_partial_read_timeout(std::chrono::milliseconds(
           rora_config.asd_partial_read_timeout_milliseconds)),
       _ser_version(boost::none) {
+
+  if (!gcry_control(GCRYCTL_INITIALIZATION_FINISHED_P)) {
+    ALBA_LOG(ERROR, "libgcrypt has not been initialized");
+    abort();
+  }
+
   ALBA_LOG(INFO, "RoraProxy_client( _asd_connection_pool_size = "
                      << _asd_connection_pool_size << " ...)");
   ManifestCache::getInstance().set_capacity(rora_config.manifest_cache_size);
@@ -63,7 +71,7 @@ RoraProxy_client::RoraProxy_client(
       string &v = std::get<1>(it);
       if (key == "manifest_ser") {
         const char *vd = v.data();
-        uint32_t sv = *((uint32_t *)vd);
+        uint8_t sv = *((uint8_t *)vd);
         _ser_version = sv;
         ALBA_LOG(DEBUG, "manifest_ser = " << sv);
       }
@@ -241,8 +249,8 @@ Location get_location(ManifestWithNamespaceId &mf, uint64_t pos, uint32_t len) {
   l.length = std::min(len, fragment_length - pos_in_fragment);
   l.uses_compression =
       mf.compression->get_compressor() != compressor_t::NO_COMPRESSION;
-  l.uses_encryption =
-      mf.encrypt_info->get_encryption() != encryption_t::NO_ENCRYPTION;
+  l.encrypt_info = mf.encrypt_info;
+  l.ctr = fragment->ctr;
   return l;
 }
 
@@ -293,7 +301,7 @@ _resolve_one_many_levels(const std::vector<alba_id_t> &alba_levels,
       std::vector<std::pair<byte *, Location>> locations_final_level;
       locations_final_level.reserve(locations->size());
       for (auto &buf_l : *locations) {
-        auto l = std::get<1>(buf_l);
+        auto &l = std::get<1>(buf_l);
         message_builder mb;
         to(mb, l.object_id);
         to(mb, l.chunk_id);
@@ -431,14 +439,14 @@ void RoraProxy_client::read_objects_slices(
       auto locations =
           _resolve_one_many_levels(alba_levels, 0, namespace_, object_slices);
       if (locations == boost::none ||
-          std::any_of(locations->begin(), locations->end(),
-                      [](std::pair<byte *, Location> &l) {
-                        auto location = std::get<1>(l);
-                        return location.fragment_location.first ==
-                                   boost::none ||
-                               location.uses_compression ||
-                               location.uses_encryption;
-                      })) {
+          std::any_of(
+              locations->begin(), locations->end(),
+              [](std::pair<byte *, Location> &l) {
+                auto &location = std::get<1>(l);
+                return location.fragment_location.first == boost::none ||
+                       location.uses_compression ||
+                       !location.encrypt_info->supports_partial_decrypt();
+              })) {
         via_proxy.push_back(object_slices);
       } else {
         for (auto &l : *locations) {
@@ -450,6 +458,47 @@ void RoraProxy_client::read_objects_slices(
     // TODO: different paths could go in parallel
     int result_front = _short_path(short_path);
     ALBA_LOG(DEBUG, "_short_path result => " << result_front);
+
+    if (!result_front) {
+      // maybe decrypt data
+      try {
+        for (auto &s : short_path) {
+          unsigned char *buf = s.first;
+          alba::proxy_protocol::Location &l = s.second;
+          switch (l.encrypt_info->get_encryption()) {
+          case encryption_t::NO_ENCRYPTION:
+            break;
+          case encryption_t::ENCRYPTED:
+            auto encrypt_info =
+                static_cast<encryption::Encrypted *>(l.encrypt_info.get());
+
+            if (l.ctr == boost::none) {
+              ALBA_LOG(ERROR, "ctr==boost::none while doing ctr partial decrypt");
+              throw 0;
+            }
+
+            auto enc_key =
+                get_encryption_key(alba_levels.back(), l.namespace_id,
+                                   encrypt_info->key_identification);
+
+            if (!encrypt_info->partial_decrypt(buf, l.length, enc_key, *l.ctr,
+                                               l.offset)) {
+              ALBA_LOG(
+                  ERROR,
+                  "Could not partially decrypt data, which is unexpected!");
+              throw 0;
+            }
+            break;
+          }
+        }
+      } catch (std::exception &e) {
+        result_front = -1;
+        ALBA_LOG(ERROR,
+                 "partial decrypt failed due to an exception: " << e.what());
+      } catch (...) {
+        result_front = -1;
+      }
+    }
 
     if (result_front) {
       _failure_time = std::chrono::steady_clock::now();
@@ -520,6 +569,52 @@ void RoraProxy_client::osd_info(osd_map_t &result) {
 void RoraProxy_client::osd_info2(osd_maps_t &result) {
   ALBA_LOG(DEBUG, "RoraProxy_client::osd_info2");
   _delegate->osd_info2(result);
+}
+
+boost::optional<string>
+RoraProxy_client::get_fragment_encryption_key(const string &alba_id,
+                                              const namespace_t namespace_id) {
+  return _delegate->get_fragment_encryption_key(alba_id, namespace_id);
+}
+
+string RoraProxy_client::get_encryption_key(const string &alba_id,
+                                            const namespace_t namespace_id,
+                                            const string &key_identification) {
+  auto find_key = _enc_keys.find(key_identification);
+  if (find_key == _enc_keys.end()) {
+    auto enc_key = *get_fragment_encryption_key(alba_id, namespace_id);
+
+    int gcrypt_result;
+
+    gcry_md_hd_t hd;
+    gcrypt_result = gcry_md_open(&hd, GCRY_MD_SHA256, 0);
+    if (gcrypt_result != 0) {
+      ALBA_LOG(ERROR, "gcry_md_open failed: " << gcrypt_result);
+      throw 0;
+    }
+
+    gcry_md_write(hd, enc_key.c_str(), enc_key.size());
+
+    gcrypt_result = gcry_md_final(hd);
+    if (gcrypt_result != 0) {
+      ALBA_LOG(ERROR, "gcry_md_final failed: " << gcrypt_result);
+      throw 0;
+    }
+
+    unsigned char *sha256 = gcry_md_read(hd, GCRY_MD_SHA256);
+    string key_identification2((char *)sha256, 256 / 8);
+
+    gcry_md_close(hd);
+
+    if (key_identification == key_identification2) {
+      std::tie(find_key, std::ignore) =
+          _enc_keys.emplace(key_identification, enc_key);
+    } else {
+      _enc_keys.emplace(key_identification2, enc_key);
+      throw 0;
+    }
+  }
+  return find_key->second;
 }
 }
 }

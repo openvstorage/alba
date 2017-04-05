@@ -25,8 +25,9 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <string>
 #include <vector>
 
+using namespace alba::llio;
+
 TEST(llio, composition) {
-  using namespace alba::llio;
   message_builder mb;
   std::string my_string("0123456789a");
   std::pair<std::string, bool> psb(my_string, true);
@@ -61,12 +62,32 @@ TEST(llio, composition) {
   EXPECT_EQ(y0b, true);
 }
 
+static std::vector<uint64_t> integers{
+    0,
+    1,
+    2,
+    127,
+    128,
+    129,
+    16383,
+    16384,
+    16385,
+    40000,
+    100000,
+    4904328,
+    3890292099,
+    3820908392820902,
+    9223372036854775807,
+    std::numeric_limits<uint64_t>::max(),
+};
+
 TEST(llio, varint) {
 
-  std::vector<int> tests{0,     1,     2,     127,   128,   129,
-                         16383, 16384, 16385, 40000, 100000};
-  using namespace alba::llio;
-  for (int t : tests) {
+  integers.push_back((uint64_t)std::rand());
+  integers.push_back((uint64_t)std::rand());
+  integers.push_back((uint64_t)std::rand());
+
+  for (uint64_t t : integers) {
     message_builder mb;
     varint_t v;
     v.j = t;
@@ -83,5 +104,24 @@ TEST(llio, varint) {
     varint_t v2;
     from(m, v2);
     EXPECT_EQ(v.j, v2.j);
+  }
+}
+
+TEST(llio, to_from_be) {
+  for (uint64_t t : integers) {
+    message_builder mb;
+    to_be(mb, t);
+    std::ostringstream sos;
+    mb.output(sos);
+    std::string contents = sos.str();
+    alba::stuff::dump_buffer(std::cout, contents.data(), contents.size());
+    std::cout << std::endl;
+
+    std::istringstream sis(contents);
+    auto buffer = message_buffer::from_istream(sis);
+    message m(buffer);
+    uint64_t res;
+    from_be(m, res);
+    EXPECT_EQ(t, res);
   }
 }

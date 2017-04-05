@@ -51,6 +51,7 @@ class virtual cache = object(self)
                            counted_list)
                         counted_list Lwt.t
     method virtual has_local_fragment_cache : bool
+    method virtual get_preset : alba_id:string -> namespace_id:int64 -> Preset.t option Lwt.t
 end
 
 class no_cache = object(self :#cache)
@@ -62,6 +63,7 @@ class no_cache = object(self :#cache)
     method close   ()             = Lwt.return_unit
     method osd_infos ()           = Lwt.return (0, [])
     method has_local_fragment_cache = false
+    method get_preset ~alba_id ~namespace_id = Lwt.return_none
 end
 
 class x_cache (target: cache) =
@@ -135,4 +137,5 @@ class x_cache (target: cache) =
     method close () = target # close ()
     method osd_infos () = target # osd_infos()
     method has_local_fragment_cache = target # has_local_fragment_cache
+    method get_preset = target # get_preset
 end
