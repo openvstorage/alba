@@ -839,6 +839,10 @@ TEST(proxy_client, test_partial_read_broken_fragment_cache) {
                                 proxy_client::consistent_read::F, cntr);
     ALBA_LOG(INFO, msg << "(2nd) slow_path=" << cntr.slow_path
                        << " fast_path=" << cntr.fast_path);
+    client->read_objects_slices(namespace_, objects_slices,
+                                proxy_client::consistent_read::F, cntr);
+    ALBA_LOG(INFO, msg << "(third) slow_path=" << cntr.slow_path
+                       << " fast_path=" << cntr.fast_path);
 
     cntr.slow_path = 0;
     cntr.fast_path = 0;
