@@ -327,6 +327,9 @@ class _inner_client (fd:Net_fd.t) id =
     method statistics clear =
       self # query Statistics clear Lwt.return
 
+    method statistics2 clear =
+      self # query Statistics2 clear Lwt.return
+
     method set_full full =
       self # update SetFull full Lwt.return
 

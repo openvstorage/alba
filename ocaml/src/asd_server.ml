@@ -416,8 +416,15 @@ module Net_fd = struct
          (Lwt_extra2.copy_using reader writer size)
 end
 
+let return_query_result'' ~serialize_with_length ~cost ?stat (res, write_extra) =
+  Lwt.return ((serialize_with_length res, write_extra, stat), cost)
+let return_query_result ~serialize_with_length ~cost ?stat res =
+  return_query_result'' ~serialize_with_length ~cost ?stat (res, None)
+let return_query_result' ~serialize_with_length ?stat res =
+  Lwt.return (serialize_with_length res, None, stat)
+
 let _range_validate
-      kv io_sched dir_info return
+      kv io_sched stats2 dir_info ~serialize_with_length
       ({ RangeQueryArgs.first;finc;last;reverse;max;},
        verify_checksum, show_all, prio)
   =
@@ -528,38 +535,53 @@ let _range_validate
       Lwt_log.debug_f "total_cost:%i for cnt':%i" total_cost cnt' >>= fun () ->
       let r' = List.rev r in
       let cont_key = if has_more then last else None in
-      return ~cost:total_cost ((cnt',r'), cont_key)
+      return_query_result
+        ~serialize_with_length
+        ~cost:total_cost
+        ~stat:(let open Asd_statistics2 in
+               if verify_checksum
+               then
+                 match prio with
+                 | Low -> stats2.range_validate_low_prio_verify_checksum
+                 | High -> stats2.range_validate_high_prio_verify_checksum
+               else
+                 match prio with
+                 | Low -> stats2.range_validate_low_prio
+                 | High -> stats2.range_validate_high_prio)
+        ((cnt',r'), cont_key)
     )
 
 let execute_query : type req res.
                          Rocks_key_value_store.t ->
                          (Llio2.WriteBuffer.t
-                          * (Net_fd.t -> unit Lwt.t) option)
+                          * (Net_fd.t -> unit Lwt.t) option
+                          * Asd_statistics2.stat option)
                            Asd_io_scheduler.t ->
                          DirectoryInfo.t ->
                          AsdMgmt.t ->
                          AsdStatistics.t ->
+                         Asd_statistics2.t ->
                          Capabilities.OsdCapabilities.capability counted_list ->
                          (req, res) Protocol.query ->
                          req ->
                          (Llio2.WriteBuffer.t
-                          * (Net_fd.t -> unit Lwt.t) option)
+                          * (Net_fd.t -> unit Lwt.t) option
+                          * Asd_statistics2.stat option)
                            Lwt.t
-  = fun kv io_sched dir_info mgmt stats capabilities q ->
+  = fun kv io_sched dir_info mgmt stats stats2 capabilities q ->
 
     let open Protocol in
-    let module Llio = Llio2.WriteBuffer in
     let serialize_with_length res =
+      let module Llio = Llio2.WriteBuffer in
       Llio.serialize_with_length'
         (Llio.pair_to
            Llio.int_to
            (Protocol.query_response_serializer q))
         (0, res)
     in
-    let return'' ~cost (res, write_extra) =
-      Lwt.return ((serialize_with_length res, write_extra), cost) in
-    let return ~cost res = return'' ~cost (res, None) in
-    let return' res = Lwt.return (serialize_with_length res, None) in
+    let return'' = return_query_result'' ~serialize_with_length in
+    let return = return_query_result ~serialize_with_length in
+    let return' = return_query_result' ~serialize_with_length in
     match q with
     | Range -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
       perform_read
@@ -579,6 +601,10 @@ let execute_query : type req res.
          in
          return
            ~cost:(max * 200)
+           ~stat:(let open Asd_statistics2 in
+                  match prio with
+                  | Low -> stats2.range_low_prio
+                  | High -> stats2.range_high_prio)
            ((count, List.map Keys.string_chop_prefix keys),
             have_more))
     | RangeEntries -> fun ({ RangeQueryArgs.first; finc; last; reverse; max; }, prio) ->
@@ -613,6 +639,10 @@ let execute_query : type req res.
                     (fun acc (_, blob, _) -> acc + 200 + Bigstring_slice.length blob)
                     0
                     blobs)
+           ~stat:(let open Asd_statistics2 in
+                  match prio with
+                  | Low -> stats2.range_entries_low_prio
+                  | High -> stats2.range_entries_high_prio)
            ((cnt, blobs),
             has_more))
     | MultiGet -> fun (keys, prio) ->
@@ -641,6 +671,10 @@ let execute_query : type req res.
                      | Some (blob, _) -> acc + 200 + Bigstring_slice.length blob)
                     0
                     res)
+           ~stat:(let open Asd_statistics2 in
+                  match prio with
+                  | Low -> stats2.range_entries_low_prio
+                  | High -> stats2.range_entries_high_prio)
            res)
     | MultiGet2 -> fun (keys, prio) ->
       if not dir_info.DirectoryInfo.write_blobs
@@ -833,7 +867,10 @@ let execute_query : type req res.
        fun () ->
        return' capabilities
     | RangeValidate ->
-       _range_validate kv io_sched dir_info return
+       _range_validate kv io_sched stats2 dir_info ~serialize_with_length
+    | Statistics2 ->
+       fun reset ->
+       return' (Asd_statistics2.to_yojson stats2 |> Yojson.Safe.pretty_to_string)
 
 exception ConcurrentModification
 
@@ -892,20 +929,28 @@ let maybe_delete_file kv dir_info fnr =
 let execute_update : type req res.
   Rocks_key_value_store.t ->
   release_fnr : (int64 -> unit) ->
-  (Llio2.WriteBuffer.t * (Net_fd.t ->
-                          unit Lwt.t) option) Asd_io_scheduler.t ->
+  (Llio2.WriteBuffer.t
+   * (Net_fd.t -> unit Lwt.t) option
+   * Asd_statistics2.stat option) Asd_io_scheduler.t ->
+  Asd_statistics2.t ->
   DirectoryInfo.t ->
   mgmt: AsdMgmt.t ->
   get_next_fnr : (unit -> int64) ->
   (req, res) Protocol.update ->
   req ->
-  res Lwt.t
-  = fun kv ~release_fnr io_sched dir_info
+  (res * Asd_statistics2.stat option) Lwt.t
+  = fun kv ~release_fnr io_sched stats2 dir_info
         ~mgmt ~get_next_fnr ->
     let open Protocol in
     function
     | Apply -> fun (asserts, upds, prio) ->
       begin
+
+        let stat =
+          let open Asd_statistics2 in
+          stats2.other_applies_high_prio
+        in
+
         Lwt_log.debug_f
           "Apply with asserts = %s & upds = %s"
           ([%show: Assert.t list] asserts)
@@ -1250,7 +1295,8 @@ let execute_update : type req res.
                     | Lwt.Canceled -> Lwt.fail Lwt.Canceled
                     | ConcurrentModification -> Lwt.return `Retry
                     | exn -> Lwt.fail exn) >>= function
-                | `Succeeded fnrs -> Lwt.return fnrs
+                | `Succeeded fnrs ->
+                   Lwt.return (fnrs, Some stat)
                 | `Retry ->
                    Lwt_log.debug_f "Asd retrying apply due to concurrent modification" >>= fun () ->
                    inner (attempt + 1)
@@ -1261,14 +1307,14 @@ let execute_update : type req res.
        fun full ->
        Lwt_log.warning_f "SetFull %b" full >>= fun () ->
        AsdMgmt.set_full mgmt full;
-       Lwt.return_unit
+       Lwt.return ((), None)
     | Slowness ->
        fun slowness ->
        Lwt_log.warning_f "Slowness %s"
                          ([%show: (float * float) option] slowness)
        >>= fun () ->
        AsdMgmt.set_slowness mgmt slowness;
-       Lwt.return_unit
+       Lwt.return ((), None)
 
 
 let check_node_id kv external_id =
@@ -1304,7 +1350,7 @@ let asd_protocol
       ?cancel
       kv ~release_fnr
       io_sched
-      dir_info stats ~mgmt ~capabilities
+      dir_info stats stats2 ~mgmt ~capabilities
       ~get_next_fnr asd_id
       nfd
   =
@@ -1324,7 +1370,7 @@ let asd_protocol
              serializer)
           (0, res)
       in
-      Lwt.return (res_s, None)
+      Lwt.return (res_s, None, None)
     in
     let return_error error =
       let res =
@@ -1332,7 +1378,7 @@ let asd_protocol
           Protocol.Error.serialize
           error
       in
-      Lwt.return (res, None)
+      Lwt.return (res, None, None)
     in
     Lwt.catch
       (fun () ->
@@ -1345,7 +1391,7 @@ let asd_protocol
                     Lwt_log.ign_error ~exn "error during deserializing asd query request";
                     raise exn
                 in
-                execute_query kv io_sched dir_info mgmt stats capabilities q req
+                execute_query kv io_sched dir_info mgmt stats stats2 capabilities q req
              | Protocol.Wrap_update u ->
                 let req =
                   try Protocol.update_request_deserializer u buf
@@ -1357,11 +1403,12 @@ let asd_protocol
                   kv
                   ~release_fnr
                   io_sched
+                  stats2
                   dir_info
                   ~mgmt
                   ~get_next_fnr
-                  u req >>= fun res ->
-                return_result (Protocol.update_response_serializer u) res
+                  u req >>= fun (res, s) ->
+                return_result (Protocol.update_response_serializer u) res (* s *)
        end)
       (function
         | End_of_file as e ->
@@ -1374,19 +1421,20 @@ let asd_protocol
                           (Printexc.to_string exn)
            >>= fun () ->
            return_error (Protocol.Error.Unknown_error (1, "Unknown error occured"))
-      ) >>= fun (res, write_extra) ->
+      ) >>= fun (res, write_extra, o_stat) ->
     let write_res () =
       Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos
     in
-    match write_extra with
-    | None ->
-       write_res ()
-    | Some write_extra ->
-       let () = Net_fd.cork nfd in
-       write_res () >>= fun () ->
-       write_extra nfd >>= fun () ->
-       let () = Net_fd.uncork nfd in
-       Lwt.return_unit
+    (match write_extra with
+     | None ->
+        write_res ()
+     | Some write_extra ->
+        let () = Net_fd.cork nfd in
+        write_res () >>= fun () ->
+        write_extra nfd >>= fun () ->
+        let () = Net_fd.uncork nfd in
+        Lwt.return_unit) >>= fun () ->
+    Lwt.return o_stat
   in
   let _SLOWNESS_CODE =
     let open Protocol in
@@ -1404,24 +1452,29 @@ let asd_protocol
        let module L = Llio2.ReadBuffer in
        let buf = L.make_buffer buffer ~offset ~length:message_length in
        let code = L.int32_from buf in
-       with_timing_lwt
-         (fun () ->
-           (match mgmt.AsdMgmt.slowness with
-            | None -> Lwt.return_unit
-            | Some (_,_) when code = _SLOWNESS_CODE ->
-               (* this should be fast, regardless *)
-               Lwt.return_unit
-            | Some (fixed, variable) ->
-               begin
-                 let delay = fixed +. Random.float variable in
-                 Lwt_log.info_f "Slowness: sleeping %f" delay >>= fun () ->
-                 Lwt_unix.sleep delay
-               end
-           ) >>= fun () ->
-           handle_request buf code >>= fun () ->
-           Lwt.return code))
-    >>= fun (delta, code) ->
+       let t0 = Unix.gettimeofday () in
+       (match mgmt.AsdMgmt.slowness with
+        | None -> Lwt.return_unit
+        | Some (_,_) when code = _SLOWNESS_CODE ->
+           (* this should be fast, regardless *)
+           Lwt.return_unit
+        | Some (fixed, variable) ->
+           begin
+             let delay = fixed +. Random.float variable in
+             Lwt_log.info_f "Slowness: sleeping %f" delay >>= fun () ->
+             Lwt_unix.sleep delay
+           end
+       ) >>= fun () ->
+       handle_request buf code >>= fun o_stat ->
+       Lwt.return (code, o_stat, (t0, Unix.gettimeofday ()))
+      )
+    >>= fun (code, o_stat, (t0, t1)) ->
+    let delta = t1 -. t0 in
     Statistics_collection.Generic.new_delta stats code delta;
+    let () = Option.iter
+               (fun s -> Asd_statistics2.add_new_sample s t0 t1)
+               o_stat
+    in
 
     let log_level =
       if delta > 0.5
@@ -1798,6 +1851,7 @@ let run_server
   let advancer = new check_garbage_from_advancer next_fnr db in
 
   let stats = AsdStatistics.make () in
+  let stats2 = Asd_statistics2.make_t () in
   let latest_disk_usage =
     match Rocks.get_string
             db
@@ -1852,7 +1906,7 @@ let run_server
       ~release_fnr:(fun fnr -> advancer # release fnr)
       io_sched
       dir_info
-      stats
+      stats stats2
       ~mgmt
       ~capabilities
       ~get_next_fnr

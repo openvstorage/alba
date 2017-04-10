@@ -429,6 +429,7 @@ module Protocol = struct
     | Capabilities : (unit, Capabilities.OsdCapabilities.t) query
     | RangeValidate: (Slice.t RangeQueryArgs.t * bool * bool * priority,
                       (key * ((Bytes.t * bool) list)) counted_list * key option) query
+    | Statistics2: (bool, string) query
 
   [@deriving show]
 
@@ -456,6 +457,7 @@ module Protocol = struct
                       Wrap_query Capabilities, 12l, "Capabilities";
                       Wrap_query RangeValidate,13l, "RangeValidate";
                       Wrap_update Slowness    ,14l, "Slowness";
+                      Wrap_query Statistics2,  15l, "Statistics2";
                     ]
 
   let wrap_unknown_operation f =
@@ -521,7 +523,8 @@ module Protocol = struct
            Llio.bool_to
            Llio.bool_to
            priority_to_buffer'
-
+      | Statistics2 ->
+         Llio.bool_to
 
   let query_request_deserializer : type req res. (req, res) query -> req Llio2.deserializer
     =
@@ -565,6 +568,8 @@ module Protocol = struct
          Llio.bool_from
          Llio.bool_from
          priority_from_buffer'
+      | Statistics2 ->
+         Llio.bool_from
 
 
   let query_response_serializer : type req res. (req, res) query -> res Llio2.serializer
@@ -611,6 +616,8 @@ module Protocol = struct
                            )
            )
            (Llio.option_to Slice.to_buffer')
+      | Statistics2 ->
+         Llio.string_to
 
   let query_response_deserializer : type req res. (req, res) query -> res Llio2.deserializer
     =
@@ -657,6 +664,8 @@ module Protocol = struct
                      Llio.bool_from))
          ))
          (Llio.option_from Slice.from_buffer')
+      | Statistics2 ->
+         Llio.string_from
 
 
 

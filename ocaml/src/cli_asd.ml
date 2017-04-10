@@ -744,6 +744,77 @@ let asd_multistatistics_cmd =
   let info = Term.info "asd-multistatistics" ~doc:"get statistics from many asds" in
   t, info
 
+let asd_multistatistics2 long_ids to_json verbose cfg_file tls_config
+                         clear list_all
+  =
+  let t () =
+    with_alba_client
+      cfg_file tls_config
+      (fun alba_client ->
+        let open Nsm_model.OsdInfo in
+        alba_client # mgr_access # list_all_claimed_osds >>= fun (_n, osds) ->
+        let stat_osds =
+          if list_all
+          then osds
+          else
+            List.filter
+              (fun (_,osd_info) ->
+                let k = osd_info.kind in
+                List.mem (get_long_id k) long_ids
+              ) osds
+        in
+
+        let needed_info =
+          List.map
+            (fun (_,osd_info) ->
+              let k = osd_info.kind in
+              get_long_id k,
+              asd_osd_info_from_kind k
+            )
+            stat_osds
+        in
+        Lwt_list.map_p
+          (fun (long_id, conn_info) ->
+            begin
+              Lwt.catch
+                (fun () ->
+                  Lwt_unix.with_timeout
+                    1.
+                    (fun () ->
+                      let conn_info = Asd_client.conn_info_from conn_info ~tls_config in
+                      Asd_client.with_client
+                        ~conn_info (Some long_id)
+                        (fun client -> client # statistics2 clear)
+                      >>= fun r ->
+                      (long_id, Prelude.Error.Ok r) |> Lwt.return)
+                )
+                (fun exn ->
+                  Lwt_log.info_f ~exn "couldn't reach %s" long_id >>= fun () ->
+                  Lwt.return (long_id, Prelude.Error.Error exn)
+                )
+            end
+          ) needed_info
+      )
+    >>= fun results ->
+    Lwt.return_unit
+    (* TODO process_results results *)
+  in
+  lwt_cmd_line ~to_json ~verbose t
+
+let asd_multistatistics2_cmd =
+  let t = Term.(pure asd_multistatistics2
+                $ long_ids
+                $ to_json
+                $ verbose
+                $ alba_cfg_url
+                $ tls_config
+                $ clear
+                $ list_all
+          )
+  in
+  let info = Term.info "asd-multistatistics2" ~doc:"get statistics from many asds" in
+  t, info
+
 let asd_statistics hosts port_o transport asd_id
                    to_json verbose config_o tls_config clear
   =
@@ -1012,6 +1083,7 @@ let cmds = [
   asd_discover_cmd;
   asd_statistics_cmd;
   asd_multistatistics_cmd;
+  asd_multistatistics2_cmd;
   asd_set_full_cmd;
   asd_set_slowness_cmd;
   asd_get_version_cmd;
