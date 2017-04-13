@@ -64,6 +64,7 @@ let install_logger ?(log_sinks=`Stdout) ~subcomponent ~verbose () =
   let component = Printf.sprintf "alba/%s" subcomponent in
   let pid = Unix.getpid () in
   let seqnum = ref 0 in
+  let thread_id = 0 in
   let logger = Lwt_log.make
                  ~output:(fun section level lines ->
                           let seqnum' = !seqnum in
@@ -71,11 +72,10 @@ let install_logger ?(log_sinks=`Stdout) ~subcomponent ~verbose () =
                           let ts = Core.Time.now () in
                           let logline =
                             Arakoon_logger.format_message
-                              ~hostname ~pid ~component
+                              ~hostname ~pid ~thread_id ~component
                               ~ts ~seqnum:seqnum'
                               ~section ~level ~lines
                           in
-
                           Lwt_list.iter_p
                             (fun (lg_output, _) -> lg_output logline)
                             loggers)

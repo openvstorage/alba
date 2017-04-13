@@ -53,9 +53,9 @@ let identifier = function
   | SSL _ssl   ->
      let fd = _ssl_get_fd _ssl in
      Lwt_extra2.lwt_unix_fd_to_fd fd
-  | Rsocket fd -> Lwt_rsocket.identifier fd 
+  | Rsocket fd -> Lwt_rsocket.identifier fd
 
-                 
+
 let socket domain typ x transport (tls:Tls.t option) =
   match transport with
   | TCP ->
@@ -68,7 +68,7 @@ let socket domain typ x transport (tls:Tls.t option) =
         let fd = Lwt_unix.socket domain typ x in
         let state = Config (fd,tls) in
         SSL { state }
-     end 
+     end
   | RDMA ->
      let socket = Lwt_rsocket.socket domain typ x in
      Rsocket socket
@@ -83,11 +83,13 @@ let setsockopt nfd option value =
 
 let bind nfd sa =
   match nfd with
-  | Plain fd -> Lwt_unix.bind fd sa
+  | Plain fd -> Lwt_unix.Versioned.bind_2 fd sa
   | SSL _ssl ->
      let fd = _ssl_get_fd _ssl in
-     Lwt_unix.bind fd sa
-  | Rsocket fd -> Lwt_rsocket.bind fd sa
+     Lwt_unix.Versioned.bind_2 fd sa
+  | Rsocket fd ->
+     let r = Lwt_rsocket.bind fd sa in
+     Lwt.return r
 
 let listen nfd n =
   match nfd with
@@ -150,12 +152,12 @@ let connect fd address =
           Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
           let state' = failwith "todo" in
           _ssl.state <- state';
-          Lwt.return_unit                     
+          Lwt.return_unit
        | Using _ -> failwith "already connected"
-  (* 
+  (*
     Lwt_unix.connect fd address >>= fun () ->
-    Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s -> 
-    let r = Net_fd.wrap_ssl lwt_s in 
+    Typed_ssl.Lwt.ssl_connect fd ctx >>= fun lwt_s ->
+    let r = Net_fd.wrap_ssl lwt_s in
    *)
      end
   | Rsocket fd ->
@@ -197,7 +199,7 @@ let write_all nfd bytes offset length = match nfd with
        Lwt_rsocket.send socket bytes offset todo []
      in
      Lwt_extra2._write_all write_from_source offset length
-                           
+
 let write_all' nfd bytes = write_all nfd bytes 0 (Bytes.length bytes)
 
 let write_all_lwt_bytes nfd bs offset length = match nfd with
@@ -212,7 +214,7 @@ let write_all_lwt_bytes nfd bs offset length = match nfd with
        Lwt_rsocket.Bytes.send socket bs offset todo []
      in
      Lwt_extra2._write_all write_from_source offset length
-                           
+
 let read_all nfd target offset length = match nfd with
   | Plain fd -> Lwt_extra2.read_all fd target offset length
   | SSL _ssl ->
@@ -358,14 +360,14 @@ let with_message_buffer_from
 
 let cork = function
   | Plain fd ->
-     Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false 
+     Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY false
   | SSL _ssl ->
      let fd = _ssl_get_fd _ssl in
      Lwt_unix.setsockopt
        fd
-       Lwt_unix.TCP_NODELAY false 
+       Lwt_unix.TCP_NODELAY false
   | Rsocket fd  ->
-     Lwt_rsocket.setsockopt fd Lwt_unix.TCP_NODELAY false    
+     Lwt_rsocket.setsockopt fd Lwt_unix.TCP_NODELAY false
 
 let uncork = function
   | Plain fd   ->
@@ -377,5 +379,3 @@ let uncork = function
        Lwt_unix.TCP_NODELAY true
   | Rsocket socket ->
      Lwt_rsocket.setsockopt socket Lwt_unix.TCP_NODELAY true
-  
-      
