@@ -83,10 +83,10 @@ let setsockopt nfd option value =
 
 let bind nfd sa =
   match nfd with
-  | Plain fd -> Lwt_unix.Versioned.bind_2 fd sa
+  | Plain fd -> Lwt_unix.bind fd sa
   | SSL _ssl ->
      let fd = _ssl_get_fd _ssl in
-     Lwt_unix.Versioned.bind_2 fd sa
+     Lwt_unix.bind fd sa
   | Rsocket fd ->
      let r = Lwt_rsocket.bind fd sa in
      Lwt.return r

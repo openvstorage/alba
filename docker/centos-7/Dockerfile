@@ -66,7 +66,7 @@ RUN opam init --root=${opam_root} --comp ${ocaml_version}
 
 RUN git clone git://github.com/janestreet/opam-repository.git /janestreet-opam-repo && \
     cd /janestreet-opam-repo && \
-    git checkout 49a87b492c6d5e8a2c76bb8ac1956aac484c2f40
+    git checkout 18e10bbe6fd876523fe38216ae827f26bf46e677
 RUN eval `${opam_env}` && \
     opam repo --root=${opam_root} -k local add janestreet /janestreet-opam-repo
 
@@ -81,7 +81,8 @@ RUN eval `${opam_env}` && \
         snappy \
         sexplib \
         bisect \
-        lwt.2.7.0 \
+        lwt_ssl \
+        lwt.3.0.0 \
         camltc.0.9.4 \
         ocplib-endian.1.0 \
         ctypes \
@@ -97,7 +98,7 @@ RUN eval `${opam_env}` && \
         tiny_json \
         ppx_deriving \
         ppx_deriving_yojson \
-        core.114.35+03 \
+        core.v0.9.114.41+37 \
         redis.0.3.3 \
         uri.1.9.2 \
         result \
@@ -158,7 +159,7 @@ RUN cp /usr/local/lib/libgtest.a /lib64/
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout 35667873b806944e5d6ae83c47c9ad274c1a613a
+RUN cd arakoon && git pull && git checkout 1a5da78cd06e7662c6d262ae0c723c4d54d94542
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
