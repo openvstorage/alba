@@ -112,5 +112,5 @@ case "${1-bash}" in
         ;;
     *)
         echo "invalid test suite specified..."
-        exit1
+        exit 1
 esac
