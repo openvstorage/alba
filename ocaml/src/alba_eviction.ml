@@ -186,33 +186,47 @@ let lru_collect_some_garbage alba_client redis_client key =
 
   Lwt_list.map_p
     (fun (namespace_id, names) ->
-     let names = List.map snd names in
-     alba_client # nsm_host_access # get_nsm_by_id
-                 ~namespace_id >>= fun client ->
-     client # get_object_manifests_by_name names >>= fun mfs ->
 
-     let size =
-       List.fold_left
-         (fun acc ->
-          function
-          | None -> acc
-          | Some mf ->
-             Int64.(add
-               acc
-               (Nsm_model.Manifest.get_summed_fragment_sizes mf))
-         )
-         0L
-         mfs
-     in
+      Lwt.catch
+        (fun () ->
+          alba_client # nsm_host_access # get_nsm_by_id
+                      ~namespace_id >>= fun client ->
 
-     client # apply_sequence
-            []
-            (List.map
-               (fun name -> Nsm_model.Update.DeleteObject name)
-               names) >>= fun () ->
-     Lwt.return size
+          let names = List.map snd names in
+          client # get_object_manifests_by_name names >>= fun mfs ->
+
+          let size =
+            List.fold_left
+              (fun acc ->
+                function
+                | None -> acc
+                | Some mf ->
+                   Int64.(add
+                            acc
+                            (Nsm_model.Manifest.get_summed_fragment_sizes mf))
+              )
+              0L
+              mfs
+          in
+
+          client # apply_sequence
+                 []
+                 (List.map
+                    (fun name -> Nsm_model.Update.DeleteObject name)
+                    names) >>= fun () ->
+          Lwt.return size
+        )
+        (fun exn ->
+          (match exn with
+           | Albamgr_protocol.Protocol.Error.Albamgr_exn(Albamgr_protocol.Protocol.Error.Namespace_does_not_exist, _) ->
+              Lwt.return_unit
+           | exn ->
+              Lwt_log.info_f ~exn "Ignoring exception during Alba_eviction.lru_collect_some_garbage") >>= fun () ->
+          Lwt.return 0L)
     )
-    items' >>= fun sizes ->
+    items'
+
+  >>= fun sizes ->
 
   R.zrem redis_client key items >>= fun _ ->
   Lwt.return (List.fold_left Int64.add 0L sizes)
