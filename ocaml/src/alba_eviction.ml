@@ -21,7 +21,9 @@ open Lwt.Infix
 
 let do_random_eviction
       (alba_client : Alba_base_client.client)
-      ~prefixes =
+      ~prefixes
+      percentage_to_clean_up
+  =
   Lwt_log.info_f "Alba_eviction: starting random eviction" >>= fun () ->
   Lwt_list.map_p
     (fun prefix ->
@@ -66,7 +68,7 @@ let do_random_eviction
   in
   let victims_per_namespace =
     (* remove 1% of all objects, divided equally among all namespaces *)
-    Int64.to_float (Int64.div obj_cnt_total 100L) /. float namespaces_with_objects
+    Int64.to_float (Int64.div obj_cnt_total 100L |> Int64.mul percentage_to_clean_up) /. float namespaces_with_objects
     |> ceil |> int_of_float
   in
   let delete_objects () =
@@ -115,29 +117,35 @@ let should_evict (alba_client : Alba_base_client.client) coordinator =
   if coordinator # is_master
   then
     begin
-      let cnt_total, cnt_full, _ =
+      let cnt_total, cnt_full, fill_ratio, _ =
         Hashtbl.fold
           (fun osd_id (osd_info, osd_state, _)
-               (cnt_total, cnt_full, acc) ->
+               (cnt_total, cnt_full, avg_fill_ratio, acc) ->
            let open Nsm_model in
            let used = Int64.to_float osd_info.OsdInfo.used in
            let total = Int64.to_float osd_info.OsdInfo.total in
            let fill_ratio = used /. total in
+           let full = fill_ratio > 0.9 in
            (cnt_total + 1,
-            cnt_full + (if fill_ratio > 0.9 then 1 else 0),
+            cnt_full + (if full then 1 else 0),
+            (if full
+             then (avg_fill_ratio *. (float cnt_full) +. fill_ratio) /. ((cnt_full + 1) |> float)
+             else avg_fill_ratio),
             (osd_id,
              used, total,
              fill_ratio)
             :: acc))
           (alba_client # osd_access # osds_info_cache)
-          (0, 0, [])
+          (0, 0, 0., [])
       in
       (* more than half of the disks are >90% filled,
        * so let's do some cleanup *)
-      float cnt_total /. float cnt_full < 2.
+      if (float cnt_total /. float cnt_full) < 2.
+      then `True fill_ratio
+      else `False
     end
   else
-    false
+    `False
 
 let lru_collect_some_garbage alba_client redis_client key =
   Lwt_log.info_f "Alba_eviction: starting redis based lru eviction" >>= fun () ->

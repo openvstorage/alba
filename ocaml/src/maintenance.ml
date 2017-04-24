@@ -2030,10 +2030,24 @@ class client ?(retry_timeout = 60.)
         maintenance_config.Maintenance_config.cache_eviction_prefix_preset_pairs
         []
     in
-    let do_random_eviction () =
+
+    let percentage_from_fill_ratio fill_ratio =
+      if fill_ratio > 0.94
+      then 16L
+      else if fill_ratio > 0.93
+      then 8L
+      else if fill_ratio > 0.92
+      then 4L
+      else if fill_ratio > 0.91
+      then 2L
+      else 1L
+    in
+
+    let do_random_eviction fill_ratio =
       Alba_eviction.do_random_eviction
         alba_client
         ~prefixes:(get_prefixes ())
+        (percentage_from_fill_ratio fill_ratio)
     in
 
     let rec get_redis_lru_cache_eviction () =
@@ -2053,18 +2067,18 @@ class client ?(retry_timeout = 60.)
        Lwt_extra2.run_forever
          "random-eviction"
          (fun () ->
-          if Alba_eviction.should_evict alba_client coordinator
-          then do_random_eviction ()
-          else Lwt.return ())
+          match Alba_eviction.should_evict alba_client coordinator with
+          | `True fill_ratio -> do_random_eviction fill_ratio
+          | `False -> Lwt.return ())
          retry_timeout
     | Some { Maintenance_config.host; port; key; } ->
        let t1 =
          Lwt_extra2.run_forever
            "redis-lru-eviction"
            (fun () ->
-            if Alba_eviction.should_evict alba_client coordinator
-            then
-              begin
+             match Alba_eviction.should_evict alba_client coordinator with
+             | `False -> Lwt.return_unit
+             | `True fill_ratio ->
                 Lwt.catch
                   (fun () ->
                    let module R = Redis_lwt.Client in
@@ -2078,8 +2092,9 @@ class client ?(retry_timeout = 60.)
                           (osd_access # osds_info_cache)
                           0L
                       in
-                      (* collect 1% of objects *)
-                      let target = Int64.div total_disk_size 100L in
+                      let percentage = percentage_from_fill_ratio fill_ratio in
+                      (* collect precentage of objects *)
+                      let target = Int64.div total_disk_size 100L |> Int64.mul percentage in
                       let rec inner acc =
                         if acc > target
                         then Lwt.return ()
@@ -2098,10 +2113,8 @@ class client ?(retry_timeout = 60.)
                    Lwt_log.info_f
                      ~exn
                      "redis based lru eviction failed, doing fallback to random" >>= fun () ->
-                   do_random_eviction ())
-              end
-            else
-              Lwt.return ())
+                   do_random_eviction fill_ratio)
+           )
            retry_timeout
        in
 
