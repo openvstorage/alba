@@ -125,7 +125,7 @@ let should_evict (alba_client : Alba_base_client.client) coordinator =
            let used = Int64.to_float osd_info.OsdInfo.used in
            let total = Int64.to_float osd_info.OsdInfo.total in
            let fill_ratio = used /. total in
-           let full = fill_ratio > 0.9 in
+           let full = fill_ratio > 0.85 in
            (cnt_total + 1,
             cnt_full + (if full then 1 else 0),
             (if full

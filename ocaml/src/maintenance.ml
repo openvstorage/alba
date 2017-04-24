@@ -2032,13 +2032,11 @@ class client ?(retry_timeout = 60.)
     in
 
     let percentage_from_fill_ratio fill_ratio =
-      if fill_ratio > 0.94
-      then 16L
-      else if fill_ratio > 0.93
-      then 8L
-      else if fill_ratio > 0.92
+      if fill_ratio > 0.93
+      then 6L
+      else if fill_ratio > 0.90
       then 4L
-      else if fill_ratio > 0.91
+      else if fill_ratio > 0.87
       then 2L
       else 1L
     in
