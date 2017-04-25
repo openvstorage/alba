@@ -20,6 +20,6 @@ RESULT=$?
 
 head -n256 output
 echo ...
-tail -n256 output
+tail -n1000 output
 
 exit $RESULT
