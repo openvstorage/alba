@@ -47,9 +47,9 @@ let do_random_eviction
     )
     namespaces
   >>= fun r ->
-  let (obj_cnt_total, namespaces_with_objects, namespaces, empty_namespaces) =
+  let (namespaces_with_count, empty_namespaces) =
     List.fold_left
-      (fun (obj_cnt_total, namespaces_with_objects, namespaces, empty_namespaces)
+      (fun (namespaces_with_count, empty_namespaces)
            (namespace_name, namespace_id, stats) ->
        let obj_cnt =
          List.fold_left
@@ -59,47 +59,52 @@ let do_random_eviction
            (snd stats.Nsm_model.NamespaceStats.bucket_count)
        in
        let has_objects = obj_cnt > 0L in
-       Int64.add obj_cnt obj_cnt_total,
-       namespaces_with_objects + (if has_objects then 1 else 0),
-       (if has_objects then namespace_id::namespaces else namespaces),
-       (if has_objects then empty_namespaces else namespace_name :: empty_namespaces))
-      (0L, 0, [], [])
+       if has_objects
+       then ((namespace_id, obj_cnt) :: namespaces_with_count), empty_namespaces
+       else namespaces_with_count, (namespace_name :: empty_namespaces)
+      )
+      ([], [])
       r
   in
-  let victims_per_namespace =
-    (* remove 1% of all objects, divided equally among all namespaces *)
-    Int64.to_float (Int64.div obj_cnt_total 100L |> Int64.mul percentage_to_clean_up) /. float namespaces_with_objects
-    |> ceil |> int_of_float
-  in
+  (* remove a percentage of objects from each namespace *)
   let delete_objects () =
     Lwt_list.iter_p
-      (fun namespace_id ->
-       alba_client # with_nsm_client'
-                   ~namespace_id
-                   (fun nsm_client ->
-                    let first, last, reverse = make_first_last_reverse () in
-                    let rec inner = function
-                      | 0 -> Lwt.return ()
-                      | todo ->
-                         nsm_client # list_objects_by_id
-                                    ~first ~finc:true
-                                    ~last ~reverse
-                                    ~max:todo >>= fun ((cnt, objs), has_more) ->
-                         Lwt_list.iter_s
-                           (fun manifest ->
-                            nsm_client # delete_object
-                                       ~object_name:manifest.Nsm_model.Manifest.name
-                                       ~allow_overwrite:Nsm_model.AnyPrevious
-                            >|= ignore)
-                           objs >>= fun () ->
-                         if has_more
-                         then inner (todo - cnt)
-                         else Lwt.return ()
-                    in
-                    inner victims_per_namespace
-                   )
+      (fun (namespace_id, obj_cnt) ->
+        alba_client
+          # with_nsm_client'
+          ~namespace_id
+          (fun nsm_client ->
+            let first, last, reverse = make_first_last_reverse () in
+            let rec inner = function
+              | 0 -> Lwt.return ()
+              | todo ->
+                 nsm_client # list_objects_by_id
+                            ~first ~finc:true
+                            ~last ~reverse
+                            ~max:todo >>= fun ((cnt, objs), has_more) ->
+                 Lwt_list.iter_s
+                   (fun manifest ->
+                     nsm_client # delete_object
+                                ~object_name:manifest.Nsm_model.Manifest.name
+                                ~allow_overwrite:Nsm_model.AnyPrevious
+                     >|= ignore)
+                   objs >>= fun () ->
+                 if has_more
+                 then inner (todo - cnt)
+                 else Lwt.return ()
+            in
+            let victims =
+              let open Int64 in
+              let cnt' = mul obj_cnt percentage_to_clean_up in
+              let remainder = rem cnt' 100L in
+              let result = div cnt' 100L in
+              (* round number of victims up, so we can completely clean out almost empty namespaces *)
+              add result (if remainder > 0L then 1L else 0L) |> to_int
+            in
+            inner victims
+          )
       )
-      namespaces
+      namespaces_with_count
   in
   let delete_empty_namespaces () =
     Lwt_list.iter_p
