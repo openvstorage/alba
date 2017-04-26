@@ -21,6 +21,7 @@ open Alba_interval
 open Alba_client_errors
 open Slice
 open Lwt_bytes2
+open Lwt_extra2
 open Lwt.Infix
 
 exception Unreachable_fragment of { chunk_id : Nsm_model.chunk_id;
@@ -181,40 +182,52 @@ let try_get_from_fragments
       Lwt.return_false
   in
 
-  let get_from_fragments () =
+  let get_from_fragments latch =
     Lwt_list.iter_p
       (fun (fragment_id, fragment_slice, fragment_intersections) ->
-        let timeout = osd_access # osd_timeout in
-        fragment_cache # lookup2
-                       ~timeout
-                       namespace_id
-                       (Fragment_cache_keys.make_key
-                          ~object_id ~chunk_id ~fragment_id)
-                       fragment_intersections
-        >>= function
-        | (true, mfs') ->
-           (* read fragment pieces from the fragment cache *)
-           mfs := List.rev_append mfs' !mfs;
-           Lwt.return_unit
-        | (false, _) ->
-           try_partial_osd_read fragment_id fragment_intersections
-           >>= function
-           | true -> Lwt.return_unit
-           | false ->
-              (* partial osd read was not possible or desired,
-               * try reading entire fragment and blit from that *)
-              fetch_fragment fragment_id >>= fun fragment_data ->
-              let () =
-                finalize
-                  (fun () -> blit_from_fragment
-                               (SharedBuffer.deref fragment_data)
-                               fragment_intersections)
-                  (fun () -> SharedBuffer.unregister_usage fragment_data)
-              in
-              Lwt.return_unit)
+        Lwt.finalize
+          (fun () ->
+            let timeout = osd_access # osd_timeout in
+            fragment_cache # lookup2
+                           ~timeout
+                           namespace_id
+                           (Fragment_cache_keys.make_key
+                              ~object_id ~chunk_id ~fragment_id)
+                           fragment_intersections
+            >>= function
+            | (true, mfs') ->
+               (* read fragment pieces from the fragment cache *)
+               mfs := List.rev_append mfs' !mfs;
+               Lwt.return_unit
+            | (false, _) ->
+               try_partial_osd_read fragment_id fragment_intersections
+               >>= function
+               | true -> Lwt.return_unit
+               | false ->
+                  (* partial osd read was not possible or desired,
+                   * try reading entire fragment and blit from that *)
+                  fetch_fragment fragment_id >>= fun fragment_data ->
+                  let () =
+                    finalize
+                      (fun () -> blit_from_fragment
+                                   (SharedBuffer.deref fragment_data)
+                                   fragment_intersections)
+                      (fun () -> SharedBuffer.unregister_usage fragment_data)
+                  in
+                  Lwt.return_unit)
+          (fun () ->
+            CountDownLatch.count_down latch;
+            Lwt.return_unit)
+      )
       chunk_intersections
   in
-  get_from_fragments () >>= fun () ->
+  let latch = CountDownLatch.create ~count:(List.length chunk_intersections) in
+  Lwt.finalize
+    (fun () -> get_from_fragments latch)
+    (fun () ->
+      (* wait for all threads that might still write to the buffers
+       * in 'fragment_intersections' to finish *)
+      CountDownLatch.await latch) >>= fun () ->
   Lwt.return !mfs
 
 
