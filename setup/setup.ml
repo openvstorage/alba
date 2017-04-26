@@ -344,7 +344,7 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
       [_binary;
        "--node"; node;
        "-config"; Url.canonical cfg_url
-      ] |> Shell.detach
+      ] |> Shell.detach ~out:(Printf.sprintf "%s/%s/%s.start.log" cluster_path node node)
 
     method start =
       List.iter (self # start_node) nodes
@@ -384,7 +384,15 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
       in
       let rec loop n =
         if n = 0
-        then failwith "No_master"
+        then
+          begin
+            let cat_log i =
+              Shell.cmd (Printf.sprintf "tail -n50 %s/abm_%i/abm_%i.start.log" cluster_path i i);
+              Shell.cmd (Printf.sprintf "tail -n50 %s/abm_%i/abm_%i.log" cluster_path i i)
+            in
+            cat_log 0; cat_log 1; cat_log 2;
+            failwith "No_master"
+          end
         else
           let mo = step () in
           match mo with
