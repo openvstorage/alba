@@ -341,10 +341,11 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
       self # persist_cluster_config
 
     method start_node node =
+      let out = Printf.sprintf "%s/%s/%s.out" cluster_path node node in
       [_binary;
        "--node"; node;
        "-config"; Url.canonical cfg_url
-      ] |> Shell.detach
+      ] |> Shell.detach ~out
 
     method start =
       List.iter (self # start_node) nodes
