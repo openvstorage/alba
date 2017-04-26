@@ -40,7 +40,8 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         ncurses-dev \
         liburiparser1 \
         libzmq5 \
-        librabbitmq4
+        librabbitmq4 \
+        tzdata
 
 # install specific orocksdb
 RUN git clone https://github.com/domsj/orocksdb.git \
