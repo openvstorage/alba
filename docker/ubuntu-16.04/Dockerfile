@@ -196,4 +196,6 @@ RUN su - -c "echo 'VOLDRV_BACKEND_TEST=backend_test; export VOLDRV_BACKEND_TEST;
 RUN echo "jenkins ALL=NOPASSWD: ALL" >/etc/sudoers.d/jenkins
 
 env ALBA_TEST=false
+RUN rm -f /etc/localtime && ln -s /usr/share/zoneinfo/Etc/UTC /etc/localtime
+
 ENTRYPOINT ["/bin/bash", "-c", "set -e && /home/jenkins/alba/docker/docker-entrypoint.sh $@"]
