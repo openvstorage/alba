@@ -58,7 +58,8 @@ module Lwt_bytes = struct
       (fun () ->
         if (raw_address buf) <> org_address
         then
-          Lwt_log.ign_error_f ">>> read_and_log fd %i : buf @%nX (org: %nX) [%i bytes] pos: %i len: %i DONE <<<" (lwt_unix_fd_to_fd fd) (raw_address buf) org_address (Lwt_bytes.length buf) pos len;
+          Lwt_log.ign_error_f ">>> read_and_log fd %i : buf @%nX (org: %nX) [%i bytes] pos: %i len: %i DONE <<<"
+                              (lwt_unix_fd_to_fd fd) (raw_address buf) org_address (Lwt_bytes.length buf) pos len;
         if (raw_address buf) = Nativeint.zero
         then
           begin
@@ -121,7 +122,9 @@ module TestSharedBuffer = struct
     in
     let r = { b ; ref_count = 1; from_where; } in
     let () = Gc.finalise when_collected r in
-    Lwt_log.ign_debug_f ">>> TestSharedBuffer MAKE_SHARED %i bytes @ %nX (%S) <<<" (Lwt_bytes.length b) (Lwt_bytes.raw_address b) (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
+    Lwt_log.ign_debug_f ">>> TestSharedBuffer MAKE_SHARED %i bytes @ %nX (%S) <<<"
+                        (Lwt_bytes.length b) (Lwt_bytes.raw_address b)
+                        (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
     r
 
   let create len = Lwt_bytes.create len |> make_shared
@@ -129,13 +132,18 @@ module TestSharedBuffer = struct
   let length t = Lwt_bytes.length t.b
 
   let register_sharing ?(n=1) t =
-    let () = Lwt_log.ign_debug_f ">>> TestSharedBuffer REGISTER_SHARING %i bytes @ %nX -- n=%i ref_count %i -> %i (%S) <<<" (Lwt_bytes.length t.b) (Lwt_bytes.raw_address t.b) n t.ref_count (t.ref_count + n) (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string) in
+    let () = Lwt_log.ign_debug_f ">>> TestSharedBuffer REGISTER_SHARING %i bytes @ %nX -- n=%i ref_count %i -> %i (%S) <<<"
+                                 (Lwt_bytes.length t.b) (Lwt_bytes.raw_address t.b) n t.ref_count (t.ref_count + n)
+                                 (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string)
+             in
     t.ref_count <- t.ref_count + n
 
   let unregister_usage t =
     let ref_count' = t.ref_count -1 in
     let () = t.ref_count <- ref_count' in
-    Lwt_log.ign_debug_f ">>> TestSharedBuffer UNREGISTER_USAGE %i bytes @ %nX -- ref_count %i (%S) <<<" (Lwt_bytes.length t.b) (Lwt_bytes.raw_address t.b) ref_count' (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
+    Lwt_log.ign_debug_f ">>> TestSharedBuffer UNREGISTER_USAGE %i bytes @ %nX -- ref_count %i (%S) <<<"
+                        (Lwt_bytes.length t.b) (Lwt_bytes.raw_address t.b) ref_count'
+                        (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
     if ref_count' = 0
     then Lwt_bytes.unsafe_destroy ~msg:"TestSharedBuffer UNSAFE_DESTROY" t.b
 

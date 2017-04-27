@@ -331,7 +331,8 @@ let chunk_to_packed_fragments
         (fun () ->
          List.iter
            (fun bss ->
-              Lwt_bytes.unsafe_destroy ~msg:"chunk_to_packed_fragments cleanup coding_fragments" bss.Bigstring_slice.bs)
+              Lwt_bytes.unsafe_destroy ~msg:"chunk_to_packed_fragments cleanup coding_fragments"
+                                       bss.Bigstring_slice.bs)
            coding_fragments;
          Lwt.return ())
     end
