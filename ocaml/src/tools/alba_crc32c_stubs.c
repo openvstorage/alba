@@ -169,13 +169,12 @@ CAMLprim value crc32c_bigarray(value v_crc, value v_bigarray, value v_offset,
 
   if (length) {
     caml_release_runtime_system();
-
     crc = _crc32c_generic(crc, buf, length);
-
-    if (final) {
-      crc ^= 0xFFFFFFFFl;
-    }
     caml_acquire_runtime_system();
+  }
+
+  if (final) {
+      crc ^= 0xFFFFFFFFl;
   }
 
   v_result = caml_copy_int32(crc);
