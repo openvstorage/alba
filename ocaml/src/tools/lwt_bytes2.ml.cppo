@@ -34,10 +34,14 @@ module Lwt_bytes = struct
     let x = bigarray_start array1 t in
     raw_address_of_ptr (to_voidp x)
 
-  let unsafe_destroy ?(msg=(Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string)) (t : t) =
+  let unsafe_destroy ?msg (t : t) =
     let l = Lwt_bytes.length t in
     let address = raw_address t in
-    Lwt_log.ign_debug_f ">>> unsafe_destroy %i bytes @ %nX -- %S <<<" l address msg;
+    Lwt_log.ign_debug_f ">>> unsafe_destroy %i bytes @ %nX -- %S <<<"
+                        l address
+                        (match msg with
+                          | Some msg -> msg
+                          | None -> Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
     Core_kernel.Bigstring.unsafe_destroy t
 
   let create_random size =
