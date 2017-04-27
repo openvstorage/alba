@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 */
 
+#include <stdio.h>
 #include <stdint.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
@@ -24,7 +25,7 @@ but WITHOUT ANY WARRANTY of any kind.
 #include <caml/threads.h>
 #include <cpuid.h>
 
-uint32_t _crc32c_sse42_byte(uint32_t crc, const uint8_t *buf, size_t size) {
+static uint32_t _crc32c_sse42_byte(uint32_t crc, const uint8_t *buf, size_t size) {
   while (size--) {
     __asm__ __volatile__("crc32b %%cl,%%esi\n\t"
                          : "=S"(crc)
@@ -34,7 +35,7 @@ uint32_t _crc32c_sse42_byte(uint32_t crc, const uint8_t *buf, size_t size) {
   return crc;
 }
 
-uint32_t _crc32c_sse42(uint32_t crc, const uint8_t *buf, size_t size) {
+static uint32_t _crc32c_sse42(uint32_t crc, const uint8_t *buf, size_t size) {
 
   size_t q = size >> 3;
   size_t rem = size & 0x7;
@@ -99,7 +100,7 @@ static uint32_t crc32Table[256] = {
   0xBE2DA0A5L, 0x4C4623A6L, 0x5F16D052L, 0xAD7D5351L
 };
 
-uint32_t _crc32c_soft(uint32_t crc32c, const uint8_t *buffer, size_t length) {
+static uint32_t _crc32c_soft(uint32_t crc32c, const uint8_t *buffer, size_t length) {
   const uint8_t *p = buffer;
   while (length--) {
     crc32c = crc32Table[(crc32c ^ *p++) & 0xff] ^ (crc32c >> 8);
@@ -108,13 +109,13 @@ uint32_t _crc32c_soft(uint32_t crc32c, const uint8_t *buffer, size_t length) {
 }
 
 // gcc extension, run when lib is loaded...
-int have_sse_4_2 = 0;
+static int have_sse_4_2 = 0;
 
-void __cpu_detect(void) __attribute__((constructor));
-void __cpu_detect(void) {
+static void __cpu_detect(void) __attribute__((constructor));
+static void __cpu_detect(void) {
   unsigned int a = 0, b = 0, c = 0, d = 0, func = 1;
-  int r = 0;
-  r = __get_cpuid(func, &a, &b, &c, &d);
+
+  int r = __get_cpuid(func, &a, &b, &c, &d);
   if (r == 0) {
     /* Lookup failed */
     c = 0;
@@ -122,7 +123,7 @@ void __cpu_detect(void) {
   have_sse_4_2 = (c & bit_SSE4_2) != 0;
 }
 
-uint32_t _crc32c_generic(uint32_t crc32c, const uint8_t *buffer,
+static uint32_t _crc32c_generic(uint32_t crc32c, const uint8_t *buffer,
                          size_t length) {
   uint32_t r;
   if (have_sse_4_2) {
@@ -137,13 +138,15 @@ CAMLprim value crc32c_string(value v_crc, value v_string, value v_offset,
                              value v_length, value v_final) {
   CAMLparam5(v_crc, v_string, v_offset, v_length, v_final);
   CAMLlocal1(v_result);
-  uint8_t *buf;
-  buf = (uint8_t *)String_val(v_string);
-  buf += Int_val(v_offset);
+
+  uint8_t *buf = (uint8_t *)String_val(v_string);
+  buf += Long_val(v_offset);
+
   uint32_t crc = Int32_val(v_crc);
   size_t length = Int_val(v_length);
-  uint32_t r32 = _crc32c_generic(crc, buf, length);
   int final = Bool_val(v_final);
+
+  uint32_t r32 = _crc32c_generic(crc, buf, length);
   if (final) {
     r32 ^= 0xFFFFFFFFl;
   }
@@ -155,23 +158,26 @@ CAMLprim value crc32c_bigarray(value v_crc, value v_bigarray, value v_offset,
                                value v_length, value v_final) {
   CAMLparam5(v_crc, v_bigarray, v_offset, v_length, v_final);
   CAMLlocal1(v_result);
-  uint8_t *buf = (uint8_t *)Data_bigarray_val(v_bigarray);
-  buf += Int_val(v_offset);
-  uint32_t crc = Int32_val(v_crc);
+
   size_t length = Int_val(v_length);
+  uint32_t crc = Int32_val(v_crc);
+
+  uint8_t *buf = (uint8_t *)Caml_ba_data_val(v_bigarray);
+  buf += Long_val(v_offset);
+
   uint8_t final = Bool_val(v_final);
 
-  //
-  caml_release_runtime_system();
+  if (length) {
+    caml_release_runtime_system();
 
-  uint32_t r32 = _crc32c_generic(crc, buf, length);
+    crc = _crc32c_generic(crc, buf, length);
 
-  if (final) {
-    r32 ^= 0xFFFFFFFFl;
+    if (final) {
+      crc ^= 0xFFFFFFFFl;
+    }
+    caml_acquire_runtime_system();
   }
-  //
-  caml_acquire_runtime_system();
 
-  v_result = caml_copy_int32(r32);
+  v_result = caml_copy_int32(crc);
   CAMLreturn(v_result);
 }
