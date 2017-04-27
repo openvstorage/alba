@@ -119,9 +119,10 @@ let download_packed_fragment
   | Some data ->
      osd_access # get_osd_info ~osd_id >>= fun (_, state,_) ->
      Osd_state.add_read state;
-     Lwt_log.ign_debug_f
+     Lwt_log.debug_f
        ">>> download_packed_fragment: object (%S, %S) chunk %i, fragment %i from osd_id:%Li -- ENDS %i bytes @ %nX"
-       object_name object_id chunk_id fragment_id osd_id (Lwt_bytes.length data) (Lwt_bytes.raw_address data);
+       object_name object_id chunk_id fragment_id osd_id (Lwt_bytes.length data) (Lwt_bytes.raw_address data)
+     >>= fun () ->
      E.return (osd_id, data)
 
 (* consumers of this method are responsible for freeing
