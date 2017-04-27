@@ -17,6 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
+open Lwt_bytes2
 
 let ignore_errors ?(logging=false) f =
   Lwt.catch
@@ -70,6 +71,8 @@ module CountDownLatch = struct
     end
 
   let finished t = t.needed = 0
+
+  let current t = t.needed
 
   let await t =
     if finished t
@@ -179,13 +182,13 @@ let exists filename =
       | e -> Lwt.fail e
     )
 
-let _read_all read_to_target offset length =
+let _read_all read_to_target ifd offset length =
   let rec inner offset count = function
     | 0 ->
        begin
-         if count < 4 || (length / count > 65536)
+         if count < 20 || (length / count > 32768)
          then Lwt.return_unit
-         else Lwt_log.warning_f "reading from fd: %iB in %i steps" length count
+         else Lwt_log.info_f "reading from fd %i: %iB in %i steps" ifd length count
        end >>= fun () ->
        Lwt.return length
     | todo ->
@@ -196,7 +199,11 @@ let _read_all read_to_target offset length =
   inner offset 0 length
 
 let read_all_lwt_bytes fd target offset length =
-  _read_all (Lwt_bytes.read fd target) offset length
+  _read_all (Lwt_bytes.read_and_log fd target) (lwt_unix_fd_to_fd fd) offset length >>= fun result ->
+   begin
+   Lwt_log.ign_debug_f ">>> read_all_lwt_bytes from fd %i @ %nX size %i length %i offset %i end: %i -- %S" (lwt_unix_fd_to_fd fd) (Lwt_bytes.raw_address target) (Lwt_bytes.length target) length offset (offset + length) (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
+   Lwt.return result;
+   end
 
 let expect_exact_length len length =
   if len = length
@@ -207,7 +214,10 @@ let read_all_lwt_bytes_exact fd target offset length =
   read_all_lwt_bytes fd target offset length >>= expect_exact_length length
 
 let read_all fd target offset length =
-  _read_all (Lwt_unix.read fd target) offset length
+  begin
+  Lwt_log.ign_debug_f ">>> read_all from fd %i length %i offset %i" (lwt_unix_fd_to_fd fd) length offset;
+  _read_all (Lwt_unix.read fd target) (lwt_unix_fd_to_fd fd) offset length;
+  end
 
 let read_all_exact fd target offset length =
   read_all fd target offset length >>= expect_exact_length length
@@ -228,32 +238,27 @@ let _read_buffer_at_least read_to_target ~offset ~max_length ~min_length =
   in
   inner 0
 
-let read_lwt_bytes_at_least fd target = _read_buffer_at_least (Lwt_bytes.read fd target)
+let read_lwt_bytes_at_least fd target = _read_buffer_at_least (Lwt_bytes.read_and_log fd target)
 let read_bytes_at_least fd target = _read_buffer_at_least (Lwt_unix.read fd target)
 
 
-let _write_all write_from_source offset length =
-  let rec inner offset todo =
-    if todo = 0
-    then Lwt.return ()
-    else
-      write_from_source offset todo >>= fun written ->
-      (* only log if we can't push it all out in 1 go *)
-      if written = todo
-      then Lwt.return ()
-      else
-        Lwt_log.info_f "writing to fd: written %i, requested %i"
-                       written todo
-        >>= fun () ->
-        inner (offset + written) (todo - written)
+let _write_all write_from_source ifd offset length =
+  let rec inner offset count = function
+    | 0 ->
+       if count < 20 || (length / count > 32768)
+       then Lwt.return_unit
+       else Lwt_log.info_f "writing to fd %i: %iB in %i steps" ifd length count
+    | todo ->
+       write_from_source offset todo >>= fun written ->
+       inner (offset + written) (count + 1) (todo - written)
   in
-  inner offset length
+  inner offset 0 length
 
 let write_all_lwt_bytes fd source offset length =
-  _write_all (Lwt_bytes.write fd source) offset length
+  _write_all (Lwt_bytes.write fd source) (lwt_unix_fd_to_fd fd) offset length
 
 let write_all fd source offset length =
-  _write_all (Lwt_unix.write fd source) offset length
+  _write_all (Lwt_unix.write fd source) (lwt_unix_fd_to_fd fd) offset length
 
 let write_all' fd source =
   write_all fd source 0 (Bytes.length source)

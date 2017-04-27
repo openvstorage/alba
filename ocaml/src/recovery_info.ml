@@ -121,7 +121,7 @@ module RecoveryInfo = struct
          ~chunk_id:(-1) ~fragment_id:(-1) ~ignore_fragment_id:false
     >>= fun (encrypted, payload_ctr) ->
     let payload = Lwt_bytes.to_string encrypted in
-    let () = Lwt_bytes.unsafe_destroy encrypted in
+    let () = Lwt_bytes.unsafe_destroy ~msg:"destroy encrypted" encrypted in
     let encrypt_info = Encrypt_info_helper.from_encryption encryption in
 
     Lwt.return { payload; payload_ctr; encrypt_info; }

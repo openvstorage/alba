@@ -171,6 +171,10 @@ let maybe_decompress compression compressed =
 
 
 let verify fragment_data checksum =
+  let () = Lwt_log.ign_debug_f
+             ">>> verify fragment_data %i bytes @ %nX <<<"
+             (Lwt_bytes.length fragment_data) (Lwt_bytes.raw_address fragment_data)
+           in
   let algo = Checksum.algo_of checksum in
   let hash = Hashes.make_hash algo in
   hash # update_lwt_bytes_detached
@@ -247,8 +251,8 @@ let chunk_to_fragments_ec
   let fragment_size = chunk_size / k in
 
   Lwt_log.debug_f
-    "chunk_to_fragments: chunk_size = %i ; fragment_size=%i"
-    chunk_size fragment_size >>= fun () ->
+    "chunk_to_fragments: chunk @ %nX chunk_size = %i ; fragment_size = %i"
+    (Lwt_bytes.raw_address chunk) chunk_size fragment_size >>= fun () ->
 
   assert (chunk_size mod (Fragment_size_helper.fragment_multiple * k) = 0);
 
@@ -326,7 +330,8 @@ let chunk_to_packed_fragments
          Lwt.return (data_fragments, packed_fragments))
         (fun () ->
          List.iter
-           (fun bss -> Lwt_bytes.unsafe_destroy bss.Bigstring_slice.bs)
+           (fun bss ->
+              Lwt_bytes.unsafe_destroy ~msg:"chunk_to_packed_fragments cleanup coding_fragments" bss.Bigstring_slice.bs)
            coding_fragments;
          Lwt.return ())
     end

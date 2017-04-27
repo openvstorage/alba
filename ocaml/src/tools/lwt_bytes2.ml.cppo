@@ -29,7 +29,16 @@ module Lwt_bytes = struct
   let pp formatter t =
     Format.pp_print_string formatter (show t)
 
-  let unsafe_destroy (t : t) = Core_kernel.Bigstring.unsafe_destroy t
+  let raw_address (t : t) =
+    let open Ctypes in
+    let x = bigarray_start array1 t in
+    raw_address_of_ptr (to_voidp x)
+
+  let unsafe_destroy ?(msg=(Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string)) (t : t) =
+    let l = Lwt_bytes.length t in
+    let address = raw_address t in
+    Lwt_log.ign_debug_f ">>> unsafe_destroy %i bytes @ %nX -- %S <<<" l address msg;
+    Core_kernel.Bigstring.unsafe_destroy t
 
   let create_random size =
     let r = Lwt_bytes.create size in
@@ -37,6 +46,30 @@ module Lwt_bytes = struct
       Lwt_bytes.unsafe_set r i (Random.int 256 |> Char.chr)
     done;
     r
+
+  let lwt_unix_fd_to_fd
+        (fd : Lwt_unix.file_descr) : int =
+    Obj.magic (Obj.field (Obj.repr fd) 0)
+
+  let read_and_log fd buf pos len =
+    let org_address = raw_address buf in
+    Lwt.finalize
+      (fun () -> read fd buf pos len)
+      (fun () ->
+        if (raw_address buf) <> org_address
+        then
+          Lwt_log.ign_error_f ">>> read_and_log fd %i : buf @%nX (org: %nX) [%i bytes] pos: %i len: %i DONE <<<" (lwt_unix_fd_to_fd fd) (raw_address buf) org_address (Lwt_bytes.length buf) pos len;
+        if (raw_address buf) = Nativeint.zero
+        then
+          begin
+            Lwt_log.ign_error_f "+++ HOLD IT--- NULL BUFFER DETECTED !! org_address: %nX +++" org_address;
+            Lwt_io.printf "%!" |> Lwt.ignore_result;
+            Lwt_io.eprintf "%!" |> Lwt.ignore_result;
+            exit (-1);
+          end;
+
+          Lwt.return_unit)
+
 end
 
 module ProdSharedBuffer = struct
@@ -57,6 +90,7 @@ module ProdSharedBuffer = struct
       Lwt_bytes.unsafe_destroy t.b
 
   let deref t = t.b
+  let refcnt t = t.ref_count
 
   let of_string s = Lwt_bytes.of_string s |> make_shared
 
@@ -85,24 +119,28 @@ module TestSharedBuffer = struct
     let from_where =
       Printexc.get_callstack 40 |> Printexc.raw_backtrace_to_string
     in
-    let r = { b ; ref_count = 1; from_where} in
+    let r = { b ; ref_count = 1; from_where; } in
     let () = Gc.finalise when_collected r in
-
+    Lwt_log.ign_debug_f ">>> TestSharedBuffer MAKE_SHARED %i bytes @ %nX (%S) <<<" (Lwt_bytes.length b) (Lwt_bytes.raw_address b) (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
     r
 
   let create len = Lwt_bytes.create len |> make_shared
 
   let length t = Lwt_bytes.length t.b
 
-  let register_sharing ?(n=1) t = t.ref_count <- t.ref_count + n
+  let register_sharing ?(n=1) t =
+    let () = Lwt_log.ign_debug_f ">>> TestSharedBuffer REGISTER_SHARING %i bytes @ %nX -- n=%i ref_count %i -> %i (%S) <<<" (Lwt_bytes.length t.b) (Lwt_bytes.raw_address t.b) n t.ref_count (t.ref_count + n) (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string) in
+    t.ref_count <- t.ref_count + n
+
   let unregister_usage t =
     let ref_count' = t.ref_count -1 in
     let () = t.ref_count <- ref_count' in
+    Lwt_log.ign_debug_f ">>> TestSharedBuffer UNREGISTER_USAGE %i bytes @ %nX -- ref_count %i (%S) <<<" (Lwt_bytes.length t.b) (Lwt_bytes.raw_address t.b) ref_count' (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
     if ref_count' = 0
-    then
-      Lwt_bytes.unsafe_destroy t.b
+    then Lwt_bytes.unsafe_destroy ~msg:"TestSharedBuffer UNSAFE_DESTROY" t.b
 
   let deref t = t.b
+  let refcnt t = t.ref_count
 
   let of_string s = Lwt_bytes.of_string s |> make_shared
 

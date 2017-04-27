@@ -62,7 +62,7 @@ module Bytes_descr = struct
     | Slice -> Slice.sub
     | Bigarray -> fun t offset len ->
                   let res = Lwt_bytes.extract t offset len in
-                  Lwt_bytes.unsafe_destroy t;
+                  Lwt_bytes.unsafe_destroy ~msg:"Bytes_descr:extract delete original" t;
                   res
     | Bigstring_slice -> Bigstring_slice.extract
 

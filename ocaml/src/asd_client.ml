@@ -202,7 +202,7 @@ class _inner_client (fd:Net_fd.t) id =
                         read_from_extra_bytes_or_fd_exact bs 0 size >>= fun () ->
                         Lwt.return (Some (bs, cs)))
                        (fun exn ->
-                        Lwt_bytes.unsafe_destroy bs;
+                        Lwt_bytes.unsafe_destroy ~msg:"asd_client multi_get2" bs;
                         Lwt.fail exn)))
 
     method multi_get_string ~prio keys =
@@ -348,7 +348,7 @@ class _inner_client (fd:Net_fd.t) id =
            (RangeQueryArgs.({first;finc;last;reverse;max}), verify_checksum, show_all, prio)
            Lwt.return
 
-    method dispose () = Lwt_bytes.unsafe_destroy !buffer
+    method dispose () = Lwt_bytes.unsafe_destroy ~msg:"asd_client _inner_client dispose" !buffer
   end
 
 exception BadLongId of string * string

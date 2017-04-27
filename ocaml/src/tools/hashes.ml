@@ -86,7 +86,8 @@ class crc32c_hasher =
         self # update_substring s 0 (String.length s)
 
       method update_lwt_bytes lwt_bytes pos len =
-        cur <- Alba_crc32c.Crc32c.big_array ~crc:cur lwt_bytes pos len false
+        if len > 0
+        then cur <- Alba_crc32c.Crc32c.big_array ~crc:cur lwt_bytes pos len false
 
       method update_lwt_bytes_detached s pos len =
         Lwt_preemptive.detach
