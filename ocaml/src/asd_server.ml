@@ -394,7 +394,7 @@ module Net_fd = struct
        in
        let writer buffer offset length =
          let write_from_source = Lwt_ssl.write_bytes socket buffer in
-         Lwt_extra2._write_all write_from_source offset length
+         Lwt_extra2._write_all write_from_source (identifier fd_out) offset length
        in
        Buffer_pool.with_buffer
          Buffer_pool.osd_buffer_pool
@@ -409,7 +409,7 @@ module Net_fd = struct
          let write_from_source offset todo =
              Lwt_rsocket.Bytes.send socket buffer offset todo []
          in
-         Lwt_extra2._write_all write_from_source offset length
+         Lwt_extra2._write_all write_from_source (identifier fd_out) offset length
        in
        Buffer_pool.with_buffer
          Buffer_pool.osd_buffer_pool

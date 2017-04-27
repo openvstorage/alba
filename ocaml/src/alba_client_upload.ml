@@ -40,7 +40,8 @@ let upload_packed_fragment_data
   =
   let open Osd_keys in
   Lwt_log.debug_f
-    "upload_packed_fragment_data (%i,%i) to osd:%Li"
+    "upload_packed_fragment_data %i bytes @ %nX (chunk %i, frag %i) to osd:%Li"
+    (Lwt_bytes.length packed_fragment) (Lwt_bytes.raw_address packed_fragment)
     chunk_id fragment_id osd_id
   >>= fun () ->
   let data_key = AlbaInstance.fragment
@@ -221,14 +222,18 @@ let upload_chunk
                checksum packed_len fragment_ctr
                fnro
            in
-           Lwt_log.debug_f "fragment_uploaded (%i,%i) to %s"
-                           chunk_id fragment_id ([%show : int64 option] osd_id_o)
+           Lwt_log.debug_f "fragment_uploaded %i bytes @ %nX (%i,%i) of (%S %S) to %s"
+                          packed_len (Lwt_bytes.raw_address packed_fragment)
+                          chunk_id fragment_id object_name object_id ([%show : int64 option] osd_id_o)
            >>= fun ()->
            Lwt.return (t_fragment, res)
          )
          (fun () ->
            if k <> 1
-           then Lwt_bytes.unsafe_destroy packed_fragment
+           then
+             let msg = Printf.sprintf "destroy packed_fragment namespace %Li chunk %i fragment %i of (%S %S)"
+                         namespace_id chunk_id fragment_id object_name object_id in
+               Lwt_bytes.unsafe_destroy ~msg:msg packed_fragment
            else
              begin
                decr __shared_packed_fragments;
@@ -247,7 +252,7 @@ let upload_chunk
        (List.combine fragments_with_id osds)
      >>= fun (success, make_results)  ->
      if not success
-     then Lwt.fail_with (Printf.sprintf "chunk %i failed" chunk_id)
+     then Lwt.fail_with (Printf.sprintf "chunk %i failed name: [%s] id: [%s]" chunk_id object_name object_id)
      else
        begin
          t_add_to_fragment_cache >>= fun mfs ->
@@ -474,7 +479,7 @@ let upload_object''
            ~upload_slack:(if has_more then 0.0 else upload_slack)
         )
         (fun () ->
-         Lwt_bytes.unsafe_destroy chunk';
+         Lwt_bytes.unsafe_destroy ~msg:"Lwt.finalize upload_chunk" chunk';
          Lwt.return ())
       >>= fun (fragment_ts,
                mfs,
@@ -577,7 +582,7 @@ let upload_object''
   let chunk = Lwt_bytes.create desired_chunk_size in
   Lwt.finalize
     (fun () -> fold_chunks chunk)
-    (fun () -> Lwt_bytes.unsafe_destroy chunk;
+    (fun () -> Lwt_bytes.unsafe_destroy ~msg:"Lwt.finalize fold_chunks" chunk;
                Lwt.return ())
   >>= fun ((fragment_state_layout, chunk_sizes', fragments, chunk_mfs),
            size, chunk_times, hash_time) ->

@@ -25,18 +25,13 @@
 
 
 void _bs_posix_fadvise(value fd, value offset, value len, value advice) {
-        int ret = 0;
-
-        int c_fd = -1;
-        off_t c_offset = 0;
-        off_t c_len = 0;
-        int c_advice = 0;
-
         CAMLparam4(fd, offset, len, advice);
 
-        c_fd = Int_val(fd);
-        c_offset = Long_val(offset);
-        c_len = Long_val(len);
+        int ret = 0;
+        int c_fd = Int_val(fd);
+        off_t c_offset = Long_val(offset);
+        off_t c_len = Long_val(len);
+        int c_advice = 0;
 
         switch(Int_val(advice)) {
                 case 0:
@@ -62,9 +57,7 @@ void _bs_posix_fadvise(value fd, value offset, value len, value advice) {
                         break;
         }
 
-        enter_blocking_section();
-          ret = posix_fadvise(c_fd, c_offset, c_len, c_advice);
-        leave_blocking_section();
+        ret = posix_fadvise(c_fd, c_offset, c_len, c_advice);
 
         if(ret != 0) {
                 uerror("posix_fadvise", Nothing);
@@ -75,21 +68,14 @@ void _bs_posix_fadvise(value fd, value offset, value len, value advice) {
 
 void _bs_posix_fallocate(value fd, value mode, value offset,
                          value len) {
-  int ret = 0;
-
-  int c_fd = -1;
-  int c_mode = 0;
-  off_t c_offset = 0;
-  off_t c_len = 0;
-
   CAMLparam4(fd, mode, offset, len);
 
-  c_fd = Int_val(fd);
-  c_mode = Int_val(mode);
-  c_offset = Long_val(offset);
-  c_len = Long_val(len);
+  int c_fd = Int_val(fd);
+  int c_mode = Int_val(mode);
+  off_t c_offset = Long_val(offset);
+  off_t c_len = Long_val(len);
 
-  ret = fallocate(c_fd, c_mode, c_offset, c_len);
+  int ret = fallocate(c_fd, c_mode, c_offset, c_len);
 
   if(ret < 0) {
     uerror("fallocate", Nothing);

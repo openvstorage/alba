@@ -187,40 +187,43 @@ let make_ic ~buffer = function
   | SSL _ssl       -> Lwt_ssl.in_channel_of_descr ~buffer (_ssl_get_socket _ssl)
   | Rsocket socket -> failwith "make_ic rsocket"
 
-let write_all_ssl socket bytes offset length =
+let write_all_ssl socket ifd bytes offset length =
   let write_from_source = Lwt_ssl.write socket bytes in
-  Lwt_extra2._write_all write_from_source offset length
+  Lwt_extra2._write_all write_from_source ifd offset length
 
-let write_all nfd bytes offset length = match nfd with
+let write_all nfd bytes offset length = let ifd = identifier nfd in
+  match nfd with
   | Plain fd       -> Lwt_extra2.write_all fd bytes offset length
-  | SSL _ssl       -> write_all_ssl (_ssl_get_socket _ssl) bytes offset length
+  | SSL _ssl       -> write_all_ssl (_ssl_get_socket _ssl) ifd bytes offset length
   | Rsocket socket ->
      let write_from_source offset todo =
        Lwt_rsocket.send socket bytes offset todo []
      in
-     Lwt_extra2._write_all write_from_source offset length
+     Lwt_extra2._write_all write_from_source ifd offset length
 
 let write_all' nfd bytes = write_all nfd bytes 0 (Bytes.length bytes)
 
-let write_all_lwt_bytes nfd bs offset length = match nfd with
+let write_all_lwt_bytes nfd bs offset length = let ifd = identifier nfd in
+  match nfd with
   | Plain fd -> Lwt_extra2.write_all_lwt_bytes fd bs offset length
   | SSL _ssl ->
      let socket = _ssl_get_socket _ssl in
      Lwt_extra2._write_all
        (Lwt_ssl.write_bytes socket bs)
-       offset length
+       ifd offset length
   | Rsocket socket ->
      let write_from_source offset todo =
        Lwt_rsocket.Bytes.send socket bs offset todo []
      in
-     Lwt_extra2._write_all write_from_source offset length
+     Lwt_extra2._write_all write_from_source ifd offset length
 
-let read_all nfd target offset length = match nfd with
+let read_all nfd target offset length = let ifd = identifier nfd in
+  match nfd with
   | Plain fd -> Lwt_extra2.read_all fd target offset length
   | SSL _ssl ->
      let socket = _ssl_get_socket _ssl in
      let read_to_target = Lwt_ssl.read socket target in
-     Lwt_extra2._read_all read_to_target offset length
+     Lwt_extra2._read_all read_to_target ifd offset length
   | Rsocket socket ->
      Lwt_log.debug_f "Rsocket.read_all _ _ %i %i" offset length >>= fun () ->
      let read_to_target offset todo =
@@ -229,19 +232,21 @@ let read_all nfd target offset length = match nfd with
        Lwt_log.debug_f "Rsocket.recv %i" read >>= fun () ->
        Lwt.return read
      in
-     Lwt_extra2._read_all read_to_target offset length
+     Lwt_extra2._read_all read_to_target ifd offset length
 
 let read_all_exact nfd target offset length =
   read_all nfd target offset length
   >>= Lwt_extra2.expect_exact_length length
 
-let read_all_lwt_bytes_exact nfd target offset length = match nfd with
+let read_all_lwt_bytes_exact nfd target offset length =
+  let ifd = identifier nfd in
+  match nfd with
   | Plain fd -> Lwt_extra2.read_all_lwt_bytes_exact fd target offset length
   | SSL _ssl ->
      let socket = _ssl_get_socket _ssl in
      Lwt_extra2._read_all
        (Lwt_ssl.read_bytes socket target)
-       offset length
+       ifd offset length
      >>= Lwt_extra2.expect_exact_length length
   | Rsocket socket ->
      Lwt_log.debug_f "Rsocket.read_all _ _ %i %i" offset length >>= fun () ->
@@ -252,7 +257,7 @@ let read_all_lwt_bytes_exact nfd target offset length = match nfd with
        Lwt_log.debug_f "Rsocket.Bytes.recv %i bytes" read >>= fun () ->
        Lwt.return read
      in
-     Lwt_extra2._read_all read_to_target offset length
+     Lwt_extra2._read_all read_to_target ifd offset length
      >>= Lwt_extra2.expect_exact_length length
 
 let read_lwt_bytes_at_least nfd target ~offset ~max_length ~min_length =

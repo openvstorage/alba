@@ -434,7 +434,7 @@ class client ?(retry_timeout = 60.)
                    Lwt.return fu
                  end)
               (fun () ->
-               Lwt_bytes.unsafe_destroy packed_fragment;
+               Lwt_bytes.unsafe_destroy ~msg:"finalize packed_fragment after Fragment_helper.verify" packed_fragment;
                Lwt.return_unit)
          )
         (List.mapi (fun i lc -> i, lc) fragment_info)
@@ -1392,7 +1392,7 @@ class client ?(retry_timeout = 60.)
               (fun exn ->
                Lwt_log.info_f
                  ~exn
-                 "%s for object failed, falling back to rewrite" name >>= fun () ->
+                 "%s for object %S failed, falling back to rewrite" name manifest.Nsm_model.Manifest.name >>= fun () ->
                Lwt_extra2.ignore_errors
                  ~logging:true
                  (fun () -> rewrite manifest >>= fun () ->

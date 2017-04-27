@@ -194,12 +194,12 @@ module WriteBuffer = struct
           let oldbuf = buf.buf in
           Lwt_bytes.blit oldbuf 0 newbuf 0 pos;
           buf.buf <- newbuf;
-          Lwt_bytes.unsafe_destroy oldbuf
+          Lwt_bytes.unsafe_destroy ~msg:"WriteBuffer.ensure_space delete oldbuf" oldbuf
         end
 
     let reset buf = buf.pos <- 0
 
-    let dispose t = Lwt_bytes.unsafe_destroy t.buf
+    let dispose t = Lwt_bytes.unsafe_destroy ~msg:"WriteBuffer.dispose" t.buf
 
     let advance_pos buf delta =
       buf.pos <- buf.pos + delta
@@ -379,7 +379,7 @@ module NetFdReader = struct
       Lwt.finalize
         (fun () -> Net_fd.read_all_lwt_bytes_exact fd buf 0 len >>= fun () ->
                    f buf)
-        (fun () -> Lwt_bytes.unsafe_destroy buf;
+        (fun () -> Lwt_bytes.unsafe_destroy ~msg:"NetFdReader.with_lwt_bytes finalize" buf;
                    Lwt.return_unit)
 
     let with_buffer_from fd len f =

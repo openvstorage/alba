@@ -36,9 +36,10 @@ but WITHOUT ANY WARRANTY of any kind.
    would make sense.
 */
 CAMLprim value alba_get_maxrss(value unit) {
-    CAMLparam1 (unit);
+    CAMLparam1(unit);
+    CAMLlocal1(vres);
 
-    caml_release_runtime_system();
+    //caml_release_runtime_system();
 
     int res = 0, who = RUSAGE_SELF;
     struct rusage usage;
@@ -49,15 +50,18 @@ CAMLprim value alba_get_maxrss(value unit) {
         caml_failwith ("get_rusage");
     }
 
-    caml_acquire_runtime_system ();
+    //caml_acquire_runtime_system ();
 
-    CAMLreturn(Val_int(usage.ru_maxrss));
+    vres = Val_int(usage.ru_maxrss);
+    CAMLreturn(vres);
 }
 
 // http://stackoverflow.com/questions/6583158/finding-open-file-descriptors-for-a-process-linux-c-code
 CAMLprim value alba_get_num_fds(value unit){
     CAMLparam1(unit);
-    caml_release_runtime_system();
+    CAMLlocal1(vres);
+
+    //caml_release_runtime_system();
     int fd_count;
     char buf[64];
     struct dirent *dp;
@@ -71,7 +75,8 @@ CAMLprim value alba_get_num_fds(value unit){
     }
     closedir(dir);
 
-    caml_acquire_runtime_system ();
-    CAMLreturn(Val_int(fd_count));
-    return fd_count;
+    //caml_acquire_runtime_system ();
+    vres = Val_int(fd_count);
+    CAMLreturn(vres);
+    //return fd_count;
 }

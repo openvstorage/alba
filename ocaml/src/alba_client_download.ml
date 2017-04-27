@@ -77,8 +77,8 @@ let download_packed_fragment
   let osd_id, version_id = location in
 
   Lwt_log.debug_f
-    "download_packed_fragment: object (%S, %S) chunk %i, fragment %i from osd_id:%Li"
-    object_id object_name
+    "download_packed_fragment: object (%S, %S) chunk %i, fragment %i from osd_id:%Li STARTS"
+    object_name object_id
     chunk_id fragment_id
     osd_id
   >>= fun () ->
@@ -112,10 +112,17 @@ let download_packed_fragment
     )
   >>== function
   | None ->
+     Lwt_log.ign_debug_f
+       ">>> download_packed_fragment: object (%S, %S) chunk %i, fragment %i from osd_id:%Li -- ENDS returning FragmentMissing <<<"
+       object_name object_id chunk_id fragment_id osd_id;
      E.fail `FragmentMissing
   | Some data ->
      osd_access # get_osd_info ~osd_id >>= fun (_, state,_) ->
      Osd_state.add_read state;
+     Lwt_log.debug_f
+       ">>> download_packed_fragment: object (%S, %S) chunk %i, fragment %i from osd_id:%Li -- ENDS %i bytes @ %nX"
+       object_name object_id chunk_id fragment_id osd_id (Lwt_bytes.length data) (Lwt_bytes.raw_address data)
+     >>= fun () ->
      E.return (osd_id, data)
 
 (* consumers of this method are responsible for freeing
@@ -165,6 +172,9 @@ let download_fragment
 
        E.with_timing
          (fun () ->
+           Lwt_log.ign_debug_f
+             ">>> fragment_helper.verify %Li object_id %S (%S) chunk_id %i fragment_id %i <<<"
+             namespace_id object_name object_id chunk_id fragment_id;
            Fragment_helper.verify fragment_data fragment_checksum
            >>= E.return)
        >>== fun (t_verify, checksum_valid) ->
@@ -173,7 +183,10 @@ let download_fragment
         then E.return ()
         else
           begin
-            Lwt_bytes.unsafe_destroy fragment_data;
+            Lwt_log.ign_debug_f
+              ">>> fragment_helper.verify %Li object_id %S (%S) chunk_id %i fragment_id %i -- ChecksumMismatch <<<"
+              namespace_id object_name object_id chunk_id fragment_id;
+            Lwt_bytes.unsafe_destroy ~msg:"fragment_helper.verify" fragment_data;
             osd_access # get_osd_info ~osd_id >>= fun (_,osd_state,_) ->
             Osd_state.add_checksum_errors osd_state 1L;
             E.fail `ChecksumMismatch
@@ -351,8 +364,8 @@ let download_chunk
     Alba_client_common.downloadable chunk_locations
   in
   begin
-    Lwt_log.debug_f "download_strategy:%s"
-                  (show_download_strategy download_strategy) >>= fun () ->
+    Lwt_log.debug_f "download_strategy:%s for %S (%S)"
+                  (show_download_strategy download_strategy) object_name object_id >>= fun () ->
     match download_strategy with
     | AllFragments -> Lwt.return (downloadable_chunk_locations_i, k, m+1 - nones)
     | LeastAmount  ->
@@ -394,9 +407,19 @@ let download_chunk
 
               if !finito
               then
-                SharedBuffer.unregister_usage fragment_data
+                begin
+                  Lwt_log.ign_debug_f
+                    ">>> FINITO -> ignoring fragment %i (@ %nX refcnt %i) of chunk %i %S (%S) -- t0: %f <<<"
+                    fragment_id (Lwt_bytes.raw_address (SharedBuffer.deref fragment_data))
+                    (SharedBuffer.refcnt fragment_data) chunk_id object_name object_id t0_chunk;
+                  SharedBuffer.unregister_usage fragment_data;
+                end
               else
                 begin
+                  Lwt_log.ign_debug_f
+                    ">>> Adding fragment %i (@ %nX refcnt %i) of chunk %i %S (%S) to %i collected fragments -- t0: %f <<<"
+                    fragment_id (Lwt_bytes.raw_address (SharedBuffer.deref fragment_data))
+                    (SharedBuffer.refcnt fragment_data) chunk_id object_name object_id (Hashtbl.length fragments) t0_chunk;
                   Hashtbl.add fragments fragment_id r;
                   CountDownLatch.count_down successes;
                 end;
@@ -404,8 +427,8 @@ let download_chunk
             (fun exn ->
               Lwt_log.debug_f
                 ~exn
-                "Downloading fragment %i failed"
-                fragment_id >>= fun () ->
+                "Downloading fragment %i of chunk %i %S (%S) failed -- count_down failures %i -- t0: %f"
+                fragment_id chunk_id object_name object_id (CountDownLatch.current failures) t0_chunk >>= fun () ->
               CountDownLatch.count_down failures;
               Lwt.return ())
         in
@@ -424,18 +447,33 @@ let download_chunk
   let () =
     if Hashtbl.length fragments < k
     then
-      let () =
-        Lwt_log.ign_warning_f
-          "could not receive enough fragments for namespace %Li, object %S (%S) chunk %i; got %i while %i needed"
-          namespace_id
-          object_name object_id
-          chunk_id (Hashtbl.length fragments) k
-      in
-      Hashtbl.iter
-        (fun _ (_, fragment) -> SharedBuffer.unregister_usage fragment)
-        fragments;
+      begin
+        Lwt_log.ign_debug_f
+          ">>> free all fragments starts for %i fragments -- t0: %f <<<"
+          (Hashtbl.length fragments) t0_chunk;
 
-      Error.failwith Error.NotEnoughFragments
+        let () =
+          Lwt_log.ign_warning_f
+            "could not receive enough fragments for namespace %Li, object %S (%S) chunk %i; got %i while %i needed"
+            namespace_id
+            object_name object_id
+            chunk_id (Hashtbl.length fragments) k
+        in
+        Hashtbl.iter
+          (fun _ (_, fragment) -> SharedBuffer.unregister_usage fragment)
+          fragments;
+
+        Lwt_log.ign_debug_f
+          ">>> free all %i fragments ends -- t0: %f <<<"
+          (Hashtbl.length fragments) t0_chunk;
+
+        Error.failwith Error.NotEnoughFragments;
+      end
+    else
+      Lwt_log.ign_debug_f
+        ">>> Got %i fragments of %i required for object %S (%S) chunk %i -- successes %i -- failures %i"
+        (Hashtbl.length fragments) k object_name object_id chunk_id
+        (CountDownLatch.current successes) (CountDownLatch.current failures)
   in
   let fragment_size =
     let _, (_, bs) = Hashtbl.choose_first fragments |> Option.get_some in
