@@ -27,7 +27,8 @@ build-cmxs: build-alba
 build-nsm-plugin: build-cmxs
 	cd ocaml && ocamlfind ocamlopt \
 	_build/alba_version.cmx \
-        _build/src/range_query_args.cmx \
+	_build/src/range_query_args.cmx \
+	_build/src/tools/lwt_bytes2.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/prelude.cmx \
 	_build/src/tools/deser.cmx \
@@ -62,11 +63,13 @@ build-nsm-plugin: build-cmxs
 	-linkpkg -package ppx_deriving_yojson \
         -linkpkg -package uuidm \
         -linkpkg -package result \
+	-linkpkg -package ctypes \
 	-shared -o nsm_host_plugin.cmxs
 
 build-mgr-plugin: build-alba
 	cd ocaml && ocamlfind ocamlopt \
 	_build/alba_version.cmx \
+	_build/src/tools/lwt_bytes2.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/prelude.cmx \
 	_build/src/range_query_args.cmx \
@@ -105,7 +108,8 @@ build-mgr-plugin: build-alba
 	-linkpkg -package ppx_deriving_yojson \
 	-linkpkg -package tiny_json \
 	-linkpkg -package uuidm \
-        -linkpkg -package result \
+	-linkpkg -package result \
+	-linkpkg -package ctypes \
 	-shared -o albamgr_plugin.cmxs
 
 setup:
