@@ -160,7 +160,6 @@ module Osd_pool = struct
               | Asd_protocol.Protocol.Error.Exn _ -> Keep
               | Unix.Unix_error(Unix.EFAULT, _, _) ->
                  Lwt_log.ign_info_f
-                   ~exn
                    "Bad address STOP after Throwing an osd connection (osd_id: %Li) away after an exception -- %S"
                    osd_id (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
                  Lwt_io.printf "%!" |> Lwt.ignore_result;
