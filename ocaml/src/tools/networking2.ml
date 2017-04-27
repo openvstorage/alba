@@ -235,6 +235,7 @@ let make_server
         | None -> ()
         | Some (cl_fd, cl_sa) ->
            let cl_sas = Network.a2s cl_sa in
+           let cl_fd_id = Net_fd.identifier cl_fd in
              Lwt.ignore_result
                begin
                  Lwt.finalize
@@ -245,19 +246,21 @@ let make_server
                       Lwt.catch
                         (fun () ->
                           Net_fd.apply_keepalive tcp_keepalive cl_fd;
-                          Lwt_log.info_f "%s: new client connection from %s"
+                          Lwt_log.info_f "%s: (fd:%i) new client connection from %s"
                                          server_name
+                                         cl_fd_id
                                          cl_sas
                           >>= fun () ->
                           protocol cl_fd)
                         (function
                           | End_of_file ->
-                             Lwt_log.debug_f "%s: End_of_file from client %s"
-                                             server_name cl_sas
+                             Lwt_log.debug_f "%s: (fd:%i) End_of_file from client %s"
+                                             server_name cl_fd_id cl_sas
                           | exn ->
                              Lwt_log.info_f
-                               "%s: exception occurred in client connection %s: %s"
+                               "%s: (fd:%i) exception occurred in client connection %s: %s"
                                server_name
+                               cl_fd_id
                                cl_sas
                                (Printexc.to_string exn)
                         )
@@ -268,11 +271,16 @@ let make_server
                    (fun () ->
                     let () = decr count in
                     Lwt.catch
-                      (fun () -> Net_fd.close cl_fd)
+                      (fun () ->
+                        Net_fd.close cl_fd >>= fun () ->
+                        Lwt_log.info_f "%s: (fd:%i) closed" server_name cl_fd_id
+                      )
                       (fun exn ->
                        Lwt_log.debug_f
-                         "%s: exception occurred during close of client connection from %s: %s"
-                         server_name cl_sas
+                         "%s: (fd:%i) exception occurred during close of client connection from %s: %s"
+                         server_name
+                         cl_fd_id
+                         cl_sas
                          (Printexc.to_string exn)
                       )
                    )
