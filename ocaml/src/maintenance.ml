@@ -1020,9 +1020,7 @@ class client ?(retry_timeout = 60.)
                ~exn
                "Exn while repairing object (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
                namespace_id manifest.name manifest.object_id >>= fun () ->
-             Lwt_extra2.ignore_errors
-               ~logging:true
-               (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest))
+               _timed_rewrite_object alba_client ~namespace_id ~manifest)
         end
       else
         _timed_rewrite_object alba_client ~namespace_id ~manifest
