@@ -254,7 +254,7 @@ let maybe_activate_reporting =
     else
       let rec inner () =
         Lwt_unix.sleep 60. >>= fun() ->
-       Lwt_log.info_f
+        Lwt_log.info_f
           "stats:\n%s%!"
           (Protocol.NSMHStatistics.show statistics)
         >>= fun () ->
