@@ -952,6 +952,18 @@ let () =
         Asd_bench.cmds;
         cmds1; ]
   in
-  match Term.eval_choice default_cmd cmds with
+  let cmd_names =
+    "commands"
+    :: List.map
+         (fun (_,info) -> Term.name info )
+         cmds
+  in
+  let names verbose = Printf.printf "%s\n" (String.concat " " cmd_names) in
+  let names_cmd =
+    Term.(pure names $ verbose),
+    Term.info "commands" ~doc:"all commands"
+  in
+  let cmds' = names_cmd::cmds in
+  match Term.eval_choice default_cmd cmds' with
   | `Error _ -> exit 1
   | _ -> exit 0
