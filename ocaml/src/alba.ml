@@ -958,9 +958,9 @@ let () =
          (fun (_,info) -> Term.name info )
          cmds
   in
-  let names verbose = Printf.printf "%s\n" (String.concat " " cmd_names) in
+  let names () = Printf.printf "%s\n" (String.concat " " cmd_names) in
   let names_cmd =
-    Term.(pure names $ verbose),
+    Term.(pure names $ const ()),
     Term.info "commands" ~doc:"all commands"
   in
   let cmds' = names_cmd::cmds in
