@@ -17,6 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
+open Prelude
 open Asd_server
 open Stat
 let post_write_nothing _ _ _ = Lwt.return_unit
