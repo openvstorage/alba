@@ -135,6 +135,9 @@ install: build-alba
 	mkdir -p $(DESTDIR)/etc/ld.so.conf.d
 	echo '/usr/lib/alba/' > $(DESTDIR)/etc/ld.so.conf.d/alba.conf
 
+	mkdir -p $(DESTDIR)/etc/bash_completion.d/
+	cp ./bin/alba $(DESTDIR)/etc/bash_completion.d/alba
+
 uninstall:
 	rm $(START)/local/lib/alba/*
 	rm $(START)/bin/alba

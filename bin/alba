@@ -1,0 +1,34 @@
+get_alba_commands()
+{
+    echo $(alba commands)
+}
+
+_alba()
+{
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    if [ -z "$_all_alba_commands" ]; then
+        _all_alba_commands=$(get_alba_commands)
+    fi
+
+    options="--config --to-json --help --verbose"
+
+    if [[ ${cur} == -* ]] ;
+    then
+        COMPREPLY=( $(compgen -W "${options}" -- ${cur}) )
+        return 0
+    fi;
+    
+    if [[ ${cur} == * ]] ;
+    then
+        COMPREPLY=( $(compgen -W "${_all_alba_commands}" -- ${cur}) )
+        return 0
+    fi
+
+    
+
+}
+complete -F _alba alba
