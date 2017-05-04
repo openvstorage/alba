@@ -188,6 +188,51 @@ let deliver_all_messages is_master mgr_access nsm_host_access osd_access =
   Lwt.choose [ deliver_nsm_messages;
                deliver_osd_messages; ]
 
+let deliver_osd_messages_deduped
+      osd_msg_delivery_threads
+      mgr_access nsm_host_access osd_access ~osd_id =
+  match Hashtbl.find_option osd_msg_delivery_threads osd_id with
+  | None ->
+     let rec inner wakers =
+       Lwt.catch
+         (fun () ->
+           deliver_osd_messages
+             mgr_access nsm_host_access osd_access
+             ~osd_id >>= fun () ->
+           List.iter
+             (fun waker -> Lwt.wakeup waker ())
+             wakers;
+           Lwt.return_unit
+         )
+         (fun exn ->
+           List.iter
+             (fun waker -> Lwt.wakeup_exn waker exn)
+             wakers;
+           Lwt.fail exn
+         )
+     in
+     Hashtbl.replace osd_msg_delivery_threads osd_id [];
+     Lwt.finalize
+       (fun () -> inner [])
+       (fun () ->
+         let () =
+           let wakers = Hashtbl.find osd_msg_delivery_threads osd_id in
+           if wakers <> []
+           then
+             begin
+               Hashtbl.replace osd_msg_delivery_threads osd_id [];
+               Lwt.async (fun () -> inner wakers)
+             end
+           else
+             Hashtbl.remove osd_msg_delivery_threads osd_id
+         in
+         Lwt.return_unit
+       )
+  | Some wakers ->
+     let t, waker = Lwt.wait () in
+     Hashtbl.replace osd_msg_delivery_threads osd_id (waker :: wakers);
+     t
+
 let deliver_messages_to_most_osds
       mgr_access nsm_host_access osd_access
       osd_msg_delivery_threads
@@ -202,55 +247,31 @@ let deliver_messages_to_most_osds
         (fun (osd_id, (_ : Albamgr_protocol.Protocol.Osd.NamespaceLink.state)) ->
          Lwt_extra2.ignore_errors
            (fun () ->
-            (if Hashtbl.mem osd_msg_delivery_threads osd_id
+             deliver_osd_messages_deduped
+               osd_msg_delivery_threads
+               mgr_access nsm_host_access osd_access ~osd_id >>= fun () ->
+
+             let () = delivered () in
+             osds_delivered := osd_id :: !osds_delivered;
+             osd_access # osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
+             if get_best_policy
+                  preset.Preset.policies
+                  osds_info_cache = None
              then
-               begin
-                 Hashtbl.replace osd_msg_delivery_threads osd_id `Extend;
-                 Lwt.return ()
-               end
+               Lwt.return ()
              else
                begin
-                 let rec inner f =
-                   Hashtbl.replace osd_msg_delivery_threads osd_id `Busy;
-                   Lwt.finalize
-                     (fun () ->
-                      deliver_osd_messages
-                        mgr_access nsm_host_access osd_access
-                        ~osd_id >>=
-                        f
-                     )
-                     (fun () ->
-                      match Hashtbl.find osd_msg_delivery_threads osd_id with
-                      | `Busy ->
-                         Hashtbl.remove osd_msg_delivery_threads osd_id;
-                         Lwt.return ()
-                      | `Extend ->
-                         inner Lwt.return)
-                 in
-                 inner
-                   (fun () ->
-                    let () = delivered () in
-                    osds_delivered := osd_id :: !osds_delivered;
-                    osd_access # osds_to_osds_info_cache !osds_delivered >>= fun osds_info_cache ->
-                    if get_best_policy
-                         preset.Preset.policies
-                         osds_info_cache = None
-                    then
-                      Lwt.return ()
-                    else
-                      begin
-                        if not !finished
-                        then
-                          begin
-                            finished := true;
-                            Lwt_mvar.put mvar ()
-                          end
-                        else
-                          Lwt.return ()
-                      end
-                   )
-               end)
-           ))
+                 if not !finished
+                 then
+                   begin
+                     finished := true;
+                     Lwt_mvar.put mvar ()
+                   end
+                 else
+                   Lwt.return ()
+               end
+           )
+        )
         osds
     end;
 

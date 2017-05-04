@@ -759,14 +759,17 @@ let retrieve_cfg_from_any_node ~tls_config current_config =
                  >>= fun mgr_dirty_client ->
                 mgr_dirty_client # get_client_config >>= fun ccfg ->
                 Lwt_log.debug_f "node:%s returned config" node_name >>= fun () ->
-                Lwt.return (Res ccfg)
+                Lwt.return (Some (Res ccfg))
               )
            )
            (fun exn ->
-            Lwt_log.debug_f ~exn "retrieving cfg from %s failed; iterate" node_name
-            >>= fun () ->
-            loop rest
-           )
+             Lwt_log.debug_f
+               ~exn
+               "retrieving cfg from %s failed; iterate" node_name >>= fun () ->
+             Lwt.return None)
+         >>= function
+         | Some r -> Lwt.return r
+         | None -> loop rest
     in
     loop current_config.node_cfgs
 

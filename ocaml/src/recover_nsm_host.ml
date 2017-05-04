@@ -163,11 +163,17 @@ let reap_osd
                   Osd.High
                   ~first ~finc
                   ~last:(Some (Slice.wrap_string end_object_id, false))
-                  ~reverse:false ~max:1000))
+                  ~reverse:false ~max:1000) >>= fun r ->
+           Lwt.return (Some r)
+        )
         (fun exn ->
-           Lwt_log.info_f ~exn "Exception while getting keys from osd %Li" osd_id >>= fun () ->
-           Lwt_unix.sleep delay >>= fun () ->
-           get_recovery_info (delay *. 1.5))
+          Lwt_log.info_f ~exn "Exception while getting keys from osd %Li" osd_id >>= fun () ->
+          Lwt.return_none)
+      >>= function
+      | Some r -> Lwt.return r
+      | None ->
+         Lwt_unix.sleep delay >>= fun () ->
+         get_recovery_info (delay *. 1.5)
     in
 
     get_recovery_info 1. >>= fun ((_, keys), has_more) ->
