@@ -856,6 +856,41 @@ let cap_max ?(cap=_BATCH_SIZE) ~max () =
 module Lwt_list = struct
   include Lwt_list
 
+  (* custom variant of iter(i)_p, map(i)_p, map_s that are tail recursive *)
+
+  let iter_p f l =
+    let ts = List.map f l in
+    Lwt.join ts
+
+  let iteri_p f l =
+    let ts = List.mapi f l in
+    Lwt.join ts
+
+  let map_s f l =
+    let rec inner acc = function
+      | [] -> List.rev acc |> Lwt.return
+      | hd::tl ->
+         f hd >>= fun r ->
+         inner (r::acc) tl
+    in
+    inner [] l
+
+  let rec _collect acc = function
+    | [] ->
+       List.rev acc |> Lwt.return
+    | t::ts ->
+       t >>= fun i ->
+       _collect (i::acc) ts
+
+  let map_p f l =
+    let ts = List.map f l in
+    _collect [] ts
+
+  let mapi_p f l =
+    let ts = List.mapi f l in
+    _collect [] ts
+
+
   let find_s_exn = find_s
   let find_s f l =
     Lwt.catch
