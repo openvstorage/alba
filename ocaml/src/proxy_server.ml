@@ -983,7 +983,7 @@ let run_server hosts port ~transport
               (Lwt_extra2.make_fuse_thread ());
               Mem_stats.reporting_t ~section:Lwt_log.Section.main ();
               (let rec log_stats () =
-                 Lwt_log.info_f
+                 Lwt_log.debug_f
                    "stats:\n%s%!"
                    (ProxyStatistics.show' ~only_changed:true stats) >>= fun () ->
                  let cnt = ProxyStatistics.clear_ns_stats_changed stats in
