@@ -1,6 +1,7 @@
 import subprocess
 import argparse
 import datetime
+import string
 
 def sh(x,**kwargs):
     if subprocess.call(x,**kwargs):
@@ -8,6 +9,11 @@ def sh(x,**kwargs):
 
 def get_email():
     r = subprocess.check_output(['git','config','user.email'])
+    r = r.strip()
+    return r
+
+def get_branch():
+    r = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref','HEAD'])
     r = r.strip()
     return r
 
@@ -65,8 +71,8 @@ def update_redhat_spec(version):
 def tag(version):
     sh(['git','tag', '-a', version, '-m', version])
 
-def push(version):
-    sh(['git','push', '-v', 'origin', version])
+def push(remote, version):
+    sh(['git','push', '-v', remote, version])
 
 def delete_tag(version):
     sh(['git', 'tag', '-d', version])
@@ -75,23 +81,31 @@ def delete_tag(version):
 def make_branch(version):
     sh(['git','checkout', '-b', version])
 
+def checkout(branch):
+    sh(['git', 'checkout', branch ])
+
 def add_commit(version):
     sh(['git', 'add',
         './debian/changelog',
         './redhat/SPECS/alba.spec'])
     sh(['git', 'commit', '-m', 'make_release: %s' % version])
 
-def make_release(version):
-    make_branch(version)
+def make_release(remote, version):
+    branch = get_branch()
     update_debian_changelog(version)
     update_redhat_spec(version)
     add_commit(version)
-    push(version)
+    tag(version)
+    push(remote, branch)
+    push(remote, version)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--version', required = True,
-                        help = "for example 3.1.0")
+                        help = "for example: 3.1.0")
+    parser.add_argument('--remote', required = True,
+                        help = "for example: origin")
     options = parser.parse_args()
     version = options.version
-    make_release(version)
+    remote = options.remote
+    make_release(remote, version)
