@@ -182,8 +182,10 @@ let _ = dispatch &
                      A"-ccopt"; A"-ggdb3";
                      A"-ccopt"; A"-O2";
                   ]);
+
              flag ["ocaml"; "compile"; "ppx_lwt"] &
-               S [A "-ppx"; A "ppx_lwt -log";];
+               S [A "-ppx"; A (Unix.getcwd () ^ "/../ppx/alba_ppx_lwt.native -log") ];
+
              flag ["link";"ocaml";]
                   (S[A"-cclib"; A"-lbz2"]);
              flag ["link";"ocaml";"use_gcrypt"]

@@ -13,7 +13,10 @@ clean:
               ./ocaml/disk_failure_tests.native
 
 
-build: build-alba build-cmxs build-nsm-plugin build-mgr-plugin setup
+build: build-ppx build-alba build-cmxs build-nsm-plugin build-mgr-plugin setup
+
+build-ppx:
+	cd ppx && ocamlbuild -j 0 -use-ocamlfind alba_ppx_lwt.native
 
 build-alba:
 	cd ocaml && ocamlbuild -j 0 -use-ocamlfind alba.native disk_failure_tests.native

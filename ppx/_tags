@@ -1,0 +1,2 @@
+true: annot
+true: package(ppx_tools.metaquot)
