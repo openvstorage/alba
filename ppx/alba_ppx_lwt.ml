@@ -300,16 +300,20 @@ let lwt_log mapper fn args attrs loc =
                 (Label.labelled "section",  [%expr __pa_log_section]);
                 (Label.labelled "level", Exp.construct (def_loc (Ldot (Lident "Lwt_log", level))) None);
                 (Label.nolabel,
-                 [%expr let ___s = Str.global_replace (Str.regexp "\n") ";" [%e sprintf_exp ] in
-                        if String.length ___s > 2000
-                        then
-                          let ___sr = String.sub ___s 0 2000 in
-                          Bytes.set ___sr 1997 '.';
-                          Bytes.set ___sr 1998 '.';
-                          Bytes.set ___sr 1999 '.';
-                          ___sr
-                        else
-                          ___s
+                 [%expr let ___s = [%e sprintf_exp ] in
+                        let ___s' =
+                          if String.length ___s > 2000
+                          then
+                            let ___sr = String.sub ___s 0 2000 in
+                            Bytes.set ___sr 1997 '.';
+                            Bytes.set ___sr 1998 '.';
+                            Bytes.set ___sr 1999 '.';
+                            ___sr
+                          else
+                            ___s
+                        in
+                        String.iteri (fun i c -> if c = '\n' then Bytes.unsafe_set ___s' i ';') ___s';
+                        ___s'
                 ]);
               ]
             in
