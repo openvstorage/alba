@@ -10,7 +10,8 @@ clean:
 	cd setup && ocamlbuild -clean
 	rm -f ./ocaml/alba.native \
               ./setup/setup.native \
-              ./ocaml/disk_failure_tests.native
+              ./ocaml/disk_failure_tests.native \
+              ./ppx/alba_ppx_lwt.native
 
 
 build: build-ppx build-alba build-cmxs build-nsm-plugin build-mgr-plugin setup
