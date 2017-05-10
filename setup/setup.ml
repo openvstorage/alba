@@ -3061,12 +3061,19 @@ module Test = struct
     let proxy = t_global.proxy in
 
     let rec inner = function
-      | 1_000 -> ()
+      | 100_000 -> ()
       | n ->
          let namespace = Printf.sprintf "ns_%i" n in
          let objname = "obj" in
          proxy # create_namespace namespace;
-         proxy # upload_object namespace cfg_global.alba_bin objname;
+         let () =
+           try
+             proxy # upload_object namespace cfg_global.alba_bin objname
+           with exn ->
+             print_endline (Printexc.to_string exn);
+             Unix.sleep 3;
+             proxy # upload_object namespace cfg_global.alba_bin objname
+         in
          proxy # download_object namespace objname "/tmp/427.obj";
          proxy # delete_namespace namespace;
          inner (n + 1)
