@@ -8,6 +8,7 @@ all: build
 clean:
 	cd ocaml && ocamlbuild -clean
 	cd setup && ocamlbuild -clean
+	cd ppx   && ocamlbuild -clean
 	rm -f ./ocaml/alba.native \
               ./setup/setup.native \
               ./ocaml/disk_failure_tests.native \
