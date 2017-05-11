@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 open Cmdliner
 open Lwt.Infix
 open Cli_common
@@ -43,7 +43,6 @@ module Config = struct
     } [@@deriving yojson, show]
 
   let abm_cfg_url_from_cfg (t:t) : Prelude.Url.t =
-    let open Prelude in
     match t.albamgr_cfg_file, t.albamgr_cfg_url with
     | None, Some url_s -> Url.make url_s
     | Some file, None -> Url.File file

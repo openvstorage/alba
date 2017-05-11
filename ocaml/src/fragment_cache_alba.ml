@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 open Lwt.Infix
 
 type alba_fragment_cache_bucket_strategy =

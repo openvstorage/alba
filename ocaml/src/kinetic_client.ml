@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Osd
 open Lwt
 open Kinetic
-open Prelude
+open! Prelude
 open Slice
 
 let slice2s x_s = Slice.get_string_unsafe x_s

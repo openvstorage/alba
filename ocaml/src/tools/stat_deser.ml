@@ -21,6 +21,7 @@ but WITHOUT ANY WARRANTY of any kind.
  * into arakoon
  *)
 
+open! Prelude
 open Stat.Stat
 
 let to_buffer' buf stat =

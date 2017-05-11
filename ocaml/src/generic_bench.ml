@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
 open Lwt.Infix
 
 let report oc name (n, d,speed, latency, min_d, max_d) =

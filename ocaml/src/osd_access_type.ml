@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 
 let large_value = lazy (String.make (512*1024) 'a')
 

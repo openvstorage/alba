@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 (* this should be at least sizeof(long) according to the jerasure documentation *)
 let fragment_multiple = 16
 

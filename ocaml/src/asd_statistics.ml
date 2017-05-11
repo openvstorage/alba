@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 module AsdStatistics = struct
     module G = Statistics_collection.Generic
     type t = G.t

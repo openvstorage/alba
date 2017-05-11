@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 open Nsm_model
 open Recovery_info
 open Lwt.Infix

@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 
 type k = int [@@deriving show, yojson]
 type m = int [@@deriving show, yojson]

@@ -15,6 +15,8 @@ in the <LICENSE.txt> file of the Open vStorage OSE distribution.
 Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
  *)
+
+open! Prelude
 open OUnit
 open Encryption
 

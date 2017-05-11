@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
-open Prelude
+open! Prelude
 open Proxy_protocol
 open Range_query_args
 open Lwt_bytes2

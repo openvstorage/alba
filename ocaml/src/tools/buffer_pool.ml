@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 type t = Lwt_bytes.t Weak_pool.t
 
 let create ~buffer_size =

@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 let make_client albamgr_client_cfg
                 ?fragment_cache
                 ?manifest_cache_size

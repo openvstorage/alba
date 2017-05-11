@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
-open Prelude
+open! Prelude
 
 let default_rocksdb_max_open_files = 256
 let default_connection_pool_size = 10

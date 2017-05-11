@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
-open Prelude
+open! Prelude
 open Rocks_store
 open Asd_protocol
 open Slice

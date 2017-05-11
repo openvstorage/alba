@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Ctypes
-open Prelude
+open! Prelude
 
 let _setsockopt =
 (*

@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Lwt.Infix
 
 open Alba_test
-open Prelude
+open! Prelude
 open Nsm_model
 
 let _get_node_ids () =

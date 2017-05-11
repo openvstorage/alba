@@ -36,7 +36,7 @@ module Fnr = struct
     Prelude.maybe_from_buffer from_buffer None buf
 end
 
-open Prelude
+open! Prelude
 
 
 module Fragment = struct

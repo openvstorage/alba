@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 open Cmdliner
 open Lwt.Infix
 
@@ -202,7 +202,6 @@ let lwt_server ~log_sinks ~subcomponent t : unit =
     end
 
 let url_converter :Prelude.Url.t Arg.converter =
-  let open Prelude in
   let url_parser s =
     try
       `Ok (Url.make s)

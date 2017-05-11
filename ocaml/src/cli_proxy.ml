@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Lwt.Infix
 open Cmdliner
 open Cli_common
-open Prelude
+open! Prelude
 
 module Config = struct
   type t = {

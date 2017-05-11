@@ -18,7 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Cmdliner
 open Lwt.Infix
-open Prelude
+open! Prelude
 open Cli_common
 
 let () =

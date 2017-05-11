@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 
 let test_range () =
   assert ([ 0; 1; 2; 3; ] = Int.range 0 4)

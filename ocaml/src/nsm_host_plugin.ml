@@ -18,7 +18,7 @@ but WITHOUT ANY WARRANTY of any kind.
 
 open Lwt.Infix
 open Registry
-open Prelude
+open! Prelude
 module Arakoon_update = Update
 open Nsm_model
 open Plugin_extra
