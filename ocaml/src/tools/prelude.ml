@@ -136,6 +136,10 @@ end
 module List = struct
   include List
 
+  (* include tail recursive variants *)
+  let map f l = Core.List.map ~f l
+  let mapi f l = Core.List.mapi ~f l
+
   let any = function
     | [] -> false
     | _ -> true
