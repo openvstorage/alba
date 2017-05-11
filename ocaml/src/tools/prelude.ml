@@ -138,7 +138,11 @@ module List = struct
 
   (* include tail recursive variants *)
   let map f l = Core.List.map ~f l
+  let map2 f l1 l2 = Core.List.map2_exn ~f l1 l2
   let mapi f l = Core.List.mapi ~f l
+  let concat = Core.List.concat
+  let fold_right f l init = Core.List.fold_right ~f ~init l
+  let merge cmp l1 l2 = Core.List.merge ~cmp l1 l2
 
   let any = function
     | [] -> false
@@ -313,25 +317,28 @@ module List = struct
              else                _inner todo' (yh::acc) x  yt
            end
     in
-    (_inner max_n [] x y) |> List.rev
+    (_inner max_n [] x y) |> rev
+
+  let combine x0s x1s =
+    map2
+      (fun x0 x1 -> x0, x1)
+      x0s x1s
+
+  let split xs =
+    let x0s_r, x1s_r =
+      fold_left
+        (fun (x0s, x1s) (x0, x1) -> x0::x0s, x1::x1s)
+        ([], [])
+        xs
+    in
+    rev x0s_r, rev x1s_r
 
   let split3 xs =
     let x0s_r, x1s_r, x2s_r =
-      List.fold_left
+      fold_left
         (fun (x0s,x1s,x2s) (x0,x1,x2) -> (x0::x0s, x1::x1s, x2::x2s))
         ([], [], []) xs
-    in List.rev x0s_r, List.rev x1s_r, List.rev x2s_r
-
-  let rev_map2 f l1 l2 =
-    let rec inner acc = function
-      | [], [] -> acc
-      | e1::l1, e2::l2 ->
-         inner (f e1 e2 :: acc) (l1, l2)
-      | _ -> invalid_arg "List.rev_map2"
-    in
-    inner [] (l1, l2)
-
-  let map2 f l1 l2 = rev_map2 f l1 l2 |> rev
+    in rev x0s_r, rev x1s_r, rev x2s_r
 
   let rev_map3 f l1 l2 l3 =
     let rec inner acc = function
