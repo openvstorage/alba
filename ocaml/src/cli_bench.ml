@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Cmdliner
 open Cli_common
 open Cli_bench_common
-open Prelude
+open! Prelude
 
 
 let slice_size default =

@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 external crc32c_string : int32 -> string -> int -> int -> bool -> int32
   = "crc32c_string"
 

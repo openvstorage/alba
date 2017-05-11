@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
 open Statistics_collection.Generic
 
 let to_buffer_with_version' ~ser_version buf t=

@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 open Albamgr_protocol.Protocol
 
 type r_t = int * ((Osd.id * Nsm_model.OsdInfo.t ) list)

@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
-open Prelude
+open! Prelude
 open Slice
 open Rocks_store
 open Lwt_buffer

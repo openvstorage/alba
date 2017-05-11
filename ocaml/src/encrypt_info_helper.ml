@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 (* This module exists so no ctypes stuff is used
  * inside the arakoon plugins. *)
 
-open Prelude
+open! Prelude
 
 let get_id_for_key key =
   let id =

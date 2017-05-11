@@ -16,7 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
-open Prelude
+open! Prelude
 open Fragment_cache
 open Lwt.Infix
 open Lwt_bytes2
@@ -381,7 +381,6 @@ let test_x_cache () =
     (fun c ->
       let () = c # set_delay_after_add (Some 0.5) in
       let () = c # set_delay_after_lookup (Some 0.5) in
-      let open Prelude in
       let x = new Fragment_cache.x_cache (c:> cache) in
       let n = 20 in
       let item_range = Int.range 1 (n+1) in

@@ -16,8 +16,10 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
 open Asd_protocol
 open Protocol
+
 let roundtrip test_ctx =
   let k = "the_key" in
   let v = "the_value" in

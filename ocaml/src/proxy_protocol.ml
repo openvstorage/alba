@@ -20,7 +20,7 @@ but WITHOUT ANY WARRANTY of any kind.
    - remove std::exception from llio.cc?
  *)
 
-open Prelude
+open! Prelude
 open Stat
 open Range_query_args2
 open Checksum

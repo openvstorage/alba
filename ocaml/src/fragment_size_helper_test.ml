@@ -16,6 +16,7 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
 open Fragment_size_helper
 
 let test_determine_chunk_size () =

@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 external alba_get_maxrss : unit -> int = "alba_get_maxrss"
 external alba_get_num_fds : unit -> int = "alba_get_num_fds"
 

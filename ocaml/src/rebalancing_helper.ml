@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 type fill_rate = int * (int32 * float) list [@@deriving show]
 
 
@@ -71,8 +73,6 @@ let categorize fill_rates =
     ((0,[]), (0,[]), (0,[]))
     (snd fill_rates)
 
-
-open Prelude
 
 let compare_moves a b=
   let score (_,_,_,x) =  x in

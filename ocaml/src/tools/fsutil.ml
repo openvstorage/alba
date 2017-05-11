@@ -54,6 +54,7 @@ DESCRIPTION
 
 (* yes, we copied & modified & added stuff *)
 
+open! Prelude
 open Ctypes
 open Foreign
 type mount_flag = ST_RDONLY | ST_NOSUID

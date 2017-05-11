@@ -9,6 +9,8 @@ export DRIVER=./setup/setup.native
 
 export ARAKOON_BIN=$(which arakoon)
 
+echo "ensure that all files open! Prelude"
+find ocaml/src -name '*.ml' | while read f; do grep -q 'open! Prelude' $f || [ $f == "ocaml/src/tools/prelude.ml" ] || { echo $f && exit 1; }; done
 
 if [ -t 1 ] || [[ ${1-bash} == "test_integrate_"* ]]
 then true;

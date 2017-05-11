@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
  *)
 
+open! Prelude
+
 let lwt_run t =
   let nfds0 = Alba_wrappers.Sys2.get_num_fds () in
   let rc = Lwt_main.run t in

@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
-open Prelude
+open! Prelude
 
 module Pool = struct
   module Albamgr = struct

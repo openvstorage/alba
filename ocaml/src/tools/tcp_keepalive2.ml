@@ -16,6 +16,8 @@ Open vStorage is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY of any kind.
 *)
 
+open! Prelude
+
 let default_enable_tcp_keepalive = true
 let default_tcp_keepalive_time = 20
 let default_tcp_keepalive_intvl = 20

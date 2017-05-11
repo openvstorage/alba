@@ -17,7 +17,7 @@ but WITHOUT ANY WARRANTY of any kind.
 *)
 
 open Lwt.Infix
-open Prelude
+open! Prelude
 
 let test_with_alba_client = Alba_test.test_with_alba_client
 let with_maintenance_client = Alba_test.with_maintenance_client

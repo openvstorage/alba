@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Fragment
 open Preset
 open Checksum
-open Prelude
+open! Prelude
 
 
 module FragmentUpdate = struct

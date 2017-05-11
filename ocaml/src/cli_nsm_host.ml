@@ -19,7 +19,7 @@ but WITHOUT ANY WARRANTY of any kind.
 open Cli_common
 open Cmdliner
 open Lwt.Infix
-open Prelude
+open! Prelude
 
 let nsm_host_statistics (cfg_url:Url.t) tls_config clear nsm_host verbose =
   let t () =
