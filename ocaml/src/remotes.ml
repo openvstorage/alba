@@ -64,14 +64,33 @@ module Pool = struct
                else Keep
              in
              let r =
+               let open Error in
                match t with
-               | Error.Osd_already_exists       -> keep_or_drop
-               | Error.Osd_already_claimed      -> keep_or_drop
-               | Error.Namespace_does_not_exist -> keep_or_drop
-               | Error.Claim_lease_mismatch     -> keep_or_drop
-               | Error.Inconsistent_read        -> DropPool
-               | Error.Not_master               -> DropPool
-               | _                              -> DropThis
+                | Nsm_host_not_lost
+                | Nsm_host_already_exists
+                | Nsm_host_unknown
+                | Namespace_already_exists
+                | Osd_already_decommissioned
+                | Osd_already_linked_to_namespace
+                | Osd_unknown
+                | Osd_info_mismatch
+                | Preset_does_not_exist
+                | Preset_already_exists
+                | Preset_cant_delete_default
+                | Preset_cant_delete_in_use
+                | Invalid_preset
+                | Progress_does_not_exist
+                | Progress_CAS_failed
+                | Osd_already_exists
+                | Osd_already_claimed
+                | Namespace_does_not_exist
+                | Claim_lease_mismatch       -> keep_or_drop
+                | Inconsistent_read
+                | Not_master
+                | Unknown
+                | Old_plugin_version
+                | Unknown_operation
+                | Bad_argument               -> DropPool
              in
              let () =
                match r with
