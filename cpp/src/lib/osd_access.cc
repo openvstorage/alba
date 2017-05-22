@@ -78,7 +78,7 @@ bool OsdAccess::update(Proxy_client &client) {
     }
   } else {
     std::unique_lock<std::mutex> lock(_filling_mutex);
-    _filling_cond.wait(lock, [this] { return (this->_filling.load()); });
+    _filling_cond.wait(lock, [this] { return !(this->_filling.load()); });
   }
   return result;
 }
