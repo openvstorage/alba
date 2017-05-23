@@ -6,7 +6,7 @@ env:
   - SUITE=ocaml IMAGE=ubuntu-14.04
 #  - SUITE=ocaml ALBA_TLS=true
   - SUITE=disk_failures IMAGE=ubuntu-16.04
-  - SUITE=recovery IMAGE=centos-7
+  - SUITE=recovery IMAGE=ubuntu-16.04
 
 install:        ./travis.sh install
 script:         ./travis.sh script

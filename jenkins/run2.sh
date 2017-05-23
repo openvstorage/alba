@@ -86,6 +86,7 @@ case "${1-bash}" in
         ;;
     recovery)
         ${DRIVER} recovery || true
+        check_results
         ;;
     everything_else)
         ${DRIVER} everything_else  || true
