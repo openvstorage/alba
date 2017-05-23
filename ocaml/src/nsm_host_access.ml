@@ -265,6 +265,7 @@ class nsm_host_access
     Lwt.catch
       (fun () -> f namespace_id)
       (fun exn ->
+         Lwt_log.ign_debug_f ~exn "Nsm_host_access.with_namespace_id: f for namespace %S got exception" namespace;
          let id_may_have_changed =
            match exn with
            | Nsm_model.Err.Nsm_exn (err, _) -> begin
