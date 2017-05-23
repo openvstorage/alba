@@ -120,8 +120,7 @@ class x_cache (target: cache) =
       let key = make_key bid oid in
       match Hashtbl.find adding key with
       | blob ->
-         Lwt_log.debug_f "x_cache: %S : lookup2 during add" key
-         >>= fun () ->
+         Lwt_log.ign_debug_f "x_cache: %S : lookup2 during add" key;
          let () =
            List.iter
              (fun (offset, length, dest, dest_off) ->
