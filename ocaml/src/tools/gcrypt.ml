@@ -120,13 +120,21 @@ let control =
     let err = inner cmd1 cmd2 in
     Error.check ~location:"gcrypt.control" err
 
+(* https://www.gnupg.org/documentation/manuals/gcrypt/Initializing-the-library.html   *)
+(* https://www.gnupg.org/documentation/manuals/gcrypt/Multi_002dThreading.html        *)
+(* NOTE: older (pre 1.6.x) versions of gcrypt had flexible thread support that needs  *)
+(*       to be initialised first; newer versions keep it for backward compatibility   *)
+(*       -- we need this for centos-7 that uses version 1.5.3                         *) 
 
-let () =
-  (* https://www.gnupg.org/documentation/manuals/gcrypt/Initializing-the-library.html *)
+external gcrypt_set_threads : unit -> unit = "gcrypt_set_threads"
 
-  (* /* Version check should be the very first call because it *)
-  (*    makes sure that important subsystems are intialized. */ *)
-  let version_o : string option = check_version "1.6.0" in
+let () = 
+  gcrypt_set_threads ();
+
+  (* /* Version check should be the very first call because it         *)
+  (*    makes sure that important subsystems are intialized. */        *)
+  (* currently (20170524) centos-7 has 1.5.3 -- ubuntu 16.04 has 1.6.+ *)
+  let version_o : string option = check_version "1.5.3" in
   assert (version_o <> None);
 
   (* /* Disable secure memory.  */ *)
