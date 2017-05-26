@@ -1503,7 +1503,10 @@ class client ?(retry_timeout = 60.)
                 | None -> Lwt.return ()
                 | Some next ->
                    if not (filter work_id)
-                   then Lwt.fail NotMyTask
+                   then
+                     (* Throw something that will not be added to osd errors *)
+                     let open Asd_protocol.Protocol.Error in
+                     Exn (Assert_failed "NotMyTask") |> Lwt.fail
                    else inner next
               in
               inner (Slice.wrap_string ""))
