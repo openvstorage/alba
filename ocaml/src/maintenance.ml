@@ -2091,7 +2091,7 @@ class client ?(retry_timeout = 60.)
                       let percentage = percentage_from_fill_ratio fill_ratio in
                       (* collect precentage of objects *)
                       let target = Int64.div total_disk_size 100L |> Int64.mul percentage in
-                      let rec inner acc =
+                      let rec inner acc retrycnt =
                         if acc > target
                         then Lwt.return ()
                         else
@@ -2100,10 +2100,29 @@ class client ?(retry_timeout = 60.)
                               alba_client
                               client
                               key >>= fun size ->
-                            inner (Int64.add acc size)
+                            if size > 0L
+                            then
+                              (* part of the job done, try to do more *)
+                              inner (Int64.add acc size) 0
+                            else
+                              let retrycnt = retrycnt + 1 in
+                              if retrycnt >= 5
+                              then
+                                begin
+                                  Lwt_log.info
+                                    "redis based lru eviction has too many retries, fallback to random"
+                                  >>= fun () ->
+                                  do_random_eviction fill_ratio
+                                end
+                              else
+                                begin
+                                  (* wait a little here to increase chance to have work *)
+                                  Lwt_unix.sleep 1. >>= fun () ->
+                                  inner (Int64.add acc size) retrycnt
+                                end
                           end
                       in
-                      inner 0L)
+                      inner 0L 0)
                   )
                   (fun exn ->
                    Lwt_log.info_f
