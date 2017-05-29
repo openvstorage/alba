@@ -271,6 +271,11 @@ let llio_output_and_flush oc s =
   Llio.output_string oc s >>= fun () ->
   Lwt_io.flush oc
 
+let flush_logging () =
+  (* this statement flushes the log output stream (aka stdout)
+     TODO: obviously it doesn't work in all cases
+   *)
+  Lwt_io.printf "%!"
 
 let make_fuse_thread () =
   let mvar = Lwt_mvar.create_empty () in
@@ -285,8 +290,7 @@ let make_fuse_thread () =
   Lwt_mvar.take mvar >>= fun x ->
   let sig_name = List.assoc x signals in
   Lwt_log.warning_f "Got signal %s (%i), terminating..." sig_name x >>= fun () ->
-  (* this statement flushes the log output stream (aka stdout) *)
-  Lwt_io.printf "%!"
+  flush_logging ()
 
 let get_files_of_directory dir =
   Lwt_stream.to_list (Lwt_unix.files_of_directory dir) >>= fun l ->
