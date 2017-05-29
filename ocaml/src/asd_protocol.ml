@@ -289,7 +289,6 @@ module AsdMgmt = struct
 
     let update_latest_disk_usage t delta =
       let new_usage = Int64.add t._latest_disk_usage delta in
-      if new_usage < 0L then exit 666;
       let () = t._latest_disk_usage <- new_usage in
       new_usage
 

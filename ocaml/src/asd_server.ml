@@ -888,6 +888,7 @@ let maybe_delete_file kv dir_info fnr =
       (Keys.to_be_deleted fnr);
     Lwt.return ()
 
+exception NegDiskUsage
 
 let execute_update : type req res.
   Rocks_key_value_store.t ->
@@ -1191,6 +1192,7 @@ let execute_update : type req res.
                            mgmt
                            (Int64.of_int size_delta)
                in
+               if ldu < 0L then raise NegDiskUsage;
                WriteBatch.put_string
                  wb
                  Keys.disk_usage
@@ -1249,7 +1251,13 @@ let execute_update : type req res.
                   (function
                     | Lwt.Canceled -> Lwt.fail Lwt.Canceled
                     | ConcurrentModification -> Lwt.return `Retry
-                    | exn -> Lwt.fail exn) >>= function
+                    | NegDiskUsage ->
+                       Lwt_log.fatal "negative disk usage detected." >>= fun () ->
+                       Lwt_extra2.flush_logging () >>= fun () ->
+                       let () = exit 666 in
+                       Lwt.return `Retry
+                    | exn -> Lwt.fail exn)
+                >>= function
                 | `Succeeded fnrs -> Lwt.return fnrs
                 | `Retry ->
                    Lwt_log.debug_f "Asd retrying apply due to concurrent modification" >>= fun () ->
