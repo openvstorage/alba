@@ -925,10 +925,6 @@ let with_timing_lwt f =
   Lwt.return (t1 -. t0, res)
 
 module Error = struct
-  (* TODO remove this module/type, replace usages with `Result` *)
-  type ('a, 'b) t =
-    | Ok of 'a
-    | Error of 'b
 
   let map f = function
     | Ok a -> Ok (f a)

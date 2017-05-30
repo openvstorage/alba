@@ -405,9 +405,9 @@ class client ?(retry_timeout = 60.)
            ~object_id ~object_name
            ~chunk_id ~fragment_id
          >>= function
-         | Prelude.Error.Error x ->
+         | Error x ->
             Lwt.fail (Exn NotEnoughFragments)
-         | Prelude.Error.Ok (_, packed_fragment) ->
+         | Ok (_, packed_fragment) ->
             Lwt.finalize
               (fun () ->
                Fragment_helper.verify packed_fragment fragment_checksum
