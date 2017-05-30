@@ -94,6 +94,27 @@ module Blob = struct
        Memcmp.equal''
          s1.bs s1.offset s1.length
          s2.bs s2.offset s2.length
+
+  let write_all_bytes fd len = function
+    | Lwt_bytes s ->
+       Lwt_extra2.write_all_lwt_bytes
+         fd
+         s 0 len
+    | Bigslice s ->
+       let open Bigstring_slice in
+       Lwt_extra2.write_all_lwt_bytes
+         fd
+         s.bs s.offset s.length
+    | Bytes s ->
+       Lwt_extra2.write_all
+         fd
+         s 0 len
+    | Slice s ->
+       let open Slice in
+       Lwt_extra2.write_all
+         fd
+         s.buf s.offset len
+
 end
 
 module Value = struct

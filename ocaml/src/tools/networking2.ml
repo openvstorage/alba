@@ -134,7 +134,7 @@ type conn_info = {
 let make_conn_info ips port ?(transport=Net_fd.TCP) tls_config =
   let () =
     match ips with
-    | [] -> failwith "empty ips list for asd_client.with_client";
+    | [] -> failwith "empty ips list for make_conn_info";
     | _ -> ()
   in
   {ips;port;transport;tls_config}
