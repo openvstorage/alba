@@ -144,7 +144,7 @@ static void worker_partial_read(struct job_partial_read* job)
             pos++;
         }
     }
-    close(in_fd);// TODO: do we care if this fails? (what can we do?)
+    close(in_fd); // we don't care if this fails (and that's ok)
     job -> result = 0;
 }
 
