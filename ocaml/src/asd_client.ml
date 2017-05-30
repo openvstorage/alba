@@ -414,12 +414,6 @@ let make_client ~conn_info (lido:string option)  =
      Lwt.fail exn)
 
 let with_client ~conn_info (lido:string option) f =
-  (* TODO: validation here? or elsewhere *)
-  let () =
-    match conn_info.Networking2.ips with
-    | [] -> failwith "empty ips list for asd_client.with_client";
-    | _ -> ()
-  in
   make_client ~conn_info lido >>= fun (client, closer) ->
   Lwt.finalize
     (fun () -> f client)
@@ -437,9 +431,9 @@ object(self :# Osd.key_value_osd)
 
       method get_exn prio (k:key) =
         self # get_option prio k >>= function
-        | None -> Lwt.fail (Failure (Printf.sprintf
-                                       "Could not find key %s on asd %S"
-                                       (Slice.get_string_unsafe k) asd_id))
+        | None -> Lwt.fail_with (Printf.sprintf
+                                   "Could not find key %s on asd %S"
+                                   (Slice.get_string_unsafe k) asd_id)
         | Some v -> Lwt.return v
 
       method multi_get prio keys =

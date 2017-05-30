@@ -262,10 +262,10 @@ let download_fragment
             Hashtbl.remove download_fragment_dedup_cache dedup_key;
 
             let r' = match r with
-              | Prelude.Error.Error _ as r -> r
-              | Prelude.Error.Ok (t_fragment, b, mfs) ->
+              | Error _ as r -> r
+              | Ok (t_fragment, b, mfs) ->
                  Lwt_bytes2.SharedBuffer.register_sharing ~n:(List.length wakers) b;
-                 Prelude.Error.Ok (Statistics.FromOsd (t_fragment, wakers <> []), b, mfs)
+                 Ok (Statistics.FromOsd (t_fragment, wakers <> []), b, mfs)
             in
 
             List.iter
@@ -315,8 +315,8 @@ let download_fragment'
     fragment_cache
     ~cache_on_read
   >>= function
-  | Prelude.Error.Ok a -> Lwt.return a
-  | Prelude.Error.Error x ->
+  | Ok a -> Lwt.return a
+  | Error x ->
      let () =
        match bad_fragment_callback
        with | None -> ()

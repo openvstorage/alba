@@ -131,7 +131,13 @@ type conn_info = {
     tls_config: Tls.t option
   } [@@deriving show]
 
-let make_conn_info ips port ?(transport=Net_fd.TCP) tls_config = {ips;port;transport;tls_config}
+let make_conn_info ips port ?(transport=Net_fd.TCP) tls_config =
+  let () =
+    match ips with
+    | [] -> failwith "empty ips list for make_conn_info";
+    | _ -> ()
+  in
+  {ips;port;transport;tls_config}
 
 exception No_connection
 

@@ -292,13 +292,21 @@ module WriteBuffer = struct
       Lwt_bytes.blit bss.bs bss.offset buf.buf buf.pos bss.length;
       advance_pos buf bss.length
 
+    let _list_to e_to buf list =
+      let pos0 = buf.pos in
+      int_to buf 0;
+      let len =
+        List.fold_left
+          (fun len e -> e_to buf e; (len+1))
+          0
+          (List.rev list)
+      in
+      let () = set32_prim' buf.buf pos0 (Int32.of_int len) in
+      len
+
     let counted_list_to e_to buf (cnt, list) =
-      int_to buf cnt;
-      let cnt2 = ref 0 in
-      List.iter
-        (fun e -> e_to buf e; incr cnt2)
-        (List.rev list);
-      assert (cnt = !cnt2)
+      let cnt2 = _list_to e_to buf list in
+      assert (cnt = cnt2)
 
     let counted_list_more_to a_to =
       pair_to
@@ -306,8 +314,7 @@ module WriteBuffer = struct
         bool_to
 
     let list_to e_to buf list =
-      (* TODO ideally the list should be iterated only once *)
-      counted_list_to e_to buf (List.length list, list)
+      let _ = _list_to e_to buf list in ()
 
     let serialize_with_length' ?(buf = make ~length:20) a_to a =
       let pos0 = buf.pos in

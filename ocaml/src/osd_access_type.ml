@@ -66,6 +66,6 @@ class type t =
                | `AsdExn of exn
                | `ChecksumMismatch
                | `FragmentMissing ])
-                Prelude.Error.t Lwt.u list)
+                result Lwt.u list)
                Prelude.Hashtbl.t
   end

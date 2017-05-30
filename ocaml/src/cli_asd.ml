@@ -628,7 +628,6 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config
                 (fun (long_id, stats_result) ->
                   let result =
                     let open Alba_json in
-                    let open Prelude.Error in
                     let open Result in
                     match stats_result with
                     | Ok (stats, disk_usage)   ->
@@ -652,7 +651,6 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config
       else
         let f =
           (fun (long_id, stats_result) ->
-            let open Prelude.Error in
             let v = match stats_result with
               | Ok (stats, disk_usage) ->
                  Printf.sprintf
@@ -710,11 +708,11 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config
                          client # get_disk_usage () >>= fun disk_usage ->
                          Lwt.return (stats, disk_usage))
                       >>= fun r ->
-                      (long_id, Prelude.Error.Ok r) |> Lwt.return)
+                      (long_id, Ok r) |> Lwt.return)
                   )
                   (fun exn ->
                     Lwt_log.info_f ~exn "couldn't reach %s" long_id >>= fun () ->
-                    Lwt.return (long_id, Prelude.Error.Error exn)
+                    Lwt.return (long_id, Error exn)
                   )
               end
             ) needed_info
