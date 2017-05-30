@@ -233,5 +233,10 @@ let lru_collect_some_garbage alba_client redis_client key =
 
   >>= fun sizes ->
 
-  R.zrem redis_client key items >>= fun _ ->
-  Lwt.return (List.fold_left Int64.add 0L sizes)
+  (if List.length items > 0
+   then
+     R.zrem redis_client key items
+   else
+     Lwt.return 0)
+
+  >>= fun _ -> Lwt.return (List.fold_left Int64.add 0L sizes)
