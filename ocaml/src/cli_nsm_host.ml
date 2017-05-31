@@ -21,17 +21,21 @@ open Cmdliner
 open Lwt.Infix
 open! Prelude
 
-let nsm_host_statistics (cfg_url:Url.t) tls_config clear nsm_host verbose =
+let nsm_host_statistics (cfg_url:Url.t) tls_config clear nsm_host to_json verbose =
   let t () =
     with_alba_client
       cfg_url
       tls_config
       (fun client ->
-       client # nsm_host_access # statistics nsm_host clear >>= fun statistics ->
-       Lwt_io.printlf "%s" (Nsm_host_protocol.Protocol.NSMHStatistics.show statistics)
+        client # nsm_host_access # statistics nsm_host clear >>= fun statistics ->
+        if to_json
+        then
+          print_result statistics Nsm_host_protocol.Protocol.NSMHStatistics.to_yojson
+        else
+          Lwt_io.printlf "%s" (Nsm_host_protocol.Protocol.NSMHStatistics.show statistics)
       )
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let nsm_host_statistics_cmd =
   Term.(pure nsm_host_statistics
@@ -39,10 +43,53 @@ let nsm_host_statistics_cmd =
         $ tls_config
         $ clear
         $ nsm_host 0
+        $ to_json
         $ verbose
   ),
   Term.info
     "nsm-host-statistics"
+    ~doc:"namespace hosts' statistics"
+
+let nsm_hosts_statistics cfg_url tls_config clear nsm_hosts to_json verbose =
+  let t () =
+    with_alba_client
+      cfg_url
+      tls_config
+      (fun client ->
+        Lwt_list.map_p
+          (fun nsm_host ->
+            client # nsm_host_access # statistics nsm_host clear >>= fun stat ->
+            Lwt.return (nsm_host, stat))
+          nsm_hosts
+      )
+    >>= fun statistics ->
+    if to_json
+    then print_result statistics
+                      (fun x ->
+                        List.map
+                          (fun (nsm_host, stat) ->
+                            nsm_host, Nsm_host_protocol.Protocol.NSMHStatistics.to_yojson stat)
+                          x
+                        |> fun r -> `Assoc r)
+    else
+      Lwt_list.iter_s
+        (fun (nsm_host, stat) ->
+          Lwt_io.printlf "%s => %s" nsm_host (Nsm_host_protocol.Protocol.NSMHStatistics.show stat))
+        statistics
+  in
+  lwt_cmd_line ~to_json ~verbose t
+
+let nsm_hosts_statistics_cmd =
+  Term.(pure nsm_hosts_statistics
+        $ alba_cfg_url
+        $ tls_config
+        $ clear
+        $ nsm_hosts
+        $ to_json
+        $ verbose
+  ),
+  Term.info
+    "nsm-hosts-statistics"
     ~doc:"namespace hosts' statistics"
 
 
@@ -170,6 +217,7 @@ let list_osd_keys_to_be_deleted_cmd =
 let cmds =
   [
     nsm_host_statistics_cmd;
+    nsm_hosts_statistics_cmd;
     list_device_objects_cmd;
     list_osd_keys_to_be_deleted_cmd;
   ]

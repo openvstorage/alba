@@ -245,9 +245,11 @@ module Protocol = struct
   type 'a deserializer = 'a Llio.deserializer
 
 
-  module NSMHStatistics = struct
+  module NSMHStatistics =
+    struct
       include Statistics_collection.Generic
       let show t = show_inner t tag_to_name
+      let to_yojson t = to_yojson_inner t tag_to_name
     end
 
   let read_update_i : type i o. (i, o) update -> i deserializer = function

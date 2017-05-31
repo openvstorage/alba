@@ -23,7 +23,7 @@ module Generic = struct
     include Stat
 
     type t = {
-        mutable creation: Prelude.timestamp;
+        mutable creation: timestamp;
         mutable period : float;
         statistics : (int32, stat) Hashtbl.t;
       }
@@ -59,6 +59,16 @@ module Generic = struct
         t.statistics ();
       add "}";
       Buffer.contents b
+
+    let to_yojson_inner t tag_to_name =
+      `Assoc
+       [ "creation", `Float t.creation;
+         "period", `Float t.period;
+         "statistics", `Assoc (Hashtbl.map
+                                 (fun i32 stat -> tag_to_name i32, stat_to_yojson stat)
+                                 t.statistics
+                              );
+       ]
 
     let make () = {
         creation = Unix.gettimeofday();
