@@ -1134,12 +1134,21 @@ class client ?(retry_timeout = 60.)
              end
          end
 
-    method repair_by_policy_namespace ~namespace_id =
+    method repair_by_policy_namespace
+             ~namespace_id
+             ~(namespace:string)
+             ~namespace_info
+      =
       if filter namespace_id
-      then self # repair_by_policy_namespace' ~namespace_id ()
-      else Lwt.return ()
+      then self # repair_by_policy_namespace'
+                ~namespace_id ~namespace ~namespace_info ()
+      else Lwt.return_unit
 
-    method repair_by_policy_namespace' ?(skip_recent=true) ~namespace_id () =
+    method repair_by_policy_namespace' ?(skip_recent=true)
+                                       ~namespace_id
+                                       ~namespace
+                                       ~namespace_info
+                                       () =
 
       alba_client # get_ns_preset_info ~namespace_id >>= fun preset ->
       let policies = preset.Preset.policies in
@@ -1175,21 +1184,14 @@ class client ?(retry_timeout = 60.)
         ([%show : (Policy.policy * int64) list] bucket_count)
         namespace_id >>= fun () ->
 
-      mgr_access # get_namespace_by_id ~namespace_id
-      >>= fun (_, namespace_name, namespace) ->
       let is_cache_namespace =
         let open Maintenance_config in
         Hashtbl.fold
           (fun prefix preset acc ->
             acc ||
               (let open Albamgr_protocol.Protocol in
-                preset = namespace.Namespace.preset_name
-               &&
-                 let len = String.length namespace_name in
-                 let prefix_len = String.length prefix in
-                 len >= prefix_len
-                 &&
-                   String.sub namespace_name 0 prefix_len = prefix
+                preset = namespace_info.Namespace.preset_name
+                && String.starts_with namespace prefix
               )
           )
           maintenance_config.cache_eviction_prefix_preset_pairs
@@ -1404,7 +1406,8 @@ class client ?(retry_timeout = 60.)
       loop_buckets buckets >>= fun () ->
 
       if !repaired_some && filter namespace_id
-      then self # repair_by_policy_namespace ~namespace_id
+      then self # repair_by_policy_namespace
+                ~namespace_id ~namespace ~namespace_info
       else Lwt.return ()
 
 
@@ -1876,8 +1879,8 @@ class client ?(retry_timeout = 60.)
         retry_timeout
 
   method maintenance_for_namespace
-           ~namespace
            ~namespace_id
+           ~namespace
            ~namespace_info
     =
     Lwt_extra2.ignore_errors
@@ -1948,7 +1951,11 @@ class client ?(retry_timeout = 60.)
                      ~grace_period:gc_grace_period
                      ~namespace_id);
                "repair by policy",
-               (fun () -> self # repair_by_policy_namespace ~namespace_id);
+               (fun () -> self # repair_by_policy_namespace
+                               ~namespace_id
+                               ~namespace
+                               ~namespace_info
+               );
                "rebalance",
                (fun () -> self # rebalance_namespace
                                ~make_first_last_reverse

@@ -297,38 +297,34 @@ let compare_buckets (bucket1, j1) (bucket2,j2) =
   let compare_bucket_safety
         (k1, _, fragment_count1, _)
         (k2, _, fragment_count2, _) =
-    (fragment_count2 - k2) - (fragment_count1 - k1)
+    (fragment_count1 - k1) - (fragment_count2 - k2)
   in
   let get_max_disks_per_node (_, _, _, x) = x in
   begin
     match j1 with
-    | ConsiderRemoval -> if j2 = ConsiderRemoval then 0 else -1
+    | ConsiderRemoval -> if j2 = ConsiderRemoval then 0 else 1
     | Rebalance ->
        begin
          match j2 with
-         | ConsiderRemoval -> 1
+         | ConsiderRemoval -> -1
          | Rebalance -> compare
                           (get_max_disks_per_node bucket2)
                           (get_max_disks_per_node bucket1)
-         | Regenerate | Rewrite -> -1
+         | Regenerate | Rewrite -> 1
        end
     | Regenerate ->
        begin
          match j2 with
-         | ConsiderRemoval | Rebalance -> 1
+         | ConsiderRemoval | Rebalance -> -1
          | Regenerate | Rewrite -> compare_bucket_safety bucket1 bucket2
        end
     | Rewrite ->
        begin
          match j2 with
-         | ConsiderRemoval | Rebalance -> 1
+         | ConsiderRemoval | Rebalance -> -1
          | Regenerate | Rewrite -> compare_bucket_safety bucket1 bucket2
        end
   end
-
-let neg_compare_buckets b1 b2 =
-  let r0 = compare_buckets b1 b2 in
-  - r0
 
 let categorize_policies
       best_policy
@@ -407,4 +403,4 @@ let categorize_policies
                    Some (bucket, Rewrite)
                end
            end)
-  |> List.sort neg_compare_buckets
+  |> List.sort compare_buckets
