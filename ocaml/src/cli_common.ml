@@ -315,6 +315,13 @@ let nsm_host p =
        & pos p (some string) None
        & info [] ~docv:"NSM_HOST" ~doc:"nsm host")
 
+let nsm_hosts =
+  Arg.(value
+       & opt (list string) []
+       & info [ "nsm-hosts"; ]
+              ~docv:"NSM_HOSTs"
+              ~doc:"comma separated list of $(docv)")
+
 let preset_name_namespace_creation p =
   Arg.(value
        & pos p (some string) None
