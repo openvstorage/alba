@@ -1167,88 +1167,43 @@ class client ?(retry_timeout = 60.)
       nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
 
       nsm # get_stats >>= fun stats ->
-      let (_, bucket_count) = stats.Nsm_model.NamespaceStats.bucket_count in
+      let open Nsm_model in
+      let (_, bucket_count) = stats.NamespaceStats.bucket_count in
 
       Lwt_log.debug_f
         "Found buckets %s for namespace_id:%Li"
         ([%show : (Policy.policy * int64) list] bucket_count)
         namespace_id >>= fun () ->
 
-      let buckets =
-        bucket_count
-        |> List.filter (fun (_, cnt) -> cnt > 0L)
-        |> List.map fst
-        |> List.map_filter_rev
-             (fun ((k, m, fragment_count, max_disks_per_node) as bucket) ->
-              if (k, m) = (best_k, best_m)
-              then
-                begin
-                  let open Compare in
-                  match Int.compare' fragment_count best_actual_fragment_count with
-                  | LT -> Some (bucket, `Regenerate)
-                  | EQ
-                  | GT ->
-                     if max_disks_per_node > best_actual_max_disks_per_node
-                     then Some (bucket, `Rebalance)
-                     else None
-                end
-              else
-                begin
-                  let is_more_preferred_bucket =
-                    let rec inner = function
-                      | [] -> false
-                      | ((k', m', fragment_count', max_disks_per_node') as policy) :: policies ->
-                         if policy = best_policy
-                         then false
-                         else
-                           begin
-                             if
-                               (* does the bucket match this policy? *)
-                               k = k'
-                               && m = m'
-                               && fragment_count >= fragment_count'
-                               && max_disks_per_node <= max_disks_per_node'
-                             then true
-                             else inner policies
-                           end
-                    in
-                    inner policies
-                  in
-                  if is_more_preferred_bucket
-                  then
-                    (* this will be handled by another part of the maintenance process
-                     * (when osds are considered dead/unavailable for writes for
-                     *  a long enough time the objects in these buckets will be
-                     *  repaired/rewritten)
-                     *)
-                    None
-                  else
-                    Some (bucket, `Rewrite)
-                end)
-        |> List.sort
-             (fun (bucket1, j1) (bucket2, j2) ->
-              let compare_bucket_safety (k1, _, fragment_count1, _) (k2, _, fragment_count2, _) =
-                (fragment_count1 - k1) - (fragment_count2 - k2)
-              in
-              let get_max_disks_per_node (_, _, _, x) = x in
-              match j1, j2 with
-              | `Rebalance, `Rebalance ->
-                 compare
-                   (get_max_disks_per_node bucket1)
-                   (get_max_disks_per_node bucket2)
-              | `Regenerate, `Rebalance
-              | `Rewrite, `Rebalance ->
-                 1
-              | `Rebalance, `Regenerate
-              | `Rebalance, `Rewrite ->
-                 -1
-              | `Rewrite,    `Rewrite
-              | `Regenerate, `Rewrite
-              | `Rewrite,    `Regenerate
-              | `Regenerate, `Regenerate ->
-                 compare_bucket_safety bucket1 bucket2)
+      mgr_access # get_namespace_by_id ~namespace_id
+      >>= fun (_, namespace_name, namespace) ->
+      let is_cache_namespace =
+        let open Maintenance_config in
+        Hashtbl.fold
+          (fun prefix preset acc ->
+            acc ||
+              (let open Albamgr_protocol.Protocol in
+                preset = namespace.Namespace.preset_name
+               &&
+                 let len = String.length namespace_name in
+                 let prefix_len = String.length prefix in
+                 len >= prefix_len
+                 &&
+                   String.sub namespace_name 0 prefix_len = prefix
+              )
+          )
+          maintenance_config.cache_eviction_prefix_preset_pairs
+          false
       in
-
+      let buckets =
+        Maintenance_helper.categorize_policies
+          best_policy
+          best_actual_fragment_count
+          best_actual_max_disks_per_node
+          policies
+          is_cache_namespace
+          bucket_count
+      in
       let repaired_some = ref false in
 
       let handle_bucket ((k, m, fragment_count, max_disks_per_node), job) =
@@ -1397,13 +1352,32 @@ class client ?(retry_timeout = 60.)
                             repaired_some := true;
                             Lwt.return_unit))
           in
-          let f = match job with
-            | `Rewrite ->
+          let maybe_remove mf =
+            Lwt_extra2.ignore_errors
+              (fun () ->
+                let open Nsm_model in
+                let should_delete = not (Manifest.has_data_fragments k mf) in
+                if should_delete
+                then
+                  alba_client # delete_object
+                              ~namespace_id
+                              ~object_name:mf.Manifest.name
+                              ~may_not_exist:true
+                else
+                  Lwt.return_unit
+              )
+          in
+          let f =
+            let open Maintenance_helper in
+            match job with
+            | Rewrite ->
                rewrite
-            | `Regenerate ->
+            | Regenerate ->
                wrap_rewrite "Regenerate" regenerate
-            | `Rebalance ->
+            | Rebalance ->
                wrap_rewrite "Rebalance" rebalance
+            | ConsiderRemoval -> maybe_remove
+
           in
 
           (* filter out recent object uploads to avoid repairing objects
@@ -2025,12 +1999,7 @@ class client ?(retry_timeout = 60.)
       osd_access
 
   method cache_eviction () : unit Lwt.t =
-    let get_prefixes () =
-      Hashtbl.fold
-        (fun prefix _ acc -> prefix :: acc)
-        maintenance_config.Maintenance_config.cache_eviction_prefix_preset_pairs
-        []
-    in
+    let get_prefixes () = Maintenance_config.get_prefixes maintenance_config in
 
     let percentage_from_fill_ratio fill_ratio =
       if fill_ratio > 0.93

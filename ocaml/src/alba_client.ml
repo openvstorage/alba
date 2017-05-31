@@ -322,33 +322,8 @@ class alba_client (base_client : Alba_base_client.client)
     self # nsm_host_access # with_namespace_id
       ~namespace
       (fun namespace_id ->
-         self # nsm_host_access # get_nsm_by_id ~namespace_id
-         >>= fun nsm_client ->
-         Lwt.finalize
-           (fun () ->
-            let open Nsm_model in
-            nsm_client # delete_object
-                       ~object_name
-                       ~allow_overwrite:(if may_not_exist
-                                         then Unconditionally
-                                         else AnyPrevious)
-            >>= function
-            | None ->
-               Lwt_log.debug_f
-                 "no object with name %s could be found\n"
-                 object_name
-            | Some old_manifest ->
-               (* TODO add en-passant deletion of fragments *)
-               Lwt_log.debug_f
-                 "object with name %s was deleted\n"
-                 object_name)
-           (fun () ->
-              let () =
-                Manifest_cache.ManifestCache.remove
-                  (base_client # get_manifest_cache) namespace_id object_name
-              in
-              Lwt.return_unit
-           ))
+        base_client # delete_object ~namespace_id ~object_name ~may_not_exist
+      )
 
   method download_object_generic'
              ~namespace_id

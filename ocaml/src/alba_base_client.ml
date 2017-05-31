@@ -502,4 +502,33 @@ class client
         (self # deliver_nsm_host_messages)
         (self # drop_cache_by_id ~global:true)
         ~namespace
+
+    method delete_object ~namespace_id ~object_name ~may_not_exist =
+      self # nsm_host_access # get_nsm_by_id ~namespace_id
+      >>= fun nsm_client ->
+      Lwt.finalize
+        (fun () ->
+          let open Nsm_model in
+          nsm_client # delete_object
+                     ~object_name
+                     ~allow_overwrite:(if may_not_exist
+                                       then Unconditionally
+                                       else AnyPrevious)
+          >>= function
+          | None ->
+             Lwt_log.debug_f
+               "no object with name %s could be found\n"
+               object_name
+          | Some old_manifest ->
+             (* TODO add en-passant deletion of fragments *)
+             Lwt_log.debug_f
+               "object with name %s was deleted\n"
+               object_name)
+        (fun () ->
+          let () =
+            Manifest_cache.ManifestCache.remove
+              (self # get_manifest_cache) namespace_id object_name
+          in
+          Lwt.return_unit
+        )
   end

@@ -1016,7 +1016,61 @@ let test_repair_evolved_compressor () =
                          ok;
        Lwt.return_unit
 
-       )
+    )
+
+let test_categorization () =
+  let best_policy = (16, 8, 24, 3) in
+  let best_actual_fragment_count = 24 in
+  let best_actual_max_disks_per_node = 3 in
+  let policies = [(16,8,20,3); (8,4, 6, 4); (1,3,4,1)] in
+  let bucket_count =
+    [(16, 8,24, 6),  50L;
+     (16, 8,20, 3), 100L;
+     ( 8, 4, 5, 6), 200L;
+     ( 1, 3, 4, 1), 300L;
+     ( 1, 2, 3, 1), 400L;
+     (16, 8,14, 1), 500L;
+    ]
+  in
+  let open Maintenance_helper in
+  let is_cache_namespace = true in
+  let r =
+    categorize_policies
+      best_policy
+      best_actual_fragment_count
+      best_actual_max_disks_per_node
+      policies
+      is_cache_namespace
+      bucket_count
+  in
+
+  let expected =[
+      ( 1, 2,  3, 1), Rewrite;     (* safety: 2 *)
+      (16, 8, 20, 3), Regenerate;  (* safety: 4 *)
+      (16, 8, 24, 6), Rebalance;
+      (16, 8, 14, 1), ConsiderRemoval;
+      ( 8, 4 , 5, 6), ConsiderRemoval;
+
+    ]
+  in
+  let item = ref 0 in
+  let () = Printf.printf
+             "r=%s"
+             ([%show: ((int * int * int * int) * maintenance_action) list] r)
+  in
+  List.iter2
+    (fun e a ->
+      let printer =
+        [%show: ((int * int * int * int) * maintenance_action) ]
+      in
+      let () =
+        OUnit.assert_equal
+          ~printer e a
+          ~msg:(Printf.sprintf "item %i" !item)
+      in
+      incr item
+    ) expected r
+
 open OUnit
 
 let suite = "maintenance_test" >:::[
@@ -1030,4 +1084,5 @@ let suite = "maintenance_test" >:::[
     "test_verify_namespace" >:: test_verify_namespace;
     "test_automatic_repair" >:: test_automatic_repair;
     "test_repair_evolved_compressor" >:: test_repair_evolved_compressor;
+    "test_categorization" >:: test_categorization;
 ]
