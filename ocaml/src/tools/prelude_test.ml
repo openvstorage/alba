@@ -57,6 +57,15 @@ let test_xint64_le () =
 let test_xint64_be () =
   test_xint64 (serialize x_int64_be_to) (deserialize x_int64_be_from)
 
+let test_starts_with () =
+  let tests = [("x"   , "xyz", false);
+               ("xyzt", "xyz", true);
+              ]
+  in
+  List.iter
+    (fun (s,p,e) -> OUnit.assert_equal (String.starts_with s p) e)
+    tests
+
 open OUnit
 
 let suite = "prelude_test" >::: [
@@ -65,4 +74,5 @@ let suite = "prelude_test" >::: [
       "test_merge_head" >:: test_merge_head;
       "test_xint64_le" >:: test_xint64_le;
       "test_xint64_be" >:: test_xint64_be;
+      "test_starts_with" >:: test_starts_with;
   ]

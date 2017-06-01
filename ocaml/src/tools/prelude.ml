@@ -102,13 +102,16 @@ module String = struct
   include String
 
   let starts_with s prefix =
-    let len = length prefix in
+    let p_len = length prefix in
+    let s_len = length s in
+
     let rec loop i =
-      if i = len
+      if i = p_len
       then true
-      else s.[i] = prefix.[i] && loop (i+1)
+      else unsafe_get s i = unsafe_get prefix i && loop (i+1)
     in
-    loop 0
+    s_len >= p_len
+    && loop 0
 
 
   module C = CompareLib.Default(String)
