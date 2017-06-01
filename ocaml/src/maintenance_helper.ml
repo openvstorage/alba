@@ -285,3 +285,122 @@ let upload_missing_fragments
           fragment_checksum_algo
           ~is_replication:(k=1)
           ~n_chunks ~chunk_fragments)
+
+type maintenance_action =
+  | ConsiderRemoval
+  | Rebalance
+  | Regenerate
+  | Rewrite
+[@@deriving show]
+
+let compare_buckets (bucket1, j1) (bucket2,j2) =
+  let compare_bucket_safety
+        (k1, _, fragment_count1, _)
+        (k2, _, fragment_count2, _) =
+    (fragment_count1 - k1) - (fragment_count2 - k2)
+  in
+  let get_max_disks_per_node (_, _, _, x) = x in
+  begin
+    match j1 with
+    | ConsiderRemoval -> if j2 = ConsiderRemoval then 0 else 1
+    | Rebalance ->
+       begin
+         match j2 with
+         | ConsiderRemoval -> -1
+         | Rebalance -> compare
+                          (get_max_disks_per_node bucket2)
+                          (get_max_disks_per_node bucket1)
+         | Regenerate | Rewrite -> 1
+       end
+    | Regenerate ->
+       begin
+         match j2 with
+         | ConsiderRemoval | Rebalance -> -1
+         | Regenerate | Rewrite -> compare_bucket_safety bucket1 bucket2
+       end
+    | Rewrite ->
+       begin
+         match j2 with
+         | ConsiderRemoval | Rebalance -> -1
+         | Regenerate | Rewrite -> compare_bucket_safety bucket1 bucket2
+       end
+  end
+
+let categorize_policies
+      best_policy
+      best_actual_fragment_count
+      best_actual_max_disks_per_node
+      policies
+      is_cache_namespace
+      bucket_count =
+  let best_k,best_m,_,_ = best_policy in
+  bucket_count
+  |> List.filter (fun (_, cnt) -> cnt > 0L)
+  |> List.map fst
+  |> List.map_filter_rev
+       (fun ((k, m, fragment_count, max_disks_per_node) as bucket) ->
+         if (k, m) = (best_k, best_m)
+         then
+           begin
+             let open Compare in
+             match Int.compare' fragment_count best_actual_fragment_count with
+             | LT ->
+                begin
+                  if fragment_count < k
+                  then
+                    if is_cache_namespace
+                    then Some(bucket, ConsiderRemoval)
+                    else None
+                  else
+                    Some (bucket, Regenerate)
+                end
+             | EQ
+               | GT ->
+                if max_disks_per_node > best_actual_max_disks_per_node
+                then Some (bucket, Rebalance)
+                else None
+           end
+         else
+           begin
+             let is_more_preferred_bucket =
+               let rec inner = function
+                 | [] -> false
+                 | policy :: policies ->
+                    if policy = best_policy
+                    then false
+                    else
+                      begin
+                        let (k', m', fragment_count', max_disks_per_node') = policy
+                        in
+                        if
+                          (* does the bucket match this policy? *)
+                          k = k'
+                          && m = m'
+                          && fragment_count >= fragment_count'
+                          && max_disks_per_node <= max_disks_per_node'
+                        then true
+                        else inner policies
+                      end
+               in
+               inner policies
+             in
+             if is_more_preferred_bucket
+             then
+               (* this will be handled by another part of the maintenance process
+                * (when osds are considered dead/unavailable for writes for
+                *  a long enough time the objects in these buckets will be
+                *  repaired/rewritten)
+                *)
+               None
+             else
+               begin
+                 if fragment_count < k
+                 then
+                   if is_cache_namespace
+                   then Some (bucket, ConsiderRemoval)
+                   else None
+                 else
+                   Some (bucket, Rewrite)
+               end
+           end)
+  |> List.sort compare_buckets

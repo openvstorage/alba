@@ -48,6 +48,12 @@ type t = {
 
 let show t = to_yojson t |> Yojson.Safe.pretty_to_string
 
+let get_prefixes t =
+  Hashtbl.fold
+    (fun prefix _ acc -> prefix :: acc)
+    t.cache_eviction_prefix_preset_pairs
+    []
+
 let from_buffer buf =
   let ser_version = Llio.int8_from buf in
   assert (ser_version = 1);

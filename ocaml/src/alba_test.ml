@@ -1134,7 +1134,8 @@ let test_repair_by_policy () =
          ~nsm_host_id
          ~namespace ()
        >>= fun namespace_id ->
-
+       alba_client # mgr_access # get_namespace_by_id ~namespace_id
+       >>= fun (_, namespace_name, namespace_info) ->
        let get_k_m_x manifest =
          let open Nsm_model in
          let es = match manifest.Manifest.storage_scheme with
@@ -1179,7 +1180,10 @@ let test_repair_by_policy () =
          (fun maintenance_client ->
            maintenance_client # repair_by_policy_namespace'
                               ~skip_recent:false
-                              ~namespace_id ())
+                              ~namespace_id
+                              ~namespace
+                              ~namespace_info
+                              ())
        >>= fun () ->
 
        alba_client # get_object_manifest
@@ -1975,6 +1979,9 @@ let test_update_policies () =
      alba_client # mgr_access # create_preset preset_name preset >>= fun () ->
      alba_client # create_namespace ~namespace ~preset_name:(Some preset_name) ()
      >>= fun namespace_id ->
+     alba_client # mgr_access # get_namespace_by_id ~namespace_id
+     >>= fun (_, namespace, namespace_info) ->
+
      _wait_for_osds alba_client namespace_id >>= fun () ->
 
      let assert_k_m mf k m =
@@ -2019,7 +2026,7 @@ let test_update_policies () =
        (fun maintenance_client ->
          maintenance_client # repair_by_policy_namespace'
                             ~skip_recent:false
-                            ~namespace_id ())
+                            ~namespace_id ~namespace ~namespace_info ())
      >>= fun () ->
 
      alba_client # get_object_manifest

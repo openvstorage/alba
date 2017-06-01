@@ -309,6 +309,14 @@ let wait_for_namespace_osds alba_client namespace_id cnt =
   alba_client # nsm_host_access # refresh_namespace_osds ~namespace_id >>= fun _ ->
   Lwt.return ()
 
+let create_namespace
+      (alba_client: Alba_client.alba_client)
+      ~namespace ~preset_name =
+  alba_client # create_namespace ~namespace ~preset_name:None ()
+  >>= fun namespace_id ->
+  alba_client # mgr_access # get_namespace_by_id ~namespace_id
+
+
 let test_repair_orange () =
   test_with_alba_client
     (fun alba_client ->
@@ -323,9 +331,8 @@ let test_repair_orange () =
 
        let test_name = "test_repair_orange" in
        let namespace = test_name in
-       alba_client # create_namespace ~namespace ~preset_name:None ()
-       >>= fun namespace_id ->
-
+       create_namespace alba_client ~namespace ~preset_name:None
+       >>= fun (namespace_id, namespace, namespace_info) ->
        wait_for_namespace_osds alba_client namespace_id 11 >>= fun () ->
 
        let object_name = test_name in
@@ -349,7 +356,8 @@ let test_repair_orange () =
        with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
+           mc # repair_by_policy_namespace' ~skip_recent:false
+              ~namespace_id ~namespace ~namespace_info ())
        >>= fun () ->
 
        alba_client # get_object_manifest
@@ -393,8 +401,8 @@ let test_repair_orange2 () =
          preset_name
          preset >>= fun () ->
 
-       alba_client # create_namespace ~preset_name:(Some preset_name) ~namespace ()
-       >>= fun namespace_id ->
+       create_namespace alba_client ~preset_name:(Some preset_name) ~namespace
+       >>= fun (namespace_id, namespace, namespace_info) ->
 
        let object_name = test_name in
        let object_data = get_random_string 399 in
@@ -417,7 +425,8 @@ let test_repair_orange2 () =
        with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
+           mc # repair_by_policy_namespace' ~skip_recent:false
+              ~namespace_id ~namespace ~namespace_info ())
        >>= fun () ->
 
        alba_client # get_object_manifest
@@ -459,9 +468,8 @@ let test_rebalance_node_spread () =
                  preset_name
                  preset >>= fun () ->
 
-     alba_client # create_namespace ~preset_name:(Some preset_name) ~namespace ()
-     >>= fun namespace_id ->
-
+     create_namespace alba_client ~preset_name:(Some preset_name) ~namespace
+     >>= fun (namespace_id, namespace, namespace_info) ->
      let object_name = test_name in
      let object_data = get_random_string 399 in
      alba_client # get_base_client # upload_object_from_string
@@ -518,7 +526,8 @@ let test_rebalance_node_spread () =
      with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
+           mc # repair_by_policy_namespace' ~skip_recent:false
+              ~namespace_id ~namespace ~namespace_info ())
        >>= fun () ->
 
      get_buckets () >>= fun r ->
@@ -927,8 +936,8 @@ let test_repair_evolved_compressor () =
          preset_name
          preset >>= fun () ->
 
-       alba_client # create_namespace ~preset_name:(Some preset_name) ~namespace ()
-       >>= fun namespace_id ->
+       create_namespace alba_client ~preset_name:(Some preset_name) ~namespace
+       >>= fun (namespace_id, namespace, namespace_info) ->
 
        let object_name = test_name in
        let object_data = get_random_string 399 in
@@ -953,7 +962,9 @@ let test_repair_evolved_compressor () =
        with_maintenance_client
          alba_client
          (fun mc ->
-          mc # repair_by_policy_namespace' ~skip_recent:false ~namespace_id ())
+           mc # repair_by_policy_namespace' ~skip_recent:false
+              ~namespace_id ~namespace ~namespace_info
+              ())
        >>= fun () ->
 
        alba_client # get_object_manifest
@@ -1016,7 +1027,64 @@ let test_repair_evolved_compressor () =
                          ok;
        Lwt.return_unit
 
-       )
+    )
+
+let test_categorization () =
+  let best_policy = (16, 8, 24, 3) in
+  let best_actual_fragment_count = 24 in
+  let best_actual_max_disks_per_node = 3 in
+  let policies = [(16,8,20,3); (8,4, 6, 4); (1,3,4,1)] in
+  let bucket_count =
+    [(16, 8,24, 6),  50L;
+     (16, 8,24, 5),  60L;
+     (16, 8,20, 3), 100L;
+     ( 8, 4, 5, 6), 200L;
+     ( 1, 3, 4, 1), 300L;
+     ( 1, 2, 3, 1), 400L;
+     ( 1, 2, 1, 1), 450L;
+     (16, 8,14, 1), 500L;
+    ]
+  in
+  let open Maintenance_helper in
+  let is_cache_namespace = true in
+  let r =
+    categorize_policies
+      best_policy
+      best_actual_fragment_count
+      best_actual_max_disks_per_node
+      policies
+      is_cache_namespace
+      bucket_count
+  in
+
+  let expected =[
+      ( 1, 2,  1, 1), Rewrite;     (* safety: 1 *)
+      ( 1, 2,  3, 1), Rewrite;     (* safety: 2 *)
+      (16, 8, 20, 3), Regenerate;  (* safety: 4 *)
+      (16, 8, 24, 6), Rebalance;
+      (16, 8, 24, 5), Rebalance;
+      (16, 8, 14, 1), ConsiderRemoval;
+      ( 8, 4 , 5, 6), ConsiderRemoval;
+    ]
+  in
+  let item = ref 0 in
+  let () = Printf.printf
+             "r=%s\n"
+             ([%show: ((int * int * int * int) * maintenance_action) list] r)
+  in
+  List.iter2
+    (fun e a ->
+      let printer =
+        [%show: ((int * int * int * int) * maintenance_action) ]
+      in
+      let () =
+        OUnit.assert_equal
+          ~printer e a
+          ~msg:(Printf.sprintf "item %i" !item)
+      in
+      incr item
+    ) expected r
+
 open OUnit
 
 let suite = "maintenance_test" >:::[
@@ -1030,4 +1098,5 @@ let suite = "maintenance_test" >:::[
     "test_verify_namespace" >:: test_verify_namespace;
     "test_automatic_repair" >:: test_automatic_repair;
     "test_repair_evolved_compressor" >:: test_repair_evolved_compressor;
+    "test_categorization" >:: test_categorization;
 ]

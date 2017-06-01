@@ -786,6 +786,15 @@ module Manifest = struct
       false
       t.fragments
 
+  let has_data_fragments k t =
+    let data_fragments =
+      Layout.map_indexed
+        (fun chunk_index fragment_index fragment ->
+          fragment_index < k && Fragment.has_osd fragment
+        )
+      t.fragments
+    in
+    Layout.fold (fun acc f -> acc || f) false data_fragments
 end
 
 include Fragment_update
