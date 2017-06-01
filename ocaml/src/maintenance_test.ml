@@ -480,6 +480,8 @@ let test_rebalance_node_spread () =
                  ~allow_overwrite:Nsm_model.NoPrevious
                  ~checksum_o:None >>= fun (mf,_, _,_) ->
 
+     wait_for_lazy_write alba_client namespace_id mf >>= fun mf ->
+
      let get_buckets () =
        alba_client # nsm_host_access
                    # with_nsm_client ~namespace
