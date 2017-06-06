@@ -302,12 +302,12 @@ let lwt_log mapper fn args attrs loc =
                 (Label.nolabel,
                  [%expr let ___s = [%e sprintf_exp ] in
                         let ___s' =
-                          if String.length ___s > 2000
+                          if String.length ___s > 10000
                           then
-                            let ___sr = String.sub ___s 0 2000 in
-                            Bytes.set ___sr 1997 '.';
-                            Bytes.set ___sr 1998 '.';
-                            Bytes.set ___sr 1999 '.';
+                            let ___sr = String.sub ___s 0 10000 in
+                            Bytes.set ___sr 9997 '.';
+                            Bytes.set ___sr 9998 '.';
+                            Bytes.set ___sr 9999 '.';
                             ___sr
                           else
                             ___s
