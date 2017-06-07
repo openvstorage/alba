@@ -379,7 +379,7 @@ let proxy_invalidate_cache_cmd =
         $ verbose
   ),
   Term.info "proxy-invalidate-cache"
-            ~doc:"invalidate the cache on the proxy for $(NAMESPACE)"
+            ~doc:"invalidate the cache on the proxy for the namespace"
 
 let proxy_statistics host port transport clear forget to_json verbose =
   let open Proxy_protocol in
