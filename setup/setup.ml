@@ -49,6 +49,9 @@ module Config = struct
       alba_rdma : string option; (* ip of the rdma capable nic *)
       alba_asd_log_level : string;
       alba_proxy_log_level : string;
+      alba_abm_log_level: string;
+      alba_nsm_log_level: string;
+
       alba_asd_base_paths :string list;
       local_nodeid_prefix : string;
       n_osds : int;
@@ -111,6 +114,8 @@ module Config = struct
     and alba_ip   = env_or_default_generic (fun x -> Some x) "ALBA_IP" None
     and alba_asd_log_level = env_or_default "ALBA_ASD_LOG_LEVEL" "debug"
     and alba_proxy_log_level = env_or_default "ALBA_PROXY_LOG_LEVEL" "debug"
+    and alba_abm_log_level = env_or_default "ALBA_ABM_LOG_LEVEL" "debug"
+    and alba_nsm_log_level = env_or_default "ALBA_NSM_LOG_LEVEL" "debug"
     and alba_asd_base_paths =
       env_or_default_generic
         (fun x -> Str.split (Str.regexp ",") x)  "ALBA_ASD_BASE_PATHS"
@@ -136,6 +141,8 @@ module Config = struct
       alba_rdma;
       alba_asd_log_level;
       alba_proxy_log_level;
+      alba_abm_log_level;
+      alba_nsm_log_level;
       alba_asd_base_paths;
       local_nodeid_prefix;
       n_osds;
@@ -237,7 +244,7 @@ let _get_client_tls ?(cfg=Config.default) ()=
 
 
 
-class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
+class arakoon ?(cfg=Config.default) cluster_id nodes base_port log_level etcd =
   let arakoon_path = cfg.arakoon_path in
   let cluster_path = arakoon_path ^ "/" ^ cluster_id in
   let _extend_tls cmd =
@@ -273,7 +280,7 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
        w "messaging_port = %i" (base_port + i + 10);
        let home = cfg.arakoon_path ^ "/" ^ cluster_id ^ "/" ^ node in
        w "home = %s" home;
-       w "log_level = debug";
+       w "log_level = %s" log_level;
        w "fsync = false";
        w "";
        if cfg.tls then
@@ -1107,16 +1114,18 @@ module Deployment = struct
         ?__retry_timeout
         ?(cfg = Config.default) ?(base_port=4000)
         ?asd_transport
-        ?write_blobs ?fragment_cache () =
+        ?write_blobs
+        ?fragment_cache ()
+    =
     let abm =
       let id = "abm"
       and nodes = ["abm_0"; "abm_1"; "abm_2"] in
-      new arakoon ~cfg id nodes base_port cfg.etcd
+      new arakoon ~cfg id nodes base_port cfg.alba_abm_log_level cfg.etcd
     in
     let nsm =
       let id = "nsm"
       and nodes = ["nsm_0";"nsm_1"; "nsm_2"] in
-      new arakoon ~cfg id nodes (base_port + 100) cfg.etcd
+      new arakoon ~cfg id nodes (base_port + 100) cfg.alba_nsm_log_level cfg.etcd
     in
     let etcd = match cfg.etcd with
       | None -> None
@@ -2539,7 +2548,9 @@ module Test = struct
         loop x
       in
       Deployment.kill t;
-      let two_nodes = new arakoon "abm" ["abm_0";"abm_1"] 4000 t.cfg.etcd in
+      let two_nodes = new arakoon "abm" ["abm_0";"abm_1"] 4000
+                          t.cfg.alba_abm_log_level t.cfg.etcd
+      in
       let t' = {t with abm = two_nodes } in
 
       let upload_albamgr_cfg cfg =
@@ -2566,7 +2577,10 @@ module Test = struct
       wait_for 1;
 
       print_endline "grow the cluster";
-      let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000 t.cfg.etcd in
+      let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000
+                            t.cfg.alba_abm_log_level
+                            t.cfg.etcd
+      in
       three_nodes # persist_cluster_config ;
       three_nodes # link_plugins "abm_2";
       three_nodes # start_node "abm_1";
@@ -3178,7 +3192,7 @@ module Test = struct
         in
         new arakoon
             ~cfg:t.cfg nsm2_id nodes
-            5000 t.cfg.etcd
+            5000 t.cfg.alba_abm_log_level t.cfg.etcd
       in
       nsm2 # persist_config;
       nsm2 # start;
@@ -3411,6 +3425,96 @@ module ASDBorder = struct
 
 end
 
+module Slowdown = struct
+  let success_from_string s =
+    let json = Yojson.Safe.from_string s in
+    let basic = Yojson.Safe.to_basic json in
+    match basic with
+    | `Assoc [
+        ("success", `Bool true);
+        ("result",  result);] -> result
+    | _ -> failwith "bad"
+
+  let slowdown ?(xml = false) ?filter ?dump (t:Deployment.t) =
+    Deployment.kill t;
+    let open Deployment in
+    let t =
+      let cfg = { t.cfg with
+                  alba_asd_log_level = "info";
+                  alba_proxy_log_level= "info";
+                  alba_abm_log_level = "info";
+                  alba_nsm_log_level = "info"
+                }
+      in
+      Deployment.make_default ~cfg ()
+    in
+    Deployment.setup t;
+
+
+    let alba = t.cfg.alba_bin in
+    let p_cfg = t.proxy # proxy_cfg in
+    let proxy_writes n prefix=
+      Shell.cmd' [
+          alba;"proxy-bench";"demo";
+          "-p"; Proxy_cfg.port p_cfg |> string_of_int;
+          "-n"; string_of_int n;
+          "--power";"5";
+          "--prefix"; prefix;
+          "--file";"./NOTICE.txt";
+          "--scenario"; "writes"
+        ]
+    in
+    let get_field json x =
+      json
+      |> Yojson.Basic.Util.to_assoc
+      |> List.assoc x
+    in
+    let nsm_host_statistics t =
+      let cmd =
+      [t.cfg.alba_bin;
+       "nsm-host-statistics";
+       "--config";t.abm # config_url |> Url.canonical;
+       t.nsm # cluster_id ;
+       "--clear";
+       "--to-json";
+      ]
+      in
+      let stats_s =
+        (if t.cfg.tls
+         then _alba_extend_tls cmd
+         else cmd)
+        |> Shell.cmd_with_capture
+      in
+      success_from_string stats_s
+    in
+    let put_avg () =
+      let r = nsm_host_statistics t in
+      let statistics = get_field r "statistics" in
+      let put_object = get_field statistics "PutObject" in
+      let avg = get_field put_object "avg" |> Yojson.Basic.Util.to_float in
+      avg
+    in
+    let n = 50_000 in
+    proxy_writes n "x0";
+    let avg_0 = put_avg() in
+    Printf.printf "avg:%f\n" avg_0;
+    t.proxy # stop;
+    t.proxy # start;
+    Unix.sleep 5;
+    proxy_writes n "x1";
+    let avg_1 = put_avg() in
+    Printf.printf "avg:%f\n" avg_1;
+    t.proxy # delete_namespace "demo";
+    t.proxy # create_namespace "demo";
+    t.proxy # stop;
+    t.proxy # start;
+    Unix.sleep 5;
+    proxy_writes n "21";
+    let avg_2 = put_avg() in
+    Printf.printf "avg:%f\n" avg_2;
+    0
+
+end
 let process_cmd_line () =
   let cmd_len = Array.length Sys.argv in
   Printf.printf "cmd_len:%i\n%!" cmd_len;
@@ -3438,6 +3542,7 @@ let process_cmd_line () =
       "job_crud",        Test.job_crud, true;
       "pread_bench",     Bench.pread_bench, false;
       "enospc",          ASDBorder.enospc, false;
+      "slowdown",        Slowdown.slowdown, false;
     ]
   in
   let print_suites () =
