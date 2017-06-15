@@ -186,15 +186,17 @@ class client
       get_kvs ~consistent_read:false (to_namespace_name namespace_id)
 
     method add_namespace namespace_id =
-      alba_client # mgr_access # get_namespace
-                  ~namespace:(to_namespace_name namespace_id) >>= fun r ->
-      if (r <> None)
-      then Lwt.return ()
-      else alba_client # create_namespace
-                       ~namespace:(to_namespace_name namespace_id)
-                       ~preset_name
-                       () >>= fun _ ->
-           Lwt.return ()
+      Lwt.catch
+        (fun () ->
+          alba_client # create_namespace
+                      ~namespace:(to_namespace_name namespace_id)
+                      ~preset_name
+                      () >>= fun _ ->
+          Lwt.return_unit)
+        (let open Albamgr_protocol.Protocol.Error in
+         function
+         | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return_unit
+         | exn -> Lwt.fail exn)
 
     method delete_namespace namespace_id _ =
       let namespace = to_namespace_name namespace_id in
