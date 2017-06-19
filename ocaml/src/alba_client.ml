@@ -202,6 +202,11 @@ class alba_client (base_client : Alba_base_client.client)
       (* TODO could fallocate here *)
       Lwt.return (Lwt_extra2.write_all_lwt_bytes fd)
     in
+    let maybe_do f =
+      match !fd_ref with
+      | None -> Lwt.return_unit
+      | Some fd -> f fd
+    in
     Lwt.finalize
       (fun () ->
        self # download_object_generic
@@ -210,13 +215,11 @@ class alba_client (base_client : Alba_base_client.client)
             ~write_object_data
             ~consistent_read
             ~should_cache
+       >>= fun r ->
+       maybe_do Lwt_unix.fsync >>= fun () ->
+       Lwt.return r
       )
-      (fun () ->
-       match !fd_ref with
-       | None -> Lwt.return ()
-       | Some fd ->
-          Lwt_unix.fsync fd >>= fun () ->
-          Lwt_unix.close fd)
+      (fun () -> maybe_do Lwt_unix.close)
 
 
   method download_object_to_string
