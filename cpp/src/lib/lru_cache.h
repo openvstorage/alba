@@ -1,3 +1,8 @@
+/*
+  Copyright (C) iNuron - info@openvstorage.com
+  This file is part of Open vStorage. For license information, see <LICENSE.txt>
+*/
+
 // Copyright (C) 2016 iNuron NV
 //
 // This file is part of Open vStorage Open Source Edition (OSE),

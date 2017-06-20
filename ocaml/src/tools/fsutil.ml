@@ -1,5 +1,5 @@
-(* 
-    
+(*
+
 
 Copyright (c) 2013, Mike McClurg
 Permission to use, copy, modify, and/or distribute this software for
@@ -18,8 +18,8 @@ PERFORMANCE OF THIS SOFTWARE.
 
 (* we started from:
    https://github.com/mcclurmc/ocaml-statvfs/blob/master/lib/statvfs.ml
-   
-   and modified & added stuff 
+
+   and modified & added stuff
 *)
 (*
 SYNOPSIS

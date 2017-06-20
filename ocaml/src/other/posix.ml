@@ -34,7 +34,7 @@ external posix_fadvise: Unix.file_descr -> int -> int -> posix_fadv -> unit
 
 external fallocate: Unix.file_descr -> int -> int -> int -> unit
   = "_bs_posix_fallocate"
-      
+
 let lwt_posix_fadvise fd pos len fadv =
   let ufd = Lwt_unix.unix_file_descr fd in
   Lwt_preemptive.detach
