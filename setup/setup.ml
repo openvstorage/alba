@@ -2875,6 +2875,14 @@ module Test = struct
 
     0
 
+  let restart ?(xml=false) ?filter ?dump t =
+    let fn = "./ocaml/alba.native" in
+    let ns = "demo" in
+    let () = t.proxy # upload_object ns fn "xxx" in
+    let () = Deployment.restart_osds t in
+    let () = t.proxy # upload_object ns fn "yyy" in
+    0
+
   let alba_as_osd ?xml ?filter ?dump _t =
     let cfg_global, t_global, t_locals, add_backend_as_osd =
       setup_global_backend ()
@@ -3088,6 +3096,7 @@ module Test = struct
         transform job_crud "job_crud";
         transform aaa "aaa";
         transform alba_as_osd "alba_as_osd";
+        transform restart "restart";
       ]
     in
     let results = List.map (fun s -> s t) suites in
