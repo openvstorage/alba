@@ -391,7 +391,7 @@ class osd_access
       then
         begin
           Osd_pool.invalidate osds_pool ~osd_id;
-          refresh_osd_info ~osd_id
+          refresh_osd_info ~osd_id >|= not
         end
       else
         Lwt.return false)
