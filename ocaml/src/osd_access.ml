@@ -375,27 +375,28 @@ class osd_access
        | Exn Assert_failed _ -> false
        | _ -> true
      in
-     let should_invalidate_pool =
+     let should_invalidate_pool, should_retry =
        match exn with
-       | Exn Assert_failed _ -> false
-       | Exn Unknown_operation -> false
-       | Exn Full -> true
+       | Exn Assert_failed _ -> false, false
+       | Exn Unknown_operation -> false, false
+       | Exn Full -> true, false
           (* when it's full, we need to disqualify this OSD,
              and the 'set' in the requalification loop will eventually requalify it,
              fe, when rebalancing creates space on that OSD again
            *)
-       | _ -> true
+       | End_of_file -> true, true
+       | _ -> true, true (* quite optimistic: whatever it was, it's gone already *)
      in
 
      (if should_invalidate_pool
       then
         begin
           Osd_pool.invalidate osds_pool ~osd_id;
-          refresh_osd_info ~osd_id >|= not
+          refresh_osd_info ~osd_id >>= fun _ ->
+          Lwt.return_unit
         end
-      else
-        Lwt.return false)
-     >>= fun should_retry ->
+      else Lwt.return_unit)
+     >>= fun () ->
 
      if should_retry
      then with_osd_from_pool ~osd_id f
@@ -408,7 +409,11 @@ class osd_access
           end
         else Lwt.return ())
        >>= fun () ->
-       Lwt_log.debug_f ~exn "Exception in with_osd_from_pool osd_id=%Li" osd_id >>= fun () ->
+       Lwt_log.debug_f
+         "Exception %S in with_osd_from_pool osd_id=%Li"
+         (Printexc.to_string exn)
+         osd_id
+       >>= fun () ->
        Lwt.fail exn)
   and disqualify ~osd_id ~exn =
     let rec inner delay =
