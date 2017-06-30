@@ -384,10 +384,24 @@ class osd_access
              and the 'set' in the requalification loop will eventually requalify it,
              fe, when rebalancing creates space on that OSD again
            *)
-       | End_of_file -> true, true
-       | _ -> true, true (* quite optimistic: whatever it was, it's gone already *)
-     in
+       | End_of_file                            -> true, true
+       | Unix.Unix_error(Unix.ECONNRESET,_,_)   -> true, false
+       | Unix.Unix_error(Unix.EPIPE,_,_)        -> true, false
 
+       | Unix.Unix_error(Unix.ECONNREFUSED,_,_) -> false, false
+       | _ -> (* by experience: don't be so optimistic *)
+          let () =
+            Lwt_log.ign_info_f
+              "%S was unforeseen, invalidating pool"
+              (Printexc.to_string exn)
+          in
+          true, false
+     in
+     let () =
+       Lwt_log.ign_info_f
+         "%S: should_invalidate:%b should_retry:%b"
+         (Printexc.to_string exn) should_invalidate_pool should_retry
+     in
      (if should_invalidate_pool
       then
         begin
@@ -400,6 +414,7 @@ class osd_access
 
      if should_retry
      then with_osd_from_pool ~osd_id f
+          (* what to do with the error that comes from this ? *)
      else
        (if add_to_errors || should_invalidate_pool
         then
