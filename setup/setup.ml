@@ -2880,6 +2880,10 @@ module Test = struct
     let ns = "demo" in
     let () = t.proxy # upload_object ns fn "xxx" in
     let () = Deployment.restart_osds t in
+    let () =
+      Unix.sleep 2
+      (* we want to survive stale connections *)
+    in
     let () = t.proxy # upload_object ns fn "yyy" in
     0
 
@@ -3434,6 +3438,7 @@ let process_cmd_line () =
       "job_crud",        Test.job_crud, true;
       "pread_bench",     Bench.pread_bench, false;
       "enospc",          ASDBorder.enospc, false;
+      "restart",         Test.restart, true;
     ]
   in
   let print_suites () =
