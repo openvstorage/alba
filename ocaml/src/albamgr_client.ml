@@ -208,6 +208,16 @@ object(self)
       client # query
         ListPresets
         RangeQueryArgs.({ first; finc; last; reverse; max; })
+      >>= fun r ->
+      Lwt.return r
+
+    method list_presets2 ~first ~finc ~last ~reverse ~max =
+      use_optional_feature
+        (fun () ->
+          client # query
+                 ListPresets2
+                 RangeQueryArgs.({ first; finc; last;
+                                   reverse; max; }))
 
     method list_all_presets () =
       list_all_x
@@ -217,19 +227,33 @@ object(self)
            ~last:None
            ~reverse:false ~max:(-1))
 
+
     method get_preset ~preset_name =
       self # list_presets
         ~first:preset_name ~finc:true ~last:(Some(preset_name, true))
         ~max:1 ~reverse:false >>= fun ((_, presets), _) ->
       Lwt.return (List.hd presets)
 
-    method list_presets2 ~first ~finc ~last ~reverse ~max =
-      use_optional_feature
-        (fun () ->
-          client # query
-                 ListPresets2
-                 RangeQueryArgs.({ first; finc; last;
-                                   reverse; max; }))
+
+
+    method list_all_presets2 () =
+      list_all_x
+        ~first:""
+        (fun (name,
+              (_preset:Preset.t),
+              (_version:Preset.version),
+              (_is_default:bool), (_in_use:bool)) -> name)
+        (fun ~first ~finc  ->
+          self # list_presets2
+           ~last:None
+           ~reverse:false ~max:(-1)
+           ~first ~finc
+          >>= fun r ->
+          match r with
+          | None -> Lwt.return ((0,[]), false)
+          | Some r -> Lwt.return r
+        )
+
 
     method get_preset2 ~preset_name =
       self # list_presets2

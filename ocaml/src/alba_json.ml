@@ -273,6 +273,7 @@ module Preset = struct
     object_checksum : object_checksum;
     fragment_encryption : fragment_encryption;
     in_use : (bool [@default true]);
+    version: int64;
   } [@@deriving yojson]
 
   let to_yojson t =
@@ -293,7 +294,7 @@ module Preset = struct
 
   type t_list = t list [@@deriving yojson]
 
-  let make (name, preset, is_default, in_use) =
+  let make (name, preset, version, is_default, in_use) =
     let open Preset in
     { name;
       policies = preset.policies;
@@ -319,6 +320,7 @@ module Preset = struct
          | AlgoWithKey (AES (CTR, L256), key) -> AES_CTR_256 (HexString.show key)
          | NoEncryption -> NO_ENCRYPTION);
       in_use;
+      version;
     }
 
   let to_preset

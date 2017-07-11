@@ -1520,13 +1520,21 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                             ); ]
             | Some v ->
                let version', namespace_ids' = deserialize Preset.Propagation.from_buffer v in
-               assert (version' = preset_version);
-               [ Update.Assert (propagation_key, Some v);
-                 Update.Set (propagation_key,
-                             serialize
-                               Preset.Propagation.to_buffer
-                               (version', namespace_id :: namespace_ids')
-                            ); ]
+               (* assert (version' = preset_version); *)
+               if version' = preset_version
+               then
+                 [ Update.Assert (propagation_key, Some v);
+                   Update.Set (propagation_key,
+                               serialize
+                                 Preset.Propagation.to_buffer
+                                 (version', namespace_id :: namespace_ids')
+                              ); ]
+               else
+                 let msg = Printf.sprintf
+                             "%S version'=%Li <> preset_version=%Li"
+                             preset_name version' preset_version
+                 in
+                 failwith msg
           in
 
           let osd_ids =

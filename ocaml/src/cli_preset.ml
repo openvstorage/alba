@@ -74,7 +74,7 @@ let alba_update_preset
     let json = Yojson.Safe.from_string txt in
     let preset_updates =
       match Preset.Update.of_yojson json with
-      | Result.Error s -> failwith s
+      | Result.Error s -> failwith (s ^ ": parsing failure")
       | Result.Ok p -> p
     in
     Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
@@ -169,16 +169,25 @@ let alba_list_presets cfg_url tls_config to_json verbose =
       cfg
       ~tls_config
       (fun client ->
-         client # list_all_presets ()) >>= fun (cnt, presets) ->
+        client # list_all_presets2 ())
+    >>= fun (cnt, presets) ->
     if to_json
-    then begin
-      let res = List.map Alba_json.Preset.make presets in
-      print_result res Alba_json.Preset.t_list_to_yojson
-    end else
+    then
+      begin
+        let res = List.map Alba_json.Preset.make presets in
+        print_result res Alba_json.Preset.t_list_to_yojson
+      end
+    else
       Lwt_io.printlf
         "Found %i presets: %s"
         cnt
-        ([%show : (Preset.name * Preset.t * bool * bool) list] presets)
+        ([%show : (Preset.name
+                   * Preset.t
+                   * Preset.version
+                   * bool (* is_default *)
+                   * bool (* in_use *)
+                  ) list]
+           presets)
   in
   lwt_cmd_line ~to_json ~verbose t
 
