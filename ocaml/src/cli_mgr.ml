@@ -1252,6 +1252,43 @@ let alba_get_presets_propagation_state_cmd =
   ),
   Term.info "get-presets-propagation-state" ~doc:"gets the preset propagation state"
 
+let alba_add_propagate_preset
+      cfg_file tls_config
+      preset_name
+      to_json
+      verbose
+      attempts
+  =
+  let t () =
+    with_albamgr_client
+      cfg_file tls_config ~attempts
+      (fun client ->
+        let open Albamgr_protocol.Protocol in
+        let item = Work.PropagatePreset preset_name in
+        client # add_work_items [item]
+        >>= fun () ->
+        Lwt.return_unit
+      )
+
+  in
+  lwt_cmd_line_unit ~to_json ~verbose t
+
+let alba_add_propagate_preset_cmd =
+  Term.(pure alba_add_propagate_preset
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(required
+               & opt (some string) None
+               & info ["preset"] ~docv:"PRESET"
+          )
+        $ to_json
+        $ verbose
+        $ attempts 1
+
+  ),
+  Term.info "dev-add-propagate-preset" ~doc:"create preset propagation work"
+
+
 let cmds = [
     alba_list_namespaces_cmd;
     alba_list_namespaces_by_id_cmd;
@@ -1294,4 +1331,5 @@ let cmds = [
     alba_delete_fragment_cmd;
 
     alba_get_presets_propagation_state_cmd;
+    alba_add_propagate_preset_cmd;
   ]

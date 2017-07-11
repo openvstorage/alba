@@ -74,7 +74,7 @@ let alba_update_preset
     let json = Yojson.Safe.from_string txt in
     let preset_updates =
       match Preset.Update.of_yojson json with
-      | Result.Error s -> failwith s
+      | Result.Error s -> failwith (s ^ ": parsing failure")
       | Result.Ok p -> p
     in
     Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
