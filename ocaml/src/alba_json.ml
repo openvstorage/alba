@@ -273,7 +273,7 @@ module Preset = struct
     object_checksum : object_checksum;
     fragment_encryption : fragment_encryption;
     in_use : (bool [@default true]);
-    version: int64;
+    version: (int64 [@default -1L]);
   } [@@deriving yojson]
 
   let to_yojson t =
