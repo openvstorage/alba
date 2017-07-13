@@ -3447,7 +3447,7 @@ let process_cmd_line () =
                      "\n   "
                      (List.map (fun (cmd, _, _) -> cmd) suites))
   in
-  if cmd_len = 2
+  if cmd_len = 2 || cmd_len = 3
   then
     let cmd, test, setup =
       try
@@ -3465,7 +3465,12 @@ let process_cmd_line () =
       then Test.wrapper cmd
       else Test.no_wrapper
     in
-    let rc = w (test ~xml:true) t in
+    let filter =
+      if cmd_len = 3
+      then Some (Sys.argv.(2))
+      else None
+    in
+    let rc = w (test ~xml:true ?filter) t in
     exit rc
   else
     begin

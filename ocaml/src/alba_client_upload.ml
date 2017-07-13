@@ -254,17 +254,19 @@ let upload_chunk
       Lwt.return_unit
     )
 
-let upload_object''
+let _upload_regular_object
       (nsm_host_access : Nsm_host_access.nsm_host_access)
       osd_access
-      get_preset_info
+      ~preset
       get_namespace_osds_info_cache
       ~object_t0 ~timestamp
       ~namespace_id
       ~(object_name : string)
       ~(object_reader : Object_reader.reader)
       ~(checksum_o: Checksum.t option)
-      ~(object_id_hint: string option)
+      ~object_id
+      ~object_length
+      ~gc_epoch
       ~fragment_cache
       ~cache_on_write
       ~upload_slack
@@ -276,16 +278,6 @@ let upload_object''
   (* nice to haves (for performance)
          - upload of multiple chunks could be done in parallel
          - avoid some string copies *)
-
-  object_reader # reset >>= fun () ->
-
-  nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
-  let open Albamgr_protocol in
-  get_preset_info ~preset_name:ns_info.Protocol.Namespace.preset_name
-  >>= fun preset ->
-
-
-  nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
 
   let policies, w, max_fragment_size,
       compression, fragment_checksum_algo,
@@ -374,14 +366,6 @@ let upload_object''
       (List.map (fun (osd_id, _) -> Some osd_id) target_devices)
       dummies
   in
-
-  let object_id =
-    match object_id_hint with
-    | None -> get_random_string 32
-    | Some hint -> hint
-  in
-
-  object_reader # length >>= fun object_length ->
 
   let desired_chunk_size = Fragment_size_helper.determine_chunk_size ~object_length ~max_fragment_size ~k in
 
@@ -912,6 +896,98 @@ let _upload_with_retry
       do_upload timestamp
     )
 
+let _upload_tag_object
+      ~object_name
+      ~object_id
+      ~gc_epoch ~object_t0 ~timestamp
+      ~preset
+  =
+  let storage_scheme, encrypt_info =
+    let open Encoding_scheme in
+    let open Preset in
+    (* these need to be kept: otherwise you violate the preset,
+       which is checked whenever maintenance processes these objects
+     *)
+    let encryption = preset.fragment_encryption in
+    let compression = preset.compression in
+    Storage_scheme.EncodeCompressEncrypt (RSVM (0, 0, W8), compression),
+    Encrypt_info_helper.from_encryption encryption
+  in
+  let manifest =
+    Manifest.make
+      ~name:object_name
+      ~object_id
+      ~storage_scheme
+      ~encrypt_info
+      ~chunk_sizes:[]
+      ~checksum:Checksum.NoChecksum
+      ~size:0L
+      ~fragments:[]
+      ~version_id:0
+      ~max_disks_per_node:0
+      ~timestamp
+  in
+  let almost_t_object t_store_manifest =
+    Statistics.({
+                   size = 0;
+                   hash = 0.;
+                   chunks = [];
+                   store_manifest = t_store_manifest;
+                   total = Unix.gettimeofday () -. object_t0;
+    })
+  in
+  Lwt.return (manifest, [], almost_t_object, gc_epoch, [])
+
+let upload_object''
+      (nsm_host_access : Nsm_host_access.nsm_host_access)
+      osd_access
+      get_preset_info
+      get_namespace_osds_info_cache
+      ~object_t0 ~timestamp
+      ~namespace_id
+      ~(object_name : string)
+      ~(object_reader : Object_reader.reader)
+      ~(checksum_o: Checksum.t option)
+      ~(object_id_hint: string option)
+      ~fragment_cache
+      ~cache_on_write
+      ~upload_slack
+  =
+  object_reader # reset >>= fun () ->
+  nsm_host_access # get_gc_epoch ~namespace_id >>= fun gc_epoch ->
+  let object_id =
+    match object_id_hint with
+    | None -> get_random_string 32
+    | Some hint -> hint
+  in
+  nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+  let open Albamgr_protocol in
+  get_preset_info ~preset_name:ns_info.Protocol.Namespace.preset_name
+  >>= fun preset ->
+  object_reader # length >>= fun object_length ->
+  if object_length = 0
+  then
+    _upload_tag_object
+      ~object_name
+      ~object_id
+      ~gc_epoch ~object_t0 ~timestamp
+      ~preset
+  else
+  _upload_regular_object
+    nsm_host_access
+    osd_access
+    ~preset
+    get_namespace_osds_info_cache
+    ~gc_epoch ~object_t0 ~timestamp
+    ~namespace_id
+    ~object_name
+    ~object_reader
+    ~checksum_o
+    ~object_id
+    ~object_length
+    ~fragment_cache
+    ~cache_on_write
+    ~upload_slack
 
 let upload_object'
       ~epilogue_delay
