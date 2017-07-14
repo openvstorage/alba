@@ -1237,74 +1237,93 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           Some preset
 
   let get_min_fragment_count_and_max_disks_per_node
-        kv ~k ~m fragments ~validate
+        kv ~k ~m fragments ~object_size ~validate
     =
-    let get_bla_per_chunk chunk_fragments =
-      let osds_per_node = Hashtbl.create 3 in
-      List.fold_left
-        (fun (effective_fragment_count, effective_max_disks_per_node) fragment ->
-          match Fragment.osd_of fragment with
-          | None ->
-             (effective_fragment_count,
-              effective_max_disks_per_node)
-          | Some osd_id ->
-             let osd_info = get_osd_info kv osd_id in
-             let node_id = osd_info.OsdInfo.node_id in
-             let cnt =
-               try Hashtbl.find osds_per_node node_id
-               with Not_found -> 0
+    if object_size = 0L
+       && k = 0
+       && m = 0
+       && fragments = []
+       (* special case for objects with size 0 *)
+    then (0,0)
+    else
+      begin
+        let get_bla_per_chunk chunk_fragments =
+          let osds_per_node = Hashtbl.create 3 in
+          List.fold_left
+            (fun (effective_fragment_count, effective_max_disks_per_node) fragment ->
+              match Fragment.osd_of fragment with
+              | None ->
+                 (effective_fragment_count,
+                  effective_max_disks_per_node)
+              | Some osd_id ->
+                 let osd_info = get_osd_info kv osd_id in
+                 let node_id = osd_info.OsdInfo.node_id in
+                 let cnt =
+                   try Hashtbl.find osds_per_node node_id
+                   with Not_found -> 0
+                 in
+
+                 let cnt' = cnt + 1 in
+
+                 Hashtbl.replace osds_per_node node_id cnt';
+                 (effective_fragment_count + 1,
+                  max effective_max_disks_per_node cnt'))
+            (0, 0)
+            chunk_fragments
+        in
+        let min_fragment_count, max_disks_per_node =
+          List.fold_left
+            (fun (effective_fragment_count, effective_max_disks_per_node)
+                 chunk_fragments ->
+              let effective_fragment_count', effective_max_disks_per_node' =
+                get_bla_per_chunk chunk_fragments
+              in
+              (min effective_fragment_count effective_fragment_count',
+               max effective_max_disks_per_node effective_max_disks_per_node'))
+            (max_int, 0)
+            fragments
+        in
+
+        let maybe_preset = get_preset kv in
+        let () =
+          match validate, maybe_preset with
+          | _, None -> ()
+          | false, _ -> ()
+          | true, Some p ->
+             (* bucket = k, m, min_fragment_count, max_disks_per_node
+              * match bucket with policy ... if we can't -> throw error *)
+             let policy =
+               List.find
+                 (fun (k', m', min_fragment_count', max_disks_per_node') ->
+                   k = k' && m = m'
+                   && min_fragment_count >= min_fragment_count'
+                   && max_disks_per_node <= max_disks_per_node')
+                 p.Preset.policies
              in
 
-             let cnt' = cnt + 1 in
+             match policy with
+             | None ->
+                let show_policy = [%show : int * int * int * int] in
+                let show_policies = [%show : (int * int * int * int) list] in
+                let trace =
+                  Printexc.get_callstack 20
+                  |> Printexc.raw_backtrace_to_string
+                in
 
-             Hashtbl.replace osds_per_node node_id cnt';
-             (effective_fragment_count + 1,
-              max effective_max_disks_per_node cnt'))
-        (0, 0)
-        chunk_fragments
-    in
-    let min_fragment_count, max_disks_per_node =
-      List.fold_left
-        (fun (effective_fragment_count, effective_max_disks_per_node)
-             chunk_fragments ->
-          let effective_fragment_count', effective_max_disks_per_node' =
-            get_bla_per_chunk chunk_fragments
-          in
-          (min effective_fragment_count effective_fragment_count',
-           max effective_max_disks_per_node effective_max_disks_per_node'))
-        (max_int, 0)
-        fragments
-    in
+                let payload =
+                  Printf.sprintf
+                    "bucket %s not valid for policies %s %s"
+                    (show_policy (k, m, min_fragment_count, max_disks_per_node))
+                    (show_policies p.Preset.policies)
+                    trace
+                in
 
-    let maybe_preset = get_preset kv in
-    let () =
-      match validate, maybe_preset with
-      | _, None -> ()
-      | false, _ -> ()
-      | true, Some p ->
-         (* bucket = k, m, min_fragment_count, max_disks_per_node
-          * match bucket with policy ... if we can't -> throw error *)
-         let policy =
-           List.find
-             (fun (k', m', min_fragment_count', max_disks_per_node') ->
-               k = k' && m = m'
-               && min_fragment_count >= min_fragment_count'
-               && max_disks_per_node <= max_disks_per_node')
-             p.Preset.policies
-         in
-         match policy with
-         | None -> Err.(failwith
-                          ~payload:(Printf.sprintf
-                                      "bucket %s not valid for policies %s"
-                                      ([%show : int * int * int * int] (k, m, min_fragment_count, max_disks_per_node))
-                                      ([%show : (int * int * int * int) list] p.Preset.policies)
-                                   )
-                          Invalid_bucket)
-         | Some _ -> ()
-    in
+                Err.(failwith ~payload Invalid_bucket)
+             | Some _ -> ()
+        in
 
-    (min_fragment_count, max_disks_per_node)
-
+        (min_fragment_count, max_disks_per_node)
+      end
   (* for backwards compatibility we store the keys to
    * be deleted as global keys
    *)
@@ -1377,6 +1396,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           ~k ~m
           old_manifest.fragments
           ~validate:false
+        ~object_size:old_manifest.size
       in
       [ Update'.delete (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id:old_object_id);
         Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) (-1L); ]
@@ -1627,6 +1647,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           ~k ~m
           manifest.fragments
           ~validate:true
+          ~object_size:manifest.size
       in
       [ Update'.set (Keys.policies ~k ~m ~fragment_count ~max_disks_per_node ~object_id) "";
         Update'.add (Keys.policies_cnt ~k ~m ~fragment_count ~max_disks_per_node) 1L; ]
@@ -2061,6 +2082,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
           ~k ~m
           manifest_old.fragments
           ~validate:false
+          ~object_size:manifest_old.size
       in
       let fragment_count_updated, max_disks_per_node_updated =
         let all_fragment_updates_are_removes =
@@ -2077,6 +2099,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
            * policy.
            *)
           ~validate:(not all_fragment_updates_are_removes)
+          ~object_size:updated_manifest.size
       in
       if fragment_count_old     <> fragment_count_updated ||
          max_disks_per_node_old <> max_disks_per_node_updated
