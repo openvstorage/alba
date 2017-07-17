@@ -1,6 +1,8 @@
-// example: $ ./alba update-preset default --config ./cfg/test.ini <cfg/preset_update.json
+// example: $ ./alba update-preset default --config ./cfg/test.ini --input-url ./cfg/preset_update.json
 {
     // all updates/properties are optional. don't specify if you don't want it to change.
     "policies" : [[ 5, 4, 8, 3], [ 2, 2, 3, 4 ]],
     "fragment_size" : 786432
+    // note: existing objects will not
+    // be automatically rewritten after a change of fragment_size.
 }
