@@ -556,10 +556,7 @@ let alba_list_work cfg_file tls_config
              else
                begin
                  let todo = max - cnt in
-                 let batch =
-                   if todo > batch_size
-                   then batch_size
-                   else todo
+                 let batch = min todo batch_size
                  in
                  Lwt_log.info_f
                    "cnt = %06i todo=%06i fetching at most %06i from %Li"
