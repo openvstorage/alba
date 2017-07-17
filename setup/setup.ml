@@ -2319,6 +2319,57 @@ module Test = struct
     (* TODO _assert_parseable stats_s *)
     JUnit.Ok
 
+  let abm_update_preset t =
+    let preset_name = "example" in
+    let maybe_extend cmd =
+      if t.cfg.tls
+      then _alba_extend_tls cmd
+      else cmd
+    in
+
+    let cmd =
+      [t.cfg.alba_bin; "update-preset";
+       preset_name;
+       "--config"; t.abm # config_url |> Url.canonical;
+       "--to-json";
+       "--input-url"; "./cfg/preset_update.json"
+      ]
+    in
+
+    let () =
+      cmd
+      |> maybe_extend
+      |> Shell.cmd'
+    in
+
+    let list_cmd =
+      [t.cfg.alba_bin; "list-presets";
+       "--config"; t.abm # config_url |> Url.canonical;
+       "--to-json";
+      ]
+    in
+    try
+      let module U = Yojson.Basic.Util in
+
+      let presets =
+        Shell.cmd_with_capture list_cmd
+        |> Yojson.Basic.from_string
+        |> U.member "result"
+        |> U.to_list
+      in
+      let preset = List.find
+                     (fun x ->
+                       U.member "name" x |> U.to_string
+                       = preset_name
+                     )
+                     presets
+      in
+      let fragment_size = U.member "fragment_size" preset |> U.to_int in
+      assert (fragment_size = 768 * 1024);
+      JUnit.Ok
+    with
+    | exn -> JUnit.Err (Printexc.to_string exn)
+
   let nsm_host_statistics t =
     let cmd =
       [t.cfg.alba_bin;
@@ -2455,6 +2506,7 @@ module Test = struct
                  "return_codes_1", return_codes_1;
                  "return_codes_2", return_codes_2;
                  "proxy_statistics", proxy_statistics;
+                 "abm_update_preset", abm_update_preset;
                 ]
     in
     let t0 = Unix.gettimeofday() in

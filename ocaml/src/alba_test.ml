@@ -1994,7 +1994,9 @@ let test_update_policies () =
 
      alba_client # mgr_access # update_preset
                  preset_name
-                 Preset.Update.({ policies' = Some [ (5,4,8,3); ]; }) >>= fun () ->
+                 Preset.Update.({ policies' = Some [ (5,4,8,3); ];
+                                  fragment_size' = None;
+                                }) >>= fun () ->
 
      alba_client # get_base_client # get_preset_cache # refresh ~preset_name >>= fun () ->
 
