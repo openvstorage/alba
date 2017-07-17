@@ -533,34 +533,71 @@ let alba_list_participants_cmd =
     ~doc:"list participants"
 
 
-let alba_list_work cfg_file tls_config to_json verbose attempts =
+let alba_list_work cfg_file tls_config
+                   first finc last max
+                   to_json verbose attempts
+  =
   let t () =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-       let first = 0L
-       and finc = true
-       and last = None
-       and max = -1 in
-       client # get_work  ~first ~finc ~last ~max ~reverse:false
-       >>= fun ((cnt,r),more) ->
-       if to_json
-       then
-         print_result cnt (fun c -> `Assoc [ "count", `Int c ])
-       else
-         begin
-           Lwt_io.printlf "received %i items\n" cnt >>= fun () ->
-           Lwt_io.printlf "    id   | item " >>= fun () ->
-           Lwt_io.printlf "---------+------" >>= fun () ->
-           Lwt_list.iter_s
-             (fun (id, item) ->
-               Lwt_io.printlf "%8Li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
-             ) r
-           >>= fun () ->
-           if more
-           then Lwt_io.printl "..."
-           else Lwt.return ()
-         end
+        let first = match first with
+          | "" -> 0L
+          | s -> Int64.of_string first
+        and last = Option.map (fun x -> Int64.of_string x, true) last
+        in
+        let batch_size = 10_000 in
+        let max = if max = -1 then max_int else max in
+        let rec loop acc first finc more cnt =
+          match (more, cnt) with
+          | (false, _ ) -> Lwt.return ((cnt, acc), false)
+          | (true, cnt) ->
+             if cnt = max then Lwt.return ((cnt, acc), true)
+             else
+               begin
+                 let todo = max - cnt in
+                 let batch = min todo batch_size
+                 in
+                 Lwt_log.info_f
+                   "cnt = %06i todo=%06i fetching at most %06i from %Li"
+                   cnt todo batch first
+                 >>= fun () ->
+                 client # get_work
+                        ~first ~finc ~last ~max:batch
+                        ~reverse:false
+                 >>= fun ((ccnt, cr), more') ->
+                 let acc' =  cr :: acc in
+                 let cnt' = cnt + ccnt in
+                 let first' =
+                   match List.last cr with
+                   | Some x -> fst x
+                   | None -> assert (more' = false); 0L
+                 and finc' = false
+                 in
+                 loop acc' first' finc' more' cnt'
+               end
+        in
+        loop [] first finc true 0
+        >>= fun ((cnt, r0),more) ->
+        let r = List.fold_left (fun acc r -> r @ acc ) [] r0
+        in
+        if to_json
+        then
+          print_result cnt (fun c -> `Assoc [ "count", `Int c ])
+        else
+          begin
+            Lwt_io.printlf "received %i items\n" cnt >>= fun () ->
+            Lwt_io.printlf "    id   | item " >>= fun () ->
+            Lwt_io.printlf "---------+------" >>= fun () ->
+            Lwt_list.iter_s
+              (fun (id, item) ->
+                Lwt_io.printlf "%8Li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
+              ) r
+            >>= fun () ->
+            if more
+            then Lwt_io.printl "..."
+            else Lwt.return ()
+          end
       )
   in
   lwt_cmd_line ~to_json ~verbose t
@@ -569,6 +606,7 @@ let alba_list_work_cmd =
   Term.(pure alba_list_work
         $ alba_cfg_url
         $ tls_config
+        $ first $finc $ last $ max
         $ to_json
         $ verbose
         $ attempts 1
