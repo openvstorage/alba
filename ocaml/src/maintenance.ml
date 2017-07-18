@@ -63,6 +63,32 @@ module MStats = struct
 end
 
 
+let dedupe work_items =
+  let h = Hashtbl.create 20 in
+  let open Albamgr_protocol.Protocol in
+  let count = ref 0 in
+  let to_key item = match item with
+    | Work.PropagatePreset preset_name -> Work.show item
+    | item -> (* for now only dedupe PropagatePreset *)
+       let s = Printf.sprintf "item_%i" !count in
+       let () = incr count in
+       s
+  in
+
+  let () =
+    List.iter
+      (fun (work_id, work_item) ->
+        let k = to_key work_item in
+        match Hashtbl.find h k with
+        | (w0, i0, duplicates) ->
+           Hashtbl.replace h k (w0,i0, work_id :: duplicates)
+        | exception Not_found -> Hashtbl.add h k (work_id, work_item, [])
+      ) work_items
+  in
+  Hashtbl.fold
+    (fun _ v acc -> v :: acc) h []
+
+
 class client ?(retry_timeout = 60.)
              ?(load = 1)
              (alba_client : Alba_base_client.client)
@@ -1734,9 +1760,14 @@ class client ?(retry_timeout = 60.)
 
     method add_work_threads work_items =
       let open Albamgr_protocol.Protocol in
+      let work_items' = dedupe work_items in
+      next_work_item <-
+        Int64.add
+          next_work_item
+          (List.length work_items |> Int64.of_int);
+
       List.iter
-        (fun (work_id, work_item) ->
-           next_work_item <- Int64.succ work_id;
+        (fun (work_id, work_item, duplicates) ->
            let t () =
              let try_do_work () =
                Lwt.catch
@@ -1745,12 +1776,21 @@ class client ?(retry_timeout = 60.)
                    then
                      begin
                        Lwt_log.debug_f
-                         "Doing work: id=%Li, item=%s"
+                         "Doing work: id=%Li, item=%s %s"
                          work_id
-                         (Work.show work_item) >>= fun () ->
+                         (Work.show work_item)
+                         ([%show: int64 list ] duplicates)
+                       >>= fun () ->
 
                        self # handle_work_item work_item work_id >>= fun () ->
-                       mgr_access # mark_work_completed ~work_id
+                       let all_ids = work_id :: duplicates in
+                       Lwt_list.iter_s
+                         (fun work_id ->
+                           mgr_access # mark_work_completed ~work_id
+                         ) all_ids
+                       >>= fun () ->
+                       Lwt_log.debug_f "Completed work: %s"
+                       ([%show: int64 list] all_ids)
                      end
                    else
                      Lwt.return_unit)
@@ -1795,7 +1835,7 @@ class client ?(retry_timeout = 60.)
              Hashtbl.add work_threads work_id ();
              Lwt.ignore_result (t ())
            end)
-        work_items
+        work_items'
 
 
     method report_stats (delay:float) : unit Lwt.t =
