@@ -1809,7 +1809,14 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
       return_upds
         [ Update.Assert (preset_key, None);
-          Update.Set (preset_key, serialize (Preset.to_buffer ~version:2) preset); ]
+          Update.Set (preset_key,
+                      serialize
+                        (Llio.pair_to
+                           (Preset.to_buffer ~version:2)
+                           Llio.int64_to)
+                        (preset, 0L)
+                     );
+        ]
 
     | DeletePreset -> fun preset_name ->
       let current_default = db # get Keys.Preset.default in
@@ -1837,7 +1844,9 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
            [ [ Update.Assert_range
                  (Keys.Preset.namespaces_prefix ~preset_name,
                   Range_assertion.ContainsExactly []);
-               Update.Delete (preset_key); ];
+               Update.Delete (preset_key);
+               Update.Delete (Keys.Preset.propagation ^ preset_name);
+             ];
              maybe_remove_default ])
     | SetDefaultPreset -> fun preset_name ->
       let preset_key = Keys.Preset.prefix ^ preset_name in
@@ -1856,7 +1865,13 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         | None -> Error.failwith Error.Preset_does_not_exist
         | Some v -> v
       end in
-      let preset = deserialize Preset.from_buffer preset_v in
+      let preset, version =
+        deserialize
+          (Llio.pair_from
+             Preset.from_buffer
+             (maybe_from_buffer Llio.int64_from 0L))
+          preset_v
+      in
 
       let current_osd_ids = match preset.Preset.osds with
         | Preset.All -> Error.failwith Error.Unknown
@@ -1889,6 +1904,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           osd_ids
       in
 
+      let version' = Int64.succ version in
+
       return_upds
         (List.concat
            [[ Update.Assert_range (Keys.Preset.namespaces_prefix ~preset_name,
@@ -1900,7 +1917,12 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                                              ~namespace_id)
                                         namespace_ids));
               Update.Assert (preset_key, Some preset_v);
-              Update.Set (preset_key, serialize (Preset.to_buffer ~version:2) preset') ];
+              Update.Set (preset_key, serialize
+                                        (Llio.pair_to
+                                           (Preset.to_buffer ~version:2)
+                                           Llio.int64_to)
+                                        (preset', version'));
+            ];
             add_namespace_osds_upds ])
     | UpdatePreset ->
       fun (preset_name, preset_update) ->
@@ -1943,12 +1965,11 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                 in
                 let key = Keys.Preset.propagation ^ preset_name in
                 [ Update.Assert (key, Some v);
-                  (if namespace_ids = []
-                   then Update.Delete key
-                   else Update.Set (key,
-                                    serialize
-                                      Preset.Propagation.to_buffer
-                                      (version', namespace_ids))); ]
+                  Update.Set (key,
+                              serialize
+                                Preset.Propagation.to_buffer
+                                (version', namespace_ids));
+                ]
               end
        in
        return_upds upds
