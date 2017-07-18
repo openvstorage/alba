@@ -2297,7 +2297,7 @@ let test_preset_validation () =
       wait_for_work alba_client >>= fun () ->
 
       alba_client # mgr_access # get_preset_propagation_state ~preset_name >>= fun r ->
-      assert (r = None);
+      assert (r = Some (0L, []));
 
       alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm_client ->
 
