@@ -546,41 +546,9 @@ let alba_list_work cfg_file tls_config
           | s -> Int64.of_string first
         and last = Option.map (fun x -> Int64.of_string x, true) last
         in
-        let batch_size = 10_000 in
         let max = if max = -1 then max_int else max in
-        let rec loop acc first finc more cnt =
-          match (more, cnt) with
-          | (false, _ ) -> Lwt.return ((cnt, acc), false)
-          | (true, cnt) ->
-             if cnt = max then Lwt.return ((cnt, acc), true)
-             else
-               begin
-                 let todo = max - cnt in
-                 let batch = min todo batch_size
-                 in
-                 Lwt_log.info_f
-                   "cnt = %06i todo=%06i fetching at most %06i from %Li"
-                   cnt todo batch first
-                 >>= fun () ->
-                 client # get_work
-                        ~first ~finc ~last ~max:batch
-                        ~reverse:false
-                 >>= fun ((ccnt, cr), more') ->
-                 let acc' =  cr :: acc in
-                 let cnt' = cnt + ccnt in
-                 let first' =
-                   match List.last cr with
-                   | Some x -> fst x
-                   | None -> assert (more' = false); 0L
-                 and finc' = false
-                 in
-                 loop acc' first' finc' more' cnt'
-               end
-        in
-        loop [] first finc true 0
-        >>= fun ((cnt, r0),more) ->
-        let r = List.fold_left (fun acc r -> r @ acc ) [] r0
-        in
+        client # list_all_work ~first ~finc ~last ~max ~reverse:false
+        >>= fun (cnt, r) ->
         if to_json
         then
           print_result cnt (fun c -> `Assoc [ "count", `Int c ])
@@ -593,10 +561,6 @@ let alba_list_work cfg_file tls_config
               (fun (id, item) ->
                 Lwt_io.printlf "%8Li | %S" id ([%show : Albamgr_protocol.Protocol.Work.t] item)
               ) r
-            >>= fun () ->
-            if more
-            then Lwt_io.printl "..."
-            else Lwt.return ()
           end
       )
   in

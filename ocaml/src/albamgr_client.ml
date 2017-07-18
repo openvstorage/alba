@@ -418,11 +418,21 @@ object(self)
                                      fragment_id,
                                      version_id) ]
 
-    method get_work ~first ~finc ~last ~max ~reverse =
+    method list_work ~first ~finc ~last ~max ~reverse =
       client # query
         GetWork
         GetWorkParams.({ first; finc; last;
                          max; reverse; })
+
+
+    method list_all_work ~first ~finc ~last ~max ~reverse =
+      let batch_max = min max 10_000 in
+      list_all_x
+        ~first
+        ~finc
+        fst
+        (self # list_work ~last ~max:batch_max ~reverse)
+
 
     method list_jobs ~first ~finc ~last ~max ~reverse =
       client # query

@@ -1817,7 +1817,7 @@ class client ?(retry_timeout = 60.)
     coordinator # add_on_position_changed (fun () -> next_work_item <- 0L);
 
     let rec inner () =
-      mgr_access # get_work
+      mgr_access # list_work
                   ~first:next_work_item ~finc:true
                   ~last:None ~max:100 ~reverse:false
       >>= fun ((cnt, work_items), has_more) ->

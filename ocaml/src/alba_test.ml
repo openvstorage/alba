@@ -194,7 +194,7 @@ let safe_decommission (alba_client : Alba_client.alba_client) long_ids =
 
     alba_client # mgr_access # list_decommissioning_osds
       ~first:0L ~finc:true ~last:None ~max:1 ~reverse:false >>= fun ((cnt, _), _) ->
-    alba_client # mgr_access # get_work
+    alba_client # mgr_access # list_work
       ~first:0L ~finc:true ~last:None ~max:1 ~reverse:false >>= fun ((cnt', _), _) ->
     if cnt + cnt' > 0
     then wait_no_more_decommissionings ()

@@ -2245,7 +2245,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                       (serialize x_int64_be_to last,
                        linc))
                    last)
-          ~max ~reverse
+          ~max:(cap_max ~cap:10_000 ~max ())
+          ~reverse
           (fun cur key ->
              let work_id = deserialize x_int64_be_from key in
              let work_t = deserialize Work.from_buffer (KV.cur_get_value cur) in

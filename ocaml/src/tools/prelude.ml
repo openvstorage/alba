@@ -824,7 +824,7 @@ let counted_list_more_to a_to =
 
 open Lwt.Infix
 
-let list_all_x ~first get_first harvest =
+let list_all_x ?(finc = true) ~first get_first harvest =
   let rec inner cnt acc first finc =
     harvest ~first ~finc >>= fun ((cnt', items), has_more) ->
     let acc' = List.rev_append items acc in
@@ -833,7 +833,7 @@ let list_all_x ~first get_first harvest =
     then inner cnt'' acc' (get_first (List.hd_exn acc')) false
     else Lwt.return (cnt'', List.rev acc')
   in
-  inner 0 [] first true
+  inner 0 [] first finc
 
 type timestamp = float
 
