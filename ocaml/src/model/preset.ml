@@ -192,15 +192,16 @@ let _DEFAULT = {
 module Update = struct
   type t = {
       policies' : (Policy.policy list option [@default None]) [@key "policies"];
+      fragment_size' : int option [@key "fragment_size"];
     } [@@deriving show, yojson]
 
-  let make ?policies' () = { policies'; }
+  let make ?policies' fragment_size' () = { policies'; fragment_size' }
 
   let apply preset t =
     { preset with
-      policies = (Option.get_some_default
-                    preset.policies
-                    t.policies'); }
+      policies      = Option.get_some_default preset.policies t.policies';
+      fragment_size = Option.get_some_default preset.fragment_size t.fragment_size';
+    }
 
   let from_buffer buf =
     let ser_version = Llio.int8_from buf in
@@ -211,7 +212,10 @@ module Update = struct
            Policy.from_buffer)
         buf
     in
-    { policies' }
+    let fragment_size' =
+      maybe_from_buffer (Llio.option_from Llio.int_from) None buf
+    in
+    { policies'; fragment_size' }
 
   let to_buffer buf t =
     let ser_version = 1 in
@@ -219,7 +223,9 @@ module Update = struct
     Llio.option_to
       (Llio.list_to Policy.to_buffer)
       buf
-      t.policies'
+      t.policies';
+    Llio.option_to Llio.int_to buf t.fragment_size'
+
 end
 
 module Propagation = struct
