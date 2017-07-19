@@ -179,6 +179,8 @@ module Keys = struct
   module Work = struct
     let next_id = "/alba/work/id/"
 
+    let count = "/alba/work/count"
+
     let prefix = "/alba/work/items/"
     let prefix_length = String.length prefix
     let next_prefix = Key_value_store.next_prefix prefix
@@ -321,14 +323,20 @@ let add_work_items (db : read_user_db) work_items =
       )
       ([],StringSet.empty) (List.rev work_items)
   in
-  Log_plugin.make_update_x64_with_secondary
-    ~next_id_key:Keys.Work.next_id
-    ~log_prefix:Keys.Work.prefix
-    ~msgs:(List.map
-             (serialize Protocol.Work.to_buffer)
-             work_items)
-    ~secondary_prefix:Keys.Work.job_name_prefix
-    ~secondary
+  [ Log_plugin.make_update_x64_with_secondary
+      ~next_id_key:Keys.Work.next_id
+      ~log_prefix:Keys.Work.prefix
+      ~msgs:(List.map
+               (serialize Protocol.Work.to_buffer)
+               work_items)
+      ~secondary_prefix:Keys.Work.job_name_prefix
+      ~secondary;
+    Arith64.make_update
+      Keys.Work.count
+      Arith64.PLUS_EQ
+      (List.length work_items |> Int64.of_int)
+      ~clear_if_zero:false;
+  ]
 
 let add_msgs : type dest msg.
                     (dest, msg) Protocol.Msg_log.t ->
@@ -479,14 +487,13 @@ let upds_for_delivered_msg
                 List.fold_left
                   (fun acc osd_id ->
                    let upds =
-                     [Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
-                                      None);
-                      Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
-                                       None);
-                      add_work_items
-                        db
-                        [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
-                     ]
+                     Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id,
+                                     None)
+                     :: Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id,
+                                        None)
+                     :: add_work_items
+                          db
+                          [ Work.CleanupOsdNamespace (osd_id, namespace_id) ]
                    in
                    upds::acc)
                   []
@@ -494,7 +501,7 @@ let upds_for_delivered_msg
               in
 
               List.concat
-                [ [add_work_item ; ];
+                [ add_work_item;
                   List.concat cleanup_osds;
                   delete_ns_info;
                   [ delete_preset_used_by_ns; ]; ]
@@ -535,7 +542,7 @@ let upds_for_delivered_msg
                   db
                   [ Work.WaitUntilRepaired (osd_id, namespace_id) ]
               in
-              add_work_item::
+              add_work_item @
                 update_namespace_link
                   ~namespace_id ~osd_id
                   Osd.NamespaceLink.Decommissioning
@@ -561,7 +568,7 @@ let upds_for_delivered_msg
              in
              [ Update.Replace (Keys.Namespace.osds ~namespace_id ~osd_id, None);
                Update.Replace (Keys.Osd.namespaces ~namespace_id ~osd_id, None);
-               add_work_items; ]
+             ] @ add_work_items
            end
          else
            begin
@@ -652,7 +659,7 @@ let mark_msgs_delivered (db : user_db) t dest msg_id =
            upds)
         msgs)
 
-let ensure_alba_id db backend =
+let ensure_alba_id_and_default_preset db backend =
   match db # get Keys.alba_id with
   | None ->
      (* generate a new one and try to set it *)
@@ -753,15 +760,44 @@ let ensure_job_name_index db backend =
       Lwt.return_unit
     end
   end
-  >>= fun () ->
-  Lwt.return_unit
+
+let ensure_work_item_count db backend =
+  match db # get Keys.Work.count with
+  | Some _ -> Lwt.return_unit
+  | None ->
+     let module KV = WrapReadUserDb(
+                         struct
+                           let db = db
+                           let prefix = Keys.Work.prefix
+                         end) in
+     let module EKV = Key_value_store.Read_store_extensions(KV) in
+     let (work_count, ()), _ =
+       EKV.fold_range
+         db
+         ~first:""
+         ~finc:true
+         ~last:None
+         ~max:(-1)
+         ~reverse:false
+         (fun cur key (count, ()) -> count + 1, ())
+         ()
+     in
+
+     backend # push_update
+             (Update.Sequence
+                [ Update.Assert (Keys.Work.count, None);
+                  Update.Set (Keys.Work.count, serialize Llio.int64_to (Int64.of_int work_count));
+                ]) >>= fun (_ : string option) ->
+
+     Lwt.return_unit
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   (* confirm the user hook could be found *)
   Llio.output_int32 oc 0l >>= fun () ->
 
-  ensure_alba_id db backend >>= fun alba_id ->
+  ensure_alba_id_and_default_preset db backend >>= fun alba_id ->
   ensure_job_name_index db backend >>= fun () ->
+  ensure_work_item_count db backend >>= fun () ->
 
   let () = maybe_activate_reporting () in
 
@@ -956,7 +992,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
          else []
     in
     work_item
-    :: assert_preset_namespaces
+    @ assert_preset_namespaces
     :: propagation_state_updates
   in
 
@@ -1260,7 +1296,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
       in
 
       let upds = List.concat [
-          [ add_work_item];
+          add_work_item;
           [ add_to_decommissioned_osds; ] ;
           List.flatten unlink_from_namespaces;
           upd_namespace_links;
@@ -1574,6 +1610,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             [Arith64.make_update
                (Keys.Nsm_host.count nsm_host_id)
                Arith64.PLUS_EQ 1L
+               ~clear_if_zero:true;
             ]
           in
           let upds =
@@ -1582,8 +1619,8 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                 bump_next_namespace_id;
                 set_ns_info;
                 add_osds_upds;
-                [ mark_preset_used_by_namespace;
-                  add_preset_work_item; ];
+                [ mark_preset_used_by_namespace; ];
+                add_preset_work_item;
                 update_propagation_state;
                 incr_count;
               ]
@@ -1615,6 +1652,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
             [Arith64.make_update
                (Keys.Nsm_host.count nsm_host_id)
                Arith64.PLUS_EQ (-1L)
+               ~clear_if_zero:true;
             ]
       in
       let upds =
@@ -1709,7 +1747,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                     msg_id))) ]
     | AddWork ->
        fun (_cnt, work) ->
-       let updates = [add_work_items db work] in
+       let updates = add_work_items db work in
        return_upds updates
     | MarkWorkCompleted -> fun id ->
       let work_key = Keys.Work.prefix ^ serialize x_int64_be_to id in
@@ -1762,7 +1800,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
 
             let add_work_items = add_work_items db (List.map fst items) in
             let update_progress = List.map snd items in
-            add_work_items :: update_progress
+            add_work_items @ update_progress
           | WaitUntilRepaired (osd_id, namespace_id) ->
             let add_work =
               add_work_items
@@ -1776,7 +1814,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
               [ Update.Replace (key1, None);
                 Update.Replace (key2, None); ]
             in
-            add_work :: deletes
+            add_work @ deletes
           | WaitUntilDecommissioned osd_id ->
              begin
                let remove_x = Update.Replace (Keys.Osd.decommissioning ~osd_id, None); in
@@ -1794,8 +1832,13 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
              []
       in
       return_upds
-        (Update.Replace (work_key, None) ::
-         upds)
+        (Arith64.make_update
+           Keys.Work.count
+           Arith64.PLUS_EQ (-1L)
+           ~clear_if_zero:false
+         :: Update.Assert_exists work_key
+         :: Update.Delete work_key
+         :: upds)
     | CreatePreset -> fun (preset_name, preset) ->
 
       if not (Preset.is_valid preset)
@@ -2253,6 +2296,13 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
              (work_id, work_t))
       in
       items
+    | GetWorkCount ->
+       fun () ->
+       begin
+         match db # get Keys.Work.count with
+         | Some v -> deserialize Llio.int64_from v
+         | None -> failwith "no persisted work count available"
+       end
     | GetAlbaId -> fun () ->
       alba_id
     | ListPresets ->
@@ -2535,8 +2585,16 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         end
   in
   let rec inner () =
-    do_one statistics () >>= fun f_write_response ->
-    f_write_response () >>= fun () ->
+    Lwt.catch
+      (fun () ->
+        do_one statistics () >>= fun f_write_response ->
+        f_write_response ())
+      (function
+       | Error.Albamgr_exn (Error.Unknown_operation as err, payload) ->
+          write_response_error payload err >>= fun f_write_response ->
+          f_write_response ()
+       | exn -> Lwt.fail exn)
+    >>= fun () ->
     inner ()
   in
   inner ()

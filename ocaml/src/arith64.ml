@@ -14,7 +14,7 @@ let operation_of = function
 
 let name = "arith64"
 
-let make_update key operation x=
+let make_update key operation x ~clear_if_zero =
   match operation with
   | PLUS_EQ ->
      begin
@@ -22,6 +22,7 @@ let make_update key operation x=
      Llio.int8_to buf 1;
      Llio.string_to buf key;
      Llio.int64_to buf x;
+     Llio.bool_to buf clear_if_zero;
      let payload = Buffer.contents buf in
      Update.Update.UserFunction(name, Some payload)
      end
@@ -38,6 +39,8 @@ let user_function (user_db : Registry.user_db) (value_o: string option)
        | PLUS_EQ ->
           let key = Llio.string_from buf in
           let value = Llio.int64_from buf in
+          let clear_if_zero = maybe_from_buffer Llio.bool_from true buf in
+
           let a_so = user_db # get key in
           let a =
             match a_so with
@@ -46,7 +49,7 @@ let user_function (user_db : Registry.user_db) (value_o: string option)
           in
           let a' = Int64.add a value in
           let r =
-            if a' = 0L
+            if a' = 0L && clear_if_zero
             then None
             else Some (Prelude.serialize Llio.int64_to a')
           in

@@ -47,7 +47,8 @@ let transform_updates namespace_id =
           match t with
           | Key_value_store.Update.ADD x ->
             Arith64.make_update (with_prefix k)
-              Arith64.PLUS_EQ x
+                                Arith64.PLUS_EQ x
+                                ~clear_if_zero:true
         end
     )
 
@@ -544,11 +545,20 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     let req_buf = Llio.make_buffer req_s 0 in
     let tag = Llio.int32_from req_buf in
 
-    with_timing_lwt
-      (fun () -> do_one session tag req_buf) >>= fun (delta,f_write_response) ->
-    f_write_response () >>= fun () ->
-
-    Protocol.NSMHStatistics.new_delta statistics tag delta;
+    Lwt.catch
+      (fun () ->
+        with_timing_lwt
+          (fun () -> do_one session tag req_buf) >>= fun (delta,f_write_response) ->
+        f_write_response () >>= fun () ->
+        Protocol.NSMHStatistics.new_delta statistics tag delta;
+        Lwt.return_unit
+      )
+      (function
+       | Err.Nsm_exn (Err.Unknown_operation as err, payload) ->
+          write_response_error payload err >>= fun f_write_response ->
+          f_write_response ()
+       | exn -> Lwt.fail exn)
+    >>= fun () ->
 
     inner session
   in
