@@ -751,6 +751,7 @@ module Protocol = struct
                                                 (Msg_log.id * 'msg) counted_list_more) query
     | GetWork : (GetWorkParams.t,
                  (Work.id * Work.t) counted_list_more) query
+    | GetWorkCount : (unit, int64) query
     | GetAlbaId : (unit, alba_id) query
     | ListPresets : (string RangeQueryArgs.t,
                      (Preset.name * Preset.t * bool * bool) counted_list_more) query
@@ -836,6 +837,7 @@ module Protocol = struct
         (RangeQueryArgs.from_buffer x_int64_from)
     | GetNextMsgs t -> Msg_log.dest_from_buffer t
     | GetWork -> GetWorkParams.from_buffer
+    | GetWorkCount -> Llio.unit_from
     | GetAlbaId -> Llio.unit_from
     | ListPresets -> RangeQueryArgs.from_buffer Llio.string_from
     | ListPresets2 -> RangeQueryArgs.from_buffer Llio.string_from
@@ -877,6 +879,7 @@ module Protocol = struct
         (RangeQueryArgs.to_buffer x_int64_to)
     | GetNextMsgs t -> Msg_log.dest_to_buffer t
     | GetWork -> GetWorkParams.to_buffer
+    | GetWorkCount -> Llio.unit_to
     | GetAlbaId -> Llio.unit_to
     | ListPresets -> RangeQueryArgs.to_buffer Llio.string_to
     | ListPresets2 -> RangeQueryArgs.to_buffer Llio.string_to
@@ -948,6 +951,7 @@ module Protocol = struct
     | GetWork ->
       counted_list_more_from
         (Llio.pair_from x_int64_from Work.from_buffer)
+    | GetWorkCount -> Llio.int64_from
     | GetAlbaId -> Llio.string_from
     | ListPresets ->
       counted_list_more_from
@@ -1064,6 +1068,7 @@ module Protocol = struct
     | GetWork ->
       counted_list_more_to
         (Llio.pair_to x_int64_to Work.to_buffer)
+    | GetWorkCount -> Llio.int64_to
     | GetAlbaId -> Llio.string_to
     | ListPresets ->
       counted_list_more_to

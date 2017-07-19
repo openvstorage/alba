@@ -47,7 +47,8 @@ let transform_updates namespace_id =
           match t with
           | Key_value_store.Update.ADD x ->
             Arith64.make_update (with_prefix k)
-              Arith64.PLUS_EQ x
+                                Arith64.PLUS_EQ x
+                                ~clear_if_zero:true
         end
     )
 
