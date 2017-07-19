@@ -664,7 +664,10 @@ let do_request (ic,oc) tag serialize_request deserialize_response =
   let buf = Buffer.create 20 in
   Llio.int32_to buf tag;
   serialize_request buf;
-  Lwt_log.debug_f "albamgr_client: %s" (tag_to_name tag) >>= fun () ->
+  Lwt_log.debug_f
+    "albamgr_client: %s (%li)"
+    (try tag_to_name tag with exn -> Printexc.to_string exn)
+    tag >>= fun () ->
   Lwt_unix.with_timeout
     10.
     (fun () ->
@@ -724,6 +727,7 @@ class single_connection_client
            |> List.max
            |> Option.get_some)
       in
+      Lwt_log.debug_f "do_unknown_operation: %li" code >>= fun () ->
       Lwt.catch
         (fun () ->
          do_request connection

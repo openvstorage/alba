@@ -47,8 +47,10 @@ let _do_request connection (session:Nsm_protocol.Session.t)
   let buf = Buffer.create 20 in
   let ic,oc = connection in
   Llio.int32_to buf tag;
-  let tag_name = tag_to_name tag in
-  Lwt_log.debug_f "nsm_host_client: %s" tag_name >>= fun () ->
+  let tag_name = try tag_to_name tag
+                 with exn -> Printexc.to_string exn
+  in
+  Lwt_log.debug_f "nsm_host_client: %s (%li)" tag_name tag >>= fun () ->
   serialize_request buf;
   Lwt_unix.with_timeout
     10.

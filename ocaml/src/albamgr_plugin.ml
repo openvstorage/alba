@@ -2585,8 +2585,16 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         end
   in
   let rec inner () =
-    do_one statistics () >>= fun f_write_response ->
-    f_write_response () >>= fun () ->
+    Lwt.catch
+      (fun () ->
+        do_one statistics () >>= fun f_write_response ->
+        f_write_response ())
+      (function
+       | Error.Albamgr_exn (Error.Unknown_operation as err, payload) ->
+          write_response_error payload err >>= fun f_write_response ->
+          f_write_response ()
+       | exn -> Lwt.fail exn)
+    >>= fun () ->
     inner ()
   in
   inner ()

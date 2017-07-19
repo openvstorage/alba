@@ -1457,6 +1457,8 @@ module Protocol = struct
                       Wrap_q GetPresetsPropagationState, 92l, "GetPresetsPropagationState";
                       Wrap_u UpdatePresetPropagationState, 93l, "UpdatePresetPropagationState";
                       Wrap_q ListJobs, 95l, "ListJobs";
+
+                      Wrap_q GetWorkCount, 100l, "GetWorkCount";
                     ]
 
 
