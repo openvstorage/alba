@@ -433,6 +433,16 @@ object(self)
         fst
         (self # list_work ~last ~max:batch_max ~reverse)
 
+    method get_work_count =
+      Lwt.catch
+        (client # query GetWorkCount)
+        (function
+         | Error.Albamgr_exn (Error.Unknown_operation, _) ->
+            self # list_all_work ~first:0L ~finc:true ~last:None ~max:(-1) ~reverse:false >>= fun (cnt, _) ->
+            Lwt.return (Int64.of_int cnt)
+         | exn ->
+            Lwt.fail exn
+        )
 
     method list_jobs ~first ~finc ~last ~max ~reverse =
       client # query

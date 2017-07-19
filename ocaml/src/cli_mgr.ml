@@ -541,19 +541,22 @@ let alba_list_work cfg_file tls_config
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-        let first = match first with
-          | "" -> 0L
-          | s -> Int64.of_string first
-        and last = Option.map (fun x -> Int64.of_string x, true) last
-        in
-        let max = if max = -1 then max_int else max in
-        client # list_all_work ~first ~finc ~last ~max ~reverse:false
-        >>= fun (cnt, r) ->
         if to_json
         then
-          print_result cnt (fun c -> `Assoc [ "count", `Int c ])
+          begin
+            client # get_work_count >>= fun cnt ->
+            print_result (Int64.to_int cnt) (fun c -> `Assoc [ "count", `Int c ])
+          end
         else
           begin
+            let first = match first with
+              | "" -> 0L
+              | s -> Int64.of_string first
+            and last = Option.map (fun x -> Int64.of_string x, true) last
+            in
+            let max = if max = -1 then max_int else max in
+            client # list_all_work ~first ~finc ~last ~max ~reverse:false
+            >>= fun (cnt, r) ->
             Lwt_io.printlf "received %i items\n" cnt >>= fun () ->
             Lwt_io.printlf "    id   | item " >>= fun () ->
             Lwt_io.printlf "---------+------" >>= fun () ->
