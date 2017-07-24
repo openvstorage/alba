@@ -1,0 +1,7 @@
+// example: $ ./alba update-preset default --config ./cfg/test.ini --input-url ./cfg/preset_update.json
+{
+    // all updates/properties are optional. don't specify if you don't want it to change.
+    "policies" : [[ 5, 4, 8, 3], [ 2, 2, 3, 4 ]]
+    // there's no update of fragment_size here
+    // (compared to preset_update.json)
+}
