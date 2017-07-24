@@ -2327,48 +2327,66 @@ module Test = struct
       else cmd
     in
 
-    let cmd =
+    let cmd json =
       [t.cfg.alba_bin; "update-preset";
        preset_name;
        "--config"; t.abm # config_url |> Url.canonical;
        "--to-json";
-       "--input-url"; "./cfg/preset_update.json"
+       "--input-url"; json
       ]
     in
+    let assert_ok (captured,rc) =
+      let () = Printf.printf "\n%s\n%!" captured in
+      let json = Yojson.Safe.from_string captured in
+      let basic = Yojson.Safe.to_basic json in
+      let () = match basic with
+        | `Assoc [("success", `Bool true);
+                _
+               ] -> ()
+        |_ -> failwith captured
+      in
+      let list_cmd =
+        [t.cfg.alba_bin; "list-presets";
+         "--config"; t.abm # config_url |> Url.canonical;
+         "--to-json";
+        ]
+      in
+      try
+        let module U = Yojson.Basic.Util in
 
-    let () =
-      cmd
+        let presets =
+          Shell.cmd_with_capture list_cmd
+          |> Yojson.Basic.from_string
+          |> U.member "result"
+          |> U.to_list
+        in
+        let preset = List.find
+                       (fun x ->
+                         U.member "name" x |> U.to_string
+                         = preset_name
+                       )
+                       presets
+        in
+        let fragment_size = U.member "fragment_size" preset |> U.to_int in
+        assert (fragment_size = 768 * 1024);
+        JUnit.Ok
+      with
+      | exn -> JUnit.Err (Printexc.to_string exn)
+    in
+    let r0 =
+      cmd "./cfg/preset_update.json"
       |> maybe_extend
-      |> Shell.cmd'
+      |> Shell.cmd_with_capture_and_rc
+      |> assert_ok
     in
+    match r0 with
+    | JUnit.Ok ->
+       cmd "./cfg/preset_update2.json"
+       |> maybe_extend
+       |> Shell.cmd_with_capture_and_rc
+       |> assert_ok
+    | r -> r
 
-    let list_cmd =
-      [t.cfg.alba_bin; "list-presets";
-       "--config"; t.abm # config_url |> Url.canonical;
-       "--to-json";
-      ]
-    in
-    try
-      let module U = Yojson.Basic.Util in
-
-      let presets =
-        Shell.cmd_with_capture list_cmd
-        |> Yojson.Basic.from_string
-        |> U.member "result"
-        |> U.to_list
-      in
-      let preset = List.find
-                     (fun x ->
-                       U.member "name" x |> U.to_string
-                       = preset_name
-                     )
-                     presets
-      in
-      let fragment_size = U.member "fragment_size" preset |> U.to_int in
-      assert (fragment_size = 768 * 1024);
-      JUnit.Ok
-    with
-    | exn -> JUnit.Err (Printexc.to_string exn)
 
   let nsm_host_statistics t =
     let cmd =
