@@ -192,7 +192,7 @@ let _DEFAULT = {
 module Update = struct
   type t = {
       policies' : (Policy.policy list option [@default None]) [@key "policies"];
-      fragment_size' : int option [@key "fragment_size"];
+      fragment_size' : (int option [@default None]) [@key "fragment_size"];
     } [@@deriving show, yojson]
 
   let make ?policies' fragment_size' () = { policies'; fragment_size' }
