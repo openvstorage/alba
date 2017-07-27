@@ -194,7 +194,7 @@ class nsm_host_access
       let rec inner () =
         mgr # list_namespaces_by_id
             ~first:!next_id ~finc:true ~last:None
-            ~max:100
+            ~max:100 ~reverse:false
         >>= fun ((cnt, namespaces), has_more) ->
         Lwt_list.iter_s
           (fun (namespace_id, _, namespace_info) ->

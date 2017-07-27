@@ -2475,7 +2475,7 @@ module Test = struct
     JUnit.Ok
 
   let create_and_delete_example_preset t =
-    create_example_preset t;
+    create_example_preset t |> ignore;
     delete_example_preset t
 
   let proxy_statistics t =

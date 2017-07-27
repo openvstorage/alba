@@ -48,12 +48,7 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-       let first = 0L
-       and finc = true
-       and last = None
-       and max = -1 in
-       client # list_namespaces_by_id ~first ~finc ~last ~max
-       >>= fun ((cnt,r),more) ->
+       client # list_all_namespaces_by_id >>= fun (cnt,r) ->
        if to_json
        then
          let r' =
@@ -62,20 +57,15 @@ let alba_list_namespaces_by_id cfg_file tls_config to_json verbose attempts =
                       (Int64.to_string id),`String name)
                      r
                   );
-                  `Bool more
                  ]
          in
-         Lwt_io.printl (Yojson.Safe.to_string r')
+         print_result r' Std.id
        else
          begin
            Lwt_list.iter_s
              (fun (id, name, _info ) ->
               Lwt_io.printlf "%8Li:%S" id name
              ) r
-           >>= fun () ->
-           if more
-           then Lwt_io.printl "..."
-           else Lwt.return ()
          end
       )
   in
