@@ -85,16 +85,24 @@ object(self)
         (fun (id, _, _) -> id)
         (self # list_nsm_hosts ~last:None ~max:(-1) ~reverse:false)
 
-    method list_namespaces_by_id ~first ~finc ~last ~max=
+    method list_namespaces_by_id ~first ~finc ~last ~max ~reverse =
       let args = RangeQueryArgs.{
                    first;
                    finc;
                    last;
-                   reverse = false;
+                   reverse;
                    max;
                  }
       in
       client # query ListNamespacesById args
+
+    method list_all_namespaces_by_id =
+      list_all_x
+        ~first:0L
+        (fun (id, _, _) -> id)
+        (self # list_namespaces_by_id
+              ~last:None
+              ~max:(-1) ~reverse:false)
 
     method add_nsm_host ~nsm_host_id ~nsm_host_info =
       client # update
@@ -156,7 +164,9 @@ object(self)
         ~first:namespace_id
         ~finc:true
         ~last:(Some (namespace_id,true))
-        ~max:1 >>= fun ((_, namespaces),_) ->
+        ~max:1
+        ~reverse:false
+      >>= fun ((_, namespaces),_) ->
       match namespaces with
       | []  -> Error.(failwith_lwt Error.Namespace_does_not_exist)
       | [x] -> Lwt.return x

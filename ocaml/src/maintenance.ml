@@ -1961,7 +1961,7 @@ class client ?(retry_timeout = 60.)
         (fun () ->
            mgr_access # list_namespaces_by_id
              ~first:!next_id ~finc:true ~last:None
-             ~max:100
+             ~max:100 ~reverse:false
            >>= fun ((cnt, namespaces), has_more) ->
 
            List.iter
