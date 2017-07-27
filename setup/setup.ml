@@ -2465,6 +2465,19 @@ module Test = struct
     _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
     JUnit.Ok
 
+  let delete_example_preset t =
+    let cmd = [
+        "delete-preset"; "example";
+        "--config"; t.Deployment.abm # config_url |> Url.canonical;
+      ]
+    in
+    _alba_cmd_line ~cwd:t.cfg.alba_home cmd;
+    JUnit.Ok
+
+  let create_and_delete_example_preset t =
+    create_example_preset t;
+    delete_example_preset t
+
   let proxy_statistics t =
     let cmd = ["proxy-statistics";
                "--to-json";
@@ -2520,11 +2533,13 @@ module Test = struct
                  "abm_statistics", abm_statistics;
                  "nsm_host_statistics", nsm_host_statistics;
                  "asd_cli_env", asd_cli_env;
+                 "create_and_delete_example_preset", create_and_delete_example_preset;
                  "create_example_preset", create_example_preset;
                  "return_codes_1", return_codes_1;
                  "return_codes_2", return_codes_2;
                  "proxy_statistics", proxy_statistics;
                  "abm_update_preset", abm_update_preset;
+                 "delete_example_preset", delete_example_preset;
                 ]
     in
     let t0 = Unix.gettimeofday() in
