@@ -462,7 +462,7 @@ let to_level =
   | "fatal" -> Fatal
   | log_level -> failwith (Printf.sprintf "unknown log level %s" log_level)
 
-let with_alba_client cfg_url tls_config f =
+let with_alba_client ?albamgr_connection_pool_size cfg_url tls_config f =
   Alba_arakoon.config_from_url cfg_url >>= fun cfg ->
   let cfg_ref = ref cfg in
   Alba_client2.with_client
@@ -470,6 +470,7 @@ let with_alba_client cfg_url tls_config f =
     ~tls_config
     ~populate_osds_info_cache:false
     ~upload_slack:0.2
+    ?albamgr_connection_pool_size
     f
 
 let with_albamgr_client ~attempts cfg_url tls_config f =
