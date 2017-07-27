@@ -1888,7 +1888,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
                  (Keys.Preset.namespaces_prefix ~preset_name,
                   Range_assertion.ContainsExactly []);
                Update.Delete (preset_key);
-               Update.Delete (Keys.Preset.propagation ^ preset_name);
+               Update.Replace (Keys.Preset.propagation ^ preset_name, None);
              ];
              maybe_remove_default ])
     | SetDefaultPreset -> fun preset_name ->
