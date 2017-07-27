@@ -647,6 +647,56 @@ let alba_mark_work_items_completed_cmd =
     "dev-mark-work-items-completed"
     ~doc:"for dev/testing purposes only: mark work items as completed"
 
+let alba_mark_work_items_range_completed
+      cfg_file tls_config
+      first last
+      albamgr_connection_pool_size
+      verbose attempts
+  =
+  let t () =
+    with_alba_client
+      ?albamgr_connection_pool_size
+      cfg_file tls_config
+      (fun alba_client ->
+        let rec loop () =
+          alba_client # mgr_access # list_work ~first ~finc:true ~last:(Some (last, false)) ~max:2000 ~reverse:false >>= fun ((cnt, items), has_more) ->
+          Lwt_log.info_f "Fetched %i work items" cnt >>= fun () ->
+
+          Lwt_list.iter_p
+            (fun (work_id, _) ->
+              alba_client # mgr_access # mark_work_completed ~work_id)
+            items >>= fun () ->
+
+          if has_more
+          then loop ()
+          else Lwt.return ()
+        in
+        loop ()
+      )
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let alba_mark_work_items_range_completed_cmd =
+  Term.(pure alba_mark_work_items_range_completed
+        $ alba_cfg_url
+        $ tls_config
+        $ Arg.(required
+               & pos 0 (some int64) None
+               & info []
+                      ~docv:"FIRST"
+                      ~doc:"first work item id (inclusive)")
+        $ Arg.(required
+               & pos 1 (some int64) None
+               & info []
+                      ~docv:"LAST"
+                      ~doc:"last work item id (exclusive)")
+        $ Arg.(value & opt (some int) None & info ["albamgr-connection-pool-size"])
+        $ verbose
+        $ attempts 1
+  ),
+  Term.info
+    "dev-mark-work-items-range-completed"
+    ~doc:"for dev/testing purposes only: mark work items as completed"
 
 let alba_bump_next_work_item_id cfg_file tls_config id verbose attempts =
   let t () =
@@ -1317,6 +1367,7 @@ let cmds = [
     alba_list_work_cmd;
     alba_list_jobs_cmd;
     alba_mark_work_items_completed_cmd;
+    alba_mark_work_items_range_completed_cmd;
 
     alba_rewrite_namespace_cmd;
     alba_verify_namespace_cmd;
