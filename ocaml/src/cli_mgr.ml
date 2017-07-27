@@ -460,6 +460,7 @@ let alba_list_purging_osds
               | Some osd_info -> Lwt.return (Some (osd_id, osd_info)))
            osds >>= fun osds ->
          let osds = List.map_filter Std.id osds in
+         let cnt = List.length osds in
          if to_json
          then
            client # get_alba_id >>= fun alba_id ->
