@@ -215,7 +215,8 @@ def nsm_host_register(cfg_file, albamgr_cfg = arakoon_config_file):
         "add-nsm-host",
         cfg_file,
         "--config",
-        albamgr_cfg
+        albamgr_cfg,
+        "--verbose"
     ]
     tls = env['alba_tls']
     if is_true(tls):
