@@ -399,8 +399,6 @@ let handle_query : type i o. read_user_db ->
      end
 
 let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
-  (* confirm the user hook could be found *)
-  Llio.output_int32 oc 0l >>= fun () ->
 
   (* ensure the current version is stored in the database *)
   let get_version () =
@@ -563,6 +561,12 @@ let nsm_host_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     inner session
   in
   let session = Nsm_protocol.Session.make () in
+
+  (* confirm the user hook could be found
+   * (after we've done any operations that might potentially fail)
+   *)
+  Llio.output_int32 oc 0l >>= fun () ->
+
   inner session
 
 
