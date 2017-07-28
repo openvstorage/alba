@@ -142,60 +142,45 @@ let _upload_missing_fragments
         old_f_checksums_for_chunk
         fragment_ctr
       >>= fun recovery_info_slice ->
-      let recovery_info_blob_old = Osd.Blob.Slice recovery_info_slice in
 
-      (if checksum = checksum'
-       then Lwt.return (None, checksum, recovery_info_blob_old)
-       else
-       begin
-         Lwt_log.debug_f
-           "checksum changed for packed_fragment (%i,%i) %s -> %s (compression:%s)"
-           chunk_id fragment_id
-           (Checksum.show checksum) (Checksum.show checksum')
-           (Compression.show compression)
-         >>= fun () ->
-         let packed_size' = Lwt_bytes2.Lwt_bytes.length packed_fragment in
-         let new_f_checksums_for_chunk =
-           List.replace fragment_id checksum' old_f_checksums_for_chunk
-         in
+      let packed_size' = Lwt_bytes2.Lwt_bytes.length packed_fragment in
+      let new_f_checksums_for_chunk =
+        List.replace fragment_id checksum' old_f_checksums_for_chunk
+      in
 
-         let new_fp_sizes_for_chunk =
-           List.replace fragment_id packed_size' old_fp_sizes_for_chunk
-         in
-         RecoveryInfo.make
-           ~object_name:manifest.Manifest.name
-           ~object_id
-           object_info_o
-           encryption
-           (List.nth_exn manifest.Manifest.chunk_sizes chunk_id)
-           new_fp_sizes_for_chunk
-           new_f_checksums_for_chunk
-           fragment_ctr
-         >>= fun recovery_info' ->
-         Lwt.return
-           (Some (packed_size', checksum'),
-            checksum',
-            (Osd.Blob.Slice recovery_info'))
-       end)
-     >>= fun (maybe_changed, new_checksum, recovery_info_blob) ->
-     begin
-       Alba_client_upload.upload_packed_fragment_data
-         osd_access
-         ~namespace_id
-         ~osd_id:chosen_osd_id
-         ~object_id ~version_id
-         ~chunk_id ~fragment_id
-         ~packed_fragment
-         ~gc_epoch ~checksum:new_checksum
-         ~recovery_info_blob
-       >>= fun fnro ->
-       let fu = FragmentUpdate.make
-                  chunk_id fragment_id
-                  (Some chosen_osd_id)
-                  maybe_changed fragment_ctr fnro
-       in
-       Lwt.return fu
-     end
+      let new_fp_sizes_for_chunk =
+        List.replace fragment_id packed_size' old_fp_sizes_for_chunk
+      in
+      RecoveryInfo.make
+        ~object_name:manifest.Manifest.name
+        ~object_id
+        object_info_o
+        encryption
+        (List.nth_exn manifest.Manifest.chunk_sizes chunk_id)
+        new_fp_sizes_for_chunk
+        new_f_checksums_for_chunk
+        fragment_ctr
+      >>= fun recovery_info' ->
+
+      let maybe_changed = Some (packed_size', checksum') in
+      let recovery_info_blob = Osd.Blob.Slice recovery_info' in
+
+      Alba_client_upload.upload_packed_fragment_data
+        osd_access
+        ~namespace_id
+        ~osd_id:chosen_osd_id
+        ~object_id ~version_id
+        ~chunk_id ~fragment_id
+        ~packed_fragment
+        ~gc_epoch ~checksum:checksum'
+        ~recovery_info_blob
+      >>= fun fnro ->
+      let fu = FragmentUpdate.make
+                 chunk_id fragment_id
+                 (Some chosen_osd_id)
+                 maybe_changed fragment_ctr fnro
+      in
+      Lwt.return fu
     )
     to_be_repaireds
 

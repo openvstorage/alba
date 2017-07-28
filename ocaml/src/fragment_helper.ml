@@ -48,6 +48,9 @@ let get_iv key ~object_id ~chunk_id ~fragment_id ~ignore_fragment_id =
   let res = Str.last_chars (Lwt_bytes.to_string bs) block_len in
   Lwt.return res
 
+let hard_coded_iv = "\192\157V\025\215,(\236\017\226\209E\205v\159\\"
+let () = assert (String.length hard_coded_iv = 16)
+
 (* consumes the input and returns a big_array *)
 let maybe_encrypt
     encryption
@@ -74,7 +77,9 @@ let maybe_encrypt
     Lwt.return (bs, None)
   | AlgoWithKey (AES (CTR, L256) as algo, key) ->
     verify_key_length algo key;
-    let iv = get_random_string 16 in
+    (* let iv = get_random_string 16 in *)
+    (* TODO this is not optimal for security of the encryption! *)
+    let iv = hard_coded_iv in
     Cipher.with_t_lwt
       key Cipher.AES256 Cipher.CTR []
       (fun cipher ->
