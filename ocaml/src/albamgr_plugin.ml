@@ -792,9 +792,6 @@ let ensure_work_item_count db backend =
      Lwt.return_unit
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
-  (* confirm the user hook could be found *)
-  Llio.output_int32 oc 0l >>= fun () ->
-
   ensure_alba_id_and_default_preset db backend >>= fun alba_id ->
   ensure_job_name_index db backend >>= fun () ->
   ensure_work_item_count db backend >>= fun () ->
@@ -2597,6 +2594,10 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
     >>= fun () ->
     inner ()
   in
+
+  (* confirm the user hook could be found *)
+  Llio.output_int32 oc 0l >>= fun () ->
+
   inner ()
 
 
