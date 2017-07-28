@@ -660,15 +660,22 @@ let read_response (ic,oc) deserializer =
   let res_buf = Llio.make_buffer res_s 0 in
   match Llio.int_from res_buf with
   | 0 ->
+     Lwt_log.info_f ">>>>>>> CUCU all's well here <<<<<<< " >>= fun () ->
      Lwt.return (deserializer res_buf)
   | ierr ->
-     let err = Error.int2err ierr in
-     let payload = Llio.string_from res_buf in
-     Lwt_log.debug_f
-       "albamgr operation failed: %i %s:%s"
-       ierr (Error.show err) payload
-     >>= fun () ->
-     Lwt.fail (Error.Albamgr_exn (err, payload))
+     Lwt_log.info_f ">>>>>>> CUCU <<<<<<< %i, %i" ierr (String.length res_s) >>= fun () ->
+     Lwt.catch
+       (fun () ->
+         let err = Error.int2err ierr in
+         let payload = Llio.string_from res_buf in
+         Lwt_log.debug_f
+           "albamgr operation failed: %i %s:%s"
+           ierr (Error.show err) payload
+         >>= fun () ->
+         Lwt.fail (Error.Albamgr_exn (err, payload)))
+       (fun exn ->
+         Lwt_log.info_f ~exn ">>>>>>>>>>>> <<<<<<<<<<<<<<" >>= fun () ->
+         Lwt.fail exn)
 
 let do_request (ic,oc) tag serialize_request deserialize_response =
   let buf = Buffer.create 20 in
@@ -678,10 +685,13 @@ let do_request (ic,oc) tag serialize_request deserialize_response =
     "albamgr_client: %s (%li)"
     (try tag_to_name tag with exn -> Printexc.to_string exn)
     tag >>= fun () ->
+  Lwt_log.debug_f "godver mil" >>= fun () ->
   Lwt_unix.with_timeout
     10.
     (fun () ->
+      Lwt_log.debug "godver 1 " >>= fun () ->
       Lwt_extra2.llio_output_and_flush oc (Buffer.contents buf) >>= fun () ->
+      Lwt_log.debug "godver 2 " >>= fun () ->
       read_response (ic,oc) deserialize_response
     )
 
@@ -801,7 +811,8 @@ let retrieve_cfg_from_any_node ~tls_config current_config =
               current_config.cluster_id
               (fun node_client ->
                 wrap_around' ~consistency:Arakoon_client.No_guarantees node_client
-                 >>= fun mgr_dirty_client ->
+                >>= fun mgr_dirty_client ->
+                Lwt_log.debug_f "got here ... (onto fetch client config)" >>= fun () ->
                 mgr_dirty_client # get_client_config >>= fun ccfg ->
                 Lwt_log.debug_f "node:%s returned config" node_name >>= fun () ->
                 Lwt.return (Some (Res ccfg))
@@ -846,12 +857,14 @@ let make_client tls_config buffer_pool (ccfg:Arakoon_client_config.t) =
           Arakoon_remote_client.make_remote_client
             ccfg.cluster_id
             conn >>= fun client ->
+          Lwt_log.debug_f "jeplakee 7" >>= fun () ->
           wrap_around ~consistency:Arakoon_client.Consistent
                       (client:Arakoon_client.client))
        (fun exn ->
           closer () >>= fun () ->
           Lwt.fail exn)
      >>= fun c ->
+     Lwt_log.debug_f "jeplakee 8" >>= fun () ->
      Lwt.return (c,
                  m,
                  closer)
@@ -877,6 +890,7 @@ let _with_client ~attempts ccfg tls_config f =
          tls_config
          Buffer_pool.default_buffer_pool
          ccfg >>= fun (client, _, closer) ->
+       Lwt_log.debug_f "jeplakee" >>= fun () ->
        Lwt.finalize
          (fun () -> f client)
          closer
