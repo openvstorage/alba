@@ -750,14 +750,21 @@ let ensure_job_name_index db backend =
             Update.Set(reverse_key, key))
         xs
       in
-      backend # push_update
-              (Update.Sequence (
-                 Update.Assert (Keys.have_job_name_index, None)
-                 :: Update.Set (Keys.have_job_name_index,"")
-                 :: reverse_mappings)
-              )
-      >>= fun (_:string option) ->
-      Lwt.return_unit
+      Lwt.catch
+        (fun () ->
+          backend # push_update
+                  (Update.Sequence (
+                       Update.Assert (Keys.have_job_name_index, None)
+                       :: Update.Set (Keys.have_job_name_index,"")
+                       :: reverse_mappings)
+                  )
+          >>= fun (_:string option) ->
+          Lwt.return_unit)
+        (function
+         | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+            Lwt.return ()
+         | exn ->
+            Lwt.fail exn)
     end
   end
 
@@ -783,13 +790,20 @@ let ensure_work_item_count db backend =
          ()
      in
 
-     backend # push_update
-             (Update.Sequence
-                [ Update.Assert (Keys.Work.count, None);
-                  Update.Set (Keys.Work.count, serialize Llio.int64_to (Int64.of_int work_count));
-                ]) >>= fun (_ : string option) ->
+     Lwt.catch
+       (fun () ->
+         backend # push_update
+                 (Update.Sequence
+                    [ Update.Assert (Keys.Work.count, None);
+                      Update.Set (Keys.Work.count, serialize Llio.int64_to (Int64.of_int work_count));
+                 ]) >>= fun (_ : string option) ->
 
-     Lwt.return_unit
+         Lwt.return_unit)
+       (function
+        | Protocol_common.XException (rc, msg) when rc = Arakoon_exc.E_ASSERTION_FAILED ->
+           Lwt.return ()
+        | exn ->
+           Lwt.fail exn)
 
 let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
   ensure_alba_id_and_default_preset db backend >>= fun alba_id ->
