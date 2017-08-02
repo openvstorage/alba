@@ -1473,7 +1473,17 @@ class client ?(retry_timeout = 60.)
                      Exn (Assert_failed "NotMyTask") |> Lwt.fail
                    else inner next
               in
-              inner (Slice.wrap_string ""))
+              inner (Slice.wrap_string "") >>= fun () ->
+
+              client # global_kvs # apply_sequence
+                     (osd_access # get_default_osd_priority)
+                     []
+                     [ Osd.Update.delete_string (Osd_keys.AlbaInstance.namespace_status ~namespace_id);
+                       Osd.Update.delete_string (Osd_keys.AlbaInstance.namespace_name ~namespace_id);
+                     ] >>= function
+              | Ok _ -> Lwt.return_unit
+              | Error _ -> assert false
+             )
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->
