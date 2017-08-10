@@ -31,4 +31,7 @@
     // node_ids of osds that are considered closer, default []
     , "read_preference" : []
 
+
+    , "lwt_preemptive_thread_pool_min_size" : 10 // optional, default 10
+    , "lwt_preemptive_thread_pool_max_size" : 20 // optional, default 20
 }

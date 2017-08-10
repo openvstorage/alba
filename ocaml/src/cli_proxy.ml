@@ -24,8 +24,8 @@ module Config = struct
     nsm_host_connection_pool_size : (int [@default 10]);
     osd_connection_pool_size : (int [@default 10]);
     osd_timeout : float [@default 10.];
-    lwt_preemptive_thread_pool_min_size : (int [@default 6]);
-    lwt_preemptive_thread_pool_max_size : (int [@default 8]);
+    lwt_preemptive_thread_pool_min_size : (int [@default 10]);
+    lwt_preemptive_thread_pool_max_size : (int [@default 20]);
     chattiness : float option [@default None];
     max_client_connections : int [@default 128];
     tls_client : Tls.t option [@default None];
