@@ -145,10 +145,8 @@ let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
                in
                (res, erased')))
        in
-
-       let rsm = Ctypes.(bigarray_start
-                           array1
-                           (Isa_l.rs_vandermonde_matrix_from_jerasure ~k ~rows:k dm)) in
+       let rsm0 = Isa_l.rs_vandermonde_matrix_from_jerasure ~k ~rows:k dm in
+       let rsm = Ctypes.(bigarray_start array1 rsm0) in
 
        let all_fragments = List.append data parity in
 
@@ -173,17 +171,23 @@ let decode ?(kind=Isa_l) ~k ~m ~w erasures data parity size =
            (rsm
             |> to_voidp |> from_voidp uchar
             |> fun x -> x) in
-
-       Lwt_preemptive.detach
-         (fun () ->
-          Isa_l.encode_data
-            ~release_runtime_lock:true
-            ~len:size
-            ~k ~rows:k
-            ~gftbls
-            ~data_in:(shared_buffer_list_to_carray data_in)
-            ~data_out:(shared_buffer_list_to_carray data_out))
-         () >>= fun () ->
+       Lwt.finalize
+       (fun () ->
+         Lwt_preemptive.detach
+           (fun () ->
+             Isa_l.encode_data
+               ~release_runtime_lock:true
+               ~len:size
+               ~k ~rows:k
+               ~gftbls
+               ~data_in:(shared_buffer_list_to_carray data_in)
+               ~data_out:(shared_buffer_list_to_carray data_out))
+           ())
+       (fun () ->
+         Lwt_bytes2.Lwt_bytes.unsafe_destroy rsm0;
+         Lwt.return_unit
+       )
+       >>= fun () ->
 
        _encode
          ~kind ~k ~m ~w
