@@ -2014,31 +2014,33 @@ module Test = struct
       in
       rc, kill
     in
-    let tests = [run_aaa;
-                 run_nil;
-                 run_nil_nofc;
-                 run_global;
-                 run_global_aaa;
-                 run_broken_frag_cache;
-                ]
+    let tests =
+      [ run_aaa, "testresults_aaa.xml", "aaa";
+        run_nil, "testresults_nil.xml", "nil";
+        run_nil_nofc, "testresults_nil_nofc.xml", "nil_nofc";
+        run_global, "testresults_global.xml", "global";
+        run_global_aaa, "testresults_global_aaa.xml", "global_aaa";
+        run_broken_frag_cache, "testresults_broken_frag_cache.xml", "broken_frag_cache";
+      ]
     in
     let rc,_kill =
       List.fold_left
-        (fun (rc,kill) test ->
+        (fun (rc,kill) (test, filename, _) ->
           let () = kill () in
+          let () =
+            try Unix.unlink filename
+            with Unix.Unix_error(Unix.ENOENT, "unlink", _) -> ()
+          in
           let trc, next_kill = test () in
           let next_rc = rc lor trc in
           next_rc, next_kill
         )
         (0,fun () -> ()) tests
     in
-    let () = Prul.merge_result_xmls [("testresults_aaa.xml", "aaa");
-                                     ("testresults_nil.xml", "nil");
-                                     ("testresults_nil_nofc.xml", "nil_nofc");
-                                     ("testresults_global.xml", "global");
-                                     ("testresults_global_aaa.xml", "global_aaa");
-                                     ("testresults_broken_frag_cache.xml", "broken_frag_cache");
-                                    ] "testresults.xml"
+    let () =
+      Prul.merge_result_xmls
+        (List.map (fun (_, filename, name) -> filename, name) tests)
+        "testresults.xml"
     in
 
     rc
