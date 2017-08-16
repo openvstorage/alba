@@ -132,8 +132,8 @@ let download_fragment
 
   let t0_fragment = Unix.gettimeofday () in
 
-  let fragment_id = if k = 1 then 0 else fragment_id in
   let cache_key =
+    let fragment_id = if k = 1 then 0 else fragment_id in
     Fragment_cache_keys.make_key
       ~object_id
       ~chunk_id
@@ -233,7 +233,9 @@ let download_fragment
 
      let download_fragment_dedup_cache = osd_access # get_download_fragment_dedup_cache in
 
-     let dedup_key = location, namespace_id, object_id, chunk_id, fragment_id in
+     let dedup_key =
+       let fragment_id = if k = 1 then 0 else fragment_id in
+       location, namespace_id, object_id, chunk_id, fragment_id in
      match Hashtbl.find_option download_fragment_dedup_cache dedup_key with
      | Some us ->
         let t, u = Lwt.wait () in
