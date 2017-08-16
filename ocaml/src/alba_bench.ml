@@ -64,6 +64,7 @@ let do_scenarios
     ~tcp_keepalive:Tcp_keepalive2.default
     ~populate_osds_info_cache:true
     ~upload_slack
+    ~albamgr_refresh_config:`None
     albamgr_cfg
     (fun alba_client ->
       let client = new alba_bench_client alba_client in

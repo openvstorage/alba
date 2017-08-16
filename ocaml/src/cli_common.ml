@@ -470,6 +470,7 @@ let with_alba_client ?albamgr_connection_pool_size cfg_url tls_config f =
     ~tls_config
     ~populate_osds_info_cache:false
     ~upload_slack:0.2
+    ~albamgr_refresh_config:`None
     ?albamgr_connection_pool_size
     f
 

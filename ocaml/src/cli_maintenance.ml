@@ -52,23 +52,6 @@ let rec upload_albamgr_cfg albamgr_cfg (client : Alba_client.alba_client) =
     upload_albamgr_cfg albamgr_cfg client
 
 
-
-let rec refresh_albamgr_cfg albamgr_cfg_url albamgr_cfg_ref =
-  begin
-    Lwt.catch
-      (fun () ->
-       Alba_arakoon.config_from_url albamgr_cfg_url >>= fun abm_cfg ->
-       let () = albamgr_cfg_ref := abm_cfg in
-       Lwt.return ()
-      )
-      (fun exn ->
-       Lwt_log.info_f ~exn "Exception while refreshing albamgr cfg from disk"
-      )
-  end >>= fun () ->
-  Lwt_unix.sleep 60. >>= fun () ->
-  refresh_albamgr_cfg albamgr_cfg_url albamgr_cfg_ref
-
-
 type deprecated =
   | Default
   | Custom of string
@@ -156,12 +139,15 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       Lwt_log.info_f "maintenance version:%s" Alba_version.git_revision
       >>= fun () ->
 
-      Fragment_cache_config.make_fragment_cache fragment_cache_cfg
+      Fragment_cache_config.make_fragment_cache
+        ~albamgr_refresh_config:(`RefreshFromConfig abm_cfg_url)
+        fragment_cache_cfg
       >>= fun (fragment_cache, cache_on_read, cache_on_write) ->
 
       Alba_client2.with_client
         abm_cfg_ref
         ~fragment_cache
+        ~albamgr_refresh_config:(`RefreshFromConfig abm_cfg_url)
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
@@ -211,7 +197,6 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                        ~section:Lwt_log.Section.main
                        ());
                     (maintenance_client # report_stats 60. );
-                    (refresh_albamgr_cfg abm_cfg_url abm_cfg_ref);
                     (maintenance_client # refresh_purging_osds ());
                     (maintenance_client # cache_eviction ());
                     (maintenance_client # refresh_alba_osd_cfgs);

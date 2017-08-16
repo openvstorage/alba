@@ -20,6 +20,7 @@ class alba_cache
         ~bucket_strategy
         ~nested_fragment_cache
         ~manifest_cache_size
+        ~albamgr_refresh_config
         ~albamgr_connection_pool_size
         ~nsm_host_connection_pool_size
         ~osd_connection_pool_size
@@ -33,6 +34,7 @@ class alba_cache
       albamgr_cfg_ref
       ~fragment_cache:nested_fragment_cache
       ~manifest_cache_size
+      ~albamgr_refresh_config
       ~albamgr_connection_pool_size
       ~nsm_host_connection_pool_size
       ~osd_connection_pool_size

@@ -27,6 +27,7 @@ let test_with_alba_client
         (ref abm_ccfg)
         ~tls_config
         ~release_resources:true
+        ~albamgr_refresh_config:`None
         ~tcp_keepalive:Tcp_keepalive2.default
         ~populate_osds_info_cache:true
         ~upload_slack
@@ -1824,6 +1825,7 @@ let test_invalidate_deleted_namespace () =
          ~tcp_keepalive:Tcp_keepalive2.default
          ~populate_osds_info_cache:true
          ~upload_slack:0.2
+         ~albamgr_refresh_config:`None
          (fun alba_client2 ->
 
             (* alba_client1 is used to manipulate namespaces
@@ -2091,6 +2093,7 @@ let test_stale_manifest_download () =
          ~tcp_keepalive:Tcp_keepalive2.default
          ~populate_osds_info_cache:true
          ~upload_slack:0.2
+         ~albamgr_refresh_config:`None
          (fun alba_client2 ->
           let maintenance_client =
             new Maintenance.client (alba_client2 # get_base_client) in
