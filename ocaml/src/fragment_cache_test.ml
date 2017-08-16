@@ -56,6 +56,7 @@ let run_with_alba_fragment_cache test test_name =
           ~tls_config
           ~partial_osd_read:false
           ~cache_on_read:true ~cache_on_write:true
+          ~albamgr_refresh_config:`None
     in
     test cache
   in

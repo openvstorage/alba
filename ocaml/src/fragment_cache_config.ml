@@ -38,7 +38,10 @@ and alba_fragment_cache = {
     cache_on_write_ : bool [@key "cache_on_write"];
   } [@@deriving yojson, show]
 
-let rec make_fragment_cache = function
+let rec make_fragment_cache
+          ~albamgr_refresh_config
+  =
+  function
   | None' ->
      let no_cache = new Fragment_cache.no_cache in
      Lwt.return (no_cache, false, false)
@@ -89,15 +92,20 @@ let rec make_fragment_cache = function
            cache_on_read_;
            cache_on_write_;
          } ->
-     make_fragment_cache fragment_cache
+     make_fragment_cache ~albamgr_refresh_config fragment_cache
      >>= fun (nested_fragment_cache,
               nested_cache_on_read, nested_cache_on_write) ->
-     Alba_arakoon.config_from_url (Url.make albamgr_cfg_url) >>= fun albamgr_cfg ->
+     let albamgr_cfg_url = Url.make albamgr_cfg_url in
+     Alba_arakoon.config_from_url albamgr_cfg_url >>= fun albamgr_cfg ->
      let cache = new Fragment_cache_alba.alba_cache
                      ~albamgr_cfg_ref:(ref albamgr_cfg)
                      ~bucket_strategy
                      ~nested_fragment_cache
                      ~manifest_cache_size
+                     ~albamgr_refresh_config:(match albamgr_refresh_config with
+                                              | `None -> `None
+                                              | `RefreshFromAbmAndUpdate _ -> `RefreshFromAbmAndUpdate albamgr_cfg_url
+                                              | `RefreshFromConfig _ -> `RefreshFromConfig albamgr_cfg_url)
                      ~albamgr_connection_pool_size
                      ~nsm_host_connection_pool_size
                      ~osd_connection_pool_size

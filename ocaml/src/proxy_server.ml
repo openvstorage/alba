@@ -9,31 +9,6 @@ open Proxy_protocol
 open Range_query_args
 open Lwt_bytes2
 
-let write_albamgr_cfg albamgr_cfg =
-  let value = Arakoon_client_config.to_ini albamgr_cfg in
-  function
-  | Url.File destination ->
-     let tmp = destination ^ ".tmp" in
-     Lwt_extra2.unlink ~fsync_parent_dir:false  ~may_not_exist:true tmp >>= fun () ->
-     Lwt_extra2.with_fd
-       tmp
-       ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
-       ~perm:0o664
-       (fun fd ->
-        Lwt_extra2.write_all
-          fd
-          value 0 (String.length value) >>= fun () ->
-        Lwt_unix.fsync fd) >>= fun () ->
-     Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
-  | Url.Etcd (peers, path) ->
-     Arakoon_etcd.store_value peers path value
-  | Url.Arakoon { Url.cluster_id; key; ini_location; } ->
-     Arakoon_config_url.(retrieve (File ini_location)) >|= Arakoon_client_config.from_ini
-     >>= fun ccfg ->
-     Client_helper.with_master_client'
-       ccfg
-       (fun client -> client # set key value)
-
 let _read_objects_slices
       (alba_client : Alba_client.alba_client)
       namespace objects_slices ~consistent_read
@@ -827,52 +802,6 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
   else Lwt.return ()
 
 
-
-let refresh_albamgr_cfg
-    ~loop
-    albamgr_client_cfg
-    (alba_client : Alba_client.alba_client)
-    ~tls_config
-    ~tcp_keepalive
-    destination =
-
-  let rec inner () =
-    Lwt_log.debug "refresh_albamgr_cfg" >>= fun () ->
-    let open Albamgr_client in
-    Lwt.catch
-      (fun () ->
-         alba_client # mgr_access # get_client_config
-         >>= fun ccfg ->
-         Lwt.return (Res ccfg))
-      (let open Client_helper.MasterLookupResult in
-       function
-       | Arakoon_exc.Exception(Arakoon_exc.E_NOT_MASTER, master)
-       | Error (Unknown_node (master, (_, _))) ->
-          retrieve_cfg_from_any_node ~tls_config !albamgr_client_cfg
-       | exn ->
-          Lwt_log.debug_f ~exn "refresh_albamgr_cfg failed" >>= fun () ->
-          Lwt.return Retry
-      )
-    >>= function
-    | Retry ->
-      Lwt_extra2.sleep_approx 60. >>= fun () ->
-      inner ()
-    | Res ccfg ->
-      albamgr_client_cfg := ccfg;
-      Lwt.catch
-        (fun () -> write_albamgr_cfg ccfg destination)
-        (fun exn ->
-         Lwt_log.info_f
-           ~exn
-           "couldn't write config to destination:%s" (Prelude.Url.show destination))
-      >>= fun () ->
-      Lwt_extra2.sleep_approx 60. >>= fun () ->
-      if loop
-      then inner ()
-      else Lwt.return ()
-  in
-  inner ()
-
 let run_server hosts port ~transport
                albamgr_client_cfg
                ~fragment_cache
@@ -938,6 +867,7 @@ let run_server hosts port ~transport
          ~fragment_cache
          ~manifest_cache_size
          ~bad_fragment_callback
+         ~albamgr_refresh_config:(`RefreshFromAbmAndUpdate albamgr_cfg_url)
          ~albamgr_connection_pool_size
          ~nsm_host_connection_pool_size
          ~osd_connection_pool_size
@@ -953,16 +883,7 @@ let run_server hosts port ~transport
          (fun alba_client ->
           Lwt.pick
             [ (alba_client # osd_access # propagate_osd_info ());
-              (refresh_albamgr_cfg
-                 ~loop:true
-                 albamgr_client_cfg
-                 alba_client
-                 albamgr_cfg_url
-                 ~tcp_keepalive
-                 ~tls_config
-              );
-              (
-               Networking2.make_server
+              (Networking2.make_server
                  ~max:max_client_connections
                  hosts port ~transport ~tls:None ~tcp_keepalive
                  (fun nfd ->
