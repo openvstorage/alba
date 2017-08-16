@@ -132,6 +132,7 @@ let download_fragment
 
   let t0_fragment = Unix.gettimeofday () in
 
+  let fragment_id = if k = 1 then 0 else fragment_id in
   let cache_key =
     Fragment_cache_keys.make_key
       ~object_id
@@ -197,7 +198,8 @@ let download_fragment
        >>== fun (t_decompress, (maybe_decompressed : Lwt_bytes.t)) ->
        let shared = SharedBuffer.make_shared maybe_decompressed in
        let () =
-         if cache_on_read && fragment_id < k (* only cache data fragments *)
+         if cache_on_read &&
+              (k = 1 || fragment_id < k) (* only cache data fragments *)
          then
            let () = SharedBuffer.register_sharing shared in
            let t () =
