@@ -156,7 +156,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
             Lwt.ignore_result (Lwt_extra2.ignore_errors ~logging:true handle)) in
 
       Fragment_cache_config.make_fragment_cache
-        ~albamgr_refresh_config:(`RefreshFromAbmAndUpdate albamgr_cfg_url)
+        ~albamgr_refresh_config:`RefreshFromAbmAndUpdate
         fragment_cache_cfg
       >>= fun (fragment_cache, cache_on_read, cache_on_write) ->
 

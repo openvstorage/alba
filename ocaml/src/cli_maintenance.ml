@@ -140,7 +140,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       >>= fun () ->
 
       Fragment_cache_config.make_fragment_cache
-        ~albamgr_refresh_config:(`RefreshFromConfig abm_cfg_url)
+        ~albamgr_refresh_config:`RefreshFromConfig
         fragment_cache_cfg
       >>= fun (fragment_cache, cache_on_read, cache_on_write) ->
 
