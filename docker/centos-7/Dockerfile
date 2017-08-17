@@ -1,22 +1,22 @@
 FROM centos:7
 
-RUN rpm --import file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
-RUN yum -y install wget
-RUN yum -y install curl
-RUN yum -y install make m4 gcc patch unzip
-RUN yum -y install git rsync mercurial
-RUN yum -y install gcc-c++
-RUN yum -y install bzip2-devel libffi-devel snappy-devel libev-devel
-RUN yum -y install python-devel
-
-# TODO: What about darcs ?
-
 RUN useradd jenkins -u 1500 -g root
 
+RUN rpm --import file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
 RUN rpm -iUvh http://dl.fedoraproject.org/pub/epel/7/x86_64/e/epel-release-7-10.noarch.rpm
-RUN yum -y update && \
-    yum -y install python-pip openssl-devel gmp-devel which zlib-devel \
-                   ncurses-devel bzip2 cmake3 sudo
+
+RUN yum -y update \
+    && yum -y install wget curl \
+                      make m4 gcc patch unzip \
+                      git rsync mercurial \
+                      gcc-c++ \
+                      bzip2-devel libffi-devel snappy-devel libev-devel \
+                      python-devel \
+                      file \
+                      python-pip openssl-devel gmp-devel which zlib-devel \
+                      ncurses-devel bzip2 cmake3 sudo \
+                      autoconf help2man perl-Thread-Queue \
+                      libtool
 
 # make sudo work:
 #
@@ -99,8 +99,6 @@ RUN eval `${opam_env}` && \
         ezxmlm
 
 
-RUN yum -y install autoconf help2man perl-Thread-Queue
-
 # AUTOMAKE-1.14.1 (for YASM)
 RUN wget http://ftp.gnu.org/gnu/automake/automake-1.14.1.tar.xz \
         && tar -xvf automake-1.14.1.tar.xz \
@@ -110,7 +108,6 @@ RUN wget http://ftp.gnu.org/gnu/automake/automake-1.14.1.tar.xz \
         && make install
 
 #YASM
-RUN yum -y install libtool
 RUN git clone --depth 1 git://github.com/yasm/yasm.git
 RUN cd yasm && autoreconf -fiv && ./configure && make && make install && make distclean
 
@@ -144,7 +141,8 @@ RUN ln -s /usr/lib64/libunwind.so.8 /usr/lib64/libunwind.so
 
 # install gtest TODO:specific version ?
 RUN git clone  https://github.com/google/googletest \
-    && cd googletest &&  mkdir build && cd build && cmake3 .. \
+    && cd googletest && git checkout release-1.8.0 \
+    && mkdir build && cd build && cmake3 .. \
     && sudo make install
 RUN cd googletest && git log --oneline | head -n 5
 
