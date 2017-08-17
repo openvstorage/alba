@@ -487,7 +487,7 @@ let alba_show_object_cmd =
   ),
   Term.info "show-object" ~doc
 
-let alba_list_objects cfg_file tls_config namespace verbose =
+let alba_list_objects cfg_file tls_config namespace to_json verbose =
   let t () =
     with_alba_client
       cfg_file tls_config
@@ -495,19 +495,27 @@ let alba_list_objects cfg_file tls_config namespace verbose =
          alba_client # get_base_client # with_nsm_client
            ~namespace
            (fun nsm ->
-              nsm # list_all_objects ())) >>= fun (cnt, objs) ->
-    Lwt_io.printlf
-      "Found %i objects: %s"
-      cnt
-      ([%show: string list] objs)
+             nsm # list_all_objects ()
+           )
+      ) >>= fun (cnt, objs) ->
+
+    if to_json
+    then
+      print_result objs [%to_yojson : string list]
+    else
+      Lwt_io.printlf
+        "Found %i objects: %s"
+        cnt
+        ([%show: string list] objs)
   in
-  lwt_cmd_line ~to_json:false ~verbose t
+  lwt_cmd_line ~to_json ~verbose t
 
 let alba_list_objects_cmd =
   Term.(pure alba_list_objects
         $ alba_cfg_url
         $ tls_config
         $ namespace 0
+        $ to_json
         $ verbose
   ),
   Term.info "list-objects" ~doc:"list all objects in the specified namespace"
