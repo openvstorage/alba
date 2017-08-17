@@ -261,9 +261,9 @@ let hosts =
        & opt_all string []
        & info ["h";"host"] ~docv:"HOST" ~doc)
 
-let host_option =
+let hosts_option =
   Arg.(value
-       & opt (some string) None
+       & opt (some (list string)) None
        & info ["host"; "h";]
               ~docv:"HOST"
               ~doc:"the host to connect with")

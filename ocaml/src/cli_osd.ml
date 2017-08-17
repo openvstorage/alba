@@ -84,7 +84,7 @@ let get_osd_kind
       tls_config
 
       (* for asd/kinetic *)
-      host port
+      hosts port
       (* for alba osd *)
       alba_osd_cfg_url
       (* for proxy osd *)
@@ -92,15 +92,15 @@ let get_osd_kind
 
       prefix preset
   =
-  match host, port, alba_osd_cfg_url, endpoints, prefix, preset with
-  | Some host, Some port, None, [], None, None ->
-     let conn_info = Networking2.make_conn_info [host] port tls_config in
+  match hosts, port, alba_osd_cfg_url, endpoints, prefix, preset with
+  | (_ :: _), Some port, None, [], None, None ->
+     let conn_info = Networking2.make_conn_info hosts port tls_config in
      Discovery.get_kind Buffer_pool.default_buffer_pool conn_info >>=
        (function
         | None -> Lwt.fail_with "I don't think this is an OSD"
         | Some kind ->
            Lwt.return kind)
-  | None, None, Some alba_osd_cfg_url, [], Some prefix, Some preset ->
+  | [], None, Some alba_osd_cfg_url, [], Some prefix, Some preset ->
      Alba_arakoon.config_from_url alba_osd_cfg_url >>= fun alba_osd_cfg ->
      Albamgr_client.with_client'
        ~attempts:1
@@ -112,7 +112,7 @@ let get_osd_kind
                                            prefix;
                                            preset;
      })
-  | None, None, None, endpoints, Some prefix, Some preset ->
+  | [], None, None, endpoints, Some prefix, Some preset ->
      let pp =
        new Proxy_osd.multi_proxy_pool
            ~alba_id:None
@@ -278,7 +278,7 @@ let alba_add_osd_cmd =
   Term.(pure alba_add_osd
         $ alba_cfg_url
         $ tls_config
-        $ host_option
+        $ hosts
         $ port_option
         $ alba_osd_cfg_url
         $ endpoints
@@ -324,9 +324,7 @@ let alba_update_osd_cmd =
         $ Arg.(value
                & opt (some (list string)) None
                & info ["ip"])
-        $ Arg.(value
-               & opt (some int) None
-               & info ["port"])
+        $ port_option
         $ alba_osd_cfg_url
         $ Arg.(value
                & opt (some (list string)) None
@@ -380,7 +378,7 @@ let alba_get_claimed_by
 let alba_get_claimed_by_cmd =
   Term.(pure alba_get_claimed_by
         $ tls_config
-        $ host_option
+        $ hosts
         $ port_option
         $ alba_osd_cfg_url
         $ endpoints
