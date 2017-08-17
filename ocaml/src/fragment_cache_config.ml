@@ -104,8 +104,8 @@ let rec make_fragment_cache
                      ~manifest_cache_size
                      ~albamgr_refresh_config:(match albamgr_refresh_config with
                                               | `None -> `None
-                                              | `RefreshFromAbmAndUpdate _ -> `RefreshFromAbmAndUpdate albamgr_cfg_url
-                                              | `RefreshFromConfig _ -> `RefreshFromConfig albamgr_cfg_url)
+                                              | `RefreshFromAbmAndUpdate -> `RefreshFromAbmAndUpdate albamgr_cfg_url
+                                              | `RefreshFromConfig -> `RefreshFromConfig albamgr_cfg_url)
                      ~albamgr_connection_pool_size
                      ~nsm_host_connection_pool_size
                      ~osd_connection_pool_size
