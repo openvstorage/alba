@@ -273,23 +273,29 @@ let with_client ccfg tls_config f =
       Lwt.finalize
         (fun () -> f client)
         closer)
-    (function
-      | Err.Nsm_exn (err, _) as exn ->
+    (let open Arakoon_client_config in
+     let cid = ccfg.cluster_id in
+     function
+     | Err.Nsm_exn (err, _) as exn ->
         Lwt_log.warning_f ~exn "nsm host client failed with %s" (Err.show err)
         >>= fun () ->
         Lwt.fail exn
-      | Client_helper.MasterLookupResult.Error err as exn ->
+     | Client_helper.MasterLookupResult.Error err as exn ->
         Lwt_log.debug_f
-          "nsm host client failed with %s"
+          "nsm host client %s failed with %s"
+          cid
           (Client_helper.MasterLookupResult.to_string err) >>= fun () ->
         Lwt.fail exn
-      | Arakoon_exc.Exception (rc, msg) as exn ->
+     | Arakoon_exc.Exception (rc, msg) as exn ->
         Lwt_log.debug_f
-          "nsm host client failed with %s: %s"
+          "nsm host client %s failed with %s: %s"
+          cid
           (Arakoon_exc.string_of_rc rc) msg >>= fun () ->
         Lwt.fail exn
-      | exn ->
-        Lwt_log.warning_f ~exn "nsm host client failed with %s\n%!"
-                          (Printexc.to_string exn)
+     | exn ->
+        Lwt_log.warning_f
+          "nsm host client %s failed with %s\n%!"
+          cid
+          (Printexc.to_string exn)
         >>= fun () ->
         Lwt.fail exn)
