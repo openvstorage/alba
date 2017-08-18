@@ -885,6 +885,7 @@ let _with_client ~attempts ccfg tls_config f =
       )
       (fun exn -> Lwt.return (`Failure exn))
   in
+  let cid = ccfg.Alba_arakoon.Config.cluster_id in
   let should_retry = function
     | Client_helper.MasterLookupResult.Error err -> true
     | _ -> false
@@ -894,12 +895,17 @@ let _with_client ~attempts ccfg tls_config f =
     | `Success r -> Lwt.return r
     | `Failure exn ->
        begin
-         Lwt_log.debug_f "albamgr_client failed with %s" (_msg_of_exception exn) >>= fun () ->
+         Lwt_log.debug_f "albamgr_client %s failed with %s"
+                         cid
+                         (_msg_of_exception exn)
+         >>= fun () ->
          if n <= 1 || not (should_retry exn )
          then Lwt.fail exn
          else
            begin
-             Lwt_log.debug_f "albamgr_client: n=%i sleep:%f before retry" n d >>= fun () ->
+             Lwt_log.debug_f "albamgr_client %s: n=%i sleep:%f before retry"
+                             cid n d
+             >>= fun () ->
              Lwt_unix.sleep d >>= fun () ->
              loop (n-1) (d *. 2.0)
            end

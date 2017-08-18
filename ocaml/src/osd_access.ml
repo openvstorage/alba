@@ -366,7 +366,11 @@ class osd_access
        ~osd_id
        f)
     (fun exn ->
-     get_osd_info ~osd_id >>= fun (_, state,_) ->
+      get_osd_info ~osd_id >>= fun (osd_info, state,_) ->
+      let long_id =
+        let open OsdInfo in
+        get_long_id osd_info.kind
+      in
      let open Asd_protocol.Protocol.Error in
      let add_to_errors =
 
@@ -392,14 +396,16 @@ class osd_access
        | _ -> (* by experience: don't be so optimistic *)
           let () =
             Lwt_log.ign_info_f
-              "%S was unforeseen, invalidating pool"
+              "%s %S was unforeseen, invalidating pool"
+              long_id
               (Printexc.to_string exn)
           in
           true, false
      in
      let () =
        Lwt_log.ign_info_f
-         "%S: should_invalidate:%b should_retry:%b"
+         "%s %S: should_invalidate:%b should_retry:%b"
+         long_id
          (Printexc.to_string exn) should_invalidate_pool should_retry
      in
      (if should_invalidate_pool
@@ -468,17 +474,24 @@ class osd_access
       | `OkAgain ->
          Lwt.return ()
     in
-    get_osd_info ~osd_id >>= fun (_, state, _) ->
+    get_osd_info ~osd_id >>= fun (osd_info, state, _) ->
+    let long_id =
+        let open OsdInfo in
+        get_long_id osd_info.kind
+    in
     if state.Osd_state.disqualified
     then Lwt.return ()
     else begin
         Osd_state.disqualify state true;
-        Lwt_log.error_f ~exn "Disqualifying osd %Li" osd_id >>= fun () ->
+        Lwt_log.error_f "Disqualifying osd %Li %s : %s" osd_id
+                        long_id
+                        (Printexc.to_string exn)
+        >>= fun () ->
         (* start loop to get it requalified... *)
         Lwt.async
           (fun () ->
            inner 1. >>= fun () ->
-           Lwt_log.info_f "Requalified osd %Li" osd_id >>= fun () ->
+           Lwt_log.info_f "Requalified osd %Li %s" osd_id long_id >>= fun () ->
            Osd_state.disqualify state false;
            Osd_state.add_write state;
            Lwt.return ());

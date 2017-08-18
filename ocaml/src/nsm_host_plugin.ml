@@ -225,7 +225,9 @@ let rec get_updates_res : type i o. read_user_db ->
              Lwt.return (upds, Result.Ok res))
            (function
             | Nsm_model.Err.Nsm_exn (err, _) ->
-               Lwt.return ([], Result.Error err))
+               Lwt.return ([], Result.Error err)
+            | exn -> Lwt.fail exn
+           )
        )
        reqs >>= fun r ->
      let upds, res = List.split r in
