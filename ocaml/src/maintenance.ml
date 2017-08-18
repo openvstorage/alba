@@ -221,7 +221,7 @@ class client ?(retry_timeout = 60.)
       Lwt_extra2.run_forever
         task_name
         (fun () ->
-         Lwt_log.info task_name >>= fun () ->
+         Lwt_log.info_f "performing %s" task_name >>= fun () ->
          if maintenance_config.Maintenance_config.enable_auto_repair
          then
            begin
@@ -245,7 +245,8 @@ class client ?(retry_timeout = 60.)
                Automatic_repair.periodic_load_osds
                   alba_client
                   maintenance_config
-                  osds_with_state
+                  osds_with_state >>= fun () ->
+               Lwt_log.info_f "%s: done with periodic load on osds" task_name
              in
              begin
                if !first_time

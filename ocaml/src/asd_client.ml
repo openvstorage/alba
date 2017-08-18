@@ -382,7 +382,7 @@ let make_client ~conn_info (lido:string option)  =
   Networking2.first_connection ~conn_info
   >>= fun (nfd, closer) ->
   Lwt.catch
-    (fun () ->
+    (let inner () =
        let open Asd_protocol in
        let prologue_bytes = make_prologue _MAGIC _VERSION lido in
        Net_fd.write_all' nfd prologue_bytes >>= fun () ->
@@ -395,6 +395,8 @@ let make_client ~conn_info (lido:string option)  =
          closer()
        in
        Lwt.return (client, closer')
+     in
+     fun () -> Lwt_unix.with_timeout 5.0 inner
     )
     (fun exn ->
       closer () >>= fun () ->

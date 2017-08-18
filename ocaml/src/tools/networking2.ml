@@ -93,8 +93,21 @@ let connect_with ip port transport ~tls_config =
        end
   in
   Lwt.catch
-    (fun () ->connect ())
-    (fun exn -> closer () >>= fun () -> Lwt.fail exn)
+    (fun () ->
+      connect () >>= fun r ->
+      Lwt_log.info_f "connect_with %s %i %s %s (fd:%i) succeeded"
+                     ip port ([%show : Tls.t option] tls_config)
+                     (Net_fd.show_transport transport) fdi >>= fun () ->
+      Lwt.return r
+    )
+    (fun exn ->
+      Lwt_log.info_f
+        ~exn
+        "connect_with failed: %s %i %s %s (fd:%i)" ip port ([%show: Tls.t option] tls_config)
+        (Net_fd.show_transport transport) fdi
+      >>= fun () ->
+      closer () >>= fun () ->
+      Lwt.fail exn)
 
 let with_connection ip port transport ~tls_config ~buffer_pool f =
   connect_with ip port transport ~tls_config >>= fun(nfd, closer) ->

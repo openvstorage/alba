@@ -4,6 +4,7 @@
 *)
 
 open! Prelude
+open! Mem_key_value_store
 open OUnit
 
 let suite = "all" >:::[
