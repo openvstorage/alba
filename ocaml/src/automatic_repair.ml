@@ -44,7 +44,7 @@ let periodic_load_osds
                 >>= function
                 | Ok _ | Error Osd.Error.Full  ->
                    Osd_state.add_write osd_state;
-                   Lwt.return_unit
+                   Lwt_log.info_f "Write load on %Li succeeded" osd_id
                 | Error _ ->
                    Lwt.return_unit)
                (fun exn ->
@@ -69,7 +69,7 @@ let periodic_load_osds
                   >>= function
                   | Some _ ->
                      Osd_state.add_read osd_state;
-                     Lwt.return ()
+                     Lwt_log.info_f "Read load on %Li succeeded" osd_id
                   | None ->
                      (* seems like the test blob was not yet available on the osd
                       * so let's put it there and retry... *)
