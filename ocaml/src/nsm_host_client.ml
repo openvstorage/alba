@@ -277,8 +277,11 @@ let with_client ccfg tls_config f =
     (let open Arakoon_client_config in
      let cid = ccfg.cluster_id in
      function
-     | Err.Nsm_exn (err, _) as exn ->
-        Lwt_log.warning_f ~exn "nsm host client failed with %s" (Err.show err)
+     | Err.Nsm_exn (err, payload) as exn ->
+        Lwt_log.warning_f "nsm host client %s failed with %s %S"
+                          cid
+                          (Err.show err)
+                          payload
         >>= fun () ->
         Lwt.fail exn
      | Client_helper.MasterLookupResult.Error err as exn ->
