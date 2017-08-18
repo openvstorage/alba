@@ -458,8 +458,12 @@ class t
         ~namespace
         (fun proxy_client -> ensure_namespace_exists proxy_client ~namespace ~preset)
 
-    method delete_namespace namespace_id _ =
-      let namespace = to_namespace_name namespace_id in
+    method delete_namespace namespace_id_o _ =
+      let namespace =
+        match namespace_id_o with
+        | Some namespace_id -> to_namespace_name namespace_id
+        | None -> prefix
+      in
       proxy_pool
         # with_client
         ~namespace

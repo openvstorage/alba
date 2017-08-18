@@ -108,7 +108,7 @@ class type osd = object
   (* should be idempotent, don't throw an error when it already exists *)
   method add_namespace : namespace_id -> unit Lwt.t
   (* deletes the namespace, returns None when completely removed *)
-  method delete_namespace : namespace_id -> key -> key option Lwt.t
+  method delete_namespace : namespace_id option -> key -> key option Lwt.t
 
   method set_full : bool -> unit Lwt.t
   method set_slowness : (float * float) option -> unit Lwt.t
@@ -247,19 +247,33 @@ object(self :# osd)
 
   method add_namespace namespace_id =
     Lwt.return_unit
-  method delete_namespace namespace_id first =
-    let kvs = self # namespace_kvs namespace_id in
+
+  method delete_namespace namespace_id_o first =
+    let kvs =
+      match namespace_id_o with
+      | Some namespace_id -> self # namespace_kvs namespace_id
+      | None -> self # global_kvs
+    in
+
     kvs # range
       Low
       ~first ~finc:true ~last:None
       ~max:200 ~reverse:false >>= fun ((cnt, keys), has_more) ->
+
     (* using global_kvs here to avoid the effects of 'assert_namespace_active' *)
     self # global_kvs # apply_sequence
         Low
         []
         (List.map
-           (fun key -> Update.delete (to_global_key namespace_id key))
-           keys) >>= function
+           (fun key ->
+             Update.delete (match namespace_id_o with
+                            | Some namespace_id -> to_global_key namespace_id key
+                            | None -> key
+                           )
+           )
+           keys
+        )
+    >>= function
     | Ok _ -> Lwt.return (List.last keys)
     | Error e -> Lwt.fail (Asd_protocol.Protocol.Error.Exn e)
 

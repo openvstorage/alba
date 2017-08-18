@@ -1440,6 +1440,25 @@ class client ?(retry_timeout = 60.)
                 | exn -> Lwt.fail exn
               )
       in
+      let cleanup_osd_namespace ~osd_id namespace_id_o =
+        alba_client
+          # with_osd
+          ~osd_id
+          (fun client ->
+            let rec inner first =
+              client # delete_namespace namespace_id_o first >>= function
+              | None -> Lwt.return ()
+              | Some next ->
+                 if not (filter work_id)
+                 then
+                   (* Throw something that will not be added to osd errors *)
+                   let open Asd_protocol.Protocol.Error in
+                   Exn (Assert_failed "NotMyTask") |> Lwt.fail
+                 else inner next
+            in
+            inner (Slice.wrap_string "")
+          )
+      in
       match work_item with
       | CleanupNsmHostNamespace (nsm_host_id, namespace_id) ->
         let nsm_client = nsm_host_access # get ~nsm_host_id in
@@ -1460,31 +1479,22 @@ class client ?(retry_timeout = 60.)
          if Hashtbl.mem purging_osds osd_id
          then Lwt.return ()
          else
-           alba_client # with_osd
-             ~osd_id
-             (fun client ->
-              let rec inner first =
-                client # delete_namespace namespace_id first >>= function
-                | None -> Lwt.return ()
-                | Some next ->
-                   if not (filter work_id)
-                   then
-                     (* Throw something that will not be added to osd errors *)
-                     let open Asd_protocol.Protocol.Error in
-                     Exn (Assert_failed "NotMyTask") |> Lwt.fail
-                   else inner next
-              in
-              inner (Slice.wrap_string "") >>= fun () ->
-
-              client # global_kvs # apply_sequence
-                     (osd_access # get_default_osd_priority)
-                     []
-                     [ Osd.Update.delete_string (Osd_keys.AlbaInstance.namespace_status ~namespace_id);
-                       Osd.Update.delete_string (Osd_keys.AlbaInstance.namespace_name ~namespace_id);
-                     ] >>= function
-              | Ok _ -> Lwt.return_unit
-              | Error _ -> assert false
-             )
+           begin
+             cleanup_osd_namespace ~osd_id (Some namespace_id) >>= fun () ->
+             alba_client
+               # with_osd
+               ~osd_id
+               (fun client ->
+                 client # global_kvs # apply_sequence
+                        (osd_access # get_default_osd_priority)
+                        []
+                        [ Osd.Update.delete_string (Osd_keys.AlbaInstance.namespace_status ~namespace_id);
+                          Osd.Update.delete_string (Osd_keys.AlbaInstance.namespace_name ~namespace_id);
+                        ] >>= function
+                 | Ok _ -> Lwt.return_unit
+                 | Error _ -> assert false
+               )
+           end
       | CleanupNamespaceOsd (namespace_id, osd_id) ->
         Lwt.catch
           (fun () ->
@@ -1534,7 +1544,8 @@ class client ?(retry_timeout = 60.)
                ~osd_id
                ~first:0L ~finc:true ~last:None ~reverse:false ~max:1
              >>= fun ((cnt, _), _) ->
-             Lwt.return (cnt = 0))
+             Lwt.return (cnt = 0)) >>= fun () ->
+        cleanup_osd_namespace ~osd_id None
       | RepairBadFragment (namespace_id, object_id, object_name,
                            chunk_id, fragment_id, version) ->
          begin

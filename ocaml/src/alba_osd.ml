@@ -185,8 +185,12 @@ class client
          | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return_unit
          | exn -> Lwt.fail exn)
 
-    method delete_namespace namespace_id _ =
-      let namespace = to_namespace_name namespace_id in
+    method delete_namespace namespace_id_o _ =
+      let namespace =
+        match namespace_id_o with
+        | Some namespace_id -> to_namespace_name namespace_id
+        | None -> prefix
+      in
       alba_client # mgr_access # get_namespace ~namespace >>= function
       | None -> Lwt.return_none
       | Some _ ->
