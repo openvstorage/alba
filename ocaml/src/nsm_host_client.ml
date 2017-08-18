@@ -226,6 +226,7 @@ let wrap_around (client:Arakoon_client.client) =
         (function
          | Nsm_model.Err.Nsm_exn (Nsm_model.Err.Unknown_operation, _) ->
             Lwt.return_unit
+         | exn -> Lwt.fail exn
         )
       >>= fun () ->
       Lwt.return client
