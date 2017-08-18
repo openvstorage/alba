@@ -160,6 +160,29 @@ class alba_cache
                  preset; } ->
        Printf.sprintf "%s_%09Li" prefix bid
   in
+  let create_namespace_deduped =
+    let h = Hashtbl.create 3 in
+    fun ~namespace ~preset ->
+    match Hashtbl.find h namespace with
+    | exception Not_found ->
+       let t =
+         Lwt.catch
+           (client # create_namespace ~namespace ~preset_name:(Some preset))
+           (let open Albamgr_protocol.Protocol.Error in
+            function
+            | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return 0L
+            | exn -> Lwt.fail exn)
+         >|= ignore
+       in
+       Hashtbl.replace h namespace t;
+       Lwt.finalize
+         (fun () -> t)
+         (fun () ->
+           Hashtbl.remove h namespace;
+           Lwt.return_unit
+         )
+    | t -> t
+  in
   let with_namespace bid f =
     match bucket_strategy with
     | OneOnOne { prefix;
@@ -168,13 +191,7 @@ class alba_cache
        Lwt.catch
          (fun () -> f namespace)
          (fun exn ->
-           Lwt.catch
-             (client # create_namespace ~namespace ~preset_name:(Some preset))
-             (let open Albamgr_protocol.Protocol.Error in
-              function
-              | Albamgr_exn (Namespace_already_exists, _) -> Lwt.return 0L
-              | exn -> Lwt.fail exn)
-           >>= fun _ ->
+           create_namespace_deduped ~namespace ~preset >>= fun () ->
            f namespace)
   in
   object(self)
