@@ -1351,15 +1351,22 @@ let asd_protocol
     let write_res () =
       Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos
     in
-    match write_extra with
-    | None ->
-       write_res ()
-    | Some write_extra ->
-       let () = Net_fd.cork nfd in
-       write_res () >>= fun () ->
-       write_extra nfd >>= fun () ->
-       let () = Net_fd.uncork nfd in
-       Lwt.return_unit
+    Lwt.finalize
+      (fun () ->
+        match write_extra with
+        | None ->
+           write_res ()
+        | Some write_extra ->
+           let () = Net_fd.cork nfd in
+           write_res () >>= fun () ->
+           write_extra nfd >>= fun () ->
+           let () = Net_fd.uncork nfd in
+           Lwt.return_unit
+      )
+      (fun () ->
+        Llio.dispose res;
+        Lwt.return_unit
+      )
   in
   let _SLOWNESS_CODE =
     let open Protocol in
