@@ -760,7 +760,11 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
              return_err_response ~msg Protocol.Error.Unknown)
 
     >>= fun (error, res) ->
-    Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos >>= fun () ->
+    Lwt.finalize
+      (fun () -> Net_fd.write_all_lwt_bytes nfd res.Llio.buf 0 res.Llio.pos)
+      (fun () -> Llio.dispose res;
+                 Lwt.return_unit)
+    >>= fun () ->
     Lwt.return (error, !renderer)
   in
   let rec inner buffer =
