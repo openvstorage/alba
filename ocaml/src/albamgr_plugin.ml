@@ -1659,6 +1659,27 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
           (Nsm_host_protocol.Protocol.Message.DeleteNamespace ns_info.Namespace.id)
       in
 
+      let update_propagation_state =
+        let propagation_key = Keys.Preset.propagation ^ ns_info.Namespace.preset_name in
+        match db # get propagation_key with
+        | None -> []
+        | Some v ->
+           let version, namespace_ids = deserialize Preset.Propagation.from_buffer v in
+           [ Update.Assert (propagation_key, Some v);
+             Update.Set (propagation_key,
+                         serialize
+                           Preset.Propagation.to_buffer
+                           (version,
+                            List.map_filter_rev
+                              (fun id -> if id <> ns_info.Namespace.id
+                                         then Some id
+                                         else None)
+                              namespace_ids
+                           )
+                        );
+           ]
+      in
+
       let decr_count =
             [Arith64.make_update
                (Keys.Nsm_host.count nsm_host_id)
@@ -1670,6 +1691,7 @@ let albamgr_user_hook : HookRegistry.h = fun (ic, oc, _cid) db backend ->
         List.concat [ decr_count;
                       update_ns_info;
                       add_nsm_host_msg;
+                      update_propagation_state;
                     ]
       in
       Lwt.return (nsm_host_id, upds)
