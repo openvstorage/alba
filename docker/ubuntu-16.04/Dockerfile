@@ -85,7 +85,7 @@ RUN eval `${opam_env}` && \
         depext \
         kinetic-client \
         tiny_json \
-        ppx_deriving \
+        ppx_deriving.4.1 \
         ppx_deriving_yojson \
         core.v0.9.0 \
         redis.0.3.3 \
