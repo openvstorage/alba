@@ -738,6 +738,15 @@ module Hashtbl = struct
 
   let values h = Hashtbl.fold (fun _ v acc -> v :: acc) h []
 
+  let scan_exists f t =
+    try Hashtbl.iter
+          (fun k v ->
+            if f k v
+            then raise Break)
+          t;
+        false
+    with Break -> true
+
   let to_yojson _ value_to_yojson h =
     to_assoc_list h
     |> List.map (fun (k, v) -> k, value_to_yojson v)

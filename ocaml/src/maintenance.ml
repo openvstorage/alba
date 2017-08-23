@@ -179,6 +179,14 @@ class client ?(retry_timeout = 60.)
          Lwt.return_unit)
         retry_timeout
 
+    method private _is_cache_namespace ~namespace_id =
+      nsm_host_access # get_namespace_info ~namespace_id >>= fun (namespace, namespace_info, _, _) ->
+      let open Maintenance_config in
+      Hashtbl.scan_exists
+        (fun prefix preset -> String.starts_with namespace prefix)
+        maintenance_config.cache_eviction_prefix_preset_pairs
+      |> Lwt.return
+
     val purging_osds = Hashtbl.create 3
     method refresh_purging_osds ?(once = false) () : unit Lwt.t =
       let inner () =
@@ -480,7 +488,7 @@ class client ?(retry_timeout = 60.)
              ~first ~finc:true ~last
              ~max:100 ~reverse)
       >>= fun ((cnt, manifests), has_more) ->
-      let repaired_some = ref false in
+      let made_progress = ref false in
       Lwt_log.debug_f
         "Decommissioning osd:%Li namespace_id:%Li first:%S ~reverse:%b cnt:%i, has_more:%b"
         osd_id namespace_id first reverse cnt has_more
@@ -528,19 +536,32 @@ class client ?(retry_timeout = 60.)
                         updated_locations
                         ~gc_epoch
                         ~version_id:(manifest.version_id + 1) >>= fun () ->
-                 repaired_some := true;
+                 made_progress := true;
                  Lwt.return_unit)
                 (fun exn ->
-                 let open Nsm_model.Manifest in
-                 Lwt_log.info_f
-                   ~exn
-                   "Exn while purging osd %Li (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
-                   osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
-                 Lwt_extra2.ignore_errors
-                   ~logging:true
-                   (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest >>= fun () ->
-                              repaired_some := true;
-                              Lwt.return_unit))
+                  Lwt_extra2.ignore_errors
+                    ~logging:true
+                    (fun () ->
+                      begin
+                        self # _is_cache_namespace ~namespace_id >>= fun is_cache_namespace ->
+                        if is_cache_namespace
+                        then
+                          client
+                            # delete_object
+                            ~object_name:manifest.name
+                            ~allow_overwrite:Nsm_model.Unconditionally >|= ignore
+                        else
+                          Lwt_log.info_f
+                            ~exn
+                            "Exn while purging osd %Li (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+                            osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
+                          _timed_rewrite_object alba_client ~namespace_id ~manifest
+                      end
+                      >>= fun () ->
+                      made_progress := true;
+                      Lwt.return_unit
+                    )
+                )
              )
          else
            Lwt.catch
@@ -550,7 +571,7 @@ class client ?(retry_timeout = 60.)
                 ~manifest
                 ~problem_fragments:[]
                 ~problem_osds:(Int64Set.of_list [ osd_id ]) >>= fun () ->
-              repaired_some := true;
+              made_progress := true;
               Lwt.return_unit
              )
              (fun exn ->
@@ -562,13 +583,13 @@ class client ?(retry_timeout = 60.)
               Lwt_extra2.ignore_errors
                 ~logging:true
                 (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest >>= fun () ->
-                           repaired_some := true;
+                           made_progress := true;
                            Lwt.return_unit)
              )
         )
         manifests >>= fun () ->
 
-      if has_more && !should_repair && !repaired_some
+      if has_more && !should_repair && !made_progress
       then self # decommission_device ~deterministic ~namespace_id ~osd_id ()
       else Lwt.return ()
 
@@ -718,7 +739,7 @@ class client ?(retry_timeout = 60.)
       if once
       then
         begin
-          nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, devices, _) ->
+          nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, _, devices, _) ->
 
           Lwt_list.iter_p
             (fun osd_id ->
@@ -735,7 +756,7 @@ class client ?(retry_timeout = 60.)
             (if filter namespace_id
              then
                begin
-                 nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, osds, _) ->
+                 nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, _, osds, _) ->
                  List.iter
                    (fun osd_id ->
                     if not (Hashtbl.mem threads osd_id)
@@ -869,7 +890,7 @@ class client ?(retry_timeout = 60.)
       let bump_epoch () =
         let open Nsm_model in
         nsm_host_access # get_namespace_info ~namespace_id
-        >>= fun (_, _, gc_epochs) ->
+        >>= fun (_, _, _, gc_epochs) ->
 
         match GcEpochs.get_latest_valid gc_epochs with
         | None ->
@@ -911,7 +932,7 @@ class client ?(retry_timeout = 60.)
           | None -> Lwt.return ()
           | Some latest_gc_epoch ->
             nsm_host_access # get_namespace_info ~namespace_id
-            >>= fun (_, devices, _) ->
+            >>= fun (_, _, devices, _) ->
             Lwt_list.iter_p
               (fun osd_id ->
                  self # garbage_collect_device
@@ -930,7 +951,7 @@ class client ?(retry_timeout = 60.)
                 then
                   begin
                     nsm_host_access # get_namespace_info ~namespace_id
-                    >>= fun (_, devices, _) ->
+                    >>= fun (_, _, devices, _) ->
                     List.iter
                       (fun osd_id ->
                        if not (Hashtbl.mem threads osd_id)
@@ -1172,19 +1193,8 @@ class client ?(retry_timeout = 60.)
         ([%show : (Policy.policy * int64) list] bucket_count)
         namespace_id >>= fun () ->
 
-      let is_cache_namespace =
-        let open Maintenance_config in
-        Hashtbl.fold
-          (fun prefix preset acc ->
-            acc ||
-              (let open Albamgr_protocol.Protocol in
-                preset = namespace_info.Namespace.preset_name
-                && String.starts_with namespace prefix
-              )
-          )
-          maintenance_config.cache_eviction_prefix_preset_pairs
-          false
-      in
+      self # _is_cache_namespace ~namespace_id >>= fun is_cache_namespace ->
+
       let buckets =
         Maintenance_helper.categorize_policies
           best_policy
@@ -1913,8 +1923,9 @@ class client ?(retry_timeout = 60.)
          wait_until_ns_active current >>= fun ns_info ->
 
          nsm_host_access # maybe_update_namespace_info
-           ~namespace_id
-           ns_info >>= fun _ ->
+                         ~namespace_id
+                         namespace
+                         ns_info >>= fun _ ->
 
          let rec run_until_removed (msg, f) =
            Lwt.catch

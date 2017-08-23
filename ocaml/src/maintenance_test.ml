@@ -285,7 +285,7 @@ let rec wait_until f =
 
 let wait_for_namespace_osds alba_client namespace_id cnt =
   alba_client # nsm_host_access # get_nsm_by_id ~namespace_id >>= fun nsm ->
-  alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+  alba_client # nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
   wait_until
     (fun () ->
        let open Albamgr_protocol.Protocol in
