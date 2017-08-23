@@ -575,16 +575,35 @@ class client ?(retry_timeout = 60.)
               Lwt.return_unit
              )
              (fun exn ->
-              let open Nsm_model.Manifest in
-              Lwt_log.info_f
-                ~exn
-                "Exn while repairing osd %Li (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
-                osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
+               let open Nsm_model.Manifest in
               Lwt_extra2.ignore_errors
                 ~logging:true
-                (fun () -> _timed_rewrite_object alba_client ~namespace_id ~manifest >>= fun () ->
-                           made_progress := true;
-                           Lwt.return_unit)
+                (fun () ->
+                  self # _is_cache_namespace ~namespace_id >>= fun is_cache_namespace ->
+                  begin
+                    if is_cache_namespace
+                    then
+                      alba_client
+                        # with_nsm_client'
+                        ~namespace_id
+                        (fun client ->
+                          client
+                            # delete_object
+                            ~object_name:manifest.name
+                            ~allow_overwrite:Nsm_model.Unconditionally
+                          >|= ignore
+                        )
+                    else
+                      begin
+                        Lwt_log.info_f
+                          ~exn
+                          "Exn while repairing osd %Li (~namespace_id:%Li ~object ~name:%S ~object_id:%S), will now try object rewrite"
+                          osd_id namespace_id manifest.name manifest.object_id >>= fun () ->
+                        _timed_rewrite_object alba_client ~namespace_id ~manifest
+                      end
+                  end >>= fun () ->
+                  made_progress := true;
+                  Lwt.return_unit)
              )
         )
         manifests >>= fun () ->
