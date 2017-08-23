@@ -47,7 +47,7 @@ let test_with_alba_client
 
 let _wait_for_osds ?(cnt=11) (alba_client:Alba_client.alba_client) namespace_id =
   alba_client # nsm_host_access # get_namespace_info ~namespace_id
-  >>= fun (ns_info, _, _) ->
+  >>= fun (_, ns_info, _, _) ->
   let nsm_host_id = ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id in
   let rec loop () =
     alba_client # deliver_nsm_host_messages ~nsm_host_id >>= fun () ->

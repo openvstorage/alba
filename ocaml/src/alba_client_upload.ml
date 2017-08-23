@@ -279,7 +279,7 @@ let upload_object''
 
   object_reader # reset >>= fun () ->
 
-  nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+  nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
   let open Albamgr_protocol in
   get_preset_info ~preset_name:ns_info.Protocol.Namespace.preset_name
   >>= fun preset ->
@@ -881,7 +881,7 @@ let _upload_with_retry
            | Too_many_disks_per_node
            | Preset_violated
            | Invalid_bucket ->
-              nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+              nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
               let open Albamgr_protocol.Protocol in
               preset_cache # refresh ~preset_name:ns_info.Namespace.preset_name
            | Unknown

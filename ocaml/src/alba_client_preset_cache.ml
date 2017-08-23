@@ -26,7 +26,7 @@ let _propagate_preset
             (fun namespace_id ->
               Lwt.catch
                 (fun () ->
-                  nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+                  nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
                   Lwt.return
                     (Some (namespace_id,
                            ns_info.Albamgr_protocol.Protocol.Namespace.nsm_host_id)))

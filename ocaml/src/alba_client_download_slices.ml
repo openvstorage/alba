@@ -283,7 +283,7 @@ let _download_object_slices
       let fragment_info = Manifest.combined_fragment_infos manifest in
 
       let open Albamgr_protocol.Protocol in
-      nsm_host_access # get_namespace_info ~namespace_id >>= fun (ns_info, _, _) ->
+      nsm_host_access # get_namespace_info ~namespace_id >>= fun (_, ns_info, _, _) ->
       get_preset_info ~preset_name:ns_info.Namespace.preset_name >>= fun preset ->
       let encryption = Encrypt_info_helper.get_encryption preset enc in
 
