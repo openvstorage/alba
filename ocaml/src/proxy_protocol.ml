@@ -45,6 +45,7 @@ module ProxyStatistics = struct
       end
 
     type ns_t = {
+        mutable last_updated : timestamp;
         mutable upload: stat;
         mutable download: stat;
         mutable delete : stat;
@@ -61,7 +62,8 @@ module ProxyStatistics = struct
       }[@@ deriving show, yojson]
 
     let ns_make () =
-      { upload = Stat.make();
+      { last_updated = Unix.gettimeofday ();
+        upload = Stat.make();
         download = Stat.make();
         delete = Stat.make();
         manifest_cached = 0;
@@ -91,7 +93,9 @@ module ProxyStatistics = struct
       Stat_deser.to_buffer' buf t.partial_read_time;
       Stat_deser.to_buffer' buf t.partial_read_objects;
 
-      Stat_deser.to_buffer' buf t.delete
+      Stat_deser.to_buffer' buf t.delete;
+
+      Llio.float_to buf t.last_updated
 
 
     let ns_from buf =
@@ -131,7 +135,15 @@ module ProxyStatistics = struct
         else Stat_deser.from_buffer' buf
       in
 
-      { upload ; download; delete;
+      let last_updated =
+        Llio.maybe_from_buffer
+          Llio.float_from
+          0.
+          buf
+      in
+
+      { last_updated;
+        upload ; download; delete;
         manifest_cached;
         manifest_from_nsm;
         manifest_stale;
@@ -193,11 +205,15 @@ module ProxyStatistics = struct
 
     let find t ns =
       Hashtbl.replace t.changed_ns_stats ns ();
-      try H.find t.t.ns_stats ns
-      with Not_found ->
-        let v = ns_make () in
-        let () = t.t.ns_stats <- H.add t.t.ns_stats ns v in
-        v
+      let r =
+        try H.find t.t.ns_stats ns
+        with Not_found ->
+          let v = ns_make () in
+          let () = t.t.ns_stats <- H.add t.t.ns_stats ns v in
+          v
+      in
+      r.last_updated <- Unix.gettimeofday ();
+      r
 
     let forget t nss =
       let r =
