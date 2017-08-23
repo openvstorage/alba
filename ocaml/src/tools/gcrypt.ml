@@ -5,7 +5,6 @@
 
 open! Prelude
 open Slice
-open Lwt_bytes2
 open Ctypes
 open Foreign
 open Bytes_descr
@@ -55,7 +54,7 @@ module Error = struct
        *
        * The function gcry_strsource returns a pointer to a statically allocated string
        * containing a description of the error source contained in the error value err.
-       * This string can be used to output a diagnostic message to the user. 
+       * This string can be used to output a diagnostic message to the user.
        *)
       foreign
         "gcry_strsource"
@@ -111,11 +110,11 @@ let control =
 (* https://www.gnupg.org/documentation/manuals/gcrypt/Multi_002dThreading.html        *)
 (* NOTE: older (pre 1.6.x) versions of gcrypt had flexible thread support that needs  *)
 (*       to be initialised first; newer versions keep it for backward compatibility   *)
-(*       -- we need this for centos-7 that uses version 1.5.3                         *) 
+(*       -- we need this for centos-7 that uses version 1.5.3                         *)
 
 external gcrypt_set_threads : unit -> unit = "gcrypt_set_threads"
 
-let () = 
+let () =
   gcrypt_set_threads ();
 
   (* /* Version check should be the very first call because it         *)
@@ -142,7 +141,7 @@ module Padding = struct
     (* pad from Bigstring_slice.t to bigarray *)
     let used_len = Bigstring_slice.length data in
     let pad_len = (used_len/block_len + 1) * block_len in
-    let res = Lwt_bytes.create pad_len in
+    let res = Lwt_bytes.create ~msg:"Padding.pad" pad_len in
     (let open Bigstring_slice in
      Lwt_bytes.blit data.bs data.offset res 0 used_len);
     let n = pad_len - used_len in
@@ -404,7 +403,7 @@ module Cipher = struct
       ()
     >>= Error.check_lwt ~location:"Cipher.decrypt_detached"
 
-  let _burn_buf = Lwt_bytes.create 16
+  let _burn_buf = Lwt_bytes.create ~msg:"Gcrypt._burn_buf" 16
 
   let set_ctr_with_offset t ctr offset =
     let block_len = 16 in

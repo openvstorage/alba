@@ -1012,3 +1012,6 @@ let x_int64_be_from buf =
   if i < Int32.max_int
   then Int64.of_int32 i
   else Llio.int64_be_from buf
+
+module Lwt_bytes = Lwt_bytes2.Lwt_bytes
+module SharedBuffer = Lwt_bytes2.SharedBuffer

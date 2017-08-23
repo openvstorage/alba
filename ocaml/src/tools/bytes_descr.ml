@@ -5,7 +5,6 @@
 
 open! Prelude
 open Slice
-open Lwt_bytes2
 open Ctypes
 
 module Bytes_descr = struct
@@ -24,10 +23,10 @@ module Bytes_descr = struct
     | Bigarray -> Lwt_bytes.length
     | Bigstring_slice -> Bigstring_slice.length
 
-  let create : type t' c'. (t', c') t -> int -> t' = function
-    | Slice -> fun len -> Slice.wrap_string (Bytes.create len)
+  let create : type t' c'. (t', c') t -> ?msg:string -> int -> t' = function
+    | Slice -> fun ?msg len -> Slice.wrap_string (Bytes.create len)
     | Bigarray -> Lwt_bytes.create
-    | Bigstring_slice -> Bigstring_slice.create
+    | Bigstring_slice -> fun ?msg len -> Bigstring_slice.create len
 
   let start : type t' c'. (t', c') t -> t' -> c' = function
     | Slice -> fun sl ->

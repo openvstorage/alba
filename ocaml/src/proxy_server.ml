@@ -7,7 +7,6 @@ open Lwt.Infix
 open! Prelude
 open Proxy_protocol
 open Range_query_args
-open Lwt_bytes2
 
 let _read_objects_slices
       (alba_client : Alba_client.alba_client)
@@ -200,7 +199,13 @@ let read_objects
     (function
      | (_, None) -> Lwt.return None
      | (dh, Some manifest) ->
-        let bs = Lwt_bytes.create (Int64.to_int manifest.Nsm_model.Manifest.size) in
+        let msg = Printf.sprintf "Proxy_server read_objects:%S"
+                                 manifest.Nsm_model.Manifest.name
+        in
+        let bs = Lwt_bytes.create
+                   ~msg
+                   (Int64.to_int manifest.Nsm_model.Manifest.size)
+        in
         let offset = ref 0 in
         let write_object_data source pos len =
           Lwt_bytes.blit source pos bs !offset len;

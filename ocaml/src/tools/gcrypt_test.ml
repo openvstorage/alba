@@ -5,7 +5,6 @@
 
 open! Prelude
 open Gcrypt
-open Lwt_bytes2
 open Lwt.Infix
 
 let test_encrypt_decrypt_cbc () =

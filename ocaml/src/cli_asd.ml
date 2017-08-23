@@ -96,6 +96,7 @@ let asd_start cfg_url log_sinks =
               Lwt_log.info_f "Received USR1, refetching log level from config %s"
                              (Prelude.Url.show cfg_url)
               >>= fun () ->
+              Lwt_bytes2.Lwt_bytes.dump_registry ();
               Asd_config.retrieve_cfg cfg_url >>= function
               | Result.Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"

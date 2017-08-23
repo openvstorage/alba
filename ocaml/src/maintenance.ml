@@ -7,7 +7,6 @@ open! Prelude
 open Slice
 open Recovery_info
 open Lwt.Infix
-open Lwt_bytes2
 
 
 let gc_grace_period = Nsm_host_access.gc_grace_period

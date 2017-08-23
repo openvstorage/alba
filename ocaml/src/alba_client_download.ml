@@ -4,7 +4,6 @@
 *)
 
 open! Prelude
-open Lwt_bytes2
 open Slice
 open Alba_statistics
 open Alba_client_errors

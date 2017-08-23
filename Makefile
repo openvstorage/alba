@@ -31,10 +31,10 @@ build-cmxs: build-alba
 
 build-nsm-plugin: build-cmxs
 	cd ocaml && ocamlfind ocamlopt \
+	_build/src/tools/lwt_bytes2.cmx \
 	_build/src/tools/prelude.cmx \
 	_build/alba_version.cmx \
 	_build/src/range_query_args.cmx \
-	_build/src/tools/lwt_bytes2.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/tools/deser.cmx \
 	_build/src/tools/cache.cmx \
@@ -73,9 +73,9 @@ build-nsm-plugin: build-cmxs
 
 build-mgr-plugin: build-alba
 	cd ocaml && ocamlfind ocamlopt \
+	_build/src/tools/lwt_bytes2.cmx \
 	_build/src/tools/prelude.cmx \
 	_build/alba_version.cmx \
-	_build/src/tools/lwt_bytes2.cmx \
 	_build/src/tools/lwt_extra2.cmx \
 	_build/src/range_query_args.cmx \
 	_build/src/tools/deser.cmx \

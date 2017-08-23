@@ -6,7 +6,6 @@
 open! Prelude
 open Lwt.Infix
 open Slice
-open Lwt_bytes2
 open Asd_protocol
 open Protocol
 open Range_query_args
@@ -14,7 +13,10 @@ open Range_query_args
 class _inner_client (fd:Net_fd.t) id =
   let () = Net_fd.uncork fd in
 
-  let buffer = Lwt_bytes.create (4+5+4096) |> ref in
+  let buffer =
+    let msg = Printf.sprintf "asd_client %s line:%i" id __LINE__ in
+    Lwt_bytes.create ~msg (4+5+4096) |> ref
+  in
   let buf_extra_offset = ref 0 in
   let buf_extra_length = ref 0 in
 
@@ -181,9 +183,11 @@ class _inner_client (fd:Net_fd.t) id =
                | None -> Lwt.return_none
                | Some (blob, cs) ->
                   match blob with
-                  | Direct s -> Lwt.return (Some (Bigstring_slice.extract_to_bigstring s, cs))
+                  | Direct s ->
+                     Lwt.return (Some (Bigstring_slice.extract_to_bigstring
+                                         ~msg:"Direct" s, cs))
                   | Later size ->
-                     let bs = Lwt_bytes.create size in
+                     let bs = Lwt_bytes.create ~msg:"Later" size in
                      Lwt.catch
                        (fun () ->
                         read_from_extra_bytes_or_fd_exact bs 0 size >>= fun () ->
@@ -196,7 +200,15 @@ class _inner_client (fd:Net_fd.t) id =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
-           (Option.map (fun (slice, cs) -> Lwt_bytes.to_string slice, cs))
+           (Option.map (fun (buf, cs) ->
+                let r = Lwt_bytes.to_string buf in
+                let () =
+                  (* Lwt_bytes.unsafe_destroy ~msg:"multi_get_string" buf *)
+                  ()
+                in
+                r
+                , cs)
+           )
            res)
 
     method multi_exists ~prio keys =

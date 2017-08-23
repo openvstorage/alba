@@ -4,7 +4,6 @@
 *)
 
 open! Prelude
-open Lwt_bytes2
 
 type t = {
   bs : Lwt_bytes.t;
@@ -28,18 +27,18 @@ let wrap_shared_buffer sb =
   let b = SharedBuffer.deref sb in
   from_bigstring b 0 (Lwt_bytes.length b)
 
-let create length =
-  wrap_bigstring (Lwt_bytes.create length)
+let create ?msg length =
+  wrap_bigstring (Lwt_bytes.create ?msg length)
 
-let create_random len =
-  wrap_bigstring (Lwt_bytes.create_random len)
+let create_random ?msg len =
+  wrap_bigstring (Lwt_bytes.create_random ?msg len)
 
 let ptr_start t =
   let open Ctypes in
   bigarray_start array1 t.bs +@ t.offset
 
-let extract_to_bigstring t =
-  Lwt_bytes.extract t.bs t.offset t.length
+let extract_to_bigstring ?msg t =
+  Lwt_bytes.extract ?msg t.bs t.offset t.length
 
 let extract t offset length =
   let bs = Lwt_bytes.extract t.bs (t.offset + offset) length in

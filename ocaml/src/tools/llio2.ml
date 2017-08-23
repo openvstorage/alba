@@ -4,7 +4,6 @@
 *)
 
 open! Prelude
-open Lwt_bytes2
 
 module ReadBuffer = struct
     type t = { buf : Lwt_bytes.t;
@@ -164,8 +163,8 @@ module WriteBuffer = struct
     type t = { mutable buf : Lwt_bytes.t;
                mutable pos : int; }
 
-    let make ~length =
-      { buf = Lwt_bytes.create length;
+    let make ?msg ~length =
+      { buf = Lwt_bytes.create ?msg length;
         pos = 0; }
 
     type 'a serializer = t -> 'a -> unit
@@ -177,7 +176,7 @@ module WriteBuffer = struct
       then
         begin
           let new_len = max (len + delta) (2*len) in
-          let newbuf = Lwt_bytes.create new_len in
+          let newbuf = Lwt_bytes.create ~msg:"WriteBuffer.ensure_space" new_len in
           let oldbuf = buf.buf in
           Lwt_bytes.blit oldbuf 0 newbuf 0 pos;
           buf.buf <- newbuf;
@@ -303,7 +302,9 @@ module WriteBuffer = struct
     let list_to e_to buf list =
       let _ = _list_to e_to buf list in ()
 
-    let serialize_with_length' ?(buf = make ~length:20) a_to a =
+    let serialize_with_length'
+          ?(buf = make ~msg:"LLio2.WriteBuffer.serialize_with_length'" ~length:20)
+          a_to a =
       let pos0 = buf.pos in
       int_to buf 0;
       a_to buf a;

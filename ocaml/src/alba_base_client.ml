@@ -6,7 +6,6 @@
 open! Prelude
 open Lwt.Infix
 open Checksum
-open Lwt_bytes2
 open Alba_statistics
 open Fragment_cache
 module Osd_sec = Osd

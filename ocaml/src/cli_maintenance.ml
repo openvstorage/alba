@@ -121,7 +121,9 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       let _ : Lwt_unix.signal_handler_id =
         Lwt_unix.on_signal Sys.sigusr1 (fun _ ->
             let handle () =
-              Lwt_log.info_f "Received USR1, reloading log level from config file" >>= fun () ->
+              Lwt_log.info_f "Received USR1, reloading log level from config file"
+              >>= fun () ->
+              Lwt_bytes2.Lwt_bytes.dump_registry ();
               retrieve_cfg cfg_url >>= function
               | Result.Error err ->
                 Lwt_log.info_f "Not reloading config as it could not be parsed"
