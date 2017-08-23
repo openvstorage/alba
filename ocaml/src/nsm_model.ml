@@ -561,7 +561,7 @@ module Manifest = struct
     version_id : version;
     max_disks_per_node : int;
 
-    timestamp : float;
+    timestamp : timestamp;
   }
   [@@deriving show, yojson]
 
