@@ -738,7 +738,7 @@ module Hashtbl = struct
 
   let values h = Hashtbl.fold (fun _ v acc -> v :: acc) h []
 
-  let exists f t =
+  let scan_exists f t =
     try Hashtbl.iter
           (fun k v ->
             if f k v

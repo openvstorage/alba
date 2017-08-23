@@ -179,10 +179,10 @@ class client ?(retry_timeout = 60.)
          Lwt.return_unit)
         retry_timeout
 
-    method _is_cache_namespace ~namespace_id =
+    method private _is_cache_namespace ~namespace_id =
       nsm_host_access # get_namespace_info ~namespace_id >>= fun (namespace, namespace_info, _, _) ->
       let open Maintenance_config in
-      Hashtbl.exists
+      Hashtbl.scan_exists
         (fun prefix preset -> String.starts_with namespace prefix)
         maintenance_config.cache_eviction_prefix_preset_pairs
       |> Lwt.return

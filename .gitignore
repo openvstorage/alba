@@ -57,6 +57,7 @@
 /debian/alba.postinst.debhelper
 /debian/alba.postrm.debhelper
 /debian/alba/
+/debian/alba-ee/
 /debian/alba.substvars
 /debian/.debhelper/
 /debian/debhelper-build-stamp
