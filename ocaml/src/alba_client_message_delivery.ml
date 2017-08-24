@@ -198,6 +198,9 @@ let deliver_osd_messages_deduped
            Lwt.fail exn
          )
      in
+     let inner wakers =
+       Lwt_extra2.with_timeout_no_cancel 5. (fun () -> inner wakers)
+     in
      Hashtbl.replace osd_msg_delivery_threads osd_id [];
      Lwt.finalize
        (fun () -> inner [])

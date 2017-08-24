@@ -396,7 +396,7 @@ let make_client ~conn_info (lido:string option)  =
        in
        Lwt.return (client, closer')
      in
-     fun () -> Lwt_unix.with_timeout 5.0 inner
+     fun () -> Lwt_extra2.with_timeout_no_cancel 5.0 inner
     )
     (fun exn ->
       closer () >>= fun () ->
