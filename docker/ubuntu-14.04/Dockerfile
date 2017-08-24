@@ -115,6 +115,7 @@ RUN eval `${opam_env}` && \
         tiny_json \
         ppx_deriving.4.1 \
         ppx_deriving_yojson \
+        base.v0.9.0 \
         core.v0.9.0 \
         redis.0.3.3 \
         uri.1.9.2 \
