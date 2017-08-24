@@ -797,6 +797,54 @@ let namespace_recovery_agent_cmd =
   ),
   Term.info "namespace-recovery-agent" ~doc:"recover the contents of a namespace from the osds"
 
+
+let extract_config url to_json verbose =
+  let t () =
+    Arakoon_config_url.retrieve url >>= fun txt ->
+    if to_json
+    then
+      let json = Yojson.Safe.from_string txt in
+      Lwt_io.printlf "%s" (Yojson.Safe.pretty_to_string json) >>= fun () ->
+      Lwt.return_unit
+    else
+      Lwt_io.printlf "%s" txt
+  in
+  lwt_cmd_line ~to_json ~verbose t
+
+let extract_config_cmd =
+  Term.(pure extract_config
+        $ alba_cfg_url
+        $ to_json
+        $ verbose
+  ),
+  Term.info "dev-extract-config" ~doc:"fetch and (pretty) print configuration"
+
+
+let edit_config url verbose =
+  let t () =
+    Arakoon_config_url.retrieve url >>= fun contents ->
+    let destination = Printf.sprintf "/tmp/tmp-edit-cfg-%Li" (Random.int64 Int64.max_int) in
+    Lwt_extra2.write_file ~destination ~contents >>= fun () ->
+    let result = Sys.command (Printf.sprintf "${EDITOR:-vim} %s" destination) in
+    if result = 0
+    then
+      begin
+        Lwt_extra2.read_file destination >>= fun new_contents ->
+        Alba_client2.write_to_arakoon_config_url new_contents url
+      end
+    else
+      Lwt_log.error_f "Received exit code %i from editor, not applying changes" result
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let edit_config_cmd =
+  Term.(pure edit_config
+        $ alba_cfg_url
+        $ verbose
+  ),
+  Term.info "dev-edit-config" ~doc:"fetch, edit (default vim, override using EDITOR env var), and store configuration"
+
+
 let unit_tests produce_xml alba_cfg_url tls_config only_test =
   Albamgr_test.ccfg_url_ref := Some alba_cfg_url;
   let () = Albamgr_test._tls_config_ref := tls_config in
@@ -929,6 +977,9 @@ let () =
       alba_get_disk_safety_cmd;
 
       namespace_recovery_agent_cmd;
+
+      extract_config_cmd;
+      edit_config_cmd;
 
       unit_tests_cmd;
 

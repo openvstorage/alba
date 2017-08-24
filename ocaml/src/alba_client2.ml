@@ -6,22 +6,12 @@
 open! Prelude
 open Lwt.Infix
 
-let write_albamgr_cfg albamgr_cfg =
-  let value = Arakoon_client_config.to_ini albamgr_cfg in
+
+
+let write_to_arakoon_config_url value =
   function
   | Url.File destination ->
-     let tmp = destination ^ ".tmp" in
-     Lwt_extra2.unlink ~fsync_parent_dir:false  ~may_not_exist:true tmp >>= fun () ->
-     Lwt_extra2.with_fd
-       tmp
-       ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
-       ~perm:0o664
-       (fun fd ->
-        Lwt_extra2.write_all
-          fd
-          value 0 (String.length value) >>= fun () ->
-        Lwt_unix.fsync fd) >>= fun () ->
-     Lwt_extra2.rename ~fsync_parent_dir:true tmp destination
+     Lwt_extra2.write_file ~destination ~contents:value
   | Url.Etcd (peers, path) ->
      Arakoon_etcd.store_value peers path value
   | Url.Arakoon { Url.cluster_id; key; ini_location; } ->
@@ -31,6 +21,8 @@ let write_albamgr_cfg albamgr_cfg =
        ccfg
        (fun client -> client # set key value)
 
+let write_albamgr_cfg albamgr_cfg =
+  write_to_arakoon_config_url (Arakoon_client_config.to_ini albamgr_cfg)
 
 let refresh_albamgr_cfg
     ~loop

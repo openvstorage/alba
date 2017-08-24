@@ -303,6 +303,22 @@ let read_file file =
        Lwt.return ()) >>= fun () ->
   Lwt.return buf
 
+let write_file ~destination ~contents =
+  let tmp = destination ^ ".tmp" in
+  unlink ~fsync_parent_dir:false  ~may_not_exist:true tmp >>= fun () ->
+  with_fd
+    tmp
+    ~flags:Lwt_unix.([ O_WRONLY; O_CREAT; O_EXCL; ])
+    ~perm:0o664
+    (fun fd ->
+      write_all
+        fd
+        contents 0 (String.length contents) >>= fun () ->
+      Lwt_unix.fsync fd
+    ) >>= fun () ->
+  rename ~fsync_parent_dir:true tmp destination
+
+
 let copy_using
       reader writer
       size buffer
