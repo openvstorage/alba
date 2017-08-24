@@ -52,7 +52,7 @@ RUN git clone https://github.com/domsj/orocksdb.git \
 
 RUN wget https://raw.github.com/ocaml/opam/master/shell/opam_installer.sh
 
-env ocaml_version=4.03.0
+env ocaml_version=4.04.2
 RUN sh ./opam_installer.sh /usr/local/bin ${ocaml_version}
 
 ENV opam_root=/home/jenkins/OPAM
@@ -60,9 +60,9 @@ ENV opam_env="opam config env --root=${opam_root}"
 RUN opam init --root=${opam_root} --comp ${ocaml_version}
 
 RUN eval `${opam_env}` && \
-    opam update && \
+    opam update -v && \
     opam install -y \
-        oasis.0.4.8 \
+        oasis.0.4.10 \
         ocamlfind \
         omake.0.10.2 \
         ssl.0.5.3 \
@@ -85,11 +85,12 @@ RUN eval `${opam_env}` && \
         depext \
         kinetic-client \
         tiny_json \
-        ppx_deriving \
+        ppx_deriving.4.1 \
         ppx_deriving_yojson \
-        core.v0.9.0 \
+        base.v0.9.3 \
+        core.v0.9.1 \
         redis.0.3.3 \
-        uri.1.9.2 \
+        uri.1.9.4 \
         result \
         ezxmlm
 
@@ -110,7 +111,7 @@ RUN cd /usr/src/gtest \
 
 # install specific arakoon.
 RUN git clone https://github.com/openvstorage/arakoon.git
-RUN cd arakoon && git pull && git checkout 1.9.21
+RUN cd arakoon && git pull && git checkout tags/1.9.22
 RUN cd arakoon && eval `${opam_env}` && make
 RUN cd arakoon && eval `${opam_env}` \
     && export PREFIX=${opam_root}/${ocaml_version} \
