@@ -54,7 +54,7 @@ module AlbaInstance = struct
          Llio.raw_substring_to)
       (namespace_id, (key, offset, length))
 
-  let verify_global_key namespace_id (key, offset) =
+  let parse_global_key (key, offset) =
     let buf = Llio.make_buffer key offset in
 
     let p = Llio.char_from buf in
@@ -63,13 +63,19 @@ module AlbaInstance = struct
     assert (_0l = 0l);
     let n = Llio.char_from buf in
     assert (n = 'n');
-    let namespace_id' = x_int64_be_from buf in
-    assert (namespace_id' = namespace_id);
+    let namespace_id = x_int64_be_from buf in
 
-    (* this returns the amount of bytes processed by the verify *)
-    if namespace_id < (Int64.of_int32 Int32.max_int)
-    then 10
-    else 18
+    let bytes_consumed =
+      if namespace_id < (Int64.of_int32 Int32.max_int)
+      then 10
+      else 18
+    in
+    namespace_id, bytes_consumed
+
+  let verify_global_key namespace_id (key, offset) =
+    let namespace_id', bytes_consumed = parse_global_key (key, offset) in
+    assert (namespace_id' = namespace_id);
+    bytes_consumed
 
   let namespace_status ~namespace_id =
     serialize _namespace_prefix_serializer namespace_id
