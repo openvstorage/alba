@@ -1429,9 +1429,15 @@ let asd_protocol
           Lwt_log.debug msg >>= fun () ->
           let open Llio2.WriteBuffer in
           let rbuf = make ~msg ~length:32 in
-          let err = Error.ProtocolVersionMismatch msg in
-          Error.serialize rbuf err;
-          Net_fd.write_all_lwt_bytes nfd rbuf.buf 0 rbuf.pos
+          Lwt.finalize
+            ( fun () ->
+              let err = Error.ProtocolVersionMismatch msg in
+              Error.serialize rbuf err;
+              Net_fd.write_all_lwt_bytes nfd rbuf.buf 0 rbuf.pos)
+            (fun () ->
+              dispose rbuf;
+              Lwt.return_unit
+            )
         else
           begin
             Llio2.NetFdReader.option_from
