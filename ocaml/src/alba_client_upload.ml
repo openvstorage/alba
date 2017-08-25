@@ -237,13 +237,13 @@ let upload_chunk
        ~test
        upload_fragment_and_finalize
        (List.combine fragments_with_id osds)
-     >>= fun (success, make_results)  ->
+     >>= fun (success, upload_fragment_ts)  ->
      if not success
      then Lwt.fail_with (Printf.sprintf "chunk %i failed name: [%s] id: [%s]" chunk_id object_name object_id)
      else
        begin
          t_add_to_fragment_cache >>= fun mfs ->
-         Lwt.return (make_results, mfs,
+         Lwt.return (upload_fragment_ts, mfs,
                      fragment_checksums,
                      packed_fragment_sizes,
                      fragment_ctrs)
@@ -468,12 +468,12 @@ let upload_object''
         (fun () ->
          Lwt_bytes.unsafe_destroy ~msg:"Lwt.finalize upload_chunk" chunk';
          Lwt.return ())
-      >>= fun (fragment_ts,
+      >>= fun (upload_fragment_ts,
                mfs,
                fragment_checksums,
                packed_fragment_sizes,
                fragment_ctrs)  ->
-      let fragment_states = List.map Lwt.state fragment_ts in
+      let fragment_states = List.map Lwt.state upload_fragment_ts in
       let fragment_info =
         List.map4i
           (fun i state fragment_checksum packed_fragment_size fragment_ctr ->
@@ -542,7 +542,7 @@ let upload_object''
                                  }) in
 
       let chunk_times' = t_chunk :: chunk_times in
-      let acc_fragment_ts' = fragment_ts :: acc_fragment_ts in
+      let acc_fragment_ts' = upload_fragment_ts :: acc_fragment_ts in
       if has_more
       then
         inner

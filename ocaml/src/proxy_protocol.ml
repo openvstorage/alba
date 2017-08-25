@@ -59,7 +59,32 @@ module ProxyStatistics = struct
         mutable partial_read_count: stat;
         mutable partial_read_time : stat;
         mutable partial_read_objects: stat;
+
+        mutable empty_partial_read_count: stat;
+        mutable empty_partial_read_time : stat;
+        mutable empty_partial_read_objects: stat;
       }[@@ deriving show, yojson]
+
+    let ns_t_to_yojson ns_t =
+      ns_t_to_yojson ns_t
+      |> function
+        | `Assoc props ->
+           `Assoc (List.map_filter
+                     (fun (name, json) ->
+                       match json with
+                       | `Assoc props ->
+                          begin
+                            match List.assoc "n" props with
+                            | `Intlit "0" | `Int 0 -> None
+                            | _ -> Some (name, json)
+                            | exception Not_found -> Some (name, json)
+                          end
+                       | _ -> Some (name, json)
+                     )
+                     props
+                  )
+        | _ ->
+           assert false
 
     let ns_make () =
       { last_updated = Unix.gettimeofday ();
@@ -76,6 +101,10 @@ module ProxyStatistics = struct
         partial_read_count   = Stat.make ();
         partial_read_time    = Stat.make ();
         partial_read_objects = Stat.make ();
+
+        empty_partial_read_count   = Stat.make ();
+        empty_partial_read_time    = Stat.make ();
+        empty_partial_read_objects = Stat.make ();
       }
 
     let ns_to buf t =
@@ -94,6 +123,10 @@ module ProxyStatistics = struct
       Stat_deser.to_buffer' buf t.partial_read_objects;
 
       Stat_deser.to_buffer' buf t.delete;
+
+      Stat_deser.to_buffer' buf t.empty_partial_read_count;
+      Stat_deser.to_buffer' buf t.empty_partial_read_time;
+      Stat_deser.to_buffer' buf t.empty_partial_read_objects;
 
       Llio.float_to buf t.last_updated
 
@@ -134,6 +167,18 @@ module ProxyStatistics = struct
         then Stat.make ()
         else Stat_deser.from_buffer' buf
       in
+      let empty_partial_read_count,
+          empty_partial_read_time,
+          empty_partial_read_objects =
+        if Llio.buffer_done buf
+        then
+          let r = Stat.make () in
+          r, r, r
+        else
+          Stat_deser.from_buffer' buf,
+          Stat_deser.from_buffer' buf,
+          Stat_deser.from_buffer' buf
+      in
 
       let last_updated =
         Llio.maybe_from_buffer
@@ -153,6 +198,9 @@ module ProxyStatistics = struct
         partial_read_count;
         partial_read_time;
         partial_read_objects;
+        empty_partial_read_count;
+        empty_partial_read_time;
+        empty_partial_read_objects;
       }
 
     type t = {
@@ -279,14 +327,23 @@ module ProxyStatistics = struct
          ~took
      =
      let ns_stats = find t ns in
-     ns_stats.partial_read_size    <- _update ns_stats.partial_read_size  (float total_length);
-     ns_stats.partial_read_count   <- _update ns_stats.partial_read_count (float n_slices);
-     ns_stats.partial_read_objects <- _update ns_stats.partial_read_objects (float n_objects);
-     ns_stats.partial_read_time    <- _update ns_stats.partial_read_time  took;
-     List.iter (incr_manifest_src ns_stats) mf_sources;
-     ns_stats.fragment_cache_hits   <- ns_stats.fragment_cache_hits + fc_hits;
-     ns_stats.fragment_cache_misses <- ns_stats.fragment_cache_misses + fc_misses;
-     ()
+     if total_length > 0
+     then
+       begin
+         ns_stats.partial_read_size    <- _update ns_stats.partial_read_size  (float total_length);
+         ns_stats.partial_read_count   <- _update ns_stats.partial_read_count (float n_slices);
+         ns_stats.partial_read_objects <- _update ns_stats.partial_read_objects (float n_objects);
+         ns_stats.partial_read_time    <- _update ns_stats.partial_read_time  took;
+         List.iter (incr_manifest_src ns_stats) mf_sources;
+       end
+     else
+       begin
+         ns_stats.empty_partial_read_count   <- _update ns_stats.empty_partial_read_count (float n_slices);
+         ns_stats.empty_partial_read_objects <- _update ns_stats.empty_partial_read_objects (float n_objects);
+         ns_stats.empty_partial_read_time    <- _update ns_stats.empty_partial_read_time  took
+       end;
+    ns_stats.fragment_cache_hits   <- ns_stats.fragment_cache_hits + fc_hits;
+    ns_stats.fragment_cache_misses <- ns_stats.fragment_cache_misses + fc_misses
 
    type request = { clear: bool ;
                     forget : string list }

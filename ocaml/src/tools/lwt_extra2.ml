@@ -428,7 +428,23 @@ let first_n ~count ~slack f items ~test =
   Lwt.choose
     [ begin
         Lwt_unix.sleep limit >>= fun () ->
-        Lwt_log.debug "limit reached"
+        let slackers_count =
+          List.fold_left
+            (fun acc t ->
+              match Lwt.state t with
+              | Lwt.Return _ | Lwt.Fail _ -> acc
+              | Lwt.Sleep -> acc + 1
+            )
+            0
+            ts
+        in
+        if slackers_count > 0
+        then
+          Lwt_log.debug_f
+            "first n: timeout while waiting for %i slacker threads to join"
+            slackers_count
+        else
+          Lwt.return_unit
       end;
       join_threads_ignore_errors ts;
     ]
