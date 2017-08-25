@@ -30,13 +30,16 @@ let claim_osd mgr_access osd_access ~long_id =
        let no_checksum = Checksum.NoChecksum in
        osd # global_kvs # get_option Osd.High next_alba_instance'
        >>= function
-       | Some _ ->
-          osd # global_kvs # get_exn Osd.High (wrap_string (IRK.instance_log_key 0l))
+       | Some _next_instance ->
+          let () = Lwt_bytes.unsafe_destroy _next_instance in
+          osd # global_kvs # get_exn
+              Osd.High (wrap_string (IRK.instance_log_key 0l))
           >>= fun alba_id' ->
           let u_alba_id' = Lwt_bytes.to_string alba_id' in
           Lwt_log.debug_f
             "osd %s is owned by %s, want to claim for %s"
             long_id u_alba_id' alba_id >>= fun () ->
+          let () = Lwt_bytes.unsafe_destroy alba_id' in
           if u_alba_id' = alba_id
           then Lwt.return `Continue
           else Lwt.return (`ClaimedBy u_alba_id')
@@ -83,6 +86,7 @@ let claim_osd mgr_access osd_access ~long_id =
                      (wrap_string (IRK.instance_log_key 0l))
                  >>= fun alba_id'slice ->
                  let alba_id' =  Lwt_bytes.to_string alba_id'slice in
+                 let () = Lwt_bytes.unsafe_destroy alba_id'slice in
                  Lwt_log.debug_f
                    "got an error while claiming osd %s. it is now owned by %s (wanted to claim for %s)"
                    long_id alba_id' alba_id >>= fun () ->

@@ -200,14 +200,12 @@ class _inner_client (fd:Net_fd.t) id =
       self # multi_get ~prio (List.map Slice.wrap_string keys) >>= fun res ->
       Lwt.return
         (List.map
-           (Option.map (fun (buf, cs) ->
+           (Option.map
+              (fun (buf, cs) ->
                 let r = Lwt_bytes.to_string buf in
-                let () =
-                  (* Lwt_bytes.unsafe_destroy ~msg:"multi_get_string" buf *)
-                  ()
-                in
-                r
-                , cs)
+                Lwt_bytes.unsafe_destroy ~msg:"multi_get_string" buf;
+                r, cs
+              )
            )
            res)
 
