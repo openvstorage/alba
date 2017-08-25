@@ -355,6 +355,35 @@ let join_threads_ignore_errors ts =
            (fun exn -> Lwt.return_unit))
        ts)
 
+let with_timeout_no_cancel d f =
+  let result = ref `Unfinished in
+  Lwt.choose
+    [ begin
+        Lwt_unix.sleep d >>= fun () ->
+        let () =
+          match !result with
+          | `Unfinished -> result := `Timeout
+          | `Timeout -> assert false
+          | `Result _ -> ()
+        in
+        Lwt.return_unit
+      end;
+      begin
+        f () >>= fun r ->
+        let () =
+          match !result with
+          | `Unfinished -> result := `Result r
+          | `Timeout -> ()
+          | `Result _ -> assert false
+        in
+        Lwt.return_unit
+      end; ]
+  >>= fun () ->
+  match !result with
+  | `Unfinished -> assert false
+  | `Timeout -> Lwt.fail Lwt_unix.Timeout
+  | `Result r -> Lwt.return r
+
 let first_n ~count ~slack f items ~test =
   let t0 = Unix.gettimeofday() in
   let success = CountDownLatch.create ~count in
