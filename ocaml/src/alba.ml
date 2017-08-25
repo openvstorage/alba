@@ -7,6 +7,7 @@ open Cmdliner
 open Lwt.Infix
 open! Prelude
 open Cli_common
+open Slice
 
 let () =
   let engine =
@@ -845,6 +846,105 @@ let edit_config_cmd =
   Term.info "dev-edit-config" ~doc:"fetch, edit (default vim, override using EDITOR env var), and store configuration"
 
 
+let cleanup_leaked_global_kvs_objs cfg_file tls_config verbose =
+  let t () =
+    with_alba_client
+      cfg_file tls_config
+      (fun client ->
+        let osds_t = client # mgr_access # list_all_claimed_osds in
+        let ns_t = client # mgr_access # list_all_namespaces_by_id in
+
+        osds_t >>= fun (_, osds) ->
+
+        let osds =
+          List.map_filter_rev
+            (fun (osd_id, osd_info) ->
+              let open Nsm_model.OsdInfo in
+              match osd_info.kind with
+              | Asd _ | Kinetic _ -> None
+              | Alba _ | Alba2 _ | AlbaProxy _ -> Some osd_id
+            )
+            osds
+        in
+
+        ns_t >>= fun (_, ns) ->
+        let namespace_ids = Hashtbl.create 3 in
+        List.iter
+          (fun (namespace_id, _, _) -> Hashtbl.replace namespace_ids namespace_id ())
+          ns;
+
+        Lwt_list.iter_s
+          (fun osd_id ->
+            Lwt_log.info_f "Starting cleanup for osd %Li" osd_id >>= fun () ->
+
+            client
+              # osd_access
+              # with_osd
+              ~osd_id
+              (fun osd ->
+                let rec inner first finc =
+                  osd # global_kvs # range
+                      Osd.Low
+                      ~first ~finc
+                      ~last:None
+                      ~reverse:false ~max:(-1)
+                  >>= fun ((cnt, keys), has_more) ->
+
+                  let keep ~(namespace_id : int64) = Hashtbl.mem namespace_ids namespace_id in
+
+                  let keys_to_delete =
+                    List.map_filter_rev
+                      (fun key ->
+                        try
+                          let namespace_id, _ = Osd_keys.AlbaInstance.parse_global_key (key.Slice.buf, key.Slice.offset) in
+                          if keep ~namespace_id
+                          then None
+                          else Some key
+                        with _ ->
+                          None
+                      )
+                      keys
+                  in
+
+                  Lwt_log.info_f "Fetched %i keys, of which we're going to delete %i"
+                                 cnt (List.length keys_to_delete) >>= fun () ->
+
+                  osd
+                    # global_kvs
+                    # apply_sequence
+                    Osd.Low
+                    []
+                    (List.map
+                       (fun k -> Osd.Update.delete k)
+                       keys_to_delete) >>= fun r ->
+
+                  let () =
+                    match r with
+                    | Ok _ -> ()
+                    | Error _ -> assert false
+                  in
+
+                  if has_more
+                  then inner (List.last_exn keys) false
+                  else Lwt.return ()
+                in
+                inner (Slice.wrap_string "") true
+              )
+          )
+          osds
+      )
+  in
+  lwt_cmd_line ~to_json:false ~verbose t
+
+let cleanup_leaked_global_kvs_objs_cmd =
+  Term.(pure cleanup_leaked_global_kvs_objs
+        $ alba_cfg_url
+        $ tls_config
+        $ verbose
+  ),
+  Term.info "dev-cleanup-leaked-global-kvs-objs" ~doc:"this command allows manually cleaning up leaked objects -- see https://github.com/openvstorage/alba/issues/774 for more info"
+
+
 let unit_tests produce_xml alba_cfg_url tls_config only_test =
   Albamgr_test.ccfg_url_ref := Some alba_cfg_url;
   let () = Albamgr_test._tls_config_ref := tls_config in
@@ -980,6 +1080,8 @@ let () =
 
       extract_config_cmd;
       edit_config_cmd;
+
+      cleanup_leaked_global_kvs_objs_cmd;
 
       unit_tests_cmd;
 
