@@ -629,10 +629,7 @@ let execute_query : type req res.
               |> Option.map
                    (fun (cs, blob) ->
                     let b = match blob with
-                      | Value.Direct s ->
-                         Asd_protocol.Value.Direct
-                           (Slice.to_bigstring ~msg:"Asd_server.Direct" s
-                            |> Bigstring_slice.wrap_bigstring)
+                      | Value.Direct s -> Asd_protocol.Value.Direct s
                       | Value.OnFs (fnr, size) ->
                          write_laters := (fnr, size) :: !write_laters;
                          Asd_protocol.Value.Later size in
@@ -671,7 +668,7 @@ let execute_query : type req res.
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
+                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Slice.length blob
                      | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
                     0
                     res)

@@ -184,8 +184,8 @@ class _inner_client (fd:Net_fd.t) id =
                | Some (blob, cs) ->
                   match blob with
                   | Direct s ->
-                     Lwt.return (Some (Bigstring_slice.extract_to_bigstring
-                                         ~msg:"Direct" s, cs))
+                     let bs = Slice.to_bigstring ~msg:"Direct" s in
+                     Lwt.return (Some (bs, cs))
                   | Later size ->
                      let bs = Lwt_bytes.create ~msg:"Later" size in
                      Lwt.catch
