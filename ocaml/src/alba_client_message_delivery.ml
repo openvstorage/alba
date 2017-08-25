@@ -17,13 +17,16 @@ let _get_next_msg_id client prio =
          prio
          (Slice.wrap_string DK.next_msg_id)
   >>= fun next_id_so ->
-  let next_id = match next_id_so with
-    | None -> 0L
-    | Some next_id_s ->
+  let r = match next_id_so with
+    | None -> (None, 0L)
+    | Some next_id_b ->
        let module L = Llio2.ReadBuffer in
-       L.deserialize' L.x_int64_from next_id_s
+       let next_id = L.deserialize' L.x_int64_from next_id_b in
+       let next_id_s = Lwt_bytes.to_string next_id_b in
+       let () = Lwt_bytes.unsafe_destroy ~msg:"next_msg_id" next_id_b in
+       (Some next_id_s, next_id)
   in
-  Lwt.return (next_id_so, next_id)
+  Lwt.return r
 
 let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
 
@@ -75,7 +78,7 @@ let _deliver_osd_messages (osd_access : Osd_access_type.t) ~osd_id msgs =
              Osd.Assert.value_option
                (Slice.wrap_string DK.next_msg_id)
                (Option.map
-                  (fun x -> Asd_protocol.Blob.Lwt_bytes x)
+                  (fun x -> Asd_protocol.Blob.Bytes x)
                   next_id_so)
              :: asserts
            in

@@ -8,7 +8,8 @@ open! Prelude
 type t = Lwt_bytes.t Weak_pool.t
 
 let create ~buffer_size =
-  Weak_pool.create (fun () -> Lwt_bytes.create buffer_size)
+  let factory () = Lwt_bytes.create ~msg:"buffer_pool" buffer_size in
+  Weak_pool.create factory
 
 let get_buffer = Weak_pool.take
 

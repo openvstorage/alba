@@ -93,8 +93,8 @@ module Slice = struct
 
   let compare' = CompareLib.wrap compare
 
-  let to_bigstring t =
-    let res = Lwt_bytes.create t.length in
+  let to_bigstring ?msg t =
+    let res = Lwt_bytes.create ?msg t.length in
     Lwt_bytes.blit_from_bytes t.buf t.offset res 0 t.length;
     res
 

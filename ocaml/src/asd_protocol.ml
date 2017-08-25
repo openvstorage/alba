@@ -106,7 +106,7 @@ end
 
 module Value = struct
   type blob =
-    | Direct of Bigstring_slice.t
+    | Direct of Slice.t
     | Later of int
   [@@deriving show]
   type t = blob * Checksum.t
@@ -117,7 +117,7 @@ module Value = struct
     function
     | Direct value ->
        Llio.int8_to buf 1;
-       Llio.bigstring_slice_to buf value
+       Slice.to_buffer' buf value
     | Later size ->
        Llio.int8_to buf 2;
        Llio.int_to buf size
@@ -126,7 +126,7 @@ module Value = struct
     let module Llio = Llio2.ReadBuffer in
     match Llio.int8_from buf with
     | 1 ->
-       let value = Llio.bigstring_slice_from buf in
+       let value = Llio.string_from buf |> Slice.wrap_string in
        Direct value
     | 2 ->
        let size = Llio.int_from buf in

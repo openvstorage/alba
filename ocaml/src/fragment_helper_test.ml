@@ -5,7 +5,6 @@
 
 open! Prelude
 open Fragment_helper
-open Lwt_bytes2
 open Lwt.Infix
 
 let test_encrypt_decrypt () =

@@ -6,7 +6,6 @@
 open! Prelude
 open Slice
 open Nsm_model
-open Lwt_bytes2
 
 module RecoveryInfo = struct
   type object_info = {

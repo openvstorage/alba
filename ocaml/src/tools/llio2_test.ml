@@ -10,7 +10,7 @@ let test_list () =
   let tests = [ [1;2;3;4;5] ] in
   List.iter
     (fun t ->
-      let wbuf = WriteBuffer.make ~length:100 in
+      let wbuf = WriteBuffer.make ~msg:"test_list" ~length:100 in
       let () = WriteBuffer.list_to WriteBuffer.int_to wbuf t in
       let open WriteBuffer in
       let rbuf = ReadBuffer.make_buffer wbuf.buf

@@ -6,7 +6,6 @@
 open! Prelude
 open Slice
 open Osd
-open Lwt_bytes2
 open Lwt.Infix
 
 type kvs = Osd.key_value_storage

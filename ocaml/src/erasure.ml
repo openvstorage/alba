@@ -30,7 +30,6 @@ let lwt_bytes_list_to_carray (l : Lwt_bytes.t list) =
 
 let shared_buffer_list_to_carray (l : Lwt_bytes2.SharedBuffer.t list) =
   let open CArray in
-  let open Lwt_bytes2 in
   start
     (of_list
        (ptr char)

@@ -5,7 +5,6 @@
 
 open! Prelude
 open Slice
-open Lwt_bytes2
 open Bytes_descr
 open Ctypes
 open Foreign

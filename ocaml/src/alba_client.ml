@@ -8,7 +8,6 @@ open Fragment_cache
 open Alba_statistics
 open Alba_client_errors
 open Lwt.Infix
-open Lwt_bytes2
 
 class alba_client (base_client : Alba_base_client.client)
   =

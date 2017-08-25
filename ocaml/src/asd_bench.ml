@@ -4,7 +4,6 @@
 *)
 
 open! Prelude
-open Lwt_bytes2
 open Lwt.Infix
 open Cmdliner
 open Cli_common

@@ -2124,8 +2124,9 @@ module Test = struct
         | None -> cmd4
         | Some dump -> cmd4 @ [" > " ^ dump] in
       let cmd_s = cmd5 |> String.concat " " in
-      cmd_s
-      |> Shell.cmd_with_rc
+      let rc = Shell.cmd_with_rc cmd_s in
+      let () = Shell.cmd "pkill -10 alba" ~ignore_rc:true in
+      rc
     end
 
   let _make_backend_cfg_dir cfg =

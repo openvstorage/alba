@@ -6,7 +6,6 @@
 open! Prelude
 open Fragment_cache
 open Lwt.Infix
-open Lwt_bytes2
 
 let run_with_local_fragment_cache size test test_name =
   Random.init 666;

@@ -5,7 +5,6 @@
 
 open! Prelude
 open Slice
-open Lwt_bytes2
 open Nsm_model
 open Encryption
 open Gcrypt
@@ -259,7 +258,10 @@ let chunk_to_fragments_ec
     let rec inner acc = function
       | 0 -> acc
       | n ->
-        let fragment = Bigstring_slice.create fragment_size in
+         let fragment =
+           let msg = Printf.sprintf "coding_fragment:%i" n in
+           Bigstring_slice.create ~msg fragment_size
+         in
         inner (fragment :: acc) (n - 1) in
     inner [] m
   in

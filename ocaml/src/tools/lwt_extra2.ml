@@ -5,7 +5,6 @@
 
 open! Prelude
 open Lwt.Infix
-open Lwt_bytes2
 
 let ignore_errors ?(logging=false) f =
   Lwt.catch

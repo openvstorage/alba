@@ -7,7 +7,6 @@ open! Prelude
 open Alba_interval
 open Alba_client_errors
 open Slice
-open Lwt_bytes2
 open Lwt_extra2
 open Lwt.Infix
 

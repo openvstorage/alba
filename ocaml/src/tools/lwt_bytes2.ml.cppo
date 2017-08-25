@@ -3,44 +3,71 @@
   This file is part of Open vStorage. For license information, see <LICENSE.txt>
 *)
 
+let _die code =
+  let f s =
+    Lwt_log.ign_fatal s;
+    Lwt_io.printf "%!" |> Lwt.ignore_result;
+    Lwt_io.eprintf "%!" |> Lwt.ignore_result;
+    exit code
+  in
+  Printf.ksprintf f
 
-module Lwt_bytes = struct
-  include Lwt_bytes
+module Safe = struct
+  type t = (* X of *) Lwt_bytes.t
 
-  let show (t:t) =
-    let l = Lwt_bytes.length t in
+  let unwrap t = t
+  let wrap   t = t
+
+
+  let length t =  Lwt_bytes.length (unwrap t)
+  let to_string t = Lwt_bytes.to_string (unwrap t)
+  let write fd t = Lwt_bytes.write fd (unwrap t)
+  let read  fd t = Lwt_bytes.read fd (unwrap t)
+
+  let raw_address t =
+    let open Ctypes in
+    let x = bigarray_start array1 (unwrap t) in
+    raw_address_of_ptr (to_voidp x)
+
+  let blit ?(msg = "") s ofs1 t ofs2 len =
+    try
+      Lwt_bytes.blit (unwrap s) ofs1 (unwrap t) ofs2 len
+    with (Invalid_argument _ as exn)->
+         let () =
+           Lwt_log.ign_error_f
+             "bad blit %nX %i %nX %i %i (msg:%S)"
+             (raw_address s) ofs1 (raw_address t) ofs2 len msg
+         in
+         match Sys.getenv "ALBA_FAIL_FAST" with
+         | "true" ->
+            let from_where =
+              Printexc.get_callstack 40 |> Printexc.raw_backtrace_to_string
+            in
+            _die(-2) "Fail fast:%S" from_where
+
+         | s -> raise exn
+         | exception _ -> raise exn
+
+  let blit_to_bytes t = Lwt_bytes.blit_to_bytes (unwrap t)
+  let blit_from_bytes s ofs1 t ofs2 len = Lwt_bytes.blit_from_bytes
+                                            s ofs1 (unwrap t) ofs2 len
+
+  let fill t = Lwt_bytes.fill (unwrap t)
+  let get t  = Lwt_bytes.get (unwrap t)
+  let set t  = Lwt_bytes.set (unwrap t)
+
+  let show t =
+    let l = length t in
     if l < 60
     then Printf.sprintf "<Lwt_bytes: length=%i %S>" l (to_string t)
     else Printf.sprintf "<Lwt_bytes: length=%i _ >" l
 
-
   let pp formatter t =
     Format.pp_print_string formatter (show t)
 
-  let raw_address (t : t) =
-    let open Ctypes in
-    let x = bigarray_start array1 t in
-    raw_address_of_ptr (to_voidp x)
 
-  let unsafe_destroy ?msg (t : t) =
-    let l = Lwt_bytes.length t in
-    let address = raw_address t in
-    Lwt_log.ign_debug_f ">>> unsafe_destroy %i bytes @ %nX -- %S <<<"
-                        l address
-                        (match msg with
-                          | Some msg -> msg
-                          | None -> Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
-    Core_kernel.Bigstring.unsafe_destroy t
 
-  let create_random size =
-    let r = Lwt_bytes.create size in
-    for i = 0 to size - 1 do
-      Lwt_bytes.unsafe_set r i (Random.int 256 |> Char.chr)
-    done;
-    r
-
-  let lwt_unix_fd_to_fd
-        (fd : Lwt_unix.file_descr) : int =
+  let lwt_unix_fd_to_fd (fd : Lwt_unix.file_descr) : int =
     Obj.magic (Obj.field (Obj.repr fd) 0)
 
   let read_and_log fd buf pos len =
@@ -51,19 +78,158 @@ module Lwt_bytes = struct
         if (raw_address buf) <> org_address
         then
           Lwt_log.ign_error_f ">>> read_and_log fd %i : buf @%nX (org: %nX) [%i bytes] pos: %i len: %i DONE <<<"
-                              (lwt_unix_fd_to_fd fd) (raw_address buf) org_address (Lwt_bytes.length buf) pos len;
+                              (lwt_unix_fd_to_fd fd)
+                              (raw_address buf) org_address
+                              (length buf) pos len;
         if (raw_address buf) = Nativeint.zero
         then
           begin
-            Lwt_log.ign_error_f "+++ HOLD IT--- NULL BUFFER DETECTED !! org_address: %nX +++" org_address;
-            Lwt_io.printf "%!" |> Lwt.ignore_result;
-            Lwt_io.eprintf "%!" |> Lwt.ignore_result;
-            exit (-1);
+            _die (-1)
+                 "+++ HOLD IT--- NULL BUFFER DETECTED !! org_address: %nX +++"
+                 org_address
           end;
 
-          Lwt.return_unit)
+        Lwt.return_unit)
+end
+
+module CanLeak = struct
+
+  let create ?msg len = Lwt_bytes.create len |> Safe.wrap
+
+  let extract ?msg xt off len =
+    Lwt_bytes.extract (Safe.unwrap xt) off len |> Safe.wrap
+
+  let of_string s = Lwt_bytes.of_string s |> Safe.wrap
+
+  let of_bytes s = Lwt_bytes.of_bytes s |> Safe.wrap
+
+  let create_random ?msg size =
+    let r = Lwt_bytes.create size in
+    for i = 0 to size - 1 do
+      Lwt_bytes.unsafe_set r i (Random.int 256 |> Char.chr)
+    done;
+    Safe.wrap r
+
+  let copy t =
+    let t0 = Safe.unwrap t in
+    let c0 = Lwt_bytes.copy t0 in
+    Safe.wrap c0
+
+  let unsafe_destroy ?msg xt =
+    let l = Safe.length xt in
+    let address = Safe.raw_address xt in
+    Lwt_log.ign_debug_f ">>> unsafe_destroy %i bytes @ %nX -- %S <<<"
+                        l address
+                        (match msg with
+                          | Some msg -> msg
+                          | None -> Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
+    let t = Safe.unwrap xt in
+    Core_kernel.Bigstring.unsafe_destroy t
+
+
 
 end
+
+
+module ProdLwt_bytes = struct
+  include Safe
+  include CanLeak
+  let dump_registry () =
+    Lwt_log.ign_info "ProdLwt_bytes does not have this"
+end
+
+
+module TestLwt_bytes = struct
+  include Safe
+
+  type registry = {
+      mutable mem: int64 ;
+      items : (nativeint, string * int64) Hashtbl.t
+    }
+
+  let registry = { mem = 0L; items = Hashtbl.create 256 }
+
+  let register ?msg t =
+    let msg' = match msg with
+      | Some msg -> msg
+      | None ->
+         Printexc.get_callstack 40 |> Printexc.raw_backtrace_to_string
+    in
+    let ra = raw_address t in
+    let len = length t |> Int64.of_int in
+    let () = registry.mem <- Int64.add registry.mem len in
+    Hashtbl.add registry.items ra (msg', len)
+
+  let dump_registry () =
+    let _MB = 1024.0 *. 1024.0 in
+    Lwt_log.ign_info_f "TestLwt_bytes.registry: %i items; %.2f MB"
+                       (Hashtbl.length registry.items)
+                       (Int64.to_float registry.mem /. _MB);
+    Hashtbl.iter
+      (fun ra (msg,len) ->
+        Lwt_log.ign_info_f "%nX: (%S,%Li)" ra msg len
+      )
+      registry.items
+
+  let unregister t =
+    let ra = raw_address t in
+    match Hashtbl.find registry.items ra with
+    | (_, len) ->
+       begin
+         Hashtbl.remove registry.items ra;
+         registry.mem <- Int64.sub registry.mem len
+       end
+    | exception _ ->
+       begin
+         dump_registry ();
+         _die (-1) "unregister ? ra:%nX" ra
+      end
+
+  let create ?msg len =
+    let t = CanLeak.create len in
+    let () = register ?msg t in
+    t
+
+  let create_random ?msg len =
+    let t = CanLeak.create_random len in
+    let () = register ?msg t in
+    t
+
+  let extract ?msg t off len =
+    let t' = CanLeak.extract t off len in
+    let () = register ?msg t' in
+    t'
+
+  let copy ?msg t =
+    let t' = CanLeak.copy t in
+    let () = register ?msg t' in
+    t'
+
+  let of_string ?msg s =
+    let t = CanLeak.of_string s in
+    let () = register ?msg t in
+    t
+
+  let of_bytes ?msg s =
+    let t = CanLeak.of_bytes s in
+    let () = register ?msg t in
+    t
+
+
+  let unsafe_destroy ?msg (t : t) =
+    let () = unregister t in
+    CanLeak.unsafe_destroy ?msg t
+
+
+
+end
+
+module Lwt_bytes =
+#ifdef ALBA_TEST
+TestLwt_bytes
+#else
+ProdLwt_bytes
+#endif
 
 module ProdSharedBuffer = struct
   type t = { b : Lwt_bytes.t ; mutable ref_count : int}
@@ -133,9 +299,11 @@ module TestSharedBuffer = struct
   let unregister_usage t =
     let ref_count' = t.ref_count -1 in
     let () = t.ref_count <- ref_count' in
-    Lwt_log.ign_debug_f ">>> TestSharedBuffer UNREGISTER_USAGE %i bytes @ %nX -- ref_count %i (%S) <<<"
-                        (Lwt_bytes.length t.b) (Lwt_bytes.raw_address t.b) ref_count'
-                        (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
+    Lwt_log.ign_debug_f
+      ">>> TestSharedBuffer UNREGISTER_USAGE %i bytes @ %nX -- ref_count %i (%S) <<<"
+      (Lwt_bytes.length t.b)
+      (Lwt_bytes.raw_address t.b) ref_count'
+      (Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string);
     if ref_count' = 0
     then Lwt_bytes.unsafe_destroy ~msg:"TestSharedBuffer UNSAFE_DESTROY" t.b
 

@@ -847,8 +847,9 @@ class osd_access
                                        (Osd_keys.AlbaInstanceRegistration.instance_log_key 0l)))
                                closer >>= function
                              | None -> Lwt.return `Continue
-                             | Some alba_id' ->
-                                let alba_id' = Lwt_bytes.to_string alba_id' in
+                             | Some alba_id'slice ->
+                                let alba_id' = Lwt_bytes.to_string alba_id'slice in
+                                Lwt_bytes.unsafe_destroy alba_id'slice;
                                 mgr_access # get_alba_id >>= fun alba_id ->
 
                                 Lwt.catch

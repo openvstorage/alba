@@ -4,7 +4,6 @@
 *)
 
 open! Prelude
-open Lwt_bytes2
 open Lwt.Infix
 
 type transport =
@@ -310,7 +309,11 @@ let with_message_buffer_from
           f (!buffer, 4)
         else
           begin
-            let new_buf = Lwt_bytes.create message_plus_header_length in
+            let new_buf =
+              Lwt_bytes.create
+                ~msg:"Net_fd.new_buf"
+                message_plus_header_length
+            in
             Lwt_bytes.blit !buffer 4 new_buf 0 message_bytes_read;
 
             if message_plus_header_length <= max_buffer_size

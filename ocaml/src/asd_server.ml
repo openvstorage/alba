@@ -11,7 +11,6 @@ open Slice
 open Checksum
 open Asd_statistics
 open Asd_io_scheduler
-open Lwt_bytes2
 open Range_query_args
 
 let blob_threshold = 16 * 1024
@@ -630,9 +629,7 @@ let execute_query : type req res.
               |> Option.map
                    (fun (cs, blob) ->
                     let b = match blob with
-                      | Value.Direct s ->
-                         Asd_protocol.Value.Direct (Slice.to_bigstring s
-                                                    |> Bigstring_slice.wrap_bigstring)
+                      | Value.Direct s -> Asd_protocol.Value.Direct s
                       | Value.OnFs (fnr, size) ->
                          write_laters := (fnr, size) :: !write_laters;
                          Asd_protocol.Value.Later size in
@@ -671,7 +668,7 @@ let execute_query : type req res.
                     (fun acc ->
                      function
                      | None           -> acc + 200
-                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Bigstring_slice.length blob
+                     | Some (Asd_protocol.Value.Direct blob, _) -> acc + 200 + Slice.length blob
                      | Some (Asd_protocol.Value.Later size, _) -> acc + 200 + size)
                     0
                     res)
@@ -1431,10 +1428,16 @@ let asd_protocol
           in
           Lwt_log.debug msg >>= fun () ->
           let open Llio2.WriteBuffer in
-          let rbuf = make ~length:32 in
-          let err = Error.ProtocolVersionMismatch msg in
-          Error.serialize rbuf err;
-          Net_fd.write_all_lwt_bytes nfd rbuf.buf 0 rbuf.pos
+          let rbuf = make ~msg ~length:32 in
+          Lwt.finalize
+            ( fun () ->
+              let err = Error.ProtocolVersionMismatch msg in
+              Error.serialize rbuf err;
+              Net_fd.write_all_lwt_bytes nfd rbuf.buf 0 rbuf.pos)
+            (fun () ->
+              dispose rbuf;
+              Lwt.return_unit
+            )
         else
           begin
             Llio2.NetFdReader.option_from
@@ -1452,7 +1455,10 @@ let asd_protocol
             match lido with
             | Some asd_id' when asd_id' <> asd_id -> Lwt.return ()
             | _ ->
-               let buf = Lwt_bytes.create 1024 |> ref in
+               let buf = Lwt_bytes.create
+                           ~msg:"Asd_server.asd_protocol.start_buf"
+                           1024 |> ref
+               in
                Lwt.finalize
                  (fun () -> inner buf)
                  (fun () ->

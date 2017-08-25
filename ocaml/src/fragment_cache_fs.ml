@@ -8,7 +8,6 @@ open! Prelude
 open Unix
 open Lwt.Infix
 open Rocks_store
-open Lwt_bytes2
 module KV = Rocks_key_value_store
 
 open Fragment_cache

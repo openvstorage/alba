@@ -6,7 +6,6 @@
 open! Prelude
 open Lwt.Infix
 
-open Lwt_bytes2
 open Nsm_model
 
 class virtual cache = object(self)

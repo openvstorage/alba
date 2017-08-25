@@ -7,7 +7,6 @@ open! Prelude
 open Nsm_model
 open Recovery_info
 open Lwt.Infix
-open Lwt_bytes2
 
 let choose_new_devices
       (osd_access : Osd_access_type.t)
