@@ -20,6 +20,8 @@ let asd_start cfg_url log_sinks =
     | Result.Error err -> Lwt.fail_with err
     | Result.Ok cfg ->
 
+       let orig_cfg = cfg in
+
        let ips,         port,      rora_port,
            rora_ips, transport, rora_transport, home,
            node_id,     log_level, asd_id,
@@ -96,6 +98,7 @@ let asd_start cfg_url log_sinks =
               Lwt_log.info_f "Received USR1, refetching log level from config %s"
                              (Prelude.Url.show cfg_url)
               >>= fun () ->
+              Lwt_log.info_f "Original config: %s" ([%show : Config.t] orig_cfg) >>= fun () ->
               Lwt_bytes2.Lwt_bytes.dump_registry ();
               Asd_config.retrieve_cfg cfg_url >>= function
               | Result.Error err ->

@@ -89,6 +89,8 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
     retrieve_cfg cfg_url >>= function
     | Result.Error err -> Lwt.fail_with err
     | Result.Ok cfg ->
+      let orig_cfg = cfg in
+
       let open Config in
       let log_level                           = cfg.log_level
       and fragment_cache_cfg                  = cfg.fragment_cache
@@ -123,6 +125,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
             let handle () =
               Lwt_log.info_f "Received USR1, reloading log level from config file"
               >>= fun () ->
+              Lwt_log.info_f "Original config: %s" ([%show : Config.t] orig_cfg) >>= fun () ->
               Lwt_bytes2.Lwt_bytes.dump_registry ();
               retrieve_cfg cfg_url >>= function
               | Result.Error err ->

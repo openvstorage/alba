@@ -60,6 +60,8 @@ let proxy_start (cfg_url:Url.t) log_sinks =
     retrieve_cfg cfg_url >>= function
     | Result.Error err -> failwith err
     | Result.Ok cfg ->
+       let orig_cfg = cfg in
+
        let url_from_cfg cfg =
          let open Config in
          let abm_cfg_url = Prelude.Option.map Url.make cfg.albamgr_cfg_url in
@@ -144,6 +146,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
               Lwt_log.info_f
                 "Received USR1, reloading log level from config file"
               >>= fun () ->
+              Lwt_log.info_f "Original config: %s" ([%show : Config.t] orig_cfg) >>= fun () ->
               Lwt_bytes2.Lwt_bytes.dump_registry ();
               retrieve_cfg cfg_url
               >>= function
