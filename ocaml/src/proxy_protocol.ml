@@ -861,4 +861,43 @@ module Protocol = struct
                             Deser.string)
     | GetFragmentEncryptionKey ->
        Deser.option Deser.string
+
+  let dispose_result : type i o. (i, o) request -> o -> unit =
+    function
+    | ListNamespaces           -> ignore
+    | ListNamespaces2          -> ignore
+    | NamespaceExists          -> ignore
+    | CreateNamespace          -> ignore
+    | DeleteNamespace          -> ignore
+    | ListObjects              -> ignore
+    | ReadObjectFs             -> ignore
+    | WriteObjectFs            -> ignore
+    | WriteObjectFs2           -> ignore
+    | DeleteObject             -> ignore
+    | GetObjectInfo            -> ignore
+    | InvalidateCache          -> ignore
+    | DropCache                -> ignore
+    | ProxyStatistics          -> ignore
+    | GetVersion               -> ignore
+    | OsdView                  -> ignore
+    | GetClientConfig          -> ignore
+    | Ping                     -> ignore
+    | OsdInfo                  -> ignore
+    | OsdInfo2                 -> ignore
+    | MultiExists              -> ignore
+    | GetAlbaId                -> ignore
+    | HasLocalFragmentCache    -> ignore
+    | UpdateSession            -> ignore
+    | GetFragmentEncryptionKey -> ignore
+    | ReadObjectsSlices        -> ignore
+    | ReadObjectsSlices2       -> ignore
+    | ApplySequence            -> ignore
+    | ReadObjects ->
+       fun (_, manifest_slice_option_list) ->
+       List.iter
+         (function
+          | None -> ()
+          | Some (_mf, s) -> Lwt_bytes.unsafe_destroy s.Bigstring_slice.bs
+         )
+         manifest_slice_option_list
 end
