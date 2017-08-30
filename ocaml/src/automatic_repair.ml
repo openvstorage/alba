@@ -67,7 +67,8 @@ let periodic_load_osds
                                    Osd.Low
                                    (Slice.wrap_string Osd_keys.test_key))
                   >>= function
-                  | Some _ ->
+                  | Some value ->
+                     Lwt_bytes.unsafe_destroy value;
                      Osd_state.add_read osd_state;
                      Lwt_log.info_f "Read load on %Li succeeded" osd_id
                   | None ->
