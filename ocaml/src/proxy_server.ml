@@ -646,13 +646,17 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
            renderer := (fun () -> render_request_args r req);
 
            execute_request r stats req >>= fun res ->
-           Lwt.return (false,
-                       Llio.serialize_with_length'
-                         (Llio.pair_to
-                            Llio.int_to
-                            (snd (Protocol.deser_request_o session r)))
-                         (0, res)))
-         (function
+           let serialized_result =
+             Llio.serialize_with_length'
+               (Llio.pair_to
+                  Llio.int_to
+                  (snd (Protocol.deser_request_o session r)))
+               (0, res)
+           in
+           Protocol.dispose_result r res;
+           Lwt.return (false, serialized_result)
+      )
+      (function
           | End_of_file as e ->
              Lwt.fail e
           | Protocol.Error.Exn (err, payload) ->
