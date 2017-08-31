@@ -1334,8 +1334,6 @@ let asd_protocol
                 return_result (Protocol.update_response_serializer u) res
        end)
       (function
-        | End_of_file as e ->
-           Lwt.fail e
         | Protocol.Error.Exn err ->
            Lwt_log.info_f "returning error %s" (Protocol.Error.show err) >>= fun () ->
            return_error err

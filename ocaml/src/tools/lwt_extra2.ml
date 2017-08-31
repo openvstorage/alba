@@ -6,15 +6,20 @@
 open! Prelude
 open Lwt.Infix
 
-let ignore_errors ?(logging=false) f =
+let ignore_errors
+      ?(logging=false)
+      ?(msg=Printexc.get_callstack 5 |> Printexc.raw_backtrace_to_string)
+      f
+  =
   Lwt.catch
     f
     (function
       | Lwt.Canceled -> Lwt.fail Lwt.Canceled
       | exn ->
          if logging
-         then Lwt_log.info ~exn "ignoring"
-         else Lwt_log.debug ~exn "ignoring")
+         then Lwt_log.info_f ~exn "ignoring an exception during %s" msg
+         else Lwt_log.debug_f ~exn "ignoring an exception during %s" msg
+    )
 
 let with_timeout ~msg (timeout:float) f =
   Lwt.catch

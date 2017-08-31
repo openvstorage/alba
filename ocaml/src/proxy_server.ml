@@ -653,8 +653,6 @@ let proxy_protocol (alba_client : Alba_client.alba_client)
                             (snd (Protocol.deser_request_o session r)))
                          (0, res)))
          (function
-          | End_of_file as e ->
-             Lwt.fail e
           | Protocol.Error.Exn (err, payload) ->
              let msg = match payload with
                | Some x -> x

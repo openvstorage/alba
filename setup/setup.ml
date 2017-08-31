@@ -222,6 +222,17 @@ let _get_client_tls ?(cfg=Config.default) ()=
   (cacert,pem,key)
 
 
+let rec wait_for_condition i msg f =
+  if f ()
+  then ()
+  else if i = 0
+  then failwith (Printf.sprintf "%s: took too long!" msg)
+  else
+    begin
+      Printf.printf "%i\n%!" i;
+      Unix.sleep 1;
+      wait_for_condition (i - 1) msg f
+    end
 
 
 class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
@@ -362,32 +373,27 @@ class arakoon ?(cfg=Config.default) cluster_id nodes base_port etcd =
       Shell.cmd_with_capture line'
 
     method wait_for_master ?(max=20) () : string =
-
-      let step () =
-        try
-          let r = self # who_master () in
-          Some r
-        with _ -> None
-      in
-      let rec loop n =
-        if n = 0
-        then
-          begin
-            let cat_log i =
-              Shell.cmd (Printf.sprintf "tail -n50 %s/abm_%i/abm_%i.start.log" cluster_path i i);
-              Shell.cmd (Printf.sprintf "tail -n50 %s/abm_%i/abm_%i.log" cluster_path i i)
-            in
-            cat_log 0; cat_log 1; cat_log 2;
-            failwith "No_master"
-          end
-        else
-          let mo = step () in
-          match mo with
-          | None ->
-             let () = Printf.printf "%i\n%!" n; Unix.sleep 1 in
-             loop (n-1)
-          | Some master -> master
-      in loop max
+      try
+        wait_for_condition
+          max
+          "wait_for_master"
+          (fun () ->
+            try
+              self # who_master () |> ignore;
+              true
+            with _ ->
+              false
+          );
+        self # who_master ()
+      with _ ->
+        begin
+          let cat_log i =
+            Shell.cmd (Printf.sprintf "tail -n50 %s/abm_%i/abm_%i.start.log" cluster_path i i);
+            Shell.cmd (Printf.sprintf "tail -n50 %s/abm_%i/abm_%i.log" cluster_path i i)
+          in
+          cat_log 0; cat_log 1; cat_log 2;
+          failwith "No_master"
+        end
 end
 
 type tls_client =
@@ -613,7 +619,8 @@ class proxy ?fragment_cache ?ip ?transport
       cmd
       [ "-h"; _ip;
         "-p"; Proxy_cfg.port p_cfg |> string_of_int;
-        "-t"; _transport
+        "-t"; _transport;
+        "--verbose";
       ]
   in
 
@@ -1001,18 +1008,6 @@ class etcd host port home =
       Printf.sprintf "fuser -k -n tcp %i" port
       |> Shell.cmd ~ignore_rc:true
   end
-
-let rec wait_for_condition i msg f =
-  if f ()
-  then ()
-  else if i = 0
-  then failwith (Printf.sprintf "%s: took too long!" msg)
-  else
-    begin
-      Printf.printf "%i\n%!" i;
-      Unix.sleep 1;
-      wait_for_condition (i - 1) msg f
-    end
 
 
 module Deployment = struct
@@ -2638,7 +2633,8 @@ module Test = struct
       Deployment.setup t';
       wait_for 10;
       two_nodes # stop;
-      wait_for 1;
+      (* give the arakoon nodes some time to do a proper shutdown *)
+      wait_for 3;
 
       print_endline "grow the cluster";
       let three_nodes = new arakoon "abm" ["abm_0";"abm_1";"abm_2"] 4000 t.cfg.etcd in
@@ -2646,7 +2642,7 @@ module Test = struct
       three_nodes # link_plugins "abm_2";
       three_nodes # start_node "abm_1";
       three_nodes # start_node "abm_2";
-      wait_for 20;
+      three_nodes # wait_for_master () |> ignore;
       three_nodes # start_node "abm_0";
 
 
@@ -2676,9 +2672,13 @@ module Test = struct
       in
       loop 10;
 
-      wait_for 120;
-      let c = n_nodes_in_config () in
-      assert (c = 3);
+      wait_for_condition
+        120
+        "waiting for 3 nodes to be in the config"
+        (fun () ->
+          let c = n_nodes_in_config () in
+          c = 3
+        );
 
       print_endline "shrink the cluster";
       three_nodes # stop;
@@ -2687,9 +2687,14 @@ module Test = struct
       two_nodes # start;
       maybe_copy (t'.abm # config_url) ;
       upload_albamgr_cfg (two_nodes # config_url |> Url.canonical);
-      wait_for 120;
-      let c = n_nodes_in_config () in
-      assert (c = 2);
+
+      wait_for_condition
+        120
+        "waiting for 2 nodes to be in config"
+        (fun () ->
+          let c = n_nodes_in_config () in
+          c = 2
+        );
       ()
 
     in
