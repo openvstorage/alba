@@ -1415,14 +1415,17 @@ let test_disk_churn () =
                   asds)
        in
 
-       let asds = [
+       let asds =
+         let random_suffix = Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
+         [
          ("test_disk_churn_0", 8240);
          ("test_disk_churn_1", 8241);
          ("test_disk_churn_2", 8242);
          ("test_disk_churn_3", 8243);
          ("test_disk_churn_4", 8244);
          ("test_disk_churn_5", 8245);
-       ]
+         ]
+         |> List.map (fun (n, p) -> n ^ "_" ^ random_suffix, p)
        in
 
        let fragment_size = 40 in
@@ -1780,7 +1783,7 @@ let test_add_disk () =
          ~preset_name:None
          ~namespace () >>= fun namespace_id ->
 
-       let asd_name = test_name in
+       let asd_name = test_name ^ "_" ^ Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
        let asd_port = 17843 in
        Asd_test.with_asd_client asd_name asd_port
          (fun asd ->
