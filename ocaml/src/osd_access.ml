@@ -260,7 +260,7 @@ class osd_access
     (Hashtbl.create 3
      : (Osd.id,
         OsdInfo.t * Osd_state.t  * Capabilities.OsdCapabilities.t) Hashtbl.t) in
-  let refreshers = ref [] in
+  let stop_refreshers = ref [] in
   let add_osd_info ~osd_id osd_info capabilities =
     if not (Hashtbl.mem osds_info_cache osd_id)
     then
@@ -276,7 +276,10 @@ class osd_access
             !osd_long_id_claim_info;
 
         let refresher () =
+          let stop = ref false in
+          stop,
           Lwt_extra2.run_forever
+            ~stop
             "refresh_osd_total_used_and_capabilities"
             (fun () ->
              let osd_info,osd_state,capabilities = Hashtbl.find osds_info_cache osd_id in
@@ -309,11 +312,10 @@ class osd_access
                closer
             )
             60.
-        in let _t = refresher () in
-           Lwt.ignore_result _t;
-           let () = refreshers := _t :: !refreshers in
-           ()
-
+        in
+        let stop, t = refresher () in
+        Lwt.ignore_result t;
+        stop_refreshers := stop :: !stop_refreshers
       end
   in
   let get_osd_info ~osd_id =
@@ -508,7 +510,7 @@ class osd_access
     method finalize =
       finalizing <- true;
       Osd_pool.invalidate_all osds_pool;
-      List.iter Lwt.cancel !refreshers
+      List.iter (fun s -> s := true) !stop_refreshers
 
     method with_osd :
              'a. osd_id : Albamgr_protocol.Protocol.Osd.id ->
@@ -608,7 +610,7 @@ class osd_access
         osds >>= fun () ->
       Lwt.return res
 
-    method propagate_osd_info ?(run_once=false) ?(delay=20.) () : unit Lwt.t =
+    method propagate_osd_info ?stop ?(run_once=false) ?(delay=20.) () : unit Lwt.t =
       let open Nsm_model in
       let open Albamgr_protocol.Protocol in
       let make_update id (osd_info:OsdInfo.t) (osd_state:Osd_state.t) =
@@ -666,7 +668,7 @@ class osd_access
       in
       if run_once
       then propagate ()
-      else Lwt_extra2.run_forever "propagate_osd_info" propagate delay
+      else Lwt_extra2.run_forever ?stop "propagate_osd_info" propagate delay
 
 
     method seen ?(check_claimed=fun id -> false) ?(check_claimed_delay=60.) =

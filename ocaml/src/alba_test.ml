@@ -986,6 +986,8 @@ let test_change_osd_ip_port () =
   let osd_name =
     test_name ^ Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
 
+  let stop = ref false in
+
   let t (client : Alba_client.alba_client) =
        let namespace = test_name in
        let object_name = "object_name" in
@@ -996,6 +998,7 @@ let test_change_osd_ip_port () =
                  ~check_claimed_delay:0.1 ());
        Lwt.ignore_result
          (client # osd_access # propagate_osd_info
+                 ~stop
                  ~delay:0.1 ());
 
        Asd_test.with_asd_client
@@ -1086,6 +1089,7 @@ let test_change_osd_ip_port () =
           t client >>= fun () ->
           Lwt_log.debug "==================== end")
          (fun () ->
+            stop := true;
             safe_delete_namespace client test_name >>= fun () ->
             Asd_test.with_asd_client
               ~is_restart:true
