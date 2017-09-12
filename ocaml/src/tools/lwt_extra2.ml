@@ -170,12 +170,19 @@ let exists filename =
     )
 
 let _read_all read_to_target ifd offset length =
+  let t0 = Unix.gettimeofday() in
   let rec inner offset count = function
     | 0 ->
        begin
-         if count < 20 || (length / count > 32768)
+         let took = Unix.gettimeofday () -. t0 in
+         if count < 20
+            || (length / count > 32768)
+            || took < 0.01 (* don't log if benign *)
          then Lwt.return_unit
-         else Lwt_log.info_f "reading from fd %i: %iB in %i steps" ifd length count
+         else
+           Lwt_log.info_f
+                "reading from fd %i: %iB in %i steps (took:%f)"
+                ifd length count took
        end >>= fun () ->
        Lwt.return length
     | todo ->
