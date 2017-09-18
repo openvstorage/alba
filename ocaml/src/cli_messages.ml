@@ -26,7 +26,8 @@ let accumulate
 
 let transform_osd (client:Albamgr_client.client) = function
   | [] ->
-     client # list_all_claimed_osds >>= fun (c,osd_infos ) ->
+     client # list_all_claimed_osds ~consistency:Consistency.Consistent
+     >>= fun (c,osd_infos ) ->
      let r =
        List.map
          (fun ((x : int64),_ ) -> x)

@@ -774,7 +774,8 @@ let test_verify_namespace () =
      (* was the abm's counter for checksum mismatches updated ? *)
      alba_client # osd_access # propagate_osd_info ~run_once:true ()
      >>= fun () ->
-     alba_client # mgr_access # list_all_claimed_osds >>= fun (_,r) ->
+     alba_client # mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent
+     >>= fun (_,r) ->
      let mismatches =
        List.fold_left
          (fun acc (_,info) ->

@@ -56,7 +56,8 @@ let _easiest_upload () =
     (fun alba_client ->
      alba_client # create_namespace ~namespace:"disk_failure_test" ~preset_name:None () >>= fun namespace_id ->
      Alba_test._wait_for_osds ~cnt:6 alba_client namespace_id >>= fun () ->
-     alba_client # mgr_access # list_all_claimed_osds >>= fun (n, osds) ->
+     alba_client # mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent
+     >>= fun (n, osds) ->
      Lwt_io.printlf "there are n=%i claimed osds" n >>= fun()->
      let soon_dead = List.hd_exn osds
      in

@@ -232,7 +232,8 @@ class client ?(retry_timeout = 60.)
          if maintenance_config.Maintenance_config.enable_auto_repair
          then
            begin
-             mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
+             mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent
+             >>= fun (_, osds) ->
 
              (* failure detecting already decommissioned osds isn't that useful *)
              let osds =

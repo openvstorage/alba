@@ -1474,7 +1474,8 @@ let test_disk_churn () =
 
          Lwt_list.iter_s
            (fun osd_id ->
-              alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>= function
+             alba_client # mgr_access # get_osd_by_osd_id ~consistency:Consistency.Consistent ~osd_id
+             >>= function
               | None -> Lwt.fail_with "can't find osd"
               | Some osd_info ->
                 alba_client # decommission_osd
@@ -1556,7 +1557,7 @@ let test_disk_churn () =
             *)
            let osd_id = List.hd_exn used_osds' in
 
-           alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>=
+           alba_client # mgr_access # get_osd_by_osd_id ~consistency:Consistency.Consistent ~osd_id >>=
              (function
                | None -> Lwt.fail_with "can't find osd"
                | Some osd_info ->
@@ -1599,7 +1600,7 @@ let test_disk_churn () =
 
            let osd_id = List.hd_exn used_osds in
 
-           alba_client # mgr_access # get_osd_by_osd_id ~osd_id >>=
+           alba_client # mgr_access # get_osd_by_osd_id ~consistency:Consistency.Consistent ~osd_id >>=
              (function
                | None -> Lwt.fail_with "can't find osd"
                | Some osd_info ->

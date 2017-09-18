@@ -291,16 +291,19 @@ object(self)
         AddOsdsToPreset
         (preset_name, (List.length osd_ids, osd_ids))
 
-    method list_osds_by_osd_id ~first ~finc ~last ~reverse ~max =
+    method list_osds_by_osd_id
+             ~(consistency:Consistency.t)
+             ~first ~finc ~last ~reverse ~max
+      =
       let args = RangeQueryArgs.({ first; finc; last; reverse; max; }) in
-      let use_feature args = client # query ListOsdsByOsdId3 args in
+      let use_feature args = client # query ~consistency ListOsdsByOsdId3 args in
       let alternative args =
         maybe_use_feature
           supports_list_osds_by_osd_id2
           "ListOsdsByOsdId2"
           args
-          (client # query ListOsdsByOsdId2)
-          (client # query ListOsdsByOsdId)
+          (client # query ~consistency ListOsdsByOsdId2)
+          (client # query ~consistency ListOsdsByOsdId)
       in
       maybe_use_feature
         supports_list_osds_by_osd_id3
@@ -309,8 +312,9 @@ object(self)
         use_feature
         alternative
 
-    method get_osd_by_osd_id ~osd_id =
+    method get_osd_by_osd_id ~(consistency:Consistency.t) ~osd_id =
       self # list_osds_by_osd_id
+        ~consistency
         ~first:osd_id ~finc:true
         ~last:(Some(osd_id, true))
         ~max:1 ~reverse:false >>= fun ((_, osds), _) ->
@@ -350,11 +354,11 @@ object(self)
            ~last:None
            ~reverse:false ~max:(-1))
 
-    method list_all_claimed_osds =
+    method list_all_claimed_osds ~consistency =
       list_all_x
         ~first:0L
         fst
-        (self # list_osds_by_osd_id
+        (self # list_osds_by_osd_id ~consistency
            ~last:None
            ~reverse:false ~max:(-1))
 
