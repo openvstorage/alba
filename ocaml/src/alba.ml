@@ -617,7 +617,8 @@ let alba_get_disk_safety
          let now = Unix.gettimeofday () in
          let t_should_have_activity = now -. maintenance_config.Maintenance_config.auto_repair_timeout_seconds in
 
-         client # mgr_access # list_all_claimed_osds >>= fun (_, all_osds) ->
+         client # mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent
+         >>= fun (_, all_osds) ->
          let dead_osds =
            List.filter
              (fun (osd_id, osd_info) ->
@@ -851,7 +852,7 @@ let cleanup_leaked_global_kvs_objs cfg_file tls_config verbose =
     with_alba_client
       cfg_file tls_config
       (fun client ->
-        let osds_t = client # mgr_access # list_all_claimed_osds in
+        let osds_t = client # mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent in
         let ns_t = client # mgr_access # list_all_namespaces_by_id in
 
         osds_t >>= fun (_, osds) ->

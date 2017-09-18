@@ -41,7 +41,8 @@ let maybe_delete_fragment
     alba_client # with_nsm_client' ~namespace_id
                 (fun nsm_client ->
                   nsm_client # get_object_manifest_by_id
-                             object_id
+                    ~consistency:Consistency.Consistent
+                    object_id
                   >>= fun mf'o ->
                   let mf' = Option.get_some mf'o in
                   Lwt.return mf'
@@ -714,7 +715,7 @@ let test_verify_namespace () =
      alba_client # with_nsm_client'
                  ~namespace_id
                  (fun client ->
-                  client # get_object_manifest_by_name object_name)
+                  client # get_object_manifest_by_name ~consistency:Consistency.Consistent object_name)
      >>= fun mf2o ->
      let mf2 = Option.get_some mf2o in
      let open Manifest in
@@ -774,7 +775,8 @@ let test_verify_namespace () =
      (* was the abm's counter for checksum mismatches updated ? *)
      alba_client # osd_access # propagate_osd_info ~run_once:true ()
      >>= fun () ->
-     alba_client # mgr_access # list_all_claimed_osds >>= fun (_,r) ->
+     alba_client # mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent
+     >>= fun (_,r) ->
      let mismatches =
        List.fold_left
          (fun acc (_,info) ->

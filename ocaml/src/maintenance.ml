@@ -232,7 +232,8 @@ class client ?(retry_timeout = 60.)
          if maintenance_config.Maintenance_config.enable_auto_repair
          then
            begin
-             mgr_access # list_all_claimed_osds >>= fun (_, osds) ->
+             mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent
+             >>= fun (_, osds) ->
 
              (* failure detecting already decommissioned osds isn't that useful *)
              let osds =
@@ -876,7 +877,7 @@ class client ?(retry_timeout = 60.)
              alba_client # with_nsm_client'
                ~namespace_id
                (fun nsm_client ->
-                  nsm_client # get_object_manifest_by_id object_id)
+                  nsm_client # get_object_manifest_by_id ~consistency:Consistency.Consistent object_id)
              >>= function
              | None ->
                (* object_id is not yet known on the nsm, or is no longer known
@@ -1570,7 +1571,9 @@ class client ?(retry_timeout = 60.)
             alba_client # with_nsm_client'
                         ~namespace_id
                         (fun client ->
-                         client # get_object_manifest_by_name object_name)
+                          client # get_object_manifest_by_name
+                            ~consistency:Consistency.Consistent
+                            object_name)
             >>= function
             | None ->
                (* object must've been deleted in the mean time, so no work to do here *)
@@ -1616,7 +1619,7 @@ class client ?(retry_timeout = 60.)
              alba_client # with_nsm_client'
                          ~namespace_id
                          (fun nsm_client ->
-                           nsm_client # get_object_manifest_by_id object_id)
+                           nsm_client # get_object_manifest_by_id ~consistency:Consistency.Consistent object_id)
              >>= function
              | None -> Lwt.return ()
              | Some manifest ->

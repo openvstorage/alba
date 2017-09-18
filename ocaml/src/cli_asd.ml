@@ -662,7 +662,8 @@ let asd_multistatistics long_ids to_json verbose cfg_file tls_config
         cfg_file tls_config
         (fun alba_client ->
           let open Nsm_model.OsdInfo in
-          alba_client # mgr_access # list_all_claimed_osds >>= fun (_n, osds) ->
+          alba_client # mgr_access # list_all_claimed_osds ~consistency:Consistency.Consistent
+          >>= fun (_n, osds) ->
           let stat_osds =
             if list_all
             then osds

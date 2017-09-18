@@ -317,7 +317,7 @@ let alba_rewrite_object
            (fun namespace_id ->
               client # nsm_host_access # get_nsm_by_id ~namespace_id
               >>= fun nsm ->
-              nsm # get_object_manifest_by_name object_name
+              nsm # get_object_manifest_by_name ~consistency:Consistency.Consistent object_name
               >>= function
               | None ->
                 Lwt.fail_with

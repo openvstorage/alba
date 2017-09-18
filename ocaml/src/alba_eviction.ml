@@ -185,7 +185,8 @@ let lru_collect_some_garbage alba_client redis_client key =
                       ~namespace_id >>= fun client ->
 
           let names = List.map snd names in
-          client # get_object_manifests_by_name names >>= fun mfs ->
+          client # get_object_manifests_by_name ~consistency:Consistency.Consistent names
+          >>= fun mfs ->
 
           let size =
             List.fold_left

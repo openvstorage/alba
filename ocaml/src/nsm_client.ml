@@ -115,14 +115,14 @@ class client (nsm_host_client : Nsm_host_client.basic_client) namespace_id =
     method get_gc_epochs =
       self # query GetGcEpochs ()
 
-    method get_object_manifest_by_name object_name =
-      self # query GetObjectManifestByName object_name
+    method get_object_manifest_by_name ~consistency object_name =
+      self # query ~consistency GetObjectManifestByName object_name
 
-    method get_object_manifests_by_name object_names =
-      self # query GetObjectManifestsByName object_names
+    method get_object_manifests_by_name ~consistency object_names =
+      self # query ~consistency GetObjectManifestsByName object_names
 
-    method get_object_manifest_by_id object_id =
-      self # query GetObjectManifestById object_id
+    method get_object_manifest_by_id ~consistency object_id =
+      self # query ~consistency GetObjectManifestById object_id
 
     method get_stats =
       self # query GetStats ()

@@ -12,7 +12,8 @@ open Nsm_model
 let _get_node_ids () =
   Albamgr_test.test_with_albamgr
     (fun mgr ->
-      mgr # list_all_claimed_osds >>= fun (_,osds) ->
+      mgr # list_all_claimed_osds ~consistency:Consistency.Consistent
+      >>= fun (_,osds) ->
       let all_nodes =
         let per_node =
           List.group_by

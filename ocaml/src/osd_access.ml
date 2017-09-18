@@ -321,7 +321,8 @@ class osd_access
   let get_osd_info ~osd_id =
     try Lwt.return (Hashtbl.find osds_info_cache osd_id)
     with Not_found ->
-      mgr_access # get_osd_by_osd_id ~osd_id >>= fun osd_o ->
+      mgr_access # get_osd_by_osd_id ~consistency:Consistency.Consistent ~osd_id
+      >>= fun osd_o ->
       let osd_info = match osd_o with
         | None -> failwith (Printf.sprintf "could not find osd with id %Li" osd_id)
         | Some info -> info
@@ -331,7 +332,7 @@ class osd_access
   in
 
   let refresh_osd_info ~osd_id =
-    mgr_access # get_osd_by_osd_id ~osd_id >>= function
+    mgr_access # get_osd_by_osd_id ~consistency:Consistency.Consistent ~osd_id >>= function
     | None -> assert false
     | Some osd_info' ->
        let osd_info, osd_state, capabilities = Hashtbl.find osds_info_cache osd_id in
@@ -442,7 +443,7 @@ class osd_access
     let rec inner delay =
       Lwt.catch
         (fun () ->
-         mgr_access # get_osd_by_osd_id ~osd_id >>= function
+         mgr_access # get_osd_by_osd_id ~consistency:Consistency.No_guarantees ~osd_id >>= function
          | None -> Lwt.return `OkAgain
          | Some osd_info ->
             with_osd_from_pool ~osd_id
@@ -524,10 +525,11 @@ class osd_access
       let rec inner next_osd_id =
         Lwt.catch
           (fun () ->
-           mgr_access # list_osds_by_osd_id
-                      ~first:next_osd_id ~finc:true
-                      ~last:None ~reverse:false
-                      ~max:(-1) >>= fun ((cnt, osds), has_more) ->
+            mgr_access # list_osds_by_osd_id
+              ~consistency:Consistency.Consistent
+              ~first:next_osd_id ~finc:true
+              ~last:None ~reverse:false
+              ~max:(-1) >>= fun ((cnt, osds), has_more) ->
            List.iter
              (fun (osd_id, osd_info) ->
                add_osd_info

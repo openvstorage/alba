@@ -109,7 +109,7 @@ let alba_list_osds cfg_file tls_config node_id to_json verbose attempts =
     with_albamgr_client
       cfg_file ~attempts tls_config
       (fun client ->
-         client # list_all_claimed_osds
+         client # list_all_claimed_osds ~consistency:Consistency.Consistent
          >>= fun (i,devices) ->
 
          let open Albamgr_protocol.Protocol.Osd in
@@ -455,7 +455,7 @@ let alba_list_purging_osds
          let open Albamgr_protocol.Protocol in
          Lwt_list.map_s
            (fun osd_id ->
-              client # get_osd_by_osd_id ~osd_id >>= function
+              client # get_osd_by_osd_id ~consistency:Consistency.Consistent ~osd_id >>= function
               | None -> Lwt.return None
               | Some osd_info -> Lwt.return (Some (osd_id, osd_info)))
            osds >>= fun osds ->
