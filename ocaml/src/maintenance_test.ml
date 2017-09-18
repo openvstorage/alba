@@ -790,6 +790,7 @@ let test_verify_namespace () =
 
 let test_automatic_repair () =
   let test_name = "test_automatic_repair" in
+  let long_id = test_name ^ "_" ^ Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
   let namespace = test_name in
   test_with_alba_client
     (fun alba_client ->
@@ -811,13 +812,13 @@ let test_automatic_repair () =
 
      let port = 8980 in
      Asd_test.with_asd_client
-       test_name port
+       long_id port
        (fun asd ->
         alba_client # osd_access # seen
                     ~check_claimed:(fun _ -> true)
                     ~check_claimed_delay:1.
                     Discovery.(Good("",
-                                    { id = test_name;
+                                    { id = long_id;
                                       extras =
                                         Some({ node_id = "bla";
                                                version = "AsdV1";
@@ -829,7 +830,7 @@ let test_automatic_repair () =
                                       tlsPort = None;
                                       useRdma = false;
                                     })) >>= fun () ->
-        alba_client # claim_osd ~long_id:test_name >>= fun osd_id ->
+        alba_client # claim_osd ~long_id >>= fun osd_id ->
 
         alba_client # create_namespace
                     ~namespace

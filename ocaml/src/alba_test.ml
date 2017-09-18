@@ -986,6 +986,8 @@ let test_change_osd_ip_port () =
   let osd_name =
     test_name ^ Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
 
+  let stop = ref false in
+
   let t (client : Alba_client.alba_client) =
        let namespace = test_name in
        let object_name = "object_name" in
@@ -996,6 +998,7 @@ let test_change_osd_ip_port () =
                  ~check_claimed_delay:0.1 ());
        Lwt.ignore_result
          (client # osd_access # propagate_osd_info
+                 ~stop
                  ~delay:0.1 ());
 
        Asd_test.with_asd_client
@@ -1086,6 +1089,7 @@ let test_change_osd_ip_port () =
           t client >>= fun () ->
           Lwt_log.debug "==================== end")
          (fun () ->
+            stop := true;
             safe_delete_namespace client test_name >>= fun () ->
             Asd_test.with_asd_client
               ~is_restart:true
@@ -1415,14 +1419,17 @@ let test_disk_churn () =
                   asds)
        in
 
-       let asds = [
+       let asds =
+         let random_suffix = Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
+         [
          ("test_disk_churn_0", 8240);
          ("test_disk_churn_1", 8241);
          ("test_disk_churn_2", 8242);
          ("test_disk_churn_3", 8243);
          ("test_disk_churn_4", 8244);
          ("test_disk_churn_5", 8245);
-       ]
+         ]
+         |> List.map (fun (n, p) -> n ^ "_" ^ random_suffix, p)
        in
 
        let fragment_size = 40 in
@@ -1780,7 +1787,7 @@ let test_add_disk () =
          ~preset_name:None
          ~namespace () >>= fun namespace_id ->
 
-       let asd_name = test_name in
+       let asd_name = test_name ^ "_" ^ Uuidm.(v4_gen (Random.State.make_self_init ()) () |> to_string) in
        let asd_port = 17843 in
        Asd_test.with_asd_client asd_name asd_port
          (fun asd ->

@@ -97,12 +97,17 @@ let sleep_approx ?(jitter=0.1) duration =
   let delta = Random.float (2. *. jitter) -. jitter in
   Lwt_unix.sleep ((1. +. delta) *. duration)
 
-let rec run_forever msg f delay =
+let rec run_forever ?(stop=ref false) msg f delay =
   Lwt.catch
     f
-    (fun exn -> Lwt_log.debug ~exn msg) >>= fun () ->
-  sleep_approx delay >>= fun () ->
-  run_forever msg f delay
+    (fun exn -> Lwt_log.info ~exn msg) >>= fun () ->
+  if !stop
+  then Lwt.return_unit
+  else
+    begin
+      sleep_approx delay >>= fun () ->
+      run_forever msg f delay
+    end
 
 let lwt_unix_fd_to_fd
       (fd : Lwt_unix.file_descr) : int =

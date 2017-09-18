@@ -37,7 +37,7 @@ class type t =
               Nsm_model.OsdInfo.t)
                Hashtbl.t Lwt.t
     method populate_osds_info_cache : unit Lwt.t
-    method propagate_osd_info : ?run_once:bool -> ?delay:float -> unit -> unit Lwt.t
+    method propagate_osd_info : ?stop:bool ref -> ?run_once:bool -> ?delay:float -> unit -> unit Lwt.t
     method seen :
              ?check_claimed:(string -> bool) ->
              ?check_claimed_delay:float -> Discovery.t -> unit Lwt.t

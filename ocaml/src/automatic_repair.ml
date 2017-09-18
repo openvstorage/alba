@@ -20,19 +20,25 @@ let periodic_load_osds
        /. 2.) in
   let open Nsm_model in
   let do_one (osd_id, osd_info, osd_state) =
-        let write_test_blob () =
-          alba_client # with_osd
-                      ~osd_id
-                      (fun osd ->
-                       osd # global_kvs # apply_sequence
-                           Osd.Low
-                           []
-                           [ Osd.Update.set_string
-                               Osd_keys.test_key
-                               (Lazy.force Osd_access_type.large_value)
-                               Checksum.NoChecksum
-                               false ])
-        in
+    let write_test_blob () =
+      alba_client
+        # with_osd
+        ~osd_id
+        (fun osd ->
+          Lwt_extra2.with_timeout_no_cancel
+            (alba_client # osd_access # osd_timeout)
+            (fun () ->
+              osd # global_kvs # apply_sequence
+                  Osd.Low
+                  []
+                  [ Osd.Update.set_string
+                      Osd_keys.test_key
+                      (Lazy.force Osd_access_type.large_value)
+                      Checksum.NoChecksum
+                      false ]
+            )
+        )
+    in
 
         (if not (recent_enough past_date osd_info.OsdInfo.write)
          then
@@ -60,12 +66,18 @@ let periodic_load_osds
                (fun () ->
                 Lwt_log.info_f "Read load on %Li" osd_id >>= fun () ->
                 let rec inner () =
-                  alba_client # with_osd
-                              ~osd_id
-                              (fun osd ->
-                               osd # global_kvs # get_option
-                                   Osd.Low
-                                   (Slice.wrap_string Osd_keys.test_key))
+                  alba_client
+                    # with_osd
+                    ~osd_id
+                    (fun osd ->
+                      Lwt_extra2.with_timeout_no_cancel
+                        (alba_client # osd_access # osd_timeout)
+                        (fun () ->
+                          osd # global_kvs # get_option
+                              Osd.Low
+                              (Slice.wrap_string Osd_keys.test_key)
+                        )
+                    )
                   >>= function
                   | Some value ->
                      Lwt_bytes.unsafe_destroy value;
