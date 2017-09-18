@@ -24,7 +24,26 @@ let get_object_manifests'
   >>= fun () ->
   let lookup_on_nsm_host object_names =
     nsm_host_access # get_nsm_by_id ~namespace_id >>= fun client ->
-    client # get_object_manifests_by_name object_names
+    let open Consistency in
+    match consistent_read with
+    | true  ->
+         client # get_object_manifests_by_name ~consistency:Consistent object_names
+    | false ->
+       begin
+         client # get_object_manifests_by_name ~consistency:No_guarantees object_names
+         >>= fun mfos ->
+         let has_nones =
+           let rec aux = function
+             | []        -> false
+             | None :: _ -> true
+             | Some _ :: rest -> aux rest
+           in
+           aux mfos
+         in
+         if has_nones
+         then client # get_object_manifests_by_name ~consistency:Consistent object_names
+         else  Lwt.return mfos
+       end
   in
   Manifest_cache.ManifestCache.lookup_multiple
     manifest_cache

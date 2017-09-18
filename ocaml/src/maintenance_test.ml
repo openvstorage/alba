@@ -41,7 +41,8 @@ let maybe_delete_fragment
     alba_client # with_nsm_client' ~namespace_id
                 (fun nsm_client ->
                   nsm_client # get_object_manifest_by_id
-                             object_id
+                    ~consistency:Consistency.Consistent
+                    object_id
                   >>= fun mf'o ->
                   let mf' = Option.get_some mf'o in
                   Lwt.return mf'
@@ -714,7 +715,7 @@ let test_verify_namespace () =
      alba_client # with_nsm_client'
                  ~namespace_id
                  (fun client ->
-                  client # get_object_manifest_by_name object_name)
+                  client # get_object_manifest_by_name ~consistency:Consistency.Consistent object_name)
      >>= fun mf2o ->
      let mf2 = Option.get_some mf2o in
      let open Manifest in

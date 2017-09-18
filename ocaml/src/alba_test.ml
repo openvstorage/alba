@@ -1718,7 +1718,8 @@ let test_replication () =
          nsm # list_all_objects () >>= fun (_, objs) ->
 
          let object_name = List.hd_exn objs in
-         nsm # get_object_manifest_by_name object_name >>= fun mf_o ->
+         nsm # get_object_manifest_by_name ~consistency:Consistency.Consistent object_name
+         >>= fun mf_o ->
          let mf = Option.get_some mf_o in
 
          let open Nsm_model in
@@ -2474,7 +2475,8 @@ let test_upload_epilogue () =
         alba_client # with_nsm_client' ~namespace_id
                     (fun nsm_client ->
                       nsm_client # get_object_manifest_by_id
-                                 mf.Manifest.object_id
+                        ~consistency:Consistency.Consistent
+                        mf.Manifest.object_id
                       >>= fun mf'o ->
                       let mf' = Option.get_some mf'o in
                       Lwt.return mf'
