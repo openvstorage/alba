@@ -443,7 +443,7 @@ class osd_access
     let rec inner delay =
       Lwt.catch
         (fun () ->
-         mgr_access # get_osd_by_osd_id ~consistency:Consistency.Consistent ~osd_id >>= function
+         mgr_access # get_osd_by_osd_id ~consistency:Consistency.No_guarantees ~osd_id >>= function
          | None -> Lwt.return `OkAgain
          | Some osd_info ->
             with_osd_from_pool ~osd_id
