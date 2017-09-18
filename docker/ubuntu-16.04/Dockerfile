@@ -135,13 +135,12 @@ RUN git clone https://github.com/toolslive/ordma.git \
 run apt-get update && apt-get -y --allow-unauthenticated install \
     libboost1.58-all-dev libboost1.58-all
 
-RUN echo "deb http://archive.ubuntu.com/ubuntu/ wily universe" > /etc/apt/sources.list.d/wily-universe.list
 
 RUN echo "deb http://apt.openvstorage.org unstable main" > /etc/apt/sources.list.d/ovsaptrepo.list
 RUN apt-get update && apt-get -y --allow-unauthenticated install \
       clang-3.5 \
       liblttng-ust0 librdmacm1 libtokyocabinet9 \
-      libstdc++6:amd64 libzmq3 librabbitmq1 libomnithread3c2 libomniorb4-1 \
+      libstdc++6:amd64 librabbitmq1 libomnithread3c2 libomniorb4-1 \
       libhiredis0.13 liblz4-1 libxio-dev libxio0 \
       omniorb-nameserver \
       libunwind8-dev libaio1 libaio1-dbg libaio-dev \
