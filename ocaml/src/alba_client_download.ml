@@ -32,15 +32,7 @@ let get_object_manifests'
        begin
          client # get_object_manifests_by_name ~consistency:No_guarantees object_names
          >>= fun mfos ->
-         let has_nones =
-           let rec aux = function
-             | []        -> false
-             | None :: _ -> true
-             | Some _ :: rest -> aux rest
-           in
-           aux mfos
-         in
-         if has_nones
+         if List.mem None mfos
          then client # get_object_manifests_by_name ~consistency:Consistent object_names
          else  Lwt.return mfos
        end
