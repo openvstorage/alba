@@ -357,11 +357,58 @@ class osd_access
       make_alba_osd_client
   in
 
+  let categorise_exception osd_info =
+    let open Asd_protocol.Protocol.Error in
+    function
+    (* -> should_invalidate_pool, should_retry, add_to_errors aka disqualify  *)
+    | Exn Assert_failed _   -> false, false, false
+    | Exn Unknown_operation -> false, false, true
+    | Exn Full              -> true,  false, true
+       (* when it's full, we need to disqualify this OSD,
+          and the 'set' in the requalification loop will eventually requalify it,
+          fe, when rebalancing creates space on that OSD again
+        *)
+    | End_of_file                            -> true,  true, false
+    | Unix.Unix_error(Unix.ECONNRESET,_,_)   -> true, false, true
+    | Unix.Unix_error(Unix.EPIPE,_,_)        -> true, false, true
+
+    | Unix.Unix_error(Unix.ECONNREFUSED,_,_) -> false, false, true
+    | (Client_helper.MasterLookupResult.Error t) as exn ->
+       let long_id =
+         let open OsdInfo in
+         get_long_id osd_info.kind in
+       let () =
+         Lwt_log.ign_debug_f
+           "%s %S : %s"
+           long_id
+           (Client_helper.MasterLookupResult.to_string t)
+           (Printexc.to_string exn)
+       in
+       false, true, false
+    | exn -> (* by experience: don't be so optimistic *)
+       begin
+         let open OsdInfo in
+         let long_id = get_long_id osd_info.kind in
+         let () =
+           Lwt_log.ign_info_f
+             "%s %S was unforeseen"
+             long_id
+             (Printexc.to_string exn)
+         in
+         match osd_info.kind with
+           | Asd     _   -> true, false, true
+           | Kinetic _   -> true, false, true
+           | Alba    _   -> true, false, false
+           | Alba2   _   -> true, false, false
+           | AlbaProxy _ -> true, false, true
+       end
+  in
   let rec with_osd_from_pool
           : type a.
                  osd_id:Albamgr_protocol.Protocol.Osd.id ->
+                        ?max_retries:int ->
                         (Osd.osd -> a Lwt.t) -> a Lwt.t
-  = fun ~osd_id f ->
+  = fun ~osd_id ?(max_retries = 2) f ->
   Lwt.catch
     (fun () ->
      Osd_pool.use_osd
@@ -374,36 +421,8 @@ class osd_access
         let open OsdInfo in
         get_long_id osd_info.kind
       in
-     let open Asd_protocol.Protocol.Error in
-     let add_to_errors =
-
-       match exn with
-       | End_of_file
-       | Exn Assert_failed _ -> false
-       | _ -> true
-     in
-     let should_invalidate_pool, should_retry =
-       match exn with
-       | Exn Assert_failed _ -> false, false
-       | Exn Unknown_operation -> false, false
-       | Exn Full -> true, false
-          (* when it's full, we need to disqualify this OSD,
-             and the 'set' in the requalification loop will eventually requalify it,
-             fe, when rebalancing creates space on that OSD again
-           *)
-       | End_of_file                            -> true, true
-       | Unix.Unix_error(Unix.ECONNRESET,_,_)   -> true, false
-       | Unix.Unix_error(Unix.EPIPE,_,_)        -> true, false
-
-       | Unix.Unix_error(Unix.ECONNREFUSED,_,_) -> false, false
-       | _ -> (* by experience: don't be so optimistic *)
-          let () =
-            Lwt_log.ign_info_f
-              "%s %S was unforeseen, invalidating pool"
-              long_id
-              (Printexc.to_string exn)
-          in
-          true, false
+     let should_invalidate_pool, should_retry, add_to_errors =
+       categorise_exception osd_info exn
      in
      let () =
        Lwt_log.ign_info_f
@@ -422,10 +441,19 @@ class osd_access
      >>= fun () ->
 
      if should_retry
-     then with_osd_from_pool ~osd_id f
-          (* what to do with the error that comes from this ? *)
+        && max_retries > 0
+     then
+       let delay = osd_timeout *. 0.5 in
+       Lwt_log.info_f
+         "osd_access: osd:%Li %S retry (max_retries:%i) delay:%f"
+         osd_id long_id
+         max_retries delay
+       >>= fun () ->
+       let max_retries = max_retries -1 in
+       Lwt_unix.sleep delay >>= fun () ->
+       with_osd_from_pool ~osd_id ~max_retries f
      else
-       (if add_to_errors || should_invalidate_pool
+       (if add_to_errors
         then
           begin
             Osd_state.add_error state exn;
