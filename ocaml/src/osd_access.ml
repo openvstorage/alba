@@ -395,12 +395,7 @@ class osd_access
              long_id
              (Printexc.to_string exn)
          in
-         match osd_info.kind with
-           | Asd     _   -> true, false, true
-           | Kinetic _   -> true, false, true
-           | Alba    _   -> true, false, false
-           | Alba2   _   -> true, false, false
-           | AlbaProxy _ -> true, false, true
+         true, false, true
        end
   in
   let rec with_osd_from_pool
