@@ -876,7 +876,9 @@ let cap_max ?(cap=_BATCH_SIZE) ~max () =
 module Lwt_list = struct
   include Lwt_list
 
-  (* custom variant of iter(i)_p, map(i)_p, map_s that are tail recursive *)
+  (* custom variants of iter(i)_p, map(i)_p, map_s that are tail recursive
+   * and that wait for all threads to finish
+   *)
 
   let iter_p f l =
     let ts = List.map f l in
@@ -899,8 +901,17 @@ module Lwt_list = struct
     | [] ->
        List.rev acc |> Lwt.return
     | t::ts ->
-       t >>= fun i ->
-       _collect (i::acc) ts
+       Lwt.catch
+         (fun () -> t >>= fun i -> Lwt.return_ok i)
+         (fun exn -> Lwt.return_error exn)
+       >>= function
+       | Ok i -> _collect (i::acc) ts
+       | Error exn ->
+          Lwt.catch
+            (fun () -> Lwt.join (List.map (fun t -> t >>= fun _ -> Lwt.return_unit) ts))
+            (fun _ -> Lwt.return_unit)
+          >>= fun () ->
+          Lwt.fail exn
 
   let map_p f l =
     let ts = List.map f l in
