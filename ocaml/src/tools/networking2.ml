@@ -253,9 +253,10 @@ let make_server
                       Lwt.catch
                         (fun () ->
                           Net_fd.apply_keepalive tcp_keepalive cl_fd;
-                          Lwt_log.info_f "%s: (fd:%i) new client connection from %s"
+                          Lwt_log.info_f "%s: (fd:%i) new client connection (count:%i) from %s"
                                          server_name
                                          cl_fd_id
+                                         !count
                                          cl_sas
                           >>= fun () ->
                           protocol cl_fd)
