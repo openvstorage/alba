@@ -1185,7 +1185,7 @@ module NamespaceManager(C : Constants)(KV : Read_key_value_store) = struct
 
   let get_object_manifest_by_id kv object_id =
     match KV.get kv (Keys.objects ~object_id) with
-    | None -> Err.failwith Err.Object_not_found
+    | None -> Err.failwith Err.Object_not_found ~payload:object_id
     | Some manifest_s -> deserialize Manifest.input manifest_s, manifest_s
 
   let get_object_manifest_by_name kv name =
