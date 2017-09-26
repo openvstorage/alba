@@ -11,7 +11,7 @@ external _partial_read_job :
   -> (int * int) list (* [(offset, len)] *)
   -> int (* socket *)
   -> bool (* use_fadvise *)
-  -> unit Lwt_unix.job = "alba_partial_read_job"
+  -> float Lwt_unix.job = "alba_partial_read_job"
 
 
 let partial_read fn n offset_sizes socket use_fadvise =

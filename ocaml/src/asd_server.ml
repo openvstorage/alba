@@ -772,6 +772,9 @@ let execute_query : type req res.
                             Alba_partial_read.partial_read
                               fn n slices socket
                               dir_info.DirectoryInfo.use_fadvise
+                            >>= fun took_ms ->
+                            let k = if took_ms > 1000.0 then Lwt_log.info else Lwt_log.debug in
+                            Printf.ksprintf k "partial_read job took %f ms" took_ms
                           end
                       end
                     else

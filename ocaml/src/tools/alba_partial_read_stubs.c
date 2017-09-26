@@ -7,6 +7,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <sys/time.h>
 #include "lwt_unix.h"
 #include <sys/stat.h>
 
@@ -34,13 +35,18 @@ struct job_partial_read {
   int64_t *offsets;
   int* lens;
   int use_fadvise;
+  double took;
   /* Buffer for storing the path. MUST be last field */
   char data[];
 };
 
 static void worker_partial_read(struct job_partial_read* job)
 {
+    struct timeval t0, t1;
+    gettimeofday(&t0, NULL);
+
     /* Perform the blocking call. */
+
     int in_fd = open(job -> path, O_RDONLY);
     if(-1 == in_fd){
         job -> result = -1;
@@ -133,6 +139,10 @@ static void worker_partial_read(struct job_partial_read* job)
         }
     }
     close(in_fd); // we don't care if this fails (and that's ok)
+    gettimeofday(&t1, NULL);
+    double took = (t1.tv_sec - t0.tv_sec) * 1000.0; // ms
+    took += (t1.tv_usec - t0.tv_usec) * 0.001;      // us to ms
+    job -> took = took;
     job -> result = 0;
 }
 
@@ -153,9 +163,11 @@ static value result_partial_read(struct job_partial_read* job){
     unix_error(error, "partial_read", string_argument);
   }
   /* Free the job structure. */
+  double took = job -> took;
+
   lwt_unix_free_job(&job->job);
   /* Return the result. */
-  return Val_unit;
+  return caml_copy_double(took);
 }
 
 
