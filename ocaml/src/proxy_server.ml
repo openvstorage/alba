@@ -832,6 +832,7 @@ let run_server hosts port ~transport
                ~cache_on_read ~cache_on_write
                ~upload_slack
                ~read_preference
+               ~propagate_osd_info_delay
   =
   Lwt_log.info_f "proxy_server version:%s" Alba_version.git_revision
   >>= fun () ->
@@ -895,7 +896,7 @@ let run_server hosts port ~transport
          ~upload_slack
          (fun alba_client ->
           Lwt.pick
-            [ (alba_client # osd_access # propagate_osd_info ());
+            [ (alba_client # osd_access # propagate_osd_info ~delay:propagate_osd_info_delay ());
               (Networking2.make_server
                  ~max:max_client_connections
                  hosts port ~transport ~tls:None ~tcp_keepalive

@@ -27,6 +27,7 @@ module Config = struct
     __retry_timeout : (float [@default 60.]);
     read_preference : string list [@default []];
     multicast_discover_osds : bool [@default true];
+    propagate_osd_info_delay : float [@default 60.];
     } [@@deriving yojson, show]
 
   let abm_cfg_url_from_cfg (t:t) : Prelude.Url.t =
@@ -103,6 +104,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
       and tcp_keepalive                       = cfg.tcp_keepalive
       and retry_timeout                       = cfg.__retry_timeout
       and multicast_discover_osds             = cfg.multicast_discover_osds
+      and propagate_osd_info_delay            = cfg.propagate_osd_info_delay
       in
       let () = match cfg.chattiness with
         | None -> ()
@@ -192,7 +194,7 @@ let alba_maintenance cfg_url modulo remainder flavour log_sinks =
                     (Lwt_extra2.make_fuse_thread ());
                     (maintenance_client # deliver_all_messages
                             ~is_master:(fun () -> coordinator # is_master) ());
-                    (client # osd_access # propagate_osd_info ());
+                    (client # osd_access # propagate_osd_info ~delay:propagate_osd_info_delay ());
                     (maintenance_client # refresh_maintenance_config);
                     (maintenance_client # do_work ());
                     (maintenance_client # maintenance_for_all_namespaces);
