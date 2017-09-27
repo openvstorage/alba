@@ -33,6 +33,7 @@ module Config = struct
     use_fadvise: bool [@default true];
     upload_slack : float [@default 0.2];
     read_preference : string list [@default []];
+    propagate_osd_info_delay : float [@default 60.];
   } [@@deriving yojson, show]
 end
 
@@ -94,7 +95,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          lwt_preemptive_thread_pool_min_size, lwt_preemptive_thread_pool_max_size,
          max_client_connections, tcp_keepalive,
          use_fadvise, upload_slack,
-         read_preference
+         read_preference, propagate_osd_info_delay
          =
          cfg.manifest_cache_size,
          cfg.albamgr_connection_pool_size,
@@ -103,7 +104,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
          cfg.lwt_preemptive_thread_pool_min_size, cfg.lwt_preemptive_thread_pool_max_size,
          cfg.max_client_connections, cfg.tcp_keepalive,
          cfg.use_fadvise, cfg.upload_slack,
-         cfg.read_preference
+         cfg.read_preference, cfg.propagate_osd_info_delay
        and fragment_cache_cfg =
          match cfg.fragment_cache, cfg.fragment_cache_dir, cfg.fragment_cache_size with
          | Some f, None, None ->
@@ -189,6 +190,7 @@ let proxy_start (cfg_url:Url.t) log_sinks =
         ~cache_on_read ~cache_on_write
         ~upload_slack
         ~read_preference
+        ~propagate_osd_info_delay
       >>= fun () ->
 
       fragment_cache # close ()

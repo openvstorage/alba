@@ -34,4 +34,6 @@
 
     , "lwt_preemptive_thread_pool_min_size" : 10 // optional, default 10
     , "lwt_preemptive_thread_pool_max_size" : 20 // optional, default 20
+
+    , "propagate_osd_info_delay" : 60.0 // optional, default 60.0
 }

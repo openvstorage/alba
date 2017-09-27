@@ -19,4 +19,6 @@
     , "read_preference" : []
     , "multicast_discover_osds" : false // optional, default true. specifies whether maintenance
                                         // should listen to asd/kinetic multicast messages or not
+
+    , "propagate_osd_info_delay" : 60.0 // optional, default 60.0
 }
