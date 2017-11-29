@@ -88,17 +88,18 @@ ENV opam_env="opam config env --root=${opam_root}"
 RUN opam init --root=${opam_root} --comp ${ocaml_version}
 
 RUN eval `${opam_env}` && \
+    opam repo add compat -k git https://github.com/toolslive/opam_anti_revisionism.git && \
     opam update -v && \
     opam install -y \
         oasis.0.4.10 \
         ocamlfind \
-        omake.0.10.2 \
+        omake.0.9.8.7 \
         ssl.0.5.3 \
         camlbz2 \
         snappy \
         sexplib \
         bisect \
-        lwt_ssl \
+        lwt_ssl.1.1.0 \
         lwt.3.0.0 \
         camltc.0.9.4 \
         ocplib-endian.1.0 \
@@ -108,17 +109,20 @@ RUN eval `${opam_env}` && \
         zarith \
         mirage-no-xen.1 \
         quickcheck.1.0.2 \
+        ounit.2.0.0 \
         cmdliner \
         conf-libev \
         depext \
         kinetic-client \
-        tiny_json \
+        cryptokit \
+        tiny_json.1.1.4 \
         ppx_deriving.4.1 \
         ppx_deriving_yojson \
         base.v0.9.3 \
         core.v0.9.1 \
         redis.0.3.3 \
         uri.1.9.4 \
+        piqi \
         result \
         ezxmlm
 
