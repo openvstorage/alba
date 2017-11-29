@@ -109,10 +109,12 @@ RUN eval `${opam_env}` && \
         zarith \
         mirage-no-xen.1 \
         quickcheck.1.0.2 \
+        ounit.2.0.0 \
         cmdliner \
         conf-libev \
         depext \
         kinetic-client \
+        cryptokit \
         tiny_json.1.1.4 \
         ppx_deriving.4.1 \
         ppx_deriving_yojson \
@@ -120,6 +122,7 @@ RUN eval `${opam_env}` && \
         core.v0.9.1 \
         redis.0.3.3 \
         uri.1.9.4 \
+        piqi \
         result \
         ezxmlm
 
