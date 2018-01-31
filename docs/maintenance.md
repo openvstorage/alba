@@ -27,11 +27,12 @@ Task 8 is divided amongst the several agents based on the work_id.
 The self healing has some default parameters but these can be overridden through the ALBA CLI.
 
 ## Retrieve the maintenance config
-The maintenance config can be retrieved from the ALBA CLI by using the config in ETCD (`/ovs/alba/backends/<backend guid>/maintenance/config`) . (See the [Framework Alba Plugin GitBook](https://www.gitbook.com/book/openvstorage/framework-alba-plugin) for more information.)
+The maintenance config can be retrieved from the ALBA CLI by using the config in Arakoon (`/ovs/alba/backends/<backend guid>/maintenance/config`) . (See the [Framework Alba Plugin GitBook](https://www.gitbook.com/book/openvstorage/framework-alba-plugin) for more information.)
 
 ```
-root@cmp01:~# alba get-maintenance-config --config=etcd://127.0.0.1:2379/ovs/arakoon/mybackend-2-abm/config  --to-json
-2016-08-01 13:27:30 637984 +0200 - cmp01 - 27641/0 - alba/cli - 0 - info - ETCD: etcdctl --peers=127.0.0.1:2379 get --quorum ovs/arakoon/mybackend-2-abm/config
+2018-01-31 09:28:55 732213 +0100 - DEV-4N-199-191 - 7058/0000 - alba/cli - 0 - info - Albamgr_client.make_client :mybackend02-abm
+2018-01-31 09:28:55 735900 +0100 - DEV-4N-199-191 - 7058/0000 - alba/cli - 1 - info - connect_with : 10.100.199.193 26408 None Net_fd.TCP (fd:3)
+2018-01-31 09:28:55 736131 +0100 - DEV-4N-199-191 - 7058/0000 - alba/cli - 2 - info - connect_with 10.100.199.193 26408 None Net_fd.TCP (fd:3) succeeded
 {
   "success": true,
   "result": {
@@ -39,10 +40,20 @@ root@cmp01:~# alba get-maintenance-config --config=etcd://127.0.0.1:2379/ovs/ara
     "auto_repair_timeout_seconds": 900.0,
     "auto_repair_disabled_nodes": [],
     "enable_rebalance": true,
-    "cache_eviction_prefix_preset_pairs": {},
-    "redis_lru_cache_eviction": null
+    "cache_eviction_prefix_preset_pairs": {
+      "124739a2-8c88-4932-810a-8430c4fc7618_bc": "mypreset",
+      "124739a2-8c88-4932-810a-8430c4fc7618": "mypreset"
+    },
+    "redis_lru_cache_eviction": {
+      "host": "10.100.199.193",
+      "port": 6379,
+      "key": "alba_lru_386e9f7e-444b-4760-8cfc-d48780ad6520"
+    },
+    "eviction_type": [ "Automatic" ]
   }
 }
+2018-01-31 09:28:55 737056 +0100 - DEV-4N-199-191 - 7058/0000 - alba/cli - 3 - info - closing (fd:3)
+
 ```
 
 
@@ -66,13 +77,7 @@ The reasoning behind it is that it is rather cheap to fetch manifests and do som
 ## The speed of rebalancing
 To speed up or slow down the speed with which the rebalancing happens, update the number of maintenance agents in ETCD. The default amount is 4.
 
-* Download the config file.
 ```
-etcdctl get /ovs/alba/backends/<backend guid>/maintenance/nr_of_agents > /tmp/nr_of_agents.txt
+ovs config edit /ovs/alba/backends/<backend guid>/maintenance/nr_of_agents 
 ```
-* Update the value in the config file.
-* Upload the updated config file.
-```
-etcdctl set  /tmp/nr_of_agents.txt > /ovs/alba/backends/<backend guid>/maintenance/nr_of_agents
-```
-
+* Update the value in the config and save.
